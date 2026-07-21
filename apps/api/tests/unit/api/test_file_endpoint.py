@@ -46,7 +46,7 @@ class TestUploadFile:
         assert data["message"] == "File uploaded successfully"
 
     @patch(
-        "app.api.v1.endpoints.file.conversations_collection",
+        "app.api.v1.endpoints.file.conversation_repository",
     )
     @patch(
         "app.api.v1.endpoints.file.upload_file_service",
@@ -62,7 +62,7 @@ class TestUploadFile:
             "type": "file",
         }
         # Simulate that the conversation is owned by the authenticated user.
-        mock_convs.find_one = AsyncMock(return_value={"_id": "some-id"})
+        mock_convs.exists = AsyncMock(return_value=True)
         file_content = BytesIO(b"fake pdf data")
         response = await client.post(
             f"{FILE_BASE}/upload",

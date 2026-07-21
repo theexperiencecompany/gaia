@@ -25,8 +25,8 @@ from typing import Any
 from app.constants.log_tags import LogTag
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import conversations_collection
 from app.db.redis import redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.outbound_delivery import publish_outbound_file
@@ -191,15 +191,13 @@ async def _persist_artifact_entry(
         return
     try:
         for attempt in range(_PERSIST_MAX_ATTEMPTS):
-            result = await conversations_collection.update_one(
-                {
-                    "user_id": user_id,
-                    "conversation_id": conversation_id,
-                    "messages.message_id": bot_message_id,
-                },
-                {"$push": {"messages.$.tool_data": entry}},
+            matched = await conversation_repository.append_message_tool_data(
+                conversation_id,
+                user_id=user_id,
+                message_id=bot_message_id,
+                entries=[entry],
             )
-            if result.matched_count:
+            if matched:
                 return
             await asyncio.sleep(_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
         log.warning(

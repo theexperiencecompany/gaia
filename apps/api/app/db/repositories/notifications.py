@@ -5,7 +5,6 @@ on it. Updates are free-form field patches (an action result may set arbitrary
 fields), so they go through ``update_fields`` rather than a rigid update model.
 """
 
-from datetime import UTC, datetime
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
@@ -35,11 +34,10 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
         return await self._find_one(filter_)
 
     async def update_fields(self, notification_id: str, **fields: object) -> None:
-        """Apply a free-form field patch. ``updated_at`` is stamped unless the
-        caller supplied one (a later spread of ``fields`` wins)."""
+        """Apply a free-form field patch. ``updated_at`` is auto-stamped by the base."""
         await self._apply_raw_update(
             {"id": notification_id},
-            {"$set": {"updated_at": datetime.now(UTC), **fields}},
+            {"$set": dict(fields)},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

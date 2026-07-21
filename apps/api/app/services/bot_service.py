@@ -9,8 +9,9 @@ from uuid import uuid4
 from fastapi import HTTPException
 from pymongo import ReturnDocument
 
-from app.db.mongodb.collections import bot_sessions_collection, conversations_collection
+from app.db.mongodb.collections import bot_sessions_collection
 from app.db.redis import redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
@@ -134,11 +135,7 @@ class BotService:
         # (re)create it with the SAME conversation_id stored on the session rather
         # than minting a new one and repointing, so the chat thread is never
         # orphaned or forked.
-        existing_conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id, "user_id": user.get("user_id")},
-            {"_id": 1},
-        )
-        if existing_conv:
+        if await conversation_repository.exists(conversation_id, user_id=user.get("user_id", "")):
             log.set(
                 bot={
                     "platform": platform,
@@ -202,19 +199,14 @@ class BotService:
         Returns:
             List of message dicts with role and content
         """
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id, "user_id": user_id},
-            {"messages": 1},
-        )
-        if not conv or not conv.get("messages"):
+        conversation = await conversation_repository.get(conversation_id, user_id=user_id)
+        if conversation is None or not conversation.messages:
             return []
 
-        messages = conv["messages"][-limit:]
         history = []
-        for msg in messages:
-            msg_type = msg.get("type", "")
-            if msg_type == "user":
-                history.append({"role": "user", "content": msg.get("response", "")})
-            elif msg_type == "bot":
-                history.append({"role": "assistant", "content": msg.get("response", "")})
+        for msg in conversation.messages[-limit:]:
+            if msg.type == "user":
+                history.append({"role": "user", "content": msg.response or ""})
+            elif msg.type == "bot":
+                history.append({"role": "assistant", "content": msg.response or ""})
         return history

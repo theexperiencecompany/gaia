@@ -56,3 +56,13 @@ class TestNotesRepository(UserScopedRepositoryContract):
         assert updated is not None
         assert updated.plaintext == "new"
         assert updated.content == "<p>orig</p>"  # untouched
+
+    async def test_search_by_plaintext(self, repo, make_doc):
+        created = await repo.create(
+            make_doc(user_id="searcher", plaintext="the quarterly budget report")
+        )
+        await repo.create(make_doc(user_id="searcher", plaintext="lunch plans"))
+        await repo.create(make_doc(user_id="other", plaintext="budget too"))
+        hits = await repo.search_by_plaintext("searcher", pattern="budget")
+        assert [h.plaintext for h in hits] == ["the quarterly budget report"]
+        assert hits[0].id == created.id  # the stringified _id, user-isolated

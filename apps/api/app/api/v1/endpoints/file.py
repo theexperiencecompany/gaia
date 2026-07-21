@@ -12,7 +12,7 @@ from fastapi import (
 )
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
 from app.schemas.file import UpdateFileRequest
@@ -46,11 +46,7 @@ async def upload_file_endpoint(
         # Reject uploads targeting a conversation the authenticated user does
         # not own — otherwise alice could pollute her own session tree with
         # artifacts keyed under bob's conversation id.
-        owner = await conversations_collection.find_one(
-            {"user_id": user_id, "conversation_id": conversation_id},
-            projection={"_id": 1},
-        )
-        if owner is None:
+        if not await conversation_repository.exists(conversation_id, user_id=user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Conversation not found or not owned by this user",

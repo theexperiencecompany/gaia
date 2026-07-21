@@ -1,29 +1,40 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import cast
 from uuid import uuid4
 
-from bson import ObjectId
 from fastapi import HTTPException, status
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
-    BOT_CONVERSATION_SOURCES,
     BatchSyncRequest,
     ConversationModel,
     SystemPurpose,
     UpdateMessagesRequest,
 )
+from app.models.conversation_models import ConversationDocument
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
-from app.utils.tool_data_utils import (
-    convert_conversation_messages,
-    convert_legacy_tool_data,
-)
 from shared.py.wide_events import log
+
+# The projected fields a batch-sync row returns (matches the pre-repository
+# aggregation): the conversation summary plus its full message history, minus the
+# internal user_id/_id/metadata.
+_SYNC_FIELDS = {
+    "conversation_id",
+    "description",
+    "starred",
+    "is_system_generated",
+    "is_onboarding_conversation",
+    "system_purpose",
+    "is_unread",
+    "createdAt",
+    "updatedAt",
+    "messages",
+}
 
 
 def _like_escape(value: str) -> str:
@@ -74,41 +85,30 @@ async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
 
 
 async def create_conversation_service(conversation: ConversationModel, user: dict) -> dict:
-    """
-    Create a new conversation.
-    """
-    user_id = user.get("user_id")
+    """Create a new conversation."""
+    user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
     created_at = datetime.now(UTC).isoformat()
-    conversation_data = {
-        "user_id": user_id,
-        "conversation_id": conversation.conversation_id,
-        "description": conversation.description,
-        "is_system_generated": conversation.is_system_generated or False,
-        "system_purpose": conversation.system_purpose,
-        "is_unread": conversation.is_unread or False,
-        "is_onboarding_demo": conversation.is_onboarding_demo,
-        # Persist the originating source (e.g. bot platform) as a string so it
-        # matches the literals used by the web list query's $nin source filter.
-        "source": conversation.source.value if conversation.source else None,
-        "messages": [],
-        "createdAt": created_at,
-    }
+    document = ConversationDocument(
+        user_id=user_id,
+        conversation_id=conversation.conversation_id,
+        description=conversation.description,
+        is_system_generated=conversation.is_system_generated or False,
+        system_purpose=conversation.system_purpose,
+        is_unread=conversation.is_unread or False,
+        is_onboarding_demo=conversation.is_onboarding_demo,
+        source=conversation.source,
+        createdAt=created_at,
+    )
 
     try:
-        insert_result = await conversations_collection.insert_one(conversation_data)
+        await conversation_repository.create(document)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create conversation: {e!s}",
-        )
-
-    if not insert_result.acknowledged:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create conversation",
         )
 
     return {
@@ -120,129 +120,65 @@ async def create_conversation_service(conversation: ConversationModel, user: dic
 
 
 async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
-    """
-    Fetch paginated conversations for the authenticated user, including starred conversations.
+    """Fetch paginated conversations for the authenticated user, starred first.
+
+    Bot-originated conversations are excluded from the web list (reachable by
+    direct URL); the repository applies that source filter.
     """
     user_id = user["user_id"]
-
-    projection = {
-        "_id": 1,
-        "user_id": 1,
-        "conversation_id": 1,
-        "description": 1,
-        "starred": 1,
-        "is_system_generated": 1,
-        "is_onboarding_conversation": 1,
-        "system_purpose": 1,
-        "is_unread": 1,
-        "source": 1,
-        "createdAt": 1,
-        "updatedAt": 1,
-    }
-
-    # Exclude conversations originating from bots (they are accessible via direct URL)
-    _source_filter = {"source": {"$nin": [s.value for s in BOT_CONVERSATION_SOURCES]}}
-
-    starred_filter = {"user_id": user_id, "starred": True, **_source_filter}
-    non_starred_filter = {
-        "user_id": user_id,
-        "$or": [{"starred": {"$exists": False}}, {"starred": False}],
-        **_source_filter,
-    }
     skip = (page - 1) * limit
 
-    starred_future = (
-        conversations_collection.find(starred_filter, projection)
-        .sort("createdAt", -1)
-        .to_list(None)
-    )
-    non_starred_count_future = conversations_collection.count_documents(non_starred_filter)
-    non_starred_future = (
-        conversations_collection.find(non_starred_filter, projection)
-        .sort("createdAt", -1)
-        .skip(skip)
-        .limit(limit)
-        .to_list(limit)
+    starred, non_starred, non_starred_count = await asyncio.gather(
+        conversation_repository.list_starred_summaries(user_id),
+        conversation_repository.list_active_summaries(user_id, skip=skip, limit=limit),
+        conversation_repository.count_active(user_id),
     )
 
-    (
-        starred_conversations,
-        non_starred_count,
-        non_starred_conversations,
-    ) = await asyncio.gather(starred_future, non_starred_count_future, non_starred_future)
-
-    starred_conversations = _convert_ids(starred_conversations)
-    non_starred_conversations = _convert_ids(non_starred_conversations)
-
-    combined_conversations = starred_conversations + non_starred_conversations
-    total = len(starred_conversations) + non_starred_count
+    combined = [summary.model_dump(mode="json") for summary in (*starred, *non_starred)]
+    total = len(starred) + non_starred_count
     total_pages = ((non_starred_count + limit - 1) // limit) if non_starred_count > 0 else 1
 
-    result = {
-        "conversations": combined_conversations,
+    return {
+        "conversations": combined,
         "total": total,
         "page": page,
         "limit": limit,
         "total_pages": total_pages,
     }
 
-    return result
-
 
 async def get_conversation(conversation_id: str, user: dict) -> dict:
-    """
-    Fetch a specific conversation by ID.
-    """
-    user_id = user.get("user_id")
-    conversation = await conversations_collection.find_one(
-        {"user_id": user_id, "conversation_id": conversation_id}
-    )
-
-    if not conversation:
+    """Fetch a specific conversation by ID (messages already normalized on read)."""
+    user_id = user.get("user_id", "")
+    document = await conversation_repository.get(conversation_id, user_id=user_id)
+    if document is None:
         raise HTTPException(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-
-    conversations = _convert_ids([conversation])
-
-    # Convert legacy tool data to unified format
-    return convert_conversation_messages(conversations[0])
+    return document.model_dump(mode="json", exclude={"id"})
 
 
 async def star_conversation(conversation_id: str, starred: bool, user: dict) -> dict:
-    """
-    Star or unstar a conversation.
-    """
-    user_id = user.get("user_id")
-    update_result = await conversations_collection.update_one(
-        {"user_id": user_id, "conversation_id": conversation_id},
-        {"$set": {"starred": starred}, "$currentDate": {"updatedAt": True}},
+    """Star or unstar a conversation."""
+    user_id = user.get("user_id", "")
+    updated = await conversation_repository.set_starred(
+        conversation_id, user_id=user_id, starred=starred
     )
-
-    if update_result.modified_count == 0:
+    if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found or update failed")
-
     return {"message": "Conversation updated successfully", "starred": starred}
 
 
 async def delete_all_conversations(user: dict) -> dict:
-    """
-    Delete all conversations for the authenticated user.
-    """
-    user_id = user.get("user_id")
-    # Capture the conversation ids before deleting so their checkpoint threads
-    # can be cleaned up — the checkpoints table is not user-scoped.
-    conversation_ids = await conversations_collection.distinct(
-        "conversation_id", {"user_id": user_id}
-    )
-    delete_result = await conversations_collection.delete_many({"user_id": user_id})
+    """Delete all conversations for the authenticated user."""
+    user_id = user.get("user_id", "")
+    # The repository returns the deleted ids so their (non-user-scoped) checkpoint
+    # threads can be cleaned up afterwards.
+    conversation_ids = await conversation_repository.delete_all_for_user(user_id)
 
-    if delete_result.deleted_count == 0:
-        raise HTTPException(
-            status_code=404,
-            detail="No conversations found for the user",
-        )
+    if not conversation_ids:
+        raise HTTPException(status_code=404, detail="No conversations found for the user")
 
     for conversation_id in conversation_ids:
         await _cleanup_checkpoint_threads(conversation_id)
@@ -251,15 +187,11 @@ async def delete_all_conversations(user: dict) -> dict:
 
 
 async def delete_conversation(conversation_id: str, user: dict) -> dict:
-    """
-    Delete a specific conversation by ID.
-    """
-    user_id = user.get("user_id")
-    delete_result = await conversations_collection.delete_one(
-        {"user_id": user_id, "conversation_id": conversation_id}
-    )
+    """Delete a specific conversation by ID."""
+    user_id = user.get("user_id", "")
+    deleted = await conversation_repository.delete(conversation_id, user_id=user_id)
 
-    if delete_result.deleted_count == 0:
+    if not deleted:
         raise HTTPException(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
@@ -291,75 +223,42 @@ async def update_messages(
     ``max_messages`` caps stored history to the most recent N (via ``$slice``) so
     per-workflow threads can't outgrow MongoDB's 16MB document limit.
     """
-    user_id = user.get("user_id")
-    conversation_id = request.conversation_id
-
-    messages = []
-    for message in request.messages:
-        message_dict = message.model_dump(exclude={"loading"})
-        # Remove None values to keep the document clean
-        message_dict = {k: v for k, v in message_dict.items() if v is not None}
-        message_dict.setdefault("message_id", str(ObjectId()))
-        messages.append(message_dict)
-
-    push_spec: dict[str, Any] = {"$each": messages}
-    if max_messages is not None:
-        # Negative slice keeps only the most recent ``max_messages`` entries.
-        push_spec["$slice"] = -max_messages
-
-    update_result = await conversations_collection.update_one(
-        {"user_id": user_id, "conversation_id": conversation_id},
-        {
-            "$push": {"messages": push_spec},
-            "$currentDate": {"updatedAt": True},
-        },
+    user_id = user.get("user_id", "")
+    message_ids = await conversation_repository.append_messages(
+        request.conversation_id,
+        user_id=user_id,
+        messages=request.messages,
+        max_messages=max_messages,
     )
 
-    if update_result.modified_count == 0:
+    if message_ids is None:
         raise HTTPException(
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
 
     return {
-        "conversation_id": conversation_id,
+        "conversation_id": request.conversation_id,
         "message": "Messages updated",
-        "modified_count": update_result.modified_count,
-        "message_ids": [msg["message_id"] for msg in messages],
+        "modified_count": 1,
+        "message_ids": message_ids,
     }
 
 
 async def pin_message(conversation_id: str, message_id: str, pinned: bool, user: dict) -> dict:
-    """
-    Pin or unpin a message within a conversation.
-    """
-    user_id = user.get("user_id")
-    conversation = await conversations_collection.find_one(
-        {"user_id": user_id, "conversation_id": conversation_id}
-    )
-
-    if not conversation:
+    """Pin or unpin a message within a conversation."""
+    user_id = user.get("user_id", "")
+    document = await conversation_repository.get(conversation_id, user_id=user_id)
+    if document is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    messages = conversation.get("messages", [])
-    target_message = next((msg for msg in messages if msg.get("message_id") == message_id), None)
-
-    if not target_message:
+    if not any(message.message_id == message_id for message in document.messages):
         raise HTTPException(status_code=404, detail="Message not found in conversation")
 
-    update_result = await conversations_collection.update_one(
-        {
-            "user_id": user_id,
-            "conversation_id": conversation_id,
-            "messages.message_id": message_id,
-        },
-        {
-            "$set": {"messages.$.pinned": pinned},
-            "$currentDate": {"updatedAt": True},
-        },
+    updated = await conversation_repository.set_message_pinned(
+        conversation_id, user_id=user_id, message_id=message_id, pinned=pinned
     )
-
-    if update_result.modified_count == 0:
+    if not updated:
         raise HTTPException(status_code=404, detail="Message not found or update failed")
 
     response_message = (
@@ -367,33 +266,14 @@ async def pin_message(conversation_id: str, message_id: str, pinned: bool, user:
         if pinned
         else f"Message with ID {message_id} unpinned successfully"
     )
-
     return {"message": response_message, "pinned": pinned}
 
 
 async def get_starred_messages(user: dict) -> dict:
-    """
-    Fetch all pinned messages across all conversations for the authenticated user.
-    """
-    user_id = user.get("user_id")
-
-    results = await conversations_collection.aggregate(
-        [
-            {"$match": {"user_id": user_id}},
-            {"$unwind": "$messages"},
-            {"$match": {"messages.pinned": True}},
-            {"$project": {"_id": 0, "conversation_id": 1, "message": "$messages"}},
-        ]
-    ).to_list(None)
-
-    # Convert legacy tool data for each message
-    converted_results = []
-    for result in results:
-        if "message" in result:
-            result["message"] = convert_legacy_tool_data(result["message"])
-        converted_results.append(result)
-
-    return {"results": converted_results}
+    """Fetch all pinned messages across all conversations for the authenticated user."""
+    user_id = user.get("user_id", "")
+    hits = await conversation_repository.list_pinned_messages(user_id)
+    return {"results": [hit.model_dump(mode="json") for hit in hits]}
 
 
 async def create_system_conversation(
@@ -403,55 +283,44 @@ async def create_system_conversation(
     conversation_id = str(uuid4())
     created_at = datetime.now(UTC).isoformat()
 
-    conversation_data = ConversationModel(
+    document = ConversationDocument(
+        user_id=user_id,
         conversation_id=conversation_id,
         description=description,
         is_system_generated=True,
         system_purpose=system_purpose,
         is_unread=True,
-    ).model_dump(exclude_unset=True, exclude_none=True)
-
-    conversation_data["user_id"] = user_id
-    conversation_data["messages"] = []
-    conversation_data["createdAt"] = created_at
+        createdAt=created_at,
+    )
 
     try:
-        insert_result = await conversations_collection.insert_one(conversation_data)
-        if not insert_result.acknowledged:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to create system conversation",
-            )
-
-        return {
-            "conversation_id": conversation_id,
-            "user_id": user_id,
-            "description": description,
-            "is_system_generated": True,
-            "system_purpose": system_purpose,
-            "createdAt": created_at,
-            "detail": "System conversation created successfully",
-        }
+        await conversation_repository.create(document)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to create system conversation: {e!s}",
         )
 
+    return {
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "description": description,
+        "is_system_generated": True,
+        "system_purpose": system_purpose,
+        "createdAt": created_at,
+        "detail": "System conversation created successfully",
+    }
+
 
 async def update_conversation_description(
     conversation_id: str, description: str, user: dict
 ) -> dict:
-    """
-    Update the description of a specific conversation.
-    """
-    user_id = user.get("user_id")
-    update_result = await conversations_collection.update_one(
-        {"user_id": user_id, "conversation_id": conversation_id},
-        {"$set": {"description": description}, "$currentDate": {"updatedAt": True}},
+    """Update the description of a specific conversation."""
+    user_id = user.get("user_id", "")
+    updated = await conversation_repository.set_description(
+        conversation_id, user_id=user_id, description=description
     )
-
-    if update_result.modified_count == 0:
+    if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found or description not updated",
@@ -465,16 +334,11 @@ async def update_conversation_description(
 
 
 async def mark_conversation_as_read(conversation_id: str, user: dict) -> dict:
-    """
-    Mark a conversation as read (set is_unread to False).
-    """
-    user_id = user.get("user_id")
+    """Mark a conversation as read (set is_unread to False)."""
+    user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
-    await conversations_collection.update_one(
-        {"user_id": user_id, "conversation_id": conversation_id},
-        {"$set": {"is_unread": False}, "$currentDate": {"updatedAt": True}},
-    )
+    await conversation_repository.set_unread(conversation_id, user_id=user_id, unread=False)
     return {
         "message": "Conversation marked as read",
         "conversation_id": conversation_id,
@@ -483,16 +347,14 @@ async def mark_conversation_as_read(conversation_id: str, user: dict) -> dict:
 
 async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
     """Mark a conversation as unread."""
-    user_id = user.get("user_id")
+    user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
-    update_result = await conversations_collection.update_one(
-        {"user_id": user_id, "conversation_id": conversation_id},
-        {"$set": {"is_unread": True}, "$currentDate": {"updatedAt": True}},
+    updated = await conversation_repository.set_unread(
+        conversation_id, user_id=user_id, unread=True
     )
-
-    if update_result.modified_count == 0:
+    if not updated:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found or update failed",
@@ -504,100 +366,27 @@ async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
     }
 
 
-def _convert_datetime_to_iso(obj: dict, *fields: str) -> None:
-    """Convert datetime fields to ISO format strings in place."""
-    for field in fields:
-        if field in obj and isinstance(obj[field], datetime):
-            obj[field] = obj[field].isoformat()
-
-
-def _convert_ids(conversations):
-    """Convert MongoDB ObjectIds and datetime fields to JSON-serializable formats."""
-    for conv in conversations:
-        conv["_id"] = str(conv["_id"])
-        _convert_datetime_to_iso(conv, "createdAt", "updatedAt")
-    return conversations
-
-
 async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dict:
+    """Return only conversations updated since the client's last-seen timestamp,
+    including their messages and the stream id of an in-flight turn
+    (``active_stream_id``) so a reloaded client can re-attach without a separate
+    discovery request.
     """
-    Batch sync conversations - returns only conversations that have been updated
-    since the provided timestamp, including their messages and the stream id of
-    an in-flight turn (``active_stream_id``) so a reloaded client can re-attach
-    without a separate discovery request.
-    """
-    user_id = user.get("user_id")
+    user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
-    conversation_map = {item.conversation_id: item.last_updated for item in request.conversations}
-
-    if not conversation_map:
+    if not request.conversations:
         return {"conversations": []}
 
-    # Build match conditions for each conversation
-    match_conditions = []
-    for conv_id, last_updated in conversation_map.items():
-        condition = {
-            "user_id": user_id,
-            "conversation_id": conv_id,
-        }
+    documents = await conversation_repository.find_updated_since(user_id, request.conversations)
 
-        # Only include if updated after the provided timestamp
-        if last_updated:
-            try:
-                last_updated_dt = datetime.fromisoformat(last_updated.replace("Z", "+00:00"))
-                condition["$or"] = [
-                    {"updatedAt": {"$gt": last_updated_dt}},
-                    {"updatedAt": {"$exists": False}},
-                ]
-            except (ValueError, AttributeError):
-                # If invalid timestamp, include the conversation
-                pass
-
-        match_conditions.append(condition)
-
-    if not match_conditions:
-        return {"conversations": []}
-
-    # Use aggregation to efficiently fetch conversations with messages
-    pipeline = [
-        {"$match": {"$or": match_conditions}},
-        {
-            "$project": {
-                "_id": 0,
-                "conversation_id": 1,
-                "description": 1,
-                "starred": 1,
-                "is_system_generated": 1,
-                "is_onboarding_conversation": 1,
-                "system_purpose": 1,
-                "is_unread": 1,
-                "createdAt": 1,
-                "updatedAt": 1,
-                "messages": 1,
-            }
-        },
-    ]
-
-    conversations = await conversations_collection.aggregate(pipeline).to_list(None)
-
-    # Convert datetime objects to ISO strings
-    for index, conv in enumerate(conversations):
-        _convert_datetime_to_iso(conv, "createdAt", "updatedAt")
-
-        # Convert message timestamps
-        if "messages" in conv:
-            for message in conv["messages"]:
-                _convert_datetime_to_iso(message, "timestamp", "createdAt", "date")
-
-        # convert_conversation_messages returns a copy — write it back, or the
-        # conversion and every field set after it are silently discarded.
-        conv = convert_conversation_messages(conv)
-
-        conv["active_stream_id"] = await stream_manager.get_resumable_stream_id(
-            user_id, conv["conversation_id"]
+    conversations = []
+    for document in documents:
+        row = document.model_dump(mode="json", include=_SYNC_FIELDS)
+        row["active_stream_id"] = await stream_manager.get_resumable_stream_id(
+            user_id, document.conversation_id
         )
-        conversations[index] = conv
+        conversations.append(row)
 
     return {"conversations": conversations}

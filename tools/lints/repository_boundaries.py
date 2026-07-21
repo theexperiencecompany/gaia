@@ -45,7 +45,6 @@ _BSON_ALLOWED_DIRS = ("db/",)
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/
-        "agents/core/background/result_delivery.py",
         "agents/core/subagents/handoff_tools.py",
         "agents/core/subagents/provider_subagents.py",
         "agents/memory/email_processor.py",
@@ -53,12 +52,10 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/tools/file_tools.py",
         "agents/tools/integration_tool.py",
         # api/
-        "api/v1/endpoints/file.py",
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/integrations/public.py",
         "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
-        "api/v1/endpoints/sessions.py",
         "api/v1/endpoints/user.py",
         "api/v1/endpoints/workflows.py",
         # helpers/
@@ -73,12 +70,8 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/blog_service.py",
         "services/bot_service.py",
         "services/calendar_service.py",
-        "services/chat/stream.py",
-        "services/chat/workspace.py",
-        "services/conversation_service.py",
         "services/dev_service.py",
         "services/device/device_service.py",
-        "services/feedback_service.py",
         "services/file_service.py",
         "services/integration_instructions_service.py",
         "services/integrations/community_service.py",
@@ -105,7 +98,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/payments/payment_webhook_service.py",
         "services/provider_metadata_service.py",
         "services/sandbox/lifecycle.py",
-        "services/search_service.py",
         "services/startup_validation.py",
         "services/support_service.py",
         "services/system_workflows/provisioner.py",
@@ -123,7 +115,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/usage_service.py",
         "services/user_service.py",
         "services/voice_service.py",
-        "services/workflow/conversation_service.py",
         "services/workflow/scheduler.py",
         "services/workflow/service.py",
         "services/workflow/trigger_service.py",
@@ -134,10 +125,8 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
-        "utils/seeding_utils.py",
         "utils/workflow_utils.py",
         # workers/
-        "workers/tasks/checkpoint_retention_tasks.py",
         "workers/tasks/cleanup_tasks.py",
         "workers/tasks/maintenance_sweep_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
@@ -166,7 +155,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # models/
         "models/blog_models.py",
         # services/
-        "services/conversation_service.py",
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
         "services/oauth/oauth_service.py",

@@ -5,10 +5,10 @@ from fastapi import BackgroundTasks, HTTPException
 
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
-    conversations_collection,
     todos_collection,
     user_integrations_collection,
 )
+from app.db.repositories.conversations import conversation_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.models.user_models import (
@@ -332,19 +332,14 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
     conversation_deleted = 0
     if first_conversation_id:
         try:
-            convo_result = await conversations_collection.delete_one(
-                {"user_id": user_id, "conversation_id": first_conversation_id}
-            )
-            conversation_deleted = convo_result.deleted_count
+            deleted = await conversation_repository.delete(first_conversation_id, user_id=user_id)
+            conversation_deleted = int(deleted)
         except Exception as e:
             log.warning(f"{LogTag.ONBOARDING} reset_onboarding failed to delete conversation: {e}")
 
     demo_conversations_deleted = 0
     try:
-        demo_result = await conversations_collection.delete_many(
-            {"user_id": user_id, "is_onboarding_demo": True}
-        )
-        demo_conversations_deleted = demo_result.deleted_count
+        demo_conversations_deleted = await conversation_repository.delete_onboarding_demos(user_id)
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} reset_onboarding failed to delete demo conversations: {e}"

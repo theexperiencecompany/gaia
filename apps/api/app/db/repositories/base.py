@@ -282,6 +282,40 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     async def _count(self, filter_: Mapping[str, object]) -> int:
         return await get_async_collection(self.collection_name).count_documents(dict(filter_))
 
+    async def _delete_many(self, filter_: Mapping[str, object], *, scope: str) -> int:
+        """Delete every document matching ``filter_`` in one round trip, then evict
+        each removed doc's entity-cache key and bump ``scope``'s generation. The
+        filter-based sibling of ``_bulk_delete`` (which deletes by id list) — for the
+        global-collection-with-a-guard case (e.g. ``{_id: {$in}, user_id}``) and
+        domain-level wipes like "all of a user's conversations".
+
+        Structurally cache-safe on any repository: when an entity cache exists, the
+        matched ids are resolved first, then deleted, then their entity keys evicted
+        — so the generation bump (which only orphans query caches) can't leave a
+        stale by-id read served from the entity cache. Evict happens AFTER the delete
+        so a concurrent read-through can't re-populate an entity we then leave stale
+        (a post-delete get misses Mongo and never re-caches). When ``cache_policy is
+        None`` there is no entity cache and no id pre-fetch: a single ``delete_many``.
+        Returns the deleted count."""
+        collection = get_async_collection(self.collection_name)
+        ids: list[str] = []
+        if self.cache_policy is not None:
+            async for raw in collection.find(dict(filter_)):
+                ids.append(self._doc_identity(self._to_model(raw)))
+        result = await collection.delete_many(dict(filter_))
+        if result.deleted_count:
+            for doc_id in ids:
+                await self._cache_evict(scope, doc_id)
+            await self._invalidate(scope)
+        return int(result.deleted_count)
+
+    async def _distinct(self, field: str, filter_: Mapping[str, object] | None = None) -> list[str]:
+        """Distinct string values of a field. Read-only (no cache interaction)."""
+        values = await get_async_collection(self.collection_name).distinct(
+            field, dict(filter_) if filter_ is not None else None
+        )
+        return [str(value) for value in values]
+
     # ---- subclass-only primitives (never called outside a repository) ----
 
     async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
@@ -359,33 +393,6 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             await self._invalidate(scope)
         return deleted
 
-    async def _delete_many(self, filter_: Mapping[str, object], *, scope: str) -> int:
-        """Delete every document matching ``filter_`` in one round trip, then evict
-        each removed doc's entity-cache key and bump ``scope``'s generation. The
-        caller owns the filter (repository-internal) — for the global-collection-with
-        -a-guard case (e.g. ``{_id: {$in}, user_id}``) that ``_bulk_delete`` (id-only
-        + scope filter) cannot express.
-
-        Structurally cache-safe on any repository: when an entity cache exists, the
-        matched ids are resolved first, then deleted, then their entity keys evicted
-        — so the generation bump (which only orphans query caches) can't leave a
-        stale by-id read served from the entity cache. When ``cache_policy is None``
-        there is no entity cache and no id pre-fetch: a single ``delete_many``."""
-        collection = get_async_collection(self.collection_name)
-        # Resolve ids before the delete so we know what to evict; evict AFTER the
-        # delete so a concurrent read-through can't re-populate an entity we then
-        # leave stale (a post-delete get misses Mongo and never re-caches).
-        ids: list[str] = []
-        if self.cache_policy is not None:
-            async for raw in collection.find(dict(filter_)):
-                ids.append(self._doc_identity(self._to_model(raw)))
-        result = await collection.delete_many(dict(filter_))
-        if result.deleted_count:
-            for doc_id in ids:
-                await self._cache_evict(scope, doc_id)
-            await self._invalidate(scope)
-        return result.deleted_count
-
     async def _apply_raw_update(
         self,
         filter_: Mapping[str, object],
@@ -424,6 +431,58 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         await self._cache_store(scope, doc)
         await self._invalidate(scope)
         return doc
+
+    async def _apply_raw_update_unfetched(
+        self,
+        filter_: Mapping[str, object],
+        update: Mapping[str, Mapping[str, object]],
+        *,
+        scope: str,
+        doc_id: str | None = None,
+        extra_filter: Mapping[str, object] | None = None,
+        array_filters: Sequence[Mapping[str, object]] | None = None,
+    ) -> int:
+        """Apply a raw update via ``update_one`` WITHOUT reading the document back.
+
+        The ``_apply_raw_update`` sibling pays a full ``find_one_and_update`` read
+        on every call; this is the seam for hot write paths where the after-image
+        is not needed — e.g. ``$push``-ing onto a large embedded array on every
+        chat turn, where reloading the whole document each time would be wasteful.
+        Refreshes the cache exactly like any other write: evicts the entity key
+        when ``doc_id`` is given and bumps the generation. ``updated_at`` is
+        auto-stamped into ``$set`` when the document declares it. Returns the
+        matched count (0 = the filter matched no document).
+        """
+        ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
+        if "updated_at" in self.document_model.model_fields:
+            ops.setdefault("$set", {})["updated_at"] = datetime.now(UTC)
+        result = await get_async_collection(self.collection_name).update_one(
+            {**dict(filter_), **(extra_filter or {})},
+            ops,
+            array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
+        )
+        if result.matched_count:
+            if doc_id is not None:
+                await self._cache_evict(scope, doc_id)
+            await self._invalidate(scope)
+        return result.matched_count
+
+    async def _find_one_projected(
+        self,
+        filter_: Mapping[str, object],
+        projection: Mapping[str, object],
+        result_model: type[TResult],
+    ) -> TResult | None:
+        """Read one document under a Mongo projection into a typed partial model.
+
+        For reads that need only a slice of a document — a single field, or one
+        positional ``messages.$`` element — so a large embedded array is never
+        loaded in full. ``result_model`` describes exactly the projected shape.
+        """
+        raw = await get_async_collection(self.collection_name).find_one(
+            dict(filter_), dict(projection)
+        )
+        return None if raw is None else result_model.model_validate(raw)
 
     async def _increment(
         self,

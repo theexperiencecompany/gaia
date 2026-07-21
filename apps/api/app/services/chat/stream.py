@@ -30,7 +30,7 @@ from app.agents.core.background.executor_capture import (
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.stream_events import (
     ConversationDescriptionFrame,
@@ -548,13 +548,11 @@ async def _attach_executor_tool_data(
     if not executor_td:
         return
     try:
-        await conversations_collection.update_one(
-            {
-                "user_id": user.get("user_id"),
-                "conversation_id": conversation_id,
-                "messages.message_id": state.bot_message_id,
-            },
-            {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
+        await conversation_repository.append_message_tool_data(
+            conversation_id,
+            user_id=user.get("user_id", ""),
+            message_id=state.bot_message_id,
+            entries=executor_td,
         )
     except Exception as e:  # executor tool_data attach is best-effort
         log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
