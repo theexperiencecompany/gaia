@@ -121,6 +121,30 @@ STEEL_HEALTH_PATH = "/health"
 # ---------------------------------------------------------------------------
 # ``request_human_takeover`` is the agent asking for help — inherently safe, and
 # it must not be gated by the classifier (that would double-handle the handoff).
+# Deterministic "always sensitive" backstop so the money step never rides on a
+# single LLM call: a committing action on one of these URL paths, or an action
+# whose target reads like a commit, forces a handoff regardless of the judge.
+PAYMENT_URL_PATTERNS: tuple[str, ...] = (
+    "/checkout",
+    "/payment",
+    "/pay",
+    "/billing",
+    "/confirm-order",
+    "/purchase",
+    "/subscribe",
+    "/place-order",
+)
+PAYMENT_ACTION_HINTS: tuple[str, ...] = (
+    "pay",
+    "place order",
+    "buy now",
+    "confirm purchase",
+    "complete purchase",
+    "complete order",
+    "subscribe",
+    "checkout",
+)
+
 NON_COMMITTING_ACTIONS: frozenset[str] = frozenset(
     {
         "request_human_takeover",

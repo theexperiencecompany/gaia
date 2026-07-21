@@ -7,7 +7,12 @@ the common safe case costs nothing.
 """
 
 from app.agents.llm.client import ainvoke_structured
-from app.constants.browser import NON_COMMITTING_ACTIONS, SensitiveCategory
+from app.constants.browser import (
+    NON_COMMITTING_ACTIONS,
+    PAYMENT_ACTION_HINTS,
+    PAYMENT_URL_PATTERNS,
+    SensitiveCategory,
+)
 from app.constants.log_tags import LogTag
 from app.schemas.browser import SensitiveActionVerdict
 from shared.py.wide_events import log
@@ -37,6 +42,19 @@ def is_structurally_safe(action_names: list[str]) -> bool:
     return bool(action_names) and all(name in NON_COMMITTING_ACTIONS for name in action_names)
 
 
+def deterministic_payment(url: str, actions_detail: str) -> bool:
+    """Structural money-step signal — a commit endpoint or a pay-like target.
+
+    Only consulted after the structural-safe fast path, so a committing action
+    is already present; a match here means "about to pay", not merely "on a
+    checkout page".
+    """
+    haystack = f"{url}\n{actions_detail}".lower()
+    return any(p in haystack for p in PAYMENT_URL_PATTERNS) or any(
+        hint in haystack for hint in PAYMENT_ACTION_HINTS
+    )
+
+
 async def classify_step(
     *,
     goal: str,
@@ -52,6 +70,15 @@ async def classify_step(
     """
     if is_structurally_safe(action_names):
         return SensitiveActionVerdict(requires_approval=False, category=SensitiveCategory.NONE)
+
+    # Money never rides on a single LLM call: a structural payment/commit signal
+    # forces approval regardless of the judge (which is only the second layer).
+    if deterministic_payment(url, actions_detail):
+        return SensitiveActionVerdict(
+            requires_approval=True,
+            category=SensitiveCategory.PAYMENT,
+            reason="This looks like a payment or order-commit step — pausing for you.",
+        )
 
     prompt = _CLASSIFIER_PROMPT.format(
         url=url or "(unknown)", goal=goal or "(none)", actions=actions_detail

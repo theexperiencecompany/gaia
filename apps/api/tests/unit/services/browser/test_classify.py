@@ -26,25 +26,39 @@ async def test_safe_step_skips_llm(monkeypatch):
 
 
 async def test_interactive_step_consults_llm(monkeypatch):
-    monkeypatch.setattr(
-        classify_mod,
-        "ainvoke_structured",
-        AsyncMock(
-            return_value=SensitiveActionVerdict(
-                requires_approval=True,
-                category=SensitiveCategory.PAYMENT,
-                reason="Confirming a purchase.",
-            )
-        ),
+    llm = AsyncMock(
+        return_value=SensitiveActionVerdict(
+            requires_approval=True,
+            category=SensitiveCategory.CREDENTIALS,
+            reason="Entering a password.",
+        )
     )
+    monkeypatch.setattr(classify_mod, "ainvoke_structured", llm)
     verdict = await classify_step(
-        goal="Click Confirm & Pay",
+        goal="Sign in",
+        action_names=["input_text"],
+        actions_detail="input_text(password field)",
+        url="https://site/login",
+    )
+    assert verdict.requires_approval is True
+    assert verdict.category == SensitiveCategory.CREDENTIALS
+    llm.assert_awaited_once()
+
+
+async def test_deterministic_payment_bypasses_llm(monkeypatch):
+    # A checkout-commit step forces approval WITHOUT the LLM — money never rides
+    # on a single model call. The (mocked) judge would wrongly say "safe".
+    llm = AsyncMock(return_value=SensitiveActionVerdict(requires_approval=False))
+    monkeypatch.setattr(classify_mod, "ainvoke_structured", llm)
+    verdict = await classify_step(
+        goal="Complete the order",
         action_names=["click_element"],
-        actions_detail="click_element(Confirm & Pay)",
-        url="https://shop/checkout",
+        actions_detail="click_element(Place order)",
+        url="https://shop.example.com/checkout",
     )
     assert verdict.requires_approval is True
     assert verdict.category == SensitiveCategory.PAYMENT
+    llm.assert_not_awaited()
 
 
 async def test_classifier_failure_fails_safe(monkeypatch):
