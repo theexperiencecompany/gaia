@@ -16,6 +16,7 @@ import pytest
 
 from app.models.hil_models import HILPreferences
 from app.services.hil.policy import has_other_gated_call, is_gated, resolve_policy
+from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
 
@@ -200,6 +201,45 @@ class TestHasOtherGatedCall:
                 side_effect=ConnectionError("chroma down"),
             ),
             patch("app.services.hil.classification.log"),
+        ):
+            assert await has_other_gated_call(request, USER_ID, "call-1") is True
+
+    async def test_a_sibling_is_classified_with_its_own_tool_object(self) -> None:
+        # The regression: resolving a sibling by bare name loses its MCP
+        # destructiveHint, so a tool its OWN gate will pause on looks safe here —
+        # the pending call auto-runs and then executes twice when the node re-runs
+        # on resume. The classifier below calls the sibling safe, so the only thing
+        # that can gate it is the hint on the tool object itself.
+        sibling = make_tool(
+            name="mcp_wipe",
+            description="Tidy up the workspace.",
+            metadata={MCP_ANNOTATIONS_METADATA_KEY: {"destructiveHint": True}},
+        )
+        state_messages = [
+            ai_message_with_calls(
+                {"id": "call-1", "name": "send_email", "args": {}},
+                {"id": "call-2", "name": "mcp_wipe", "args": {}},
+            )
+        ]
+        request = make_request(call_id="call-1", messages=state_messages)
+        registry = SimpleNamespace(
+            get_tool_meta=lambda name: (
+                SimpleNamespace(tool=sibling) if name == "mcp_wipe" else None
+            ),
+            is_tool_destructive=lambda _name: None,
+            mark_tool_destructive=lambda *_: None,
+        )
+        with (
+            patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
+            patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
+            patch(
+                "app.services.hil.classification.get_tool_registry",
+                new=AsyncMock(return_value=registry),
+            ),
+            patch(
+                "app.services.hil.classification._classify_unknown_tool",
+                new=AsyncMock(return_value=False),
+            ),
         ):
             assert await has_other_gated_call(request, USER_ID, "call-1") is True
 
