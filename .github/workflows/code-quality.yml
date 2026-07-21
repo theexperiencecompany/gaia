@@ -543,7 +543,7 @@ jobs:
                  dead-code)
 
           # ---------------------------------------------------------------
-          # RATCHET: a lane is ENFORCED (can fail this gate) iff the marker
+          # RATCHET: a lane is ENFORCED (can fail this gate) if the marker
           # file .github/quality-gate/enforced/<lane> exists. Every other
           # lane is reported but never blocks merge. Each resolution PR adds
           # its own marker file — separate paths never merge-conflict the way

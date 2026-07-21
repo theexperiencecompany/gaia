@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Shortwave is an AI email client that layers intelligent writing assistance, thread summarization, and inbox automation on top of Gmail. GAIA is a proactive productivity OS that manages your email alongside your calendar, tasks, workflows, and 50+ integrations — all from a single assistant.",
   metaTitle:
-    "Shortwave Alternative with AI Task Management | GAIA vs Shortwave",
+    "Shortwave Alternative with AI Task Management — GAIA vs Shortwave",
   metaDescription:
     "Shortwave enhances Gmail but is still email-only. GAIA is an open-source Shortwave alternative that manages email alongside calendar, tasks, and 50+ tool workflows — proactively acting before you ask, with a free tier.",
   keywords: [

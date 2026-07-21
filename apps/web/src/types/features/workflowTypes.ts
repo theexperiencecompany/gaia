@@ -59,10 +59,14 @@ export interface PublicWorkflowStep {
 // ============================================================================
 
 // Re-export trigger types for convenience
-export type { TriggerConfig, TriggerFieldSchema, TriggerSchema };
-
 // Re-export shared types that are identical between web and mobile
-export type { ExecutionConfig, WorkflowMetadata };
+export type {
+  ExecutionConfig,
+  TriggerConfig,
+  TriggerFieldSchema,
+  TriggerSchema,
+  WorkflowMetadata,
+};
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES
@@ -131,6 +135,12 @@ export interface WorkflowData {
   steps: WorkflowStepData[];
 }
 
+/** Lightweight integration reference returned in workflow responses. */
+export interface IntegrationRef {
+  id: string;
+  name: string;
+}
+
 // Complete workflow entity
 export interface Workflow {
   id: string;
@@ -171,6 +181,11 @@ export interface Workflow {
 
   /** Integration slugs the user picked to bias step generation */
   selected_integrations?: string[];
+
+  /** Integrations required by the workflow's steps (computed at read time) */
+  required_integrations?: IntegrationRef[];
+  /** Required integrations the user has not connected yet (computed at read time) */
+  missing_integrations?: IntegrationRef[];
 }
 
 // API request types

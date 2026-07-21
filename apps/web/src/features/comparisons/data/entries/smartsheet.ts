@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Spreadsheet-based project management for enterprise teams",
   description:
     "Smartsheet is an enterprise-grade work management platform that blends the familiarity of spreadsheets with project management features like Gantt charts, resource management, and automated workflows. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ integrations — acting on your behalf rather than waiting for you to update a grid.",
-  metaTitle: "Smartsheet Alternative with AI Automation | GAIA vs Smartsheet",
+  metaTitle: "Smartsheet Alternative with AI Automation — GAIA vs Smartsheet",
   metaDescription:
     "Smartsheet requires manual grid updates and per-seat pricing. GAIA is an open-source Smartsheet alternative with AI email triage, autonomous task creation, and free self-hosting.",
   keywords: [

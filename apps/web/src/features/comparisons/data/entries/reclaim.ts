@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "AI time management for busy teams",
   description:
     "Reclaim optimizes your calendar with smart scheduling. GAIA orchestrates your entire digital workflow beyond just time management.",
-  metaTitle: "Reclaim.ai Alternative with Proactive Email AI | GAIA vs Reclaim",
+  metaTitle: "Reclaim.ai Alternative with Proactive Email AI — GAIA vs Reclaim",
   metaDescription:
     "Reclaim.ai optimizes your calendar but doesn't touch your inbox or automate cross-tool workflows. GAIA is a free-tier, open-source alternative with proactive email AI and workflow automation across 50+ tools.",
   keywords: [

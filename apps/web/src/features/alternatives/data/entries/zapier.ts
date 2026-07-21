@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Debugging broken Zaps requires technical knowledge",
     "Cannot take multi-step agentic actions with context and memory",
   ],
-  metaTitle: "Best Zapier Alternative in 2026 | GAIA",
+  metaTitle: "Best Zapier Alternative in 2026",
   metaDescription:
     "Zapier is expensive and not AI-native. GAIA is a proactive AI assistant with built-in workflow automation and 50+ integrations. Open-source, free tier available.",
   keywords: [

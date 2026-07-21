@@ -2,6 +2,7 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -11,6 +12,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializeAsAny,
     field_serializer,
     field_validator,
     model_validator,
@@ -34,6 +36,13 @@ class TriggerType(str, Enum):
     MANUAL = "manual"
     SCHEDULE = "schedule"
     INTEGRATION = "integration"
+
+
+class IntegrationRef(BaseModel):
+    """Lightweight integration reference for workflow responses."""
+
+    id: str
+    name: str
 
 
 class WorkflowStep(BaseModel):
@@ -311,6 +320,21 @@ class Workflow(BaseScheduledTask):
 # Request/Response models for API
 
 
+class WorkflowWithIntegrations(Workflow):
+    """Read-time view of a workflow: the persisted `Workflow` plus its computed
+    integration requirements. Never persisted — the storage model is `Workflow`;
+    these fields are populated by the service on read paths only."""
+
+    required_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Integration IDs required by the workflow's steps.",
+    )
+    missing_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Required integrations the user has not connected yet.",
+    )
+
+
 class CreateWorkflowRequest(BaseModel):
     """Request model for creating a new workflow."""
 
@@ -404,14 +428,19 @@ class UpdateWorkflowRequest(BaseModel):
 class WorkflowResponse(BaseModel):
     """Response model for workflow operations."""
 
-    workflow: Workflow
+    # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
+    # its extra integration fields; plain Workflow instances still validate.
+    workflow: SerializeAsAny[Workflow]
     message: str = Field(description="Success or status message")
 
 
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    workflows: list[Workflow]
+    # Sequence (not list) because list is invariant: the read path hands us
+    # list[WorkflowWithIntegrations]. SerializeAsAny keeps the subclass's extra
+    # integration fields in the payload while still accepting a plain Workflow.
+    workflows: Sequence[SerializeAsAny[Workflow]]
 
 
 class WorkflowExecutionRequest(BaseModel):

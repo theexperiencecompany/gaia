@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Microsoft OneNote is a free hierarchical notebook app bundled with Microsoft 365, offering flexible freeform notes across Windows, Mac, iOS, and Android. GAIA is a proactive AI assistant that connects your notes to email, calendar, tasks, and 50+ tools.",
   metaTitle:
-    "OneNote Alternative with AI Automation & 50+ Integrations | GAIA vs OneNote",
+    "OneNote Alternative with AI Automation & 50+ Integrations — GAIA vs OneNote",
   metaDescription:
     "OneNote captures notes but doesn't connect them to your workflow. GAIA is a free, open-source OneNote alternative with AI email management, calendar automation, and proactive task creation across 50+ integrations.",
   keywords: [

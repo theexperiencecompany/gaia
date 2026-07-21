@@ -126,6 +126,9 @@ class ToolCategory:
     ):
         self.name = name
         self.space = space
+        # True for integration-specific categories (Composio toolkits) that need
+        # the user to have connected that integration; core built-in categories
+        # leave it False. `get_core_categories` filters on this flag.
         self.require_integration = require_integration
         self.integration_name = integration_name
         self.is_delegated = is_delegated

@@ -12,6 +12,9 @@ INTEGRATION_STATUS_CONNECTED = "connected"
 MANAGED_BY_MCP = "mcp"
 MANAGED_BY_COMPOSIO = "composio"
 MANAGED_BY_SELF = "self"
+# Internal integrations (todos, reminders, skills) are always available and
+# never require the user to connect anything.
+MANAGED_BY_INTERNAL = "internal"
 
 # Known integration IDs
 GMAIL_INTEGRATION_ID = "gmail"

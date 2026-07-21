@@ -1,5 +1,6 @@
 """Unit tests for blog service operations."""
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
@@ -7,6 +8,7 @@ import pytest
 
 from app.models.blog_models import BlogPost
 from app.services.blog_service import BlogService
+from tests.unit.services.regex_helpers import collect_regex_values
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -292,3 +294,32 @@ class TestSearchBlogs:
         result = await BlogService.search_blogs("General")
 
         assert result[0].author_details[0].name == "unknown_id"
+
+
+# ---------------------------------------------------------------------------
+# search_blogs — regex-injection hardening ($regex escaping)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestSearchBlogsRegexEscaping:
+    async def test_search_query_is_regex_escaped(self, mock_blog_collection, mock_redis_cache):
+        """Blog search must feed a literal (escaped) query into every $regex
+        stage; a raw metacharacter query would run as an arbitrary pattern."""
+        raw_query = "a.*(b|c)+[x]$"
+        escaped = re.escape(raw_query)
+        assert escaped != raw_query
+
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[])
+        mock_blog_collection.aggregate.return_value = cursor
+
+        await BlogService.search_blogs(raw_query)
+
+        pipeline = mock_blog_collection.aggregate.call_args[0][0]
+        regex_values = collect_regex_values(pipeline)
+
+        assert regex_values, "expected the title/category $regex stages to be exercised"
+        for value in regex_values:
+            assert value == escaped
+            assert value != raw_query

@@ -39,6 +39,7 @@ import {
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
+  MAX_WEBHOOK_BODY_BYTES,
   NOTIFICATION_TEMPLATE_LANGUAGE,
   NOTIFICATION_TEMPLATE_NAME,
   NOTIFICATION_TEMPLATE_PARAM_NAME,
@@ -46,6 +47,11 @@ import {
   TEMPLATE_BODY_MAX_LENGTH,
   TYPING_REFRESH_MS,
 } from "./constants";
+import {
+  BODY_READ_TIMEOUT,
+  BODY_TOO_LARGE,
+  readBodyBounded,
+} from "./request-body";
 import {
   extractMedia,
   extractTextBody,
@@ -160,7 +166,34 @@ export class WhatsAppAdapter extends BaseBotAdapter {
    */
   protected async registerEvents(): Promise<void> {
     this.botServer.app.post("/webhook", async (c) => {
-      const rawBody = await c.req.text();
+      // Reject oversized bodies. Kapso payloads are small; anything above the cap
+      // signals an attempt to exhaust memory. The Content-Length header is only a
+      // cheap fast-path — a request can omit it, send 0, or use chunked transfer
+      // encoding to slip past a header-only check — so the real defense is the
+      // bounded stream read below, which aborts once actual bytes exceed the cap.
+      const contentLength = Number(c.req.header("content-length"));
+      if (
+        Number.isFinite(contentLength) &&
+        contentLength > MAX_WEBHOOK_BODY_BYTES
+      ) {
+        this.adapterLogger.warn("webhook_body_too_large", {
+          content_length: contentLength,
+          max_bytes: MAX_WEBHOOK_BODY_BYTES,
+        });
+        return c.text("Payload Too Large", 413);
+      }
+
+      const rawBody = await readBodyBounded(c.req.raw, MAX_WEBHOOK_BODY_BYTES);
+      if (rawBody === BODY_TOO_LARGE) {
+        this.adapterLogger.warn("webhook_body_too_large", {
+          max_bytes: MAX_WEBHOOK_BODY_BYTES,
+        });
+        return c.text("Payload Too Large", 413);
+      }
+      if (rawBody === BODY_READ_TIMEOUT) {
+        this.adapterLogger.warn("webhook_body_read_timeout");
+        return c.text("Request Timeout", 408);
+      }
       const signature = c.req.header("x-webhook-signature") ?? null;
 
       if (

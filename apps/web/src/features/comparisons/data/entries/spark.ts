@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Smart email client with AI compose and team collaboration features",
   description:
     "Spark Email is a cross-platform email client with AI-powered composition, Smart Inbox categorization, and team collaboration features like shared drafts and private comments. GAIA is a proactive AI productivity OS that goes far beyond a better inbox — it monitors your email, calendar, tasks, and 50+ connected tools and acts autonomously on your behalf before you even open the app.",
-  metaTitle: "Spark Email Alternative with AI Workflows | GAIA vs Spark",
+  metaTitle: "Spark Email Alternative with AI Workflows — GAIA vs Spark",
   metaDescription:
     "Compare GAIA and Spark Email. Spark makes your inbox smarter, but GAIA manages your entire digital life — triaging email, running calendar, tasks, and cross-tool workflows proactively.",
   keywords: [

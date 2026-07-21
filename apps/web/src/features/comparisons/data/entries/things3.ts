@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Things 3 is a beautifully crafted GTD task manager exclusive to the Apple ecosystem. GAIA goes further by adding proactive AI intelligence, cross-platform access, and deep integration across your entire digital workflow.",
   metaTitle:
-    "Things 3 Alternative with AI Email Integration | GAIA vs Things 3",
+    "Things 3 Alternative with AI Email Integration — GAIA vs Things 3",
   metaDescription:
     "Things 3 is beautifully designed but Apple-only and can't read your email. GAIA is an open-source Things 3 alternative with AI email integration, cross-platform support, and workflow automation across 50+ tools — free to self-host.",
   keywords: [

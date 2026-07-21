@@ -115,10 +115,17 @@ class TestCreateWorkflow:
 
     async def test_create_workflow_returns_200(self, client: AsyncClient):
         mock_wf = _make_workflow()
-        with patch(
-            f"{_WF_SERVICE}.create_workflow",
-            new_callable=AsyncMock,
-            return_value=mock_wf,
+        with (
+            patch(
+                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                return_value=mock_wf,
+            ),
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 
@@ -154,10 +161,17 @@ class TestCreateWorkflow:
         assert response.status_code == 422
 
     async def test_create_workflow_value_error_returns_400(self, client: AsyncClient):
-        with patch(
-            f"{_WF_SERVICE}.create_workflow",
-            new_callable=AsyncMock,
-            side_effect=ValueError("Invalid trigger config"),
+        with (
+            patch(
+                "app.api.v1.endpoints.workflows.get_all_integrations_status",
+                new_callable=AsyncMock,
+                return_value={},
+            ),
+            patch(
+                f"{_WF_SERVICE}.create_workflow",
+                new_callable=AsyncMock,
+                side_effect=ValueError("Invalid trigger config"),
+            ),
         ):
             response = await client.post(BASE_URL, json=_create_workflow_payload())
 

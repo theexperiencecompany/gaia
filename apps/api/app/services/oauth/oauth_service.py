@@ -26,6 +26,7 @@ from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.analytics_service import track_login, track_signup
 from app.services.composio.composio_service import get_composio_service
+from app.services.email import add_marketing_contact, send_welcome_email
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
@@ -35,7 +36,6 @@ from app.services.provider_metadata_service import (
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
-from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import OAuthContext, log
 
@@ -124,12 +124,12 @@ async def store_user_info(
         log.error(f"{LogTag.OAUTH} Failed to send welcome email to {email}: {e!s}")
         # Don't raise exception - user creation should still succeed
 
-    # Add contact to Resend audience
+    # Add contact to marketing audience
     try:
-        await add_contact_to_resend(email, name)
-        log.info(f"{LogTag.OAUTH} Contact added to Resend audience for new user: {email}")
+        await add_marketing_contact(email, name)
+        log.info(f"{LogTag.OAUTH} Contact added to marketing audience for new user: {email}")
     except Exception as e:
-        log.error(f"{LogTag.OAUTH} Failed to add contact to Resend audience for {email}: {e!s}")
+        log.error(f"{LogTag.OAUTH} Failed to add marketing contact for {email}: {e!s}")
         # Don't raise exception - user creation should still succeed
 
     # Provision the user's workspace (system files + skills catalog) now, instead

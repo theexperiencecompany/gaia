@@ -18,6 +18,7 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
+    process_onboarding_workflows_task,
     process_reminder,
     process_workflow_generation_task,
     prune_checkpoint_versions,
@@ -44,6 +45,7 @@ _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
+_process_onboarding_workflows_task = instrument_task(process_onboarding_workflows_task)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 _backfill_active_users = instrument_task(backfill_active_users)
 _backfill_user_memories = instrument_task(backfill_user_memories)
@@ -64,6 +66,7 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
+    _process_onboarding_workflows_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,

@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Cal.com is an open-source scheduling platform — the self-hostable alternative to Calendly — that lets people book meetings with you through shareable booking links with calendar sync and automated workflows. GAIA is a proactive AI assistant that manages your entire calendar, email, and tasks intelligently, going far beyond booking links to actively orchestrate your schedule and respond to incoming requests.",
   metaTitle:
-    "GAIA vs Cal.com: AI Calendar Assistant vs Open-Source Scheduling Tool | GAIA",
+    "GAIA vs Cal.com: AI Calendar Assistant vs Open-Source Scheduling Tool",
   metaDescription:
     "Compare GAIA and Cal.com. Cal.com handles booking links and scheduling automation. GAIA proactively manages your full calendar, reads your email, and orchestrates your entire schedule with AI.",
   keywords: [

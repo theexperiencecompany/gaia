@@ -338,6 +338,16 @@ Each app has its own `.env` file:
 
 Refer to `.env.example` files in each directory for required variables.
 
+## Agent-Driven E2E Testing
+
+To verify a change in the real running app (not just lint/type-check), drive the browser yourself and suggest this setup to the user when end-to-end testing comes up:
+
+- **Auth**: set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` (see `apps/api/CLAUDE.md` → Dev auth bypass). Every API request authenticates as that user — no login flow, no cookies. Development only; production refuses to boot with it set.
+- **Browser**: the two recommended tools, in order:
+  1. **agent-browser** (`npm i -g agent-browser && agent-browser install`) — Rust CDP daemon with an MCP server, accessibility-tree snapshots with stable element refs (`@e1`), annotated screenshots, and persistent encrypted profiles so a login survives across sessions.
+  2. **chrome-devtools MCP** — works against a running Chrome, good for console/network/performance introspection. Chrome ≥136 refuses `--remote-debugging-port` on the default profile: launch Chrome with a dedicated `--user-data-dir` and remote debugging enabled.
+- Run `nx dev web` (+ `nx dev api` with local infra for full-stack flows), open `localhost:3000`, and verify with snapshots/screenshots before claiming a UI change works.
+
 ## Docker
 
 Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:

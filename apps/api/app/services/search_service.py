@@ -2,6 +2,7 @@
 Service module for handling search operations and URL metadata fetching.
 """
 
+import re
 import time
 
 from fastapi import HTTPException, status
@@ -41,6 +42,7 @@ async def search_messages(query: str, user_id: str) -> dict:
         service="search_service",
     )
     search_start = time.monotonic()
+    escaped_query = re.escape(query)
     try:
         results = await conversations_collection.aggregate(
             [
@@ -54,7 +56,7 @@ async def search_messages(query: str, user_id: str) -> dict:
                                     "$or": [
                                         {
                                             "messages.response": {
-                                                "$regex": query,
+                                                "$regex": escaped_query,
                                                 "$options": "i",
                                             }
                                         },
@@ -72,7 +74,7 @@ async def search_messages(query: str, user_id: str) -> dict:
                         "conversations": [
                             {
                                 "$match": {
-                                    "description": {"$regex": query, "$options": "i"},
+                                    "description": {"$regex": escaped_query, "$options": "i"},
                                 }
                             },
                             {
@@ -94,7 +96,7 @@ async def search_messages(query: str, user_id: str) -> dict:
                 {
                     "$match": {
                         "user_id": user_id,
-                        "plaintext": {"$regex": query, "$options": "i"},
+                        "plaintext": {"$regex": escaped_query, "$options": "i"},
                     }
                 },
                 {

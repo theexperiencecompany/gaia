@@ -964,6 +964,48 @@ class TestUpdateFileService:
         mock_files_collection.update_one.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
+    async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_files_collection):
+        """Only filename/description may be written — protected fields in the
+        payload must never reach the ``$set`` (mass-assignment guard)."""
+        original_file = {
+            "_id": ObjectId(),
+            "file_id": "f-1",
+            "user_id": "user-abc",
+            "filename": "old.pdf",
+            "type": "application/pdf",
+            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
+        }
+        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, original_file])
+        mock_update_result = MagicMock()
+        mock_update_result.modified_count = 1
+        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+
+        await update_file_service(
+            file_id="f-1",
+            user_id="user-abc",
+            update_data={
+                "filename": "new.pdf",
+                # Everything below is attacker-supplied and must be dropped.
+                "user_id": "someone-else",
+                "file_id": "f-hijack",
+                "created_at": datetime(2000, 1, 1, tzinfo=UTC),
+                "is_admin": True,
+                "type": "text/html",
+            },
+        )
+
+        set_fields = mock_files_collection.update_one.call_args[0][1]["$set"]
+        assert set(set_fields) == {"filename", "updated_at"}
+        assert set_fields["filename"] == "new.pdf"
+        for forbidden in ("user_id", "file_id", "created_at", "is_admin", "type"):
+            assert forbidden not in set_fields
+
+        # The query still scopes the write to the caller's own user_id.
+        query_filter = mock_files_collection.update_one.call_args[0][0]
+        assert query_filter["user_id"] == "user-abc"
+
+    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_with_file_content_regenerates_description(
         self, mock_del_cache, mock_files_collection, mock_chroma_client
     ):

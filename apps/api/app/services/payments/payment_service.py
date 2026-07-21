@@ -28,7 +28,7 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
-from app.utils.email_utils import send_pro_subscription_email
+from app.services.email import send_pro_subscription_email
 from shared.py.wide_events import log
 
 

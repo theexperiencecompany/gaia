@@ -18,15 +18,15 @@ Holo card runs fully independently.
 """
 
 import asyncio
-from collections.abc import Awaitable
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import Enum
 import time
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from bson import ObjectId
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.llm.client import ainvoke_structured
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
@@ -38,12 +38,26 @@ from app.agents.prompts.onboarding_prompts import (
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.log_tags import LogTag
+from app.constants.onboarding import (
+    EARLY_PHASE_POLL_INTERVAL_S,
+    EARLY_PHASE_WAIT_TIMEOUT_S,
+    NOT_SPECIFIED,
+    OAUTH_INTEGRATION_NAME_BY_ID,
+    ONBOARDING_DEFAULT_FIRST_MESSAGE,
+    TRIAGE_EARLY_THRESHOLD,
+)
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import users_collection
+from app.db.mongodb.collections import (
+    todos_collection,
+    users_collection,
+    workflows_collection,
+)
 from app.models.onboarding_models import (
+    EmailSummary,
     InboxTriage,
     SocialProfile,
+    WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
 from app.models.todo_models import Priority, TodoModel
@@ -65,6 +79,10 @@ from app.services.onboarding.writing_style_service import learn_writing_style
 from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.todos.todo_service import TodoService
 from app.services.workflow.generation_service import WorkflowGenerationService
+from app.services.workflow.integration_requirements import (
+    compute_missing_integrations,
+    compute_required_integrations,
+)
 from app.services.workflow.service import WorkflowService
 from app.utils.profile_card import (
     generate_holo_card_content,
@@ -128,11 +146,6 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
 
 # Module-level set prevents GC of fire-and-forget tasks
 _background_tasks: set[asyncio.Task] = set()
-
-
-_TRIAGE_EARLY_THRESHOLD = 100
-
-_NOT_SPECIFIED = "not specified"
 
 
 @dataclass
@@ -251,6 +264,96 @@ async def _persist_completion(
         provision_future.add_done_callback(_background_tasks.discard)
 
 
+async def _finalize_onboarding(
+    user_id: str,
+    *,
+    name: str,
+    profession: str,
+    triage: InboxTriage | None,
+    todos: list[dict],
+    workflows: list[dict],
+    writing_style: WritingStyleProfile | None,
+    has_gmail: bool,
+    focus: str,
+    clarify_answers: list[dict],
+    provision_future: asyncio.Task[None] | None,
+    concurrent_tasks: Sequence[Awaitable[Any]] = (),
+) -> str | None:
+    """Shared pipeline tail for both onboarding shapes: generate the first
+    message, persist it, seed the first conversation, persist completion, and
+    emit COMPLETE. Returns the seeded conversation id (or None).
+
+    `concurrent_tasks` run alongside conversation seeding — the full pipeline
+    passes its profile/social/holo work here; the split path already ran that
+    in its early phase and passes none.
+    """
+    t_msg = time.monotonic()
+    first_message = await _safe_run(
+        "first_message",
+        generate_first_message(
+            user_id=user_id,
+            name=name,
+            profession=profession,
+            triage=triage,
+            created_todos=todos,
+            created_workflows=workflows,
+            writing_style=writing_style,
+            has_gmail=has_gmail,
+            focus=focus,
+            clarify_answers=clarify_answers,
+        ),
+        default=ONBOARDING_DEFAULT_FIRST_MESSAGE,
+    )
+    log.info(
+        f"{LogTag.ONBOARDING} first_message generated",
+        user_id=user_id,
+        message_chars=len(first_message),
+        duration_s=round(time.monotonic() - t_msg, 2),
+    )
+
+    # Persist first_message before COMPLETE / the holo gather: the event triggers
+    # a frontend fetch of /onboarding/personalization, which must not see null.
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {"$set": {"onboarding.first_message": first_message}},
+    )
+
+    seed_result, *_ = await asyncio.gather(_seed_conversation(user_id), *concurrent_tasks)
+    conversation_id: str | None = seed_result
+
+    # Unconditional end-of-pipeline transition: guarantees the user advances even
+    # if the holo leg (which also writes this) failed.
+    await _persist_completion(user_id, conversation_id, provision_future)
+    await _emit_stage(
+        user_id,
+        OnboardingStage.COMPLETE,
+        {"conversation_id": conversation_id},
+    )
+    return conversation_id
+
+
+async def _finish_early_phase(
+    user_id: str,
+    provision_future: asyncio.Task[None] | None,
+) -> None:
+    """Mark the early half done so the workflows-phase job can proceed, and
+    keep any still-running provision task alive past pipeline return.
+    `updated_at` is refreshed so the stuck-personalization cron's cutoff
+    doesn't treat a user who is merely picking integrations as stale."""
+    await users_collection.update_one(
+        {"_id": ObjectId(user_id)},
+        {
+            "$set": {
+                "onboarding.early_intelligence_done_at": datetime.now(UTC),
+                "updated_at": datetime.now(UTC),
+            }
+        },
+    )
+    if provision_future is not None and not provision_future.done():
+        _background_tasks.add(provision_future)
+        provision_future.add_done_callback(_background_tasks.discard)
+
+
 async def _social_then_holo(
     user_id: str,
     name: str,
@@ -319,6 +422,23 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     profession: str = onboarding.get("preferences", {}).get("profession", "") or ""
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
+    selected_integrations: list[str] = onboarding.get("selected_integrations") or []
+    # Two pipeline shapes, chosen at submission time by whether Gmail is connected:
+    #
+    #   split  (Gmail path): the frontend submits the moment Gmail connects, BEFORE
+    #     the user has picked their other integrations. So this job runs only the
+    #     expensive inbox work (scan/triage/todos/writing style/social) now, and
+    #     defers workflow creation to a second job (process_onboarding_workflows_task)
+    #     triggered by POST /onboarding/integrations. The inbox scan thus overlaps
+    #     with the user's integration-picking time — that overlap is the whole point.
+    #
+    #   full  (no-Gmail path): the frontend waits for integration selection before
+    #     submitting, so everything is known up front and there is no inbox to scan
+    #     — nothing to overlap. Workflows run inline here, in this one job.
+    #
+    # Set once at submission time (defer_workflows) and never mutated, so a user
+    # confirming integrations while this job is queued can't flip the branch mid-run.
+    split_mode: bool = (onboarding.get("pipeline_mode") or "full") == "split"
 
     t_gmail_check = time.monotonic()
     composio_service = get_composio_service()
@@ -362,25 +482,33 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         )
     )
     user_timezone: str = (user_doc.get("timezone") or "UTC").strip() or "UTC"
-    workflows_future = asyncio.create_task(
-        _run_workflows(
-            user_id,
-            profession,
-            has_gmail,
-            focus,
-            user_timezone,
-            triage_future,
-            writing_style_future,
-            clarify_answers,
-        )
-    )
+
+    workflows_future: asyncio.Task[list[dict]] | None = None
+    if not split_mode:
+
+        async def _workflows_when_ready() -> list[dict]:
+            triage_res, style_res = await asyncio.gather(triage_future, writing_style_future)
+            return await _run_workflows(
+                user_id,
+                profession,
+                has_gmail,
+                focus,
+                user_timezone,
+                triage_res,
+                style_res,
+                clarify_answers,
+                selected_integrations,
+            )
+
+        workflows_future = asyncio.create_task(_workflows_when_ready())
+
     t_gather = time.monotonic()
-    triage, todos, workflows, writing_style = await asyncio.gather(
+    triage, todos, writing_style = await asyncio.gather(
         triage_future,
         todos_future,
-        workflows_future,
         writing_style_future,
     )
+    workflows: list[dict] = await workflows_future if workflows_future else []
     log.info(
         f"{LogTag.ONBOARDING} critical_path gathered",
         user_id=user_id,
@@ -388,68 +516,63 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         duration_s=round(time.monotonic() - t_gather, 2),
     )
 
-    t_msg = time.monotonic()
-    first_message = await _safe_run(
-        "first_message",
-        generate_first_message(
+    triage_important_count = len(triage.important_emails) if triage else 0
+
+    if split_mode:
+        await asyncio.gather(
+            _persist_profiles(user_id, writing_style, triage),
+            _social_then_holo(
+                user_id=user_id,
+                name=name,
+                user_email=user_email,
+                user_doc=user_doc,
+                focus=focus,
+                triage=triage,
+                writing_style=writing_style,
+                clarify_answers=clarify_answers,
+                has_gmail=has_gmail,
+            ),
+        )
+        await _finish_early_phase(user_id, provision_future)
+        log.info(
+            f"{LogTag.ONBOARDING} early pipeline done — awaiting integration selection",
             user_id=user_id,
-            name=name,
-            profession=profession,
-            triage=triage,
-            created_todos=todos,
-            created_workflows=workflows,
-            writing_style=writing_style,
+            phase="early_done",
             has_gmail=has_gmail,
-            focus=focus,
-            clarify_answers=clarify_answers,
-        ),
-        default="Welcome to GAIA. I'm here to help — what's on your mind?",
-    )
-    log.info(
-        f"{LogTag.ONBOARDING} first_message generated",
-        user_id=user_id,
-        message_chars=len(first_message),
-        duration_s=round(time.monotonic() - t_msg, 2),
-    )
+            writing_style_learned=writing_style is not None,
+            triage_important_count=triage_important_count,
+            todos_count=len(todos),
+            outcome="ok",
+            duration_s=round(time.monotonic() - pipeline_start, 2),
+        )
+        return
 
-    # Persist first_message before the holo gather: holo_ready triggers a
-    # frontend fetch of /onboarding/personalization, which must not see null.
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.first_message": first_message}},
-    )
-
-    t_final = time.monotonic()
-    conversation_id, _, _ = await asyncio.gather(
-        _seed_conversation(user_id),
-        _persist_profiles(user_id, writing_style, triage),
-        _social_then_holo(
-            user_id=user_id,
-            name=name,
-            user_email=user_email,
-            user_doc=user_doc,
-            focus=focus,
-            triage=triage,
-            writing_style=writing_style,
-            clarify_answers=clarify_answers,
-            has_gmail=has_gmail,
-        ),
-    )
-    log.info(
-        f"{LogTag.ONBOARDING} finalize gathered",
-        user_id=user_id,
-        phase="finalize_gather",
-        duration_s=round(time.monotonic() - t_final, 2),
-    )
-
-    # Unconditional end-of-pipeline phase transition: guarantees the user
-    # advances even if the holo leg (which also writes this) failed.
-    await _persist_completion(user_id, conversation_id, provision_future)
-
-    await _emit_stage(
+    conversation_id = await _finalize_onboarding(
         user_id,
-        OnboardingStage.COMPLETE,
-        {"conversation_id": conversation_id},
+        name=name,
+        profession=profession,
+        triage=triage,
+        todos=todos,
+        workflows=workflows,
+        writing_style=writing_style,
+        has_gmail=has_gmail,
+        focus=focus,
+        clarify_answers=clarify_answers,
+        provision_future=provision_future,
+        concurrent_tasks=(
+            _persist_profiles(user_id, writing_style, triage),
+            _social_then_holo(
+                user_id=user_id,
+                name=name,
+                user_email=user_email,
+                user_doc=user_doc,
+                focus=focus,
+                triage=triage,
+                writing_style=writing_style,
+                clarify_answers=clarify_answers,
+                has_gmail=has_gmail,
+            ),
+        ),
     )
 
     log.info(
@@ -458,7 +581,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         phase="done",
         has_gmail=has_gmail,
         writing_style_learned=writing_style is not None,
-        triage_important_count=len(triage.important_emails) if triage else 0,
+        triage_important_count=triage_important_count,
         todos_count=len(todos),
         workflows_count=len(workflows),
         conversation_seeded=conversation_id is not None,
@@ -500,7 +623,7 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
     )
 
     async def _on_batch(current: int, latest_sender: str | None) -> None:
-        if not ctx.first_batch_ready.is_set() and current >= _TRIAGE_EARLY_THRESHOLD:
+        if not ctx.first_batch_ready.is_set() and current >= TRIAGE_EARLY_THRESHOLD:
             ctx.first_batch_ready.set()
         status_text = (
             f"Fetched {current} emails — {latest_sender}"
@@ -858,12 +981,11 @@ async def _run_workflows(
     has_gmail: bool,
     focus: str,
     user_timezone: str,
-    triage_future: asyncio.Task[InboxTriage | None],
-    writing_style_future: asyncio.Task[WritingStyleProfile | None],
+    triage: InboxTriage | None,
+    writing_style: WritingStyleProfile | None,
     clarify_answers: list[dict] | None = None,
+    selected_integrations: list[str] | None = None,
 ) -> list[dict]:
-    triage, writing_style = await asyncio.gather(triage_future, writing_style_future)
-
     await _emit_stage(
         user_id,
         OnboardingStage.WORKFLOWS_CREATING,
@@ -881,6 +1003,7 @@ async def _run_workflows(
             triage,
             writing_style,
             clarify_answers,
+            selected_integrations,
         )
     except Exception as e:
         log.error(
@@ -1112,6 +1235,169 @@ async def _persist_profiles(
     )
 
 
+def _triage_from_doc(raw: object) -> InboxTriage | None:
+    """Rebuild InboxTriage from the persisted onboarding.triage_summary subdoc."""
+    if not isinstance(raw, dict):
+        return None
+    try:
+        return InboxTriage(
+            total_scanned=int(raw.get("total_scanned") or 0),
+            total_unread=int(raw.get("total_unread") or 0),
+            summary=str(raw.get("summary") or ""),
+            patterns=[str(p) for p in raw.get("patterns") or []],
+            important_emails=[
+                EmailSummary(**e) for e in raw.get("important_emails") or [] if isinstance(e, dict)
+            ],
+        )
+    except (TypeError, ValueError) as e:
+        log.error(f"{LogTag.ONBOARDING} triage reconstruction failed: {e}", exc_info=True)
+        return None
+
+
+def _writing_style_from_doc(raw: object) -> WritingStyleProfile | None:
+    """Rebuild WritingStyleProfile from the persisted onboarding.writing_style subdoc."""
+    if not isinstance(raw, dict):
+        return None
+    summary = str(raw.get("summary") or "").strip()
+    example = raw.get("example")
+    if not summary or not isinstance(example, dict):
+        return None
+    try:
+        return WritingStyleProfile(
+            summary=summary,
+            example=WritingStyleExampleBlocks(**example),
+            user_edited_summary=raw.get("user_edited_summary"),
+        )
+    except ValidationError as e:
+        log.error(f"{LogTag.ONBOARDING} writing_style reconstruction failed: {e}", exc_info=True)
+        return None
+
+
+async def _fetch_onboarding_todos(user_id: str) -> list[dict]:
+    cursor = (
+        todos_collection.find(
+            {"user_id": user_id, "labels": "onboarding"},
+            {"_id": 1, "title": 1},
+        )
+        .sort("created_at", -1)
+        .limit(ONBOARDING_TODO_LIMIT)
+    )
+    return [{"id": str(t["_id"]), "title": t.get("title", "")} async for t in cursor]
+
+
+async def _wait_for_early_phase(user_id: str) -> bool:
+    """Poll for the early-phase marker. Returns False on timeout — the caller
+    proceeds with whatever is persisted (degraded workflow context, same
+    fail-soft semantics as the full pipeline's None triage/style)."""
+    deadline = time.monotonic() + EARLY_PHASE_WAIT_TIMEOUT_S
+    while time.monotonic() < deadline:
+        doc = await users_collection.find_one(
+            {"_id": ObjectId(user_id)},
+            {"onboarding.early_intelligence_done_at": 1},
+        )
+        if doc and (doc.get("onboarding") or {}).get("early_intelligence_done_at"):
+            return True
+        await asyncio.sleep(EARLY_PHASE_POLL_INTERVAL_S)
+    log.warning(
+        f"{LogTag.ONBOARDING} early phase marker timeout — proceeding with persisted data",
+        user_id=user_id,
+        timeout_s=EARLY_PHASE_WAIT_TIMEOUT_S,
+    )
+    return False
+
+
+async def process_onboarding_workflows_phase(user_id: str) -> None:
+    """Second half of the split pipeline: create the onboarding workflows from
+    the user's selected integrations plus the persisted early-phase learnings,
+    then first message -> seed conversation -> COMPLETE."""
+    log.set(user={"id": user_id})
+    pipeline_start = time.monotonic()
+    log.info(f"{LogTag.ONBOARDING} workflows phase start", user_id=user_id, phase="start")
+
+    await _wait_for_early_phase(user_id)
+
+    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+    if not user_doc:
+        log.error(
+            f"{LogTag.ONBOARDING} user not found",
+            user_id=user_id,
+            outcome="aborted",
+            reason="user_not_found",
+        )
+        return
+
+    onboarding = user_doc.get("onboarding", {})
+    name: str = user_doc.get("name", "there")
+    profession: str = onboarding.get("preferences", {}).get("profession", "") or ""
+    focus: str = onboarding.get("focus", "") or ""
+    clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
+    selected_integrations: list[str] = onboarding.get("selected_integrations") or []
+    user_timezone: str = (user_doc.get("timezone") or "UTC").strip() or "UTC"
+
+    composio_service = get_composio_service()
+    connection_status = await composio_service.check_connection_status(["gmail"], user_id)
+    has_gmail: bool = connection_status.get("gmail", False)
+
+    triage = _triage_from_doc(onboarding.get("triage_summary"))
+    writing_style = _writing_style_from_doc(onboarding.get("writing_style"))
+
+    # Idempotency: if a prior run of this phase was killed after creating some
+    # workflows (leaving phase=PENDING so the stuck cron re-enqueues it), drop
+    # those stale suggestions before regenerating so the retry replaces them
+    # instead of doubling up. Onboarding workflows are created deactivated —
+    # no Composio triggers or scheduled jobs to unwind — so a direct delete is safe.
+    prior_workflow_ids = onboarding.get("suggested_workflows") or []
+    if prior_workflow_ids:
+        deleted = await workflows_collection.delete_many(
+            {"_id": {"$in": prior_workflow_ids}, "user_id": user_id}
+        )
+        log.info(
+            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted.deleted_count} "
+            f"stale suggested workflows before regenerating",
+            user_id=user_id,
+        )
+
+    workflows = await _run_workflows(
+        user_id,
+        profession,
+        has_gmail,
+        focus,
+        user_timezone,
+        triage,
+        writing_style,
+        clarify_answers,
+        selected_integrations,
+    )
+
+    todos = await _fetch_onboarding_todos(user_id)
+    conversation_id = await _finalize_onboarding(
+        user_id,
+        name=name,
+        profession=profession,
+        triage=triage,
+        todos=todos,
+        workflows=workflows,
+        writing_style=writing_style,
+        has_gmail=has_gmail,
+        focus=focus,
+        clarify_answers=clarify_answers,
+        provision_future=None,
+    )
+
+    log.info(
+        f"{LogTag.ONBOARDING} workflows phase done",
+        user_id=user_id,
+        phase="done",
+        has_gmail=has_gmail,
+        has_triage=triage is not None,
+        has_writing_style=writing_style is not None,
+        workflows_count=len(workflows),
+        conversation_seeded=conversation_id is not None,
+        outcome=("ok" if conversation_id else "partial"),
+        duration_s=round(time.monotonic() - pipeline_start, 2),
+    )
+
+
 async def _create_focus_todos(
     user_id: str,
     name: str,
@@ -1206,8 +1492,8 @@ async def _create_todos_from_triage(
 
     prompt = TRIAGE_TODOS_PROMPT.format(
         emails_context=emails_context,
-        profession=profession or _NOT_SPECIFIED,
-        focus=focus or _NOT_SPECIFIED,
+        profession=profession or NOT_SPECIFIED,
+        focus=focus or NOT_SPECIFIED,
         format_instructions="Return a JSON object with a 'todos' key containing a list of todo objects, each with 'title', 'description', 'source_sender', and 'source_subject'.",
     )
 
@@ -1341,6 +1627,7 @@ def _build_workflow_prompt_context(
     triage: InboxTriage | None,
     writing_style: WritingStyleProfile | None,
     clarify_answers: list[dict] | None,
+    selected_integrations: list[str] | None = None,
 ) -> str:
     """Render the workflow-creation prompt from the user's onboarding context."""
     inbox_patterns = (
@@ -1352,10 +1639,26 @@ def _build_workflow_prompt_context(
         else "no email data"
     )
     writing_style_summary = writing_style.summary[:150] if writing_style else "not analyzed"
+
+    friendly = [
+        OAUTH_INTEGRATION_NAME_BY_ID[s]
+        for s in (selected_integrations or [])
+        if s in OAUTH_INTEGRATION_NAME_BY_ID
+    ]
+    if friendly:
+        selected_integrations_section = (
+            "Preferred integrations (anchor at least half of the workflows to these tools):\n"
+            + ", ".join(friendly)
+            + "\n\n"
+        )
+    else:
+        selected_integrations_section = ""
+
     return WORKFLOW_CREATION_PROMPT.format(
         profession=profession or "professional",
-        focus=focus or _NOT_SPECIFIED,
+        focus=focus or NOT_SPECIFIED,
         clarify_context=format_clarify_context(clarify_answers),
+        selected_integrations_section=selected_integrations_section,
         has_gmail=has_gmail,
         inbox_patterns=inbox_patterns,
         email_senders_summary=email_senders_summary,
@@ -1407,6 +1710,7 @@ async def _build_one_workflow(
     idx: int,
     spec: _WorkflowSpec,
     user_timezone: str,
+    selected_integrations: list[str] | None = None,
 ) -> dict | None:
     """Generate the prompt + trigger for a single spec and persist the workflow."""
     t_spec = time.monotonic()
@@ -1428,6 +1732,7 @@ async def _build_one_workflow(
             prompt=workflow_prompt,
             trigger_config=trigger_config,
             generate_immediately=True,
+            selected_integrations=selected_integrations or None,
         )
         t_create = time.monotonic()
         workflow = await WorkflowService.create_workflow(
@@ -1446,12 +1751,17 @@ async def _build_one_workflow(
             create_duration_s=create_duration_s,
             duration_s=round(time.monotonic() - t_spec, 2),
         )
+        # Surface step + trigger integrations the user hasn't connected so the
+        # onboarding cards show the same missing-integration warning as the app.
+        required = compute_required_integrations(workflow.steps, workflow.trigger_config)
+        missing = await compute_missing_integrations(required, user_id)
         return {
             "id": str(workflow.id),
             "title": spec.title,
             "description": spec.description,
             "categories": spec.categories,
             "trigger": _serialize_trigger_for_payload(workflow.trigger_config),
+            "missing_integrations": [{"id": ref.id, "name": ref.name} for ref in missing],
         }
     except Exception as e:
         log.warning(
@@ -1476,8 +1786,17 @@ async def _create_onboarding_workflows(
     triage: InboxTriage | None = None,
     writing_style: WritingStyleProfile | None = None,
     clarify_answers: list[dict] | None = None,
+    selected_integrations: list[str] | None = None,
 ) -> list[dict]:
     """Create 4 LLM-generated workflows tailored to the user's context."""
+    # Keep only known integration ids (request-backed input), de-duped and
+    # order-preserving. Include Gmail when connected and not already listed.
+    effective_integrations: list[str] = [
+        s for s in dict.fromkeys(selected_integrations or []) if s in OAUTH_INTEGRATION_NAME_BY_ID
+    ]
+    if has_gmail and "gmail" not in effective_integrations:
+        effective_integrations.append("gmail")
+
     prompt = _build_workflow_prompt_context(
         profession,
         focus,
@@ -1485,6 +1804,7 @@ async def _create_onboarding_workflows(
         triage,
         writing_style,
         clarify_answers,
+        effective_integrations or None,
     )
 
     t0 = time.monotonic()
@@ -1503,7 +1823,9 @@ async def _create_onboarding_workflows(
 
         results = await asyncio.gather(
             *[
-                _build_one_workflow(user_id, idx, spec, user_timezone)
+                _build_one_workflow(
+                    user_id, idx, spec, user_timezone, effective_integrations or None
+                )
                 for idx, spec in enumerate(parsed.workflows)
             ]
         )

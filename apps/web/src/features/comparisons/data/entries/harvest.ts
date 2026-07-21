@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Harvest combines time tracking with invoicing, expense tracking, and project budgeting for freelancers and agencies. GAIA complements billing workflows by proactively managing the email, tasks, calendar, and cross-tool coordination that happens around billable work — reducing the non-billable overhead that Harvest tracks but cannot prevent.",
   metaTitle:
-    "Harvest Alternative with AI Task and Workflow Management | GAIA vs Harvest",
+    "Harvest Alternative with AI Task and Workflow Management — GAIA vs Harvest",
   metaDescription:
     "Harvest tracks time and invoices clients, but it won't manage your tasks or automate your workflow. GAIA is an open-source AI alternative with email integration, task management, and 50+ tool connections — free tier available.",
   keywords: [

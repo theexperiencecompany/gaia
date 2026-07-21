@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Monday.com is a visual work management platform that helps teams plan projects, track progress, and collaborate across boards, timelines, and dashboards. GAIA is a proactive AI assistant that manages your email, calendar, and tasks autonomously across 50+ integrations — automating the busywork that Monday.com requires you to enter and update manually.",
   metaTitle:
-    "GAIA vs Monday.com: AI Productivity Assistant vs Work Management Platform | GAIA",
+    "GAIA vs Monday.com: AI Productivity Assistant vs Work Management Platform",
   metaDescription:
     "Compare GAIA and Monday.com. Monday.com organises team projects visually across boards and timelines, but GAIA reads your email, manages your calendar, and automates cross-tool workflows proactively.",
   keywords: [
