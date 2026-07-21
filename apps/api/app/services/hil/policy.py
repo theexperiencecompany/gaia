@@ -16,6 +16,7 @@ from typing import Literal
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
@@ -81,16 +82,21 @@ async def has_other_gated_call(request: ToolCallRequest, user_id: str, tool_call
     only gated action; several destructive actions in one turn are confirmed together,
     which is the behaviour worth having anyway.
 
-    A sibling's tool object isn't to hand, so it classifies from the registry alone and
-    fails closed to gated — an unknown sibling suppresses auto-approval rather than
-    risking the double-run.
+    Siblings arrive as bare tool-call dicts, so each one's tool object is resolved from
+    the registry: classifying it must use the same description and MCP ``destructiveHint``
+    its own gate will use. Classifying without them (a bare name, an empty description)
+    both under-detects the sibling — defeating the double-run guard this exists for — and
+    poisons the registry's name-keyed ``destructive`` flag, since an unclassified tool's
+    verdict is written back there for every later gate check to read.
     """
     prefs = await get_hil_preferences(user_id)
+    registry = await get_tool_registry()
     for call in current_tool_calls(request.state):
         name = call.get("name", "")
         if not name or name in HIL_EXEMPT_TOOLS or call.get("id") == tool_call_id:
             continue
-        if await is_gated(prefs, name, None):
+        meta = registry.get_tool_meta(name)
+        if await is_gated(prefs, name, meta.tool if meta else None):
             return True
     return False
 

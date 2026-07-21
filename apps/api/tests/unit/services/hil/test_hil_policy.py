@@ -9,6 +9,7 @@ Three things decide whether a destructive call runs unattended, and each is atta
   pause the node — the guard that stopped one send becoming two.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -116,6 +117,14 @@ class TestHasOtherGatedCall:
     """Auto-approval is only safe when the call is the turn's *only* gated action.
     A sibling that pauses re-runs the whole node, so anything that already ran runs
     twice — verified in production: one send became two."""
+
+    @pytest.fixture(autouse=True)
+    def _unregistered_siblings(self):
+        # These tests attack sibling *selection*, not tool resolution, so every
+        # sibling resolves to no tool object.
+        registry = SimpleNamespace(get_tool_meta=lambda _name: None)
+        with patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)):
+            yield
 
     async def test_a_gated_sibling_in_the_same_message_suppresses_auto_approval(self) -> None:
         state_messages = [
