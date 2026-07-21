@@ -1732,7 +1732,7 @@ async def _build_one_workflow(
             prompt=workflow_prompt,
             trigger_config=trigger_config,
             generate_immediately=True,
-            selected_integrations=selected_integrations or None,
+            integration_ids=selected_integrations or None,
         )
         t_create = time.monotonic()
         workflow = await WorkflowService.create_workflow(
@@ -1852,13 +1852,16 @@ async def _create_onboarding_workflows(
             error_type=type(e).__name__,
             fallback_used=True,
         )
-        return await _create_fallback_workflow(user_id, focus, user_timezone)
+        return await _create_fallback_workflow(
+            user_id, focus, user_timezone, effective_integrations or None
+        )
 
 
 async def _create_fallback_workflow(
     user_id: str,
     focus: str = "",
     user_timezone: str = "UTC",
+    integration_ids: list[str] | None = None,
 ) -> list[dict]:
     title = "Daily Briefing"
     description = (
@@ -1875,6 +1878,7 @@ async def _create_fallback_workflow(
             prompt=description,
             trigger_config=trigger_config,
             generate_immediately=True,
+            integration_ids=integration_ids,
         )
         workflow = await WorkflowService.create_workflow(
             request, user_id, user_timezone=user_timezone

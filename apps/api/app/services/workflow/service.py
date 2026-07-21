@@ -247,7 +247,6 @@ class WorkflowService:
                 is_system_workflow=request.is_system_workflow,
                 source_integration=request.source_integration,
                 system_workflow_key=request.system_workflow_key,
-                selected_integrations=request.selected_integrations,
                 integration_ids=await filter_existing_integration_ids(request.integration_ids),
             )
 
@@ -380,11 +379,9 @@ class WorkflowService:
             if not request.steps:
                 # Generate steps
                 if request.generate_immediately:
-                    await WorkflowService._generate_workflow_steps(
-                        workflow.id,
-                        user_id,
-                        selected_integrations=request.selected_integrations,
-                    )
+                    # Scoping comes from the workflow's own (already filtered)
+                    # integration_ids, so the queued path grounds identically.
+                    await WorkflowService._generate_workflow_steps(workflow.id, user_id)
                     # Fetch the updated workflow with generated steps
                     updated_workflow = await WorkflowService.get_workflow(workflow.id, user_id)
                     return updated_workflow or workflow
@@ -982,7 +979,7 @@ class WorkflowService:
         user_id: str,
         regeneration_reason: str | None = None,
         force_different_tools: bool = True,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
     ) -> Workflow | None:
         """Regenerate steps for an existing workflow."""
         try:
@@ -990,10 +987,8 @@ class WorkflowService:
             if not workflow:
                 return None
 
-            effective_slugs = (
-                selected_integrations
-                if selected_integrations is not None
-                else workflow.selected_integrations
+            effective_integration_ids = (
+                integration_ids if integration_ids is not None else workflow.integration_ids
             )
 
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
@@ -1001,7 +996,7 @@ class WorkflowService:
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
-                selected_integrations=effective_slugs,
+                integration_ids=effective_integration_ids or None,
                 user_id=user_id,
             )
 
@@ -1016,8 +1011,10 @@ class WorkflowService:
                 "steps": steps_data,
                 "updated_at": datetime.now(UTC),
             }
-            if selected_integrations is not None:
-                update_set["selected_integrations"] = selected_integrations
+            if integration_ids is not None:
+                update_set["integration_ids"] = await filter_existing_integration_ids(
+                    integration_ids
+                )
             if missing:
                 update_set["activated"] = False
                 update_set[TRIGGER_CONFIG_ENABLED_FIELD] = False
@@ -1250,9 +1247,13 @@ class WorkflowService:
     async def _generate_workflow_steps(
         workflow_id: str,
         user_id: str,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
     ) -> None:
-        """Generate workflow steps using LLM with structured output."""
+        """Generate workflow steps using LLM with structured output.
+
+        Falls back to the workflow's own integration_ids so every caller
+        (immediate, queued, agent-created) scopes the tool palette the same way.
+        """
         try:
             await workflows_collection.find_one_and_update(
                 {"_id": workflow_id, "user_id": user_id},
@@ -1270,7 +1271,7 @@ class WorkflowService:
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
-                selected_integrations=selected_integrations,
+                integration_ids=integration_ids or workflow.integration_ids or None,
                 user_id=user_id,
             )
 

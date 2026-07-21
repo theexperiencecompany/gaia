@@ -247,17 +247,13 @@ class Workflow(BaseScheduledTask):
         ),
     )
 
-    selected_integrations: list[str] | None = Field(
-        default=None,
-        description="Integration slugs the user picked to bias step generation.",
-    )
-
     integration_ids: list[str] = Field(
         default_factory=list,
         description=(
-            "Integration ids this workflow depends on (incl. the trigger integration), "
-            "determined by the workflow assistant. Used to warn the user when a "
-            "required integration is not connected."
+            "Integration ids this workflow uses — picked by the user or identified "
+            "from intent by the workflow assistant. Scopes the tool palette when "
+            "generating steps. Connection state is never stored here: "
+            "required/missing integrations are derived from the steps at read time."
         ),
     )
 
@@ -366,13 +362,12 @@ class CreateWorkflowRequest(BaseModel):
         default=True,
         description="Whether GAIA sends the automatic completion notification when a run finishes.",
     )
-    selected_integrations: list[str] | None = Field(
-        default=None,
-        description="Integration slugs selected by the user to hint step generation.",
-    )
     integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration ids this workflow depends on (for disconnected-dependency warnings).",
+        description=(
+            "Integration ids this workflow uses — picked by the user or identified "
+            "from intent. Scopes the tool palette when generating steps."
+        ),
     )
 
     # System workflow fields — set by provisioner, not by regular API users
@@ -416,7 +411,6 @@ class UpdateWorkflowRequest(BaseModel):
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
-    selected_integrations: list[str] | None = Field(default=None)
     integration_ids: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
@@ -493,9 +487,9 @@ class RegenerateStepsRequest(BaseModel):
     force_different_tools: bool = Field(
         default=False, description="Force the use of different tools"
     )
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs to bias regeneration; falls back to persisted selection.",
+        description="Integration ids to scope regeneration; falls back to the workflow's own.",
     )
 
 
@@ -523,9 +517,9 @@ class GenerateWorkflowPromptRequest(BaseModel):
     description: str | None = None
     trigger_config: dict[str, Any] | None = None
     existing_prompt: str | None = None  # non-empty → improve mode
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs the user picked, used to bias the suggestion.",
+        description="Integration ids the user picked, used to bias the suggestion.",
     )
 
 

@@ -212,7 +212,7 @@ export default function WorkflowModal({
     );
     return mentioned.length > 0
       ? mentioned
-      : (existingWorkflow?.selected_integrations ?? []);
+      : (existingWorkflow?.integration_ids ?? []);
   }, [formData.prompt, integrations, existingWorkflow]);
 
   // The integration backing the selected event trigger, if it still needs
@@ -460,7 +460,7 @@ export default function WorkflowModal({
 
     const currentFormData = workflowToFormData(existingWorkflow);
 
-    const persistedSlugs = [...(existingWorkflow.selected_integrations ?? [])]
+    const persistedSlugs = [...(existingWorkflow.integration_ids ?? [])]
       .sort((a, b) => a.localeCompare(b))
       .join(",");
     const currentSlugs = [...selectedIntegrationSlugs]
@@ -524,7 +524,7 @@ export default function WorkflowModal({
           : undefined,
         generate_immediately: !hasPredefinedSteps,
         notify_on_completion: data.notify_on_completion,
-        selected_integrations:
+        integration_ids:
           selectedIntegrationSlugs.length > 0
             ? selectedIntegrationSlugs
             : undefined,
@@ -591,13 +591,13 @@ export default function WorkflowModal({
           ...data.trigger_config,
         },
         notify_on_completion: data.notify_on_completion,
-        selected_integrations: selectedIntegrationSlugs,
+        integration_ids: selectedIntegrationSlugs,
       };
 
       // Decide if step regeneration is needed BEFORE persisting,
       // so the comparison runs against the previous truth.
       const previousFormData = workflowToFormData(currentWorkflow);
-      const previousSlugs = [...(currentWorkflow.selected_integrations ?? [])]
+      const previousSlugs = [...(currentWorkflow.integration_ids ?? [])]
         .sort((a, b) => a.localeCompare(b))
         .join(",");
       const currentSlugs = [...selectedIntegrationSlugs]
@@ -639,7 +639,7 @@ export default function WorkflowModal({
             {
               instruction: "Update steps to match the new workflow definition",
               force_different_tools: false,
-              selected_integrations:
+              integration_ids:
                 selectedIntegrationSlugs.length > 0
                   ? selectedIntegrationSlugs
                   : undefined,
@@ -818,7 +818,7 @@ export default function WorkflowModal({
         {
           instruction,
           force_different_tools: forceDifferentTools,
-          selected_integrations:
+          integration_ids:
             selectedIntegrationSlugs.length > 0
               ? selectedIntegrationSlugs
               : undefined,
