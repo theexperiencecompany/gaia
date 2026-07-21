@@ -94,7 +94,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/payments/payment_webhook_service.py",
         "services/provider_metadata_service.py",
         "services/reminder_service.py",
-        "services/sandbox/lifecycle.py",
         "services/system_workflows/provisioner.py",
         # todo_service still reads workflows_collection (workflows domain, later wave)
         "services/todos/todo_service.py",
@@ -128,7 +127,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "workers/tasks/memory_backfill_tasks.py",
         "workers/tasks/onboarding_tasks.py",
         "workers/tasks/reminder_tasks.py",
-        "workers/tasks/sandbox_tasks.py",
         "workers/tasks/user_tasks.py",
     }
 )

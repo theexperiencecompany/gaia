@@ -15,7 +15,7 @@ from typing import Any
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import e2b_sandboxes_collection
+from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.services.sandbox import mark_sandbox_dead
 from shared.py.wide_events import SandboxContext, log, wide_task
 
@@ -24,18 +24,9 @@ async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
     """Evict sandboxes whose last_used_at is older than the eviction window."""
     async with wide_task("sweep_idle_sandboxes"):
         cutoff = datetime.now(UTC) - timedelta(days=settings.E2B_SANDBOX_EVICT_DAYS)
-        cursor = e2b_sandboxes_collection.find(
-            {
-                "last_used_at": {"$lt": cutoff},
-                "state": {"$ne": "dead"},
-            },
-            projection={"user_id": 1},
-        )
+        idle_user_ids = await e2b_sandbox_repository.find_idle_user_ids(cutoff=cutoff)
         evicted = 0
-        async for doc in cursor:
-            user_id = doc.get("user_id")
-            if not user_id:
-                continue
+        for user_id in idle_user_ids:
             try:
                 await mark_sandbox_dead(user_id)
                 evicted += 1
