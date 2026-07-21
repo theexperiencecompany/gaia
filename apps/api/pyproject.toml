@@ -88,6 +88,7 @@ module = [
     "app.models.payment_models",
     "app.models.usage_models",
     "app.models.search_models",
+    "app.models.integration_instructions_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
