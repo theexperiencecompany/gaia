@@ -49,9 +49,9 @@ from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
 from app.db.mongodb.collections import (
     integrations_collection,
-    user_integrations_collection,
 )
 from app.db.redis import delete_cache
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -1650,14 +1650,7 @@ class MCPClient:
 
     async def is_connected_db(self, integration_id: str) -> bool:
         """Check if integration is connected (in MongoDB user_integrations)."""
-        doc = await user_integrations_collection.find_one(
-            {
-                "user_id": self.user_id,
-                "integration_id": integration_id,
-                "status": "connected",
-            }
-        )
-        return doc is not None
+        return await user_integration_repository.is_connected(self.user_id, integration_id)
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
         """

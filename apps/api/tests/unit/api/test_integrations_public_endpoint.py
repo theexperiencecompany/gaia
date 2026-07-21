@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.integration_models import UserIntegrationDocument
+
 # Base URL for integration public endpoints
 # routes.py: prefix="/integrations", public.py router has no extra prefix
 # public.py: @router.get("/public/{identifier}"), @router.post("/public/{integration_id}/add"), @router.get("/search")
@@ -277,16 +279,18 @@ class TestAddPublicIntegration:
             "is_public": True,
             "mcp_config": {},
         }
-        existing = {"user_id": "u1", "integration_id": "integ1", "status": "connected"}
+        existing = UserIntegrationDocument(
+            user_id="u1", integration_id="integ1", status="connected"
+        )
 
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
-                "app.api.v1.endpoints.integrations.public.user_integrations_collection"
+                "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
         ):
             mock_coll.find_one = AsyncMock(return_value=original_doc)
-            mock_user_coll.find_one = AsyncMock(return_value=existing)
+            mock_user_coll.get_for_user = AsyncMock(return_value=existing)
 
             resp = await client.post(
                 f"{BASE}/public/integ1/add",
@@ -314,7 +318,7 @@ class TestAddPublicIntegration:
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
-                "app.api.v1.endpoints.integrations.public.user_integrations_collection"
+                "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.add_user_integration",
@@ -323,7 +327,7 @@ class TestAddPublicIntegration:
         ):
             mock_coll.find_one = AsyncMock(return_value=original_doc)
             mock_coll.update_one = AsyncMock()
-            mock_user_coll.find_one = AsyncMock(return_value=None)
+            mock_user_coll.get_for_user = AsyncMock(return_value=None)
 
             resp = await client.post(
                 f"{BASE}/public/integ2/add",
@@ -354,7 +358,7 @@ class TestAddPublicIntegration:
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
-                "app.api.v1.endpoints.integrations.public.user_integrations_collection"
+                "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.add_user_integration",
@@ -368,7 +372,7 @@ class TestAddPublicIntegration:
         ):
             mock_coll.find_one = AsyncMock(return_value=original_doc)
             mock_coll.update_one = AsyncMock()
-            mock_user_coll.find_one = AsyncMock(return_value=None)
+            mock_user_coll.get_for_user = AsyncMock(return_value=None)
 
             resp = await client.post(
                 f"{BASE}/public/integ3/add",
@@ -389,7 +393,7 @@ class TestAddPublicIntegration:
             "is_public": True,
             "mcp_config": {"server_url": "https://mcp.example.com"},
         }
-        existing = {"user_id": "u1", "integration_id": "integ4", "status": "error"}
+        existing = UserIntegrationDocument(user_id="u1", integration_id="integ4", status="created")
 
         connect_result = MagicMock()
         connect_result.status = "connected"
@@ -401,7 +405,7 @@ class TestAddPublicIntegration:
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
-                "app.api.v1.endpoints.integrations.public.user_integrations_collection"
+                "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.connect_mcp_integration",
@@ -410,7 +414,7 @@ class TestAddPublicIntegration:
             ),
         ):
             mock_coll.find_one = AsyncMock(return_value=original_doc)
-            mock_user_coll.find_one = AsyncMock(return_value=existing)
+            mock_user_coll.get_for_user = AsyncMock(return_value=existing)
 
             resp = await client.post(
                 f"{BASE}/public/integ4/add",
@@ -441,7 +445,7 @@ class TestAddPublicIntegration:
         with (
             patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
             patch(
-                "app.api.v1.endpoints.integrations.public.user_integrations_collection"
+                "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
             patch(
                 "app.api.v1.endpoints.integrations.public.add_user_integration",
@@ -456,7 +460,7 @@ class TestAddPublicIntegration:
         ):
             mock_coll.find_one = AsyncMock(return_value=original_doc)
             mock_coll.update_one = AsyncMock()
-            mock_user_coll.find_one = AsyncMock(return_value=None)
+            mock_user_coll.get_for_user = AsyncMock(return_value=None)
 
             resp = await client.post(
                 f"{BASE}/public/integ5/add",

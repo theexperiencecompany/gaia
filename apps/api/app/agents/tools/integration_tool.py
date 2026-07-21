@@ -20,8 +20,8 @@ from app.constants.integrations import (
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     integrations_collection,
-    user_integrations_collection,
 )
+from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.integration_models import (
@@ -122,10 +122,8 @@ async def list_integrations(
                 available_list.append(info)
 
         # Fetch user's custom integrations
-        user_integration_ids = set()
-        cursor = user_integrations_collection.find({"user_id": user_id})
-        async for doc in cursor:
-            user_integration_ids.add(doc.get("integration_id"))
+        user_integrations = await user_integration_repository.list_for_user(user_id)
+        user_integration_ids = {ui.integration_id for ui in user_integrations}
 
         if user_integration_ids:
             custom_cursor = integrations_collection.find(
@@ -136,10 +134,9 @@ async def list_integrations(
             )
             async for doc in custom_cursor:
                 integration_id = doc.get("integration_id")
-                user_doc = await user_integrations_collection.find_one(
-                    {"user_id": user_id, "integration_id": integration_id}
+                is_connected = await user_integration_repository.is_connected(
+                    user_id, integration_id
                 )
-                is_connected = user_doc.get("status") == "connected" if user_doc else False
 
                 custom_info: IntegrationInfo = {
                     "id": integration_id,

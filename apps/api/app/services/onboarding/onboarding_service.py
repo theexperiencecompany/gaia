@@ -6,9 +6,9 @@ from fastapi import BackgroundTasks, HTTPException
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
     todos_collection,
-    user_integrations_collection,
 )
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.models.user_models import (
@@ -365,8 +365,8 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
 
 async def _disconnect_user_integrations(user_id: str) -> int:
     try:
-        cursor = user_integrations_collection.find({"user_id": user_id}, {"integration_id": 1})
-        integration_ids = [doc["integration_id"] async for doc in cursor]
+        uis = await user_integration_repository.list_for_user(user_id)
+        integration_ids = [ui.integration_id for ui in uis]
     except Exception as e:
         log.warning(f"{LogTag.ONBOARDING} reset_onboarding failed to list user integrations: {e}")
         return 0

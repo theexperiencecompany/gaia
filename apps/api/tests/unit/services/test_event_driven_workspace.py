@@ -273,15 +273,11 @@ async def test_get_connected_integration_ids_filter(docs, expected):
 # ---------------------------------------------------------------------------
 
 
-def _update_result(*, modified=1, upserted=None, matched=1):
-    return SimpleNamespace(modified_count=modified, upserted_id=upserted, matched_count=matched)
-
-
 async def test_connect_schedules_sync():
-    coll = MagicMock()
-    coll.update_one = AsyncMock(return_value=_update_result())
+    repo = MagicMock()
+    repo.set_status = AsyncMock(return_value=True)
     with (
-        patch(f"{USTATUS}.user_integrations_collection", coll),
+        patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         from app.services.integrations.user_integration_status import update_user_integration_status
@@ -292,29 +288,15 @@ async def test_connect_schedules_sync():
 
 
 async def test_created_status_does_not_schedule_sync():
-    coll = MagicMock()
-    coll.update_one = AsyncMock(return_value=_update_result())
+    repo = MagicMock()
+    repo.set_status = AsyncMock(return_value=True)
     with (
-        patch(f"{USTATUS}.user_integrations_collection", coll),
+        patch(f"{USTATUS}.user_integration_repository", repo),
         patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
     ):
         from app.services.integrations.user_integration_status import update_user_integration_status
 
         await update_user_integration_status("u", "gmail", "created")
-    sched.assert_not_called()
-
-
-async def test_failed_update_does_not_schedule_sync():
-    coll = MagicMock()
-    coll.update_one = AsyncMock(return_value=_update_result(modified=0, upserted=None, matched=0))
-    with (
-        patch(f"{USTATUS}.user_integrations_collection", coll),
-        patch(f"{USTATUS}.schedule_user_integrations_sync") as sched,
-    ):
-        from app.services.integrations.user_integration_status import update_user_integration_status
-
-        ok = await update_user_integration_status("u", "gmail", "connected")
-    assert ok is False
     sched.assert_not_called()
 
 

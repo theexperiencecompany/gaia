@@ -10,9 +10,9 @@ from app.db.chroma.public_integrations_store import (
 )
 from app.db.mongodb.collections import (
     integrations_collection,
-    user_integrations_collection,
 )
 from app.db.redis import delete_cache_by_pattern
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.integration_helpers import generate_unique_integration_slug
 from app.services.integrations.integration_inference_service import (
     infer_integration_category,
@@ -52,10 +52,7 @@ async def publish_custom_integration(
     if integration.get("source") != "custom":
         raise PublishError("Only custom integrations can be published")
 
-    user_integration = await user_integrations_collection.find_one(
-        {"user_id": user_id, "integration_id": integration_id}
-    )
-    if not user_integration or user_integration.get("status") != "connected":
+    if not await user_integration_repository.is_connected(user_id, integration_id):
         raise PublishError("Integration must be connected before publishing")
 
     tools = integration.get("tools", [])

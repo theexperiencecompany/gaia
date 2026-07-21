@@ -6,6 +6,7 @@ from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
+from app.models.integration_models import UserIntegrationDocument
 from app.models.user_models import BioStatus
 from app.services.oauth.oauth_service import (
     check_integration_status,
@@ -14,6 +15,12 @@ from app.services.oauth.oauth_service import (
     handle_oauth_connection,
     store_user_info,
 )
+
+
+def _ui_doc(integration_id: str, status: str) -> UserIntegrationDocument:
+    """Build a UserIntegrationDocument as list_for_user would return it."""
+    return UserIntegrationDocument(user_id="user123", integration_id=integration_id, status=status)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -27,12 +34,10 @@ def mock_users_collection():
 
 
 @pytest.fixture
-def mock_user_integrations_collection():
-    with patch("app.services.oauth.oauth_service.user_integrations_collection") as mock_col:
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-        mock_col.find = MagicMock(return_value=mock_cursor)
-        yield mock_col
+def mock_user_integration_repo():
+    with patch("app.services.oauth.oauth_service.user_integration_repository") as mock_repo:
+        mock_repo.list_for_user = AsyncMock(return_value=[])
+        yield mock_repo
 
 
 @pytest.fixture
@@ -403,7 +408,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_unavailable_integrations_marked_false(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -423,18 +428,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_integration_connected_in_mongodb(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """If user_integrations has status='connected', result should be True."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "notion", "status": "connected"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("notion", "connected")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         integration = MagicMock()
         integration.id = "notion"
@@ -453,18 +454,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_integration_disconnected_in_mongodb(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """If user_integrations has status != 'connected', result should be False."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "notion", "status": "created"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("notion", "created")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         integration = MagicMock()
         integration.id = "notion"
@@ -483,7 +480,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_mcp_integration_not_in_mongo_returns_false(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -504,7 +501,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_composio_integration_falls_back_to_composio_check(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -528,7 +525,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_composio_batch_check_failure_returns_false(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -553,7 +550,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_self_managed_integration_with_valid_token(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -589,7 +586,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_self_managed_integration_with_missing_scopes(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -625,7 +622,7 @@ class TestGetAllIntegrationsStatus:
 
     async def test_self_managed_integration_with_no_token(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
@@ -654,18 +651,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_custom_integrations_in_mongo_included(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """Custom integrations in MongoDB not in OAUTH_INTEGRATIONS are still included."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "custom_tool", "status": "connected"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("custom_tool", "connected")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         with patch(
             "app.services.oauth.oauth_service.OAUTH_INTEGRATIONS",
@@ -677,18 +670,14 @@ class TestGetAllIntegrationsStatus:
 
     async def test_mixed_integrations(
         self,
-        mock_user_integrations_collection,
+        mock_user_integration_repo,
         mock_composio_service,
         mock_token_repository,
     ):
         """Test a mix of connected, disconnected, and unavailable integrations."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {"integration_id": "notion", "status": "connected"},
-            ]
+        mock_user_integration_repo.list_for_user = AsyncMock(
+            return_value=[_ui_doc("notion", "connected")]
         )
-        mock_user_integrations_collection.find = MagicMock(return_value=mock_cursor)
 
         # Composio returns twitter as connected
         mock_composio_service.check_connection_status = AsyncMock(return_value={"slack": False})

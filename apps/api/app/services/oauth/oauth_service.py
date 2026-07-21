@@ -21,7 +21,8 @@ from app.constants.integrations import (
 )
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import user_integrations_collection, users_collection
+from app.db.mongodb.collections import users_collection
+from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
 from app.services.analytics_service import track_login, track_signup
@@ -158,10 +159,9 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     result = {}
 
     # Step 1: Get all user_integrations from MongoDB (canonical source)
-    user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(100)
+    user_ints = await user_integration_repository.list_for_user(user_id, limit=100)
     mongo_status = {
-        doc["integration_id"]: doc.get("status") == INTEGRATION_STATUS_CONNECTED
-        for doc in user_ints
+        ui.integration_id: ui.status == INTEGRATION_STATUS_CONNECTED for ui in user_ints
     }
 
     # Track which platform integrations need external verification

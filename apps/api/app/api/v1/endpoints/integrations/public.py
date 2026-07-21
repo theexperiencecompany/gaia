@@ -8,8 +8,8 @@ from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
-    user_integrations_collection,
 )
+from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.workflows import workflow_repository
 from app.helpers.integration_helpers import (
     build_public_integration_pipeline,
@@ -137,11 +137,9 @@ async def add_public_integration(
 
         integration_name = original_doc["name"]
 
-        existing = await user_integrations_collection.find_one(
-            {"user_id": user_id, "integration_id": integration_id}
-        )
+        existing = await user_integration_repository.get_for_user(user_id, integration_id)
         if existing:
-            if existing.get("status") == "connected":
+            if existing.status == "connected":
                 return AddIntegrationResponse(
                     integration_id=integration_id,
                     name=integration_name,

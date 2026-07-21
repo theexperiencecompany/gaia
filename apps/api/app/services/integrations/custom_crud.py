@@ -12,10 +12,10 @@ from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.mongodb.collections import (
     integrations_collection,
-    user_integrations_collection,
 )
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, delete_cache_by_pattern
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url
 from app.models.db_oauth import MCPCredential
 from app.models.integration_models import (
@@ -140,10 +140,10 @@ async def update_custom_integration(
     # change shows next turn instead of lingering for the 24h cache TTL.
     catalog_fields = {"name", "description", "is_public"}
     if catalog_fields & update_data.keys():
-        async for ui in user_integrations_collection.find(
-            {"integration_id": integration_id}, {"user_id": 1}
+        for affected_user_id in await user_integration_repository.user_ids_with_integration(
+            integration_id
         ):
-            await invalidate_user_integration_caches(ui["user_id"])
+            await invalidate_user_integration_caches(affected_user_id)
 
     updated_doc = await integrations_collection.find_one({"integration_id": integration_id})
     return Integration(**updated_doc) if updated_doc else None
@@ -181,10 +181,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
         )
 
         if result.deleted_count > 0:
-            affected_users_cursor = user_integrations_collection.find(
-                {"integration_id": integration_id}, {"user_id": 1}
+            affected_user_ids = await user_integration_repository.user_ids_with_integration(
+                integration_id
             )
-            affected_user_ids = [d["user_id"] async for d in affected_users_cursor]
 
             # Remove each user's link through the canonical mutator so the row
             # delete and its cache invalidation stay coupled per user.

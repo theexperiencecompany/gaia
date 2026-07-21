@@ -677,16 +677,15 @@ class TestMCPClientIsConnected:
 class TestMCPClientIsConnectedDb:
     async def test_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.user_integrations_collection") as mock_col:
-            mock_col.find_one = AsyncMock(
-                return_value={"user_id": USER_ID, "integration_id": INTEGRATION_ID}
-            )
+        with patch("app.services.mcp.mcp_client.user_integration_repository") as mock_repo:
+            mock_repo.is_connected = AsyncMock(return_value=True)
             assert await client.is_connected_db(INTEGRATION_ID) is True
+            mock_repo.is_connected.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
 
     async def test_not_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.user_integrations_collection") as mock_col:
-            mock_col.find_one = AsyncMock(return_value=None)
+        with patch("app.services.mcp.mcp_client.user_integration_repository") as mock_repo:
+            mock_repo.is_connected = AsyncMock(return_value=False)
             assert await client.is_connected_db(INTEGRATION_ID) is False
 
 
