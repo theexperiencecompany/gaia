@@ -719,13 +719,10 @@ class TestBackfillIntegrationSlugs:
 
         with (
             patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
-            patch(
-                "app.db.mongodb.indexes.generate_unique_integration_slug",
-                new_callable=AsyncMock,
-                return_value="my-tool-productivity",
-            ),
+            patch("app.db.mongodb.indexes.integration_repository") as mock_repo,
             patch("app.db.mongodb.indexes.log"),
         ):
+            mock_repo.ensure_unique_slug = AsyncMock(return_value="my-tool-productivity")
             from app.db.mongodb.indexes import _backfill_integration_slugs
 
             await _backfill_integration_slugs()

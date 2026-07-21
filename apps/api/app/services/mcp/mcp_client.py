@@ -64,7 +64,7 @@ from app.services.integrations.user_integrations import (
 from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import store_mcp_tools
 from app.services.mcp.oauth_discovery import (
     discover_oauth_config,
     probe_mcp_connection,
@@ -769,8 +769,7 @@ class MCPClient:
             log.info(
                 f"{LogTag.MCP} [{integration_id}] Storing {len(tool_metadata)} tools to MongoDB"
             )
-            global_store = get_mcp_tools_store()
-            post_tasks.append(global_store.store_tools(integration_id, tool_metadata))
+            post_tasks.append(store_mcp_tools(integration_id, tool_metadata))
 
             # 3. Index integration tools in ChromaDB. Custom MCPs use a
             # URL-derived namespace and also register a subagent doc; platform

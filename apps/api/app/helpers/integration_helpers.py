@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from app.helpers.slug_helpers import slugify
 
@@ -37,38 +37,6 @@ def generate_integration_slug(
             slug = truncated
 
     return slug.rstrip("-")
-
-
-async def generate_unique_integration_slug(
-    name: str,
-    category: str,
-    integration_id: str,
-    collection: Any,
-) -> str:
-    """Generate a slug that is unique across published integrations.
-
-    If the base slug is already taken by a different integration,
-    appends -2, -3, etc. until a free slug is found.
-    """
-    base_slug = generate_integration_slug(name, category, integration_id)
-
-    existing = await collection.find_one(
-        {"slug": base_slug, "integration_id": {"$ne": integration_id}}
-    )
-    if not existing:
-        return base_slug
-
-    suffix = 2
-    while suffix <= 100:
-        candidate = f"{base_slug}-{suffix}"
-        existing = await collection.find_one(
-            {"slug": candidate, "integration_id": {"$ne": integration_id}}
-        )
-        if not existing:
-            return candidate
-        suffix += 1
-
-    return f"{base_slug}-{integration_id[:6]}"
 
 
 def parse_integration_slug(slug: str) -> dict:

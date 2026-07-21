@@ -27,7 +27,7 @@ from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import get_integration_tools
 from app.utils.creator import format_creator
 from shared.py.wide_events import log
 
@@ -55,8 +55,7 @@ async def get_public_integration(
             elif native.managed_by in ("self", "composio"):
                 auth_type = "oauth"
 
-            tools_store = get_mcp_tools_store()
-            stored_tools = await tools_store.get_tools(native.id) or []
+            stored_tools = await get_integration_tools(native.id)
             integration_tools = [
                 IntegrationTool(name=t["name"], description=t.get("description"))
                 for t in stored_tools

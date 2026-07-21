@@ -31,7 +31,6 @@ from app.services.mcp.mcp_client import (
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import MCPToolsStore, _format_tools
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.token_management import (
@@ -345,7 +344,7 @@ class TestMCPClientDoConnect:
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.ResilientLangChainAdapter")
     @patch("app.services.mcp.mcp_client.wrap_tools_with_null_filter")
-    @patch("app.services.mcp.mcp_client.get_mcp_tools_store")
+    @patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock)
     @patch(
         "app.services.mcp.mcp_client.update_user_integration_status",
         new_callable=AsyncMock,
@@ -353,7 +352,7 @@ class TestMCPClientDoConnect:
     async def test_successful_connect(
         self,
         mock_update_status,
-        mock_get_store,
+        mock_store_tools,
         mock_wrap,
         mock_adapter_cls,
         mock_base_client_cls,
@@ -378,10 +377,6 @@ class TestMCPClientDoConnect:
 
         # Wrap returns same tools
         mock_wrap.return_value = tools
-
-        # Tools store
-        mock_store = AsyncMock()
-        mock_get_store.return_value = mock_store
 
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
@@ -3173,127 +3168,6 @@ class TestMCPClientCallToolOnServerAdditional:
 
         result = await client.call_tool_on_server(SERVER_URL, "test_tool", {})
         assert "content" in result
-
-
-# ===========================================================================
-# MCPToolsStore Tests
-# ===========================================================================
-
-
-@pytest.mark.unit
-class TestMCPToolsStoreFormatTools:
-    def test_formats_tools(self):
-        tools = [
-            {"name": "  tool1  ", "description": "  desc1  "},
-            {"name": "tool2", "description": "desc2"},
-        ]
-        result = _format_tools(tools)
-        assert len(result) == 2
-        assert result[0]["name"] == "tool1"
-        assert result[0]["description"] == "desc1"
-
-    def test_filters_empty_names(self):
-        tools = [
-            {"name": "", "description": "no name"},
-            {"name": "   ", "description": "whitespace"},
-            {"name": "valid", "description": "ok"},
-        ]
-        result = _format_tools(tools)
-        assert len(result) == 1
-        assert result[0]["name"] == "valid"
-
-    def test_handles_missing_fields(self):
-        tools = [
-            {"name": "tool1"},
-            {"description": "no name"},
-        ]
-        result = _format_tools(tools)
-        assert len(result) == 1
-        assert result[0]["description"] == ""
-
-
-@pytest.mark.unit
-class TestMCPToolsStoreStore:
-    async def test_store_tools_success(self):
-        store = MCPToolsStore()
-        tools = [{"name": "tool1", "description": "desc"}]
-
-        with (
-            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
-            patch(
-                "app.services.mcp.mcp_tools_store.delete_cache",
-                new_callable=AsyncMock,
-            ),
-        ):
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("int1", tools)
-            mock_col.update_one.assert_awaited_once()
-
-    async def test_store_tools_skips_empty(self):
-        store = MCPToolsStore()
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("int1", [])
-            mock_col.update_one.assert_not_awaited()
-
-    async def test_store_tools_skips_after_format_empty(self):
-        store = MCPToolsStore()
-        tools = [{"name": "", "description": "no name"}]
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("int1", tools)
-            mock_col.update_one.assert_not_awaited()
-
-
-@pytest.mark.unit
-class TestMCPToolsStoreGetAll:
-    async def test_get_all_tools_from_cache(self):
-        store = MCPToolsStore()
-        cached = {"int1": [{"name": "t1"}]}
-        with patch(
-            "app.services.mcp.mcp_tools_store.get_cache",
-            new_callable=AsyncMock,
-            return_value=cached,
-        ):
-            result = await store.get_all_mcp_tools()
-        assert result == cached
-
-    async def test_get_all_tools_from_db(self):
-        store = MCPToolsStore()
-
-        docs = [
-            {
-                "integration_id": "int1",
-                "tools": [{"name": "t1", "description": "d"}],
-                "name": "Integration 1",
-                "icon_url": "https://ex.com/icon.png",
-            },
-        ]
-
-        # Build an async iterator for `async for doc in cursor:`
-        async def _aiter():
-            for doc in docs:
-                yield doc
-
-        mock_cursor = _aiter()
-
-        with (
-            patch(
-                "app.services.mcp.mcp_tools_store.get_cache",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
-            patch(
-                "app.services.mcp.mcp_tools_store.set_cache",
-                new_callable=AsyncMock,
-            ),
-        ):
-            mock_col.find.return_value = mock_cursor
-            result = await store.get_all_mcp_tools()
-
-        assert "int1" in result
-        assert result["int1"]["name"] == "Integration 1"
 
 
 @pytest.mark.unit

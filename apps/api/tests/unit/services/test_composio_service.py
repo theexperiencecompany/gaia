@@ -257,23 +257,23 @@ class TestStoreToolMetadata:
         tool.name = "TOOL_A"
         tool.description = "desc"
 
-        mock_store = AsyncMock()
         with patch(
-            "app.services.composio.composio_service.get_mcp_tools_store",
-            return_value=mock_store,
-        ):
+            "app.services.composio.composio_service.store_mcp_tools",
+            new_callable=AsyncMock,
+        ) as mock_store:
             await svc._store_tool_metadata("gmail", [tool])
 
-        mock_store.store_tools.assert_called_once_with(
-            "gmail", [{"name": "TOOL_A", "description": "desc"}]
-        )
+        mock_store.assert_awaited_once_with("gmail", [{"name": "TOOL_A", "description": "desc"}])
 
     @pytest.mark.asyncio
     async def test_empty_tools_returns_early(self):
         svc = _make_service()
-        with patch("app.services.composio.composio_service.get_mcp_tools_store") as mock_get:
+        with patch(
+            "app.services.composio.composio_service.store_mcp_tools",
+            new_callable=AsyncMock,
+        ) as mock_store:
             await svc._store_tool_metadata("gmail", [])
-            mock_get.assert_not_called()
+            mock_store.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_store_error_swallowed(self):
@@ -281,12 +281,11 @@ class TestStoreToolMetadata:
         tool = MagicMock()
         tool.name = "X"
         tool.description = ""
-        mock_store = AsyncMock()
-        mock_store.store_tools.side_effect = RuntimeError("db fail")
 
         with patch(
-            "app.services.composio.composio_service.get_mcp_tools_store",
-            return_value=mock_store,
+            "app.services.composio.composio_service.store_mcp_tools",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("db fail"),
         ):
             # Should not raise
             await svc._store_tool_metadata("gmail", [tool])

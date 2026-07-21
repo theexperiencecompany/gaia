@@ -29,6 +29,25 @@ class IntegrationTool(BaseModel):
     description: str | None = None
 
 
+class IntegrationToolsSlice(BaseModel):
+    """Projected read of just an integration's stored tools."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tools: list[IntegrationTool] = Field(default_factory=list)
+
+
+class IntegrationToolsRecord(BaseModel):
+    """Projected {integration_id, name, icon_url, tools} for the global MCP tool roll-up."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str
+    name: str | None = None
+    icon_url: str | None = None
+    tools: list[IntegrationTool] = Field(default_factory=list)
+
+
 class ComposioConfigDoc(BaseModel):
     """Composio configuration stored in MongoDB."""
 

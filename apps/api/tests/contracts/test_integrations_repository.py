@@ -8,7 +8,7 @@ import uuid
 import pytest
 
 from app.db.repositories.integrations import IntegrationsRepository
-from app.models.integration_models import Integration
+from app.models.integration_models import Integration, IntegrationTool
 from app.models.mcp_config import MCPConfig
 
 
@@ -188,6 +188,31 @@ class TestIntegrationsRepository:
         await repo.create(_integration(b, "B", source="platform", is_public=True))
         found = await repo.find_by_ids([a, b, f"missing-{uuid.uuid4().hex}"])
         assert {i.integration_id for i in found} == {a, b}
+
+    async def test_store_and_get_tools_upserts(self, repo):
+        iid = f"tools-{uuid.uuid4().hex}"
+        # store_tools upserts a tools-only stub even with no integration doc yet.
+        await repo.store_tools(iid, [IntegrationTool(name="t1", description="d1")])
+        got = await repo.get_tools(iid)
+        assert [t.name for t in got] == ["t1"]
+        # Overwrites on the next store.
+        await repo.store_tools(iid, [IntegrationTool(name="t2")])
+        assert [t.name for t in await repo.get_tools(iid)] == ["t2"]
+        # Missing integration → empty list, not error.
+        assert await repo.get_tools(f"absent-{uuid.uuid4().hex}") == []
+
+    async def test_store_tools_batch_and_all_with_tools(self, repo):
+        a = f"ba-{uuid.uuid4().hex}"
+        b = f"bb-{uuid.uuid4().hex}"
+        await repo.create(_integration(a, "Aname", icon_url="https://a.png"))
+        await repo.store_tools_batch(
+            [(a, [IntegrationTool(name="ta")]), (b, [IntegrationTool(name="tb")])]
+        )
+        records = {r.integration_id: r for r in await repo.all_with_tools()}
+        assert a in records and b in records
+        assert records[a].name == "Aname"  # existing doc's name is preserved
+        assert records[a].icon_url == "https://a.png"
+        assert [t.name for t in records[a].tools] == ["ta"]
 
     async def test_heal_top_level_auth(self, repo):
         iid = f"heal-{uuid.uuid4().hex}"

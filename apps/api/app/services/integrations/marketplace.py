@@ -16,7 +16,7 @@ from app.models.integration_models import (
 )
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
 from shared.py.wide_events import log
 
 
@@ -26,10 +26,9 @@ async def get_all_integrations(
 ) -> MarketplaceResponse:
     """Get all available integrations for the marketplace."""
     log.set(integration={"provider": category or "all", "action": "get_all_integrations"})
-    tools_store = get_mcp_tools_store()
 
     async def fetch_mcp_tools() -> dict[str, dict]:
-        return await tools_store.get_all_mcp_tools()
+        return await get_all_mcp_tools()
 
     async def fetch_custom_integrations() -> list[IntegrationResponse]:
         if not include_custom_public:
@@ -118,8 +117,7 @@ def assemble_integration_response(
 async def get_integration_details(integration_id: str) -> IntegrationResponse | None:
     """Get single integration details by ID."""
     log.set(integration={"provider": integration_id, "action": "get_integration_details"})
-    tools_store = get_mcp_tools_store()
-    stored_tools = await tools_store.get_tools(integration_id)
+    stored_tools = await get_integration_tools(integration_id)
 
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:

@@ -63,7 +63,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/file_service.py",
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
-        "services/mcp/mcp_tools_store.py",
         "services/oauth/oauth_service.py",
         # Migrated off users_collection in the users wave; still allowlisted here
         # for their other collections (todos/workflows/conversations), pending

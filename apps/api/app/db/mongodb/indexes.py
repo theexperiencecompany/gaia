@@ -44,7 +44,7 @@ from app.db.mongodb.collections import (
     workflow_executions_collection,
     workflows_collection,
 )
-from app.helpers.integration_helpers import generate_unique_integration_slug
+from app.db.repositories.integrations import integration_repository
 from shared.py.wide_events import log
 
 
@@ -768,11 +768,10 @@ async def _backfill_integration_slugs() -> None:
 
             log.info(f"{LogTag.MONGO} Backfilling slugs for {len(docs)} public integrations")
             for doc in docs:
-                slug = await generate_unique_integration_slug(
+                slug = await integration_repository.ensure_unique_slug(
                     name=doc.get("name", ""),
                     category=doc.get("category", "custom"),
                     integration_id=doc["integration_id"],
-                    collection=integrations_collection,
                 )
                 await integrations_collection.update_one(
                     {"integration_id": doc["integration_id"]},

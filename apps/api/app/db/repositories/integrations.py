@@ -15,6 +15,9 @@ from app.db.repositories.base import MongoRepository
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.integration_models import (
     Integration,
+    IntegrationTool,
+    IntegrationToolsRecord,
+    IntegrationToolsSlice,
     IntegrationUpdate,
     IntegrationWithCreator,
 )
@@ -400,6 +403,50 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             doc_id=integration_id,
         )
         return matched > 0
+
+    # ---- global MCP tool metadata (frontend display) ----
+
+    async def store_tools(self, integration_id: str, tools: list[IntegrationTool]) -> None:
+        """Upsert the stored tool metadata for an integration (creating a tools-only
+        stub document if the integration doc does not exist yet).
+
+        Uses the unfetched upsert: a tools-only stub is not a full ``Integration``,
+        so it must never be read back through model validation.
+        """
+        await self._apply_raw_update_unfetched(
+            {"integration_id": integration_id},
+            {
+                "$set": {
+                    "tools": [t.model_dump() for t in tools],
+                    "integration_id": integration_id,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=integration_id,
+            upsert=True,
+        )
+
+    async def store_tools_batch(self, items: list[tuple[str, list[IntegrationTool]]]) -> None:
+        """Upsert tool metadata for several integrations (catalog metadata population)."""
+        for integration_id, tools in items:
+            await self.store_tools(integration_id, tools)
+
+    async def get_tools(self, integration_id: str) -> list[IntegrationTool]:
+        """The stored tool metadata for an integration (empty when none stored)."""
+        slice_ = await self._find_one_projected(
+            {"integration_id": integration_id}, {"tools": 1}, IntegrationToolsSlice
+        )
+        return slice_.tools if slice_ is not None else []
+
+    async def all_with_tools(self) -> list[IntegrationToolsRecord]:
+        """Every integration that has stored tools, projected for the global roll-up."""
+        return await self._aggregate(
+            [
+                {"$match": {"tools": {"$exists": True, "$ne": []}}},
+                {"$project": {"integration_id": 1, "tools": 1, "name": 1, "icon_url": 1}},
+            ],
+            IntegrationToolsRecord,
+        )
 
 
 integration_repository = IntegrationsRepository()

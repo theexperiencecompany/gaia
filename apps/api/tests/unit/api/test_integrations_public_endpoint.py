@@ -67,19 +67,15 @@ class TestGetPublicIntegration:
         fake_native.mcp_config = None
         fake_native.content = None
 
-        mock_tools_store = MagicMock()
-        mock_tools_store.get_tools = AsyncMock(
-            return_value=[{"name": "create_event", "description": "Create event"}]
-        )
-
         with (
             patch(
                 "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
             patch(
-                "app.api.v1.endpoints.integrations.public.get_mcp_tools_store",
-                return_value=mock_tools_store,
+                "app.api.v1.endpoints.integrations.public.get_integration_tools",
+                new_callable=AsyncMock,
+                return_value=[{"name": "create_event", "description": "Create event"}],
             ),
         ):
             resp = await client.get(f"{BASE}/public/googlecalendar")
@@ -105,17 +101,15 @@ class TestGetPublicIntegration:
         fake_native.mcp_config.auth_type = "bearer"
         fake_native.content = None
 
-        mock_tools_store = MagicMock()
-        mock_tools_store.get_tools = AsyncMock(return_value=[])
-
         with (
             patch(
                 "app.api.v1.endpoints.integrations.public.OAUTH_INTEGRATIONS",
                 [fake_native],
             ),
             patch(
-                "app.api.v1.endpoints.integrations.public.get_mcp_tools_store",
-                return_value=mock_tools_store,
+                "app.api.v1.endpoints.integrations.public.get_integration_tools",
+                new_callable=AsyncMock,
+                return_value=[],
             ),
         ):
             resp = await client.get(f"{BASE}/public/mcp_tool")

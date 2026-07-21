@@ -484,6 +484,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         doc_id: str | None = None,
         extra_filter: Mapping[str, object] | None = None,
         array_filters: Sequence[Mapping[str, object]] | None = None,
+        upsert: bool = False,
     ) -> int:
         """Apply a raw update via ``update_one`` WITHOUT reading the document back.
 
@@ -491,10 +492,14 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         on every call; this is the seam for hot write paths where the after-image
         is not needed — e.g. ``$push``-ing onto a large embedded array on every
         chat turn, where reloading the whole document each time would be wasteful.
-        Refreshes the cache exactly like any other write: evicts the entity key
-        when ``doc_id`` is given and bumps the generation. ``updated_at`` is
-        auto-stamped into ``$set`` when the document declares it. Returns the
-        matched count (0 = the filter matched no document).
+        It is also the seam for an ``upsert`` whose inserted document must NOT be
+        validated as a full ``document_model`` — e.g. a tools-only stub that only
+        carries a business key and one field (``_apply_raw_update``'s read-back
+        would fail model validation on such a partial doc). Refreshes the cache
+        exactly like any other write: evicts the entity key when ``doc_id`` is
+        given and bumps the generation. ``updated_at`` is auto-stamped into
+        ``$set`` when the document declares it. Returns the matched count (0 = the
+        filter matched no existing document; an upsert-insert also reports 0).
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
@@ -503,8 +508,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             {**dict(filter_), **(extra_filter or {})},
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
+            upsert=upsert,
         )
-        if result.matched_count:
+        touched = result.matched_count or (upsert and result.upserted_id is not None)
+        if touched:
             if doc_id is not None:
                 await self._cache_evict(scope, doc_id)
             await self._invalidate(scope)
