@@ -197,6 +197,26 @@ async def build_initial_messages(
     ]
 
 
+def _with_current_time(resume: Command, configurable: dict[str, Any]) -> Command:
+    """Re-clock a resumed run.
+
+    A resume replaces ``initial_state``, so the fresh time message
+    ``build_initial_messages`` would have added never reaches the graph and the
+    thread keeps the clock from when it STARTED. A HIL approval pause can leave
+    that hours stale — long enough for the model to act on the wrong day.
+
+    Appending it is safe even mid tool-call: ``manage_system_prompts_node`` lifts
+    the latest time message to the tail of the conversation (so the
+    AIMessage/ToolMessage pairing is untouched) and drops the older copy.
+    """
+    update = {**resume.update} if isinstance(resume.update, dict) else {}
+    update["messages"] = [
+        *update.get("messages", []),
+        build_current_time_message(user_timezone=configurable.get("user_timezone")),
+    ]
+    return Command(resume=resume.resume, update=update, goto=resume.goto, graph=resume.graph)
+
+
 def _process_messages_payload(
     payload: tuple,
     complete_message: str,
@@ -281,7 +301,7 @@ async def execute_subagent_stream(
         }
 
     async for event in ctx.subagent_graph.astream(
-        resume if resume is not None else ctx.initial_state,
+        _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=run_config,
         # Persist checkpoints only when this executor/subagent run exits, not
