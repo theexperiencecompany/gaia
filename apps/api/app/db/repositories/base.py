@@ -15,7 +15,7 @@ import inspect
 from typing import ClassVar, Generic, TypeVar, cast
 
 from bson import ObjectId
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from pymongo import ReturnDocument, UpdateOne
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
@@ -28,6 +28,7 @@ from app.db.repositories.cache import (
     read_generation,
 )
 from app.utils.errors import AppError, EmptyUpdateError, RepositoryMisconfigured
+from shared.py.wide_events import log
 
 
 class MongoDocument(BaseModel):
@@ -339,6 +340,36 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             cursor = cursor.limit(limit)
         raw_docs = await cursor.to_list(length=limit or None)
         return [self._to_model(raw) for raw in raw_docs]
+
+    async def _find_lenient(
+        self,
+        filter_: Mapping[str, object],
+        *,
+        sort: Sequence[tuple[str, int]] | None = None,
+    ) -> list[TDoc]:
+        """Like ``_find``, but a single row that fails model validation is skipped
+        and logged loudly rather than failing the whole read.
+
+        For user-facing LIST reads where one corrupt legacy document must not blank
+        the entire result. ``_find`` stays the strict default so single-document and
+        internal reads still fail loud — a validation error there surfaces the
+        corruption instead of hiding it.
+        """
+        cursor = get_async_collection(self.collection_name).find(dict(filter_))
+        if sort is not None:
+            cursor = cursor.sort(list(sort))
+        docs: list[TDoc] = []
+        async for raw in cursor:
+            try:
+                docs.append(self._to_model(raw))
+            except ValidationError as exc:
+                log.warning(
+                    "[repository] skipping malformed document in lenient list read",
+                    collection=self.collection_name,
+                    document_id=raw.get("_id"),
+                    error=str(exc),
+                )
+        return docs
 
     async def _aggregate(
         self, pipeline: Sequence[Mapping[str, object]], result_model: type[TResult]

@@ -83,14 +83,21 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         self, user_id: str, *, exclude_todo_workflows: bool = True
     ) -> list[WorkflowDocument]:
         """A user's workflows, newest first. Auto-generated todo workflows are
-        excluded by default (they are an implementation detail, not user-authored)."""
+        excluded by default (they are an implementation detail, not user-authored).
+
+        A single legacy-malformed row is skipped and logged loudly rather than
+        failing the whole read — one corrupt document must not blank a user's
+        entire workflow list. This graceful degradation is scoped to the LIST read
+        only: the single-document reads (``get``/``get_for_user``) stay strict so a
+        fetch of a known id surfaces the corruption instead of hiding it.
+        """
         query: dict[str, Any] = {"user_id": user_id}
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
                 {"is_todo_workflow": False},
             ]
-        return await self._find(query, sort=[("created_at", -1)])
+        return await self._find_lenient(query, sort=[("created_at", -1)])
 
     async def find_by_ids(self, workflow_ids: list[str]) -> list[WorkflowDocument]:
         """Workflows whose ids are in ``workflow_ids`` (no user scoping)."""

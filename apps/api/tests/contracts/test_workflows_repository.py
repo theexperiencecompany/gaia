@@ -12,6 +12,7 @@ import uuid
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorCollection
+from pydantic import ValidationError
 from pymongo.errors import DuplicateKeyError
 import pytest
 
@@ -148,6 +149,23 @@ class TestWorkflowsOwnedCrud:
         assert {w.id for w in await repo.find_by_ids([a.id, b.id])} == {a.id, b.id}
         assert {w.id for w in await repo.find_by_ids_for_user([a.id, b.id], owner)} == {a.id}
         assert await repo.find_by_ids([]) == []
+
+    async def test_list_for_user_skips_malformed_row_but_get_stays_strict(
+        self, repo, raw_collection
+    ):
+        owner = _uid("owner")
+        valid = await repo.create(_workflow(user_id=owner, title="Valid"))
+        # A legacy row missing required fields (title/steps/trigger_config) fails
+        # WorkflowDocument validation. The LIST read must skip it (logging loudly)
+        # so one corrupt document can't blank the user's whole workflow list.
+        bad_id = _uid("bad")
+        await raw_collection.insert_one({"_id": bad_id, "user_id": owner})
+        listed = await repo.list_for_user(owner)
+        assert [w.id for w in listed] == [valid.id]
+        # The single-document read of the same corrupt row stays strict — a fetch of
+        # a known id surfaces the corruption rather than silently returning nothing.
+        with pytest.raises(ValidationError):
+            await repo.get_for_user(bad_id, owner)
 
 
 class TestWorkflowsScheduler:
