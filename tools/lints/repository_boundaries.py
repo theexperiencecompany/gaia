@@ -66,7 +66,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # scripts/
         "scripts/backfill_public_workflow_descriptions.py",
         # services/
-        "services/calendar_service.py",
         "services/dev_service.py",
         "services/device/device_service.py",
         "services/file_service.py",

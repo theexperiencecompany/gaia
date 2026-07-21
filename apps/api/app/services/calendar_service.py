@@ -5,24 +5,21 @@ from fastapi import HTTPException
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
-from app.db.mongodb.collections import get_sync_collection
+from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
     EventCreateRequest,
     EventDeleteRequest,
     EventUpdateRequest,
 )
-from app.services.composio.proxy_client import proxy_request_sync
+from app.services.composio.proxy_client import proxy_request
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 
-# Sync MongoDB collection for calendar preferences
-calendars_collection = get_sync_collection("calendar")
 
-
-def _proxy(
+async def _proxy(
     user_id: str,
     *,
     endpoint: str,
@@ -36,7 +33,7 @@ def _proxy(
     HTTPException-shaped failures, so we normalize AppError here.
     """
     try:
-        return proxy_request_sync(
+        return await proxy_request(
             user_id=user_id,
             toolkit=CALENDAR_TOOLKIT,
             endpoint=endpoint,
@@ -67,9 +64,9 @@ def _proxy(
         raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 
-def fetch_calendar_list(user_id: str, short: bool = False) -> Any:
+async def fetch_calendar_list(user_id: str, short: bool = False) -> Any:
     """Fetch the list of calendars for the authenticated user."""
-    data = _proxy(
+    data = await _proxy(
         user_id,
         endpoint=f"{CALENDAR_API_BASE}/users/me/calendarList",
         method="GET",
@@ -100,7 +97,7 @@ def filter_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
-def fetch_calendar_events(
+async def fetch_calendar_events(
     calendar_id: str,
     user_id: str,
     page_token: str | None = None,
@@ -121,7 +118,7 @@ def fetch_calendar_events(
     if page_token:
         query["pageToken"] = page_token
 
-    return _proxy(
+    return await _proxy(
         user_id,
         endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
         method="GET",
@@ -129,7 +126,7 @@ def fetch_calendar_events(
     )
 
 
-def fetch_all_calendar_events(
+async def fetch_all_calendar_events(
     calendar_id: str,
     user_id: str,
     time_min: str | None = None,
@@ -143,7 +140,7 @@ def fetch_all_calendar_events(
     max_pages = 20
 
     while page_count < max_pages:
-        page_data = fetch_calendar_events(
+        page_data = await fetch_calendar_events(
             calendar_id=calendar_id,
             user_id=user_id,
             page_token=next_page_token,
@@ -179,54 +176,18 @@ def fetch_all_calendar_events(
     }
 
 
-def list_calendars(
+async def list_calendars(
     user_id: str, short: bool = False
 ) -> Union[list[dict[str, Any]], dict[str, Any]]:
     """Retrieve the user's calendar list."""
-    return fetch_calendar_list(user_id, short)
+    return await fetch_calendar_list(user_id, short)
 
 
-# Unwired as of 2026-06; kept for future use (calendar).
-# def initialize_calendar_preferences(user_id: str) -> None:
-#     """Initialize calendar preferences for a newly-connected user."""
-#     try:
-#         existing_preferences = calendars_collection.find_one({"user_id": user_id})
-#         if existing_preferences and existing_preferences.get("selected_calendars"):
-#             log.info(f"User {user_id} already has calendar preferences, skipping initialization")
-#             return
-#
-#         calendar_data = fetch_calendar_list(user_id)
-#         calendars = calendar_data.get("items", [])
-#
-#         if not calendars:
-#             log.warning(f"No calendars found for user {user_id}")
-#             return
-#
-#         all_calendar_ids = [cal["id"] for cal in calendars]
-#
-#         calendars_collection.update_one(
-#             {"user_id": user_id},
-#             {"$set": {"selected_calendars": all_calendar_ids}},
-#             upsert=True,
-#         )
-#
-#         log.info(
-#             f"Initialized calendar preferences for user {user_id}: "
-#             f"selected {len(all_calendar_ids)} calendars"
-#         )
-#
-#     except Exception as e:
-#         log.error(
-#             f"Failed to initialize calendar preferences for user {user_id}: {e}",
-#             exc_info=True,
-#         )
-
-
-def get_calendar_metadata_map(
+async def get_calendar_metadata_map(
     user_id: str,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch calendar list and return color/name mappings."""
-    calendars = list_calendars(user_id=user_id, short=True)
+    calendars = await list_calendars(user_id=user_id, short=True)
 
     color_map: dict[str, str] = {}
     name_map: dict[str, str] = {}
@@ -274,78 +235,7 @@ def format_event_for_frontend(
     }
 
 
-# Unwired as of 2026-06; kept for future use (calendar).
-# def extract_unique_dates(calendar_options: list[dict[str, Any]]) -> dict[str, str]:
-#     """Extract unique dates with timezone offsets from calendar options."""
-#     event_dates_info: dict[str, str] = {}
-#     for option in calendar_options:
-#         start_time = option.get("start", "")
-#         if start_time:
-#             try:
-#                 dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-#                 date_str = dt.strftime("%Y-%m-%d")
-#                 tz_offset = dt.strftime("%z")
-#                 if tz_offset:
-#                     tz_offset = f"{tz_offset[:3]}:{tz_offset[3:]}"
-#                 else:
-#                     tz_offset = "+00:00"
-#                 event_dates_info[date_str] = tz_offset
-#             except Exception as e:
-#                 log.warning(f"Could not parse start time: {start_time}, {e}")
-#     return event_dates_info
-
-
-# Unwired as of 2026-06; kept for future use (calendar).
-# def fetch_same_day_events(
-#     event_dates_info: dict[str, str],
-#     user_id: str,
-# ) -> list[dict[str, Any]]:
-#     """Fetch events for each unique date."""
-#     same_day_events: list[dict[str, Any]] = []
-#     for event_date, tz_offset in event_dates_info.items():
-#         time_min = f"{event_date}T00:00:00{tz_offset}"
-#         time_max = f"{event_date}T23:59:59{tz_offset}"
-#         try:
-#             result = get_calendar_events(
-#                 user_id=user_id,
-#                 time_min=time_min,
-#                 time_max=time_max,
-#             )
-#             if isinstance(result, dict) and "events" in result:
-#                 same_day_events.extend(result["events"])
-#         except Exception as e:
-#             log.error(f"Error fetching events for {event_date}: {e}")
-#
-#     return same_day_events
-
-
-# Unwired as of 2026-06; kept for future use (calendar).
-# def enrich_calendar_options_with_metadata(
-#     calendar_options: list[dict[str, Any]],
-#     user_id: str,
-# ) -> list[dict[str, Any]]:
-#     """Add calendar colors, names, and same-day events to calendar options."""
-#     color_map, name_map = get_calendar_metadata_map(user_id)
-#
-#     for option in calendar_options:
-#         calendar_id = option.get("calendar_id", "primary")
-#         option["background_color"] = color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR)
-#         option["calendar_name"] = name_map.get(calendar_id, "Calendar")
-#
-#     event_dates_info = extract_unique_dates(calendar_options)
-#     same_day_events = fetch_same_day_events(event_dates_info, user_id)
-#
-#     for event in same_day_events:
-#         calendar_id = event.get("calendarId") or ""
-#         event["background_color"] = color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR)
-#
-#     for option in calendar_options:
-#         option["same_day_events"] = same_day_events
-#
-#     return calendar_options
-
-
-def get_calendar_events(
+async def get_calendar_events(
     user_id: str,
     page_token: str | None = None,
     selected_calendars: list[str] | None = None,
@@ -355,28 +245,20 @@ def get_calendar_events(
     fetch_all: bool = False,
 ) -> dict[str, Any]:
     """Get events from the user's selected calendars with date-based pagination."""
-    calendar_data = fetch_calendar_list(user_id)
+    calendar_data = await fetch_calendar_list(user_id)
     calendars = calendar_data.get("items", [])
 
     user_selected_calendars: list[str] = []
     if selected_calendars is not None:
         user_selected_calendars = selected_calendars
-        calendars_collection.update_one(
-            {"user_id": user_id},
-            {"$set": {"selected_calendars": user_selected_calendars}},
-            upsert=True,
-        )
+        await calendar_repository.set_selected_calendars(user_id, user_selected_calendars)
     else:
-        preferences = calendars_collection.find_one({"user_id": user_id})
-        if preferences and preferences.get("selected_calendars"):
-            user_selected_calendars = preferences["selected_calendars"]
+        preferences = await calendar_repository.get_for_user(user_id)
+        if preferences is not None and preferences.selected_calendars:
+            user_selected_calendars = preferences.selected_calendars
         else:
             user_selected_calendars = [cal["id"] for cal in calendars]
-            calendars_collection.update_one(
-                {"user_id": user_id},
-                {"$set": {"selected_calendars": user_selected_calendars}},
-                upsert=True,
-            )
+            await calendar_repository.set_selected_calendars(user_id, user_selected_calendars)
 
     selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
 
@@ -388,7 +270,7 @@ def get_calendar_events(
         log.info(f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range")
         for cal in selected_cal_objs:
             try:
-                result = fetch_all_calendar_events(cal["id"], user_id, time_min, time_max)
+                result = await fetch_all_calendar_events(cal["id"], user_id, time_min, time_max)
                 events = result.get("items", [])
 
                 if result.get("truncated", False):
@@ -411,7 +293,7 @@ def get_calendar_events(
     else:
         for cal in selected_cal_objs:
             try:
-                result = fetch_calendar_events(
+                result = await fetch_calendar_events(
                     cal["id"], user_id, None, time_min, time_max, max_results
                 )
                 events = result.get("items", [])
@@ -450,7 +332,7 @@ def get_calendar_events(
     }
 
 
-def get_calendar_events_by_id(
+async def get_calendar_events_by_id(
     calendar_id: str,
     user_id: str,
     page_token: str | None = None,
@@ -458,7 +340,7 @@ def get_calendar_events_by_id(
     time_max: str | None = None,
 ) -> dict[str, Any]:
     """Fetch events for a specific calendar by its ID."""
-    events_data = fetch_calendar_events(calendar_id, user_id, page_token, time_min, time_max)
+    events_data = await fetch_calendar_events(calendar_id, user_id, page_token, time_min, time_max)
 
     events = filter_events(events_data.get("items", []))
     return {
@@ -467,38 +349,7 @@ def get_calendar_events_by_id(
     }
 
 
-# Unwired as of 2026-06; kept for future use (calendar).
-# def find_event_for_action(
-#     user_id: str,
-#     event_lookup_data: EventLookupRequest,
-# ) -> dict | None:
-#     """Find a specific event by query or by (calendar_id, event_id)."""
-#     if event_lookup_data.query:
-#         search_results = search_calendar_events_native(
-#             query=event_lookup_data.query,
-#             user_id=user_id,
-#         )
-#         matching_events = search_results.get("matching_events", [])
-#         if not matching_events:
-#             return None
-#         return matching_events[0]
-#
-#     try:
-#         return _proxy(
-#             user_id,
-#             endpoint=(
-#                 f"{CALENDAR_API_BASE}/calendars/"
-#                 f"{event_lookup_data.calendar_id}/events/{event_lookup_data.event_id}"
-#             ),
-#             method="GET",
-#         )
-#     except HTTPException as exc:
-#         if exc.status_code == 404:
-#             return None
-#         raise
-
-
-def create_calendar_event(
+async def create_calendar_event(
     event: EventCreateRequest,
     user_id: str,
 ) -> dict[str, Any]:
@@ -587,7 +438,7 @@ def create_calendar_event(
         }
         query_params["conferenceDataVersion"] = "1"
 
-    response_data = _proxy(
+    response_data = await _proxy(
         user_id,
         endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
         method="POST",
@@ -606,40 +457,38 @@ def create_calendar_event(
     return response_data
 
 
-def get_user_calendar_preferences(user_id: str) -> dict[str, list[str]]:
+async def get_user_calendar_preferences(user_id: str) -> dict[str, list[str]]:
     """Retrieve the user's selected calendar preferences from the database."""
-    preferences = calendars_collection.find_one({"user_id": user_id})
-    if preferences and "selected_calendars" in preferences:
-        return {"selectedCalendars": preferences["selected_calendars"]}
+    preferences = await calendar_repository.get_for_user(user_id)
+    if preferences is not None:
+        return {"selectedCalendars": preferences.selected_calendars}
     raise HTTPException(status_code=404, detail="Calendar preferences not found")
 
 
-def update_user_calendar_preferences(user_id: str, selected_calendars: list[str]) -> dict[str, str]:
+async def update_user_calendar_preferences(
+    user_id: str, selected_calendars: list[str]
+) -> dict[str, str]:
     """Update the user's selected calendar preferences in the database."""
-    result = calendars_collection.update_one(
-        {"user_id": user_id},
-        {"$set": {"selected_calendars": selected_calendars}},
-        upsert=True,
-    )
-    if result.modified_count or result.upserted_id:
+    changed = await calendar_repository.set_selected_calendars(user_id, selected_calendars)
+    if changed:
         return {"message": "Calendar preferences updated successfully"}
     return {"message": "No changes made to calendar preferences"}
 
 
-def search_calendar_events_native(
+async def search_calendar_events_native(
     query: str,
     user_id: str,
     time_min: str | None = None,
     time_max: str | None = None,
 ) -> dict[str, Any]:
     """Search calendar events using Google Calendar API's native search."""
-    calendar_list_data = fetch_calendar_list(user_id)
+    calendar_list_data = await fetch_calendar_list(user_id)
     calendars = calendar_list_data.get("items", [])
 
     user_selected_calendars: list[str] = []
-    preferences = calendars_collection.find_one({"user_id": user_id})
-    if preferences and preferences.get("selected_calendars"):
-        user_selected_calendars = preferences["selected_calendars"]
+    preferences = await calendar_repository.get_for_user(user_id)
+    if preferences is not None and preferences.selected_calendars:
+        user_selected_calendars = preferences.selected_calendars
         log.info(f"User has calendar preferences: {user_selected_calendars}")
     else:
         user_selected_calendars = [cal["id"] for cal in calendars]
@@ -662,7 +511,7 @@ def search_calendar_events_native(
 
     for cal in selected_cal_objs:
         try:
-            result = search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
+            result = await search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
             events = result.get("items", [])
             log.info(f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'")
 
@@ -687,7 +536,9 @@ def search_calendar_events_native(
 
         for cal in calendars:
             try:
-                result = search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
+                result = await search_events_in_calendar(
+                    cal["id"], query, user_id, time_min, time_max
+                )
                 events = result.get("items", [])
 
                 if events:
@@ -714,7 +565,7 @@ def search_calendar_events_native(
     }
 
 
-def search_events_in_calendar(
+async def search_events_in_calendar(
     calendar_id: str,
     query: str,
     user_id: str,
@@ -734,7 +585,7 @@ def search_events_in_calendar(
         params["timeMax"] = time_max
 
     log.info(f"Searching calendar {calendar_id} with query '{query}' and params: {params}")
-    result = _proxy(
+    result = await _proxy(
         user_id,
         endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
         method="GET",
@@ -745,7 +596,7 @@ def search_events_in_calendar(
     return result
 
 
-def delete_calendar_event(
+async def delete_calendar_event(
     event: EventDeleteRequest,
     user_id: str,
 ) -> dict[str, Any]:
@@ -753,7 +604,7 @@ def delete_calendar_event(
     calendar_id = event.calendar_id or "primary"
 
     try:
-        _proxy(
+        await _proxy(
             user_id,
             endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}",
             method="DELETE",
@@ -765,7 +616,7 @@ def delete_calendar_event(
         raise
 
 
-def update_calendar_event(
+async def update_calendar_event(
     event: EventUpdateRequest,
     user_id: str,
 ) -> dict[str, Any]:
@@ -774,7 +625,7 @@ def update_calendar_event(
     endpoint = f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}"
 
     try:
-        existing_event = _proxy(user_id, endpoint=endpoint, method="GET")
+        existing_event = await _proxy(user_id, endpoint=endpoint, method="GET")
     except HTTPException as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Event not found or access denied")
@@ -872,7 +723,7 @@ def update_calendar_event(
         event_payload["end"] = existing_event.get("end", {})
 
     try:
-        updated_event = _proxy(user_id, endpoint=endpoint, method="PUT", body=event_payload)
+        updated_event = await _proxy(user_id, endpoint=endpoint, method="PUT", body=event_payload)
     except HTTPException as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Event not found or access denied")

@@ -41,7 +41,7 @@ class TestGetCalendarList:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.list_calendars.return_value = [{"id": "primary", "summary": "Main Calendar"}]
             resp = await client.get(f"{API}/calendar/list")
@@ -53,7 +53,7 @@ class TestGetCalendarList:
     async def test_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.list_calendars.side_effect = Exception("boom")
             resp = await client.get(f"{API}/calendar/list")
@@ -77,7 +77,7 @@ class TestQueryEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.return_value = {
                 "events": [{"id": "ev1", "summary": "Meeting"}],
@@ -100,7 +100,7 @@ class TestQueryEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.return_value = {
                 "events": [],
@@ -117,7 +117,7 @@ class TestQueryEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.side_effect = Exception("API down")
             resp = await client.post(
@@ -147,7 +147,7 @@ class TestGetEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.return_value = {
                 "events": [],
@@ -160,7 +160,7 @@ class TestGetEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.return_value = {"events": []}
             resp = await client.get(
@@ -173,7 +173,7 @@ class TestGetEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.return_value = {"events": []}
             resp = await client.get(
@@ -186,7 +186,7 @@ class TestGetEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events.side_effect = Exception("Fail")
             resp = await client.get(f"{API}/calendar/events")
@@ -210,7 +210,7 @@ class TestGetEventsByCalendar:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events_by_id.return_value = {
                 "events": [{"id": "ev2"}],
@@ -224,7 +224,7 @@ class TestGetEventsByCalendar:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events_by_id.return_value = {"events": []}
             resp = await client.get(
@@ -237,7 +237,7 @@ class TestGetEventsByCalendar:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events_by_id.side_effect = Exception("Fail")
             resp = await client.get(f"{API}/calendar/primary/events")
@@ -261,7 +261,7 @@ class TestCreateEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.create_calendar_event.return_value = {
                 "id": "ev-new",
@@ -282,7 +282,7 @@ class TestCreateEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.create_calendar_event.side_effect = Exception("API error")
             resp = await client.post(
@@ -320,7 +320,7 @@ class TestDeleteEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, return_value={"status": "deleted"}),
+            patch(DELETE_PATCH, new_callable=AsyncMock, return_value={"status": "deleted"}),
         ):
             resp = await client.request(
                 "DELETE",
@@ -333,7 +333,7 @@ class TestDeleteEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, side_effect=Exception("Not found")),
+            patch(DELETE_PATCH, new_callable=AsyncMock, side_effect=Exception("Not found")),
         ):
             resp = await client.request(
                 "DELETE",
@@ -364,7 +364,11 @@ class TestUpdateEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(UPDATE_PATCH, return_value={"id": "ev-001", "summary": "Updated"}),
+            patch(
+                UPDATE_PATCH,
+                new_callable=AsyncMock,
+                return_value={"id": "ev-001", "summary": "Updated"},
+            ),
         ):
             resp = await client.put(
                 f"{API}/calendar/event",
@@ -377,7 +381,7 @@ class TestUpdateEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(UPDATE_PATCH, side_effect=Exception("Update failed")),
+            patch(UPDATE_PATCH, new_callable=AsyncMock, side_effect=Exception("Update failed")),
         ):
             resp = await client.put(
                 f"{API}/calendar/event",
@@ -405,7 +409,7 @@ class TestGetCalendarPreferences:
     async def test_get_preferences_returns_200(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_user_calendar_preferences.return_value = {
                 "selected_calendars": ["primary"]
@@ -417,7 +421,7 @@ class TestGetCalendarPreferences:
     async def test_get_preferences_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_user_calendar_preferences.side_effect = Exception("DB error")
             resp = await client.get(f"{API}/calendar/preferences")
@@ -440,7 +444,7 @@ class TestUpdateCalendarPreferences:
     async def test_update_preferences_returns_200(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.update_user_calendar_preferences.return_value = {
                 "message": "Preferences updated"
@@ -454,7 +458,7 @@ class TestUpdateCalendarPreferences:
     async def test_update_preferences_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.update_user_calendar_preferences.side_effect = Exception("DB error")
             resp = await client.put(
@@ -484,7 +488,7 @@ class TestBatchCreateEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.create_calendar_event.return_value = {"id": "ev-batch-1"}
             resp = await client.post(
@@ -509,7 +513,7 @@ class TestBatchCreateEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.create_calendar_event.side_effect = [
                 {"id": "ev-ok"},
@@ -544,7 +548,7 @@ class TestBatchCreateEvents:
         # fetching has moved into the proxy client.
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
-            patch(SVC_PATCH) as mock_svc,
+            patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.create_calendar_event.side_effect = Exception("boom")
             resp = await client.post(
@@ -593,7 +597,11 @@ class TestBatchUpdateEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(UPDATE_PATCH, return_value={"id": "ev-001", "summary": "Updated"}),
+            patch(
+                UPDATE_PATCH,
+                new_callable=AsyncMock,
+                return_value={"id": "ev-001", "summary": "Updated"},
+            ),
         ):
             resp = await client.put(
                 f"{API}/calendar/events/batch",
@@ -609,6 +617,7 @@ class TestBatchUpdateEvents:
             # token patch removed (composio proxy migration)
             patch(
                 UPDATE_PATCH,
+                new_callable=AsyncMock,
                 side_effect=[
                     {"id": "ev-001", "summary": "Updated"},
                     Exception("Not found"),
@@ -650,7 +659,7 @@ class TestBatchDeleteEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, return_value=None),
+            patch(DELETE_PATCH, new_callable=AsyncMock, return_value=None),
         ):
             resp = await client.request(
                 "DELETE",
@@ -666,7 +675,7 @@ class TestBatchDeleteEvents:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, side_effect=[None, Exception("Not found")]),
+            patch(DELETE_PATCH, new_callable=AsyncMock, side_effect=[None, Exception("Not found")]),
         ):
             resp = await client.request(
                 "DELETE",
