@@ -41,7 +41,13 @@ import pytest
 pytestmark = [pytest.mark.service, pytest.mark.slow]
 
 BRIDGE_DIR = Path(__file__).resolve().parents[3] / "bridge"
-TSX_BIN = BRIDGE_DIR / "node_modules" / ".bin" / "tsx"
+# tsx's bin location depends on pnpm's node-linker: the isolated linker (used
+# inside the Dagger harness, which never sees the repo .npmrc) puts it in the
+# bridge package's own node_modules/.bin; the hoisted linker (dev machines and
+# CI runners, per .npmrc) only creates the repo-root node_modules/.bin.
+_BRIDGE_TSX = BRIDGE_DIR / "node_modules" / ".bin" / "tsx"
+_ROOT_TSX = Path(__file__).resolve().parents[4] / "node_modules" / ".bin" / "tsx"
+TSX_BIN = _BRIDGE_TSX if _BRIDGE_TSX.exists() else _ROOT_TSX
 EVERYTHING_SERVER = {
     "type": "stdio",
     "key": "everything",

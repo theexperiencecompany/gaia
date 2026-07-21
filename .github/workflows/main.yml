@@ -16,7 +16,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  DAGGER_VERSION: "0.20.3"
   NX_NO_CLOUD: "true"
 
 jobs:
@@ -64,16 +63,21 @@ jobs:
       - name: Detect affected projects
         id: affected
         run: |
+          # Fail loud: a broken nx invocation must fail this job, not silently
+          # produce an empty project list (which would skip every downstream
+          # lane and turn the quality gate green on an unchecked PR).
+          set -euo pipefail
+
           # nx show projects may output JSON arrays or one-per-line depending on version/env.
           # Normalize both formats to comma-separated values.
           normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            PY=$(npx nx show projects --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
-            TS=$(npx nx show projects --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
+            PY=$(npx nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(npx nx show projects --projects 'tag:scope:typescript' | normalize)
           else
-            PY=$(npx nx show projects --affected --projects 'tag:scope:python' 2>/dev/null | normalize || echo "")
-            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' 2>/dev/null | normalize || echo "")
+            PY=$(npx nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' | normalize)
           fi
 
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
@@ -84,46 +88,12 @@ jobs:
           echo "Affected Python:     $PY"
           echo "Affected TypeScript: $TS"
 
-  # --- Static checks: Python (runner-native) ------------------------------
-  static-python:
-    needs: [detect]
-    if: needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pip install --break-system-packages uv
-      - name: Sync Python deps
-        run: uv sync --frozen --package gaia --group backend --group dev
-      - name: Restore mypy cache
-        uses: actions/cache@v4
-        with:
-          path: apps/api/.mypy_cache
-          key: mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-${{ hashFiles('apps/api/app/**/*.py') }}
-          restore-keys: |
-            mypy-${{ runner.os }}-${{ hashFiles('pyproject.toml', 'uv.lock') }}-
-            mypy-${{ runner.os }}-
-      - name: Ruff lint
-        run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
-      - name: Custom Python lints
-        run: python3 tools/lints/run.py apps/api/app
-      - name: mypy
-        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.python_projects }} --parallel=3
-
-  # --- Static checks: TypeScript (runner-native) --------------------------
-  static-typescript:
-    needs: [detect]
-    if: needs.detect.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - name: Biome lint
-        run: npx nx run-many -t lint -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
-      - name: TypeScript type-check
-        run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+  # Static checks (ruff, mypy, custom Python lints, Biome, tsc) and dead-code
+  # analysis deliberately do NOT run here: every one of them is an enforced
+  # lane in code-quality.yml, which runs on the same PR/push events. Keeping a
+  # second copy here doubled the runner cost of every PR without adding any
+  # enforcement. This workflow owns correctness (build + tests); code hygiene
+  # lives in code-quality.yml.
 
   # --- Build (runner-native, typescript only) -----------------------------
   build:
@@ -139,7 +109,13 @@ jobs:
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
 
-  # --- Test: Python (Dagger -- needs service containers) ------------------
+  # --- Test: Python (runner-native + live service containers) -------------
+  # Runs pytest directly on the runner against the same five services the
+  # Dagger harness provides (`dagger call test-python` remains the local
+  # equivalent). Runner-native because the suite itself takes ~2.5 min while
+  # rebuilding the Dagger environment from scratch on an ephemeral runner cost
+  # ~5 min per run — and pytest's exit code now propagates directly, with no
+  # session-cleanup workarounds.
   test-python:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
@@ -147,47 +123,23 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: docker/setup-buildx-action@v3
-      - name: Install Dagger CLI
-        run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh \
-            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
-          sudo mv ./bin/dagger /usr/local/bin/dagger
-          dagger version
-      - name: Pre-pull Dagger engine
-        # The engine image pull off the public registry is intermittently flaky
-        # ('start engine: failed to pull image' -> exit 254 before tests run).
-        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
-        run: |
-          for attempt in 1 2 3; do
-            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
-            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
-            sleep $((attempt * 10))
-          done
-          echo "::error::Dagger engine image pull failed after 3 attempts"
-          exit 1
+      - uses: ./.github/actions/setup-python-test-env
       - name: Run Python tests
-        timeout-minutes: 18
+        working-directory: apps/api
         env:
-          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        run: |
-          set +e
-          dagger --silent call test-python 2>&1 | tee /tmp/dagger-test.log
-          # PIPESTATUS[0] is dagger's exit; $? would be tee's (always 0) and mask failures.
-          CODE=${PIPESTATUS[0]}
-          if [ "$CODE" -ne 0 ]; then
-            # pytest emits its real exit code as `GAIA_PYTEST_EXIT=0` (final line)
-            # only when it actually passed. A non-zero CLI exit is safe to ignore
-            # ONLY then — that's a Dagger session-cleanup timeout after success.
-            # Test failures, worker crashes, and interrupted runs lack the marker.
-            if grep -q "GAIA_PYTEST_EXIT=0" /tmp/dagger-test.log; then
-              echo "pytest passed (exit 0); ignoring Dagger session-cleanup non-zero exit."
-              exit 0
-            fi
-            exit "$CODE"
-          fi
+          ENV: test
+          USE_REAL_SERVICES: "1"
+          DATABASE_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
+          POSTGRES_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
+          REDIS_URL: redis://localhost:6379/0
+          MONGODB_URL: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
+          MONGO_DB: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+        run: >-
+          uv run --frozen pytest -n auto -m 'not composio'
+          --tb=short -q --override-ini=addopts=--strict-markers
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -202,22 +154,6 @@ jobs:
         run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           ENV: test
-
-  # --- Dead code analysis (runner-native) ---------------------------------
-  dead-code:
-    needs: [detect]
-    if: needs.detect.outputs.has_python == 'true' || needs.detect.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - run: pip install --break-system-packages vulture
-      - name: Dead code check
-        shell: bash
-        run: |
-          export PATH="/home/runner/.local/bin:$PATH"
-          bash scripts/dead-code-check.sh
 
   # --- Changelog sync check (always) --------------------------------------
   changelog-sync:
@@ -293,58 +229,34 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: docker/setup-buildx-action@v3
-      - name: Install Dagger CLI
-        run: |
-          curl -fsSL https://dl.dagger.io/dagger/install.sh \
-            | DAGGER_VERSION=${{ env.DAGGER_VERSION }} sh
-          sudo mv ./bin/dagger /usr/local/bin/dagger
-          dagger version
-      - name: Pre-pull Dagger engine
-        # The engine image pull off the public registry is intermittently flaky
-        # ('start engine: failed to pull image' -> exit 254 before tests run).
-        # Pre-pull with bounded retries so a transient blip doesn't redden CI.
-        run: |
-          for attempt in 1 2 3; do
-            docker pull "registry.dagger.io/engine:v${{ env.DAGGER_VERSION }}" && exit 0
-            echo "engine pull attempt ${attempt} failed; retrying in $((attempt * 10))s"
-            sleep $((attempt * 10))
-          done
-          echo "::error::Dagger engine image pull failed after 3 attempts"
-          exit 1
+      - uses: ./.github/actions/setup-python-test-env
       - name: Run coverage
-        timeout-minutes: 28
+        working-directory: apps/api
         env:
-          DAGGER_CLOUD_TOKEN: ${{ secrets.DAGGER_CLOUD_TOKEN }}
-        run: |
-          set +e
-          dagger --silent call test-python-coverage 2>&1 | tee /tmp/dagger-coverage.log
-          # PIPESTATUS[0] is dagger's exit; $? would be tee's (always 0) and mask failures.
-          CODE=${PIPESTATUS[0]}
-          if [ "$CODE" -ne 0 ]; then
-            # Same contract as test-python: ignore a non-zero CLI exit only when
-            # pytest itself passed (GAIA_PYTEST_EXIT=0). A coverage shortfall makes
-            # pytest exit non-zero, so the marker is absent and the job fails.
-            if grep -q "GAIA_PYTEST_EXIT=0" /tmp/dagger-coverage.log; then
-              echo "pytest passed (exit 0); ignoring Dagger session-cleanup non-zero exit."
-              exit 0
-            fi
-            exit "$CODE"
-          fi
+          ENV: test
+          USE_REAL_SERVICES: "1"
+          DATABASE_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
+          POSTGRES_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
+          REDIS_URL: redis://localhost:6379/0
+          MONGODB_URL: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
+          MONGO_DB: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
+          CHROMADB_HOST: localhost
+          CHROMADB_PORT: "8000"
+          RABBITMQ_URL: amqp://guest:guest@localhost/
+        run: >-
+          uv run --frozen pytest -n auto -m 'not composio' --tb=short -q
+          --cov=app --cov-report=term-missing --cov-fail-under=80
+          --override-ini=addopts=--strict-markers
 
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     if: always()
     needs:
       - detect
-      - static-python
-      - static-typescript
       - build
       - test-python
       - test-typescript
-      - dead-code
+      # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking)
       # coverage deliberately excluded (master-only, non-blocking)
@@ -355,21 +267,15 @@ jobs:
         run: |
           echo "Job results:"
           echo "  detect:             ${{ needs.detect.result }}"
-          echo "  static-python:      ${{ needs.static-python.result }}"
-          echo "  static-typescript:  ${{ needs.static-typescript.result }}"
           echo "  build:              ${{ needs.build.result }}"
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
-          echo "  dead-code:          ${{ needs.dead-code.result }}"
 
           for r in \
             "${{ needs.detect.result }}" \
-            "${{ needs.static-python.result }}" \
-            "${{ needs.static-typescript.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
-            "${{ needs.test-typescript.result }}" \
-            "${{ needs.dead-code.result }}"; do
+            "${{ needs.test-typescript.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1
@@ -380,8 +286,8 @@ jobs:
   # --- Trigger Docker build (master only) ---------------------------------
   # always() is required to suppress the implicit success() check, which walks
   # the transitive needs graph and returns false when any ancestor lane
-  # (e.g. static-typescript / build / test-typescript on a Python-only change)
-  # was skipped — even though quality-gate itself succeeded.
+  # (e.g. build / test-typescript on a Python-only change) was skipped —
+  # even though quality-gate itself succeeded.
   trigger-build:
     needs: [quality-gate]
     if: ${{ always() && needs.quality-gate.result == 'success' && github.ref == 'refs/heads/master' }}
