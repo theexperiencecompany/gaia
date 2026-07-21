@@ -113,7 +113,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/triggers/handlers/notion.py",
         "services/triggers/handlers/slack.py",
         "services/triggers/handlers/todoist.py",
-        "services/usage_service.py",
         "services/user_service.py",
         "services/voice_service.py",
         "services/workflow/execution_service.py",
