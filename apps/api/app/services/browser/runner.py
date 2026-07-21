@@ -13,6 +13,7 @@ Redis, or bots.
 """
 
 import asyncio
+import base64
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -35,6 +36,7 @@ from app.schemas.browser import (
 from app.services.browser.classify import classify_step
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.policy import resolve_strategy
+from app.services.browser.screenshots import upload_step_screenshot
 from app.services.browser.session import SteelBrowserSession
 from app.services.browser.tools import build_browser_tools
 from shared.py.wide_events import log
@@ -60,6 +62,7 @@ class BrowserTaskRunner:
         self,
         *,
         session: SteelBrowserSession,
+        conversation_id: str,
         llm: Any,
         emit: EmitFn,
         request_handoff: RequestHandoffFn,
@@ -73,6 +76,7 @@ class BrowserTaskRunner:
         autonomous_override: bool | None = None,
     ) -> None:
         self._session = session
+        self._conversation_id = conversation_id
         self._llm = llm
         self._emit = emit
         self._request_handoff = request_handoff
@@ -198,7 +202,7 @@ class BrowserTaskRunner:
         )
         action_names, action_detail = _summarize_actions(agent_output)
         url = getattr(browser_state_summary, "url", None)
-        screenshot = getattr(browser_state_summary, "screenshot", None)
+        raw_screenshot = getattr(browser_state_summary, "screenshot", None)
 
         await self._emit(
             BrowserStepSnapshot(
@@ -207,11 +211,7 @@ class BrowserTaskRunner:
                 action=action_detail or None,
                 url=url,
                 title=getattr(browser_state_summary, "title", None),
-                screenshot=(
-                    f"data:image/png;base64,{screenshot}"
-                    if screenshot and self._stream_screenshots
-                    else None
-                ),
+                screenshot=await self._render_screenshot(raw_screenshot, n_steps),
             )
         )
 
@@ -245,6 +245,18 @@ class BrowserTaskRunner:
         else:
             log.info(f"{LogTag.AGENT} Browser step {n_steps} handoff ended: {status.value}.")
         raise BrowserHandoffCancelled(status.value)
+
+    async def _render_screenshot(self, raw_b64: str | None, index: int) -> str | None:
+        """A step frame as a signed CDN URL (persisted), or an inline data URL as
+        a dev fallback when the CDN is unconfigured. ``None`` when off/absent."""
+        if not raw_b64 or not self._stream_screenshots:
+            return None
+        try:
+            png = base64.b64decode(raw_b64)
+        except (ValueError, TypeError):
+            return None
+        url = await upload_step_screenshot(png, self._conversation_id, index)
+        return url or f"data:image/png;base64,{raw_b64}"
 
     async def _finish(
         self, status: BrowserSessionStatus, success: bool, summary: str

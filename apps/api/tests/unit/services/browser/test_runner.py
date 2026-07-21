@@ -82,8 +82,12 @@ class FakeAgent:
 
 @pytest.fixture
 def patch_browser(monkeypatch):
+    from unittest.mock import AsyncMock
+
     monkeypatch.setattr(browser_use, "Agent", FakeAgent)
     monkeypatch.setattr(browser_use, "Browser", lambda **kwargs: object())
+    # CDN off by default → screenshots fall back to inline data URLs.
+    monkeypatch.setattr(runner_mod, "upload_step_screenshot", AsyncMock(return_value=None))
     FakeAgent.script = []
     FakeAgent.history = _History()
 
@@ -101,6 +105,7 @@ def _session() -> SteelBrowserSession:
 def _make_runner(*, emit, request_handoff=None, is_cancelled=None, task_timeout=30):
     return BrowserTaskRunner(
         session=_session(),
+        conversation_id="c1",
         llm=object(),
         emit=emit,
         request_handoff=request_handoff or AsyncMock(return_value=HandoffStatus.COMPLETED),
@@ -198,6 +203,23 @@ async def test_happy_path_emits_steps_and_result(patch_browser, monkeypatch):
     assert result.status == BrowserSessionStatus.COMPLETED
     step = next(e for e in events if e.kind == BrowserEventKind.STEP)
     assert step.screenshot.startswith("data:image/png;base64,")
+
+
+async def test_screenshot_uses_cdn_url_when_available(patch_browser, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    _safe(monkeypatch)
+    monkeypatch.setattr(
+        runner_mod,
+        "upload_step_screenshot",
+        AsyncMock(return_value="https://cdn.example.com/browser_steps/c1/step_1.png?sig=abc"),
+    )
+    FakeAgent.script = [{"goal": "Open", "actions": [("go_to_url", {"url": "x"})]}]
+    events, emit = _collector()
+    await _make_runner(emit=emit).run("x")
+
+    step = next(e for e in events if e.kind == BrowserEventKind.STEP)
+    assert step.screenshot.startswith("https://cdn.example.com/")
 
 
 async def test_handoff_completed_marks_completed(patch_browser, monkeypatch):
