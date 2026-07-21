@@ -63,21 +63,19 @@ jobs:
       - name: Detect affected projects
         id: affected
         run: |
-          # Fail loud: a broken nx invocation must fail this job, not silently
-          # produce an empty project list (which would skip every downstream
-          # lane and turn the quality gate green on an unchecked PR).
+          # Fail loud: an nx error must fail this job, not yield an empty
+          # affected list that green-lights an unchecked PR.
           set -euo pipefail
 
-          # nx show projects may output JSON arrays or one-per-line depending on version/env.
-          # Normalize both formats to comma-separated values.
+          # nx may print JSON arrays or one-per-line; normalize to CSV.
           normalize() { tr -d '[]"' | tr -s ' \n' ',' | sed 's/^,//; s/,$//'; }
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            PY=$(npx nx show projects --projects 'tag:scope:python' | normalize)
-            TS=$(npx nx show projects --projects 'tag:scope:typescript' | normalize)
+            PY=$(pnpm exec nx show projects --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --projects 'tag:scope:typescript' | normalize)
           else
-            PY=$(npx nx show projects --affected --projects 'tag:scope:python' | normalize)
-            TS=$(npx nx show projects --affected --projects 'tag:scope:typescript' | normalize)
+            PY=$(pnpm exec nx show projects --affected --projects 'tag:scope:python' | normalize)
+            TS=$(pnpm exec nx show projects --affected --projects 'tag:scope:typescript' | normalize)
           fi
 
           echo "python_projects=$PY" >> "$GITHUB_OUTPUT"
@@ -88,12 +86,8 @@ jobs:
           echo "Affected Python:     $PY"
           echo "Affected TypeScript: $TS"
 
-  # Static checks (ruff, mypy, custom Python lints, Biome, tsc) and dead-code
-  # analysis deliberately do NOT run here: every one of them is an enforced
-  # lane in code-quality.yml, which runs on the same PR/push events. Keeping a
-  # second copy here doubled the runner cost of every PR without adding any
-  # enforcement. This workflow owns correctness (build + tests); code hygiene
-  # lives in code-quality.yml.
+  # Static checks and dead code live in code-quality.yml (enforced lanes on
+  # the same events) — never duplicate them here.
 
   # --- Build (runner-native, typescript only) -----------------------------
   build:
@@ -109,17 +103,14 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
         run: |
           echo "::group::nx build output"
-          npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+          pnpm exec nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
           echo "::endgroup::"
           echo "Build: OK (${{ needs.detect.outputs.typescript_projects }})"
 
   # --- Test: Python (runner-native + live service containers) -------------
-  # Runs pytest directly on the runner against the same five services the
-  # Dagger harness provides (`dagger call test-python` remains the local
-  # equivalent). Runner-native because the suite itself takes ~2.5 min while
-  # rebuilding the Dagger environment from scratch on an ephemeral runner cost
-  # ~5 min per run — and pytest's exit code now propagates directly, with no
-  # session-cleanup workarounds.
+  # Same service topology as `dagger call test-python` (the local harness),
+  # run directly on the runner — rebuilding the Dagger env cold cost ~5 min
+  # per run for a ~2.5 min suite.
   test-python:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true'
@@ -141,9 +132,7 @@ jobs:
           CHROMADB_HOST: localhost
           CHROMADB_PORT: "8000"
           RABBITMQ_URL: amqp://guest:guest@localhost/
-        # No ::group:: around pytest: on failure the tracebacks and short
-        # summary ARE the signal and must be visible without un-collapsing.
-        # -q keeps the pass case to progress dots + a one-line summary.
+        # No ::group:: — failure tracebacks must be visible without un-collapsing.
         run: |
           uv run --frozen pytest -n auto -m 'not composio' \
             --tb=short -q --override-ini=addopts=--strict-markers
@@ -163,7 +152,7 @@ jobs:
           ENV: test
         run: |
           echo "::group::vitest output"
-          npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+          pnpm exec nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
           echo "::endgroup::"
           echo "TypeScript tests: OK (projects with a test target among: ${{ needs.detect.outputs.typescript_projects }})"
 

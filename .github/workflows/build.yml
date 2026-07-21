@@ -87,7 +87,7 @@ jobs:
           # yield an empty list (which would skip image builds and deploys).
           set -euo pipefail
           # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(npx nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
+          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
 
           echo "Affected projects:"
           echo "$AFFECTED"
@@ -210,7 +210,7 @@ jobs:
           # yield an empty list (which would skip the web image build).
           set -euo pipefail
           # nx may output JSON arrays or one-per-line; normalize to newline-separated.
-          AFFECTED="$(npx nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
+          AFFECTED="$(pnpm exec nx show projects --affected | tr -d '[]"' | tr ',' '\n' | sed '/^$/d')"
           if echo "$AFFECTED" | grep -qx "web"; then
             echo "web=true" >> $GITHUB_OUTPUT
           else

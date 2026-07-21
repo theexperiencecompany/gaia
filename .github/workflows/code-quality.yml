@@ -30,12 +30,8 @@ concurrency:
 
 jobs:
   # --- Change detection (no toolchain install) -----------------------------
-  # One cheap job decides which language lanes are relevant so a TS-only PR
-  # never boots the five Python lanes (and vice versa). Each lane still
-  # re-scopes itself to the exact changed files; this gate only avoids paying
-  # checkout + pnpm/uv setup on runners that would conclude "nothing to do".
-  # On push/workflow_dispatch changed-files.sh signals __FULL__ and every lane
-  # runs, exactly as before.
+  # Skips whole language lanes a PR doesn't touch; lanes still self-scope to
+  # exact changed files. Push/dispatch → __FULL__ → everything runs.
   changes:
     name: Detect changed languages
     runs-on: ubuntu-latest
@@ -51,15 +47,9 @@ jobs:
         id: detect
         run: |
           set -euo pipefail
-          # toml/lock cover pyproject.toml + uv.lock (dependency updates);
-          # json/yaml cover package.json, tsconfig, pnpm-lock/workspace.
-          # Superset on purpose: a lane that runs and finds no relevant files
-          # still self-skips — this gate must only ever skip lanes that would
-          # have skipped themselves anyway.
-          #
-          # No `| head` here: closing the pipe early SIGPIPEs the script's
-          # printf loop and fails it (exit 141). Capture everything, then take
-          # the first line in bash.
+          # Deliberate superset (toml/lock/json/yaml include dep manifests):
+          # lanes still self-skip when nothing relevant changed.
+          # No `| head` — closing the pipe early SIGPIPEs the script (exit 141).
           py_files=$(scripts/ci/changed-files.sh py toml lock)
           ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
           py=${py_files%%$'\n'*}
@@ -598,9 +588,7 @@ jobs:
           PYTHON_SECURITY: ${{ needs.python-security.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
         run: |
-          # The change-detection job is the foundation every lane's skip
-          # decision rests on — if it failed, "skipped" lanes are meaningless
-          # and the gate must not pass.
+          # Lane skips are only trustworthy if change detection succeeded.
           if [[ "$CHANGES" != "success" ]]; then
             echo "::error::change detection failed (result: $CHANGES) — cannot trust lane skips"
             exit 1
@@ -658,8 +646,7 @@ jobs:
           failed=0
           for lane in "${ENFORCED[@]}"; do
             r="${RESULT[$lane]}"
-            # "skipped" passes: the changes job (verified successful above)
-            # proved the lane's language wasn't touched by this PR.
+            # skipped = changes proved the lane's language wasn't touched
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then
               echo "::error::enforced lane '$lane' did not pass (result: $r)"
               failed=$((failed + 1))
