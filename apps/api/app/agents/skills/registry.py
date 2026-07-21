@@ -1,34 +1,28 @@
 """
-Skill Registry - MongoDB-backed CRUD for installed skills.
+Skill Registry - repository-backed CRUD for installed skills.
 
-Tracks which skills are installed per user, their VFS paths,
-and whether they're enabled/disabled. The actual skill content
-lives in VFS; this collection stores the index.
+Tracks which skills are installed per user, their VFS paths, and whether they're
+enabled/disabled. The actual skill content lives in VFS; the ``skills`` collection
+stores the index (see ``SkillsRepository``). System skills use user_id="system".
 
-Flat schema: all skill fields (name, description, target, etc.) are
-top-level document fields. System skills use user_id="system".
-
-Caching: get_skills_for_agent is cached in Redis (12h TTL).
-Write operations (install/uninstall/enable/disable) invalidate
-both the per-agent user skills cache and the composed skills text cache.
+Caching: get_skills_for_agent is cached in Redis (12h TTL). Write operations
+(install/uninstall/enable/disable) invalidate both the per-agent user skills cache
+and the composed skills text cache.
 """
 
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from pymongo import ReturnDocument
-
-from app.agents.skills.models import Skill, SkillSource
+from app.agents.skills.models import Skill, SkillSource, SkillUpdate
 from app.constants.cache import (
     USER_SKILLS_CACHE_KEY,
     USER_SKILLS_CACHE_TTL,
 )
 from app.constants.log_tags import LogTag
+from app.db.repositories.skills import skill_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from shared.py.wide_events import SkillContext, log
-
-COLLECTION_NAME = "skills"
 
 # Invalidation patterns for write operations — clears all agent variants for the user
 _SKILLS_INVALIDATION_PATTERNS = [
@@ -38,33 +32,6 @@ _SKILLS_INVALIDATION_PATTERNS = [
     # listing would stay stale for the full TTL after an install/uninstall.
     "skills:text:v2:{user_id}:*",
 ]
-
-
-def _get_collection():
-    from app.db.mongodb.collections import _get_collection
-
-    return _get_collection(COLLECTION_NAME)
-
-
-def _skill_to_doc(skill: Skill) -> dict:
-    """Convert Skill to MongoDB document (flat schema)."""
-    doc = skill.model_dump(exclude={"id"})
-    if skill.id:
-        doc["_id"] = skill.id
-    return doc
-
-
-def _doc_to_skill(doc: dict) -> Skill:
-    """Convert MongoDB document to Skill (flat schema)."""
-    doc_copy = dict(doc)
-    doc_copy["id"] = str(doc_copy.pop("_id"))
-    doc_copy["source"] = SkillSource(doc_copy["source"])
-    # Handle datetime strings
-    for field in ("installed_at", "updated_at"):
-        val = doc_copy.get(field)
-        if isinstance(val, str):
-            doc_copy[field] = datetime.fromisoformat(val)
-    return Skill(**doc_copy)
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
@@ -85,38 +52,16 @@ async def install_skill(
 ) -> Skill:
     """Register a newly installed skill in the registry.
 
-    Args:
-        user_id: Owner user ID (or "system" for system skills)
-        name: Skill name (kebab-case)
-        description: What the skill does
-        target: Target agent (executor, gmail_agent, github_agent, etc.)
-        vfs_path: VFS directory path where skill is stored
-        source: How it was installed (github, inline, etc.)
-        source_url: Original source URL for updates
-        body_content: Cached SKILL.md markdown body
-        files: List of files in the skill folder
-        license: License name or reference
-        compatibility: Environment requirements
-        metadata: Arbitrary key-value metadata
-        allowed_tools: Pre-approved tools
-
-    Returns:
-        The created Skill with assigned ID
+    Returns the created Skill with its assigned ID. Raises ``ValueError`` if a
+    skill with the same name already exists for the same target.
     """
     log.set(
         user_id=user_id,
         skill=SkillContext(operation="install", skill_name=name),
     )
-    collection = _get_collection()
 
     # Check for duplicate by name + user_id + target
-    existing = await collection.find_one(
-        {
-            "user_id": user_id,
-            "name": name,
-            "target": target,
-        }
-    )
+    existing = await skill_repository.find_by_name(user_id, name, target)
     if existing:
         raise ValueError(
             f"Skill '{name}' already installed for target "
@@ -142,8 +87,7 @@ async def install_skill(
         installed_at=datetime.now(UTC),
     )
 
-    doc = _skill_to_doc(skill)
-    await collection.insert_one(doc)
+    await skill_repository.create(skill)
 
     log.info(
         f"{LogTag.SKILLS} Installed '{name}' for user {user_id} (target={target}, source={source.value})"
@@ -153,45 +97,25 @@ async def install_skill(
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
 async def uninstall_skill(user_id: str, skill_id: str) -> bool:
-    """Remove a skill from the registry.
-
-    Does NOT delete VFS files — caller is responsible for cleanup.
-
-    Args:
-        user_id: Owner user ID
-        skill_id: Skill document ID
-
-    Returns:
-        True if deleted, False if not found
-    """
+    """Remove a skill from the registry. Does NOT delete VFS files — caller cleans up."""
     log.set(user_id=user_id, skill=SkillContext(operation="delete", skill_id=skill_id))
-    collection = _get_collection()
-    result = await collection.delete_one({"_id": skill_id, "user_id": user_id})
-    deleted = result.deleted_count > 0
+    deleted = await skill_repository.delete_for_user(skill_id, user_id)
     log.set_ns("skill", success=deleted)
     if deleted:
         log.info(f"{LogTag.SKILLS} Uninstalled skill {skill_id} for user {user_id}")
-        return True
-    return False
+    return deleted
 
 
 async def get_skill(user_id: str, skill_id: str) -> Skill | None:
     """Get a single installed skill by ID."""
-    collection = _get_collection()
-    doc = await collection.find_one({"_id": skill_id, "user_id": user_id})
-    return _doc_to_skill(doc) if doc else None
+    return await skill_repository.get_for_user(skill_id, user_id)
 
 
 async def get_skill_by_name(
     user_id: str, skill_name: str, target: str | None = None
 ) -> Skill | None:
     """Get an installed skill by name (and optionally target)."""
-    collection = _get_collection()
-    query: dict = {"user_id": user_id, "name": skill_name}
-    if target:
-        query["target"] = target
-    doc = await collection.find_one(query)
-    return _doc_to_skill(doc) if doc else None
+    return await skill_repository.find_by_name(user_id, skill_name, target)
 
 
 async def list_skills(
@@ -199,62 +123,20 @@ async def list_skills(
     target: str | None = None,
     enabled_only: bool = False,
 ) -> list[Skill]:
-    """List installed skills for a user.
-
-    Args:
-        user_id: Owner user ID
-        target: Filter by target (executor, subagent agent_name)
-        enabled_only: Only return enabled skills
-
-    Returns:
-        List of installed skills
-    """
-    collection = _get_collection()
-    query: dict = {"user_id": user_id}
-    if target:
-        query["target"] = target
-    if enabled_only:
-        query["enabled"] = True
-
-    cursor = collection.find(query).sort("installed_at", -1)
-    docs = await cursor.to_list(length=500)
-    return [_doc_to_skill(doc) for doc in docs]
+    """List installed skills for a user (optionally by target / enabled-only)."""
+    return await skill_repository.list_for_user(user_id, target=target, enabled_only=enabled_only)
 
 
 @Cacheable(key_pattern=USER_SKILLS_CACHE_KEY, ttl=USER_SKILLS_CACHE_TTL)
 async def get_skills_for_agent(user_id: str, agent_name: str) -> list[Skill]:
     """Get all enabled skills available to a specific agent.
 
-    Returns skills where target matches the agent_name exactly.
-    Includes both user skills (user_id matches) and system skills
-    (user_id="system") in a single unified query.
-
-    Results are cached in Redis (12h TTL). Invalidated when skills are
-    installed/uninstalled/enabled/disabled.
-
-    Args:
-        user_id: Owner user ID
-        agent_name: Agent name as-is from SubAgentConfig.agent_name
-                    (executor, gmail_agent, github_agent, etc.)
-
-    Returns:
-        List of enabled skills available to this agent
+    Returns skills where target matches the agent_name exactly. Includes both
+    user skills and system skills (user_id="system"). Cached in Redis (12h TTL),
+    invalidated on install/uninstall/enable/disable.
     """
     log.set(user_id=user_id, agent_name=agent_name, skill=SkillContext(operation="get"))
-    collection = _get_collection()
-
-    query = {
-        "enabled": True,
-        "target": agent_name,
-        "$or": [
-            {"user_id": user_id},
-            {"user_id": "system"},
-        ],
-    }
-
-    cursor = collection.find(query).sort("installed_at", -1)
-    docs = await cursor.to_list(length=500)
-    skills = [_doc_to_skill(doc) for doc in docs]
+    skills = await skill_repository.for_agent(user_id, agent_name)
     log.set_ns("skill", result_count=len(skills))
     return skills
 
@@ -262,33 +144,13 @@ async def get_skills_for_agent(user_id: str, agent_name: str) -> list[Skill]:
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
 async def enable_skill(user_id: str, skill_id: str) -> bool:
     """Enable a skill."""
-    collection = _get_collection()
-    result = await collection.update_one(
-        {"_id": skill_id, "user_id": user_id},
-        {
-            "$set": {
-                "enabled": True,
-                "updated_at": datetime.now(UTC).isoformat(),
-            }
-        },
-    )
-    return result.modified_count > 0
+    return await skill_repository.set_enabled(user_id, skill_id, True)
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
 async def disable_skill(user_id: str, skill_id: str) -> bool:
     """Disable a skill without uninstalling."""
-    collection = _get_collection()
-    result = await collection.update_one(
-        {"_id": skill_id, "user_id": user_id},
-        {
-            "$set": {
-                "enabled": False,
-                "updated_at": datetime.now(UTC).isoformat(),
-            }
-        },
-    )
-    return result.modified_count > 0
+    return await skill_repository.set_enabled(user_id, skill_id, False)
 
 
 @CacheInvalidator(key_patterns=_SKILLS_INVALIDATION_PATTERNS)
@@ -299,15 +161,8 @@ async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> S
     edit their own skills. Returns None if no matching skill exists.
     """
     log.set(user_id=user_id, skill=SkillContext(skill_id=skill_id))
-    collection = _get_collection()
-    updates = {**fields, "updated_at": datetime.now(UTC).isoformat()}
-    doc = await collection.find_one_and_update(
-        {"_id": skill_id, "user_id": user_id},
-        {"$set": updates},
-        return_document=ReturnDocument.AFTER,
-    )
-    log.set_ns("skill", success=doc is not None)
-    if not doc:
-        return None
-    log.info(f"{LogTag.SKILLS} Updated skill {skill_id} for user {user_id}")
-    return _doc_to_skill(doc)
+    updated = await skill_repository.patch(user_id, skill_id, update=SkillUpdate(**fields))
+    log.set_ns("skill", success=updated is not None)
+    if updated is not None:
+        log.info(f"{LogTag.SKILLS} Updated skill {skill_id} for user {user_id}")
+    return updated

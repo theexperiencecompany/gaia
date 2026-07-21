@@ -48,7 +48,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/core/subagents/handoff_tools.py",
         "agents/core/subagents/provider_subagents.py",
         "agents/memory/email_processor.py",
-        "agents/skills/registry.py",
         "agents/tools/integration_tool.py",
         # api/
         "api/v1/endpoints/integrations/config.py",
