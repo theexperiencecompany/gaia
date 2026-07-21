@@ -181,6 +181,22 @@ class TestIntegrationsRepository:
         assert await repo.delete_custom(iid, owner) is True
         assert await repo.get(iid) is None
 
+    async def test_find_by_ids_any_source(self, repo):
+        a = f"any-a-{uuid.uuid4().hex}"
+        b = f"any-b-{uuid.uuid4().hex}"
+        await repo.create(_integration(a, "A", source="custom", is_public=False))
+        await repo.create(_integration(b, "B", source="platform", is_public=True))
+        found = await repo.find_by_ids([a, b, f"missing-{uuid.uuid4().hex}"])
+        assert {i.integration_id for i in found} == {a, b}
+
+    async def test_heal_top_level_auth(self, repo):
+        iid = f"heal-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Heal", requires_auth=False, auth_type=None))
+        await repo.heal_top_level_auth(iid, True, "oauth")
+        got = await repo.get(iid)
+        assert got.requires_auth is True
+        assert got.auth_type == "oauth"
+
     async def test_find_custom_by_ids_filters_source(self, repo):
         custom_id = f"c-{uuid.uuid4().hex}"
         platform_id = f"p-{uuid.uuid4().hex}"

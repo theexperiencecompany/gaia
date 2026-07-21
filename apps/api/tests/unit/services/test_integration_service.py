@@ -162,11 +162,9 @@ def _make_custom_integration(**kwargs: Any) -> Integration:
 class TestIntegrationResolverResolve:
     """Tests for IntegrationResolver.resolve()."""
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_integration_with_mcp_config(
-        self, mock_get_by_id, mock_collection
-    ):
+    async def test_resolve_platform_integration_with_mcp_config(self, mock_get_by_id, mock_repo):
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=True, auth_type="oauth")
         oauth_int = _make_oauth_integration(id="github", managed_by="mcp", mcp_config=mcp_cfg)
         mock_get_by_id.return_value = oauth_int
@@ -181,11 +179,11 @@ class TestIntegrationResolverResolve:
         assert result.mcp_config == mcp_cfg
         assert result.platform_integration == oauth_int
         assert result.custom_doc is None
-        mock_collection.find_one.assert_not_called()
+        mock_repo.get.assert_not_called()
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_collection):
+    async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_repo):
         composio_cfg = ComposioConfig(auth_config_id="auth_123", toolkit="slack_toolkit")
         oauth_int = _make_oauth_integration(
             id="slack", managed_by="composio", composio_config=composio_cfg
@@ -199,9 +197,9 @@ class TestIntegrationResolverResolve:
         assert result.auth_type == "oauth"
         assert result.source == "platform"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_self_managed(self, mock_get_by_id, mock_collection):
+    async def test_resolve_platform_self_managed(self, mock_get_by_id, mock_repo):
         oauth_int = _make_oauth_integration(id="gcal", managed_by="self", provider="google")
         mock_get_by_id.return_value = oauth_int
 
@@ -212,9 +210,9 @@ class TestIntegrationResolverResolve:
         assert result.auth_type == "oauth"
         assert result.managed_by == "self"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_no_auth(self, mock_get_by_id, mock_collection):
+    async def test_resolve_platform_no_auth(self, mock_get_by_id, mock_repo):
         """Platform integration with no mcp, composio, or self — requires no auth."""
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=False)
         oauth_int = _make_oauth_integration(id="public-tool", managed_by="mcp", mcp_config=mcp_cfg)
@@ -226,12 +224,12 @@ class TestIntegrationResolverResolve:
         assert result.requires_auth is False
         assert result.auth_type == "none"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_integration_from_mongodb(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_integration_from_mongodb(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        custom_doc = _make_custom_doc()
-        mock_collection.find_one = AsyncMock(return_value=custom_doc)
+        integration = _make_custom_integration()
+        mock_repo.get = AsyncMock(return_value=integration)
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
@@ -240,17 +238,17 @@ class TestIntegrationResolverResolve:
         assert result.name == "Custom MCP"
         assert result.managed_by == "mcp"
         assert result.platform_integration is None
-        assert result.custom_doc == custom_doc
+        # custom_doc is the integration's model_dump (backward-compat dict).
+        assert result.custom_doc["integration_id"] == CUSTOM_INTEGRATION_ID
         assert isinstance(result.mcp_config, MCPConfig)
         assert result.mcp_config.server_url == SERVER_URL
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_integration_no_mcp_config(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_integration_no_mcp_config(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        doc = _make_custom_doc()
-        doc.pop("mcp_config")
-        mock_collection.find_one = AsyncMock(return_value=doc)
+        integration = _make_custom_integration().model_copy(update={"mcp_config": None})
+        mock_repo.get = AsyncMock(return_value=integration)
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
@@ -259,44 +257,44 @@ class TestIntegrationResolverResolve:
         assert result.requires_auth is False
         assert result.auth_type == "none"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_with_auth_mismatch_syncs(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_with_auth_mismatch_syncs(self, mock_get_by_id, mock_repo):
         """When mcp_config.requires_auth differs from doc-level, mcp_config wins and syncs."""
         mock_get_by_id.return_value = None
         doc = _make_custom_doc(requires_auth=False, auth_type="none")
         doc["mcp_config"]["requires_auth"] = True
         doc["mcp_config"]["auth_type"] = "oauth"
-        mock_collection.find_one = AsyncMock(return_value=doc)
-        mock_collection.update_one = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+        mock_repo.heal_top_level_auth = AsyncMock()
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
         assert result is not None
         assert result.requires_auth is True
         assert result.auth_type == "oauth"
-        mock_collection.update_one.assert_awaited_once()
+        mock_repo.heal_top_level_auth.assert_awaited_once()
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_sync_failure_is_non_fatal(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_sync_failure_is_non_fatal(self, mock_get_by_id, mock_repo):
         """If syncing auth mismatch fails, resolve still returns correct data."""
         mock_get_by_id.return_value = None
         doc = _make_custom_doc(requires_auth=False)
         doc["mcp_config"]["requires_auth"] = True
-        mock_collection.find_one = AsyncMock(return_value=doc)
-        mock_collection.update_one = AsyncMock(side_effect=Exception("DB write failed"))
+        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+        mock_repo.heal_top_level_auth = AsyncMock(side_effect=Exception("DB write failed"))
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
         assert result is not None
         assert result.requires_auth is True
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_not_found_returns_none(self, mock_get_by_id, mock_collection):
+    async def test_resolve_not_found_returns_none(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.get = AsyncMock(return_value=None)
 
         result = await IntegrationResolver.resolve("nonexistent")
 
@@ -672,13 +670,13 @@ def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool =
 @pytest.mark.unit
 class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
+    @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_returns_hydrated_integrations(self, mock_repo, mock_int_col, mock_users_col):
+    async def test_returns_hydrated_integrations(self, mock_repo, mock_int_repo, mock_users_col):
         mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("github")])
         # github is a platform integration resolved from the in-memory catalog,
         # so no stored integration doc and no creator lookups are needed.
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
         mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)
@@ -690,12 +688,12 @@ class TestGetUserIntegrations:
         assert result.integrations[0].integration.name == "GitHub"
 
     @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
+    @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_skips_integration_with_no_details(self, mock_repo, mock_int_col, mock_users_col):
+    async def test_skips_integration_with_no_details(self, mock_repo, mock_int_repo, mock_users_col):
         mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("deleted-int")])
         # Not in the catalog and no stored doc → _build_integration_response returns None.
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
         mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)
@@ -704,11 +702,11 @@ class TestGetUserIntegrations:
         assert result.integrations == []
 
     @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
+    @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_empty_workspace(self, mock_repo, mock_int_col, mock_users_col):
+    async def test_empty_workspace(self, mock_repo, mock_int_repo, mock_users_col):
         mock_repo.list_for_user_newest_first = AsyncMock(return_value=[])
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
         mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
 
         result = await get_user_integrations(USER_ID)

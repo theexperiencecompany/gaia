@@ -11,10 +11,10 @@ from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import (
-    integrations_collection,
     users_collection,
 )
 from app.db.redis import delete_cache
+from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
@@ -63,8 +63,8 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
     # per-integration DB round trips.
     int_docs: dict[str, dict] = {}
     if ids:
-        async for doc in integrations_collection.find({"integration_id": {"$in": ids}}):
-            int_docs[doc["integration_id"]] = doc
+        for doc_model in await integration_repository.find_by_ids(ids):
+            int_docs[doc_model.integration_id] = doc_model.model_dump()
 
     # One query for all creators referenced by the user's custom integrations.
     creator_oids = [
@@ -154,11 +154,9 @@ async def get_connected_integrations_named(user_id: str) -> list[dict[str, str]]
             unresolved.append(iid)
 
     if unresolved:
-        async for doc in integrations_collection.find(
-            {"integration_id": {"$in": unresolved}}, {"integration_id": 1, "name": 1}
-        ):
-            if name := doc.get("name"):
-                names[str(doc["integration_id"])] = name
+        for custom in await integration_repository.find_by_ids(unresolved):
+            if custom.name:
+                names[custom.integration_id] = custom.name
 
     return [{"id": iid, "name": names.get(iid, iid)} for iid in connected]
 

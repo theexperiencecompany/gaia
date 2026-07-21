@@ -128,6 +128,28 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         """Public integrations among the given ids (semantic-search hydration)."""
         return await self._find({"integration_id": {"$in": integration_ids}, "is_public": True})
 
+    async def find_by_ids(self, integration_ids: list[str]) -> list[Integration]:
+        """Integrations for the given ids, any source/visibility (workspace hydration).
+
+        Lenient: a single corrupt legacy document is skipped and logged rather than
+        blanking a user's whole integration list."""
+        return await self._find_lenient({"integration_id": {"$in": integration_ids}})
+
+    async def heal_top_level_auth(
+        self, integration_id: str, requires_auth: bool, auth_type: str
+    ) -> None:
+        """Sync the legacy top-level auth mirror to match the authoritative mcp_config.
+
+        Writes the ad-hoc ``requires_auth`` / ``auth_type`` document-root fields that
+        predate mcp_config; kept as a raw ``$set`` because they are not part of the
+        typed update surface."""
+        await self._apply_raw_update_unfetched(
+            {"integration_id": integration_id},
+            {"$set": {"requires_auth": requires_auth, "auth_type": auth_type}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=integration_id,
+        )
+
     # ---- creator-lookup aggregations (marketplace detail + community) ----
 
     @staticmethod

@@ -78,6 +78,13 @@ class Integration(MongoDocument):
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
 
+    # Legacy top-level auth mirror. mcp_config is authoritative; these duplicate
+    # its auth flags at the document root for older documents. IntegrationResolver
+    # reconciles them against mcp_config (and self-heals drift). Defaults match the
+    # historical ``.get("requires_auth", False)`` / ``.get("auth_type", "none")`` reads.
+    requires_auth: bool = False
+    auth_type: AuthType | None = None
+
     # Frontend display metadata
     tools: list[IntegrationTool] = Field(
         default_factory=list, description="Tool list for frontend display only"
