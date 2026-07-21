@@ -105,9 +105,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - name: Build
-        run: npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
+        run: |
+          echo "::group::nx build output"
+          npx nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+          echo "::endgroup::"
+          echo "Build: OK (${{ needs.detect.outputs.typescript_projects }})"
 
   # --- Test: Python (runner-native + live service containers) -------------
   # Runs pytest directly on the runner against the same five services the
@@ -137,9 +141,13 @@ jobs:
           CHROMADB_HOST: localhost
           CHROMADB_PORT: "8000"
           RABBITMQ_URL: amqp://guest:guest@localhost/
-        run: >-
-          uv run --frozen pytest -n auto -m 'not composio'
-          --tb=short -q --override-ini=addopts=--strict-markers
+        # No ::group:: around pytest: on failure the tracebacks and short
+        # summary ARE the signal and must be visible without un-collapsing.
+        # -q keeps the pass case to progress dots + a one-line summary.
+        run: |
+          uv run --frozen pytest -n auto -m 'not composio' \
+            --tb=short -q --override-ini=addopts=--strict-markers
+          echo "Python tests: OK (full suite vs live services)"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -151,9 +159,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run TypeScript tests
-        run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           ENV: test
+        run: |
+          echo "::group::vitest output"
+          npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+          echo "::endgroup::"
+          echo "TypeScript tests: OK (projects with a test target among: ${{ needs.detect.outputs.typescript_projects }})"
 
   # --- Changelog sync check (always) --------------------------------------
   changelog-sync:
