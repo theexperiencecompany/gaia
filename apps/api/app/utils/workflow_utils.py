@@ -7,7 +7,6 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.db.utils import serialize_document
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -61,43 +60,6 @@ def ensure_trigger_config_object(trigger_config: Any) -> TriggerConfig:
     if isinstance(trigger_config, dict):
         return TriggerConfig(**trigger_config)
     return trigger_config
-
-
-def transform_workflow_document(doc: dict) -> dict:
-    """Transform workflow document with trigger_config handling and status migration."""
-    transformed_doc = serialize_document(doc)
-
-    # Handle trigger_config transformation
-    if "trigger_config" in transformed_doc and isinstance(transformed_doc["trigger_config"], dict):
-        transformed_doc["trigger_config"] = ensure_trigger_config_object(
-            transformed_doc["trigger_config"]
-        )
-
-    # Backward compatibility for legacy documents.
-    if transformed_doc.get("description") is None:
-        transformed_doc["description"] = ""
-
-    # Ensure prompt exists for legacy workflows.
-    if not transformed_doc.get("prompt"):
-        transformed_doc["prompt"] = transformed_doc.get("description") or ""
-
-    # Handle legacy status values - migrate old "failed" to new enum
-    if "status" in transformed_doc:
-        old_status = transformed_doc["status"]
-        if old_status not in [
-            "scheduled",
-            "executing",
-            "completed",
-            "failed",
-            "cancelled",
-            "paused",
-        ]:
-            log.warning(
-                f"{LogTag.WORKFLOW} Unknown status '{old_status}' in workflow {doc.get('_id')}, defaulting to 'failed'"
-            )
-            transformed_doc["status"] = "failed"
-
-    return transformed_doc
 
 
 def error_response(error_code: str, message: str) -> dict:
