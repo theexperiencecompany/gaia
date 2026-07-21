@@ -103,10 +103,16 @@ TOOL_CLASSIFY_PROMPT = (
 
 # --- what a blocked call tells the agent -----------------------------------------------
 
+# "Adjust your approach" alone was ambiguous on a BARE decline (no feedback), where it
+# reads as "find another way" — the one thing a decline must not license. With feedback
+# ("send it to Alice instead") a modified action is exactly right, so the permission is
+# tied to the feedback rather than granted unconditionally.
 DENIED_TEMPLATE = (
     "The user declined to run `{tool}`. The action was NOT performed.{feedback} "
-    "Adjust your approach based on this, or ask the user what they'd like "
-    "instead. Do not retry the same call unchanged."
+    "Do not retry the same call unchanged, and do not use another tool to produce the "
+    "same effect — a decline is not an obstacle to route around. If they said what they "
+    "wanted changed, follow that; otherwise report whatever you did complete or prepare "
+    "and ask them what they would like instead."
 )
 
 # An expiry is not a dead end: the run has usually done real work before reaching the
