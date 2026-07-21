@@ -1,14 +1,12 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
 from app.db.utils import serialize_document
 from app.models.workflow_models import (
     CreateWorkflowRequest,
@@ -45,14 +43,12 @@ async def handle_workflow_error(
         deactivate=deactivate,
     )
     try:
-        update_data: dict[str, Any] = {"updated_at": datetime.now(UTC)}
-        if deactivate:
-            update_data["activated"] = False
+        # Imported lazily: workflow_utils is imported by app.services.workflow, which
+        # the repository's ChromaDB/oauth chain reaches back into — a module-level
+        # import would form a cycle.
+        from app.db.repositories.workflows import workflow_repository
 
-        await workflows_collection.find_one_and_update(
-            {"_id": workflow_id, "user_id": user_id},
-            {"$set": update_data},
-        )
+        await workflow_repository.mark_error(workflow_id, user_id, deactivate=deactivate)
         log.error(f"{LogTag.WORKFLOW} Workflow {workflow_id} error: {error}")
     except Exception as update_error:
         log.error(

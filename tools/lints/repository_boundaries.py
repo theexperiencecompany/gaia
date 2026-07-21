@@ -125,7 +125,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
-        "utils/workflow_utils.py",
         # workers/
         "workers/tasks/cleanup_tasks.py",
         "workers/tasks/maintenance_sweep_tasks.py",
