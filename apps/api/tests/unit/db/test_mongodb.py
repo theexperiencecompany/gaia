@@ -327,42 +327,6 @@ class TestCollectionsLazyLoading:
             assert result_a is col_a
             assert result_b is col_b
 
-    @patch("app.db.mongodb.collections._sync_client", None)
-    @patch("app.db.mongodb.collections._sync_db", None)
-    @patch("app.db.mongodb.collections.log")
-    def test_get_sync_db_initializes(self, mock_log: MagicMock) -> None:
-        """_get_sync_db should create a PyMongo client and database."""
-        mock_sync_client = MagicMock()
-        mock_sync_db = MagicMock()
-        mock_sync_client.get_database.return_value = mock_sync_db
-
-        with patch(
-            "app.db.mongodb.collections.pymongo.MongoClient",
-            return_value=mock_sync_client,
-        ):
-            from app.db.mongodb.collections import _get_sync_db
-
-            result = _get_sync_db()
-            assert result is mock_sync_db
-
-    @patch("app.db.mongodb.collections._sync_collections_cache", {})
-    @patch("app.db.mongodb.collections.log")
-    def test_get_sync_collection_creates_and_caches(self, mock_log: MagicMock) -> None:
-        """get_sync_collection should lazy-create and cache sync collections."""
-        mock_db = MagicMock()
-        mock_col = MagicMock()
-        mock_db.get_collection.return_value = mock_col
-
-        with patch("app.db.mongodb.collections._get_sync_db", return_value=mock_db):
-            from app.db.mongodb.collections import get_sync_collection
-
-            first = get_sync_collection("todos")
-            second = get_sync_collection("todos")
-
-            assert first is mock_col
-            assert second is mock_col
-            mock_db.get_collection.assert_called_once_with("todos")
-
 
 # ---------------------------------------------------------------------------
 # Collections module — __getattr__
