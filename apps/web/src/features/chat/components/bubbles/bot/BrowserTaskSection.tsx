@@ -16,10 +16,11 @@ import {
   StopCircleIcon,
 } from "@icons";
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useImageDialog } from "@/stores/uiStore";
 import type {
   BrowserHandoffSnapshot,
+  BrowserHandoffStatus,
   BrowserResultSnapshot,
   BrowserSensitiveCategory,
   BrowserSessionSnapshot,
@@ -127,11 +128,45 @@ function StepRow({ step }: { step: BrowserStepSnapshot }) {
   );
 }
 
+// Resolved elsewhere (chat, another device) or after a reload — server status
+// is the source of truth, so the card never sits on a stale "pending".
+const RESOLVED_META: Record<
+  Exclude<BrowserHandoffStatus, "pending">,
+  { icon: React.ComponentType<{ className?: string }>; label: string }
+> = {
+  completed: {
+    icon: CheckmarkCircle02Icon,
+    label: "Done — resuming the task.",
+  },
+  cancelled: { icon: StopCircleIcon, label: "Stopped." },
+  timeout: { icon: StopCircleIcon, label: "Timed out — the task was stopped." },
+};
+
 function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
   const [decided, setDecided] = useState<"continue" | "cancel" | null>(null);
   const [pending, setPending] = useState(false);
+  const [serverStatus, setServerStatus] = useState<BrowserHandoffStatus | null>(
+    null,
+  );
   const meta = HANDOFF_META[handoff.category] ?? HANDOFF_META.none;
   const Icon = meta.icon;
+
+  const settled = serverStatus && serverStatus !== "pending";
+
+  useEffect(() => {
+    if (decided || settled) return;
+    let active = true;
+    const poll = async () => {
+      const res = await browserApi.getHandoffStatus(handoff.handoff_id);
+      if (active && res && res.status !== "pending")
+        setServerStatus(res.status);
+    };
+    const id = setInterval(poll, 3000);
+    return () => {
+      active = false;
+      clearInterval(id);
+    };
+  }, [decided, settled, handoff.handoff_id]);
 
   const decide = async (decision: "continue" | "cancel") => {
     setPending(true);
@@ -183,6 +218,17 @@ function HandoffPrompt({ handoff }: { handoff: BrowserHandoffSnapshot }) {
           <Spinner size="sm" color="warning" />
           {decided === "continue" ? "Continuing…" : "Stopping…"}
         </div>
+      ) : serverStatus && serverStatus !== "pending" ? (
+        (() => {
+          const resolved = RESOLVED_META[serverStatus];
+          const ResolvedIcon = resolved.icon;
+          return (
+            <div className="mt-3 flex items-center gap-2 px-0.5 text-xs text-amber-200/80">
+              <ResolvedIcon className="size-4" />
+              {resolved.label}
+            </div>
+          );
+        })()
       ) : (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <Button
@@ -241,7 +287,7 @@ export default function BrowserTaskSection({ data }: BrowserTaskSectionProps) {
   );
 
   const pendingHandoff = handoffs.find((h) => h.status === "pending");
-  const status: UiStatus =
+  const status: BrowserSessionStatus =
     result?.status ??
     (pendingHandoff ? "paused" : (session?.status ?? "running"));
   const statusMeta = STATUS_META[status];

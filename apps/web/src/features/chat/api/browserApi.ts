@@ -24,4 +24,18 @@ export const browserApi = {
       { silent: true },
     );
   },
+
+  /**
+   * Current status of a handoff. The card polls this while pending so a reload,
+   * or a resolution made via chat / another device, is reflected reliably —
+   * the server (Redis) is the source of truth, not the streamed snapshot.
+   */
+  getHandoffStatus: async (
+    handoffId: string,
+  ): Promise<HandoffDecisionResponse | null> => {
+    return apiService.get<HandoffDecisionResponse>(
+      `/browser/handoffs/${handoffId}`,
+      { silent: true },
+    );
+  },
 };
