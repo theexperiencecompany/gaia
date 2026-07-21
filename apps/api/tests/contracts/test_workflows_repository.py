@@ -6,9 +6,12 @@ concurrent run against the shared test DB can't collide.
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 import uuid
 
+from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import DuplicateKeyError
 import pytest
 
@@ -508,3 +511,140 @@ class TestWorkflowsUniqueIndexSurface:
         pending = await repo.create(_workflow(is_public=True, slug=None))
         with pytest.raises(DuplicateKeyError):
             await repo.backfill_public_slug(pending.id, slug)
+
+
+@pytest.fixture
+async def seeded_creator(
+    raw_collection: AsyncIOMotorCollection,
+) -> AsyncIterator[tuple[str, dict[str, object]]]:
+    """A real user document in the shared ``gaia_test.users`` collection, keyed by a
+    unique ObjectId so a concurrent run can't collide, dropped on teardown.
+
+    The ``creator_lookup_stage`` ``$lookup`` (``from: "users"``) resolves against
+    this collection server-side — the patched repository accessor only redirects
+    the ``workflows`` handle, so the join reads the genuine ``users`` collection.
+    Returns the creator's string id (what a workflow stores in ``created_by``) and
+    the seeded document.
+    """
+    users = raw_collection.database["users"]
+    oid = ObjectId()
+    doc: dict[str, object] = {
+        "_id": oid,
+        "name": f"Creator {uuid.uuid4().hex[:6]}",
+        "email": f"{uuid.uuid4().hex[:8]}@example.com",
+        "picture": "https://example.com/avatar.png",
+    }
+    await users.insert_one(doc)
+    try:
+        yield str(oid), doc
+    finally:
+        await users.delete_one({"_id": oid})
+
+
+class TestWorkflowsPublicMarketplaceReads:
+    async def test_get_public_with_creator_by_id_and_slug(self, repo, seeded_creator):
+        creator_id, creator = seeded_creator
+        slug = _uid("slug")
+        wf = await repo.create(
+            _workflow(is_public=True, slug=slug, created_by=creator_id, title="Public One")
+        )
+
+        by_id = await repo.get_public_with_creator(wf.id, by_slug=False)
+        assert by_id is not None
+        assert by_id.id == wf.id and by_id.title == "Public One"
+        # The creator $lookup resolved the real user (assert membership — the shared
+        # users collection may hold unrelated rows, but the unique OID match is ours).
+        names = [c.name for c in by_id.creator_info]
+        assert creator["name"] in names
+        pictures = [c.picture for c in by_id.creator_info]
+        assert creator["picture"] in pictures
+
+        by_slug = await repo.get_public_with_creator(slug, by_slug=True)
+        assert by_slug is not None and by_slug.id == wf.id
+
+        # creator_info is excluded from the response serialization.
+        assert "creator_info" not in by_id.model_dump()
+
+    async def test_get_public_with_creator_excludes_private_and_missing(self, repo):
+        private = await repo.create(_workflow(is_public=False))
+        assert await repo.get_public_with_creator(private.id, by_slug=False) is None
+        assert await repo.get_public_with_creator(_uid("nope"), by_slug=False) is None
+        assert await repo.get_public_with_creator(_uid("nope"), by_slug=True) is None
+
+    async def test_find_community_excludes_explore_and_private(self, repo, raw_collection):
+        now = datetime.now(UTC)
+        older = await repo.create(_workflow(is_public=True, created_at=now - timedelta(hours=1)))
+        newer = await repo.create(_workflow(is_public=True, created_at=now))
+        # public but explore → excluded from community
+        explore = await repo.create(_workflow(is_public=True))
+        await raw_collection.update_one({"_id": explore.id}, {"$set": {"is_explore": True}})
+        # private → excluded
+        await repo.create(_workflow(is_public=False))
+
+        rows = await repo.find_community(limit=20, offset=0)
+        assert [r.id for r in rows] == [newer.id, older.id]  # newest first
+        assert await repo.count_community() == 2
+        # pagination
+        page2 = await repo.find_community(limit=1, offset=1)
+        assert [r.id for r in page2] == [older.id]
+
+    async def test_find_explore_orders_and_creator_always_empty(
+        self, repo, raw_collection, seeded_creator
+    ):
+        creator_id, _ = seeded_creator
+        # created_by is a real user id, but explore's plain lookup can't match a
+        # string against an ObjectId — creator_info stays empty by design.
+        hot = await repo.create(_workflow(total_executions=10, created_by=creator_id))
+        cold = await repo.create(_workflow(total_executions=1, created_by=creator_id))
+        for wf in (hot, cold):
+            await raw_collection.update_one({"_id": wf.id}, {"$set": {"is_explore": True}})
+        # non-explore → excluded
+        await repo.create(_workflow(is_public=True, total_executions=99))
+
+        rows = await repo.find_explore(limit=20, offset=0)
+        assert [r.id for r in rows] == [hot.id, cold.id]  # most-run first
+        assert all(r.creator_info == [] for r in rows)
+        assert await repo.count_explore() == 2
+
+    async def test_find_explore_reads_use_case_categories(self, repo, raw_collection):
+        wf = await repo.create(_workflow())
+        await raw_collection.update_one(
+            {"_id": wf.id},
+            {"$set": {"is_explore": True, "use_case_categories": ["email", "ops"]}},
+        )
+        rows = await repo.find_explore(limit=20, offset=0)
+        assert rows[0].use_case_categories == ["email", "ops"]
+        # a row without the field falls back to the ["featured"] default.
+        bare = await repo.create(_workflow())
+        await raw_collection.update_one({"_id": bare.id}, {"$set": {"is_explore": True}})
+        rows = await repo.find_explore(limit=20, offset=0)
+        bare_row = next(r for r in rows if r.id == bare.id)
+        assert bare_row.use_case_categories == ["featured"]
+
+    async def test_find_public_by_step_category_matches_and_escapes(self, repo, seeded_creator):
+        creator_id, creator = seeded_creator
+        gmail_wf = await repo.create(
+            _workflow(
+                is_public=True,
+                created_by=creator_id,
+                steps=[WorkflowStep(title="s", category="gmail", description="d")],
+            )
+        )
+        # a private workflow with a matching step must not surface
+        await repo.create(
+            _workflow(
+                is_public=False,
+                steps=[WorkflowStep(title="s", category="notion", description="d")],
+            )
+        )
+
+        rows = await repo.find_public_by_step_category("gmail", limit=20, offset=0)
+        assert [r.id for r in rows] == [gmail_wf.id]
+        assert creator["name"] in [c.name for r in rows for c in r.creator_info]
+        assert await repo.count_public_by_step_category("gmail") == 1
+
+        # notion_wf is not public — a category search must not surface it.
+        assert await repo.find_public_by_step_category("notion", limit=20, offset=0) == []
+
+        # the pattern is escaped: "g.ail" is literal, not a regex matching "gmail".
+        assert await repo.count_public_by_step_category("g.ail") == 0

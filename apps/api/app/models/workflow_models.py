@@ -600,6 +600,35 @@ class WorkflowDocument(Workflow, MongoDocument):
     id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
 
 
+class WorkflowCreatorInfo(BaseModel):
+    """One creator row hydrated by the ``creator_lookup_stage`` ``$lookup`` — the
+    projected ``{name, email, picture}`` subset of the joined user document. All
+    optional because the join yields no match for a non-user creator (the literal
+    ``"system"``) or a legacy row whose user was deleted."""
+
+    name: str | None = None
+    email: str | None = None
+    picture: str | None = None
+
+
+class PublicWorkflowRow(WorkflowDocument):
+    """A workflow read from a public-marketplace aggregation: the persisted
+    ``WorkflowDocument`` plus the joined ``creator_info`` array.
+
+    ``creator_info`` and ``use_case_categories`` are ``exclude``d from
+    serialization so a row handed straight back as a ``WorkflowResponse.workflow``
+    (the single ``get_public`` path) emits exactly the ``Workflow`` shape — the
+    join scaffolding never leaks into the response. The list paths
+    (community/explore/related) read these attributes to hand-build their dict
+    payloads and never serialize the row itself.
+    """
+
+    creator_info: list[WorkflowCreatorInfo] = Field(default_factory=list, exclude=True)
+    # Explore-only curation field; absent on community/related rows (defaults to
+    # ``["featured"]`` there, matching the legacy ``.get(..., ["featured"])`` read).
+    use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
+
+
 class WorkflowUpdate(BaseModel):
     """Partial ``$set`` update for a workflow — the flat, top-level fields the
     owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator

@@ -21,23 +21,39 @@ repository. Revisit only with evidence of a hot by-id read path.
 """
 
 from datetime import UTC, datetime
+import re
 from typing import Any
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
+    PublicWorkflowRow,
     TriggerConfig,
     TriggerType,
     WorkflowDocument,
     WorkflowStep,
     WorkflowUpdate,
 )
+from app.utils.creator import creator_lookup_stage
 
 # Cron-driven workflows only carry a non-empty ``repeat``; manual / integration /
 # todo workflows default to status="scheduled" with ``scheduled_at=now``, so the
 # pending scan must exclude them or it would re-run the agent every pass.
 _RECURRING_REPEAT_FILTER: dict[str, Any] = {"repeat": {"$nin": [None, ""]}}
+
+# ``_aggregate`` validates each raw row straight into the result model, and the
+# raw carries ``_id`` (not ``id``); this stage surfaces the string business key as
+# ``id`` so the row validates. Appended to every public-read pipeline.
+_ADD_ID_STAGE: dict[str, Any] = {"$addFields": {"id": "$_id"}}
+
+# The community marketplace shows public workflows that are NOT explore/featured;
+# the same match drives both the paged aggregation and its total count so the two
+# can never diverge.
+_COMMUNITY_MATCH: dict[str, Any] = {
+    "is_public": True,
+    "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
+}
 
 
 class _Unset:
@@ -192,6 +208,101 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if exclude_id:
             query["_id"] = {"$ne": exclude_id}
         return await self._find_one(query)
+
+    # ------------------------------------------------- public marketplace reads
+
+    async def get_public_with_creator(self, ref: str, *, by_slug: bool) -> PublicWorkflowRow | None:
+        """A single public workflow by id (``by_slug=False``) or slug, with its
+        creator hydrated. ``None`` when no public workflow matches ``ref``."""
+        match: dict[str, Any] = (
+            {"slug": ref, "is_public": True} if by_slug else {"_id": ref, "is_public": True}
+        )
+        rows = await self._aggregate(
+            [{"$match": match}, creator_lookup_stage(), {"$limit": 1}, _ADD_ID_STAGE],
+            PublicWorkflowRow,
+        )
+        return rows[0] if rows else None
+
+    async def find_community(self, *, limit: int, offset: int) -> list[PublicWorkflowRow]:
+        """A page of community-marketplace workflows (public, non-explore), newest
+        first, each with its creator hydrated."""
+        return await self._aggregate(
+            [
+                {"$match": _COMMUNITY_MATCH},
+                {"$sort": {"created_at": -1}},
+                {"$skip": offset},
+                {"$limit": limit},
+                creator_lookup_stage(),
+                _ADD_ID_STAGE,
+            ],
+            PublicWorkflowRow,
+        )
+
+    async def count_community(self) -> int:
+        """Total community-marketplace workflows (matches ``find_community``)."""
+        return await self._count(_COMMUNITY_MATCH)
+
+    async def find_explore(self, *, limit: int, offset: int) -> list[PublicWorkflowRow]:
+        """A page of explore/featured workflows, most-run first.
+
+        Uses a plain ``localField``/``foreignField`` ``$lookup``: ``created_by`` is
+        a string while ``users._id`` is an ``ObjectId``, so this never matches and
+        ``creator_info`` is always empty — explore (GAIA-curated) workflows resolve
+        to the ``SYSTEM_CREATOR_NAME`` fallback by design. Preserved verbatim from
+        the pre-repository aggregation.
+        """
+        return await self._aggregate(
+            [
+                {"$match": {"is_explore": True}},
+                {"$sort": {"total_executions": -1, "updated_at": -1}},
+                {"$skip": offset},
+                {"$limit": limit},
+                {
+                    "$lookup": {
+                        "from": "users",
+                        "localField": "created_by",
+                        "foreignField": "_id",
+                        "as": "creator_info",
+                    }
+                },
+                _ADD_ID_STAGE,
+            ],
+            PublicWorkflowRow,
+        )
+
+    async def count_explore(self) -> int:
+        """Total explore/featured workflows (matches ``find_explore``)."""
+        return await self._count({"is_explore": True})
+
+    async def find_public_by_step_category(
+        self, category: str, *, limit: int, offset: int
+    ) -> list[PublicWorkflowRow]:
+        """Public or explore workflows with a step whose ``category`` matches
+        ``category`` (case-insensitive), most-run first, each with its creator
+        hydrated. ``category`` is regex-escaped here so it is matched literally —
+        the boundary owns the ReDoS/injection guard."""
+        return await self._aggregate(
+            [
+                {"$match": self._step_category_match(category)},
+                {"$sort": {"total_executions": -1, "created_at": -1}},
+                {"$skip": offset},
+                {"$limit": limit},
+                creator_lookup_stage(),
+                _ADD_ID_STAGE,
+            ],
+            PublicWorkflowRow,
+        )
+
+    async def count_public_by_step_category(self, category: str) -> int:
+        """Total workflows matching ``find_public_by_step_category``."""
+        return await self._count(self._step_category_match(category))
+
+    @staticmethod
+    def _step_category_match(category: str) -> dict[str, Any]:
+        return {
+            "$or": [{"is_public": True}, {"is_explore": True}],
+            "steps": {"$elemMatch": {"category": {"$regex": re.escape(category), "$options": "i"}}},
+        }
 
     # ----------------------------------------------------------------- writes
 
