@@ -14,11 +14,13 @@ exist only on web/mobile. An item the reply doesn't address stays pending for
 the buttons or the timeout sweep.
 """
 
+import asyncio
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured
+from app.constants.hil import HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord
 from app.services.hil.approvals_store import list_pending_for_conversation
@@ -132,11 +134,12 @@ async def interpret_batch_decision_message(
     never toward acting, and never toward abandoning on an LLM hiccup.
     """
     try:
-        return await ainvoke_structured(
-            BatchDecisionResult,
-            _batch_prompt(message, pending_summaries),
-            label="hil_conversational_resolve_batch",
-        )
+        async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
+            return await ainvoke_structured(
+                BatchDecisionResult,
+                _batch_prompt(message, pending_summaries),
+                label="hil_conversational_resolve_batch",
+            )
     except Exception as e:
         log.warning(f"{LogTag.HIL} Batch conversational resolve failed, leaving pending: {e}")
         return BatchDecisionResult(unrelated=False)
@@ -146,11 +149,12 @@ async def interpret_decision_message(message: str, pending_summaries: list[str])
     """Classify a chat reply against pending approvals. Fails toward ``unrelated``
     (normal chat), never toward silently executing an action."""
     try:
-        return await ainvoke_structured(
-            DecisionResult,
-            _prompt(message, pending_summaries),
-            label="hil_conversational_resolve",
-        )
+        async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
+            return await ainvoke_structured(
+                DecisionResult,
+                _prompt(message, pending_summaries),
+                label="hil_conversational_resolve",
+            )
     except Exception as e:
         log.warning(f"{LogTag.HIL} Conversational resolve failed, treating as unrelated: {e}")
         return DecisionResult(action="unrelated")

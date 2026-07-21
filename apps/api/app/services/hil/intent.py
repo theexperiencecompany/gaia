@@ -32,6 +32,7 @@ ungrounded quote, instruction-like text in the arguments, or an action that woul
 secrets outward (the one block no wording can override).
 """
 
+import asyncio
 from dataclasses import dataclass
 from enum import StrEnum
 import re
@@ -40,7 +41,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured
-from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS
+from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
 from app.services.hil.utils import (
@@ -164,20 +165,21 @@ async def _ask_judge(
     summary: str,
     prior_calls: list[PriorCall],
 ) -> _Verdict:
-    return await ainvoke_structured(
-        _Verdict,
-        INTENT_JUDGE_PROMPT.format(
-            nonce=untrusted_fence(),
-            earlier="\n".join(turns[:-1]) or "(none)",
-            latest=turns[-1],
-            prior_actions=render_prior_calls(prior_calls),
-            tool=tool_name,
-            description=description or "(no description)",
-            summary=summary,
-            args=args_preview(args),
-        ),
-        label="hil_intent_judge",
-    )
+    async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
+        return await ainvoke_structured(
+            _Verdict,
+            INTENT_JUDGE_PROMPT.format(
+                nonce=untrusted_fence(),
+                earlier="\n".join(turns[:-1]) or "(none)",
+                latest=turns[-1],
+                prior_actions=render_prior_calls(prior_calls),
+                tool=tool_name,
+                description=description or "(no description)",
+                summary=summary,
+                args=args_preview(args),
+            ),
+            label="hil_intent_judge",
+        )
 
 
 def _accept(verdict: _Verdict, user_text: str, tool_name: str) -> bool:

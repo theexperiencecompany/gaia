@@ -44,6 +44,15 @@ HIL_JUDGE_NONCE_BYTES = 6
 # the authorizing words live in the earlier turn that said what "it" is.
 HIL_JUDGE_MIN_QUOTE_WORDS = 3
 
+# Wall-clock bound on every HIL LLM call (tool classification, the intent judge, the
+# conversational resolver). ainvoke_structured/ainvoke_llm set no timeout of their own,
+# and these three sit on user-blocking paths the tool-execution timeout does not cover —
+# the gate deliberately runs OUTSIDE it. Unbounded, a hung provider holds the executor's
+# busy lock behind a spinner that never resolves. Bounds the total, retries included;
+# each caller already treats a raised error as its safe fallback (gate closed, judge
+# asks, resolver leaves pending).
+HIL_LLM_TIMEOUT_SECONDS = 30
+
 # --- resume ---------------------------------------------------------------------------
 #
 # The only statuses a ``Command(resume=...)`` payload may carry. Anything else is treated

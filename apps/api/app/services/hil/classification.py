@@ -16,6 +16,7 @@ Any failure — registry unavailable, LLM error, or a tool absent from every
 source — resolves to destructive (fail closed).
 """
 
+import asyncio
 import hashlib
 
 from langchain_core.tools import BaseTool
@@ -23,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
-from app.constants.hil import HIL_EXEMPT_TOOLS
+from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import hil_tool_risk_collection
 from app.models.hil_models import HILToolRiskRecord
@@ -107,11 +108,14 @@ async def _cached_classification(tool_name: str, description_hash: str) -> bool 
 
 
 async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
-    return await ainvoke_structured(
-        _ClassifyResult,
-        TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
-        label="hil_tool_classification",
-    )
+    async with asyncio.timeout(HIL_LLM_TIMEOUT_SECONDS):
+        return await ainvoke_structured(
+            _ClassifyResult,
+            TOOL_CLASSIFY_PROMPT.format(
+                name=tool_name, description=description or "(none provided)"
+            ),
+            label="hil_tool_classification",
+        )
 
 
 async def _persist_classification(
