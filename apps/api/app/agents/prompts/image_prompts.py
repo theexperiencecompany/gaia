@@ -7,6 +7,11 @@ The user's request: '{message}'
 Lead with the answer to what they actually asked. Then describe what you see: layout, subjects, colours, and any text or UI elements, transcribing important text exactly. Write plainly, like a person explaining what is in front of them. Vary your sentence length, skip the throat-clearing, and do not overcorrect into forced quirkiness."""
 
 
+DOCUMENT_IMAGE_SUMMARY_PROMPT = """Provide a concise summary of the content in this image. Assume it is part of a document like a PDF or DOCX, and ensure the summary is relevant for semantic search and accurately describes the image.
+
+Note: Only respond with the summary text, without any additional information or context."""
+
+
 IMAGE_PROMPT_REFINER = """
 You are an AI assistant specialized in refining prompts for generating high-quality images. Your task is to take a simple user prompt and transform it into a detailed, evocative description that will guide AI image generators to create stunning visuals.
 

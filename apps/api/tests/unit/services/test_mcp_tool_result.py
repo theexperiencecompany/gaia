@@ -117,8 +117,11 @@ class TestToolResultToContent:
 
         out = await _tool_result_to_content(_result(_text("still useful"), broken))
 
-        assert "still useful" in str(out)
-        assert not [b for b in out if b.get("type") == "image"] if isinstance(out, list) else True
+        # The image degrades to a text note, so every block is text and the
+        # result collapses to a plain string — no image block survives.
+        assert isinstance(out, str)
+        assert "still useful" in out
+        assert "could not be read" in out
 
 
 @pytest.mark.unit

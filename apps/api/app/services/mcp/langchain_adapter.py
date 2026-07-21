@@ -8,6 +8,7 @@ content list (leaking ``TextContent(...)`` pydantic reprs to the model and
 destroying image content entirely).
 """
 
+import asyncio
 from typing import Any, NoReturn
 
 from langchain_core.tools import BaseTool
@@ -53,18 +54,21 @@ async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str
     result may contribute. A rejected image degrades to a note rather than
     failing the tool call — the text half of the result is usually the point.
     """
+    images = [item for item in result.content if isinstance(item, ImageContent)]
+    kept = images[:MAX_MEDIA_BLOCKS_PER_TOOL_RESULT]
+    dropped = len(images) - len(kept)
+    # Decoding is CPU-bound and hops to a thread per image, so run the whole
+    # (budget-bounded) batch at once rather than serializing the result's images.
+    decoded = iter(await asyncio.gather(*(_image_block(item) for item in kept)))
+
     blocks: list[dict[str, Any]] = []
-    images = 0
-    dropped = 0
     for item in result.content:
         if isinstance(item, TextContent):
             blocks.append(text_content_block(item.text))
         elif isinstance(item, ImageContent):
-            images += 1
-            if images > MAX_MEDIA_BLOCKS_PER_TOOL_RESULT:
-                dropped += 1
-                continue
-            blocks.append(await _image_block(item))
+            block = next(decoded, None)
+            if block is not None:
+                blocks.append(block)
         else:
             blocks.append(text_content_block(_non_media_text(item)))
     if dropped:

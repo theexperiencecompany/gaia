@@ -58,7 +58,9 @@ def extract_text_content(content: MessageContent) -> str:
     """The text of message content that may be a list of blocks.
 
     Non-text blocks (inline media, base64 payloads) are dropped, so callers that
-    log, stream, or ingest text never see megabytes of base64.
+    log, stream, or ingest text never see megabytes of base64. Text blocks are
+    rejoined with newlines, the separator their producers split on (an MCP result
+    is one block per line), so extracting a block list round-trips its layout.
     """
     if isinstance(content, str):
         return content
@@ -70,7 +72,7 @@ def extract_text_content(content: MessageContent) -> str:
                 text_parts.append(item)
             elif isinstance(item, dict) and item.get("type") == "text":
                 text_parts.append(str(item.get("text") or ""))
-        return " ".join(text_parts)
+        return "\n".join(text_parts)
 
     return str(content)
 

@@ -14,6 +14,7 @@ from app.agents.core.subagents.registry import get_subagent_by_id, resolve_subag
 from app.config.oauth_config import get_toolkit_to_integration_map
 from app.constants.log_tags import LogTag
 from app.utils.agent_utils import parse_subagent_id
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 
@@ -120,7 +121,9 @@ class WorkflowContextExtractor:
         # First pass: collect tool outputs and first human message
         for msg in messages:
             if isinstance(msg, ToolMessage):
-                output = str(msg.content)[:max_output_chars]
+                # Text-extract so a tool result carrying inline media contributes
+                # its text, not the Python repr of its content blocks.
+                output = extract_text_content(msg.content)[:max_output_chars]
                 tool_call_id = getattr(msg, "tool_call_id", None)
                 if tool_call_id:
                     tool_outputs[tool_call_id] = output
