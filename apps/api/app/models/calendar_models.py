@@ -2,7 +2,9 @@ from datetime import datetime
 import re
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.db.repositories.base import MongoDocument
 
 
 class CalendarPreferencesUpdateRequest(BaseModel):
@@ -232,6 +234,22 @@ class EventUpdateRequest(BaseModel):
     timezone_offset: str | None = Field(None, title="Updated timezone offset in (+|-)HH:MM format")
     original_summary: str | None = Field(None, title="Original event summary for confirmation")
     recurrence: RecurrenceData | None = Field(None, title="Recurrence rules for recurring event")
+
+
+class CalendarPreferencesDocument(MongoDocument):
+    """A user's calendar preferences as stored in the ``calendar`` collection —
+    the ids of the calendars they have selected. Global, keyed by ``user_id``."""
+
+    user_id: str
+    selected_calendars: list[str] = Field(default_factory=list)
+
+
+class CalendarPreferencesUpdate(BaseModel):
+    """Typed ``$set`` fields for calendar preferences."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    selected_calendars: list[str] | None = None
 
 
 class BaseCalendarEvent(BaseModel):
