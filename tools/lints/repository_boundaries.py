@@ -100,7 +100,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/sandbox/lifecycle.py",
         "services/startup_validation.py",
         "services/support_service.py",
-        "services/system_workflows/provisioner.py",
         "services/triggers/base.py",
         "services/triggers/handlers/asana.py",
         "services/triggers/handlers/calendar.py",
