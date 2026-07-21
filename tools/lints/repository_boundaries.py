@@ -83,7 +83,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/integrations/user_integrations.py",
         "services/mcp/mcp_client.py",
         "services/mcp/mcp_tools_store.py",
-        "services/model_service.py",
         "services/oauth/oauth_service.py",
         # Migrated off users_collection in the users wave; still allowlisted here
         # for their other collections (todos/workflows/conversations), pending
@@ -99,7 +98,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/provider_metadata_service.py",
         "services/reminder_service.py",
         "services/sandbox/lifecycle.py",
-        "services/startup_validation.py",
         "services/support_service.py",
         "services/system_workflows/provisioner.py",
         # todo_service still reads workflows_collection (workflows domain, later wave)
