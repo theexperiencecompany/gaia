@@ -78,7 +78,15 @@ async def steel_session(
     client = build_steel_client()
     ttl_ms = settings.BROWSER_USE_SESSION_TTL_SECONDS * 1000
 
-    create_kwargs: dict = {"block_ads": block_ads, "api_timeout": ttl_ms}
+    # persist_profile makes Steel save the authenticated context back to a
+    # profile (creating one and returning its id on first use, reusing the given
+    # one otherwise) — without it, ``created.profile_id`` is never populated and
+    # "log in once, reuse next time" silently never works.
+    create_kwargs: dict = {
+        "block_ads": block_ads,
+        "api_timeout": ttl_ms,
+        "persist_profile": True,
+    }
     if settings.BROWSER_USE_SOLVE_CAPTCHA:
         create_kwargs["solve_captcha"] = True
     if profile_id:
