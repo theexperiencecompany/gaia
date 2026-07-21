@@ -56,8 +56,14 @@ jobs:
           # Superset on purpose: a lane that runs and finds no relevant files
           # still self-skips — this gate must only ever skip lanes that would
           # have skipped themselves anyway.
-          py=$(scripts/ci/changed-files.sh py toml lock | head -n 1)
-          ts=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml | head -n 1)
+          #
+          # No `| head` here: closing the pipe early SIGPIPEs the script's
+          # printf loop and fails it (exit 141). Capture everything, then take
+          # the first line in bash.
+          py_files=$(scripts/ci/changed-files.sh py toml lock)
+          ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          py=${py_files%%$'\n'*}
+          ts=${ts_files%%$'\n'*}
           echo "has_python=$([[ -n "$py" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_typescript=$([[ -n "$ts" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "python: ${py:-none} | typescript: ${ts:-none}"
