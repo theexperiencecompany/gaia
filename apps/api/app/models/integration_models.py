@@ -69,8 +69,10 @@ class Integration(MongoDocument):
         None, description="When integration was published to marketplace"
     )
     clone_count: int = Field(0, description="Number of times this integration was cloned")
-    # Note: cloned_from, slug, og_title, og_description, creator_name, creator_picture
-    # have been removed. Creator info is now fetched from users collection at runtime.
+    # Human-readable unique slug, written at publish time (and by the slug backfill);
+    # absent until published. Creator info (name/picture) is not stored here — it is
+    # joined from the users collection at read time (see IntegrationWithCreator).
+    slug: str | None = None
 
     # Configuration (one of these based on managed_by)
     mcp_config: MCPConfig | None = None

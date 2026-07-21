@@ -1,43 +1,36 @@
-"""Regex-injection hardening for the community-integration search fallback."""
+"""Regex-injection hardening for the community-integration search fallback.
+
+The escaping now lives in the repository's filter builder — a raw metacharacter
+query must be fed to ``$regex`` as a *literal* (escaped) pattern, never run as an
+attacker-controlled pattern against the public collection.
+"""
 
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.services.integrations.community_service import _search_community_integrations
+from app.db.repositories.integrations import IntegrationsRepository
 from tests.unit.services.regex_helpers import collect_regex_values
-
-_MOD = "app.services.integrations.community_service"
 
 
 @pytest.mark.unit
-async def test_mongo_fallback_escapes_regex_metacharacters() -> None:
-    """When ChromaDB returns nothing, the Mongo fallback must feed a *literal*
-    (escaped) query into ``$regex``. A raw metacharacter query would otherwise
-    run as an attacker-controlled pattern against the public collection."""
+def test_community_search_filter_escapes_regex_metacharacters() -> None:
     raw_query = "a.*(b|c)+[x]$"
     escaped = re.escape(raw_query)
     assert escaped != raw_query
 
-    cursor = MagicMock()
-    cursor.to_list = AsyncMock(return_value=[])
-    collection = MagicMock()
-    collection.count_documents = AsyncMock(return_value=0)
-    collection.aggregate = MagicMock(return_value=cursor)
-
-    with (
-        patch(f"{_MOD}.search_public_integrations", AsyncMock(return_value=[])),
-        patch(f"{_MOD}.integrations_collection", collection),
-        patch(f"{_MOD}.build_creator_lookup_stages", return_value=[]),
-        patch(f"{_MOD}.format_community_integrations", return_value=[]),
-    ):
-        await _search_community_integrations(raw_query, category="all", limit=10, offset=0)
-
-    mongo_query = collection.count_documents.call_args[0][0]
+    mongo_query = IntegrationsRepository._community_search_filter(raw_query, "all")
     regex_values = collect_regex_values(mongo_query)
 
-    assert regex_values, "expected the $regex fallback to be exercised"
+    assert regex_values, "expected the $regex fallback to build regex conditions"
     for value in regex_values:
         assert value == escaped
         assert value != raw_query
+
+
+@pytest.mark.unit
+def test_community_search_filter_applies_category() -> None:
+    with_category = IntegrationsRepository._community_search_filter("q", "developer")
+    assert with_category["category"] == "developer"
+    # "all" means no category constraint
+    assert "category" not in IntegrationsRepository._community_search_filter("q", "all")

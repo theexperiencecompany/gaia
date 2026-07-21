@@ -140,3 +140,92 @@ class TestIntegrationsRepository:
             )
         results = await repo.search_public(words=[token], query=token, exclude_ids=[], limit=3)
         assert len(results) == 3
+
+    async def test_find_public_by_ids(self, repo):
+        pub = f"pub-{uuid.uuid4().hex}"
+        priv = f"priv-{uuid.uuid4().hex}"
+        await repo.create(_integration(pub, "Public", is_public=True))
+        await repo.create(_integration(priv, "Private", is_public=False))
+        found = await repo.find_public_by_ids([pub, priv])
+        assert [i.integration_id for i in found] == [pub]
+
+    async def test_get_public_by_slug(self, repo):
+        iid = f"slug-{uuid.uuid4().hex}"
+        slug = f"my-tool-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Slugged", is_public=True, slug=slug))
+        # A private doc with the same slug must not match.
+        await repo.create(_integration(f"p-{uuid.uuid4().hex}", "Priv", is_public=False, slug=slug))
+
+        got = await repo.get_public_by_slug(slug)
+        assert got is not None
+        assert got.integration_id == iid
+        assert got.slug == slug
+        assert got.creator is None  # no matching user in the fixture DB
+        assert await repo.get_public_by_slug(f"absent-{uuid.uuid4().hex}") is None
+
+    async def test_get_public_by_id_prefix(self, repo):
+        iid = f"AbCdEf-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Prefixed", is_public=True))
+        got = await repo.get_public_by_id_prefix(iid[:6].lower())
+        assert got is not None and got.integration_id == iid
+
+    async def test_community_by_ids_and_creator_none(self, repo):
+        a = f"a-{uuid.uuid4().hex}"
+        b = f"b-{uuid.uuid4().hex}"
+        await repo.create(_integration(a, "A", is_public=True))
+        await repo.create(_integration(b, "B", is_public=True))
+        results = await repo.community_by_ids([b, a])
+        assert {i.integration_id for i in results} == {a, b}
+        assert all(i.creator is None for i in results)
+
+    async def test_community_search_count_and_page(self, repo):
+        token = uuid.uuid4().hex
+        for n in range(3):
+            await repo.create(
+                _integration(
+                    f"cs-{n}-{token}",
+                    f"Searchable {token}",
+                    is_public=True,
+                    clone_count=n,
+                    published_at=datetime(2026, 1, n + 1, tzinfo=UTC),
+                )
+            )
+        total = await repo.count_community_search(token, "all")
+        assert total == 3
+        page = await repo.community_search(token, "all", offset=0, limit=2)
+        assert len(page) == 2
+        # popular sort: highest clone_count first
+        assert page[0].clone_count >= page[1].clone_count
+
+    async def test_community_browse_sort_and_count(self, repo):
+        cat = f"cat-{uuid.uuid4().hex}"
+        await repo.create(
+            _integration(
+                f"br-a-{uuid.uuid4().hex}",
+                "Alpha",
+                is_public=True,
+                category=cat,
+                published_at=datetime(2026, 1, 1, tzinfo=UTC),
+                clone_count=1,
+            )
+        )
+        await repo.create(
+            _integration(
+                f"br-b-{uuid.uuid4().hex}",
+                "Bravo",
+                is_public=True,
+                category=cat,
+                published_at=datetime(2026, 2, 1, tzinfo=UTC),
+                clone_count=9,
+            )
+        )
+        # Unpublished (published_at None) is excluded from browse.
+        await repo.create(
+            _integration(f"br-c-{uuid.uuid4().hex}", "Charlie", is_public=True, category=cat)
+        )
+
+        assert await repo.count_community_browse(cat) == 2
+        by_name = await repo.community_browse("name", cat, offset=0, limit=10)
+        assert [i.name for i in by_name] == ["Alpha", "Bravo"]
+        by_popular = await repo.community_browse("popular", cat, offset=0, limit=10)
+        assert by_popular[0].name == "Bravo"  # highest clone_count first

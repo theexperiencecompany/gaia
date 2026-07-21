@@ -65,7 +65,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/dev_service.py",
         "services/device/device_service.py",
         "services/file_service.py",
-        "services/integrations/community_service.py",
         "services/integrations/custom_crud.py",
         "services/integrations/integration_resolver.py",
         "services/integrations/marketplace.py",

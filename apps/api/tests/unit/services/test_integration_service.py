@@ -26,6 +26,7 @@ from app.models.integration_models import (
     Integration,
     IntegrationResponse,
     IntegrationTool,
+    IntegrationWithCreator,
     UpdateCustomIntegrationRequest,
     UserIntegrationDocument,
     UserIntegrationsListResponse,
@@ -54,7 +55,6 @@ from app.services.integrations.integration_resolver import (
     ResolvedIntegration,
 )
 from app.services.integrations.integration_service import (
-    build_creator_lookup_stages,
     format_community_integrations,
     get_user_available_tool_namespaces,
 )
@@ -531,28 +531,17 @@ class TestGetUserAvailableToolNamespaces:
         assert "some-server.com" in result
 
 
-@pytest.mark.unit
-class TestBuildCreatorLookupStages:
-    def test_returns_five_pipeline_stages(self):
-        stages = build_creator_lookup_stages()
-        assert len(stages) == 5
-
-    def test_first_stage_is_addfields(self):
-        stages = build_creator_lookup_stages()
-        assert "$addFields" in stages[0]
-
-    def test_lookup_stage_targets_users_collection(self):
-        stages = build_creator_lookup_stages()
-        lookup = stages[1]["$lookup"]
-        assert lookup["from"] == "users"
-        assert lookup["localField"] == "created_by_oid"
-        assert lookup["foreignField"] == "_id"
-
-    def test_final_stage_removes_temp_fields(self):
-        stages = build_creator_lookup_stages()
-        project = stages[4]["$project"]
-        assert project.get("creator_info") == 0
-        assert project.get("created_by_oid") == 0
+def _iwc(**overrides: object) -> IntegrationWithCreator:
+    """Build an IntegrationWithCreator as the creator-lookup aggregation returns it."""
+    data: dict[str, object] = {
+        "integration_id": "abc",
+        "name": "Test",
+        "description": "",
+        "category": "custom",
+        "managed_by": "mcp",
+    }
+    data.update(overrides)
+    return IntegrationWithCreator.model_validate(data)
 
 
 @pytest.mark.unit
@@ -561,18 +550,15 @@ class TestFormatCommunityIntegrations:
         assert format_community_integrations([]) == []
 
     def test_format_basic_document(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "desc",
-            "category": "custom",
-            "tools": [
-                {"name": "tool1", "description": "d1"},
-                {"name": "tool2"},
-            ],
-            "slug": "test-mcp-custom",
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations(
+            [
+                _iwc(
+                    description="desc",
+                    tools=[{"name": "tool1", "description": "d1"}, {"name": "tool2"}],
+                    slug="test-mcp-custom",
+                )
+            ]
+        )
 
         assert len(result) == 1
         item = result[0]
@@ -584,66 +570,32 @@ class TestFormatCommunityIntegrations:
 
     def test_tools_truncated_to_10(self):
         tools = [{"name": f"tool_{i}", "description": f"d{i}"} for i in range(15)]
-        doc = {
-            "integration_id": "x",
-            "name": "X",
-            "description": "",
-            "category": "custom",
-            "tools": tools,
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc(integration_id="x", name="X", tools=tools)])
 
         assert len(result[0].tools) == 10
         assert result[0].tool_count == 15
 
     def test_with_creator_data(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "",
-            "category": "custom",
-            "tools": [],
-            "creator": {"name": "Alice", "picture": "https://img.com/a.jpg"},
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations(
+            [_iwc(creator={"name": "Alice", "picture": "https://img.com/a.jpg"})]
+        )
 
         assert result[0].creator is not None
         assert result[0].creator.name == "Alice"
 
     def test_without_creator_data(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "",
-            "category": "custom",
-            "tools": [],
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc()])
         assert result[0].creator is None
 
     def test_slug_falls_back_to_generated(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "My Tool",
-            "description": "",
-            "category": "developer",
-            "tools": [],
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc(name="My Tool", category="developer")])
 
-        # Should generate a slug since "slug" key is not present
+        # Should generate a slug since none is stored on the document
         assert result[0].slug is not None
         assert len(result[0].slug) > 0
 
     def test_clone_count_defaults_to_zero(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "",
-            "category": "custom",
-            "tools": [],
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc()])
         assert result[0].clone_count == 0
 
 

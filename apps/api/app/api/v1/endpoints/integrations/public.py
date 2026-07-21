@@ -9,11 +9,10 @@ from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
 )
+from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.workflows import workflow_repository
 from app.helpers.integration_helpers import (
-    build_public_integration_pipeline,
-    build_slug_lookup_pipeline,
     format_public_integration_response,
     generate_integration_slug,
     parse_integration_slug,
@@ -87,23 +86,19 @@ async def get_public_integration(
             )
 
         # 2. Try direct slug match first (new format without hash)
-        pipeline = build_slug_lookup_pipeline(identifier)
-        cursor = integrations_collection.aggregate(pipeline)
-        docs = await cursor.to_list(length=1)
+        integration = await integration_repository.get_public_by_slug(identifier)
 
         # Fallback: legacy hash-based lookup
-        if not docs:
+        if not integration:
             slug_parts = parse_integration_slug(identifier)
             short_id = slug_parts.get("shortid")
             if short_id:
-                pipeline = build_public_integration_pipeline(short_id)
-                cursor = integrations_collection.aggregate(pipeline)
-                docs = await cursor.to_list(length=1)
+                integration = await integration_repository.get_public_by_id_prefix(short_id)
 
-        if not docs:
+        if not integration:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        response_data = format_public_integration_response(docs[0])
+        response_data = format_public_integration_response(integration)
         log.set(integration_name=response_data.get("name"))
         log.set(outcome="success")
         return PublicIntegrationDetailResponse(**response_data)
@@ -230,21 +225,18 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
         relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
         integration_ids = list(relevance_map.keys())
 
-        cursor = integrations_collection.find(
-            {"integration_id": {"$in": integration_ids}, "is_public": True}
-        )
-        docs = await cursor.to_list(length=20)
-        docs_map = {doc["integration_id"]: doc for doc in docs}
+        integrations = await integration_repository.find_public_by_ids(integration_ids)
+        by_id = {i.integration_id: i for i in integrations}
 
         formatted = []
         for iid in integration_ids:
-            doc = docs_map.get(iid)
-            if not doc:
+            integration = by_id.get(iid)
+            if not integration:
                 continue
 
             slug = generate_integration_slug(
-                name=doc.get("name", ""),
-                category=doc.get("category", "custom"),
+                name=integration.name,
+                category=integration.category,
                 integration_id=iid,
             )
 
@@ -252,13 +244,13 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
                 SearchIntegrationItem(
                     integration_id=iid,
                     slug=slug,
-                    name=doc.get("name", ""),
-                    description=doc.get("description", ""),
-                    category=doc.get("category", "custom"),
+                    name=integration.name,
+                    description=integration.description,
+                    category=integration.category,
                     relevance_score=relevance_map.get(iid, 0.0),
-                    clone_count=doc.get("clone_count", 0),
-                    tool_count=len(doc.get("tools", [])),
-                    icon_url=doc.get("icon_url"),
+                    clone_count=integration.clone_count,
+                    tool_count=len(integration.tools),
+                    icon_url=integration.icon_url,
                 )
             )
 

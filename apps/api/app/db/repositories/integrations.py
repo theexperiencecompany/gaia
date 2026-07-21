@@ -10,7 +10,18 @@ repository mirrors that on-disk reality rather than stamping every write.
 import re
 
 from app.db.repositories.base import MongoRepository
-from app.models.integration_models import Integration, IntegrationUpdate
+from app.models.integration_models import (
+    Integration,
+    IntegrationUpdate,
+    IntegrationWithCreator,
+)
+
+# Community browse sort options → Mongo sort spec. "popular" is the default.
+_COMMUNITY_SORT: dict[str, list[tuple[str, int]]] = {
+    "popular": [("clone_count", -1), ("published_at", -1)],
+    "recent": [("published_at", -1)],
+    "name": [("name", 1)],
+}
 
 
 class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
@@ -91,6 +102,153 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
                 "$or": conditions,
             },
             limit=limit,
+        )
+
+    async def find_public_by_ids(self, integration_ids: list[str]) -> list[Integration]:
+        """Public integrations among the given ids (semantic-search hydration)."""
+        return await self._find({"integration_id": {"$in": integration_ids}, "is_public": True})
+
+    # ---- creator-lookup aggregations (marketplace detail + community) ----
+
+    @staticmethod
+    def _creator_lookup_stages() -> list[dict[str, object]]:
+        """Join each integration's creator (name/picture) from the users collection.
+
+        The single canonical creator-lookup, folded in from the two divergent copies
+        that used to live in integration_helpers and integration_service. ``created_by``
+        holds a user's ObjectId-as-string; ``$convert`` tolerates a missing/invalid
+        value (``creator`` becomes ``None``) rather than failing the pipeline.
+        """
+        return [
+            {
+                "$lookup": {
+                    "from": "users",
+                    "let": {
+                        "creator_id": {
+                            "$convert": {
+                                "input": "$created_by",
+                                "to": "objectId",
+                                "onError": None,
+                                "onNull": None,
+                            }
+                        }
+                    },
+                    "pipeline": [
+                        {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
+                        {"$project": {"name": 1, "picture": 1}},
+                    ],
+                    "as": "creator_info",
+                }
+            },
+            {
+                "$addFields": {
+                    "creator": {
+                        "$cond": {
+                            "if": {"$gt": [{"$size": "$creator_info"}, 0]},
+                            "then": {"$arrayElemAt": ["$creator_info", 0]},
+                            "else": None,
+                        }
+                    }
+                }
+            },
+            {"$project": {"creator_info": 0}},
+        ]
+
+    async def get_public_by_slug(self, slug: str) -> IntegrationWithCreator | None:
+        """A published integration by exact slug, with creator info joined."""
+        results = await self._aggregate(
+            [{"$match": {"slug": slug, "is_public": True}}, *self._creator_lookup_stages()],
+            IntegrationWithCreator,
+        )
+        return results[0] if results else None
+
+    async def get_public_by_id_prefix(self, short_id: str) -> IntegrationWithCreator | None:
+        """A published integration by ``integration_id`` prefix (legacy hash slugs),
+        with creator info joined."""
+        escaped = re.escape(short_id)
+        results = await self._aggregate(
+            [
+                {
+                    "$match": {
+                        "integration_id": {"$regex": f"^{escaped}", "$options": "i"},
+                        "is_public": True,
+                    }
+                },
+                *self._creator_lookup_stages(),
+            ],
+            IntegrationWithCreator,
+        )
+        return results[0] if results else None
+
+    async def community_by_ids(self, integration_ids: list[str]) -> list[IntegrationWithCreator]:
+        """Published integrations among the given ids, creator joined (semantic-search hits).
+        Caller reorders to match the search ranking."""
+        return await self._aggregate(
+            [
+                {"$match": {"integration_id": {"$in": integration_ids}, "is_public": True}},
+                *self._creator_lookup_stages(),
+            ],
+            IntegrationWithCreator,
+        )
+
+    @staticmethod
+    def _community_search_filter(query: str, category: str) -> dict[str, object]:
+        search_regex = {"$regex": re.escape(query), "$options": "i"}
+        filter_: dict[str, object] = {
+            "is_public": True,
+            "$or": [
+                {"name": search_regex},
+                {"description": search_regex},
+                {"tools.name": search_regex},
+                {"tools.description": search_regex},
+            ],
+        }
+        if category and category != "all":
+            filter_["category"] = category
+        return filter_
+
+    async def count_community_search(self, query: str, category: str) -> int:
+        return await self._count(self._community_search_filter(query, category))
+
+    async def community_search(
+        self, query: str, category: str, *, offset: int, limit: int
+    ) -> list[IntegrationWithCreator]:
+        """Regex fallback search over published integrations, popular first."""
+        return await self._aggregate(
+            [
+                {"$match": self._community_search_filter(query, category)},
+                {"$sort": {"clone_count": -1, "published_at": -1}},
+                {"$skip": offset},
+                {"$limit": limit},
+                *self._creator_lookup_stages(),
+            ],
+            IntegrationWithCreator,
+        )
+
+    @staticmethod
+    def _community_browse_filter(category: str) -> dict[str, object]:
+        filter_: dict[str, object] = {"is_public": True, "published_at": {"$ne": None}}
+        if category and category != "all":
+            filter_["category"] = category
+        return filter_
+
+    async def count_community_browse(self, category: str) -> int:
+        return await self._count(self._community_browse_filter(category))
+
+    async def community_browse(
+        self, sort: str, category: str, *, offset: int, limit: int
+    ) -> list[IntegrationWithCreator]:
+        """Browse published integrations by the given sort (popular/recent/name)."""
+        sort_spec = _COMMUNITY_SORT.get(sort, _COMMUNITY_SORT["popular"])
+        return await self._aggregate(
+            [
+                {"$match": self._community_browse_filter(category)},
+                {"$sort": dict(sort_spec)},
+                {"$skip": offset},
+                {"$limit": limit},
+                *self._creator_lookup_stages(),
+            ],
+            IntegrationWithCreator,
         )
 
 
