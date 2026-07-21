@@ -40,6 +40,15 @@ from app.models.workflow_models import (
 _RECURRING_REPEAT_FILTER: dict[str, Any] = {"repeat": {"$nin": [None, ""]}}
 
 
+class _Unset:
+    """Sentinel for a ``set_status`` field that was not provided — distinct from an
+    explicit ``None``, which the recovery scan legitimately writes (a reaped
+    non-recurring workflow clears its ``scheduled_at``)."""
+
+
+UNSET = _Unset()
+
+
 class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     collection_name = "workflows"
     document_model = WorkflowDocument
@@ -316,6 +325,43 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             },
             {"$set": {"status": ScheduledTaskStatus.EXECUTING.value}},
             scope=REPO_GLOBAL_SCOPE,
+        )
+        return result is not None
+
+    async def set_status(
+        self,
+        workflow_id: str,
+        status: ScheduledTaskStatus,
+        *,
+        user_id: str | None = None,
+        scheduled_at: datetime | None | _Unset = UNSET,
+        occurrence_count: int | None = None,
+        repeat: str | None = None,
+        next_run: datetime | None | _Unset = UNSET,
+    ) -> bool:
+        """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
+        Returns whether a workflow matched. ``user_id`` adds the owner guard where
+        the caller has one; the worker paths update by id alone.
+
+        ``scheduled_at`` and ``next_run`` (written as ``trigger_config.next_run``)
+        take an ``UNSET`` sentinel because ``None`` is a meaningful value the recovery
+        scan writes — omitted fields are left untouched; an explicit ``None`` clears
+        them. ``occurrence_count``/``repeat`` are only set when provided (they never
+        need clearing to ``None``)."""
+        filter_: dict[str, Any] = {"_id": workflow_id}
+        if user_id:
+            filter_["user_id"] = user_id
+        set_fields: dict[str, Any] = {"status": status.value}
+        if not isinstance(scheduled_at, _Unset):
+            set_fields["scheduled_at"] = scheduled_at
+        if occurrence_count is not None:
+            set_fields["occurrence_count"] = occurrence_count
+        if repeat is not None:
+            set_fields["repeat"] = repeat
+        if not isinstance(next_run, _Unset):
+            set_fields["trigger_config.next_run"] = next_run
+        result = await self._apply_raw_update(
+            filter_, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
         )
         return result is not None
 

@@ -196,6 +196,43 @@ class TestWorkflowsScheduler:
         found = await repo.find_stale_executing(now - timedelta(hours=1))
         assert [w.id for w in found] == [stale.id]
 
+    async def test_set_status_rearm_fields_and_user_guard(self, repo):
+        owner = _uid("owner")
+        wf = await repo.create(_workflow(user_id=owner, status=ScheduledTaskStatus.EXECUTING))
+        # Whole seconds: Mongo stores datetimes at millisecond precision, so a
+        # microsecond-bearing value would not survive the round-trip for equality.
+        run_at = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
+        ok = await repo.set_status(
+            wf.id,
+            ScheduledTaskStatus.SCHEDULED,
+            user_id=owner,
+            scheduled_at=run_at,
+            occurrence_count=3,
+            next_run=run_at,
+        )
+        assert ok is True
+        fetched = await repo.get(wf.id)
+        assert fetched.status == ScheduledTaskStatus.SCHEDULED
+        assert fetched.occurrence_count == 3
+        assert fetched.trigger_config.next_run == run_at
+        # wrong user does not match
+        assert await repo.set_status(wf.id, ScheduledTaskStatus.COMPLETED, user_id="x") is False
+
+    async def test_set_status_unset_leaves_scheduled_at_untouched(self, repo):
+        run_at = (datetime.now(UTC) + timedelta(hours=1)).replace(microsecond=0)
+        wf = await repo.create(_workflow(scheduled_at=run_at))
+        # status-only change (scheduled_at defaults to UNSET) must not clear it.
+        assert await repo.set_status(wf.id, ScheduledTaskStatus.EXECUTING) is True
+        assert (await repo.get(wf.id)).scheduled_at == run_at
+        # an explicit None clears it (the reap path for a non-recurring workflow).
+        assert (
+            await repo.set_status(wf.id, ScheduledTaskStatus.SCHEDULED, scheduled_at=None) is True
+        )
+        assert (await repo.get(wf.id)).scheduled_at is None
+
+    async def test_set_status_missing_returns_false(self, repo):
+        assert await repo.set_status(_uid("missing"), ScheduledTaskStatus.COMPLETED) is False
+
 
 class TestWorkflowsTriggersAndSystem:
     async def test_count_trigger_references(self, repo):
