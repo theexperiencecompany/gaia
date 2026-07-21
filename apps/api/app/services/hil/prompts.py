@@ -109,10 +109,22 @@ DENIED_TEMPLATE = (
     "instead. Do not retry the same call unchanged."
 )
 
+# An expiry is not a dead end: the run has usually done real work before reaching the
+# gated call, and reporting none of it wastes the turn. So this nudges toward surfacing
+# that work — but it must draw the line the user's trust depends on. Preparing the
+# REVERSIBLE version (leave a draft) is help; producing the same irreversible effect
+# through another tool is routing around the gate. The second one is still gated, so it
+# does not slip through unnoticed — it either burns another full approval window on one
+# intent, or rides a misclassified tool straight past the gate. Neither is worth it, and
+# "it found another way to do what I didn't approve" is the one story that kills trust in
+# the whole feature.
 TIMEOUT_TEMPLATE = (
-    "The approval request for `{tool}` expired without a response. The action "
-    "was NOT performed. Tell the user you were waiting for their approval and "
-    "that they can ask again when ready."
+    "The approval request for `{tool}` expired — the user did not respond within {waited}. "
+    "The action was NOT performed. Do not retry it unchanged, and do not use another tool "
+    "to produce the same effect — this needs the user's approval, not a workaround. Report "
+    "whatever you did complete or prepare; preparing a reversible version (leaving a draft "
+    "rather than sending) is fine. Say how long you waited, what is left, and that it only "
+    "needs their go-ahead."
 )
 
 # A gate that cannot determine whether a call is safe must not run it — but the refusal

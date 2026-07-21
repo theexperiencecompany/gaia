@@ -66,6 +66,7 @@ from app.services.hil.prompts import (
 )
 from app.services.hil.utils import (
     GatedCall,
+    approval_window_label,
     configurable_of,
     prior_tool_calls,
     tool_description,
@@ -311,7 +312,9 @@ def _refusal_message(call: GatedCall, outcome: ApprovalOutcome) -> ToolMessage:
     template = TIMEOUT_TEMPLATE if outcome.status == "timeout" else DENIED_TEMPLATE
     feedback = f" The user said: {outcome.feedback!r}." if outcome.feedback else ""
     status: HILToolMessageStatus = "timeout" if outcome.status == "timeout" else "denied"
-    return _tool_message(call, template.format(tool=call.name, feedback=feedback), status)
+    # Each template uses only the fields it needs; format ignores the rest.
+    content = template.format(tool=call.name, feedback=feedback, waited=approval_window_label())
+    return _tool_message(call, content, status)
 
 
 def _gate_error_message(call: GatedCall) -> ToolMessage:
