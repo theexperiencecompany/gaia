@@ -31,7 +31,7 @@ from app.schemas.browser import (
 )
 from app.services.browser.captcha import build_tools
 from app.services.browser.classify import classify_step
-from app.services.browser.exceptions import BrowserHandoffCancelled
+from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.policy import resolve_strategy
 from app.services.browser.session import SteelBrowserSession
 from shared.py.wide_events import log
@@ -134,6 +134,14 @@ class BrowserTaskRunner:
                 False,
                 f"Browser task timed out after {self._task_timeout}s.",
             )
+        except (ConnectionError, OSError) as exc:
+            # Steel accepted the session but the agent couldn't attach over CDP —
+            # almost always the advertised websocketUrl isn't reachable from here.
+            raise BrowserUnavailableError(
+                f"Could not attach to the browser over CDP at {self._session.cdp_url}: {exc}. "
+                "If Steel is reachable, set STEEL_CDP_CONNECT_URL to a CDP endpoint that is "
+                "reachable from the API."
+            ) from exc
 
         if self._stopped:
             status = (
