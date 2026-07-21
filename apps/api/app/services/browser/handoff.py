@@ -12,13 +12,14 @@ tool-call approval (the shared HIL system owns that).
 import asyncio
 
 from app.constants.browser import (
+    BROWSER_HANDOFF_CONV_KEY_PREFIX,
     BROWSER_HANDOFF_KEY_PREFIX,
     HANDOFF_KEY_TTL_SECONDS,
     HANDOFF_POLL_INTERVAL_SECONDS,
     HandoffDecision,
     HandoffStatus,
 )
-from app.db.redis import get_cache, set_cache
+from app.db.redis import delete_cache, get_cache, set_cache
 from shared.py.wide_events import log
 
 
@@ -26,16 +27,34 @@ def _key(handoff_id: str) -> str:
     return f"{BROWSER_HANDOFF_KEY_PREFIX}{handoff_id}"
 
 
-async def create_pending_handoff(handoff_id: str, user_id: str) -> None:
+def _conv_key(conversation_id: str) -> str:
+    return f"{BROWSER_HANDOFF_CONV_KEY_PREFIX}{conversation_id}"
+
+
+async def create_pending_handoff(
+    handoff_id: str, user_id: str, conversation_id: str, reason: str = ""
+) -> None:
     await set_cache(
         _key(handoff_id),
-        {"status": HandoffStatus.PENDING.value, "user_id": user_id},
+        {
+            "status": HandoffStatus.PENDING.value,
+            "user_id": user_id,
+            "conversation_id": conversation_id,
+            "reason": reason,
+        },
         ttl=HANDOFF_KEY_TTL_SECONDS,
     )
+    if conversation_id:
+        await set_cache(_conv_key(conversation_id), handoff_id, ttl=HANDOFF_KEY_TTL_SECONDS)
 
 
 async def get_handoff(handoff_id: str) -> dict | None:
     return await get_cache(_key(handoff_id))
+
+
+async def get_conversation_pending_handoff(conversation_id: str) -> str | None:
+    """The conversation's in-flight handoff id, if a browser task is waiting."""
+    return await get_cache(_conv_key(conversation_id))
 
 
 async def resolve_handoff(
@@ -60,6 +79,9 @@ async def resolve_handoff(
     )
     record["status"] = new_status.value
     await set_cache(_key(handoff_id), record, ttl=HANDOFF_KEY_TTL_SECONDS)
+    conversation_id = record.get("conversation_id")
+    if conversation_id:
+        await delete_cache(_conv_key(conversation_id))
     log.info(f"Browser handoff {handoff_id} resolved: {new_status.value}")
     return new_status
 

@@ -28,6 +28,7 @@ from app.agents.core.background.executor_capture import (
     teardown_executor_capture,
 )
 from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
+from app.constants.browser import BROWSER_HANDOFF_ACK_CANCEL, BROWSER_HANDOFF_ACK_CONTINUE
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
 from app.constants.chat import GENERIC_TURN_ERROR, RECURSION_LIMIT_MESSAGE
 from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
@@ -44,6 +45,7 @@ from app.models.stream_events import (
 from app.models.user_models import AuthenticatedUser
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.chat.artifact_forwarder import forward_artifact_events
+from app.services.browser.resolution import resolve_handoff_from_message
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
@@ -215,6 +217,13 @@ async def _run_chat_stream(
         if is_new_conversation and user_id and body.fileData:
             await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
             await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+        # Same idea for a paused browser task: a chat reply ("I paid, continue" /
+        # "stop") resolves its live-view handoff — the text-channel equivalent of
+        # the card's Continue/Cancel buttons, working on web and bots alike.
+        if await _resolve_pending_browser_handoff_turn(
+            body, user, conversation_id, stream_id, state
+        ):
+            return
 
         # Start description generation only after the conversation row exists
         # (created in ``_publish_init_chunk``). Starting it earlier races the
@@ -376,6 +385,48 @@ async def _resolve_pending_approval_turn(
         format_sse_data(
             MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
         ),
+    )
+    await _persist_turn(stream_id, body, user, conversation_id, state)
+    await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
+    await stream_manager.complete_stream(stream_id)
+    return True
+
+
+async def _resolve_pending_browser_handoff_turn(
+    body: MessageRequestWithHistory,
+    user: dict,
+    conversation_id: str,
+    stream_id: str,
+    state: _StreamState,
+) -> bool:
+    """Resolve a paused browser task's handoff from the user's chat reply.
+
+    Returns ``True`` when the reply continued/cancelled the handoff — the turn is
+    fully handled here and the caller must not run the agent (the paused browser
+    task resumes on its original stream). ``False`` when nothing was pending or
+    the message was unrelated, so the normal turn runs.
+    """
+    user_id = user.get("user_id")
+    message = user_message_content_from(body)
+    if not user_id or not message:
+        return False
+
+    try:
+        action = await resolve_handoff_from_message(conversation_id, user_id, message)
+    except Exception as e:  # noqa: BLE001 — chat must survive an optional-feature lookup
+        log.error(f"{LogTag.CHAT} Pending browser-handoff check failed; normal turn: {e}")
+        return False
+
+    if action not in ("continue", "cancel"):
+        return False
+
+    ack = BROWSER_HANDOFF_ACK_CONTINUE if action == "continue" else BROWSER_HANDOFF_ACK_CANCEL
+    state.complete_message = ack
+    state.turn_completed_at = datetime.now(UTC)
+    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
+    await stream_manager.publish_chunk(
+        stream_id,
+        format_sse_data(MainResponseCompleteFrame(main_response_complete=True).model_dump()),
     )
     await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")

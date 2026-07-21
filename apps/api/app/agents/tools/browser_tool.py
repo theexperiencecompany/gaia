@@ -107,7 +107,7 @@ async def browser_task(
 
             async def request_handoff(req: HandoffRequest) -> HandoffStatus:
                 handoff_id = uuid.uuid4().hex
-                await create_pending_handoff(handoff_id, user_id)
+                await create_pending_handoff(handoff_id, user_id, conversation_id, req.reason)
                 await emit(
                     BrowserHandoffSnapshot(
                         handoff_id=handoff_id,
