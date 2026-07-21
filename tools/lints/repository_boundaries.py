@@ -117,7 +117,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/voice_service.py",
         "services/workflow/scheduler.py",
         "services/workflow/service.py",
-        "services/workflow/trigger_service.py",
         "services/workspace_sync.py",
         # utils/
         "utils/agent_utils.py",
