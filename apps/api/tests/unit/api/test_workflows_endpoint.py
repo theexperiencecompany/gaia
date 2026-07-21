@@ -31,8 +31,10 @@ import pytest
 
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
+    PublicWorkflowRow,
     PublicWorkflowsResponse,
     Workflow,
+    WorkflowCreatorInfo,
     WorkflowDocument,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
@@ -43,28 +45,10 @@ BASE_URL = "/api/v1/workflows"
 # Patch targets
 _WF_SERVICE = "app.api.v1.endpoints.workflows.WorkflowService"
 _WF_GEN_SERVICE = "app.api.v1.endpoints.workflows.WorkflowGenerationService"
-_WF_COLLECTION = "app.api.v1.endpoints.workflows.workflows_collection"
 _WF_REPO = "app.api.v1.endpoints.workflows.workflow_repository"
 _GET_EXECUTIONS = "app.api.v1.endpoints.workflows.get_executions"
 _GEN_SLUG = "app.api.v1.endpoints.workflows.generate_unique_workflow_slug"
 _RESET_DEFAULT = "app.api.v1.endpoints.workflows.reset_system_workflow_to_default"
-
-
-def _async_iter(items: list):
-    """Return a Mongo-cursor-shaped async iterator over the given items."""
-
-    class _Cursor:
-        def __init__(self, docs):
-            self._docs = list(docs)
-
-        def __aiter__(self):
-            return self._gen()
-
-        async def _gen(self):
-            for d in self._docs:
-                yield d
-
-    return _Cursor(items)
 
 
 def _make_workflow(**overrides) -> Workflow:
@@ -778,38 +762,32 @@ class TestGetPublicWorkflow:
     """Tests for the get public workflow endpoint."""
 
     async def test_get_public_workflow_by_id_returns_200(self, client: AsyncClient):
-        mock_doc = {
-            "_id": "wf_abc123",
-            "user_id": "507f1f77bcf86cd799439011",
-            "title": "Public Workflow",
-            "description": "A shared workflow",
-            "prompt": "Do things",
-            "steps": [],
-            "trigger_config": {"type": "manual", "enabled": True},
-            "activated": True,
-            "is_public": True,
-            # slug present → ensure_public_workflow_slug short-circuits (no DB write)
-            "slug": "public-workflow",
-            "creator_info": [{"name": "Test User", "picture": None}],
-        }
-        with (
-            patch(
-                f"{_WF_COLLECTION}.aggregate",
-                return_value=_async_iter([mock_doc]),
-            ),
-            patch(
-                "app.api.v1.endpoints.workflows.transform_workflow_document",
-                return_value=mock_doc,
-            ),
+        # slug present → ensure_public_workflow_slug short-circuits (no repo write).
+        row = PublicWorkflowRow(
+            **_make_workflow(
+                title="Public Workflow", is_public=True, slug="public-workflow"
+            ).model_dump(),
+            creator_info=[WorkflowCreatorInfo(name="Test User")],
+        )
+        with patch(
+            f"{_WF_REPO}.get_public_with_creator",
+            new_callable=AsyncMock,
+            return_value=row,
         ):
             response = await client.get(f"{BASE_URL}/public/wf_abc123")
 
         assert response.status_code == 200
+        data = response.json()["workflow"]
+        assert data["id"] == "wf_abc123"
+        assert data["creator"]["name"] == "Test User"
+        # the join scaffolding must not leak into the response
+        assert "creator_info" not in data
 
     async def test_get_public_workflow_not_found_returns_404(self, client: AsyncClient):
         with patch(
-            f"{_WF_COLLECTION}.aggregate",
-            return_value=_async_iter([]),
+            f"{_WF_REPO}.get_public_with_creator",
+            new_callable=AsyncMock,
+            return_value=None,
         ):
             response = await client.get(f"{BASE_URL}/public/nonexistent-slug")
 

@@ -12,7 +12,6 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
@@ -26,7 +25,6 @@ from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
-    Workflow,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowListResponse,
@@ -44,9 +42,8 @@ from app.services.workflow.service import (
     ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )
-from app.utils.creator import creator_lookup_stage, format_creator
+from app.utils.creator import format_creator
 from app.utils.exceptions import TriggerRegistrationError
-from app.utils.workflow_utils import transform_workflow_document
 from shared.py.wide_events import WorkflowContext, log
 
 router = APIRouter()
@@ -580,20 +577,11 @@ async def get_public_workflow(request: Request, workflow_ref: str):
         public_workflow={"ref": workflow_ref, "lookup_mode": lookup_mode},
     )
     try:
-        match: dict = (
-            {"_id": workflow_ref, "is_public": True}
-            if lookup_mode == "id"
-            else {"slug": workflow_ref, "is_public": True}
+        workflow = await workflow_repository.get_public_with_creator(
+            workflow_ref, by_slug=lookup_mode == "slug"
         )
 
-        workflow_doc = None
-        async for doc in workflows_collection.aggregate(
-            [{"$match": match}, creator_lookup_stage(), {"$limit": 1}]
-        ):
-            workflow_doc = doc
-            break
-
-        if not workflow_doc:
+        if not workflow:
             log.info(
                 f"{LogTag.WORKFLOW} get_public_workflow: no public workflow for ref={workflow_ref}"
             )
@@ -602,22 +590,19 @@ async def get_public_workflow(request: Request, workflow_ref: str):
                 detail="Public workflow not found",
             )
 
-        creator = format_creator(workflow_doc)
-        workflow_doc.pop("creator_info", None)
-
-        await ensure_public_workflow_slug(workflow_doc)
-
-        transformed_doc = transform_workflow_document(workflow_doc)
-        workflow = Workflow(**transformed_doc)
+        creator = format_creator(workflow)
+        await ensure_public_workflow_slug(workflow)
+        # The row IS-A Workflow; creator_info is excluded from serialization, so
+        # handing it straight back emits the plain Workflow shape plus `creator`.
         workflow.creator = creator
 
         log.set(
             public_workflow={
-                "id": workflow_doc.get("_id"),
-                "slug": workflow_doc.get("slug"),
-                "creator_id": workflow_doc.get("created_by"),
+                "id": workflow.id,
+                "slug": workflow.slug,
+                "creator_id": workflow.created_by,
                 "creator_name": creator.get("name") if isinstance(creator, dict) else None,
-                "step_count": len(workflow.steps) if getattr(workflow, "steps", None) else 0,
+                "step_count": len(workflow.steps) if workflow.steps else 0,
             }
         )
         return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")
