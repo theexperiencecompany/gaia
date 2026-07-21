@@ -39,8 +39,8 @@ from app.agents.core.subagents.subagent_runner import (
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
-from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.integrations import integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.services.connect_link_service import build_connect_link_url
@@ -157,32 +157,17 @@ async def _get_subagent_by_id(subagent_id: str):
         # Return cached result (could be empty dict for negative cache)
         return cached if cached else None
 
-    # Escape regex metacharacters to prevent ReDoS attacks
-    escaped_search_id = re.escape(search_id)
-
-    # Search by integration_id (case-insensitive)
-    custom = await integrations_collection.find_one(
-        {
-            "$or": [
-                {
-                    "integration_id": {
-                        "$regex": f"^{escaped_search_id}",
-                        "$options": "i",
-                    }
-                },
-                {"name": {"$regex": f"^{escaped_search_id}$", "$options": "i"}},
-            ],
-        }
-    )
+    # Search by integration_id (case-insensitive) or exact name
+    custom = await integration_repository.find_by_id_prefix_or_name(search_id)
 
     if custom:
         result = {
-            "id": custom.get("integration_id"),
-            "name": custom.get("name"),
-            "source": custom.get("source", "custom"),
-            "managed_by": custom.get("managed_by", "mcp"),
-            "mcp_config": custom.get("mcp_config"),
-            "icon_url": custom.get("icon_url"),
+            "id": custom.integration_id,
+            "name": custom.name,
+            "source": custom.source,
+            "managed_by": custom.managed_by,
+            "mcp_config": custom.mcp_config.model_dump() if custom.mcp_config else None,
+            "icon_url": custom.icon_url,
             "subagent_config": None,
         }
         await set_cache(cache_key, result, ttl=SUBAGENT_CACHE_TTL)

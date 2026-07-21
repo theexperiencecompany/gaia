@@ -13,7 +13,7 @@ from typing import Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
-from app.db.repositories.base import UserScopedDocument
+from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
@@ -36,12 +36,15 @@ class ComposioConfigDoc(BaseModel):
     toolkit: str
 
 
-class Integration(BaseModel):
+class Integration(MongoDocument):
     """
     Integration document model for MongoDB 'integrations' collection.
 
     Platform integrations from OAUTH_INTEGRATIONS (code) are hydrated at runtime.
     Custom integrations created by users are stored here.
+
+    Identity is the business key ``integration_id`` (unique index); the Mongo
+    ``_id`` (ObjectId) is incidental and dropped on read.
     """
 
     integration_id: str = Field(..., description="Unique identifier for the integration")
@@ -95,7 +98,37 @@ class Integration(BaseModel):
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
-    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+    model_config = ConfigDict(extra="ignore", json_encoders={datetime: lambda v: v.isoformat()})
+
+
+class IntegrationUpdate(BaseModel):
+    """Typed ``$set`` surface for a custom integration edit.
+
+    Mirrors exactly the fields ``update_custom_integration`` writes; ``updated_at``
+    is passed explicitly because the repository does not auto-stamp this collection.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+    is_public: bool | None = None
+    mcp_config: MCPConfig | None = None
+    updated_at: datetime | None = None
+
+
+class CreatorInfo(BaseModel):
+    """Creator name/picture joined from the users collection in marketplace aggregations."""
+
+    name: str | None = None
+    picture: str | None = None
+
+
+class IntegrationWithCreator(Integration):
+    """An integration enriched with joined creator info — the typed result of the
+    creator-lookup aggregations (public detail + community listings)."""
+
+    creator: CreatorInfo | None = None
 
 
 class UserIntegration(BaseModel):

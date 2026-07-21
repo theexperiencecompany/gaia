@@ -45,8 +45,6 @@ _BSON_ALLOWED_DIRS = ("db/",)
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/
-        "agents/core/subagents/handoff_tools.py",
-        "agents/core/subagents/provider_subagents.py",
         "agents/memory/email_processor.py",
         "agents/tools/integration_tool.py",
         # api/
@@ -58,7 +56,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/user.py",
         # helpers/
-        "helpers/agent_helpers.py",
         "helpers/email_helpers.py",
         "helpers/message_helpers.py",
         # memory/
@@ -94,7 +91,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/voice_service.py",
         "services/workspace_sync.py",
         # utils/
-        "utils/agent_utils.py",
         "utils/embedding_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",

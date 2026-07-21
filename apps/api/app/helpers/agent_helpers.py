@@ -3,7 +3,6 @@
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
-import re
 from typing import cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
@@ -28,8 +27,8 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.integrations import integration_repository
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.models_models import ModelConfig
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
@@ -70,22 +69,11 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
     if cached is not None:
         return cached if cached else {}
 
-    # Escape regex metacharacters for safety
-    escaped_id = re.escape(clean_id)
-
-    # Query MongoDB to find the integration by ID or name.
+    # Find the integration by ID or name.
     # No source filter - we need to find ANY integration (custom OR public).
     # Public integrations created by OTHER users also need metadata lookup.
     try:
-        custom = await integrations_collection.find_one(
-            {
-                "$or": [
-                    {"integration_id": {"$regex": f"^{escaped_id}", "$options": "i"}},
-                    {"name": {"$regex": f"^{escaped_id}$", "$options": "i"}},
-                ],
-            },
-            {"name": 1, "icon_url": 1, "integration_id": 1},
-        )
+        custom = await integration_repository.find_by_id_prefix_or_name(clean_id)
 
         if not custom:
             # Cache negative result
@@ -93,9 +81,9 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
             return {}
 
         metadata = {
-            "icon_url": custom.get("icon_url"),
-            "integration_id": custom.get("integration_id"),
-            "integration_name": custom.get("name"),
+            "icon_url": custom.icon_url,
+            "integration_id": custom.integration_id,
+            "integration_name": custom.name,
         }
 
         log.set(integration_type="custom")

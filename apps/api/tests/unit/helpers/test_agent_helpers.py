@@ -11,8 +11,20 @@ from app.helpers.agent_helpers import (
     execute_graph_streaming,
     get_handoff_metadata,
 )
+from app.models.integration_models import Integration
 from app.models.mcp_config import SubAgentConfig
 from app.models.subagent_models import Subagent
+
+
+def _integration(integration_id: str, name: str, icon_url: str | None = None) -> Integration:
+    return Integration(
+        integration_id=integration_id,
+        name=name,
+        description="",
+        category="custom",
+        managed_by="mcp",
+        icon_url=icon_url,
+    )
 
 
 def _make_subagent(
@@ -101,18 +113,14 @@ class TestGetHandoffMetadata:
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
+    @patch("app.helpers.agent_helpers.integration_repository")
     @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_custom_integration_found_in_db(
-        self, mock_lookup, mock_col, mock_get_cache, mock_set_cache
+        self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
     ):
         mock_get_cache.return_value = None
-        mock_col.find_one = AsyncMock(
-            return_value={
-                "name": "MyMCP",
-                "icon_url": "https://icon.png",
-                "integration_id": "custom_mymcp",
-            }
+        mock_repo.find_by_id_prefix_or_name = AsyncMock(
+            return_value=_integration("custom_mymcp", "MyMCP", "https://icon.png")
         )
 
         result = await get_handoff_metadata("custom_mymcp")
@@ -121,33 +129,29 @@ class TestGetHandoffMetadata:
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
+    @patch("app.helpers.agent_helpers.integration_repository")
     @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_custom_integration_db_error_returns_empty(
-        self, mock_lookup, mock_col, mock_get_cache, mock_set_cache
+        self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
     ):
         mock_get_cache.return_value = None
-        mock_col.find_one = AsyncMock(side_effect=Exception("DB failure"))
+        mock_repo.find_by_id_prefix_or_name = AsyncMock(side_effect=Exception("DB failure"))
 
         result = await get_handoff_metadata("broken")
         assert result == {}
 
     @patch("app.helpers.agent_helpers.set_cache", new_callable=AsyncMock)
     @patch("app.helpers.agent_helpers.get_cache", new_callable=AsyncMock)
-    @patch("app.helpers.agent_helpers.integrations_collection")
+    @patch("app.helpers.agent_helpers.integration_repository")
     @patch("app.helpers.agent_helpers.get_subagent_by_id", return_value=None)
     async def test_handoff_with_subagent_prefix(
-        self, mock_lookup, mock_col, mock_get_cache, mock_set_cache
+        self, mock_lookup, mock_repo, mock_get_cache, mock_set_cache
     ):
         """Subagent IDs may have 'subagent:' prefix — parse_subagent_id strips it
         before the registry lookup, so the mock should see 'custom_abc'."""
         mock_get_cache.return_value = None
-        mock_col.find_one = AsyncMock(
-            return_value={
-                "name": "Custom",
-                "icon_url": None,
-                "integration_id": "custom_abc",
-            }
+        mock_repo.find_by_id_prefix_or_name = AsyncMock(
+            return_value=_integration("custom_abc", "Custom")
         )
 
         result = await get_handoff_metadata("subagent:custom_abc")
