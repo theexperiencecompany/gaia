@@ -172,6 +172,26 @@ async def release_lock_if_owned(conversation_id: str, stream_id: str, task_id: s
         await redis_cache.delete(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}")
 
 
+async def extend_lock_if_owned(
+    conversation_id: str, stream_id: str, task_id: str | None, ttl_seconds: int
+) -> bool:
+    """Re-arm the busy lock's TTL while this run still owns it.
+
+    For a run that parks on a HIL approval: its lock's TTL has been counting down
+    since the run *started*, but the pause may outlive it, and a lock that lapses
+    under a checkpointed interrupt lets a new run take the thread and discard it.
+    Ownership-checked like ``release_lock_if_owned`` — a stale run must never
+    extend a lock a newer one now holds. Returns whether the TTL was re-armed.
+    """
+    if not redis_cache.client:
+        return False
+    if await get_lock_state(conversation_id, stream_id, task_id) is not LockState.OURS:
+        return False
+    return bool(
+        await redis_cache.client.expire(f"{EXECUTOR_BUSY_PREFIX}{conversation_id}", ttl_seconds)
+    )
+
+
 async def reclaim_stranded_task(conversation_id: str) -> PreparedQueuedTask | None:
     """Claim a free lock and pop a task that would otherwise strand.
 

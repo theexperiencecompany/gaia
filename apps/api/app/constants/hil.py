@@ -8,6 +8,7 @@ for every tool in the app.
 
 from typing import Literal
 
+from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
@@ -50,6 +51,14 @@ HIL_JUDGE_MIN_QUOTE_WORDS = 3
 # is absent by design: resolution.py maps it to a deny before sending.
 HIL_RESUMABLE_STATUSES: frozenset[str] = frozenset({"approved", "denied", "timeout"})
 
+# Every status that means "decided, so the run it paused must be re-dispatched" —
+# the sweep's crashed-resume pass matches on these. All four terminal decisions
+# belong here, "timeout" included: it is dispatched by the sweep's own expiry pass,
+# which can fail (a lost resume-slot claim, a transient prepare) exactly like a
+# button decision can, and nothing else would ever retry it. "auto_approved" is
+# absent by design — it never paused, so it has no run to resume.
+HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout", "abandoned")
+
 # --- approval card summary -------------------------------------------------------------
 #
 # How much of a call's arguments the deterministic one-line summary shows.
@@ -62,10 +71,27 @@ HILToolMessageStatus = Literal["denied", "timeout", "error"]
 
 # How long an approval may sit unanswered before the sweep resolves it as a
 # timeout. Nothing waits in-process for this — the paused run is checkpointed.
-# Must stay well under the executor busy-lock TTL (30 min): expiring the
-# approval is what releases the paused run's claim before the lock can lapse
-# under a still-pending record.
-HIL_APPROVAL_TIMEOUT_SECONDS = 900
+#
+# Set by how long a human plausibly takes to answer a push notification (in a
+# meeting, commuting, asleep), NOT by any infrastructure limit: the busy lock is
+# re-armed to outlive this window (see HIL_PAUSED_LOCK_TTL_SECONDS), so the two
+# are no longer coupled. The upper bound is staleness, not plumbing — HIL gates
+# irreversible, third-party-visible actions, and approving one a day late acts on
+# a world that has moved on. Same-day keeps the action coherent with its context.
+HIL_APPROVAL_TIMEOUT_SECONDS = 6 * 60 * 60
+
+# TTL the executor busy lock is re-armed to when a run parks on an approval.
+#
+# A paused run keeps its conversation's lock (its thread has pending work, so no
+# other run may touch it) but cannot stop the TTL lapsing — and that TTL started
+# when the run BEGAN, not when it paused. If it lapses under a still-pending
+# approval, the next call_executor wins the lock, starts a fresh run on the same
+# executor thread, and LangGraph discards the pending interrupt: the user's card
+# is orphaned and their decision resumes nothing.
+#
+# The approval window plus the normal crash margin, so the sweep still has its
+# usual headroom to expire the approval and re-dispatch the run afterwards.
+HIL_PAUSED_LOCK_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
 
 # A decided record with no resumed_at stamp older than this is a crashed
 # resume dispatch; the sweep re-dispatches it from the record's resume_item.

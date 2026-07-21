@@ -15,7 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
-from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS
+from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_UNRESUMED_SWEEP_STATUSES
 from app.db.mongodb.collections import hil_approvals_collection
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 
@@ -228,7 +228,7 @@ async def list_decided_unresumed(grace_seconds: float) -> list[HILApprovalRecord
     cutoff = datetime.now(UTC) - timedelta(seconds=grace_seconds)
     cursor = hil_approvals_collection.find(
         {
-            "status": {"$in": ["approved", "denied", "abandoned"]},
+            "status": {"$in": list(HIL_UNRESUMED_SWEEP_STATUSES)},
             "resumed_at": None,
             "resume_item": {"$ne": None},
             "decided_at": {"$lt": cutoff},

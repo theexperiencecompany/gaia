@@ -38,13 +38,20 @@ import { chunkResponse, truncateResponse } from "./text";
 
 const logger = createBotLogger("shared", "streaming");
 
+/** The approval window is hours, so "360 minutes" is not a usable way to say it. */
+function formatExpiry(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
 /** Render a HIL approval frame as a text prompt/status for a bot message. */
 function formatApprovalPrompt(data: ApprovalRequestData): string {
   if (data.status === "pending") {
-    const minutes = Math.max(1, Math.round(data.timeout_seconds / 60));
     return (
       `**Approval needed:** ${data.summary}\n` +
-      `Reply **yes** to approve or **no** to decline. This expires in ${minutes} minutes.`
+      `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
     );
   }
   if (data.status === "approved") return "Approved — continuing.";

@@ -34,6 +34,7 @@ from app.agents.core.background.executor_queue import (
     PreparedQueuedTask,
     build_run_item,
     enqueue_collection_run,
+    extend_lock_if_owned,
     get_lock_state,
     pop_next_queued_run,
     reclaim_stranded_task,
@@ -53,7 +54,7 @@ from app.constants.executor import (
     MESSAGE_ID_KEY,
     VOICE_TTS_KEY,
 )
-from app.constants.hil import HIL_RESUME_CONFIG_KEY
+from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.services.hil.approvals_store import (
@@ -315,9 +316,26 @@ async def _finalize_paused_run(run: ExecutorRun) -> None:
     thread and that run's normal finalize drains the queue. Redis outlives the
     process, so the lock survives a restart exactly as the checkpoint does.
 
+    Holding the lock is not enough on its own: its TTL has been counting down
+    since this run started, and a user has hours to answer. Re-arm it to cover the
+    approval window, or it lapses mid-pause and the next run takes the thread and
+    discards the interrupt.
+
     The SSE consumer is still signalled: the turn's stream must close so the user
     sees the approval card instead of a spinner that never resolves.
     """
+    if not await extend_lock_if_owned(
+        run.conversation_id, run.stream_id, run.task_id, HIL_PAUSED_LOCK_TTL_SECONDS
+    ):
+        # Someone else owns the conversation (or Redis is down), so this pause is
+        # already at risk of being trampled. Nothing to do but say so loudly.
+        log.warning(
+            f"{LogTag.HIL} Could not extend busy lock for paused run; the approval "
+            "may be orphaned if the lock lapses",
+            task_id=run.task_id,
+            conversation_id=run.conversation_id,
+            stream_id=run.stream_id,
+        )
     signal_executor_done(run.stream_id)
     await _close_queued_stream(run, was_cancelled=False)
     log.info(
