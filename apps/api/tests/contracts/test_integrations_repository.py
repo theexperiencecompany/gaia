@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import uuid
 
 import pytest
@@ -69,3 +70,73 @@ class TestIntegrationsRepository:
     async def test_find_by_id_prefix_or_name_no_match(self, repo):
         await repo.create(_integration(f"x-{uuid.uuid4().hex}", "Nope"))
         assert await repo.find_by_id_prefix_or_name(f"missing-{uuid.uuid4().hex}") is None
+
+    async def test_find_custom_by_ids_filters_source(self, repo):
+        custom_id = f"c-{uuid.uuid4().hex}"
+        platform_id = f"p-{uuid.uuid4().hex}"
+        await repo.create(_integration(custom_id, "Custom", source="custom"))
+        await repo.create(_integration(platform_id, "Platform", source="platform"))
+
+        found = await repo.find_custom_by_ids([custom_id, platform_id])
+        assert [i.integration_id for i in found] == [custom_id]
+
+    async def test_list_public_custom_newest_first_and_category(self, repo):
+
+        await repo.create(
+            _integration(
+                f"old-{uuid.uuid4().hex}",
+                "Old",
+                is_public=True,
+                category="dev",
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            )
+        )
+        await repo.create(
+            _integration(
+                f"new-{uuid.uuid4().hex}",
+                "New",
+                is_public=True,
+                category="dev",
+                created_at=datetime(2026, 2, 1, tzinfo=UTC),
+            )
+        )
+        # Private + wrong category are excluded.
+        await repo.create(_integration(f"priv-{uuid.uuid4().hex}", "Priv", is_public=False))
+        await repo.create(
+            _integration(f"other-{uuid.uuid4().hex}", "Other", is_public=True, category="comms")
+        )
+
+        listed = await repo.list_public_custom("dev")
+        assert [i.name for i in listed] == ["New", "Old"]  # created_at desc
+
+        all_public = await repo.list_public_custom()
+        assert {i.name for i in all_public} == {"New", "Old", "Other"}
+
+    async def test_search_public_matches_and_excludes(self, repo):
+        hit = f"hit-{uuid.uuid4().hex}"
+        excluded = f"exc-{uuid.uuid4().hex}"
+        private = f"prv-{uuid.uuid4().hex}"
+        await repo.create(
+            _integration(hit, "Weather Radar", is_public=True, description="forecast")
+        )
+        await repo.create(
+            _integration(excluded, "Weather Station", is_public=True, description="forecast")
+        )
+        await repo.create(_integration(private, "Weather Private", is_public=False))
+
+        results = await repo.search_public(
+            words=["weather"], query="weather", exclude_ids=[excluded], limit=10
+        )
+        ids = {i.integration_id for i in results}
+        assert hit in ids
+        assert excluded not in ids  # $nin
+        assert private not in ids  # is_public gate
+
+    async def test_search_public_respects_limit(self, repo):
+        token = uuid.uuid4().hex
+        for n in range(5):
+            await repo.create(
+                _integration(f"lim-{n}-{token}", f"Limitcase {token}", is_public=True)
+            )
+        results = await repo.search_public(words=[token], query=token, exclude_ids=[], limit=3)
+        assert len(results) == 3

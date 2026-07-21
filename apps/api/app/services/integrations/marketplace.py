@@ -6,7 +6,8 @@ from bson import ObjectId
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import integrations_collection, users_collection
+from app.db.mongodb.collections import users_collection
+from app.db.repositories.integrations import integration_repository
 from app.models.integration_models import (
     Integration,
     IntegrationResponse,
@@ -34,20 +35,8 @@ async def get_all_integrations(
         if not include_custom_public:
             return []
 
-        custom_integrations = []
-        query = {"source": "custom", "is_public": True}
-        if category and category != "all":
-            query["category"] = category
-
-        cursor = integrations_collection.find(query).sort("created_at", -1)
-        async for doc in cursor:
-            try:
-                integration = Integration(**doc)
-                custom_integrations.append(IntegrationResponse.from_integration(integration))
-            except Exception as e:
-                log.warning(f"{LogTag.INTEGRATION} Failed to parse custom integration: {e}")
-
-        return custom_integrations
+        integrations = await integration_repository.list_public_custom(category)
+        return [IntegrationResponse.from_integration(i) for i in integrations]
 
     all_mcp_tools, custom_integrations = await asyncio.gather(
         fetch_mcp_tools(),

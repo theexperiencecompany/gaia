@@ -46,7 +46,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # agents/
         "agents/memory/email_processor.py",
-        "agents/tools/integration_tool.py",
         # api/
         "api/v1/endpoints/integrations/config.py",
         # NOTE: integrations/public.py stays allowlisted for integrations_collection /
