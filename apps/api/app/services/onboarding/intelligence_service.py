@@ -48,9 +48,9 @@ from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import (
     todos_collection,
-    workflows_collection,
 )
 from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
@@ -1322,11 +1322,9 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     # no Composio triggers or scheduled jobs to unwind — so a direct delete is safe.
     prior_workflow_ids = onboarding.get("suggested_workflows") or []
     if prior_workflow_ids:
-        deleted = await workflows_collection.delete_many(
-            {"_id": {"$in": prior_workflow_ids}, "user_id": user_id}
-        )
+        deleted = await workflow_repository.delete_many_for_user(prior_workflow_ids, user_id)
         log.info(
-            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted.deleted_count} "
+            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted} "
             f"stale suggested workflows before regenerating",
             user_id=user_id,
         )

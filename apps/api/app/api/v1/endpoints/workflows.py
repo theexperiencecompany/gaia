@@ -3,8 +3,6 @@ Clean workflow API router for GAIA workflow system.
 Provides CRUD operations, execution, and status endpoints.
 """
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.errors import DuplicateKeyError
 
@@ -15,6 +13,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
@@ -441,9 +440,7 @@ async def publish_workflow(
     )
 
     try:
-        workflow = await workflows_collection.find_one(
-            {"_id": workflow_id, "user_id": user["user_id"]}
-        )
+        workflow = await workflow_repository.get_for_user(workflow_id, user["user_id"])
 
         if not workflow:
             raise HTTPException(
@@ -451,28 +448,18 @@ async def publish_workflow(
                 detail="Workflow not found or access denied",
             )
 
-        existing_slug = workflow.get("slug")
+        existing_slug = workflow.slug
         slug = existing_slug
 
         # Retry on DuplicateKeyError so a concurrent publish racing on the
-        # same suffix can't corrupt the unique index.
+        # same suffix can't corrupt the unique index. Only a freshly generated
+        # slug is retried; an existing slug that collides re-raises.
         for _ in range(5):
-            publish_set: dict = {
-                "is_public": True,
-                "created_by": user["user_id"],
-                "updated_at": datetime.now(UTC),
-            }
             if not existing_slug:
-                slug = await generate_unique_workflow_slug(
-                    workflow.get("title", ""),
-                    exclude_id=workflow_id,
-                )
-                publish_set["slug"] = slug
-
+                slug = await generate_unique_workflow_slug(workflow.title, exclude_id=workflow_id)
             try:
-                await workflows_collection.update_one(
-                    {"_id": workflow_id},
-                    {"$set": publish_set},
+                await workflow_repository.publish(
+                    workflow_id, created_by=user["user_id"], slug=slug or ""
                 )
                 break
             except DuplicateKeyError:
@@ -517,9 +504,7 @@ async def unpublish_workflow(
 
     try:
         # Check if workflow exists and belongs to user
-        workflow = await workflows_collection.find_one(
-            {"_id": workflow_id, "user_id": user["user_id"]}
-        )
+        workflow = await workflow_repository.get_for_user(workflow_id, user["user_id"])
 
         if not workflow:
             raise HTTPException(
@@ -527,13 +512,7 @@ async def unpublish_workflow(
                 detail="Workflow not found or access denied",
             )
 
-        # Update workflow to be private
-        await workflows_collection.update_one(
-            {"_id": workflow_id},
-            {
-                "$set": {"is_public": False, "updated_at": datetime.now(UTC)},
-            },
-        )
+        await workflow_repository.unpublish(workflow_id)
 
         log.set(outcome="success")
         log.info(f"{LogTag.WORKFLOW} Unpublished workflow {workflow_id} by user {user['user_id']}")

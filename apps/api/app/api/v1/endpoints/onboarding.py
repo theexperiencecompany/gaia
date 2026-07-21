@@ -16,8 +16,8 @@ from app.core.websocket_manager import websocket_manager
 from app.db.mongodb.collections import (
     todos_collection,
     users_collection,
-    workflows_collection,
 )
+from app.db.repositories.workflows import workflow_repository
 from app.models.user_models import (
     BioStatus,
     OnboardingIntegrationsRequest,
@@ -336,20 +336,16 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
         workflows = []
         if workflow_ids:
             try:
-                query_ids = [
-                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id for wf_id in workflow_ids
-                ]
-                cursor = workflows_collection.find({"_id": {"$in": query_ids}})
-                wf_docs = {str(wf["_id"]): wf async for wf in cursor}
+                wf_docs = {wf.id: wf for wf in await workflow_repository.find_by_ids(workflow_ids)}
                 for wf_id in workflow_ids:
-                    wf = wf_docs.get(str(wf_id))
+                    wf = wf_docs.get(wf_id)
                     if wf:
                         workflows.append(
                             {
-                                "id": str(wf["_id"]),
-                                "title": wf.get("title", ""),
-                                "description": wf.get("description", ""),
-                                "steps": wf.get("steps", []),
+                                "id": wf.id,
+                                "title": wf.title,
+                                "description": wf.description,
+                                "steps": [step.model_dump() for step in wf.steps],
                             }
                         )
             except Exception as e:
