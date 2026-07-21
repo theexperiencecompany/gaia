@@ -9,6 +9,7 @@ repository mirrors that on-disk reality rather than stamping every write.
 
 import re
 
+from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.integration_models import (
     Integration,
@@ -58,6 +59,22 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
     async def find_custom_by_ids(self, integration_ids: list[str]) -> list[Integration]:
         """Custom-source integrations among the given ids (a user's added customs)."""
         return await self._find({"integration_id": {"$in": integration_ids}, "source": "custom"})
+
+    async def get_custom(self, integration_id: str) -> Integration | None:
+        """A custom-source integration by id (the delete-ownership check reads this)."""
+        return await self._find_one({"integration_id": integration_id, "source": "custom"})
+
+    async def get_custom_for_user(self, integration_id: str, user_id: str) -> Integration | None:
+        """A custom integration owned by ``user_id`` — the creator-only edit guard."""
+        return await self._find_one(
+            {"integration_id": integration_id, "source": "custom", "created_by": user_id}
+        )
+
+    async def delete_custom(self, integration_id: str, created_by: str) -> bool:
+        """Delete a custom integration only if ``created_by`` owns it (creator-only)."""
+        return await self._remove(
+            integration_id, REPO_GLOBAL_SCOPE, {"source": "custom", "created_by": created_by}
+        )
 
     async def list_public_custom(self, category: str | None = None) -> list[Integration]:
         """Public custom integrations for the marketplace, newest first, optionally

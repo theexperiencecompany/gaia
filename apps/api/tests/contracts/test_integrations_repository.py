@@ -71,6 +71,28 @@ class TestIntegrationsRepository:
         await repo.create(_integration(f"x-{uuid.uuid4().hex}", "Nope"))
         assert await repo.find_by_id_prefix_or_name(f"missing-{uuid.uuid4().hex}") is None
 
+    async def test_get_custom_and_for_user_guards(self, repo):
+        owner = "owner-1"
+        iid = f"cc-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Owned", source="custom", created_by=owner))
+        platform = f"pl-{uuid.uuid4().hex}"
+        await repo.create(_integration(platform, "Platform", source="platform", created_by=owner))
+
+        assert (await repo.get_custom(iid)).integration_id == iid
+        assert await repo.get_custom(platform) is None  # source != custom
+        assert (await repo.get_custom_for_user(iid, owner)).integration_id == iid
+        assert await repo.get_custom_for_user(iid, "intruder") is None  # not owner
+
+    async def test_delete_custom_is_owner_scoped(self, repo):
+        owner = "owner-2"
+        iid = f"cd-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "ToDelete", source="custom", created_by=owner))
+
+        assert await repo.delete_custom(iid, "intruder") is False  # not owner
+        assert await repo.get(iid) is not None  # still there
+        assert await repo.delete_custom(iid, owner) is True
+        assert await repo.get(iid) is None
+
     async def test_find_custom_by_ids_filters_source(self, repo):
         custom_id = f"c-{uuid.uuid4().hex}"
         platform_id = f"p-{uuid.uuid4().hex}"
