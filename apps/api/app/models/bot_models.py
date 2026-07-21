@@ -3,8 +3,9 @@
 Pydantic models for bot chat, sessions, and related operations.
 """
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
 from app.services.platform_link_service import Platform
 
@@ -117,3 +118,26 @@ class BotSettingsResponse(BaseModel):
         default_factory=list,
         description="List of connected integrations (empty if none)",
     )
+
+
+class BotSessionDocument(MongoDocument):
+    """A bot chat session — the mapping from a platform conversation to a GAIA
+    ``conversation_id``, keyed by a unique ``session_key``.
+
+    Only the fields the app reads are modelled. ``created_at``/``updated_at`` are
+    stored as ISO-format strings for the collection's TTL and are written raw by
+    the repository (never surfaced here), so the base's ``updated_at`` datetime
+    auto-stamp does not apply — preserving the existing on-disk string shape.
+    """
+
+    session_key: str
+    conversation_id: str
+    platform: str
+    platform_user_id: str
+    channel_id: str | None = None
+
+
+class BotSessionUpdate(BaseModel):
+    """Bot sessions are claimed via an atomic upsert, never typed-updated."""
+
+    model_config = ConfigDict(extra="forbid")

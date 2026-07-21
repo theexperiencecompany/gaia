@@ -200,9 +200,9 @@ def test_collections_import_outside_repository_is_flagged(tmp_path: Path) -> Non
 
 
 def test_collections_import_allowlisted_is_clean(tmp_path: Path) -> None:
-    # services/blog_service.py is a grandfathered pre-repository call site.
-    src = "from app.db.mongodb.collections import blog_collection\n"
-    path = _write(tmp_path, "app/services/blog_service.py", src)
+    # services/dev_service.py is a grandfathered pre-repository call site.
+    src = "from app.db.mongodb.collections import users_collection\n"
+    path = _write(tmp_path, "app/services/dev_service.py", src)
     assert repository_boundaries.check([path]) == []
 
 

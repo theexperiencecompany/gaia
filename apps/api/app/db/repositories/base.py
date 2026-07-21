@@ -433,6 +433,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         extra_filter: Mapping[str, object] | None = None,
         return_document: bool = True,
         array_filters: Sequence[Mapping[str, object]] | None = None,
+        upsert: bool = False,
     ) -> TDoc | None:
         """Apply a raw Mongo update to one document, then refresh the entity cache
         and bump the generation exactly like the typed ``update`` path.
@@ -444,7 +445,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         automatically when the document declares it. ``scope`` names the cache scope
         (usually the owning ``user_id``); ``extra_filter`` adds guards (e.g. a
         ``vfs_path`` existence check) to ``filter_``. ``return_document`` selects the
-        AFTER (default) or BEFORE image.
+        AFTER (default) or BEFORE image. ``upsert`` inserts the document when the
+        filter matches nothing — for atomic get-or-create with ``$setOnInsert``
+        (returning BEFORE on an insert yields ``None``).
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
         if "updated_at" in self.document_model.model_fields:
@@ -455,6 +458,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             ops,
             array_filters=[dict(f) for f in array_filters] if array_filters is not None else None,
             return_document=ReturnDocument.AFTER if return_document else ReturnDocument.BEFORE,
+            upsert=upsert,
         )
         if raw is None:
             return None

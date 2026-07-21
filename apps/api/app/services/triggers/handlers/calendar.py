@@ -188,7 +188,7 @@ class CalendarTriggerHandler(TriggerHandler):
             # Import here to avoid circular imports
             from app.services import calendar_service
 
-            calendars = calendar_service.list_calendars(user_id)
+            calendars = await calendar_service.list_calendars(user_id)
 
             if isinstance(calendars, dict) and "items" in calendars:
                 return [cal.get("id", "primary") for cal in calendars["items"] if cal.get("id")]

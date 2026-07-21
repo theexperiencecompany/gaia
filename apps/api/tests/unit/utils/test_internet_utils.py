@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.models.search_models import SearchUrlDocument
 from app.utils.internet_utils import (
     fetch_url_metadata,
     scrape_url_metadata,
@@ -378,12 +379,12 @@ class TestFetchUrlMetadata:
         assert "Only http(s) URLs are allowed" in exc_info.value.detail
 
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     async def test_cache_hit_returns_cached_data(
         self,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
     ) -> None:
         """When cache has the URL metadata, it is returned directly without DB or scrape."""
@@ -396,64 +397,63 @@ class TestFetchUrlMetadata:
             "url": "https://example.com",
         }
         mock_get_cache.return_value = cached_data
+        mock_repo.get_by_url = AsyncMock()
 
         result = await fetch_url_metadata("https://example.com")
 
         mock_get_cache.assert_awaited_once_with("url_metadata:https://example.com")
-        # DB should not be queried when cache hits (short-circuit `or`)
-        mock_collection.find_one.assert_not_called()
+        # DB should not be queried when cache hits.
+        mock_repo.get_by_url.assert_not_awaited()
         mock_set_cache.assert_not_awaited()
         assert result.title == "Cached Title"
         # URLResponse.url is a plain str — no trailing-slash normalisation
         assert result.url == "https://example.com"
 
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     async def test_db_hit_returns_db_data(
         self,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
     ) -> None:
-        """When cache misses but DB has the data, it is returned from DB."""
+        """When cache misses but DB has the data, it is returned from the repository."""
         mock_get_cache.return_value = None
 
-        db_data = {
-            "title": "DB Title",
-            "description": "DB Desc",
-            "favicon": "https://example.com/db-fav.ico",
-            "website_name": "DBSite",
-            "website_image": None,
-            "url": "https://example.com",
-        }
-        mock_collection.find_one = AsyncMock(return_value=db_data)
+        stored = SearchUrlDocument(
+            url="https://example.com",
+            title="DB Title",
+            description="DB Desc",
+            favicon="https://example.com/db-fav.ico",
+            website_name="DBSite",
+            website_image=None,
+        )
+        mock_repo.get_by_url = AsyncMock(return_value=stored)
 
         result = await fetch_url_metadata("https://example.com")
 
         mock_get_cache.assert_awaited_once()
-        mock_collection.find_one.assert_awaited_once_with({"url": "https://example.com"})
+        mock_repo.get_by_url.assert_awaited_once_with("https://example.com")
         # Should not re-scrape or re-cache
         mock_set_cache.assert_not_awaited()
         assert result.title == "DB Title"
 
-    @patch("app.utils.internet_utils.serialize_document")
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.scrape_url_metadata", new_callable=AsyncMock)
     async def test_cache_and_db_miss_scrapes_stores_and_caches(
         self,
         mock_scrape: AsyncMock,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
-        mock_serialize: MagicMock,
     ) -> None:
-        """When both cache and DB miss, scrapes the URL, stores in DB, caches, and returns."""
+        """When both cache and DB miss, scrapes the URL, stores it, caches, and returns."""
         mock_get_cache.return_value = None
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
+        mock_repo.get_by_url = AsyncMock(return_value=None)
+        mock_repo.create = AsyncMock()
 
         scraped = {
             "title": "Scraped Title",
@@ -464,15 +464,16 @@ class TestFetchUrlMetadata:
             "url": "https://example.com",
         }
         mock_scrape.return_value = scraped
-        mock_serialize.return_value = scraped.copy()
 
         result = await fetch_url_metadata("https://example.com")
 
         mock_scrape.assert_awaited_once_with("https://example.com")
-        mock_collection.insert_one.assert_awaited_once_with(scraped)
+        stored = mock_repo.create.await_args.args[0]
+        assert isinstance(stored, SearchUrlDocument)
+        assert stored.url == "https://example.com" and stored.title == "Scraped Title"
         mock_set_cache.assert_awaited_once_with(
             "url_metadata:https://example.com",
-            mock_serialize.return_value,
+            scraped,
             864000,
         )
         assert result.title == "Scraped Title"
@@ -500,12 +501,12 @@ class TestFetchUrlMetadata:
 
     @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     async def test_cache_key_format(
         self,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
         mock_validate: AsyncMock,
     ) -> None:
@@ -526,23 +527,21 @@ class TestFetchUrlMetadata:
             "url_metadata:https://specific.example.com/path?q=1"
         )
 
-    @patch("app.utils.internet_utils.serialize_document")
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.scrape_url_metadata", new_callable=AsyncMock)
     async def test_cache_ttl_is_864000(
         self,
         mock_scrape: AsyncMock,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
-        mock_serialize: MagicMock,
     ) -> None:
         """Cache TTL is set to 864000 seconds (10 days)."""
         mock_get_cache.return_value = None
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
+        mock_repo.get_by_url = AsyncMock(return_value=None)
+        mock_repo.create = AsyncMock()
         scraped = {
             "title": None,
             "description": None,
@@ -552,7 +551,6 @@ class TestFetchUrlMetadata:
             "url": "https://example.com",
         }
         mock_scrape.return_value = scraped
-        mock_serialize.return_value = scraped.copy()
 
         await fetch_url_metadata("https://example.com")
 

@@ -1,272 +1,77 @@
-"""Unit tests for UsageService."""
+"""Unit tests for UsageService.
+
+The service is a thin orchestration over ``usage_snapshot_repository``; these
+tests mock that repository (never the DB) and assert the service's own behaviour
+— delegation and the feature-key filter. The repository's hourly-upsert and
+scoping behaviour is covered by the real-DB contract suite.
+"""
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.usage_models import (
-    CreditUsage,
-    FeatureUsage,
-    UsagePeriod,
-    UserUsageSnapshot,
-)
+from app.models.usage_models import CreditUsage, FeatureUsage, UsagePeriod, UserUsageSnapshot
+from app.services import usage_service as usage_service_module
 from app.services.usage_service import UsageService
 
-
-class _AsyncIterator:
-    """Helper to create a proper async iterator from a list of items."""
-
-    def __init__(self, items: list):
-        self._items = iter(items)
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        try:
-            return next(self._items)
-        except StopIteration:
-            raise StopAsyncIteration
+NOW = datetime.now(UTC)
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
+def _feature(key: str, used: int = 1) -> FeatureUsage:
+    return FeatureUsage(
+        feature_key=key,
+        feature_title=key.title(),
+        period=UsagePeriod.DAY,
+        used=used,
+        limit=100,
+        reset_time=NOW,
+    )
 
 
-@pytest.fixture
-def mock_usage_collection():
-    with patch("app.services.usage_service.usage_snapshots_collection") as mock_col:
-        yield mock_col
-
-
-@pytest.fixture
-def sample_snapshot():
-    now = datetime.now(UTC)
+def _snapshot(
+    *, user_id: str = "user123", features: list[FeatureUsage] | None = None
+) -> UserUsageSnapshot:
     return UserUsageSnapshot(
-        user_id="user123",
+        user_id=user_id,
         plan_type="pro",
-        features=[
-            FeatureUsage(
-                feature_key="messages",
-                feature_title="Messages",
-                period=UsagePeriod.DAY,
-                used=10,
-                limit=100,
-                reset_time=now + timedelta(hours=12),
-            ),
-            FeatureUsage(
-                feature_key="images",
-                feature_title="Images",
-                period=UsagePeriod.MONTH,
-                used=5,
-                limit=50,
-                reset_time=now + timedelta(days=15),
-            ),
-        ],
-        credits=[
-            CreditUsage(
-                credits_used=1.5,
-                period=UsagePeriod.MONTH,
-                reset_time=now + timedelta(days=15),
-            )
-        ],
+        features=features if features is not None else [_feature("messages")],
+        credits=[CreditUsage(credits_used=1.5, period=UsagePeriod.MONTH, reset_time=NOW)],
     )
 
 
 @pytest.fixture
-def sample_mongo_doc():
-    from bson import ObjectId
-
-    now = datetime.now(UTC)
-    return {
-        "_id": ObjectId(),
-        "user_id": "user123",
-        "plan_type": "pro",
-        "features": [
-            {
-                "feature_key": "messages",
-                "feature_title": "Messages",
-                "period": "day",
-                "used": 10,
-                "limit": 100,
-                "reset_time": now + timedelta(hours=12),
-                "updated_at": now,
-            }
-        ],
-        "credits": [
-            {
-                "credits_used": 1.5,
-                "period": "month",
-                "reset_time": now + timedelta(days=15),
-                "updated_at": now,
-            }
-        ],
-        "snapshot_date": now,
-        "created_at": now,
-    }
-
-
-# ---------------------------------------------------------------------------
-# UsageService._prepare_doc_for_model
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestPrepareDocForModel:
-    def test_converts_objectid_to_string(self):
-        from bson import ObjectId
-
-        oid = ObjectId()
-        doc = {"_id": oid, "user_id": "u1"}
-
-        result = UsageService._prepare_doc_for_model(doc)
-
-        assert result["_id"] == str(oid)
-
-    def test_mutates_doc_in_place(self):
-        from bson import ObjectId
-
-        doc = {"_id": ObjectId(), "user_id": "u1"}
-        result = UsageService._prepare_doc_for_model(doc)
-        assert result is doc
-
-
-# ---------------------------------------------------------------------------
-# UsageService.save_usage_snapshot
-# ---------------------------------------------------------------------------
+def mock_usage_repo():
+    repo = AsyncMock()
+    with patch.object(usage_service_module, "usage_snapshot_repository", repo):
+        yield repo
 
 
 @pytest.mark.unit
 class TestSaveUsageSnapshot:
-    async def test_updates_existing_hourly_doc(self, mock_usage_collection, sample_snapshot):
-        from bson import ObjectId
+    async def test_delegates_to_upsert_hourly(self, mock_usage_repo):
+        mock_usage_repo.upsert_hourly = AsyncMock(return_value="snap-id-1")
+        snapshot = _snapshot()
 
-        existing_id = ObjectId()
-        mock_usage_collection.find_one = AsyncMock(
-            return_value={"_id": existing_id, "user_id": "user123"}
-        )
-        mock_usage_collection.update_one = AsyncMock()
+        result = await UsageService.save_usage_snapshot(snapshot)
 
-        result = await UsageService.save_usage_snapshot(sample_snapshot)
-
-        assert result == str(existing_id)
-        mock_usage_collection.update_one.assert_awaited_once()
-
-    async def test_inserts_new_doc_when_no_existing(self, mock_usage_collection, sample_snapshot):
-        from bson import ObjectId
-
-        inserted_id = ObjectId()
-        mock_usage_collection.find_one = AsyncMock(return_value=None)
-        mock_usage_collection.insert_one = AsyncMock(
-            return_value=MagicMock(inserted_id=inserted_id)
-        )
-
-        result = await UsageService.save_usage_snapshot(sample_snapshot)
-
-        assert result == str(inserted_id)
-        mock_usage_collection.insert_one.assert_awaited_once()
-
-    async def test_filter_query_uses_hourly_bucket(self, mock_usage_collection, sample_snapshot):
-        mock_usage_collection.find_one = AsyncMock(return_value=None)
-        mock_usage_collection.insert_one = AsyncMock(
-            return_value=MagicMock(inserted_id=MagicMock())
-        )
-
-        await UsageService.save_usage_snapshot(sample_snapshot)
-
-        call_args = mock_usage_collection.find_one.call_args[0][0]
-        assert call_args["user_id"] == "user123"
-        assert "$gte" in call_args["snapshot_date"]
-        assert "$lt" in call_args["snapshot_date"]
-
-
-# ---------------------------------------------------------------------------
-# UsageService.get_latest_usage_snapshot
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# UsageService.get_usage_history
-# ---------------------------------------------------------------------------
+        assert result == "snap-id-1"
+        mock_usage_repo.upsert_hourly.assert_awaited_once_with(snapshot)
 
 
 @pytest.mark.unit
 class TestGetUsageHistory:
-    async def test_returns_all_snapshots_no_filter(self, mock_usage_collection):
-        from bson import ObjectId
-
-        now = datetime.now(UTC)
-        docs = [
-            {
-                "_id": ObjectId(),
-                "user_id": "user123",
-                "plan_type": "pro",
-                "features": [
-                    {
-                        "feature_key": "messages",
-                        "feature_title": "Messages",
-                        "period": "day",
-                        "used": 10,
-                        "limit": 100,
-                        "reset_time": now,
-                        "updated_at": now,
-                    }
-                ],
-                "credits": [],
-                "snapshot_date": now,
-                "created_at": now,
-            }
-        ]
-
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=_AsyncIterator(docs))
-        mock_usage_collection.find = MagicMock(return_value=mock_cursor)
+    async def test_returns_all_snapshots_no_filter(self, mock_usage_repo):
+        mock_usage_repo.history_for_user = AsyncMock(return_value=[_snapshot()])
 
         result = await UsageService.get_usage_history("user123")
 
         assert len(result) == 1
         assert result[0].user_id == "user123"
 
-    async def test_filters_by_feature_key(self, mock_usage_collection):
-        from bson import ObjectId
-
-        now = datetime.now(UTC)
-        docs = [
-            {
-                "_id": ObjectId(),
-                "user_id": "user123",
-                "plan_type": "pro",
-                "features": [
-                    {
-                        "feature_key": "messages",
-                        "feature_title": "Messages",
-                        "period": "day",
-                        "used": 10,
-                        "limit": 100,
-                        "reset_time": now,
-                        "updated_at": now,
-                    },
-                    {
-                        "feature_key": "images",
-                        "feature_title": "Images",
-                        "period": "month",
-                        "used": 5,
-                        "limit": 50,
-                        "reset_time": now,
-                        "updated_at": now,
-                    },
-                ],
-                "credits": [],
-                "snapshot_date": now,
-                "created_at": now,
-            }
-        ]
-
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=_AsyncIterator(docs))
-        mock_usage_collection.find = MagicMock(return_value=mock_cursor)
+    async def test_filters_by_feature_key(self, mock_usage_repo):
+        snap = _snapshot(features=[_feature("messages"), _feature("images")])
+        mock_usage_repo.history_for_user = AsyncMock(return_value=[snap])
 
         result = await UsageService.get_usage_history("user123", feature_key="messages")
 
@@ -274,56 +79,31 @@ class TestGetUsageHistory:
         assert len(result[0].features) == 1
         assert result[0].features[0].feature_key == "messages"
 
-    async def test_excludes_snapshots_without_matching_feature(self, mock_usage_collection):
-        from bson import ObjectId
-
-        now = datetime.now(UTC)
-        docs = [
-            {
-                "_id": ObjectId(),
-                "user_id": "user123",
-                "plan_type": "pro",
-                "features": [
-                    {
-                        "feature_key": "images",
-                        "feature_title": "Images",
-                        "period": "month",
-                        "used": 5,
-                        "limit": 50,
-                        "reset_time": now,
-                        "updated_at": now,
-                    }
-                ],
-                "credits": [],
-                "snapshot_date": now,
-                "created_at": now,
-            }
-        ]
-
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=_AsyncIterator(docs))
-        mock_usage_collection.find = MagicMock(return_value=mock_cursor)
+    async def test_excludes_snapshots_without_matching_feature(self, mock_usage_repo):
+        snap = _snapshot(features=[_feature("images")])
+        mock_usage_repo.history_for_user = AsyncMock(return_value=[snap])
 
         result = await UsageService.get_usage_history("user123", feature_key="nonexistent")
 
-        assert len(result) == 0
+        assert result == []
 
-    async def test_returns_empty_list_when_no_docs(self, mock_usage_collection):
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=_AsyncIterator([]))
-        mock_usage_collection.find = MagicMock(return_value=mock_cursor)
+    async def test_returns_empty_list_when_no_docs(self, mock_usage_repo):
+        mock_usage_repo.history_for_user = AsyncMock(return_value=[])
 
         result = await UsageService.get_usage_history("user123")
 
         assert result == []
 
-    async def test_custom_days_param(self, mock_usage_collection):
-        mock_cursor = MagicMock()
-        mock_cursor.sort = MagicMock(return_value=_AsyncIterator([]))
-        mock_usage_collection.find = MagicMock(return_value=mock_cursor)
+    async def test_custom_days_param_scopes_since(self, mock_usage_repo):
+        mock_usage_repo.history_for_user = AsyncMock(return_value=[])
 
         await UsageService.get_usage_history("user123", days=7)
 
-        call_args = mock_usage_collection.find.call_args[0][0]
-        assert call_args["user_id"] == "user123"
-        assert "$gte" in call_args["created_at"]
+        call = mock_usage_repo.history_for_user.call_args
+        assert call.args[0] == "user123"
+        since = call.kwargs["since"]
+        # ~7 days before today's midnight (allow a small window for test runtime).
+        expected = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+            days=7
+        )
+        assert abs((since - expected).total_seconds()) < 5

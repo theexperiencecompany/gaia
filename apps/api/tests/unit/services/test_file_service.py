@@ -3,11 +3,14 @@
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from bson import ObjectId
 from fastapi import HTTPException
 import pytest
 
-from app.models.files_models import DocumentPageModel, DocumentSummaryModel
+from app.models.files_models import (
+    DocumentPageModel,
+    DocumentSummaryModel,
+    FileDocument,
+)
 from app.services.file_service import (
     _process_file_summary,
     _store_in_chromadb,
@@ -17,6 +20,26 @@ from app.services.file_service import (
     update_file_service,
     upload_file_service,
 )
+
+
+def _file_doc(**overrides: object) -> FileDocument:
+    """A stored file document as the repository returns it."""
+    data: dict[str, object] = {
+        "id": "0" * 24,
+        "file_id": "f-1",
+        "user_id": "user-abc",
+        "filename": "doc.pdf",
+        "type": "application/pdf",
+        "size": 10,
+        "url": "https://cdn.example/doc.pdf",
+        "public_id": "pub-id",
+        "description": "desc",
+        "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
+    }
+    data.update(overrides)
+    return FileDocument.model_validate(data)
+
 
 # The caching decorators import delete_cache/get_cache/set_cache from
 # app.decorators.caching, so patches must target that module.
@@ -31,9 +54,11 @@ PATCH_SET_CACHE = "app.decorators.caching.set_cache"
 
 
 @pytest.fixture
-def mock_files_collection():
-    with patch("app.services.file_service.files_collection") as mock_col:
-        yield mock_col
+def mock_file_repo():
+    """Patch the files repository seam (create/get/update/delete)."""
+    repo = AsyncMock()
+    with patch("app.services.file_service.file_repository", repo):
+        yield repo
 
 
 @pytest.fixture
@@ -89,17 +114,13 @@ class TestUploadFileService:
     async def test_success(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_upload,
         mock_chroma_client,
     ):
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = ObjectId()
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         _, mock_chroma_col = mock_chroma_client
 
         with patch(
@@ -180,7 +201,7 @@ class TestUploadFileService:
     async def test_file_exactly_10mb_succeeds(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_upload,
         mock_chroma_client,
     ):
@@ -188,10 +209,6 @@ class TestUploadFileService:
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = ObjectId()
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         with patch(
             "app.services.file_service.generate_file_summary",
             new_callable=AsyncMock,
@@ -258,16 +275,14 @@ class TestUploadFileService:
     async def test_db_insertion_fails_raises_500(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_upload,
         mock_chroma_client,
     ):
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = None
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_insert_result)
+        mock_file_repo.create = AsyncMock(side_effect=Exception("mongo write failed"))
 
         _, mock_chroma_col = mock_chroma_client
 
@@ -290,17 +305,13 @@ class TestUploadFileService:
     async def test_success_without_conversation_id(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_upload,
         mock_chroma_client,
     ):
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = ObjectId()
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         with patch(
             "app.services.file_service.generate_file_summary",
             new_callable=AsyncMock,
@@ -324,7 +335,7 @@ class TestUploadFileService:
     async def test_success_with_list_summary(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_upload,
         mock_chroma_client,
         sample_document_summary_list,
@@ -332,10 +343,6 @@ class TestUploadFileService:
         mock_cloudinary_upload.return_value = {
             "secure_url": "https://res.cloudinary.com/test/uploaded.pdf"
         }
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = ObjectId()
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         with patch(
             "app.services.file_service.generate_file_summary",
             new_callable=AsyncMock,
@@ -418,32 +425,18 @@ class TestProcessFileSummary:
 
 @pytest.mark.unit
 class TestStoreInMongodb:
-    async def test_success(self, mock_files_collection):
-        mock_result = MagicMock()
-        mock_result.inserted_id = ObjectId()
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_result)
+    async def test_delegates_to_repository_create(self, mock_file_repo):
+        doc = _file_doc(file_id="f-1", filename="test.pdf")
 
-        await _store_in_mongodb({"file_id": "f-1", "filename": "test.pdf"})
+        await _store_in_mongodb(doc)
 
-        mock_files_collection.insert_one.assert_awaited_once_with(
-            document={"file_id": "f-1", "filename": "test.pdf"}
-        )
+        mock_file_repo.create.assert_awaited_once_with(doc)
 
-    async def test_insertion_fails_raises_500(self, mock_files_collection):
-        mock_result = MagicMock()
-        mock_result.inserted_id = None
-        mock_files_collection.insert_one = AsyncMock(return_value=mock_result)
-
-        with pytest.raises(HTTPException) as exc_info:
-            await _store_in_mongodb({"file_id": "f-1"})
-        assert exc_info.value.status_code == 500
-        assert "Failed to store file metadata" in exc_info.value.detail
-
-    async def test_exception_propagates(self, mock_files_collection):
-        mock_files_collection.insert_one = AsyncMock(side_effect=Exception("Connection lost"))
+    async def test_exception_propagates(self, mock_file_repo):
+        mock_file_repo.create = AsyncMock(side_effect=Exception("Connection lost"))
 
         with pytest.raises(Exception, match="Connection lost"):
-            await _store_in_mongodb({"file_id": "f-1"})
+            await _store_in_mongodb(_file_doc(file_id="f-1"))
 
 
 # ---------------------------------------------------------------------------
@@ -693,21 +686,14 @@ class TestDeleteFileService:
     async def test_success(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_destroy,
         mock_chroma_client,
     ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "public_id": "file_f-1_doc.pdf",
-            }
+        mock_file_repo.get_by_file_id = AsyncMock(
+            return_value=_file_doc(file_id="f-1", filename="doc.pdf", public_id="file_f-1_doc.pdf")
         )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
         mock_cloudinary_destroy.return_value = {"result": "ok"}
 
         _, mock_chroma_col = mock_chroma_client
@@ -717,7 +703,7 @@ class TestDeleteFileService:
         assert result["message"] == "File deleted successfully"
         assert result["file_id"] == "f-1"
         assert result["filename"] == "doc.pdf"
-        mock_files_collection.delete_one.assert_awaited_once()
+        mock_file_repo.delete_by_file_id.assert_awaited_once_with("f-1", "user-abc")
         mock_cloudinary_destroy.assert_called_once_with("file_f-1_doc.pdf")
         mock_chroma_col.adelete.assert_awaited_once_with(ids=["f-1"])
 
@@ -728,26 +714,17 @@ class TestDeleteFileService:
         assert "User ID is required" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_not_found_raises_404(self, mock_del_cache, mock_files_collection):
-        mock_files_collection.find_one = AsyncMock(return_value=None)
+    async def test_file_not_found_raises_404(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_file_service(file_id="f-nonexistent", user_id="user-abc")
         assert exc_info.value.status_code == 404
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_mongo_delete_count_zero_raises_404(self, mock_del_cache, mock_files_collection):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "public_id": "pub-id",
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 0
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+    async def test_mongo_delete_count_zero_raises_404(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=False)
 
         with pytest.raises(HTTPException) as exc_info:
             await delete_file_service(file_id="f-1", user_id="user-abc")
@@ -757,21 +734,12 @@ class TestDeleteFileService:
     async def test_cloudinary_fails_continues(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_destroy,
         mock_chroma_client,
     ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "public_id": "pub-id",
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(public_id="pub-id"))
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
         mock_cloudinary_destroy.side_effect = Exception("Cloudinary error")
 
         _, mock_chroma_col = mock_chroma_client
@@ -784,21 +752,12 @@ class TestDeleteFileService:
     async def test_cloudinary_non_ok_result_continues(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_destroy,
         mock_chroma_client,
     ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "public_id": "pub-id",
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(public_id="pub-id"))
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
         mock_cloudinary_destroy.return_value = {"result": "not found"}
 
         _, mock_chroma_col = mock_chroma_client
@@ -810,21 +769,12 @@ class TestDeleteFileService:
     async def test_chromadb_fails_continues(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_destroy,
         mock_chroma_client,
     ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "public_id": "pub-id",
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(public_id="pub-id"))
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
         mock_cloudinary_destroy.return_value = {"result": "ok"}
 
         _, mock_chroma_col = mock_chroma_client
@@ -837,79 +787,18 @@ class TestDeleteFileService:
     async def test_no_public_id_skips_cloudinary(
         self,
         mock_del_cache,
-        mock_files_collection,
+        mock_file_repo,
         mock_cloudinary_destroy,
         mock_chroma_client,
     ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "public_id": None,
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(public_id=None))
+        mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
 
         _, mock_chroma_col = mock_chroma_client
 
         result = await delete_file_service(file_id="f-1", user_id="user-abc")
         assert result["message"] == "File deleted successfully"
         mock_cloudinary_destroy.assert_not_called()
-
-    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_missing_public_id_key_skips_cloudinary(
-        self,
-        mock_del_cache,
-        mock_files_collection,
-        mock_cloudinary_destroy,
-        mock_chroma_client,
-    ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                # public_id key missing entirely
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
-        _, mock_chroma_col = mock_chroma_client
-
-        result = await delete_file_service(file_id="f-1", user_id="user-abc")
-        assert result["message"] == "File deleted successfully"
-        mock_cloudinary_destroy.assert_not_called()
-
-    @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_returns_unknown_when_filename_missing(
-        self,
-        mock_del_cache,
-        mock_files_collection,
-        mock_cloudinary_destroy,
-        mock_chroma_client,
-    ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "public_id": "pub-id",
-                # filename missing
-            }
-        )
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_files_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-        mock_cloudinary_destroy.return_value = {"result": "ok"}
-
-        _, mock_chroma_col = mock_chroma_client
-
-        result = await delete_file_service(file_id="f-1", user_id="user-abc")
-        assert result["filename"] == "Unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -920,8 +809,8 @@ class TestDeleteFileService:
 @pytest.mark.unit
 class TestUpdateFileService:
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_not_found_raises_404(self, mock_del_cache, mock_files_collection):
-        mock_files_collection.find_one = AsyncMock(return_value=None)
+    async def test_file_not_found_raises_404(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
             await update_file_service(
@@ -932,27 +821,9 @@ class TestUpdateFileService:
         assert exc_info.value.status_code == 404
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_success_without_file_content(self, mock_del_cache, mock_files_collection):
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "old.pdf",
-            "type": "application/pdf",
-            "description": "Old description",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-        updated_file = {
-            **original_file,
-            "filename": "new.pdf",
-            "updated_at": datetime(2025, 6, 1, tzinfo=UTC),
-        }
-
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+    async def test_success_without_file_content(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(filename="old.pdf"))
+        mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc(filename="new.pdf"))
 
         result = await update_file_service(
             file_id="f-1",
@@ -961,25 +832,14 @@ class TestUpdateFileService:
         )
 
         assert result["filename"] == "new.pdf"
-        mock_files_collection.update_one.assert_awaited_once()
+        mock_file_repo.apply_metadata_update.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_files_collection):
+    async def test_ignores_non_allowlisted_fields(self, mock_del_cache, mock_file_repo):
         """Only filename/description may be written — protected fields in the
-        payload must never reach the ``$set`` (mass-assignment guard)."""
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "old.pdf",
-            "type": "application/pdf",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, original_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+        payload must never reach the update model (mass-assignment guard)."""
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(filename="old.pdf"))
+        mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc())
 
         await update_file_service(
             file_id="f-1",
@@ -995,40 +855,24 @@ class TestUpdateFileService:
             },
         )
 
-        set_fields = mock_files_collection.update_one.call_args[0][1]["$set"]
-        assert set(set_fields) == {"filename", "updated_at"}
-        assert set_fields["filename"] == "new.pdf"
-        for forbidden in ("user_id", "file_id", "created_at", "is_admin", "type"):
-            assert forbidden not in set_fields
-
-        # The query still scopes the write to the caller's own user_id.
-        query_filter = mock_files_collection.update_one.call_args[0][0]
-        assert query_filter["user_id"] == "user-abc"
+        call = mock_file_repo.apply_metadata_update.await_args
+        # The write is scoped to the caller's own user_id and keyed by file_id.
+        assert call.args[0] == "f-1"
+        assert call.kwargs["user_id"] == "user-abc"
+        # Only the allowlisted field survives into the typed update.
+        set_fields = call.kwargs["update"].model_dump(exclude_unset=True)
+        assert set_fields == {"filename": "new.pdf"}
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_with_file_content_regenerates_description(
-        self, mock_del_cache, mock_files_collection, mock_chroma_client
+        self, mock_del_cache, mock_file_repo, mock_chroma_client
     ):
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "doc.pdf",
-            "type": "application/pdf",
-            "description": "Old description",
-            "conversation_id": "conv-1",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-        updated_file = {
-            **original_file,
-            "description": "New summary from content",
-        }
-
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+        mock_file_repo.get_by_file_id = AsyncMock(
+            return_value=_file_doc(conversation_id="conv-1", description="Old description")
+        )
+        mock_file_repo.apply_metadata_update = AsyncMock(
+            return_value=_file_doc(description="New summary from content")
+        )
 
         with patch(
             "app.services.file_service.generate_file_summary",
@@ -1051,18 +895,8 @@ class TestUpdateFileService:
         mock_chroma_update.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_content_generation_fails_raises_500(
-        self, mock_del_cache, mock_files_collection
-    ):
-        mock_files_collection.find_one = AsyncMock(
-            return_value={
-                "_id": ObjectId(),
-                "file_id": "f-1",
-                "user_id": "user-abc",
-                "filename": "doc.pdf",
-                "type": "application/pdf",
-            }
-        )
+    async def test_file_content_generation_fails_raises_500(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
 
         with patch(
             "app.services.file_service.generate_file_summary",
@@ -1080,23 +914,11 @@ class TestUpdateFileService:
             assert "Failed to process file" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_chromadb_update_fails_continues(self, mock_del_cache, mock_files_collection):
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "doc.pdf",
-            "type": "application/pdf",
-            "description": "old",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-        updated_file = {**original_file, "description": "new desc"}
-
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+    async def test_chromadb_update_fails_continues(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc(description="old"))
+        mock_file_repo.apply_metadata_update = AsyncMock(
+            return_value=_file_doc(description="new desc")
+        )
 
         with patch(
             "app.services.file_service.update_file_in_chromadb",
@@ -1112,22 +934,10 @@ class TestUpdateFileService:
         assert result["description"] == "new desc"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_file_not_found_after_update_raises_404(
-        self, mock_del_cache, mock_files_collection
-    ):
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "doc.pdf",
-            "type": "application/pdf",
-        }
-
-        # First find_one returns original, second returns None
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, None])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+    async def test_file_not_found_after_update_raises_404(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
+        # The file vanished between the read and the write.
+        mock_file_repo.apply_metadata_update = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
             await update_file_service(
@@ -1139,24 +949,13 @@ class TestUpdateFileService:
         assert "not found after update" in exc_info.value.detail
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_no_conversation_id_uses_existing(self, mock_del_cache, mock_files_collection):
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "doc.pdf",
-            "type": "application/pdf",
-            "conversation_id": "conv-existing",
-            "description": "desc",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-        updated_file = {**original_file, "description": "updated desc"}
-
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+    async def test_no_conversation_id_uses_existing(self, mock_del_cache, mock_file_repo):
+        mock_file_repo.get_by_file_id = AsyncMock(
+            return_value=_file_doc(conversation_id="conv-existing", description="desc")
+        )
+        mock_file_repo.apply_metadata_update = AsyncMock(
+            return_value=_file_doc(description="updated desc")
+        )
 
         with patch(
             "app.services.file_service.update_file_in_chromadb",
@@ -1175,21 +974,10 @@ class TestUpdateFileService:
         assert call_kwargs["conversation_id"] == "conv-existing"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_modified_count_zero_still_returns(self, mock_del_cache, mock_files_collection):
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "doc.pdf",
-            "type": "application/pdf",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, original_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 0  # no changes
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+    async def test_empty_update_still_returns(self, mock_del_cache, mock_file_repo):
+        # An update with no writable fields still bumps updated_at and returns.
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
+        mock_file_repo.apply_metadata_update = AsyncMock(return_value=_file_doc())
 
         result = await update_file_service(
             file_id="f-1",
@@ -1199,25 +987,12 @@ class TestUpdateFileService:
         assert result is not None
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
-    async def test_description_not_updated_skips_chromadb(
-        self, mock_del_cache, mock_files_collection
-    ):
+    async def test_description_not_updated_skips_chromadb(self, mock_del_cache, mock_file_repo):
         """When description is not in update_data, ChromaDB should not be updated."""
-        original_file = {
-            "_id": ObjectId(),
-            "file_id": "f-1",
-            "user_id": "user-abc",
-            "filename": "doc.pdf",
-            "type": "application/pdf",
-            "created_at": datetime(2025, 1, 1, tzinfo=UTC),
-            "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
-        }
-        updated_file = {**original_file, "filename": "renamed.pdf"}
-
-        mock_files_collection.find_one = AsyncMock(side_effect=[original_file, updated_file])
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
-        mock_files_collection.update_one = AsyncMock(return_value=mock_update_result)
+        mock_file_repo.get_by_file_id = AsyncMock(return_value=_file_doc())
+        mock_file_repo.apply_metadata_update = AsyncMock(
+            return_value=_file_doc(filename="renamed.pdf")
+        )
 
         with patch(
             "app.services.file_service.update_file_in_chromadb",

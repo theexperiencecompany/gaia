@@ -41,8 +41,9 @@ from app.constants.sandbox import (
     SANDBOX_LIFETIME_SECONDS,
     SANDBOX_TIMEOUT_REFRESH_SECONDS,
 )
-from app.db.mongodb.collections import e2b_sandboxes_collection
+from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
+from app.models.sandbox_models import E2bSandboxDocument
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -460,9 +461,13 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
     return entry
 
 
-async def _resume_existing_sandbox(doc: dict[str, Any], mount_env: dict[str, str]) -> Any | None:
+async def _resume_existing_sandbox(
+    doc: E2bSandboxDocument, mount_env: dict[str, str]
+) -> Any | None:
     """Connect to a recorded sandbox (auto-resuming if paused); None if unusable."""
-    sandbox_id = doc["sandbox_id"]
+    sandbox_id = doc.sandbox_id
+    if sandbox_id is None:
+        return None
     log.info(f"{LogTag.SANDBOX} resuming sandbox {sandbox_id}")
     sbx = await _connect_sandbox(sandbox_id)
     if sbx is None:
@@ -498,15 +503,15 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         )
         return cached
 
-    doc = await e2b_sandboxes_collection.find_one({"user_id": user_id})
+    doc = await e2b_sandbox_repository.get_for_user(user_id)
 
     sbx: Any | None = None
     workspace_version = 0
     source = "create"
 
-    if doc and doc.get("sandbox_id"):
+    if doc is not None and doc.sandbox_id:
         sbx = await _resume_existing_sandbox(doc, mount_env)
-        workspace_version = doc.get("workspace_version", 0)
+        workspace_version = doc.workspace_version
         if sbx is not None:
             source = "resume"
 
@@ -528,23 +533,14 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
 
     canary_ts = await _write_canary(sbx)
 
-    await e2b_sandboxes_collection.update_one(
-        {"user_id": user_id},
-        {
-            "$set": {
-                "user_id": user_id,
-                "sandbox_id": getattr(sbx, "sandbox_id", None),
-                "template_id": settings.E2B_TEMPLATE_ID,
-                "shard_id": shard_id,
-                "state": "active",
-                "workspace_version": workspace_version,
-                "last_used_at": _now(),
-                "last_canary_ts": canary_ts,
-            },
-            "$setOnInsert": {"created_at": _now()},
-            "$inc": {"total_invocations": 1},
-        },
-        upsert=True,
+    await e2b_sandbox_repository.record_acquisition(
+        user_id=user_id,
+        sandbox_id=getattr(sbx, "sandbox_id", None),
+        template_id=settings.E2B_TEMPLATE_ID,
+        shard_id=shard_id,
+        workspace_version=workspace_version,
+        last_canary_ts=canary_ts,
+        timestamp=_now(),
     )
 
     # create()/connect() just set the kill timer to a full lifetime, so stamp
@@ -576,10 +572,7 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """
     try:
         await entry.sandbox.beta_pause()
-        await e2b_sandboxes_collection.update_one(
-            {"user_id": user_id},
-            {"$set": {"state": "paused", "paused_at": _now()}},
-        )
+        await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
         log.info(f"{LogTag.SANDBOX} paused idle sandbox user={user_id}")
         return True
     except Exception as e:
@@ -625,10 +618,7 @@ async def mark_sandbox_dead(user_id: str) -> None:
     entry = get_sandbox_pool().get(user_id)
     if entry is not None:
         await _hard_evict(user_id, entry)
-    await e2b_sandboxes_collection.update_one(
-        {"user_id": user_id},
-        {"$set": {"state": "dead", "last_used_at": _now()}},
-    )
+    await e2b_sandbox_repository.mark_dead(user_id, timestamp=_now())
 
 
 async def pause_sandbox_for_user(user_id: str) -> bool:
@@ -680,10 +670,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
                     await mark_sandbox_dead(user_id)
             else:
                 with contextlib.suppress(Exception):
-                    await e2b_sandboxes_collection.update_one(
-                        {"user_id": user_id},
-                        {"$set": {"last_used_at": _now()}},
-                    )
+                    await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
                 if entry.refcount <= 0:
                     _schedule_pause(user_id, entry)
     finally:

@@ -49,7 +49,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/core/subagents/provider_subagents.py",
         "agents/memory/email_processor.py",
         "agents/skills/registry.py",
-        "agents/tools/file_tools.py",
         "agents/tools/integration_tool.py",
         # api/
         "api/v1/endpoints/integrations/config.py",
@@ -68,9 +67,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # scripts/
         "scripts/backfill_public_workflow_descriptions.py",
         # services/
-        "services/blog_service.py",
-        "services/bot_service.py",
-        "services/calendar_service.py",
         "services/dev_service.py",
         "services/device/device_service.py",
         "services/file_service.py",
@@ -84,7 +80,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/integrations/user_integrations.py",
         "services/mcp/mcp_client.py",
         "services/mcp/mcp_tools_store.py",
-        "services/model_service.py",
         "services/oauth/oauth_service.py",
         # Migrated off users_collection in the users wave; still allowlisted here
         # for their other collections (todos/workflows/conversations), pending
@@ -98,17 +93,12 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/payments/payment_service.py",
         "services/payments/payment_webhook_service.py",
         "services/provider_metadata_service.py",
-        "services/sandbox/lifecycle.py",
-        "services/startup_validation.py",
-        "services/support_service.py",
-        "services/usage_service.py",
         "services/user_service.py",
         "services/voice_service.py",
         "services/workspace_sync.py",
         # utils/
         "utils/agent_utils.py",
         "utils/embedding_utils.py",
-        "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
         # workers/
@@ -116,7 +106,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "workers/tasks/maintenance_sweep_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
         "workers/tasks/onboarding_tasks.py",
-        "workers/tasks/sandbox_tasks.py",
         "workers/tasks/user_tasks.py",
     }
 )
