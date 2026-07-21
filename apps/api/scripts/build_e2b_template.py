@@ -10,12 +10,12 @@ Usage:
     cd apps/api
     uv run python scripts/build_e2b_template.py [--name gaia-coder]
 
-Requires `E2B_API_KEY` in the env, plus `E2B_DOMAIN` when building against a
-non-default cluster (we run on E2B's EU cluster: `E2B_DOMAIN=e2b-juliett.dev`).
-Templates are per-cluster — one built on `e2b.app` does not exist on the EU
-cluster and vice versa, so the domain here must match the API's. Prints the
-resulting template ID — set it as `E2B_TEMPLATE_ID` in Infisical (and the
-gaia-backend container will pick it up on next boot).
+Requires `E2B_API_KEY` and `E2B_DOMAIN` in the env (we run on E2B's EU cluster:
+`E2B_DOMAIN=e2b-juliett.dev`). Templates are per-cluster — one built on
+`e2b.app` does not exist on the EU cluster and vice versa — so the domain is
+required rather than defaulted, and must match the API's. Prints the resulting
+template ID — set it as `E2B_TEMPLATE_ID` in Infisical (and the gaia-backend
+container will pick it up on next boot).
 
 Security posture
 ----------------
@@ -49,9 +49,6 @@ JUICEFS_TARBALL = (
     f"juicefs-{JUICEFS_VERSION}-linux-amd64.tar.gz"
 )
 TEMPLATE_NAME_DEFAULT = "gaia-coder"
-# Mirrors the e2b SDK's fallback when E2B_DOMAIN is unset — printed so a build
-# accidentally targeting the wrong cluster is visible before it starts.
-E2B_DEFAULT_DOMAIN = "e2b.app"
 
 MOUNT_SCRIPT_PATH = Path(__file__).parent / "mount_juicefs.sh"
 JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
@@ -60,6 +57,9 @@ JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
 def build(name: str) -> str:
     if not os.environ.get("E2B_API_KEY"):
         raise SystemExit("E2B_API_KEY is not set in the environment")
+    domain = os.environ.get("E2B_DOMAIN")
+    if not domain:
+        raise SystemExit("E2B_DOMAIN is not set in the environment")
     if not MOUNT_SCRIPT_PATH.exists():
         raise SystemExit(f"Mount script not found at {MOUNT_SCRIPT_PATH}")
     if not JFS_LAUNCHER_PATH.exists():
@@ -201,7 +201,6 @@ def build(name: str) -> str:
         )
     )
 
-    domain = os.environ.get("E2B_DOMAIN") or E2B_DEFAULT_DOMAIN
     print(f"Building E2B template '{name}' on {domain}...", file=sys.stderr)
 
     def _on_log(entry: object) -> None:
