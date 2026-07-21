@@ -25,8 +25,6 @@ Performance:
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
-import pymongo
-from pymongo.server_api import ServerApi
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -34,11 +32,6 @@ from shared.py.wide_events import log
 # Cache for async (Motor) collections
 _collections_cache: dict[str, Any] = {}
 _mongodb_instance = None
-
-# Cache for sync (PyMongo) collections
-_sync_collections_cache: dict[str, Any] = {}
-_sync_client = None
-_sync_db = None
 
 
 def _get_mongodb_instance():
@@ -70,39 +63,6 @@ def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[st
     module attributes can later be removed without touching call sites.
     """
     return _get_collection(collection_name)
-
-
-def _get_sync_db():
-    """Get or create sync PyMongo client and database."""
-    global _sync_client, _sync_db
-    if _sync_db is None:
-        from app.config.settings import settings
-
-        log.info(f"{LogTag.MONGO} Initializing sync MongoDB client (PyMongo)")
-        _sync_client = pymongo.MongoClient(settings.MONGO_DB, server_api=ServerApi("1"))
-        _sync_db = _sync_client.get_database("GAIA")
-        log.info(f"{LogTag.MONGO} Sync MongoDB client initialized")
-    return _sync_db
-
-
-def get_sync_collection(collection_name: str):
-    """
-    Get a synchronous PyMongo collection for use in sync code.
-
-    This is useful for sync functions that need to access MongoDB
-    without using asyncio (e.g., Composio tools, sync services).
-
-    Args:
-        collection_name: The name of the MongoDB collection
-
-    Returns:
-        A PyMongo Collection object (sync)
-    """
-    if collection_name not in _sync_collections_cache:
-        log.info(f"{LogTag.MONGO} Creating sync collection '{collection_name}' (lazy loading)")
-        db = _get_sync_db()
-        _sync_collections_cache[collection_name] = db.get_collection(collection_name)
-    return _sync_collections_cache[collection_name]
 
 
 # Collection name mappings
