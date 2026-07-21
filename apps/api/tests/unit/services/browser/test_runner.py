@@ -139,6 +139,50 @@ def _sensitive(monkeypatch, category):
     )
 
 
+async def test_takeover_completed_lets_agent_continue():
+    from unittest.mock import AsyncMock
+
+    _, emit = _collector()
+    runner = _make_runner(
+        emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.COMPLETED)
+    )
+    out = await runner._handle_takeover("Enter your card", "payment")
+    assert "continue" in out.lower()
+    assert runner._handed_off is True
+    assert runner._stopped is False
+
+
+async def test_takeover_cancelled_stops_run():
+    from unittest.mock import AsyncMock
+
+    from app.services.browser.exceptions import BrowserHandoffCancelled
+
+    _, emit = _collector()
+    runner = _make_runner(
+        emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.CANCELLED)
+    )
+    with pytest.raises(BrowserHandoffCancelled):
+        await runner._handle_takeover("Enter your card", "payment")
+    assert runner._stopped is True
+    assert runner._handed_off is False
+
+
+async def test_takeover_bounded_by_max_handoffs():
+    from unittest.mock import AsyncMock
+
+    from app.constants.browser import MAX_HANDOFFS_PER_TASK
+    from app.services.browser.exceptions import BrowserHandoffCancelled
+
+    _, emit = _collector()
+    runner = _make_runner(
+        emit=emit, request_handoff=AsyncMock(return_value=HandoffStatus.COMPLETED)
+    )
+    for _ in range(MAX_HANDOFFS_PER_TASK):
+        await runner._handle_takeover("step", "none")
+    with pytest.raises(BrowserHandoffCancelled):
+        await runner._handle_takeover("one too many", "none")
+
+
 async def test_happy_path_emits_steps_and_result(patch_browser, monkeypatch):
     _safe(monkeypatch)
     FakeAgent.script = [

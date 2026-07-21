@@ -85,6 +85,19 @@ BROWSER_HANDOFF_KEY_PREFIX = "browser:handoff:"
 HANDOFF_POLL_INTERVAL_SECONDS = 1.0
 HANDOFF_KEY_TTL_SECONDS = 3600
 
+# Upper bound on how many times one task may hand off to the human, so a
+# misbehaving agent can't loop the user forever.
+MAX_HANDOFFS_PER_TASK = 5
+
+# Appended to every browser task so the agent uses the takeover action instead
+# of doing sensitive steps itself.
+BROWSER_TAKEOVER_PREAMBLE = (
+    "\n\nIMPORTANT: For any payment, login/password/OTP/2FA, or irreversible or "
+    "legally-binding confirmation, do NOT do it yourself — call the "
+    "`request_human_takeover` action first so the user completes that step in the "
+    "live browser, then continue toward the goal."
+)
+
 # ---------------------------------------------------------------------------
 # Concurrency registry. A Redis sorted set (member = slot id, score = expiry
 # deadline) is the cluster-wide source of truth for how many browser sessions
@@ -106,8 +119,11 @@ STEEL_HEALTH_PATH = "/health"
 # whose planned actions are ALL in this set skip the LLM classifier — a
 # deterministic fast path. Interactive actions go to the classifier.
 # ---------------------------------------------------------------------------
+# ``request_human_takeover`` is the agent asking for help — inherently safe, and
+# it must not be gated by the classifier (that would double-handle the handoff).
 NON_COMMITTING_ACTIONS: frozenset[str] = frozenset(
     {
+        "request_human_takeover",
         "go_to_url",
         "search",
         "search_google",

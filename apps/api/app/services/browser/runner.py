@@ -17,9 +17,12 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.constants.browser import (
+    BROWSER_TAKEOVER_PREAMBLE,
+    MAX_HANDOFFS_PER_TASK,
     BrowserSessionStatus,
     HandoffStatus,
     HandoffStrategy,
+    SensitiveCategory,
 )
 from app.constants.log_tags import LogTag
 from app.schemas.browser import (
@@ -29,11 +32,11 @@ from app.schemas.browser import (
     BrowserStepSnapshot,
     HandoffRequest,
 )
-from app.services.browser.captcha import build_tools
 from app.services.browser.classify import classify_step
 from app.services.browser.exceptions import BrowserHandoffCancelled, BrowserUnavailableError
 from app.services.browser.policy import resolve_strategy
 from app.services.browser.session import SteelBrowserSession
+from app.services.browser.tools import build_browser_tools
 from shared.py.wide_events import log
 
 EmitFn = Callable[[BrowserCardSnapshot], Awaitable[None]]
@@ -84,6 +87,7 @@ class BrowserTaskRunner:
         self._agent: Any = None
         self._stopped = False
         self._handed_off = False
+        self._handoffs = 0
         self._last_step = 0
 
     async def run(self, task: str) -> BrowserResultSnapshot:
@@ -101,16 +105,19 @@ class BrowserTaskRunner:
         browser = Browser(cdp_url=self._session.cdp_url)
 
         agent_kwargs: dict[str, Any] = {
-            "task": task,
+            "task": task + BROWSER_TAKEOVER_PREAMBLE,
             "llm": self._llm,
             "browser": browser,
             "register_new_step_callback": self._on_step,
             "register_should_stop_callback": self._should_stop,
             "use_vision": self._use_vision,
             "max_actions_per_step": self._max_actions_per_step,
+            "tools": build_browser_tools(
+                session_id=self._session.session_id,
+                solve_captcha=self._solve_captcha,
+                handle_takeover=self._handle_takeover,
+            ),
         }
-        if self._solve_captcha:
-            agent_kwargs["tools"] = build_tools(self._session.session_id)
         self._agent = Agent(**agent_kwargs)
 
         try:
@@ -158,6 +165,30 @@ class BrowserTaskRunner:
 
     async def _should_stop(self) -> bool:
         return self._stopped or await self._is_cancelled()
+
+    async def _handle_takeover(self, reason: str, category: str) -> str:
+        """The ``request_human_takeover`` action: pause for the human, then let the
+        agent resume natively with the returned result. Raises to stop on cancel."""
+        self._handoffs += 1
+        if self._handoffs > MAX_HANDOFFS_PER_TASK:
+            self._stopped = True
+            raise BrowserHandoffCancelled("max-handoffs")
+        try:
+            cat = SensitiveCategory(category)
+        except ValueError:
+            cat = SensitiveCategory.IRREVERSIBLE
+
+        status = await self._request_handoff(HandoffRequest(category=cat, reason=reason))
+        if status == HandoffStatus.COMPLETED:
+            self._handed_off = True
+            log.info(f"{LogTag.AGENT} Browser takeover completed by user; agent continuing.")
+            return (
+                "The user has completed that step in the browser. The page has advanced — "
+                "continue toward the original goal."
+            )
+        self._stopped = True
+        log.info(f"{LogTag.AGENT} Browser takeover ended: {status.value}.")
+        raise BrowserHandoffCancelled(status.value)
 
     async def _on_step(self, browser_state_summary: Any, agent_output: Any, n_steps: int) -> None:
         """Fires after the model picks actions, before they execute."""
