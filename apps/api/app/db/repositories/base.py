@@ -113,6 +113,12 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
     # by a business field (e.g. ``conversation_id``, a UUID ``id``) sets this so
     # get/update/delete filter on it and ``_id`` stays incidental.
     identity_field: ClassVar[str] = "_id"
+    # Whether the base auto-stamps ``created_at``/``updated_at`` on writes. A
+    # domain that stores its timestamps in a shape the base must not touch — e.g.
+    # legacy ISO-format strings, or a field it wants left unset on insert — turns
+    # this off and writes those fields itself. See the timestamp-normalization
+    # follow-up before flipping any existing collection.
+    auto_stamp_timestamps: ClassVar[bool] = True
 
     def __init_subclass__(cls, abstract: bool = False, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -208,9 +214,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         fields = self.document_model.model_fields
         # Stamp created_at only when the caller didn't provide it (some domains,
         # e.g. notifications, set their own creation time); always stamp updated_at.
-        if "created_at" in fields and data.get("created_at") is None:
+        if self.auto_stamp_timestamps and "created_at" in fields and data.get("created_at") is None:
             data["created_at"] = now
-        if "updated_at" in fields:
+        if self.auto_stamp_timestamps and "updated_at" in fields:
             data["updated_at"] = now
         if not self.uses_object_id and doc.id:
             data["_id"] = doc.id
@@ -256,7 +262,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
                 why="a write that changes nothing is a bug (a typo'd or empty update)",
                 fix="set at least one field on the update model",
             )
-        if "updated_at" in self.document_model.model_fields:
+        if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
             set_fields["updated_at"] = datetime.now(UTC)
         raw = await get_async_collection(self.collection_name).find_one_and_update(
             {**self._identity_filter(doc_id), **extra_filter},
@@ -385,7 +391,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         ``scope`` (the caller's user) so one generation bump invalidates them."""
         if not updates:
             return 0
-        stamp_updated_at = "updated_at" in self.document_model.model_fields
+        stamp_updated_at = (
+            self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields
+        )
         now = datetime.now(UTC)
         scope_filter = self._scope_filter(scope)
         operations: list[UpdateOne] = []
@@ -450,7 +458,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         (returning BEFORE on an insert yields ``None``).
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
-        if "updated_at" in self.document_model.model_fields:
+        if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
             ops.setdefault("$set", {})["updated_at"] = datetime.now(UTC)
         collection = get_async_collection(self.collection_name)
         raw = await collection.find_one_and_update(
@@ -489,7 +497,7 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         matched count (0 = the filter matched no document).
         """
         ops: dict[str, dict[str, object]] = {k: dict(v) for k, v in update.items()}
-        if "updated_at" in self.document_model.model_fields:
+        if self.auto_stamp_timestamps and "updated_at" in self.document_model.model_fields:
             ops.setdefault("$set", {})["updated_at"] = datetime.now(UTC)
         result = await get_async_collection(self.collection_name).update_one(
             {**dict(filter_), **(extra_filter or {})},
