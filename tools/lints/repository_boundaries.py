@@ -123,7 +123,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # utils/
         "utils/agent_utils.py",
         "utils/embedding_utils.py",
-        "utils/internet_utils.py",
         "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
         "utils/workflow_utils.py",
