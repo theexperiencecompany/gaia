@@ -6,9 +6,6 @@ from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
-from app.db.mongodb.collections import (
-    integrations_collection,
-)
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.workflows import workflow_repository
@@ -124,13 +121,11 @@ async def add_public_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        original_doc = await integrations_collection.find_one(
-            {"integration_id": integration_id, "is_public": True}
-        )
-        if not original_doc:
+        original = await integration_repository.get_public(integration_id)
+        if not original:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        integration_name = original_doc["name"]
+        integration_name = original.name
 
         existing = await user_integration_repository.get_for_user(user_id, integration_id)
         if existing:
@@ -154,17 +149,14 @@ async def add_public_integration(
             except ValueError:
                 pass
 
-            await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {"$inc": {"clone_count": 1}},
-            )
+            await integration_repository.increment_clone_count(integration_id)
 
             log.info(f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id}")
 
-        mcp_config = original_doc.get("mcp_config", {})
-        server_url = mcp_config.get("server_url")
-        requires_auth = mcp_config.get("requires_auth", False)
-        auth_type = mcp_config.get("auth_type")
+        mcp_config = original.mcp_config
+        server_url = mcp_config.server_url if mcp_config else None
+        requires_auth = mcp_config.requires_auth if mcp_config else False
+        auth_type = mcp_config.auth_type if mcp_config else None
 
         # For bearer auth without token provided, return bearer_required status
         if auth_type == "bearer" and requires_auth and not request.bearer_token:

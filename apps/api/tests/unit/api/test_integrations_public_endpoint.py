@@ -214,8 +214,8 @@ class TestAddPublicIntegration:
 
     @pytest.mark.asyncio
     async def test_integration_not_found(self, client: AsyncClient) -> None:
-        with patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll:
-            mock_coll.find_one = AsyncMock(return_value=None)
+        with patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo:
+            mock_repo.get_public = AsyncMock(return_value=None)
             resp = await client.post(
                 f"{BASE}/public/unknown/add",
                 json={"redirect_path": "/integrations"},
@@ -228,19 +228,23 @@ class TestAddPublicIntegration:
             "integration_id": "integ1",
             "name": "Integ",
             "is_public": True,
-            "mcp_config": {},
+            "mcp_config": None,
         }
         existing = UserIntegrationDocument(
             user_id="u1", integration_id="integ1", status="connected"
         )
 
         with (
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
         ):
-            mock_coll.find_one = AsyncMock(return_value=original_doc)
+            mock_repo.get_public = AsyncMock(
+                return_value=Integration.model_validate(
+                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                )
+            )
             mock_user_coll.get_for_user = AsyncMock(return_value=existing)
 
             resp = await client.post(
@@ -267,7 +271,7 @@ class TestAddPublicIntegration:
         }
 
         with (
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
@@ -276,8 +280,12 @@ class TestAddPublicIntegration:
                 new_callable=AsyncMock,
             ),
         ):
-            mock_coll.find_one = AsyncMock(return_value=original_doc)
-            mock_coll.update_one = AsyncMock()
+            mock_repo.get_public = AsyncMock(
+                return_value=Integration.model_validate(
+                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                )
+            )
+            mock_repo.increment_clone_count = AsyncMock()
             mock_user_coll.get_for_user = AsyncMock(return_value=None)
 
             resp = await client.post(
@@ -307,7 +315,7 @@ class TestAddPublicIntegration:
         connect_result.error = None
 
         with (
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
@@ -321,8 +329,12 @@ class TestAddPublicIntegration:
                 return_value=connect_result,
             ),
         ):
-            mock_coll.find_one = AsyncMock(return_value=original_doc)
-            mock_coll.update_one = AsyncMock()
+            mock_repo.get_public = AsyncMock(
+                return_value=Integration.model_validate(
+                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                )
+            )
+            mock_repo.increment_clone_count = AsyncMock()
             mock_user_coll.get_for_user = AsyncMock(return_value=None)
 
             resp = await client.post(
@@ -354,7 +366,7 @@ class TestAddPublicIntegration:
         connect_result.error = None
 
         with (
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
@@ -364,7 +376,11 @@ class TestAddPublicIntegration:
                 return_value=connect_result,
             ),
         ):
-            mock_coll.find_one = AsyncMock(return_value=original_doc)
+            mock_repo.get_public = AsyncMock(
+                return_value=Integration.model_validate(
+                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                )
+            )
             mock_user_coll.get_for_user = AsyncMock(return_value=existing)
 
             resp = await client.post(
@@ -383,7 +399,7 @@ class TestAddPublicIntegration:
             "integration_id": "integ5",
             "name": "Dup Integ",
             "is_public": True,
-            "mcp_config": {},
+            "mcp_config": None,
         }
 
         connect_result = MagicMock()
@@ -394,7 +410,7 @@ class TestAddPublicIntegration:
         connect_result.error = None
 
         with (
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.user_integration_repository"
             ) as mock_user_coll,
@@ -409,8 +425,12 @@ class TestAddPublicIntegration:
                 return_value=connect_result,
             ),
         ):
-            mock_coll.find_one = AsyncMock(return_value=original_doc)
-            mock_coll.update_one = AsyncMock()
+            mock_repo.get_public = AsyncMock(
+                return_value=Integration.model_validate(
+                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                )
+            )
+            mock_repo.increment_clone_count = AsyncMock()
             mock_user_coll.get_for_user = AsyncMock(return_value=None)
 
             resp = await client.post(
@@ -422,8 +442,8 @@ class TestAddPublicIntegration:
 
     @pytest.mark.asyncio
     async def test_unexpected_error_returns_500(self, client: AsyncClient) -> None:
-        with patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll:
-            mock_coll.find_one = AsyncMock(side_effect=RuntimeError("boom"))
+        with patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo:
+            mock_repo.get_public = AsyncMock(side_effect=RuntimeError("boom"))
             resp = await client.post(
                 f"{BASE}/public/bad/add",
                 json={"redirect_path": "/integrations"},

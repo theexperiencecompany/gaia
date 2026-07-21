@@ -48,9 +48,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/memory/email_processor.py",
         # api/
         "api/v1/endpoints/integrations/config.py",
-        # NOTE: integrations/public.py stays allowlisted for integrations_collection /
-        # user_integrations_collection (Wave F); its workflows aggregation is migrated.
-        "api/v1/endpoints/integrations/public.py",
         "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/user.py",
@@ -66,9 +63,7 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/file_service.py",
         "services/integrations/integration_resolver.py",
         "services/integrations/marketplace.py",
-        "services/integrations/publish_service.py",
         "services/integrations/user_integrations.py",
-        "services/mcp/mcp_client.py",
         "services/mcp/mcp_tools_store.py",
         "services/oauth/oauth_service.py",
         # Migrated off users_collection in the users wave; still allowlisted here

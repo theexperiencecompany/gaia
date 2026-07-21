@@ -47,10 +47,8 @@ from app.constants.mcp import (
 )
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
-from app.db.mongodb.collections import (
-    integrations_collection,
-)
 from app.db.redis import delete_cache
+from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
@@ -301,16 +299,10 @@ class MCPClient:
         discovered from the server, fixing stale requires_auth flags.
         """
         try:
-            result = await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {
-                    "$set": {
-                        "mcp_config.requires_auth": requires_auth,
-                        "mcp_config.auth_type": auth_type,
-                    }
-                },
+            updated = await integration_repository.set_mcp_auth(
+                integration_id, requires_auth, auth_type
             )
-            if result.modified_count > 0:
+            if updated:
                 log.info(
                     f"{LogTag.MCP} Updated auth status for {integration_id}: "
                     f"requires_auth={requires_auth}, auth_type={auth_type}"
@@ -1584,10 +1576,7 @@ class MCPClient:
 
         # Remove tool metadata from MongoDB so ghost tools don't appear
         try:
-            await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {"$unset": {"tools": ""}},
-            )
+            await integration_repository.clear_tools(integration_id)
             # Invalidate the global MCP tools Redis cache
             await delete_cache(MCP_TOOLS_CACHE_KEY)
         except Exception as e:

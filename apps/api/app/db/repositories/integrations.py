@@ -7,15 +7,18 @@ leaves ``updated_at`` unset on insert and only ``update_custom`` writes it, so t
 repository mirrors that on-disk reality rather than stamping every write.
 """
 
+from datetime import UTC, datetime
 import re
 
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
+from app.helpers.integration_helpers import generate_integration_slug
 from app.models.integration_models import (
     Integration,
     IntegrationUpdate,
     IntegrationWithCreator,
 )
+from app.models.oauth_models import IntegrationContent
 
 # Community browse sort options → Mongo sort spec. "popular" is the default.
 _COMMUNITY_SORT: dict[str, list[tuple[str, int]]] = {
@@ -267,6 +270,114 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
             ],
             IntegrationWithCreator,
         )
+
+    # ---- publish / connection-status writes ----
+
+    async def get_public(self, integration_id: str) -> Integration | None:
+        """A published integration by id (the public add-to-workspace read)."""
+        return await self._find_one({"integration_id": integration_id, "is_public": True})
+
+    async def get_by_creator(self, integration_id: str, created_by: str) -> Integration | None:
+        """An integration by id constrained to its creator (publish conflict check)."""
+        return await self._find_one({"integration_id": integration_id, "created_by": created_by})
+
+    async def increment_clone_count(self, integration_id: str) -> None:
+        """Bump the clone counter when a user adds a public integration."""
+        await self._increment(integration_id, "clone_count", 1, scope=REPO_GLOBAL_SCOPE)
+
+    async def set_mcp_auth(self, integration_id: str, requires_auth: bool, auth_type: str) -> bool:
+        """Sync the stored mcp_config auth flags after server probe discovery.
+
+        Returns whether a matching integration was updated.
+        """
+        matched = await self._apply_raw_update_unfetched(
+            {"integration_id": integration_id},
+            {
+                "$set": {
+                    "mcp_config.requires_auth": requires_auth,
+                    "mcp_config.auth_type": auth_type,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=integration_id,
+        )
+        return matched > 0
+
+    async def clear_tools(self, integration_id: str) -> None:
+        """Drop the stored tool metadata (on disconnect) so ghost tools don't linger."""
+        await self._apply_raw_update_unfetched(
+            {"integration_id": integration_id},
+            {"$unset": {"tools": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=integration_id,
+        )
+
+    async def ensure_unique_slug(self, name: str, category: str, integration_id: str) -> str:
+        """A marketplace slug unique across published integrations.
+
+        Appends -2, -3, … to the canonical slug until a free one is found (the
+        slug-uniqueness probe, folded in from generate_unique_integration_slug).
+        """
+        base_slug = generate_integration_slug(name, category, integration_id)
+        if await self._slug_free(base_slug, integration_id):
+            return base_slug
+        suffix = 2
+        while suffix <= 100:
+            candidate = f"{base_slug}-{suffix}"
+            if await self._slug_free(candidate, integration_id):
+                return candidate
+            suffix += 1
+        return f"{base_slug}-{integration_id[:6]}"
+
+    async def _slug_free(self, slug: str, integration_id: str) -> bool:
+        taken = await self._find_one({"slug": slug, "integration_id": {"$ne": integration_id}})
+        return taken is None
+
+    async def publish(
+        self,
+        integration_id: str,
+        *,
+        created_by: str,
+        category: str,
+        slug: str,
+        content: IntegrationContent | None,
+        clone_count: int,
+    ) -> bool:
+        """Publish a creator's unpublished custom integration. Returns False when the
+        guarded filter matches nothing (already public, or not the creator's custom)."""
+        matched = await self._apply_raw_update_unfetched(
+            {
+                "integration_id": integration_id,
+                "created_by": created_by,
+                "source": "custom",
+                "is_public": {"$ne": True},
+            },
+            {
+                "$set": {
+                    "is_public": True,
+                    "published_at": datetime.now(UTC),
+                    "category": category,
+                    "clone_count": clone_count,
+                    "slug": slug,
+                    # Explicitly null on regeneration failure so a republish never
+                    # serves stale copy from a previous publish.
+                    "content": content.model_dump() if content is not None else None,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=integration_id,
+        )
+        return matched > 0
+
+    async def unpublish(self, integration_id: str) -> bool:
+        """Take a published integration private. Returns whether it was updated."""
+        matched = await self._apply_raw_update_unfetched(
+            {"integration_id": integration_id},
+            {"$set": {"is_public": False}, "$unset": {"published_at": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            doc_id=integration_id,
+        )
+        return matched > 0
 
 
 integration_repository = IntegrationsRepository()

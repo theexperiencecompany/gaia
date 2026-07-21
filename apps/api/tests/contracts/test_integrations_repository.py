@@ -83,6 +83,94 @@ class TestIntegrationsRepository:
         assert (await repo.get_custom_for_user(iid, owner)).integration_id == iid
         assert await repo.get_custom_for_user(iid, "intruder") is None  # not owner
 
+    async def test_get_public_and_by_creator(self, repo):
+        owner = "creator-x"
+        pub = f"gp-{uuid.uuid4().hex}"
+        await repo.create(_integration(pub, "Pub", is_public=True, created_by=owner))
+        priv = f"gpp-{uuid.uuid4().hex}"
+        await repo.create(_integration(priv, "Priv", is_public=False, created_by=owner))
+
+        assert (await repo.get_public(pub)).integration_id == pub
+        assert await repo.get_public(priv) is None
+        assert (await repo.get_by_creator(pub, owner)).integration_id == pub
+        assert await repo.get_by_creator(pub, "someone-else") is None
+
+    async def test_increment_clone_count(self, repo):
+        iid = f"cl-{uuid.uuid4().hex}"
+        await repo.create(_integration(iid, "Cloney", clone_count=0))
+        await repo.increment_clone_count(iid)
+        await repo.increment_clone_count(iid)
+        assert (await repo.get(iid)).clone_count == 2
+
+    async def test_set_mcp_auth_and_clear_tools(self, repo):
+        iid = f"auth-{uuid.uuid4().hex}"
+        await repo.create(
+            _integration(
+                iid,
+                "Auther",
+                tools=[{"name": "t1"}],
+            )
+        )
+        assert await repo.set_mcp_auth(iid, True, "oauth") is True
+        got = await repo.get(iid)
+        assert got.mcp_config.requires_auth is True
+        assert got.mcp_config.auth_type == "oauth"
+        assert got.tools  # tools present before clear
+
+        await repo.clear_tools(iid)
+        assert (await repo.get(iid)).tools == []
+        # No such integration → no update.
+        assert await repo.set_mcp_auth(f"absent-{uuid.uuid4().hex}", True, "oauth") is False
+
+    async def test_ensure_unique_slug_appends_suffix(self, repo):
+        token = uuid.uuid4().hex
+        first = await repo.ensure_unique_slug("My Tool", token, f"a-{uuid.uuid4().hex}")
+        # Store it, then a different integration with the same name/category collides.
+        await repo.create(
+            _integration(f"s-{uuid.uuid4().hex}", "My Tool", is_public=True, slug=first)
+        )
+        second = await repo.ensure_unique_slug("My Tool", token, f"b-{uuid.uuid4().hex}")
+        assert second != first
+        assert second.startswith(first)
+
+    async def test_publish_and_unpublish(self, repo):
+        owner = "pub-owner"
+        iid = f"pb-{uuid.uuid4().hex}"
+        await repo.create(
+            _integration(iid, "Publishable", source="custom", created_by=owner, is_public=False)
+        )
+
+        ok = await repo.publish(
+            iid, created_by=owner, category="dev", slug=f"slug-{iid}", content=None, clone_count=3
+        )
+        assert ok is True
+        got = await repo.get(iid)
+        assert got.is_public is True
+        assert got.slug == f"slug-{iid}"
+        assert got.published_at is not None
+
+        # Re-publish is a no-op (already public → guarded filter matches nothing).
+        assert (
+            await repo.publish(
+                iid, created_by=owner, category="dev", slug="x", content=None, clone_count=3
+            )
+            is False
+        )
+        # Wrong creator can't publish.
+        other = f"pb2-{uuid.uuid4().hex}"
+        await repo.create(_integration(other, "Other", source="custom", created_by=owner))
+        assert (
+            await repo.publish(
+                other, created_by="intruder", category="dev", slug="y", content=None, clone_count=0
+            )
+            is False
+        )
+
+        assert await repo.unpublish(iid) is True
+        after = await repo.get(iid)
+        assert after.is_public is False
+        assert after.published_at is None
+
     async def test_delete_custom_is_owner_scoped(self, repo):
         owner = "owner-2"
         iid = f"cd-{uuid.uuid4().hex}"

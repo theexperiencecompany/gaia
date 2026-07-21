@@ -205,20 +205,15 @@ class TestMCPClientProbeConnection:
 class TestMCPClientUpdateIntegrationAuthStatus:
     async def test_updates_mongodb(self):
         client = MCPClient(user_id=USER_ID)
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        with patch("app.services.mcp.mcp_client.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock(return_value=mock_result)
+        with patch("app.services.mcp.mcp_client.integration_repository") as mock_repo:
+            mock_repo.set_mcp_auth = AsyncMock(return_value=True)
             await client.update_integration_auth_status(INTEGRATION_ID, True, "oauth")
-            mock_col.update_one.assert_awaited_once()
-            call_args = mock_col.update_one.call_args
-            assert call_args[0][0] == {"integration_id": INTEGRATION_ID}
-            assert call_args[0][1]["$set"]["mcp_config.requires_auth"] is True
+            mock_repo.set_mcp_auth.assert_awaited_once_with(INTEGRATION_ID, True, "oauth")
 
     async def test_handles_exception_gracefully(self):
         client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock(side_effect=Exception("DB failure"))
+        with patch("app.services.mcp.mcp_client.integration_repository") as mock_repo:
+            mock_repo.set_mcp_auth = AsyncMock(side_effect=Exception("DB failure"))
             # Should not raise
             await client.update_integration_auth_status(INTEGRATION_ID, False, "none")
 
@@ -582,14 +577,14 @@ class TestMCPClientDisconnect:
                 "app.services.mcp.mcp_client.delete_cache",
                 new_callable=AsyncMock,
             ),
-            patch("app.services.mcp.mcp_client.integrations_collection") as mock_col,
+            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.update_one = AsyncMock()
+            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -609,14 +604,14 @@ class TestMCPClientDisconnect:
 
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.integrations_collection") as mock_col,
+            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.update_one = AsyncMock()
+            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -631,14 +626,14 @@ class TestMCPClientDisconnect:
         client = MCPClient(user_id=USER_ID)
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.integrations_collection") as mock_col,
+            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.update_one = AsyncMock()
+            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
