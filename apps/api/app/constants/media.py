@@ -110,10 +110,6 @@ MEDIA_EVICTED_NOTICE = (
     "To look at it now, `read` it back from the path named in this result, or "
     "re-run the tool that produced it if it named none.]"
 )
-MEDIA_REPACKED_NOTICE = (
-    "[Inline media from this result is attached in the user message following these tool results.]"
-)
-REPACKED_MEDIA_HEADER = "[Media attached from the preceding tool results:]"
 
 # Key under which a ToolMessage carries the descriptions of its media blocks, one
 # per block, in block order. Written at tool-execution time (the lane is known

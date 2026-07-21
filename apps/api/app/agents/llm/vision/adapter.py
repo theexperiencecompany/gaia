@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import TypeGuard, cast
 
-from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 
 from app.agents.llm.vision.capability import MediaDelivery, resolve_media_delivery
@@ -12,11 +12,8 @@ from app.constants.media import (
     MEDIA_DESCRIPTIONS_KEY,
     MEDIA_EVICTED_NOTICE,
     MEDIA_OMITTED_NOTICE,
-    MEDIA_REPACKED_NOTICE,
-    REPACKED_MEDIA_HEADER,
 )
 from app.utils.multimodal import (
-    ContentBlock,
     ContentItem,
     extract_text_content,
     has_media_blocks,
@@ -51,12 +48,10 @@ class MediaAdapter:
     Media enters history as image blocks inside ToolMessages — one canonical
     storage shape — but each lane takes delivery differently:
 
-    - Direct Gemini reads image blocks inside tool results natively.
-    - OpenRouter serializes ToolMessage content raw (langchain_openrouter
-      forwards it without block conversion), so tool-result images can never
-      work there. Multimodal OpenRouter models *do* accept images in user
-      messages, so the blocks are repacked into an ephemeral HumanMessage placed
-      after the tool results.
+    - Vision lanes read image blocks inside tool results natively. Direct Gemini
+      does so out of the box; OpenRouter needs
+      ``app/patches/openrouter_tool_multimodal_patch.py``, because the client
+      library converts blocks for user messages but not for tool messages.
     - Text-only lanes get a notice instead; the `read` tool separately hands them
       a text description via `describe_image`.
 
@@ -79,11 +74,7 @@ class MediaAdapter:
         """Rewrite the tool-result media in ``messages``, one branch per strategy."""
         if self._delivery is MediaDelivery.REPLACE_WITH_TEXT:
             return self._strip(messages)
-
-        admitted = self._within_budget(messages)
-        if self._delivery is MediaDelivery.KEEP_IN_TOOL_RESULTS:
-            return self._keep_in_tool_results(messages, admitted)
-        return self._repack_into_user_messages(messages, admitted)
+        return self._keep_in_tool_results(messages, self._within_budget(messages))
 
     def _within_budget(self, messages: Sequence[AnyMessage]) -> set[BlockRef]:
         """The most recent media blocks that fit the per-request budget."""
@@ -121,46 +112,6 @@ class MediaAdapter:
             adapted.append(msg.model_copy(update={"content": kept}))
         return adapted
 
-    def _repack_into_user_messages(
-        self,
-        messages: Sequence[AnyMessage],
-        admitted: set[BlockRef],
-    ) -> list[AnyMessage]:
-        """OpenRouter multimodal: media moves into a user message after the tool run.
-
-        The HumanMessage is inserted after each contiguous run of ToolMessages,
-        never between an AI tool-call message and its results — providers reject
-        that ordering. Blocks keep their order and carry a per-source label so
-        the model can attribute each image to the result it came from.
-        """
-        adapted: list[AnyMessage] = []
-        pending: list[ContentItem] = []
-
-        def flush() -> None:
-            if pending:
-                adapted.append(
-                    HumanMessage(content=[text_content_block(REPACKED_MEDIA_HEADER), *pending])
-                )
-                pending.clear()
-
-        for m_idx, msg in enumerate(messages):
-            if _carries_media(msg):
-                carried = _admitted_blocks(msg, m_idx, admitted)
-                adapted.append(
-                    _as_text(msg, MEDIA_REPACKED_NOTICE if carried else MEDIA_EVICTED_NOTICE)
-                )
-                if carried:
-                    label = f"[Media from the '{msg.name or 'tool'}' result:]"
-                    pending.append(text_content_block(label))
-                    pending.extend(carried)
-                continue
-            if not isinstance(msg, ToolMessage):
-                flush()
-            adapted.append(msg)
-
-        flush()
-        return adapted
-
     def _strip(self, messages: Sequence[AnyMessage]) -> list[AnyMessage]:
         """Text-only lane: every image becomes its description, or a notice."""
         return [_as_described_text(msg) if _carries_media(msg) else msg for msg in messages]
@@ -174,19 +125,6 @@ def _carries_media(msg: AnyMessage) -> TypeGuard[ToolMessage]:
 def _blocks(msg: ToolMessage) -> list[ContentItem]:
     """The block list of a message ``_carries_media`` has already vouched for."""
     return cast(list[ContentItem], msg.content)
-
-
-def _admitted_blocks(
-    msg: ToolMessage,
-    m_idx: int,
-    admitted: set[BlockRef],
-) -> list[ContentBlock]:
-    """This message's media blocks that made the per-request budget, in order."""
-    return [
-        block
-        for b_idx, block in enumerate(_blocks(msg))
-        if is_media_block(block) and (m_idx, b_idx) in admitted
-    ]
 
 
 def _as_text(msg: ToolMessage, notice: str) -> ToolMessage:

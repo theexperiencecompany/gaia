@@ -82,76 +82,6 @@ class TestToolMessageBlocksLane:
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter lane: media is repacked into a user message.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestUserMessageBlocksLane:
-    def test_media_moves_out_of_the_tool_result_into_a_human_message(self):
-        """ChatOpenRouter forwards ToolMessage content raw, so an image left in a
-        tool result is silently unusable. It must be repacked into a user turn."""
-        msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png"}, _img())]
-
-        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
-
-        tool_msgs = [m for m in out if isinstance(m, ToolMessage)]
-        human_msgs = [m for m in out if isinstance(m, HumanMessage)]
-        assert not has_media_blocks(tool_msgs[0].content), "media must not stay in the tool result"
-        assert len(media_blocks(human_msgs[0].content)) == 1
-        assert not _all_images(tool_msgs), "no image may remain on a tool message"
-
-    def test_the_repacked_message_lands_after_the_tool_results_not_between_them(self):
-        """A HumanMessage between an AI tool-call and its ToolMessage is rejected
-        by the provider. The repack must come after the whole tool run."""
-        msgs = [
-            _ai_call("c1"),
-            _tool_msg(_img("A"), call_id="c1"),
-            _tool_msg({"type": "text", "text": "no media"}, call_id="c2"),
-            AIMessage(content="done"),
-        ]
-
-        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
-        kinds = [type(m).__name__ for m in out]
-
-        assert kinds == ["AIMessage", "ToolMessage", "ToolMessage", "HumanMessage", "AIMessage"]
-
-    def test_trailing_tool_results_still_get_their_media_flushed(self):
-        """The pre-model hook usually runs with a ToolMessage last — if the flush
-        only happened on a following non-tool message, the image would vanish."""
-        msgs = [_ai_call(), _tool_msg(_img())]
-
-        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
-
-        assert isinstance(out[-1], HumanMessage)
-        assert len(media_blocks(out[-1].content)) == 1
-
-    def test_the_tool_result_keeps_its_text_and_gains_a_pointer_notice(self):
-        msgs = [_ai_call(), _tool_msg({"type": "text", "text": "shot.png header"}, _img())]
-
-        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
-        tool_content = next(m for m in out if isinstance(m, ToolMessage)).content
-
-        assert "shot.png header" in tool_content
-        assert "BASE64-A" not in tool_content
-
-    def test_images_from_two_tools_are_labelled_per_source(self):
-        msgs = [
-            _ai_call("c1"),
-            _tool_msg(_img("A"), name="read", call_id="c1"),
-            _tool_msg(_img("B"), name="browser", call_id="c2"),
-        ]
-
-        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
-        human = next(m for m in out if isinstance(m, HumanMessage))
-        labels = " ".join(b["text"] for b in human.content if b["type"] == "text")
-
-        assert "read" in labels
-        assert "browser" in labels
-        assert len(media_blocks(human.content)) == 2
-
-
-# ---------------------------------------------------------------------------
 # Text-only lane: prose, and the cached description is what gets spent.
 # ---------------------------------------------------------------------------
 
@@ -255,16 +185,6 @@ class TestBudget:
 
         assert len(_all_images(out)) == MAX_INLINE_MEDIA_BLOCKS
         assert not any(MEDIA_EVICTED_NOTICE in str(m.content) for m in out)
-
-    def test_the_budget_also_binds_the_openrouter_repack_path(self):
-        """The budget must not be a Gemini-only guard."""
-        msgs = [
-            _tool_msg(_img(str(i)), call_id=f"c{i}") for i in range(MAX_INLINE_MEDIA_BLOCKS + 3)
-        ]
-
-        out = MediaAdapter(MediaDelivery.MOVE_TO_USER_MESSAGE).adapt(msgs)
-
-        assert len(_all_images(out)) == MAX_INLINE_MEDIA_BLOCKS
 
     def test_the_budget_counts_blocks_not_messages(self):
         """One tool result carrying many images must still be capped."""

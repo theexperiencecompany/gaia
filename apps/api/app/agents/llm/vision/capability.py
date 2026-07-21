@@ -20,11 +20,8 @@ class MediaDelivery(Enum):
     media a tool produced.
     """
 
-    # Leave them in the tool result — the model reads them there (direct Gemini).
+    # Leave them in the tool result — the model reads them there.
     KEEP_IN_TOOL_RESULTS = "keep_in_tool_results"
-    # Move them into a user message after the tool run — the model can't see
-    # images inside tool results, only in user messages (multimodal OpenRouter).
-    MOVE_TO_USER_MESSAGE = "move_to_user_message"
     # Replace each with a text description — the model can't see images at all.
     REPLACE_WITH_TEXT = "replace_with_text"
 
@@ -48,6 +45,14 @@ async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:
     models are looked up in the live catalog. Unknown providers and catalog
     misses fall back to the text description — never to a provider request that
     will be rejected.
+
+    OpenRouter accepts media inside a tool message (its spec types tool content
+    as the same union the user role gets), but whether the *upstream* model
+    honours it is per-model and not exposed anywhere in the models API — two
+    models can be byte-identical in `architecture` and still differ. Older
+    OpenAI-family models 400 on it. That capability is therefore established by
+    running ``tests/model_onboarding`` before a model is seeded, not by a lookup
+    at request time.
     """
     provider, model = active_lane(config)
     if provider == GEMINI_PROVIDER:
@@ -55,7 +60,7 @@ async def resolve_media_delivery(config: RunnableConfig) -> MediaDelivery:
     if provider == OPENROUTER_PROVIDER:
         catalog = await get_openrouter_catalog()
         if await catalog.accepts_images(model):
-            return MediaDelivery.MOVE_TO_USER_MESSAGE
+            return MediaDelivery.KEEP_IN_TOOL_RESULTS
     return MediaDelivery.REPLACE_WITH_TEXT
 
 
