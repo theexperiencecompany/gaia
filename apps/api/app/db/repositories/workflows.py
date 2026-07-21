@@ -128,6 +128,23 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
             }
         )
 
+    async def find_active_by_composio_trigger(
+        self, trigger_id: str, *, trigger_name: str | None = None
+    ) -> list[WorkflowDocument]:
+        """Activated integration workflows registered under a Composio ``trigger_id`` —
+        the fan-out target when a webhook arrives for that id. ``trigger_name`` narrows
+        to a single trigger slug for the caller that must disambiguate (Gmail's poll
+        path, where account-level and poll workflows share the handler)."""
+        query: dict[str, Any] = {
+            "activated": True,
+            "trigger_config.type": TriggerType.INTEGRATION.value,
+            "trigger_config.enabled": True,
+            "trigger_config.composio_trigger_ids": trigger_id,
+        }
+        if trigger_name is not None:
+            query["trigger_config.trigger_name"] = trigger_name
+        return await self._find(query)
+
     async def find_stale_executing(self, cutoff: datetime) -> list[WorkflowDocument]:
         """Activated workflows wedged in EXECUTING since before ``cutoff`` — the
         recovery sweep's re-arm candidates (a worker died mid-fire)."""

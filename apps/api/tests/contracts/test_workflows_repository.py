@@ -290,6 +290,38 @@ class TestWorkflowsTriggersAndSystem:
         assert [w.id for w in found] == [match.id]
         assert await repo.find_active_integration_workflows(owner, []) == []
 
+    async def test_find_active_by_composio_trigger(self, repo):
+        tid = _uid("tid")
+        match = await repo.create(
+            _workflow(
+                activated=True,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION,
+                    enabled=True,
+                    trigger_name="gmail_poll_inbox",
+                    composio_trigger_ids=[tid],
+                ),
+            )
+        )
+        # deactivated — excluded
+        await repo.create(
+            _workflow(
+                activated=False,
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, enabled=True, composio_trigger_ids=[tid]
+                ),
+            )
+        )
+        found = await repo.find_active_by_composio_trigger(tid)
+        assert [w.id for w in found] == [match.id]
+        # trigger_name narrows to a single slug
+        assert (
+            await repo.find_active_by_composio_trigger(tid, trigger_name="gmail_poll_inbox")
+            == found
+        )
+        assert await repo.find_active_by_composio_trigger(tid, trigger_name="other") == []
+        assert await repo.find_active_by_composio_trigger(_uid("none")) == []
+
     async def test_set_composio_trigger_ids(self, repo):
         wf = await repo.create(
             _workflow(

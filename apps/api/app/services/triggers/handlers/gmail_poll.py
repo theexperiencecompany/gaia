@@ -14,8 +14,9 @@ rather than fire on every single incoming email.
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.workflows import workflow_repository
 from app.models.trigger_configs import GmailPollInboxConfig
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
@@ -95,16 +96,9 @@ class GmailPollTriggerHandler(TriggerHandler):
         """
         log.set_ns("trigger", integration_id="gmail", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-            return await self._load_workflows_from_query(
-                query,
-                log_context=f"gmail_poll trigger_id={trigger_id}",
-            )
+            workflows: list[Workflow] = []
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
+            return workflows
 
         except Exception as e:
             log.error(
