@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 from bson import ObjectId
 import pytest
 
+from app.models.user_models import UserDocument
 from app.utils.profile_card import (
     HOUSES,
     assign_random_house,
@@ -206,10 +207,11 @@ class TestGetUserMetadata:
     @pytest.mark.asyncio
     async def test_user_found_with_valid_created_at(self) -> None:
         dt = datetime(2025, 6, 15, 12, 0, 0)
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": dt})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(created_at=dt),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
         assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
@@ -217,10 +219,11 @@ class TestGetUserMetadata:
 
     @pytest.mark.asyncio
     async def test_user_not_found_returns_defaults(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
             result = await get_user_metadata(_TEST_OID)
 
         assert result["account_number"] == 1
@@ -228,10 +231,11 @@ class TestGetUserMetadata:
 
     @pytest.mark.asyncio
     async def test_created_at_is_none(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": None})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(created_at=None),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
         assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
@@ -239,21 +243,20 @@ class TestGetUserMetadata:
 
     @pytest.mark.asyncio
     async def test_created_at_is_not_datetime(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": "2025-01-01"})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(_TEST_OID)
+        # A caller-supplied dict can still carry a legacy non-datetime created_at;
+        # the guard falls back to today (the typed repo path coerces to datetime).
+        result = await get_user_metadata(_TEST_OID, user={"created_at": "2025-01-01"})
 
         assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
         assert result["member_since"] == _today()
 
     @pytest.mark.asyncio
     async def test_exception_returns_defaults(self) -> None:
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(side_effect=Exception("DB connection lost"))
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            side_effect=Exception("DB connection lost"),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
         assert result["account_number"] == 1
@@ -261,26 +264,21 @@ class TestGetUserMetadata:
 
     @pytest.mark.asyncio
     async def test_account_number_derived_from_objectid(self) -> None:
-        """account_number is now the ObjectId timestamp modulo 1 000 000 —
-        count_documents is never called."""
+        """account_number is the ObjectId timestamp modulo 1 000 000."""
         dt = datetime(2025, 3, 10, 8, 30, 0)
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"created_at": dt})
+        result = await get_user_metadata(_TEST_OID, user={"created_at": dt})
 
-        with patch("app.utils.profile_card.users_collection", mock_collection):
-            result = await get_user_metadata(_TEST_OID)
-
-        mock_collection.count_documents.assert_not_awaited()
         assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER
         assert result["member_since"] == "Mar 10, 2025"
 
     @pytest.mark.asyncio
     async def test_user_has_no_created_at_key(self) -> None:
         """User document exists but has no created_at field at all."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value={"name": "Test"})
-
-        with patch("app.utils.profile_card.users_collection", mock_collection):
+        with patch(
+            "app.utils.profile_card.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=UserDocument(name="Test"),
+        ):
             result = await get_user_metadata(_TEST_OID)
 
         assert result["account_number"] == _EXPECTED_ACCOUNT_NUMBER

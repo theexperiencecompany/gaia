@@ -62,7 +62,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/onboarding/social_profile_service.py",
         "services/onboarding/writing_style_service.py",
         "services/workspace_sync.py",
-        "utils/profile_card.py",
         "workers/tasks/cleanup_tasks.py",
         "workers/tasks/memory_backfill_tasks.py",
         "workers/tasks/onboarding_tasks.py",
