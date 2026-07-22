@@ -88,12 +88,12 @@ Repo git rules apply (see root `CLAUDE.md`):
 
 - `develop` is the base branch — branch from and merge into `develop`, not `master`.
 - Plain merge only. Never `git rebase` / `git pull --rebase` against `origin/develop`.
-- Never merge PRs (`gh pr merge` is forbidden) — the team merges.
+- Never merge PRs (`gh pr merge` and `wt merge` are both off-limits) — the team merges.
+
+Hand-off flow: sync with develop, push the branch, open a PR:
 
 ```bash
-wt merge          # squash-merges this branch into the default base + cleans up
-# or, staying explicit with the repo's rules:
-git fetch origin && git merge origin/develop && git push
+git fetch origin && git merge origin/develop && git push -u origin HEAD
 ```
 
 ```bash

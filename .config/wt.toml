@@ -27,6 +27,7 @@ ports = "mise run wt:env"
 [[pre-start]]
 install-js = "mise exec -- pnpm install"
 
-# 5. Sync Python deps (needs node_modules/.bin/nx from the previous step).
+# 5. Sync Python deps (needs node_modules/.bin/nx from the previous step;
+# `pnpm nx` resolves it regardless of the hook shell's PATH).
 [[pre-start]]
-sync-py = "mise exec -- nx run api:sync"
+sync-py = "mise exec -- pnpm nx run api:sync"

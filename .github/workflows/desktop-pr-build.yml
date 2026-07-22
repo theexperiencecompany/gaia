@@ -48,13 +48,7 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Restore Next.js build cache
-        uses: actions/cache@v4
-        with:
-          path: apps/web/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}
-          restore-keys: |
-            nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      - uses: ./.github/actions/restore-nextjs-cache
       - name: Build web (standalone)
         run: pnpm nx build web --skip-nx-cache
       - name: Build Electron main/preload

@@ -31,7 +31,7 @@ Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env`. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app is authenticated on page load. Development only; production refuses to boot with it set.
+Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env`. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only; production refuses to boot with it set.
 
 The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and seeds them — it is mounted **only** when `ENV=development` **and** `DEV_AUTH_BYPASS_EMAIL` is set (`app/core/app_factory.py:139`), and 404s otherwise. It is itself exempt from the bypass, so you can mint the first user before any user exists.
 
@@ -51,7 +51,7 @@ Then set `DEV_AUTH_BYPASS_EMAIL` to that email in `apps/api/.env` (the task prin
 Source of truth: `app/api/v1/endpoints/dev.py`, `app/services/dev_service.py`, `app/schemas/dev_schemas.py`.
 
 ```bash
-API=http://localhost:8000/api/v1
+API=http://localhost:${API_PORT:-8000}/api/v1
 
 # Mint — idempotent find-or-create via the real signup path (store_user_info).
 curl -sfS -X POST "$API/dev/users" -H 'content-type: application/json' \
@@ -80,7 +80,7 @@ Under `mise dev:sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every 
 **When to use sim mode** — verifying plumbing, not intelligence: does a tool call flow comms → executor → real tool → Mongo; does the SSE stream shape render; does a bot/Playwright flow work end to end; any test that must pass identically every run with no credentials.
 **When NOT to use it** — anything judging real model behavior: prompt changes, tool-selection quality, response tone/format, memory extraction quality, model regressions. The stub does exactly what the directive says and nothing else, so "the agent chose the right tool" is meaningless under sim. Use `mise dev` with real keys for those, and expect nondeterminism.
 
-```
+```text
 [[tool:<name> <json-args>]]   one scripted tool call — repeatable, ordered
 [[say:<text>]]                the final assistant reply — at most one, terminal
 ```
@@ -103,7 +103,7 @@ All routes under `/api/v1`. Under the bypass, add `-H 'X-Dev-User: <email>'` to 
 **Chat (streaming turn).** `POST /api/v1/chat-stream` (`app/api/v1/endpoints/chat.py:99`). Body is `MessageRequestWithHistory` (`app/models/message_models.py`): `messages` is a list of `{role, content}`; `conversation_id` optional (server mints one if absent); `turn_id` optional idempotency key (duplicate → 409). Response is SSE (`text/event-stream`); the stream id is on the `X-Stream-Id` response header, and the turn **continues in the background and persists to Mongo even if you disconnect**.
 
 ```bash
-curl -sN -X POST http://localhost:8000/api/v1/chat-stream \
+curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
   -d '{"messages":[{"role":"user","content":"[[say:hello from sim]]"}]}'
 # SSE frames stream as `data: ...`; grab X-Stream-Id from the response headers (-D -) to reattach/cancel.
@@ -115,8 +115,8 @@ curl -sN -X POST http://localhost:8000/api/v1/chat-stream \
 **Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
 
 ```bash
-curl -sfS http://localhost:8000/api/v1/todos -H 'X-Dev-User: alice@gaia.local'
-curl -sfS -X POST http://localhost:8000/api/v1/todos \
+curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/todos" -H 'X-Dev-User: alice@gaia.local'
+curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
   -d '{"title":"from curl"}'
 ```
@@ -137,7 +137,7 @@ mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
 
 Every page load is already authenticated (§2), so there is no login step — just navigate and act.
 
-**Interactive / exploratory → agent-browser.** Snapshot → act on the stable element ref → assert. Install and usage are documented in the root `CLAUDE.md` "Agent-Driven E2E Testing" section. Run `mise dev` (or `dev:sim`), open `http://localhost:3000`, and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
+**Interactive / exploratory → agent-browser.** Snapshot → act on the stable element ref → assert. Install and usage are documented in the root `CLAUDE.md` "Agent-Driven E2E Testing" section. Run `mise dev` (or `dev:sim`), open `http://localhost:${WEB_PORT:-3000}` (your worktree's `WEB_PORT`), and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
 
 **Repeatable / scripted → Playwright.** Minimal setup lives in `apps/web/e2e/` (`playwright.config.ts`, `global-setup.ts`, `smoke.spec.ts`, `harness.ts`). One command:
 
@@ -161,14 +161,14 @@ Run it via the nx `sim` target (or `pnpm --filter @gaia/bot-harness dev`). The o
 ```bash
 # one-shot: mint+link the dev user, inject one message emulating a platform,
 # print the JSONL transcript (and write it to --out)
-nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
+pnpm nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
 
 # multi-turn YAML scenario with transcript assertions (exits non-zero on failure)
-nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
+pnpm nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
 ```
 
 Flags (see `apps/bots/harness/src/cli.ts`):
-- `send`: `--emulate <discord|slack|telegram|whatsapp>` (required), `--user <email>` (required), `--out <file>` (optional), `--api <url>` (optional; default `$GAIA_API_URL` → `http://localhost:8000`), `--channel <id>` (optional). The message is the trailing positional arg.
+- `send`: `--emulate <discord|slack|telegram|whatsapp>` (required), `--user <email>` (required), `--out <file>` (optional), `--api <url>` (optional; default `$GAIA_API_URL` → `http://localhost:${API_PORT:-8000}`), `--channel <id>` (optional). The message is the trailing positional arg.
 - `run <scenario.yaml>`: `--out <file>`, `--api <url>`. Scenario schema lives in `apps/bots/harness/src/scenario.types.ts`; starters are in `apps/bots/harness/scenarios/` (`plain-reply.yaml`, `tool-call.yaml`, `multi-turn.yaml`).
 
 Details:

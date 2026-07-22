@@ -281,7 +281,7 @@ Related: `GAIA_SIM_MODE=1` (`mise dev:sim`) routes every LLM call to the local s
 
 ## Pre-commit Hooks & Security Scanners
 
-The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, and **mypy**.
+The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, **mypy**, and **gaia-python-lints** (the custom AST rules in `tools/lints/` — route contract, no service classes, wide-events logging).
 
 ### Bandit
 

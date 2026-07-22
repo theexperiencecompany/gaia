@@ -14,6 +14,7 @@ lint; it is a ratchet — entries may be removed as they are fixed, never added.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator
 from pathlib import Path
 
 from _common import Violation
@@ -67,8 +68,24 @@ def _route_methods(func: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
     return methods
 
 
+def _iter_own_scope(func: ast.FunctionDef | ast.AsyncFunctionDef) -> Iterator[ast.AST]:
+    """Yield the handler's own nodes, stopping at nested scopes.
+
+    A `log.set()` inside a nested function/class/lambda must not satisfy the
+    handler's contract — only calls the handler itself makes count.
+    """
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        yield node
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+                continue
+            stack.append(child)
+
+
 def _calls_log_set(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
-    for node in ast.walk(func):
+    for node in _iter_own_scope(func):
         if (
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)

@@ -29,3 +29,21 @@ runs:
     - name: Start service containers
       shell: bash
       run: bash scripts/ci/start-test-services.sh
+
+    # Single source of truth for the suite's service env — consuming jobs
+    # (test-python, coverage) inherit these instead of duplicating them.
+    - name: Export test-suite service environment
+      shell: bash
+      run: |
+        {
+          echo "ENV=test"
+          echo "USE_REAL_SERVICES=1"
+          echo "DATABASE_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
+          echo "POSTGRES_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
+          echo "REDIS_URL=redis://localhost:6379/0"
+          echo "MONGODB_URL=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
+          echo "MONGO_DB=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
+          echo "CHROMADB_HOST=localhost"
+          echo "CHROMADB_PORT=8000"
+          echo "RABBITMQ_URL=amqp://guest:guest@localhost/"
+        } >> "$GITHUB_ENV"

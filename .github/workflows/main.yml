@@ -98,23 +98,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      # Persist Next.js's compiler cache across runs — without it every PR
-      # pays a full cold `next build` (~4 min, the job's critical path).
-      - name: Restore Next.js build cache
-        uses: actions/cache@v4
-        with:
-          path: apps/web/.next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}
-          restore-keys: |
-            nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+      # Without a warm compiler cache every PR pays a full cold `next build`
+      # (~4 min, the job's critical path).
+      - uses: ./.github/actions/restore-nextjs-cache
       - name: Build
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
+          # Through env, not inline ${{ }}: project names come from PR-controlled
+          # project.json files and must never expand inside the script itself.
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
           echo "::group::nx build output"
-          pnpm exec nx run-many -t build -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+          pnpm exec nx run-many -t build -p "$AFFECTED_TS_PROJECTS" --parallel=3
           echo "::endgroup::"
-          echo "Build: OK (${{ needs.detect.outputs.typescript_projects }})"
+          echo "Build: OK ($AFFECTED_TS_PROJECTS)"
 
   # --- Test: Python (runner-native + live service containers) -------------
   # Same service topology as `dagger call test-python` (the local harness),
@@ -127,20 +124,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Run Python tests
         working-directory: apps/api
-        env:
-          ENV: test
-          USE_REAL_SERVICES: "1"
-          DATABASE_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
-          POSTGRES_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
-          REDIS_URL: redis://localhost:6379/0
-          MONGODB_URL: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
-          MONGO_DB: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
-          CHROMADB_HOST: localhost
-          CHROMADB_PORT: "8000"
-          RABBITMQ_URL: amqp://guest:guest@localhost/
         # No ::group:: — failure tracebacks must be visible without un-collapsing.
         run: |
           uv run --frozen pytest -n auto -m 'not composio' \
@@ -159,11 +146,12 @@ jobs:
       - name: Run TypeScript tests
         env:
           ENV: test
+          AFFECTED_TS_PROJECTS: ${{ needs.detect.outputs.typescript_projects }}
         run: |
           echo "::group::vitest output"
-          pnpm exec nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
+          pnpm exec nx run-many -t test -p "$AFFECTED_TS_PROJECTS" --parallel=3
           echo "::endgroup::"
-          echo "TypeScript tests: OK (projects with a test target among: ${{ needs.detect.outputs.typescript_projects }})"
+          echo "TypeScript tests: OK (projects with a test target among: $AFFECTED_TS_PROJECTS)"
 
   # --- Changelog sync check (always) --------------------------------------
   changelog-sync:
@@ -239,20 +227,10 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+      # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Run coverage
         working-directory: apps/api
-        env:
-          ENV: test
-          USE_REAL_SERVICES: "1"
-          DATABASE_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
-          POSTGRES_URL: postgresql://gaia:gaia@localhost:5432/gaia_test # pragma: allowlist secret
-          REDIS_URL: redis://localhost:6379/0
-          MONGODB_URL: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
-          MONGO_DB: mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin # pragma: allowlist secret
-          CHROMADB_HOST: localhost
-          CHROMADB_PORT: "8000"
-          RABBITMQ_URL: amqp://guest:guest@localhost/
         run: >-
           uv run --frozen pytest -n auto -m 'not composio' --tb=short -q
           --cov=app --cov-report=term-missing --cov-fail-under=80
