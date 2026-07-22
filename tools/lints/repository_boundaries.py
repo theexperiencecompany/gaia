@@ -64,7 +64,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "api/v1/endpoints/onboarding.py",
         "helpers/message_helpers.py",
         "utils/embedding_utils.py",
-        "workers/tasks/maintenance_sweep_tasks.py",
         # -- (4) One-shot backfill script reading workflows for a data migration.
         "scripts/backfill_public_workflow_descriptions.py",
     }
@@ -89,8 +88,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # utils/
         "utils/embedding_utils.py",
         "utils/profile_card.py",
-        # workers/
-        "workers/tasks/maintenance_sweep_tasks.py",
     }
 )
 
