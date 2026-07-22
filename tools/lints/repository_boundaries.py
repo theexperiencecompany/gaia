@@ -56,10 +56,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    Retired by a follow-up users-read cleanup, not by a domain wave.
         "services/oauth/oauth_service.py",
         "services/workspace_sync.py",
-        "workers/tasks/cleanup_tasks.py",
-        "workers/tasks/memory_backfill_tasks.py",
-        "workers/tasks/onboarding_tasks.py",
-        "workers/tasks/user_tasks.py",
         # -- (2) `users` creator-join for the integrations marketplace — reads the
         #    users collection (a users-domain concern), not their own collection.
         "services/integrations/marketplace.py",
@@ -102,8 +98,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "utils/profile_card.py",
         # workers/
         "workers/tasks/maintenance_sweep_tasks.py",
-        "workers/tasks/memory_backfill_tasks.py",
-        "workers/tasks/onboarding_tasks.py",
     }
 )
 

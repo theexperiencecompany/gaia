@@ -5,8 +5,8 @@ from enum import Enum
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
-from app.models.user_models import OnboardingPhase
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserDocument
 from app.services.onboarding.intelligence_job import (
     enqueue_intelligence_job,
     enqueue_workflows_job,
@@ -45,12 +45,12 @@ async def _requeue_stuck_workflows(user_id: str, onboarding: dict[str, Any]) -> 
     return _RequeueOutcome.QUEUED
 
 
-async def _requeue_stuck_user(user: dict[str, Any]) -> _RequeueOutcome:
+async def _requeue_stuck_user(user: UserDocument) -> _RequeueOutcome:
     """Re-queue the appropriate onboarding job for one stuck user, skipping any
     whose ARQ job is still live (a slow-but-healthy pipeline is never aborted)."""
-    user_id = str(user["_id"])
-    last_update = str(user.get("updated_at", "unknown"))
-    onboarding = user.get("onboarding") or {}
+    user_id = user.id
+    last_update = str(user.updated_at) if user.updated_at is not None else "unknown"
+    onboarding = user.onboarding or {}
 
     if onboarding.get("pipeline_mode") == "split" and onboarding.get("early_intelligence_done_at"):
         return await _requeue_stuck_workflows(user_id, onboarding)
@@ -86,15 +86,9 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
         try:
             cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
 
-            stuck_candidates = await users_collection.find(
-                {
-                    "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
-                    "$or": [
-                        {"updated_at": {"$lt": cutoff_time}},
-                        {"updated_at": {"$exists": False}},
-                    ],
-                }
-            ).to_list(length=50)
+            stuck_candidates = await user_repository.find_stuck_personalization(
+                cutoff_time, limit=50
+            )
 
             if not stuck_candidates:
                 return (
@@ -111,7 +105,7 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 _RequeueOutcome.ERROR: 0,
             }
             for user in stuck_candidates:
-                user_id = str(user["_id"])
+                user_id = user.id
                 try:
                     outcome = await _requeue_stuck_user(user)
                 except Exception as e:

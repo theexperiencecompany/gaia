@@ -244,6 +244,68 @@ class TestUserCounts:
         assert await repo.count_created_before(cutoff) == 2
 
 
+class TestWorkerScans:
+    async def test_find_stuck_personalization(self, repo, make_user, raw_collection):
+        from datetime import UTC, datetime, timedelta
+
+        from bson import ObjectId
+
+        cutoff = datetime.now(UTC) - timedelta(minutes=30)
+        old = datetime.now(UTC) - timedelta(hours=1)
+        # Stuck: pending phase, updated_at backdated past the cutoff (create()
+        # auto-stamps updated_at, so backdate it directly).
+        stuck = await repo.create(make_user(onboarding={"phase": "personalization_pending"}))
+        await raw_collection.update_one({"_id": ObjectId(stuck.id)}, {"$set": {"updated_at": old}})
+        # Not stuck: pending but freshly updated (updated_at is 'now').
+        await repo.create(make_user(onboarding={"phase": "personalization_pending"}))
+        # Not stuck: different phase.
+        await repo.create(make_user(onboarding={"phase": "completed"}))
+        found = await repo.find_stuck_personalization(cutoff, limit=50)
+        assert [u.id for u in found] == [stuck.id]
+
+    async def test_find_inactive_email_candidates(self, repo, make_user):
+        from datetime import UTC, datetime, timedelta
+
+        before = datetime.now(UTC)
+        long_ago = datetime.now(UTC) - timedelta(days=30)
+        inactive = await repo.create(make_user(last_active_at=long_ago, is_active=True))
+        # Excluded: explicitly deactivated.
+        await repo.create(make_user(last_active_at=long_ago, is_active=False))
+        # Excluded: recently active.
+        await repo.create(make_user(last_active_at=datetime.now(UTC)))
+        found = await repo.find_inactive_email_candidates(before)
+        assert [u.id for u in found] == [inactive.id]
+
+    async def test_record_inactive_email(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.record_inactive_email(created.id, 2)
+        stored = await repo.get(created.id)
+        assert stored.inactive_email_count == 2
+        assert stored.last_inactive_email_sent is not None
+
+    async def test_backfill_candidates_by_creation_and_marker(self, repo, make_user):
+        from datetime import UTC, datetime, timedelta
+
+        active_since = datetime.now(UTC) - timedelta(days=1)
+        eligible_before = datetime.now(UTC)
+        # Eligible: recently active, created before cutoff (fresh ObjectId is now),
+        # so use a far-future eligible_before to include it.
+        eligible = await repo.create(make_user(last_active_at=datetime.now(UTC)))
+        # Excluded: already backfilled.
+        await repo.create(
+            make_user(last_active_at=datetime.now(UTC), memory_backfilled=datetime.now(UTC))
+        )
+        future = eligible_before + timedelta(days=1)
+        assert await repo.count_backfill_candidates(active_since, future) == 1
+        ids = await repo.find_backfill_candidate_ids(active_since, future, limit=10)
+        assert ids == [eligible.id]
+
+    async def test_mark_memory_backfilled(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.mark_memory_backfilled(created.id)
+        assert (await repo.get(created.id)).memory_backfilled is not None
+
+
 class TestBackgroundJobMarkers:
     async def test_set_and_compare_and_clear(self, repo, make_user):
         created = await repo.create(make_user())

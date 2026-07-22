@@ -9,6 +9,8 @@ cache-exempt write path so it needs no change when that happens.
 
 from datetime import UTC, datetime
 
+from bson import ObjectId
+
 from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
@@ -39,6 +41,67 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def count_created_before(self, created_at: datetime) -> int:
         """Number of users created before ``created_at`` — the holo-card rank."""
         return await self._count({"created_at": {"$lt": created_at}})
+
+    # ------------------------------------------------------------ worker scans
+
+    async def find_stuck_personalization(
+        self, cutoff: datetime, *, limit: int = 50
+    ) -> list[UserDocument]:
+        """Users stuck at personalization-pending whose last update predates
+        ``cutoff`` (or was never stamped) — the re-queue candidates."""
+        return await self._find(
+            {
+                "onboarding.phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
+                "$or": [
+                    {"updated_at": {"$lt": cutoff}},
+                    {"updated_at": {"$exists": False}},
+                ],
+            },
+            limit=limit,
+        )
+
+    async def find_inactive_email_candidates(self, before: datetime) -> list[UserDocument]:
+        """Active users inactive since ``before`` who have not been emailed since
+        then — the inactivity-email candidates (throttling is decided per user)."""
+        return await self._find(
+            {
+                "last_active_at": {"$lt": before},
+                "is_active": {"$ne": False},
+                "$or": [
+                    {"last_inactive_email_sent": {"$exists": False}},
+                    {"last_inactive_email_sent": {"$lt": before}},
+                ],
+            }
+        )
+
+    def _backfill_query(
+        self, active_since: datetime, eligible_before: datetime
+    ) -> dict[str, object]:
+        # ``_id`` is an ObjectId whose generation time is the account's creation
+        # instant, so the launch cutoff is expressed against it directly — the
+        # id-codec that belongs inside the repository.
+        return {
+            "last_active_at": {"$gte": active_since},
+            "_id": {"$lt": ObjectId.from_datetime(eligible_before)},
+            "memory_backfilled": {"$exists": False},
+        }
+
+    async def count_backfill_candidates(
+        self, active_since: datetime, eligible_before: datetime
+    ) -> int:
+        """Recently-active, pre-launch users not yet memory-backfilled."""
+        return await self._count(self._backfill_query(active_since, eligible_before))
+
+    async def find_backfill_candidate_ids(
+        self, active_since: datetime, eligible_before: datetime, *, limit: int
+    ) -> list[str]:
+        """Ids of the next batch of backfill candidates, most-recently-active first."""
+        docs = await self._find(
+            self._backfill_query(active_since, eligible_before),
+            sort=[("last_active_at", -1)],
+            limit=limit,
+        )
+        return [doc.id for doc in docs]
 
     async def list_platform_user_ids(self, platform: str, *, limit: int = 500) -> list[str]:
         field = f"platform_links.{platform}.id"
@@ -294,6 +357,35 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    # ---------------------------------------------------- lifecycle-job markers
+
+    async def record_inactive_email(self, user_id: str, count: int) -> None:
+        """Stamp the inactivity-email send: the send time and the episode counter.
+
+        ``count`` is set (not incremented) so the counter restarts at 1 for a new
+        inactivity episode and absorbs pre-counter docs whose one prior send is
+        recorded only in the timestamp."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    "last_inactive_email_sent": datetime.now(UTC),
+                    "inactive_email_count": count,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def mark_memory_backfilled(self, user_id: str) -> None:
+        """Stamp the memory-backfill marker so the daily cron won't re-select the user."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"memory_backfilled": datetime.now(UTC)}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

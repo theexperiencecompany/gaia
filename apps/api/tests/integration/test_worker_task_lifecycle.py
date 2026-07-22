@@ -18,7 +18,7 @@ from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 import pytest
 
-from app.models.user_models import OnboardingPhase
+from app.models.user_models import OnboardingPhase, UserDocument
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
@@ -190,20 +190,19 @@ class TestCleanupTaskSafety:
     async def test_cleanup_requeues_stuck_users(self):
         """Stuck users at PERSONALIZATION_PENDING phase should be re-queued."""
 
-        stuck_user_id = ObjectId()
-        stuck_user = {
-            "_id": stuck_user_id,
-            "onboarding": {
-                "phase": OnboardingPhase.PERSONALIZATION_PENDING.value,
-            },
-            "updated_at": datetime(2026, 3, 31, 10, 0, 0, tzinfo=UTC),
-        }
-
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=[stuck_user])
+        stuck_user_id = str(ObjectId())
+        stuck_user = UserDocument(
+            id=stuck_user_id,
+            onboarding={"phase": OnboardingPhase.PERSONALIZATION_PENDING.value},
+            updated_at=datetime(2026, 3, 31, 10, 0, 0, tzinfo=UTC),
+        )
 
         with (
-            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_users,
+            patch(
+                "app.workers.tasks.cleanup_tasks.user_repository.find_stuck_personalization",
+                new_callable=AsyncMock,
+                return_value=[stuck_user],
+            ),
             patch(
                 "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
                 new_callable=AsyncMock,
@@ -215,16 +214,10 @@ class TestCleanupTaskSafety:
                 return_value="job-123",
             ) as mock_enqueue,
         ):
-            mock_users.find.return_value = mock_cursor
-
             result = await cleanup_stuck_personalization(ARQ_CTX, max_age_minutes=30)
 
-            # Verify the query filters for the personalization-pending phase
-            find_call = mock_users.find.call_args[0][0]
-            assert find_call["onboarding.phase"] == OnboardingPhase.PERSONALIZATION_PENDING.value
-
             # Verify re-queue was called with the correct user id
-            mock_enqueue.assert_awaited_once_with(str(stuck_user_id))
+            mock_enqueue.assert_awaited_once_with(stuck_user_id)
 
             assert "1 re-queued" in result
             assert "0 errors" in result
@@ -232,12 +225,11 @@ class TestCleanupTaskSafety:
     async def test_cleanup_no_stuck_users(self):
         """When no stuck users exist, return a clean message."""
 
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-
-        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_users:
-            mock_users.find.return_value = mock_cursor
-
+        with patch(
+            "app.workers.tasks.cleanup_tasks.user_repository.find_stuck_personalization",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
             result = await cleanup_stuck_personalization(ARQ_CTX, max_age_minutes=30)
 
             assert "No stuck users found" in result
@@ -245,17 +237,18 @@ class TestCleanupTaskSafety:
     async def test_cleanup_handles_enqueue_failure_gracefully(self):
         """If enqueue_intelligence_job returns None for a user, count it as an error."""
 
-        stuck_user = {
-            "_id": ObjectId(),
-            "onboarding": {"phase": OnboardingPhase.PERSONALIZATION_PENDING.value},
-            "updated_at": datetime(2026, 3, 30, tzinfo=UTC),
-        }
-
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=[stuck_user])
+        stuck_user = UserDocument(
+            id=str(ObjectId()),
+            onboarding={"phase": OnboardingPhase.PERSONALIZATION_PENDING.value},
+            updated_at=datetime(2026, 3, 30, tzinfo=UTC),
+        )
 
         with (
-            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_users,
+            patch(
+                "app.workers.tasks.cleanup_tasks.user_repository.find_stuck_personalization",
+                new_callable=AsyncMock,
+                return_value=[stuck_user],
+            ),
             patch(
                 "app.workers.tasks.cleanup_tasks.is_intelligence_job_live",
                 new_callable=AsyncMock,
@@ -267,8 +260,6 @@ class TestCleanupTaskSafety:
                 return_value=None,  # None means enqueue failed
             ),
         ):
-            mock_users.find.return_value = mock_cursor
-
             result = await cleanup_stuck_personalization(ARQ_CTX, max_age_minutes=30)
 
             assert "0 re-queued" in result
@@ -277,9 +268,11 @@ class TestCleanupTaskSafety:
     async def test_cleanup_handles_db_error(self):
         """If the DB query itself fails, return an error message rather than crashing."""
 
-        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_users:
-            mock_users.find.side_effect = RuntimeError("MongoDB down")
-
+        with patch(
+            "app.workers.tasks.cleanup_tasks.user_repository.find_stuck_personalization",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("MongoDB down"),
+        ):
             result = await cleanup_stuck_personalization(ARQ_CTX, max_age_minutes=30)
 
             assert "Error" in result
@@ -324,10 +317,16 @@ class TestTaskErrorHandling:
                 new_callable=AsyncMock,
                 side_effect=RuntimeError("LLM timeout"),
             ),
-            patch("app.workers.tasks.onboarding_tasks.users_collection") as mock_users,
+            patch(
+                "app.workers.tasks.onboarding_tasks.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.onboarding_tasks.user_repository.set_pipeline_completion",
+                new_callable=AsyncMock,
+            ),
         ):
-            mock_users.update_one = AsyncMock()
-
             result = await process_onboarding_intelligence_task(ARQ_CTX, FAKE_USER_ID)
 
             assert "failed" in result.lower()
@@ -534,30 +533,30 @@ class TestUserTasks:
     async def test_check_inactive_users_sends_emails(self):
         """Inactive users older than 7 days should receive an email."""
 
-        inactive_user = {
-            "_id": ObjectId(),
-            "email": "inactive@example.com",
-            "name": "Inactive User",
-            "last_active_at": datetime(2026, 3, 20, tzinfo=UTC).replace(tzinfo=None),
-            "is_active": True,
-        }
-
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=[inactive_user])
+        inactive_user = UserDocument(
+            id=str(ObjectId()),
+            email="inactive@example.com",
+            name="Inactive User",
+            last_active_at=datetime(2026, 3, 20, tzinfo=UTC).replace(tzinfo=None),
+            is_active=True,
+        )
 
         with (
-            patch("app.db.mongodb.collections.users_collection") as mock_users,
+            patch(
+                "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates",
+                new_callable=AsyncMock,
+                return_value=[inactive_user],
+            ),
+            patch(
+                "app.workers.tasks.user_tasks.user_repository.record_inactive_email",
+                new_callable=AsyncMock,
+            ) as mock_record,
             patch("app.services.email.send_inactive_user_email") as mock_send,
         ):
-            mock_users.find.return_value = mock_cursor
-            mock_users.update_one = AsyncMock()
-
             result = await check_inactive_users(ARQ_CTX)
 
             mock_send.assert_awaited_once_with("inactive@example.com", "Inactive User")
-            mock_users.update_one.assert_awaited_once()
-            update = mock_users.update_one.call_args[0][1]
-            assert update["$set"]["inactive_email_count"] == 1
+            mock_record.assert_awaited_once_with(inactive_user.id, 1)
             assert "1 inactive users" in result
             assert "sent 1 emails" in result
 
@@ -565,12 +564,11 @@ class TestUserTasks:
     async def test_check_inactive_users_no_inactive(self):
         """When no inactive users are found, report zero."""
 
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-
-        with patch("app.db.mongodb.collections.users_collection") as mock_users:
-            mock_users.find.return_value = mock_cursor
-
+        with patch(
+            "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
             result = await check_inactive_users(ARQ_CTX)
 
             assert "0 inactive users" in result
@@ -581,29 +579,32 @@ class TestUserTasks:
         """When sending an email fails, count it as a failure but continue."""
 
         users = [
-            {
-                "_id": ObjectId(),
-                "email": "fail@example.com",
-                "name": "Fail User",
-                "last_active_at": datetime(2026, 3, 15).replace(tzinfo=None),
-            },
-            {
-                "_id": ObjectId(),
-                "email": "ok@example.com",
-                "name": "OK User",
-                "last_active_at": datetime(2026, 3, 15).replace(tzinfo=None),
-            },
+            UserDocument(
+                id=str(ObjectId()),
+                email="fail@example.com",
+                name="Fail User",
+                last_active_at=datetime(2026, 3, 15).replace(tzinfo=None),
+            ),
+            UserDocument(
+                id=str(ObjectId()),
+                email="ok@example.com",
+                name="OK User",
+                last_active_at=datetime(2026, 3, 15).replace(tzinfo=None),
+            ),
         ]
 
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=users)
-
         with (
-            patch("app.db.mongodb.collections.users_collection") as mock_users,
+            patch(
+                "app.workers.tasks.user_tasks.user_repository.find_inactive_email_candidates",
+                new_callable=AsyncMock,
+                return_value=users,
+            ),
+            patch(
+                "app.workers.tasks.user_tasks.user_repository.record_inactive_email",
+                new_callable=AsyncMock,
+            ),
             patch("app.services.email.send_inactive_user_email") as mock_send,
         ):
-            mock_users.find.return_value = mock_cursor
-            mock_users.update_one = AsyncMock()
             # First call raises, second succeeds
             mock_send.side_effect = [
                 ConnectionError("SMTP down"),
