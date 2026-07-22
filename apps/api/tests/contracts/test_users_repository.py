@@ -139,6 +139,14 @@ class TestSettingsWrites:
         await repo.set_channel_preferences(created.id)
         assert (await repo.get(created.id)).notification_channel_prefs is None
 
+    async def test_set_selected_and_starred_voices(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_selected_voice(created.id, "voice-1")
+        await repo.set_starred_voices(created.id, ["voice-1", "voice-2"])
+        stored = await repo.get(created.id)
+        assert stored.selected_voice_id == "voice-1"
+        assert stored.starred_voice_ids == ["voice-1", "voice-2"]
+
 
 class TestBackgroundJobMarkers:
     async def test_set_and_compare_and_clear(self, repo, make_user):

@@ -65,7 +65,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/onboarding/writing_style_service.py",
         "services/provider_metadata_service.py",
         "services/user_service.py",
-        "services/voice_service.py",
         "services/workspace_sync.py",
         "utils/profile_card.py",
         "workers/tasks/cleanup_tasks.py",
@@ -118,7 +117,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/onboarding/writing_style_service.py",
         "services/provider_metadata_service.py",
         "services/user_service.py",
-        "services/voice_service.py",
         # utils/
         "utils/embedding_utils.py",
         "utils/profile_card.py",

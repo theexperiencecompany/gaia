@@ -299,6 +299,24 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def set_selected_voice(self, user_id: str, voice_id: str) -> None:
+        """Persist the user's selected TTS voice id."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"selected_voice_id": voice_id}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_starred_voices(self, user_id: str, voice_ids: list[str]) -> None:
+        """Replace the user's starred voice id set."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"starred_voice_ids": voice_ids}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     # ------------------------------------------------------- platform linking
 
     async def link_platform(
