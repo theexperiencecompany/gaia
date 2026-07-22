@@ -130,6 +130,8 @@ A static URL string is a weak close. Make the CTA an **interaction**: a URL/sear
 
 Before animating any line, ask **"who is doing this, and does the sentence survive that?"** — e.g. "5 AM. Your workday just started." fails because the viewer is asleep; it's *GAIA's* workday ("You're asleep. GAIA just clocked in."). Every statement must be literally true within the film's own fiction.
 
+**Copy must match the product's actual domain.** Engineer-brain defaults leak: "ship", "build", "deploy", "building in public", "build log" read as coding-assistant copy — wrong for a life/work assistant. Audit every noun and verb (headlines, VO, AND prop copy inside mockups: calendar events, post drafts, approval rows) against what the product's real users actually do. If the persona is "founder", the props say fundraising/hiring/inbox — not sprints and commits.
+
 ## Surface discipline (defect classes that recur — check every card)
 
 - **One accent means one accent.** Semantic greens/ambers count: a success-green chip recurring across three scenes IS a second accent. Reserve semantic color for at most ONE moment in the film; status chips elsewhere are zinc surfaces with a cyan drawn check.
@@ -142,6 +144,8 @@ Before animating any line, ask **"who is doing this, and does the sentence survi
 - **Components must be the real structure, not an abstraction of it.** A "calendar" of growing horizontal bars is slop; a calendar is a time ruler with duration-positioned blocks. Build the actual anatomy of the surface (grid lines, event geometry, platform chrome) at reduced fidelity — never a metaphor of it.
 - **Brand lockups: never stack the glyph and the wordmark when the wordmark already contains the mark.** One asset per reveal.
 - **Chips/pills: auto-width, asymmetric padding (tighter on the icon side), icon ≤0.8× text cap height.** Fixed-width chips leave dead right-padding — a small tell that compounds.
+- **Accent bars inside rounded containers are inner absolute elements, never `borderLeft`.** A left border on a border-radius box curves at the corners and renders a "(" artifact. Draw the bar as `position:absolute; left:0; top/bottom:0; width:4px` inside the clipped container.
+- **Components must survive their smallest instance.** The shortest calendar block, narrowest chip, longest label — check THAT one in a rendered frame, not the comfortable median. Scale font/padding conditionally when height/width drops below the comfortable threshold; clipped text in one small block indicts the whole surface.
 - **VO cue = on-screen line cue.** Each VO line starts within ~0.3s of its paired text entering. Sync is authored per line, not per scene.
 
 ## What makes GAIA look like GAIA (checklist)

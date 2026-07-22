@@ -67,6 +67,7 @@ Scaffold outside the repo (scratchpad or a dedicated dir): `pnpm add remotion @r
 ### Phase 4 — Render + verify mechanically
 
 - Draft iterations: `npx remotion render Main out/draft.mp4 --frames=...` (jpeg q80).
+- **Look at every scene you touch — before claiming it's fixed.** Render a still (or short frame range) of the exact frames you changed and open the image yourself. Code that type-checks can still render clipped text, stacked digits, or border artifacts; the evaluators catch some of it later, but the builder verifying frames is the first gate. "The edit is in" is not "the scene is right."
 - Before evaluation: full render + export **boundary triplets** (frames N−2..N+2 at every cut) and a 2fps contact sheet; run `npx remotion ffmpeg -i out.mp4 -af loudnorm=print_format=summary -f null -` for loudness; self-check the mechanical items (cuts on grid, hold ratios, word counts, safe areas) before wasting evaluator passes.
 - Final master: `--crf=15 --image-format=png --color-space=bt709 --x264-preset=slow` (add `--scale=2` for 4K deliverables).
 
