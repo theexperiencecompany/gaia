@@ -357,6 +357,30 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def mark_email_processing_complete(self, user_id: str, memory_count: int) -> None:
+        """Mark the user's Gmail→memory processing as complete."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    "email_memory_processed": True,
+                    "email_memory_processed_at": datetime.now(UTC),
+                    "email_memory_count": memory_count,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_gmail_scan_timestamp(self, user_id: str, timestamp: datetime) -> None:
+        """Record the last Gmail scan time so the next scan only fetches newer mail."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"integration_scan_states.gmail.last_scan_timestamp": timestamp}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def set_selected_voice(self, user_id: str, voice_id: str) -> None:
         """Persist the user's selected TTS voice id."""
         await self._apply_raw_update(

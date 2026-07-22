@@ -54,8 +54,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    read the users collection directly — cross-domain reads (auth, payments,
         #    notifications, onboarding, workers) plus a few user-domain stragglers.
         #    Retired by a follow-up users-read cleanup, not by a domain wave.
-        "agents/memory/email_processor.py",
-        "helpers/email_helpers.py",
         "services/oauth/oauth_service.py",
         "services/workspace_sync.py",
         "workers/tasks/cleanup_tasks.py",
@@ -86,8 +84,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
 # layer. Removed when the domain migrates its id-codec into its repository.
 BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
-        # agents/
-        "agents/memory/email_processor.py",
         # api/
         "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/onboarding.py",

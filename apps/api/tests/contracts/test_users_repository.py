@@ -187,6 +187,23 @@ class TestSettingsWrites:
         await repo.set_channel_preferences(created.id)
         assert (await repo.get(created.id)).notification_channel_prefs is None
 
+    async def test_mark_email_processing_complete(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.mark_email_processing_complete(created.id, 42)
+        stored = await repo.get(created.id)
+        assert stored.email_memory_processed is True
+        assert stored.email_memory_count == 42
+        assert stored.email_memory_processed_at is not None
+
+    async def test_set_gmail_scan_timestamp(self, repo, make_user):
+        from datetime import UTC, datetime
+
+        created = await repo.create(make_user())
+        ts = datetime(2025, 1, 1, tzinfo=UTC)
+        await repo.set_gmail_scan_timestamp(created.id, ts)
+        states = (await repo.get(created.id)).integration_scan_states
+        assert states["gmail"]["last_scan_timestamp"] == ts
+
     async def test_set_selected_and_starred_voices(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.set_selected_voice(created.id, "voice-1")
