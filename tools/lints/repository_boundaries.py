@@ -100,7 +100,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "agents/memory/email_processor.py",
         # api/
         "api/v1/endpoints/integrations/config.py",
-        "api/v1/endpoints/notification.py",
         "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/user.py",
         # helpers/
@@ -122,7 +121,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/voice_service.py",
         # utils/
         "utils/embedding_utils.py",
-        "utils/notification/channel_preferences.py",
         "utils/profile_card.py",
         # workers/
         "workers/tasks/maintenance_sweep_tasks.py",
