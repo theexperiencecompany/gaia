@@ -10,6 +10,8 @@ argument-hint: "[video idea or brief]"
 
 You are directing a brand film, not generating a video. The bar is "could ship on apple.com." Everything below exists because the default output of an LLM asked to "make a video" is slop: linear easings, silent renders, uniform durations, generic layouts, no story. This skill is the anti-slop machine.
 
+**This is a launch-film system, not a one-off.** Every GAIA feature/PR launch can get a film from this skill: the workflow parameterizes story (what shipped, whose life it changes, the receipts to show), surfaces (whichever product components prove the claim), and length (15s feature clip → 60s brand film). The craft rules are constant; only the story and evidence change. Default structure for any launch: **Intro (plain: what it is) → Statement → Proof → Statement → Proof → Range → Outro → Brand reveal LAST** — see `references/reference-films.md`.
+
 ## Non-negotiables
 
 1. **Story before pixels.** No composition code until a beat sheet exists and (when the user is reachable) the director's interview has been asked.
@@ -29,6 +31,7 @@ You are directing a brand film, not generating a video. The bar is "could ship o
 | `references/motion-craft.md` | Phase 3 — quantified transitions, kinetic type, easing library, rhythm math, anti-slop checklist |
 | `references/remotion-technique.md` | Phase 3 — Remotion idioms, springs, TransitionSeries, fonts, render pipeline, determinism |
 | `references/audio.md` | Phase 2–4 — verified SFX/music sources, VO (edge-tts + ElevenLabs), mix targets |
+| `references/reference-films.md` | Phase 1 & 3 — launch structure template, techniques from frame-stepped reference films, Apple spring values, how to fetch new references (yt-dlp) |
 
 ## Workflow
 

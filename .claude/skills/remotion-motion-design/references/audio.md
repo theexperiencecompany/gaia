@@ -91,6 +91,10 @@ curl -s -X POST "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_
 
 ## Mix discipline (defect classes that recur — verify each empirically)
 
+- **The Remotion render has a fixed A/V offset**: the rendered audio track lands exactly 2048 samples (~43ms at 48kHz) late against picture. Correct at the master stage — `atrim=start_sample=2048,apad=pad_dur=0.05` on the extracted wav before loudnorm — and verify a known hit (a boom on a cut) lands within ±0.5f by cross-correlation.
+- **Short VO clips defeat loudnorm**: two-pass loudnorm barely moves a 1–3s stem (gating). Normalize short stems by measuring integrated loudness, computing the delta to target, and applying plain `volume=+X.XdB` gain — then re-measure.
+- **Regenerated stems must rejoin the pipeline**: any re-recorded VO line goes through the same trim + normalize + duration-measure steps, and stale sidecars (srt) are deleted — an old srt against a new wav is a landmine for whoever checks captions.
+
 - **Master the render, don't trust the math.** Volume values in code never sum to spec. Always finish with a two-pass loudnorm on the rendered file (measure → apply with `measured_*` values + `linear=true`), then remux audio onto the copied video stream. Verify the final file: −14±0.5 LUFS, ≤ −1 dBTP.
 - **The drop must be the loudest moment of the film.** Three conspirators quietly kill it: (1) a VO duck held across the drop — release the duck ON the drop frame (J-cut the VO to end ~5f before); (2) the riser truncating instead of ENDING on the downbeat — place by `at = drop − riserDurationF + 1` and give the asset a 20ms fade tail; (3) boom attack swell — a "boom" often peaks 15–25ms after its start; nudge accordingly. Verify with momentary loudness: the seconds after the drop must out-measure the seconds before it.
 - **Trim VO head/tail silence before placing** (TTS files carry 120–175ms head + up to 770ms tail). Duck windows must track actual speech, or the bed pumps on dead air. Re-measure durations after trimming and drive scene timing from the real numbers.
