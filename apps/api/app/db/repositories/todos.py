@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.cache import TODO_CACHE_PREFIX
-from app.constants.todos import GAIA_TRACKED_LABEL
+from app.constants.todos import GAIA_TRACKED_LABEL, ONBOARDING_LABEL
 from app.db.repositories.base import UserScopedRepository, cached_query
 from app.db.repositories.cache import CachePolicy
 from app.models.todo_models import (
@@ -82,6 +82,14 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         which is handed only a todo id. Prefer ``get(id, user_id=...)`` everywhere
         a user is in context."""
         return await self._find_one({"_id": self._id_value(todo_id)})
+
+    async def list_onboarding_todos(self, user_id: str, *, limit: int) -> list[TodoDocument]:
+        """A user's onboarding-seeded todos, most-recently-created first."""
+        return await self._find(
+            {"user_id": user_id, "labels": ONBOARDING_LABEL},
+            sort=[("created_at", -1)],
+            limit=limit,
+        )
 
     async def find_by_ids(self, user_id: str, todo_ids: list[str]) -> list[TodoDocument]:
         """The user's todos whose ids are in ``todo_ids`` (order not preserved)."""
@@ -343,6 +351,16 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         """Delete many of the user's todos in one round trip; returns the count
         deleted."""
         return await self._bulk_delete(todo_ids, scope=user_id)
+
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every todo owned by ``user_id`` (dev-data reset); returns the count."""
+        return await self._delete_many({"user_id": user_id}, scope=user_id)
+
+    async def delete_onboarding_todos(self, user_id: str) -> int:
+        """Delete the user's onboarding-seeded todos; returns the count deleted."""
+        return await self._delete_many(
+            {"user_id": user_id, "labels": ONBOARDING_LABEL}, scope=user_id
+        )
 
     async def move_todos_to_project(
         self, user_id: str, from_project_id: str, to_project_id: str

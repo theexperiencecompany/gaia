@@ -20,7 +20,7 @@ from app.constants.onboarding import (
     WORKFLOWS_JOB_FIELD,
     WORKFLOWS_TASK,
 )
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
@@ -136,8 +136,7 @@ async def abort_active_workflows_job(user_id: str) -> bool:
 
 async def _purge_stale_onboarding_todos(user_id: str) -> int:
     try:
-        result = await todos_collection.delete_many({"user_id": user_id, "labels": "onboarding"})
-        return result.deleted_count
+        return await todo_repository.delete_onboarding_todos(user_id)
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} intelligence_job failed to purge stale onboarding todos",

@@ -8,6 +8,9 @@ from typing import Final
 
 ONBOARDING_TODO_LIMIT = 3
 
+# Label marking a todo seeded during onboarding — used to fetch and to purge them.
+ONBOARDING_LABEL: Final[str] = "onboarding"
+
 # Label that marks a todo as "tracked" — GAIA's institutional-memory layer.
 # Kept here (not in tracked_todo_service) so the VFS sync glue can import it
 # without creating a circular dependency.

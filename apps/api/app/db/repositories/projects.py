@@ -17,6 +17,10 @@ class ProjectsRepository(UserScopedRepository[ProjectDocument, ProjectUpdate]):
         """The user's default Inbox project, or ``None`` if not created yet."""
         return await self._find_one({"user_id": user_id, "is_default": True})
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Delete every project owned by ``user_id`` (dev-data reset); returns the count."""
+        return await self._delete_many({"user_id": user_id}, scope=user_id)
+
     async def get_or_create_inbox(self, user_id: str) -> ProjectDocument:
         """Return the user's Inbox project, creating it on first access."""
         existing = await self.get_default_inbox(user_id)

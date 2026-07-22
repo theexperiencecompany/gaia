@@ -4,10 +4,8 @@ from typing import Any
 from fastapi import BackgroundTasks, HTTPException
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    todos_collection,
-)
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
@@ -322,10 +320,7 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
 
     todos_deleted = 0
     try:
-        todo_result = await todos_collection.delete_many(
-            {"user_id": user_id, "labels": "onboarding"}
-        )
-        todos_deleted = todo_result.deleted_count
+        todos_deleted = await todo_repository.delete_onboarding_todos(user_id)
     except Exception as e:
         log.warning(f"{LogTag.ONBOARDING} reset_onboarding failed to delete todos: {e}")
 

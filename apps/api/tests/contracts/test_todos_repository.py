@@ -238,3 +238,23 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert await repo.add_labels(created.id, user_id="attacker", labels=["x"]) is None
         untouched = await repo.get_by_id(created.id)
         assert untouched is not None and untouched.labels == ["keep"]
+
+
+class TestCrossDomainDeletes:
+    """Finders/deletes used by the onboarding + dev-reset cross-domain callers."""
+
+    async def test_delete_all_for_user_is_scoped(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", title="a"))
+        await repo.create(make_doc(user_id="u1", title="b"))
+        await repo.create(make_doc(user_id="u2", title="c"))
+        assert await repo.delete_all_for_user("u1") == 2
+        assert await repo.delete_all_for_user("u2") == 1
+
+    async def test_onboarding_todos_list_and_delete(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", title="ob1", labels=["onboarding"]))
+        await repo.create(make_doc(user_id="u1", title="ob2", labels=["onboarding"]))
+        await repo.create(make_doc(user_id="u1", title="other", labels=["work"]))
+        listed = await repo.list_onboarding_todos("u1", limit=10)
+        assert {t.title for t in listed} == {"ob1", "ob2"}
+        assert await repo.delete_onboarding_todos("u1") == 2
+        assert await repo.list_onboarding_todos("u1", limit=10) == []

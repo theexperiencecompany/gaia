@@ -85,3 +85,12 @@ class TestProjectsRepository(UserScopedRepositoryContract):
         assert sorted(p.name for p in projects) == ["A", "B"]
         assert all(p.user_id == "owner" for p in projects)
         assert all(p.todo_count == 0 for p in projects)
+
+
+class TestProjectDeletes:
+    async def test_delete_all_for_user_is_scoped(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u1", name="p1"))
+        await repo.create(make_doc(user_id="u1", name="p2"))
+        await repo.create(make_doc(user_id="u2", name="p3"))
+        assert await repo.delete_all_for_user("u1") == 2
+        assert await repo.delete_all_for_user("u2") == 1

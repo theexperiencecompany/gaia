@@ -46,9 +46,7 @@ from app.constants.onboarding import (
 )
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import (
-    todos_collection,
-)
+from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.db.repositories.workflows import workflow_repository
 from app.models.onboarding_models import (
@@ -1251,15 +1249,8 @@ def _writing_style_from_doc(raw: object) -> WritingStyleProfile | None:
 
 
 async def _fetch_onboarding_todos(user_id: str) -> list[dict]:
-    cursor = (
-        todos_collection.find(
-            {"user_id": user_id, "labels": "onboarding"},
-            {"_id": 1, "title": 1},
-        )
-        .sort("created_at", -1)
-        .limit(ONBOARDING_TODO_LIMIT)
-    )
-    return [{"id": str(t["_id"]), "title": t.get("title", "")} async for t in cursor]
+    todos = await todo_repository.list_onboarding_todos(user_id, limit=ONBOARDING_TODO_LIMIT)
+    return [{"id": todo.id, "title": todo.title or ""} for todo in todos]
 
 
 async def _wait_for_early_phase(user_id: str) -> bool:
