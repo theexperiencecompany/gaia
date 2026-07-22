@@ -45,14 +45,16 @@ _COLLECTIONS_MODULE = "app.db.mongodb.collections"
 _COLLECTIONS_ALLOWED_DIRS = ("db/repositories/", "db/mongodb/")
 _BSON_ALLOWED_DIRS = ("db/",)
 
-# Ratchet allowlist: files still importing app.db.mongodb.collections. Every domain
-# wave is complete; the legitimate remainder below is grouped by WHY it survives.
-# Entries are removed as each remaining reader migrates — never added.
+# Ratchet allowlist: files importing app.db.mongodb.collections from outside the
+# repository layer. Every domain is migrated and the per-collection module
+# attributes have been removed, so ``get_async_collection`` is the only thing left
+# to import — this allowlist is at its final, legitimate remainder.
+# Entries are removed if a script is retired — never added.
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # One-shot backfill script that resolves the workflows collection through
-        # the supported ``get_async_collection`` accessor (not a named attribute),
-        # so it keeps working after the named collections are privatized.
+        # the supported ``get_async_collection`` accessor; it predates the
+        # repository and is run manually, not part of any request path.
         "scripts/backfill_public_workflow_descriptions.py",
     }
 )

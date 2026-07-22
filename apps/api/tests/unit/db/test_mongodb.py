@@ -329,41 +329,29 @@ class TestCollectionsLazyLoading:
 
 
 # ---------------------------------------------------------------------------
-# Collections module — __getattr__
+# Collections module — get_async_collection
 # ---------------------------------------------------------------------------
 
 
-class TestCollectionsGetattr:
-    """Tests for module-level __getattr__ that enables lazy imports."""
+class TestGetAsyncCollection:
+    """The single supported accessor — the named per-collection module
+    attributes were removed once every domain moved behind a repository."""
 
-    def test_getattr_known_collection_name(self) -> None:
-        """Importing a known collection name should return via _get_collection."""
+    def test_resolves_by_mongo_name(self) -> None:
         with patch("app.db.mongodb.collections._get_collection") as mock_get:
             mock_get.return_value = MagicMock()
 
-            from app.db.mongodb.collections import __getattr__
+            from app.db.mongodb.collections import get_async_collection
 
-            __getattr__("users_collection")
+            get_async_collection("users")
             mock_get.assert_called_once_with("users")
 
-    def test_getattr_unknown_name_raises(self) -> None:
-        """Accessing an unknown attribute should raise AttributeError."""
-        from app.db.mongodb.collections import __getattr__
+    def test_named_collection_attributes_are_gone(self) -> None:
+        from app.db.mongodb import collections as collections_mod
 
-        with pytest.raises(AttributeError, match="has no attribute"):
-            __getattr__("nonexistent_collection")
-
-    def test_getattr_all_collection_mappings(self) -> None:
-        """All entries in _COLLECTION_MAPPINGS should be resolvable."""
-        from app.db.mongodb.collections import _COLLECTION_MAPPINGS, __getattr__
-
-        with patch("app.db.mongodb.collections._get_collection") as mock_get:
-            mock_get.return_value = MagicMock()
-
-            for attr_name, coll_name in _COLLECTION_MAPPINGS.items():
-                mock_get.reset_mock()
-                __getattr__(attr_name)
-                mock_get.assert_called_once_with(coll_name)
+        for attr in ("users_collection", "todos_collection", "workflows_collection"):
+            with pytest.raises(AttributeError):
+                getattr(collections_mod, attr)
 
 
 # ---------------------------------------------------------------------------
@@ -578,7 +566,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch("app.db.mongodb.indexes.users_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_user_indexes
@@ -594,7 +582,7 @@ class TestIndividualIndexCreators:
         mock_collection.create_index.side_effect = RuntimeError("timeout")
 
         with (
-            patch("app.db.mongodb.indexes.users_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_user_indexes
@@ -607,7 +595,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch("app.db.mongodb.indexes.todos_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_todo_indexes
@@ -627,7 +615,7 @@ class TestIndividualIndexCreators:
         mock_collection = AsyncMock()
 
         with (
-            patch("app.db.mongodb.indexes.processed_webhooks_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import create_processed_webhook_indexes
@@ -659,7 +647,7 @@ class TestBackfillIntegrationSlugs:
         mock_collection.find.return_value = mock_cursor
 
         with (
-            patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log"),
         ):
             from app.db.mongodb.indexes import _backfill_integration_slugs
@@ -682,7 +670,7 @@ class TestBackfillIntegrationSlugs:
         mock_collection.find.side_effect = [mock_cursor_with_docs, mock_cursor_empty]
 
         with (
-            patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.integration_repository") as mock_repo,
             patch("app.db.mongodb.indexes.log"),
         ):
@@ -699,7 +687,7 @@ class TestBackfillIntegrationSlugs:
         mock_collection.find.side_effect = RuntimeError("query failed")
 
         with (
-            patch("app.db.mongodb.indexes.integrations_collection", mock_collection),
+            patch("app.db.mongodb.indexes.get_async_collection", return_value=mock_collection),
             patch("app.db.mongodb.indexes.log") as mock_log,
         ):
             from app.db.mongodb.indexes import _backfill_integration_slugs
