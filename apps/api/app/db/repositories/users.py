@@ -36,6 +36,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def get_by_platform_id(self, platform: str, platform_user_id: str) -> UserDocument | None:
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 
+    async def count_created_before(self, created_at: datetime) -> int:
+        """Number of users created before ``created_at`` — the holo-card rank."""
+        return await self._count({"created_at": {"$lt": created_at}})
+
     async def list_platform_user_ids(self, platform: str, *, limit: int = 500) -> list[str]:
         field = f"platform_links.{platform}.id"
         docs = await self._find({field: {"$exists": True}}, limit=limit)
@@ -316,6 +320,23 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
+
+    async def set_holo_card_colors(
+        self, user_id: str, overlay_color: str, overlay_opacity: int
+    ) -> bool:
+        """Set the holo-card overlay color/opacity; returns whether the user existed."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {
+                "$set": {
+                    "onboarding.overlay_color": overlay_color,
+                    "onboarding.overlay_opacity": overlay_opacity,
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+        return updated is not None
 
     async def set_provider_metadata(
         self, user_id: str, provider: str, metadata: dict[str, str]

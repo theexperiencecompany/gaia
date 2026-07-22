@@ -159,6 +159,25 @@ class TestSettingsWrites:
         # Missing user → write did not land.
         assert await repo.set_provider_metadata("0" * 24, "github", {"x": "y"}) is False
 
+    async def test_set_holo_card_colors_and_missing_user(self, repo, make_user):
+        created = await repo.create(make_user())
+        assert await repo.set_holo_card_colors(created.id, "rgba(1,2,3,1)", 55)
+        onboarding = (await repo.get(created.id)).onboarding
+        assert onboarding["overlay_color"] == "rgba(1,2,3,1)"
+        assert onboarding["overlay_opacity"] == 55
+        assert await repo.set_holo_card_colors("0" * 24, "x", 1) is False
+
+
+class TestUserCounts:
+    async def test_count_created_before(self, repo, make_user):
+        from datetime import UTC, datetime
+
+        cutoff = datetime(2025, 6, 1, tzinfo=UTC)
+        await repo.create(make_user(created_at=datetime(2025, 1, 1, tzinfo=UTC)))
+        await repo.create(make_user(created_at=datetime(2025, 3, 1, tzinfo=UTC)))
+        await repo.create(make_user(created_at=datetime(2025, 12, 1, tzinfo=UTC)))
+        assert await repo.count_created_before(cutoff) == 2
+
 
 class TestBackgroundJobMarkers:
     async def test_set_and_compare_and_clear(self, repo, make_user):
