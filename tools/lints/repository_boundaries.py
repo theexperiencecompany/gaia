@@ -54,7 +54,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    read the users collection directly — cross-domain reads (auth, payments,
         #    notifications, onboarding, workers) plus a few user-domain stragglers.
         #    Retired by a follow-up users-read cleanup, not by a domain wave.
-        "services/oauth/oauth_service.py",
         "services/workspace_sync.py",
         # -- (2) `users` creator-join for the integrations marketplace — reads the
         #    users collection (a users-domain concern), not their own collection.
@@ -92,7 +91,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # services/
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
-        "services/oauth/oauth_service.py",
         # utils/
         "utils/embedding_utils.py",
         "utils/profile_card.py",

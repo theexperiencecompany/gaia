@@ -307,6 +307,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def set_bio_status(self, user_id: str, bio_status: str) -> None:
+        """Update the onboarding bio-generation status (e.g. back to processing on a
+        post-onboarding Gmail reconnect)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"onboarding.bio_status": bio_status}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def set_writing_style_user_summary(self, user_id: str, summary: str) -> None:
         """Persist a user-edited writing-style summary as the canonical style."""
         await self._apply_raw_update(

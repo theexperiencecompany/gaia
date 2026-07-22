@@ -148,6 +148,11 @@ class TestOnboardingWrites:
         await repo.set_social_profiles(created.id, [{"platform": "y"}, {"platform": "z"}])
         assert len((await repo.get(created.id)).onboarding["social_profiles"]) == 2
 
+    async def test_set_bio_status(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_bio_status(created.id, "processing")
+        assert (await repo.get(created.id)).onboarding["bio_status"] == "processing"
+
     async def test_set_writing_style_user_summary(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.set_writing_style_user_summary(created.id, "my style")
