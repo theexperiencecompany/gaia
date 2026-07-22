@@ -55,10 +55,8 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    notifications, onboarding, workers) plus a few user-domain stragglers.
         #    Retired by a follow-up users-read cleanup, not by a domain wave.
         "agents/memory/email_processor.py",
-        "api/v1/endpoints/integrations/config.py",
         "api/v1/endpoints/user.py",
         "helpers/email_helpers.py",
-        "memory/consolidation.py",
         "services/oauth/oauth_service.py",
         "services/onboarding/post_onboarding_service.py",
         "services/onboarding/social_profile_service.py",
@@ -102,8 +100,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         # helpers/
         "helpers/email_helpers.py",
         "helpers/message_helpers.py",
-        # memory/
-        "memory/consolidation.py",
         # models/
         "models/blog_models.py",
         # services/
