@@ -106,6 +106,54 @@ class TestOnboardingWrites:
         assert prefs["profession"] == "designer"
         assert prefs["response_style"] == "brief"
 
+    async def test_save_personalization_writes_bundle_and_phase(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.save_personalization(
+            created.id,
+            house="explorer",
+            personality_phrase="Creative",
+            user_bio="Bio",
+            bio_status="completed",
+            account_number=42,
+            member_since="Mar 2024",
+            overlay_color="#ff0000",
+            overlay_opacity=80,
+            workflow_ids=["wf1", "wf2"],
+        )
+        onboarding = (await repo.get(created.id)).onboarding
+        assert onboarding["house"] == "explorer"
+        assert onboarding["phase"] == "personalization_complete"
+        assert onboarding["account_number"] == 42
+        assert onboarding["suggested_workflows"] == ["wf1", "wf2"]
+
+    async def test_save_personalization_omits_empty_workflows(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.save_personalization(
+            created.id,
+            house="h",
+            personality_phrase="p",
+            user_bio="b",
+            bio_status="completed",
+            account_number=1,
+            member_since="Jan 2024",
+            overlay_color="#000",
+            overlay_opacity=50,
+            workflow_ids=[],
+        )
+        assert "suggested_workflows" not in (await repo.get(created.id)).onboarding
+
+    async def test_set_social_profiles_overwrites(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_social_profiles(created.id, [{"platform": "x"}])
+        await repo.set_social_profiles(created.id, [{"platform": "y"}, {"platform": "z"}])
+        assert len((await repo.get(created.id)).onboarding["social_profiles"]) == 2
+
+    async def test_set_writing_style_user_summary(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_writing_style_user_summary(created.id, "my style")
+        style = (await repo.get(created.id)).onboarding["writing_style"]
+        assert style["user_edited_summary"] == "my style"
+
     async def test_reset_onboarding_removes_subdocument(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.complete_onboarding(

@@ -17,7 +17,7 @@ from app.constants.cache import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository
-from app.models.user_models import UserDocument, UserUpdate
+from app.models.user_models import OnboardingPhase, UserDocument, UserUpdate
 from shared.py.wide_events import log
 
 
@@ -237,6 +237,60 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             set_fields["onboarding.triage_summary"] = triage_summary
         if not set_fields:
             return
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": set_fields},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_writing_style_user_summary(self, user_id: str, summary: str) -> None:
+        """Persist a user-edited writing-style summary as the canonical style."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"onboarding.writing_style.user_edited_summary": summary}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_social_profiles(self, user_id: str, profiles: list[dict[str, object]]) -> None:
+        """Overwrite the stored social profiles (user-confirmed selection)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"onboarding.social_profiles": profiles}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def save_personalization(
+        self,
+        user_id: str,
+        *,
+        house: str,
+        personality_phrase: str,
+        user_bio: str,
+        bio_status: str,
+        account_number: int,
+        member_since: str,
+        overlay_color: str,
+        overlay_opacity: int,
+        workflow_ids: list[str],
+    ) -> None:
+        """Persist the generated personalization bundle and advance the phase to
+        personalization-complete."""
+        set_fields: dict[str, object] = {
+            "onboarding.house": house,
+            "onboarding.personality_phrase": personality_phrase,
+            "onboarding.user_bio": user_bio,
+            "onboarding.bio_status": bio_status,
+            "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE.value,
+            "onboarding.account_number": account_number,
+            "onboarding.member_since": member_since,
+            "onboarding.overlay_color": overlay_color,
+            "onboarding.overlay_opacity": overlay_opacity,
+        }
+        if workflow_ids:
+            set_fields["onboarding.suggested_workflows"] = workflow_ids
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": set_fields},

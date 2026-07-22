@@ -35,9 +35,12 @@ def mock_repo():
 
 
 @pytest.fixture
-def mock_post_users_collection():
-    with patch("app.services.onboarding.post_onboarding_service.users_collection") as mock_col:
-        yield mock_col
+def mock_save_personalization():
+    with patch(
+        "app.services.onboarding.post_onboarding_service.user_repository.save_personalization",
+        new_callable=AsyncMock,
+    ) as mock_save:
+        yield mock_save
 
 
 @pytest.fixture
@@ -275,9 +278,7 @@ class TestUpdateOnboardingPreferences:
 
 @pytest.mark.unit
 class TestSavePersonalizationData:
-    async def test_saves_data(self, mock_post_users_collection, sample_user_id):
-        mock_post_users_collection.update_one = AsyncMock()
-
+    async def test_saves_data(self, mock_save_personalization, sample_user_id):
         await save_personalization_data(
             sample_user_id,
             house="explorer",
@@ -291,20 +292,19 @@ class TestSavePersonalizationData:
             overlay_opacity=80,
         )
 
-        mock_post_users_collection.update_one.assert_awaited_once()
-        set_data = mock_post_users_collection.update_one.call_args[0][1]["$set"]
-        assert set_data["onboarding.house"] == "explorer"
-        assert set_data["onboarding.personality_phrase"] == "Creative thinker"
-        assert set_data["onboarding.user_bio"] == "A passionate engineer."
-        assert set_data["onboarding.bio_status"] == BioStatus.COMPLETED
-        assert set_data["onboarding.suggested_workflows"] == ["wf1", "wf2"]
-        assert set_data["onboarding.account_number"] == 42
-        assert set_data["onboarding.overlay_color"] == "#ff0000"
-        assert set_data["onboarding.overlay_opacity"] == 80
-        assert set_data["onboarding.phase"] == OnboardingPhase.PERSONALIZATION_COMPLETE
+        mock_save_personalization.assert_awaited_once()
+        kwargs = mock_save_personalization.call_args.kwargs
+        assert kwargs["house"] == "explorer"
+        assert kwargs["personality_phrase"] == "Creative thinker"
+        assert kwargs["user_bio"] == "A passionate engineer."
+        assert kwargs["bio_status"] == BioStatus.COMPLETED
+        assert kwargs["workflow_ids"] == ["wf1", "wf2"]
+        assert kwargs["account_number"] == 42
+        assert kwargs["overlay_color"] == "#ff0000"
+        assert kwargs["overlay_opacity"] == 80
 
-    async def test_handles_exception(self, mock_post_users_collection, sample_user_id):
-        mock_post_users_collection.update_one = AsyncMock(side_effect=Exception("DB error"))
+    async def test_handles_exception(self, mock_save_personalization, sample_user_id):
+        mock_save_personalization.side_effect = Exception("DB error")
 
         await save_personalization_data(
             sample_user_id,
