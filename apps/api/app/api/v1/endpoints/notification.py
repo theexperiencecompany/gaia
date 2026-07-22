@@ -1,6 +1,5 @@
 import asyncio
 
-from bson import ObjectId
 from fastapi import (
     APIRouter,
     Body,
@@ -14,7 +13,7 @@ from fastapi import (
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
 from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.device_token_models import (
     DeviceTokenRequest,
     DeviceTokenResponse,
@@ -122,18 +121,13 @@ async def update_channel_preferences(
     )
 
     try:
-        updates: dict = {}
-        if preferences.telegram is not None:
-            updates["notification_channel_prefs.telegram"] = preferences.telegram
-        if preferences.discord is not None:
-            updates["notification_channel_prefs.discord"] = preferences.discord
-        if preferences.whatsapp is not None:
-            updates["notification_channel_prefs.whatsapp"] = preferences.whatsapp
-        if preferences.slack is not None:
-            updates["notification_channel_prefs.slack"] = preferences.slack
-
-        if updates:
-            await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
+        await user_repository.set_channel_preferences(
+            user_id,
+            telegram=preferences.telegram,
+            discord=preferences.discord,
+            whatsapp=preferences.whatsapp,
+            slack=preferences.slack,
+        )
 
         prefs = await fetch_channel_preferences(user_id)
         log.set(operation="update_channel_preferences", outcome="success")

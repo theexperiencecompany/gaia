@@ -5,7 +5,6 @@ Clean, simple, and maintainable.
 
 from typing import Any
 
-from bson import ObjectId
 from dodopayments import DodoPayments
 from fastapi import HTTPException
 
@@ -15,12 +14,10 @@ from app.constants.cache import (
     SUBSCRIPTION_PLAN_CACHE_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    users_collection,
-)
 from app.db.redis import redis_cache
 from app.db.repositories.plans import plan_repository
 from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.users import user_repository
 from app.models.payment_models import (
     PlanResponse,
     PlanType,
@@ -101,7 +98,7 @@ class DodoPaymentService:
         log.set(payment={"event_type": "create_subscription", "status": "initiated"})
 
         # Get user
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user = await user_repository.get(user_id)
         if not user:
             raise HTTPException(404, "User not found")
 
@@ -120,8 +117,8 @@ class DodoPaymentService:
                     }
                 ],
                 "customer": {
-                    "email": user.get("email"),
-                    "name": user.get("first_name") or user.get("name", "User"),
+                    "email": user.email,
+                    "name": user.first_name or user.name or "User",
                 },
                 "feature_flags": {
                     # This renders the promo/discount code input on the hosted page
@@ -181,11 +178,11 @@ class DodoPaymentService:
 
         # Send welcome email (don't fail if email fails)
         try:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user and user.get("email"):
+            user = await user_repository.get(user_id)
+            if user and user.email:
                 await send_pro_subscription_email(
-                    user_name=user.get("first_name", "User"),
-                    user_email=user["email"],
+                    user_name=user.first_name or "User",
+                    user_email=user.email,
                 )
         except Exception as e:
             log.debug(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")

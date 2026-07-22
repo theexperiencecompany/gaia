@@ -6,14 +6,13 @@ Handles webhook events and updates database state accordingly.
 from datetime import UTC, datetime
 from typing import Any
 
-from bson import ObjectId
 from standardwebhooks.webhooks import Webhook
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.users import user_repository
 from app.models.payment_models import SubscriptionDocument
 from app.models.webhook_models import (
     DodoWebhookEvent,
@@ -200,9 +199,9 @@ class PaymentWebhookService:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
         if user_id:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            user = await user_repository.get(user_id)
             if user:
-                return user.get("email")
+                return user.email
         return None
 
     # Payment event handlers
@@ -319,7 +318,7 @@ class PaymentWebhookService:
         user_id = sub_data.metadata.get("user_id")
         user_email = sub_data.customer.email
         if not user_id:
-            user = await users_collection.find_one({"email": user_email})
+            user = await user_repository.get_by_email(user_email)
             if not user:
                 log.error(
                     f"{LogTag.PAYMENT} User not found for subscription: {sub_data.subscription_id}"
@@ -330,7 +329,7 @@ class PaymentWebhookService:
                     message="User not found",
                     subscription_id=sub_data.subscription_id,
                 )
-            user_id = str(user["_id"])
+            user_id = str(user.id)
 
         # Create subscription record
         subscription_doc = {
@@ -537,13 +536,13 @@ class PaymentWebhookService:
     async def _send_welcome_email(self, user_id: str) -> None:
         """Send welcome email for new subscription."""
         try:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user and user.get("email"):
+            user = await user_repository.get(user_id)
+            if user and user.email:
                 await send_pro_subscription_email(
-                    user_name=user.get("first_name", "User"),
-                    user_email=user["email"],
+                    user_name=user.first_name or "User",
+                    user_email=user.email,
                 )
-                log.info(f"{LogTag.PAYMENT} Welcome email sent to {user['email']}")
+                log.info(f"{LogTag.PAYMENT} Welcome email sent to {user.email}")
         except Exception as e:
             log.error(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
 

@@ -268,6 +268,37 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    # --------------------------------------------------------- settings writes
+
+    async def set_channel_preferences(
+        self,
+        user_id: str,
+        *,
+        telegram: bool | None = None,
+        discord: bool | None = None,
+        whatsapp: bool | None = None,
+        slack: bool | None = None,
+    ) -> None:
+        """Set the given notification channel flags; unspecified channels are left
+        untouched (a ``None`` argument is not written)."""
+        set_fields: dict[str, object] = {}
+        if telegram is not None:
+            set_fields["notification_channel_prefs.telegram"] = telegram
+        if discord is not None:
+            set_fields["notification_channel_prefs.discord"] = discord
+        if whatsapp is not None:
+            set_fields["notification_channel_prefs.whatsapp"] = whatsapp
+        if slack is not None:
+            set_fields["notification_channel_prefs.slack"] = slack
+        if not set_fields:
+            return
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": set_fields},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     # ------------------------------------------------------- platform linking
 
     async def link_platform(

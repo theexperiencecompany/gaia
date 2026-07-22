@@ -24,6 +24,7 @@ from app.models.payment_models import (
     SubscriptionStatus,
     UserSubscriptionStatus,
 )
+from app.models.user_models import UserDocument
 from app.models.webhook_models import (
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
@@ -101,6 +102,24 @@ SAMPLE_USER_DOC: dict[str, Any] = {
     "first_name": "Alice",
     "name": "Alice Smith",
 }
+
+
+def _user(doc: dict[str, Any] | None) -> UserDocument | None:
+    """Build the UserDocument the repository would return from a raw user dict."""
+    if doc is None:
+        return None
+    data = dict(doc)
+    _id = data.pop("_id", None)
+    if _id is not None:
+        data["id"] = str(_id)
+    return UserDocument.model_validate(data)
+
+
+def _set_user(mock_repo, doc: dict[str, Any] | None) -> None:
+    val = _user(doc)
+    mock_repo.get = AsyncMock(return_value=val)
+    mock_repo.get_by_email = AsyncMock(return_value=val)
+
 
 # Full webhook payloads -------------------------------------------------------
 
@@ -199,8 +218,9 @@ def mock_subscription_repository():
 
 @pytest.fixture
 def mock_users_collection():
-    with patch("app.services.payments.payment_service.users_collection") as mock_col:
-        yield mock_col
+    with patch("app.services.payments.payment_service.user_repository") as mock_repo:
+        _set_user(mock_repo, SAMPLE_USER_DOC)
+        yield mock_repo
 
 
 @pytest.fixture
@@ -254,9 +274,9 @@ def mock_webhook_subscription_repository():
 
 @pytest.fixture
 def mock_webhook_users_collection():
-    with patch("app.services.payments.payment_webhook_service.users_collection") as mock_col:
-        mock_col.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
-        yield mock_col
+    with patch("app.services.payments.payment_webhook_service.user_repository") as mock_repo:
+        _set_user(mock_repo, SAMPLE_USER_DOC)
+        yield mock_repo
 
 
 @pytest.fixture
@@ -477,7 +497,7 @@ class TestCreateSubscription:
         mock_dodo_client,
     ):
         """Happy path: returns checkout URL when user exists and has no active sub."""
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
 
@@ -504,7 +524,7 @@ class TestCreateSubscription:
         mock_users_collection,
         mock_subscription_repository,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=None)
+        _set_user(mock_users_collection, None)
 
         with pytest.raises(HTTPException) as exc_info:
             await payment_service.create_subscription(
@@ -521,7 +541,7 @@ class TestCreateSubscription:
         mock_users_collection,
         mock_subscription_repository,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
@@ -545,7 +565,7 @@ class TestCreateSubscription:
         mock_subscription_repository,
         mock_dodo_client,
     ):
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
         mock_dodo_client.checkout_sessions.create = MagicMock(
@@ -571,7 +591,7 @@ class TestCreateSubscription:
         mock_dodo_client,
     ):
         """When a discount_code is provided, it appears in the params."""
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
 
@@ -601,7 +621,7 @@ class TestCreateSubscription:
         mock_dodo_client,
     ):
         """When discount_code is None, it should NOT appear in params."""
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
 
@@ -630,7 +650,7 @@ class TestCreateSubscription:
         mock_dodo_client,
     ):
         """Verifies plan name lookup succeeds when a matching plan exists."""
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
 
@@ -659,7 +679,7 @@ class TestCreateSubscription:
         mock_dodo_client,
     ):
         """Verifies custom quantity ends up in the product_cart."""
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_subscription_repository.get_active_for_user = AsyncMock(return_value=None)
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(return_value=None)
 
@@ -697,7 +717,7 @@ class TestVerifyPaymentCompletion:
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
@@ -732,7 +752,7 @@ class TestVerifyPaymentCompletion:
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
-        mock_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_users_collection, SAMPLE_USER_DOC)
         mock_send_email.side_effect = Exception("SMTP error")
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
@@ -754,7 +774,7 @@ class TestVerifyPaymentCompletion:
             return_value=SAMPLE_SUBSCRIPTION
         )
         user_without_email = {**SAMPLE_USER_DOC, "email": None}
-        mock_users_collection.find_one = AsyncMock(return_value=user_without_email)
+        _set_user(mock_users_collection, user_without_email)
 
         await payment_service.verify_payment_completion(FAKE_USER_ID)
 
@@ -774,7 +794,7 @@ class TestVerifyPaymentCompletion:
         mock_subscription_repository.get_latest_active_for_user = AsyncMock(
             return_value=SAMPLE_SUBSCRIPTION
         )
-        mock_users_collection.find_one = AsyncMock(return_value=None)
+        _set_user(mock_users_collection, None)
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
@@ -1142,7 +1162,7 @@ class TestHandlePaymentSucceeded:
         mock_webhook_users_collection,
         mock_track_payment,
     ):
-        mock_webhook_users_collection.find_one = AsyncMock(return_value=None)
+        _set_user(mock_webhook_users_collection, None)
         payload = {**PAYMENT_DATA_PAYLOAD, "metadata": {"user_id": "nonexistent"}}
         event_data = _make_webhook_event("payment.succeeded", payload)
 
@@ -1303,14 +1323,13 @@ class TestHandleSubscriptionActive:
         """When metadata has no user_id, looks up user by customer email."""
         payload = {**SUBSCRIPTION_DATA_PAYLOAD, "metadata": {}}
         event_data = _make_webhook_event("subscription.active", payload)
-        mock_webhook_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_webhook_users_collection, SAMPLE_USER_DOC)
 
         result = await webhook_service.process_webhook(event_data, "wh_sub_003")
 
         assert result.status == "processed"
-        # First call should look up user by email (no user_id in metadata)
-        first_call_args = mock_webhook_users_collection.find_one.call_args_list[0]
-        assert first_call_args[0][0] == {"email": FAKE_EMAIL}
+        # No user_id in metadata → user is looked up by email through the repo.
+        mock_webhook_users_collection.get_by_email.assert_awaited_with(FAKE_EMAIL)
 
     async def test_fails_when_user_not_found_by_email(
         self,
@@ -1323,7 +1342,7 @@ class TestHandleSubscriptionActive:
         """Returns failed result if user can't be found by email."""
         payload = {**SUBSCRIPTION_DATA_PAYLOAD, "metadata": {}}
         event_data = _make_webhook_event("subscription.active", payload)
-        mock_webhook_users_collection.find_one = AsyncMock(return_value=None)
+        _set_user(mock_webhook_users_collection, None)
 
         result = await webhook_service.process_webhook(event_data, "wh_sub_004")
 
@@ -1341,7 +1360,7 @@ class TestHandleSubscriptionActive:
     ):
         event_data = _make_webhook_event("subscription.active", SUBSCRIPTION_DATA_PAYLOAD)
         # For welcome email, _send_welcome_email does a separate find_one
-        mock_webhook_users_collection.find_one = AsyncMock(return_value=SAMPLE_USER_DOC)
+        _set_user(mock_webhook_users_collection, SAMPLE_USER_DOC)
 
         await webhook_service.process_webhook(event_data, "wh_sub_005")
 
@@ -1635,7 +1654,7 @@ class TestSendWelcomeEmail:
         mock_webhook_users_collection,
         mock_webhook_send_email,
     ):
-        mock_webhook_users_collection.find_one = AsyncMock(return_value=None)
+        _set_user(mock_webhook_users_collection, None)
 
         await webhook_service._send_welcome_email(FAKE_USER_ID)
 
@@ -1647,9 +1666,7 @@ class TestSendWelcomeEmail:
         mock_webhook_users_collection,
         mock_webhook_send_email,
     ):
-        mock_webhook_users_collection.find_one = AsyncMock(
-            return_value={**SAMPLE_USER_DOC, "email": None}
-        )
+        _set_user(mock_webhook_users_collection, {**SAMPLE_USER_DOC, "email": None})
 
         await webhook_service._send_welcome_email(FAKE_USER_ID)
 
@@ -1693,7 +1710,7 @@ class TestGetUserEmailFromMetadata:
         webhook_service,
         mock_webhook_users_collection,
     ):
-        mock_webhook_users_collection.find_one = AsyncMock(return_value=None)
+        _set_user(mock_webhook_users_collection, None)
 
         email = await webhook_service._get_user_email_from_metadata({"user_id": FAKE_USER_ID})
         assert email is None

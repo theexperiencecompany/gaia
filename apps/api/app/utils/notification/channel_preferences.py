@@ -1,10 +1,8 @@
 from collections.abc import Mapping
 from typing import Any
 
-from bson import ObjectId
-
 from app.constants.notifications import DEFAULT_CHANNEL_PREFERENCES
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 
 
 def normalize_channel_preferences(prefs: Mapping[str, Any] | None) -> dict[str, bool]:
@@ -18,6 +16,6 @@ def normalize_channel_preferences(prefs: Mapping[str, Any] | None) -> dict[str, 
 
 async def fetch_channel_preferences(user_id: str) -> dict[str, bool]:
     """Fetch and normalize per-user channel preference flags from MongoDB."""
-    user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    raw_prefs = (user or {}).get("notification_channel_prefs")
+    user = await user_repository.get(user_id)
+    raw_prefs = user.notification_channel_prefs if user else None
     return normalize_channel_preferences(raw_prefs)

@@ -123,6 +123,23 @@ class TestOnboardingWrites:
         assert (await repo.get(created.id)).onboarding["social_profiles"] == first
 
 
+class TestSettingsWrites:
+    async def test_set_channel_preferences_patches_only_given_channels(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_channel_preferences(created.id, telegram=True, slack=False)
+        prefs = (await repo.get(created.id)).notification_channel_prefs
+        assert prefs == {"telegram": True, "slack": False}
+        # A second call leaves unspecified channels untouched and updates given ones.
+        await repo.set_channel_preferences(created.id, telegram=False, discord=True)
+        prefs = (await repo.get(created.id)).notification_channel_prefs
+        assert prefs == {"telegram": False, "slack": False, "discord": True}
+
+    async def test_set_channel_preferences_no_args_is_noop(self, repo, make_user):
+        created = await repo.create(make_user())
+        await repo.set_channel_preferences(created.id)
+        assert (await repo.get(created.id)).notification_channel_prefs is None
+
+
 class TestBackgroundJobMarkers:
     async def test_set_and_compare_and_clear(self, repo, make_user):
         created = await repo.create(make_user())

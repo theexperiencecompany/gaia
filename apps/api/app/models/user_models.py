@@ -272,6 +272,18 @@ class UserDocument(MongoDocument):
     platform_links_connected_at: dict[str, Any] | None = None
     starred_voice_ids: list[str] | None = None
     selected_voice_id: str | None = None
+    # Profile / billing display name used by the payments emails.
+    first_name: str | None = None
+    # Email-to-memory processing markers (helpers/agents).
+    email_memory_processed: bool | None = None
+    email_memory_processed_at: datetime | None = None
+    email_memory_count: int | None = None
+    integration_scan_states: dict[str, Any] | None = None
+    # Lifecycle / re-engagement markers (workers).
+    is_active: bool | None = None
+    memory_backfilled: datetime | None = None
+    last_inactive_email_sent: datetime | None = None
+    inactive_email_count: int | None = None
 
 
 class UserUpdate(BaseModel):
