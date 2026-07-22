@@ -232,6 +232,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ---------------------------------------------------- intelligence writes
 
+    async def set_onboarding_phase(self, user_id: str, phase: str) -> bool:
+        """Set ``onboarding.phase``; returns whether the user existed (for a 404)."""
+        updated = await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"onboarding.phase": phase}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+        return updated is not None
+
     async def set_pipeline_completion(
         self, user_id: str, *, phase: str, conversation_id: str | None = None
     ) -> None:

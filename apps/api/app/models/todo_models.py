@@ -297,6 +297,8 @@ class TodoDocument(UserScopedDocument):
     # Canvas + log bodies for tracked todos live on the document itself.
     canvas_content: str | None = None
     log_content: str | None = None
+    # Sender of the email an onboarding-seeded todo was extracted from.
+    source_email: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

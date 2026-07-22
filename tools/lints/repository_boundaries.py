@@ -58,12 +58,7 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    users collection (a users-domain concern), not their own collection.
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
-        # -- (3) Cross-domain reads of an already-migrated collection: these files
-        #    belong to another domain (onboarding / helpers / workers / dev seed) and
-        #    read todos/projects/notes/files raw instead of via that domain's repo.
-        "api/v1/endpoints/onboarding.py",
-        "helpers/message_helpers.py",
-        # -- (4) One-shot backfill script reading workflows for a data migration.
+        # -- (3) One-shot backfill script reading workflows for a data migration.
         "scripts/backfill_public_workflow_descriptions.py",
     }
 )
@@ -74,11 +69,7 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
         # api/
         "api/v1/endpoints/integrations/config.py",
-        "api/v1/endpoints/onboarding.py",
         "api/v1/endpoints/user.py",
-        # helpers/
-        "helpers/email_helpers.py",
-        "helpers/message_helpers.py",
         # models/
         "models/blog_models.py",
         # services/
