@@ -1,10 +1,10 @@
 """Contract tests for UserRepository against real Mongo + Redis.
 
-UserRepository is a global MongoRepository with cache_policy=None (caching is
-deferred until every user writer is migrated), so it does not inherit the
-user-scoped cache contract. These tests exercise its reads, the debounced
-cache-exempt touch_last_active, the gated onboarding writes, and the platform /
-background-job named methods.
+UserRepository is a global MongoRepository with entity caching enabled (every
+user writer routes through it). These tests exercise its reads, the cache
+freshness guarantee (a repo write can't be shadowed by a stale cached read), the
+debounced cache-exempt touch_last_active, the gated onboarding writes, and the
+platform / background-job named methods.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from collections.abc import Callable
 import pytest
 
 from app.db.repositories.users import UserRepository
-from app.models.user_models import UserDocument
+from app.models.user_models import UserDocument, UserUpdate
 
 
 @pytest.fixture
@@ -50,6 +50,48 @@ class TestUserReads:
         dump = (await repo.get(created.id)).model_dump()
         assert dump["custom_flag"] is True
         assert dump["nested"] == {"k": "v"}
+
+
+class TestCacheFreshness:
+    """A cached user read must never shadow a write — a stale user is stale auth."""
+
+    async def test_typed_update_refreshes_entity_and_query_caches(self, repo, make_user):
+        created = await repo.create(make_user(email="fresh@y.com", name="Old"))
+        # Warm both the entity cache (get) and the query cache (get_by_email).
+        assert (await repo.get(created.id)).name == "Old"
+        assert (await repo.get_by_email("fresh@y.com")).name == "Old"
+        await repo.update(created.id, UserUpdate(name="New"))
+        assert (await repo.get(created.id)).name == "New"
+        assert (await repo.get_by_email("fresh@y.com")).name == "New"
+
+    async def test_named_write_busts_both_caches(self, repo, make_user):
+        # Named writes go through _apply_raw_update(return_document=False), whose
+        # read-back is the BEFORE image — it must evict the entity key, never
+        # store it, or every named write would re-seed the cache with stale data.
+        created = await repo.create(make_user(email="raw@y.com"))
+        assert (await repo.get(created.id)).selected_voice_id is None
+        assert (await repo.get_by_email("raw@y.com")).selected_voice_id is None
+        await repo.set_selected_voice(created.id, "voice-x")
+        assert (await repo.get(created.id)).selected_voice_id == "voice-x"
+        assert (await repo.get_by_email("raw@y.com")).selected_voice_id == "voice-x"
+
+    async def test_delete_busts_both_caches(self, repo, make_user):
+        created = await repo.create(make_user(email="gone@y.com"))
+        await repo.get(created.id)
+        await repo.get_by_email("gone@y.com")
+        assert await repo.delete(created.id)
+        assert await repo.get(created.id) is None
+        assert await repo.get_by_email("gone@y.com") is None
+
+    async def test_touch_last_active_does_not_bump_the_generation(self, repo, make_user):
+        # The one cache-exempt write: it fires on every authenticated request, so
+        # bumping here would invalidate the whole cache on every request.
+        from app.db.repositories.cache import read_generation
+
+        await repo.create(make_user(email="hot@y.com"))
+        before = await read_generation(repo.cache_policy, "global")
+        await repo.touch_last_active("hot@y.com")
+        assert await read_generation(repo.cache_policy, "global") == before
 
 
 class TestTouchLastActive:

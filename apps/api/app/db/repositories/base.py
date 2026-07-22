@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from datetime import UTC, datetime
 import functools
 import inspect
-from typing import ClassVar, Generic, TypeVar, cast
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from bson import ObjectId
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -53,28 +53,33 @@ TDoc = TypeVar("TDoc", bound=MongoDocument)
 TUserDoc = TypeVar("TUserDoc", bound=UserScopedDocument)
 TUpdate = TypeVar("TUpdate", bound=BaseModel)
 TResult = TypeVar("TResult", bound=BaseModel)
-_TReturn = TypeVar("_TReturn")
+# Bound to the decorated finder itself so ``cached_query`` preserves its exact
+# signature — parameter list and return type, ``| None`` included.
+_TFinder = TypeVar("_TFinder", bound=Callable[..., Awaitable[Any]])
 
 _REQUIRED_CLASSVARS = ("collection_name", "document_model", "update_model", "uses_object_id")
 
 
-def cached_query(
-    result_model: type[_TReturn],
-) -> Callable[[Callable[..., Awaitable[_TReturn]]], Callable[..., Awaitable[_TReturn]]]:
+def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
     """Cache a named finder's result under its scope's current generation.
 
     Key is ``{method}:{hash(args)}`` under the scope (its ``user_id`` argument,
     or ``"global"``). A write to that scope bumps the generation and orphans the
-    entry. ``result_model`` is the finder's return type (e.g. ``list[NoteDocument]``).
+    entry.
+
+    ``result_model`` is the shape stored under the key: the finder's return type
+    (e.g. ``list[NoteDocument]``), or — for a finder that may return ``None`` —
+    its non-``None`` part, since ``None`` is never cached. The decorator preserves
+    the finder's own signature, so an ``X | None`` finder stays ``X | None``.
     """
 
-    def decorator(fn: Callable[..., Awaitable[_TReturn]]) -> Callable[..., Awaitable[_TReturn]]:
+    def decorator(fn: _TFinder) -> _TFinder:
         signature = inspect.signature(fn)
 
         @functools.wraps(fn)
         async def wrapper(
             self: _BaseRepository[MongoDocument, BaseModel], *args: object, **kwargs: object
-        ) -> _TReturn:
+        ) -> Any:
             policy = self.cache_policy
             if policy is None:
                 return await fn(self, *args, **kwargs)
@@ -89,13 +94,13 @@ def cached_query(
             key = policy.query_key(scope, generation, fn.__name__, query_arg_hash(call_args))
             cached = await get_cache(key, model=result_model)
             if cached is not None:
-                return cast(_TReturn, cached)
+                return cached
             result = await fn(self, *args, **kwargs)
             if result is not None:
                 await set_cache(key, result, ttl=policy.query_ttl, model=result_model)
             return result
 
-        return wrapper
+        return cast(_TFinder, wrapper)
 
     return decorator
 
@@ -444,7 +449,9 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         upsert: bool = False,
     ) -> TDoc | None:
         """Apply a raw Mongo update to one document, then refresh the entity cache
-        and bump the generation exactly like the typed ``update`` path.
+        and bump the generation exactly like the typed ``update`` path. With
+        ``return_document=False`` the read-back is the BEFORE image, so the entity
+        key is evicted rather than stored — the cache is never seeded from it.
 
         The typed ``$set``-from-model path (public ``update``) is preferred; this is
         the internal seam for the operators a typed model cannot express —
@@ -471,7 +478,12 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         if raw is None:
             return None
         doc = self._to_model(raw)
-        await self._cache_store(scope, doc)
+        if return_document:
+            await self._cache_store(scope, doc)
+        else:
+            # ``doc`` is the BEFORE image — storing it would re-seed the entity
+            # cache with the pre-write document. Evict instead.
+            await self._cache_evict(scope, self._doc_identity(doc))
         await self._invalidate(scope)
         return doc
 

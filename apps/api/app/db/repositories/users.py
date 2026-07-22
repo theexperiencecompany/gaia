@@ -1,10 +1,23 @@
 """Repository for the users collection.
 
-Ships with ``cache_policy=None`` on purpose: many user writers are not migrated
-yet and write the collection directly, so caching reads here would serve stale
-user context after those un-migrated writes. Caching turns on once the domain is
-fully routed through this repository. ``touch_last_active`` already uses the
-cache-exempt write path so it needs no change when that happens.
+Caching is on: every writer of the users collection now routes through this
+repository, so a write refreshes the entity cache and bumps the generation —
+a read can never serve a value staler than the last write. That guarantee is
+what makes caching safe here at all: ``get_by_email`` is the authentication hot
+path, so a stale hit would mean stale auth context, permissions and preferences.
+
+This repository is global, so all three key families live under the ``global``
+scope: any user's write bumps the single generation and orphans *every* user's
+query-cache entries. Correct, and deliberately so — ``get_by_email`` cannot know
+which user it will resolve to before it reads, so a per-user generation is not
+expressible. The entity cache is keyed per user id and unaffected by the bump.
+
+The one deliberate exception is ``touch_last_active``, which writes
+``last_active_at`` through the cache-exempt path: it fires on every
+authenticated request, so bumping the generation there would invalidate the
+whole cache on every request and make it worse than useless. The cost is that a
+cached read may carry a slightly stale ``last_active_at``; nothing reads that
+field off a cached path (the inactivity scan is an uncached query).
 """
 
 from datetime import UTC, datetime
@@ -15,10 +28,12 @@ from app.constants.cache import (
     LAST_ACTIVE_DEBOUNCE_SECONDS,
     LAST_ACTIVE_GATE_PREFIX,
     REPO_GLOBAL_SCOPE,
+    USER_CACHE_PREFIX,
 )
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.db.repositories.base import MongoRepository
+from app.db.repositories.base import MongoRepository, cached_query
+from app.db.repositories.cache import CachePolicy
 from app.models.user_models import OnboardingPhase, UserDocument, UserUpdate
 from shared.py.wide_events import log
 
@@ -28,10 +43,11 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     document_model = UserDocument
     update_model = UserUpdate
     uses_object_id = True
-    cache_policy = None
+    cache_policy = CachePolicy(prefix=USER_CACHE_PREFIX)
 
     # ---------------------------------------------------------------- reads
 
+    @cached_query(UserDocument)
     async def get_by_email(self, email: str) -> UserDocument | None:
         return await self._find_one({"email": email})
 

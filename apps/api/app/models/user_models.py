@@ -245,12 +245,18 @@ class UserDocument(MongoDocument):
 
     ``extra="allow"`` (not the usual ``ignore``): the auth layer's
     ``build_user_context`` spreads the *entire* user document into
-    ``request.state.user``, and the agent's dynamic context reads arbitrary
-    fields off it (custom instructions, writing style, preferences). Dropping
-    undeclared fields here would silently strip those downstream. Declared fields
-    are all Optional so a legacy/partial row never fails an auth read. (Relaxes to
-    ``ignore`` once every writer is migrated and the field inventory is complete —
-    see the users-cleanup follow-up.)
+    ``request.state.user``, and ``GET /me`` and the onboarding endpoints spread it
+    straight into their HTTP responses. Dropping undeclared fields here would
+    silently strip them from those payloads with no error anywhere. Declared
+    fields are all Optional so a legacy/partial row never fails an auth read.
+
+    The write side is now a closed set — every writer routes through
+    ``UserRepository`` and every field it can set is declared (the arbitrary
+    ``set_active_job`` field is an ``onboarding.*`` path), so no *new* undeclared
+    field can appear. Tightening to ``ignore`` is still blocked on the read side:
+    it would drop whatever historical fields production rows carry, and that
+    inventory cannot be established from a dev sample. Flip it only after scanning
+    the production collection for undeclared top-level fields.
     """
 
     model_config = ConfigDict(extra="allow")

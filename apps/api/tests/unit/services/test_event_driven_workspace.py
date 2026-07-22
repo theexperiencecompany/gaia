@@ -19,6 +19,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import UserDocument
+
 WS = "app.services.workspace_sync"
 IFS = "app.services.integrations_fs"
 UINT = "app.services.integrations.user_integrations"
@@ -305,9 +307,9 @@ async def test_created_status_does_not_schedule_sync():
 # ---------------------------------------------------------------------------
 
 
-def _oauth_patches(coll, sched):
+def _oauth_patches(repo, sched):
     return (
-        patch(f"{OAUTH}.users_collection", coll),
+        patch(f"{OAUTH}.user_repository", repo),
         patch(f"{OAUTH}.schedule_user_provision", sched),
         patch(f"{OAUTH}.track_login", MagicMock()),
         patch(f"{OAUTH}.track_signup", MagicMock()),
@@ -317,11 +319,11 @@ def _oauth_patches(coll, sched):
 
 
 async def test_new_user_provisions_workspace():
-    coll = MagicMock()
-    coll.find_one = AsyncMock(return_value=None)  # no existing user
-    coll.insert_one = AsyncMock(return_value=SimpleNamespace(inserted_id="NEW123"))
+    repo = MagicMock()
+    repo.get_by_email = AsyncMock(return_value=None)  # no existing user
+    repo.create = AsyncMock(return_value=UserDocument(id="NEW123", name="Ada", email="ada@x.com"))
     sched = MagicMock()
-    p = _oauth_patches(coll, sched)
+    p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4], p[5]:
         from app.services.oauth.oauth_service import store_user_info
 
@@ -331,11 +333,13 @@ async def test_new_user_provisions_workspace():
 
 
 async def test_existing_user_does_not_provision():
-    coll = MagicMock()
-    coll.find_one = AsyncMock(return_value={"_id": "EXISTING", "picture": "p.png"})
-    coll.update_one = AsyncMock()
+    repo = MagicMock()
+    repo.get_by_email = AsyncMock(
+        return_value=UserDocument(id="EXISTING", name="Ada", email="ada@x.com", picture="p.png")
+    )
+    repo.update = AsyncMock()
     sched = MagicMock()
-    p = _oauth_patches(coll, sched)
+    p = _oauth_patches(repo, sched)
     with p[0], p[1], p[2], p[3], p[4], p[5]:
         from app.services.oauth.oauth_service import store_user_info
 
