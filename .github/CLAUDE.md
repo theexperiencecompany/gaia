@@ -106,9 +106,10 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   nx.json `installation`, uv 0.8.17, pnpm/action-setup + docker/login-action
   by SHA). `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float
   on major tags — pin them from a machine with GitHub API access.
-- Test-service images are pinned to exact tags in
+- Test-service images are digest-pinned (`tag@sha256:...`) in
   `scripts/ci/start-test-services.sh` AND `.dagger/src/gaia_ci/main.py` —
-  bump both together. The readiness wait recreates a container once on
+  bump both together; the tag part is a readability label, the digest is
+  what's pulled. The readiness wait recreates a container once on
   timeout (a genuine boot flake costs ~90s instead of a red build); a second
   timeout fails loud with container logs.
 - RabbitMQ readiness probes MUST use `docker exec -u rabbitmq`. The image has

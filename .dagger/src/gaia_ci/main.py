@@ -38,13 +38,21 @@ _IGNORE = [
     ".agents/plans",
 ]
 
-# Service images pinned to exact tags. Keep in sync with
-# scripts/ci/start-test-services.sh (the CI variant of this topology).
-_POSTGRES_IMAGE = "postgres:16.14-alpine3.24"
-_REDIS_IMAGE = "redis:7.4.9-alpine3.21"
-_MONGO_IMAGE = "mongo:7.0.37"
-_CHROMA_IMAGE = "chromadb/chroma:1.5.9"
-_RABBITMQ_IMAGE = "rabbitmq:3.13.7-alpine"
+# Service images pinned by digest (tag kept for readability). Keep in sync
+# with scripts/ci/start-test-services.sh (the CI variant of this topology).
+_POSTGRES_IMAGE = "postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777"
+_REDIS_IMAGE = (
+    "redis:7.4.9-alpine3.21@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99"
+)
+_MONGO_IMAGE = (
+    "mongo:7.0.37@sha256:340c1c56fb10e95cf79ff547f8664b96bc6ead9909bc355238cbf865a9695a6f"
+)
+_CHROMA_IMAGE = (
+    "chromadb/chroma:1.5.9@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6"
+)
+_RABBITMQ_IMAGE = (
+    "rabbitmq:3.13.7-alpine@sha256:d7af1c87c5f1eda13fcfca06db452bf3aeab6619fc3358b68535c0c02c4e52bc"
+)
 
 # Type alias for the annotated source directory used by all functions.
 Source = Annotated[
