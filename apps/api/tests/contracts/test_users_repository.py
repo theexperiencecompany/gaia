@@ -147,6 +147,18 @@ class TestSettingsWrites:
         assert stored.selected_voice_id == "voice-1"
         assert stored.starred_voice_ids == ["voice-1", "voice-2"]
 
+    async def test_set_provider_metadata_roundtrip_and_missing_user(self, repo, make_user):
+        created = await repo.create(make_user())
+        assert await repo.set_provider_metadata(created.id, "github", {"username": "octocat"})
+        stored = await repo.get(created.id)
+        assert stored.provider_metadata == {"github": {"username": "octocat"}}
+        # A second provider merges rather than replacing.
+        await repo.set_provider_metadata(created.id, "twitter", {"handle": "cat"})
+        stored = await repo.get(created.id)
+        assert set(stored.provider_metadata) == {"github", "twitter"}
+        # Missing user → write did not land.
+        assert await repo.set_provider_metadata("0" * 24, "github", {"x": "y"}) is False
+
 
 class TestBackgroundJobMarkers:
     async def test_set_and_compare_and_clear(self, repo, make_user):
