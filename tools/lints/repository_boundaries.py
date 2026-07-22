@@ -54,7 +54,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    read the users collection directly — cross-domain reads (auth, payments,
         #    notifications, onboarding, workers) plus a few user-domain stragglers.
         #    Retired by a follow-up users-read cleanup, not by a domain wave.
-        "services/workspace_sync.py",
         # -- (2) `users` creator-join for the integrations marketplace — reads the
         #    users collection (a users-domain concern), not their own collection.
         "services/integrations/marketplace.py",

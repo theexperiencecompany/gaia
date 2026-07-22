@@ -23,8 +23,8 @@ from datetime import UTC, datetime, timedelta
 from app.agents.workspace.skill_loader import library_hash
 from app.config.settings import settings
 from app.core.lazy_loader import providers
-from app.db.mongodb.collections import users_collection
 from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.users import user_repository
 from app.services._vfs_scheduler import make_scheduler
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from app.services.storage import provision_user_workspace
@@ -55,8 +55,7 @@ async def _active_user_ids(active_days: int) -> list[str]:
 
 async def _all_user_ids() -> list[str]:
     """Every user id."""
-    cursor = users_collection.find({}, {"_id": 1})
-    return [str(doc["_id"]) async for doc in cursor]
+    return await user_repository.list_all_ids()
 
 
 async def sync_stale_user_workspaces(

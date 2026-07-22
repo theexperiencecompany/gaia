@@ -239,6 +239,11 @@ class TestSettingsWrites:
 
 
 class TestUserCounts:
+    async def test_list_all_ids(self, repo, make_user):
+        a = await repo.create(make_user(email="a1@b.com"))
+        b = await repo.create(make_user(email="a2@b.com"))
+        assert set(await repo.list_all_ids()) == {a.id, b.id}
+
     async def test_count_created_before(self, repo, make_user):
         from datetime import UTC, datetime
 

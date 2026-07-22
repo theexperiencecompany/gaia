@@ -38,6 +38,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def get_by_platform_id(self, platform: str, platform_user_id: str) -> UserDocument | None:
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 
+    async def list_all_ids(self) -> list[str]:
+        """Every user id — the bulk workspace-provisioning scan."""
+        return [doc.id for doc in await self._find({})]
+
     async def count_created_before(self, created_at: datetime) -> int:
         """Number of users created before ``created_at`` — the holo-card rank."""
         return await self._count({"created_at": {"$lt": created_at}})
