@@ -35,6 +35,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # Jobs below run PR-controlled code; none of them push/fetch after
+          # checkout, so never leave the token in git config (zizmor artipacked).
+          persist-credentials: false
 
       - name: Enforce master promotion policy
         if: github.event_name == 'pull_request' && github.base_ref == 'master'
@@ -97,6 +100,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Without a warm compiler cache every PR pays a full cold `next build`
       # (~4 min, the job's critical path).
@@ -124,6 +129,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Run Python tests
@@ -142,6 +149,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       - name: Run TypeScript tests
         env:
@@ -211,6 +220,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: "fs"
@@ -227,6 +238,8 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Run coverage

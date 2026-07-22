@@ -10,6 +10,6 @@ runs:
     - uses: actions/cache@v4
       with:
         path: apps/web/.next/cache
-        key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}
+        key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.js', 'apps/web/src/**/*.jsx', 'apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}
         restore-keys: |
           nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
