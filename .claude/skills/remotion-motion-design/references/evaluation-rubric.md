@@ -36,13 +36,14 @@ The render is guilty until proven innocent. Evaluation is done by a **team of ho
 - Text entrances: staggered (not chorus), one hero effect max, no typewriter/bounce/scale-from-zero tells?
 - Any orphaned words, bad rags, clipped descenders, subpixel-blurry text?
 
-## Lens 3 — Layout, hierarchy & whitespace
+## Lens 3 — Layout, hierarchy & whitespace (includes component quality — see the calendar test below)
 
 - One focal point per scene — is the thing that moves most the thing that matters most?
 - Negative space 40–60% in product scenes; content within title-safe (inner 80%)?
 - Do layouts use the brand grid (two-tone cards, 16px+ radius, no borders/shadows) or generic centered-stack-of-stuff?
 - Any "six identical cards" layouts, icon+heading+two-lines grids, or hierarchy expressed only via font size instead of area/position?
 - Do UI mockups read as REAL product surfaces (plausible copy, timestamps, avatars) or as lorem-ipsum-grade filler?
+- **Component design quality (the calendar test):** judge every mockup as a standalone product screenshot — would a design-literate user screenshot-dunk it? Generic grown bars standing in for a calendar, abstract rows standing in for real structures, or any component that wouldn't survive as a real app's UI = defect. A calendar looks like a calendar (time ruler, positioned duration blocks); an inbox looks like an inbox. Believable copy does NOT excuse a fake-looking component.
 
 ## Lens 4 — Motion physics & AI-slop tells
 

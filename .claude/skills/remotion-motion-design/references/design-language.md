@@ -139,6 +139,10 @@ Before animating any line, ask **"who is doing this, and does the sentence survi
 - **No dead card regions.** If a card has an empty right half, right-align metadata there (durations, counts, in mono) or narrow the card. Standardize on at most two card widths per film.
 - **Mono is for time, numbers, URLs, code — nothing else.** A handle or label in mono dilutes the signal the timestamps own.
 - **Show one real sentence of any AI-produced artifact** (email opening line, message text). All-skeleton bodies at the moment of proof read as hiding the goods.
+- **Components must be the real structure, not an abstraction of it.** A "calendar" of growing horizontal bars is slop; a calendar is a time ruler with duration-positioned blocks. Build the actual anatomy of the surface (grid lines, event geometry, platform chrome) at reduced fidelity — never a metaphor of it.
+- **Brand lockups: never stack the glyph and the wordmark when the wordmark already contains the mark.** One asset per reveal.
+- **Chips/pills: auto-width, asymmetric padding (tighter on the icon side), icon ≤0.8× text cap height.** Fixed-width chips leave dead right-padding — a small tell that compounds.
+- **VO cue = on-screen line cue.** Each VO line starts within ~0.3s of its paired text entering. Sync is authored per line, not per scene.
 
 ## What makes GAIA look like GAIA (checklist)
 
