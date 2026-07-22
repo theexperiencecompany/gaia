@@ -15,7 +15,7 @@ The render is guilty until proven innocent. Evaluation is done by a **team of ho
    - Audio: waveform PNG + loudness stats (`ffmpeg -af loudnorm=print_format=summary`, or ebur128) + a listen pass of the mixed track
 2. **Spawn evaluators in parallel**, each with ONE lens (below), each explicitly prompted to REFUTE quality: "find every reason this fails; assume it's AI slop until proven otherwise; score harshly."
 3. Each evaluator returns: numbered defects (scene + frame range + what rule it violates + concrete fix), and a 1–10 score for their lens.
-4. **Ship gate: every lens ≥ 8/10 and zero defects rated "breaks the illusion".** Otherwise: fix, re-render, re-evaluate. Fixes go through the same beat-grid/duration discipline — no ad-hoc nudging.
+4. **Ship gate: every lens ≥ 9/10 and zero defects rated "breaks the illusion".** Evaluators grade the artifact, never the improvement since last round. Otherwise: fix, re-render, re-evaluate. Fixes go through the same beat-grid/duration discipline — no ad-hoc nudging.
 5. Keep an ITERATION_LOG (scene → defect → fix → result) so later passes don't regress earlier fixes.
 
 ## Lens 1 — Transitions & rhythm
@@ -32,7 +32,7 @@ The render is guilty until proven innocent. Evaluation is done by a **team of ho
 - Word count per screen ≤7? One idea per scene?
 - Hold times ≥ `0.9 + 0.24 × words` seconds, ≥1.5s for hero lines, ≤17 chars/sec?
 - Type scale: hero-to-support ratio ≥2.6:1, only 2–3 sizes per scene?
-- Correct fonts per role (Inter everywhere, mono only for timestamps/numbers/URLs — serif is banned in video)? Correct tracking (negative on display, 0 on body)?
+- Correct fonts per role (Helvetica everywhere, mono only for timestamps/numbers/URLs — serif banned)? Correct tracking (negative on display, 0 on body)?
 - Text entrances: staggered (not chorus), one hero effect max, no typewriter/bounce/scale-from-zero tells?
 - Any orphaned words, bad rags, clipped descenders, subpixel-blurry text?
 
@@ -80,6 +80,6 @@ Go through the full ban list: linear position easing · ease-in entrances · sim
 
 ## Scoring discipline
 
-- 10 = could ship on apple.com. 8 = professional, minor polish notes. 6 = competent but recognizably generated. 4 = AI slop with effort. Below 4 = restart the scene.
+- 10 = could ship on apple.com. 9 = airable as a real product commercial, nothing a reviewer would insist on changing. 8 = professional, minor polish notes. 6 = competent but recognizably generated. 4 = AI slop with effort. Below 4 = restart the scene.
 - Evaluators must justify any score ≥8 with the same rigor as a defect — "looks good" is not evidence.
 - If two consecutive iterations produce no score improvement on a lens, the fix approach is wrong — change strategy (rebuild the scene) instead of nudging values.

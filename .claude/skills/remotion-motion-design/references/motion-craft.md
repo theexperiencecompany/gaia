@@ -96,6 +96,18 @@ Professional motion-graphics editing craft (School of Motion, Carbon/Material mo
 53. Depth via light, not borders: separate layers with luminosity, soft shadows, and blur — never outlines.
 54. Motion blur ≈ 180° shutter: directional blur proportional to per-frame velocity × 0.5; 90° (crisper) for tight product motion.
 
+## One focus, always (founder-mandated)
+
+**Exactly one element owns the viewer's eye at every moment.** This is what makes motion design read clean:
+
+- When a new focal element arrives (card lands, messages start, composer activates), everything that held focus before **yields** — dim to 0.3–0.45 opacity over ~0.8 beat. Headlines dim once their evidence takes over; composers dim once the conversation starts.
+- **Camera movement is a focus device.** Dive into the surface being used (scale ~1.16 + translate toward it) while an interaction plays — e.g. zoom to the composer during typing — then pull back on the completing action (send) to reveal the result. Ease with the on-screen-move curve, ~1 beat each way.
+- Staggers exist to serialize attention: nothing meaningful may enter while another meaningful thing is still entering.
+
+## SFX restraint (Apple discipline)
+
+Music leads; SFX are few and precise. Budget for a 45s film: **~10–14 hits total** — the hook accent, one riser + one drop boom, message/notification pops at their diegetic moments, send/tap pops, one close accent. **At most ONE whoosh per chapter change, and only where the camera actually travels.** Per-card whooshes and decorative swishes are clutter — if an SFX can't be pointed to a visible event, delete it. When in doubt, remove the sound; the beat grid carries the rhythm.
+
 ## Momentum, verified (hard requirements at every cut)
 
 - **The momentum system must exist in pixels, not intention.** Wrap EVERY scene (not just some) in exit/enter components; a partially applied system reads as freeze→slam→freeze. Verify with frame diffs (see evaluation rubric), not by reading the code.

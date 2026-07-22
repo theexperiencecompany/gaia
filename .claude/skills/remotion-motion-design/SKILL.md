@@ -16,7 +16,7 @@ You are directing a brand film, not generating a video. The bar is "could ship o
 2. **Sound is half the film.** Music + SFX + (usually) VO in every video. A silent render is an unfinished render.
 3. **Everything on the beat grid.** Measure the real BPM of the chosen track; every cut lands on `round(N × fps × 60 / bpm)`.
 4. **GAIA design language throughout** — fonts, colors, motion fingerprint. See `references/design-language.md`.
-5. **Adversarial evaluation before shipping.** Fresh evaluator agents, one lens each, hostile by instruction. Ship gate: every lens ≥8/10. See `references/evaluation-rubric.md`.
+5. **Adversarial evaluation before shipping.** Fresh evaluator agents, one lens each, hostile by instruction. **Ship gate: every lens ≥9/10** — at 9, the film could air as a real product commercial with nothing a reviewer would insist on changing. See `references/evaluation-rubric.md`.
 6. **Iterate until it passes.** Two failed iterations on the same lens = rebuild the scene, don't nudge values.
 
 ## References (read before the corresponding phase)
@@ -69,7 +69,7 @@ Scaffold outside the repo (scratchpad or a dedicated dir): `pnpm add remotion @r
 
 ### Phase 5 — Adversarial evaluation loop (read `evaluation-rubric.md`)
 
-Spawn parallel hostile evaluator agents — one per lens (transitions/rhythm, typography, layout/whitespace, motion physics/slop tells, brand fidelity, audio, story/virality) — each given the rendered frames/audio evidence, each instructed to refute quality and score 1–10. Collect defects → fix root causes → re-render → re-evaluate changed lenses. Ship only at every-lens ≥8 with zero illusion-breaking defects. Keep an iteration log; fold durable lessons back into this skill's references.
+Spawn parallel hostile evaluator agents — one per lens (transitions/rhythm, typography, layout/whitespace, motion physics/slop tells, brand fidelity, audio, story/virality) — each given the rendered frames/audio evidence, each instructed to refute quality, grade the artifact (never the progress), and score 1–10. Collect defects → fix root causes → re-render → re-evaluate. Ship only at every-lens ≥9 with zero illusion-breaking defects. Keep an iteration log; fold durable lessons back into this skill's references.
 
 ### Phase 6 — Deliver
 

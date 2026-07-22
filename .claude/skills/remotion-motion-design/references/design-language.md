@@ -58,7 +58,7 @@ Logo glyph internals: `#02bdff` (bright), `#059cda` (mid), `#0f537c` (deep). Cha
 
 ## Shape & surface
 
-- Radius: cards **16px minimum** (up to 24px for large surfaces), buttons 16px, pills 9999. Nothing sharp.
+- Radius in video: outer cards **34px**, inner items **22–24px**, chat surfaces 36–38px, buttons/pills 9999. Rounder than the web app — the camera magnifies corners. Nothing sharp.
 - Cards: flat, borderless, shadowless.
 - Glassmorphism for floating elements: `rgba(39,39,42,0.4)` + `backdrop-blur-xl`.
 - Signature CTA ("RaisedButton"): cyan `#00bbff` pill, `border-top: 1px solid rgba(255,255,255,0.4)`, overlay `linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)`, shadow `0 4px 5px rgba(0,187,255,0.2)`, black text.
@@ -112,10 +112,15 @@ A GAIA video is a **type-led motion piece with product surfaces as evidence** �
 
 When a scene shows a third-party chat surface, **replicate the product's real landing-page components for that platform — never invent a lookalike**:
 
-- **iMessage**: the landing page's iMessage bubble component, including the **tail/wick** on bubbles, real iMessage blue/gray, correct radii and delivered/timestamp styling.
+- **iMessage**: the landing page's iMessage bubble component, including the **tail/wick** on bubbles, real iMessage blue/gray (`linear-gradient(180deg,#309BFE,#027BFF)` + tail `#0E89FF`; gray `#E9E9EB`), correct radii and delivered/timestamp styling. **GAIA's own chat scenes also use these iMessage-style bubbles** (blue = user, gray = GAIA) — never invented bubble styles.
+  - Tail geometry gotcha: the landing tails are `clip-path: path(...)` with **fixed 20×18px coordinates** — the path does NOT scale with the element. To enlarge for video, keep the span at exactly 20×18 and `transform: scale(N)` from the corner that touches the bubble (`transformOrigin` bubble-side bottom). Sizing the box larger instead puts the wick in the wrong corner.
 - **Telegram**: the landing page's Telegram section — its wallpaper asset and exact bubble components.
 - **WhatsApp**: same principle — real dark-mode palette + the doodle wallpaper asset (`whatsapp-doodle.webp`).
 Pull colors/radii/tails from the actual code under `apps/web/src/features/landing/` before building the scene. A generic rounded rectangle "chat" reads as fake instantly; the tail and wallpaper are what sell the platform.
+
+## The close (manifesto-aligned)
+
+The final line comes from the brand manifesto ("Every Human Deserves a Jarvis" — apps/web `features/about/components/About.tsx`), and the film must have EARNED it: the preceding scenes are the proof of the line. Never close on generic boilerplate, and no glows on the CTA surface — the lit enter-button is the only accent.
 
 ## CTAs in video
 
