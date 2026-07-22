@@ -32,7 +32,7 @@ The render is guilty until proven innocent. Evaluation is done by a **team of ho
 - Word count per screen ≤7? One idea per scene?
 - Hold times ≥ `0.9 + 0.24 × words` seconds, ≥1.5s for hero lines, ≤17 chars/sec?
 - Type scale: hero-to-support ratio ≥2.6:1, only 2–3 sizes per scene?
-- Correct fonts per role (display serif only for editorial moments, Inter for UI, mono for timestamps/code)? Correct tracking (negative on display, 0 on body)?
+- Correct fonts per role (Inter everywhere, mono only for timestamps/numbers/URLs — serif is banned in video)? Correct tracking (negative on display, 0 on body)?
 - Text entrances: staggered (not chorus), one hero effect max, no typewriter/bounce/scale-from-zero tells?
 - Any orphaned words, bad rags, clipped descenders, subpixel-blurry text?
 
@@ -56,7 +56,7 @@ Go through the full ban list: linear position easing · ease-in entrances · sim
 - Canvas `#111111`/`#09090b`, single cyan `#00bbff` accent, zinc neutrals only?
 - Any second saturated hue, purple→cyan gradient, neon glass? Instant fail.
 - House blur-in used as the default entrance? House ease everywhere?
-- Fonts exactly PP Editorial New / Inter / Geist Mono? Logo assets correct (SVG glyph, wordmark)?
+- Fonts exactly Helvetica (TeX Gyre Heros) + Geist Mono, weights only 400/700 (serif banned, no faux weights)? Logo assets correct (SVG glyph, wordmark)?
 - Would a GAIA landing-page visitor recognize this as the same brand in 2 seconds?
 
 ## Lens 6 — Audio

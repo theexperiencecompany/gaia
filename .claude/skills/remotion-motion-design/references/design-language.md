@@ -2,29 +2,30 @@
 
 Every GAIA video must be unmistakably GAIA. All values below are lifted from the live codebase (`DESIGN.md`, `apps/web/src/app/styles/globals.css`, font configs, hero components, brand assets). Trust these over memory.
 
-The look in one sentence: **dark-first, flat, single-accent** — a deep near-black canvas, one electric cyan, an ultralight editorial serif for display moments, soft blur-in motion, depth from tonal layering (never borders or shadows).
+The look in one sentence: **dark-first, flat, single-accent** — a deep near-black canvas, one electric cyan, huge tight-tracked Helvetica display type, soft blur-in motion, depth from tonal layering (never borders or shadows).
 
 ## Typography
 
-Three families do all the work. (`DESIGN.md` names Anonymous Pro for mono but the shipped code uses **Geist Mono** — trust the code.)
+Two families do all the work in video. (`DESIGN.md` names Anonymous Pro for mono but the shipped code uses **Geist Mono** — trust the code.)
 
 | Role | Family | Weights | Where |
 |---|---|---|---|
-| Display / hero | **PP Editorial New** | 200 Ultralight, 400 Regular (+italics) | Big editorial marketing moments ONLY |
-| Body / UI | **Inter** (variable) | 300–700 | Everything else: subheads, body, labels, UI mockups |
-| Mono / code | **Geist Mono** | 400–500 | Code, timestamps, terminal/CLI motifs |
+| Everything | **Helvetica** (via TeX Gyre Heros, the faithful free clone) | 400, 700 | All display, statements, body, UI mockups |
+| Mono / code | **Geist Mono** | 400–500 | Timestamps, numbers, URLs, terminal/CLI motifs |
+
+**Video type is Helvetica-only (founder-mandated), varied by weight.** Real Helvetica isn't redistributable — embed **TeX Gyre Heros** (GUST e-foundry, free, metrically faithful) as base64 OTFs behind the stack `'TeX Gyre Heros', 'Helvetica Neue', Helvetica, Arial, sans-serif`. Heros ships only 400 + 700: design with those two real cuts and NEVER use 500/600 (the browser would synthesize fake weights). Hierarchy comes from size + the 400/700 contrast.
+
+**SERIF IS BANNED IN VIDEO (founder-mandated).** PP Editorial New is a web-landing display face only — it never appears in motion work. No exceptions, no "one serif hero moment."
 
 Font files: PP Editorial New woff2s live at `apps/web/src/app/fonts/editor-new/`; Inter + Geist Mono woff2s via `@fontsource/inter` / `@fontsource/geist-mono`. In Remotion, embed all of them as base64 data-URI `@font-face` CSS (see `remotion-technique.md` — network font loaders flake in renders).
 
-### The hero signature (memorize exactly)
+### The video display signature
 
-- PP Editorial New, weight **400**, up to **104px** (6.5rem) desktop scale
-- `line-height: 1.0`, `letter-spacing: -0.05em`
+- Helvetica weight **700**, 90–210px at 1080p, `letter-spacing: -0.035..-0.04em`, line-height ~1.05
 - **Sentence case** — never lowercase, never uppercase
-- Fill is a vertical **gradient text clip**, not flat white: `linear-gradient(to bottom, #ffffff, #dbdbdb)` on dark
-- Real brand headline: "Get a workday back every week."
-
-Secondary display treatment: PP Editorial New 48px weight **200**, line-height 1.1, letter-spacing -0.02em.
+- Hero lines may use the vertical **gradient text clip**: `linear-gradient(to bottom, #ffffff, #dbdbdb)` on dark
+- Real brand headline for reference of voice: "Get a workday back every week."
+- (The web landing uses PP Editorial New serif for its hero — that face is banned in video; see above.)
 
 ### Case rules
 
@@ -61,7 +62,7 @@ Logo glyph internals: `#02bdff` (bright), `#059cda` (mid), `#0f537c` (deep). Cha
 - Cards: flat, borderless, shadowless.
 - Glassmorphism for floating elements: `rgba(39,39,42,0.4)` + `backdrop-blur-xl`.
 - Signature CTA ("RaisedButton"): cyan `#00bbff` pill, `border-top: 1px solid rgba(255,255,255,0.4)`, overlay `linear-gradient(to bottom, rgba(255,255,255,0.2), transparent)`, shadow `0 4px 5px rgba(0,187,255,0.2)`, black text.
-- **No grain/noise texture.** The aesthetic is clean and flat — let cyan + the editorial serif carry identity.
+- **No grain/noise texture.** The aesthetic is clean and flat — let cyan + huge confident type carry identity.
 
 ## Motion fingerprint
 
@@ -102,10 +103,27 @@ Direct, benefit-led, slightly provocative toward incumbents. Short declaratives,
 
 A GAIA video is a **type-led motion piece with product surfaces as evidence** — not an animated screenshot tour.
 
-- **Typography is the hero of every scene.** The dominant element is a giant statement (Inter 700, 90–150px at 1080p, tracking −0.03..−0.04em, hero-to-support ratio ≥2.6:1). UI components support the claim; they never carry the scene alone.
+- **Typography is the hero of every scene.** The dominant element is a giant statement (Helvetica 700, 90–150px at 1080p, tracking −0.03..−0.04em, hero-to-support ratio ≥2.6:1). UI components support the claim; they never carry the scene alone.
 - **Components are big.** Cards span ~1000–1300px of a 1920 frame, body type inside them ≥28px. If a card looks like a small floating widget in empty space, the camera is too far out — zoom until it feels tight.
 - **Prefer typography and real product components** (composer with live typing + caret, chat bubbles, approval rows, counters) **over photographs/wallpapers/stock imagery.** Atmosphere comes from light (glows, gradient washes) and motion, not from background images.
 - Headings must belong to the composition (overlapping, anchored to the evidence below them) — never a detached "section title" floating above a card like a webpage.
+
+## Platform surface fidelity (founder-mandated)
+
+When a scene shows a third-party chat surface, **replicate the product's real landing-page components for that platform — never invent a lookalike**:
+
+- **iMessage**: the landing page's iMessage bubble component, including the **tail/wick** on bubbles, real iMessage blue/gray, correct radii and delivered/timestamp styling.
+- **Telegram**: the landing page's Telegram section — its wallpaper asset and exact bubble components.
+- **WhatsApp**: same principle — real dark-mode palette + the doodle wallpaper asset (`whatsapp-doodle.webp`).
+Pull colors/radii/tails from the actual code under `apps/web/src/features/landing/` before building the scene. A generic rounded rectangle "chat" reads as fake instantly; the tail and wallpaper are what sell the platform.
+
+## CTAs in video
+
+A static URL string is a weak close. Make the CTA an **interaction**: a URL/search bar rises and *types* `heygaia.io` with a live caret (mirroring the product's composer — a bookend if the film opened with typing), then a subline ("Free forever plan. No credit card."). The viewer should watch the action they're about to take.
+
+## Copy logic check
+
+Before animating any line, ask **"who is doing this, and does the sentence survive that?"** — e.g. "5 AM. Your workday just started." fails because the viewer is asleep; it's *GAIA's* workday ("You're asleep. GAIA just clocked in."). Every statement must be literally true within the film's own fiction.
 
 ## Surface discipline (defect classes that recur — check every card)
 
@@ -120,7 +138,7 @@ A GAIA video is a **type-led motion piece with product surfaces as evidence** �
 ## What makes GAIA look like GAIA (checklist)
 
 1. `#111111` canvas + one electric cyan `#00bbff`, monochrome zinc everywhere else
-2. Ultralight/regular editorial serif display with gradient-clipped fill, huge, tight tracking
+2. Huge Helvetica 700 display with gradient-clipped fill, tight tracking
 3. Soft blur-in entrances with the house ease
 4. Flat borderless two-tone zinc cards, 16px+ radius
 5. Glass for floating elements

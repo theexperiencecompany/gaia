@@ -56,7 +56,7 @@ Scaffold outside the repo (scratchpad or a dedicated dir): `pnpm add remotion @r
 - **Motion design, not UI design**: every scene is type-led — a giant statement (90–150px) as the hero, product components as large supporting evidence (cards ~1000–1300px wide at 1920, inner type ≥28px). No uppercase+letter-spacing labels, no detached section headings, no decorative wallpapers/photos — atmosphere comes from light and motion. See `design-language.md` § Motion design, not UI design.
 - Scene grammar: entrance settles in first 30–40% → **hold** (only slow push-in scale 1.00→1.045) → cut on beat. Staggered entrances (2–4f), one focal point, safe areas, 40–60% negative space.
 - Transitions: ~80% hard cuts on the grid; match cuts / shared elements / z-pushes at chapter changes only; momentum carried across cuts; never crossfade between ideas.
-- Type: house blur-in default, masked line reveal for editorial serif moments, ONE hero effect per video, hold-time formula respected.
+- Type: house blur-in default, masked line reveals for hero statements, ONE hero effect per video, hold-time formula respected. Serif is banned in video (see design-language.md).
 - UI mockups: real product surfaces (GAIA chat cards, WhatsApp thread, inbox) with plausible copy, timestamps, names — zoomed and cropped, never full screenshots with tiny text. Cursors move on smooth beziers and vanish when automation takes over.
 - Audio layered in Remotion: music with fade envelope, each SFX in a `<Sequence from={hit}>`, VO ducking music −7..−12 dB via volume callbacks.
 - Determinism: pure function of `useCurrentFrame()`; `random(seed)` only; `<Img>`/`<OffthreadVideo>`; fonts via blocking loaders; premount heavy scenes.
