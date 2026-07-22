@@ -669,7 +669,7 @@ def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool =
 
 @pytest.mark.unit
 class TestGetUserIntegrations:
-    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_returns_hydrated_integrations(self, mock_repo, mock_int_repo, mock_users_col):
@@ -677,7 +677,7 @@ class TestGetUserIntegrations:
         # github is a platform integration resolved from the in-memory catalog,
         # so no stored integration doc and no creator lookups are needed.
         mock_int_repo.find_by_ids = AsyncMock(return_value=[])
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
 
         result = await get_user_integrations(USER_ID)
 
@@ -687,27 +687,27 @@ class TestGetUserIntegrations:
         assert result.integrations[0].status == "connected"
         assert result.integrations[0].integration.name == "GitHub"
 
-    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_skips_integration_with_no_details(self, mock_repo, mock_int_repo, mock_users_col):
         mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("deleted-int")])
         # Not in the catalog and no stored doc → _build_integration_response returns None.
         mock_int_repo.find_by_ids = AsyncMock(return_value=[])
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
 
         result = await get_user_integrations(USER_ID)
 
         assert result.total == 0
         assert result.integrations == []
 
-    @patch("app.services.integrations.user_integrations.users_collection")
+    @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_empty_workspace(self, mock_repo, mock_int_repo, mock_users_col):
         mock_repo.list_for_user_newest_first = AsyncMock(return_value=[])
         mock_int_repo.find_by_ids = AsyncMock(return_value=[])
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
 
         result = await get_user_integrations(USER_ID)
         assert result.total == 0

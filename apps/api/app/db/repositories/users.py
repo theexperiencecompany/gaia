@@ -35,6 +35,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def get_by_email(self, email: str) -> UserDocument | None:
         return await self._find_one({"email": email})
 
+    async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
+        """Users whose ``_id`` is in ``user_ids`` (invalid ids skipped) — the
+        creator-join for the integrations marketplace."""
+        oids = [ObjectId(uid) for uid in user_ids if ObjectId.is_valid(uid)]
+        if not oids:
+            return []
+        return await self._find({"_id": {"$in": oids}})
+
     async def get_by_platform_id(self, platform: str, platform_user_id: str) -> UserDocument | None:
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 

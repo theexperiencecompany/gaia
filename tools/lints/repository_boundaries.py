@@ -50,15 +50,9 @@ _BSON_ALLOWED_DIRS = ("db/",)
 # Entries are removed as each remaining reader migrates — never added.
 COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
     {
-        # -- (1) Raw `users` reads. A UsersRepository exists, but these callers still
-        #    read the users collection directly — cross-domain reads (auth, payments,
-        #    notifications, onboarding, workers) plus a few user-domain stragglers.
-        #    Retired by a follow-up users-read cleanup, not by a domain wave.
-        # -- (2) `users` creator-join for the integrations marketplace — reads the
-        #    users collection (a users-domain concern), not their own collection.
-        "services/integrations/marketplace.py",
-        "services/integrations/user_integrations.py",
-        # -- (3) One-shot backfill script reading workflows for a data migration.
+        # One-shot backfill script that resolves the workflows collection through
+        # the supported ``get_async_collection`` accessor (not a named attribute),
+        # so it keeps working after the named collections are privatized.
         "scripts/backfill_public_workflow_descriptions.py",
     }
 )
@@ -72,9 +66,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "api/v1/endpoints/user.py",
         # models/
         "models/blog_models.py",
-        # services/
-        "services/integrations/marketplace.py",
-        "services/integrations/user_integrations.py",
         # utils/
         "utils/profile_card.py",
     }

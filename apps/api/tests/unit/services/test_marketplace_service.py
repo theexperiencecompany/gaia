@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import UserDocument
+
 MODULE = "app.services.integrations.marketplace"
 
 
@@ -201,7 +203,7 @@ class TestGetAllIntegrations:
 
 class TestGetIntegrationDetails:
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
     @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_not_found(
@@ -219,7 +221,7 @@ class TestGetIntegrationDetails:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
     @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_platform_integration(
@@ -242,7 +244,7 @@ class TestGetIntegrationDetails:
         assert result.name == "Gmail"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
     @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_stored_tools_hydrated(
@@ -267,7 +269,7 @@ class TestGetIntegrationDetails:
         assert result.tools[0].name == "tool1"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
     @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_creator_info_populated(
@@ -290,8 +292,8 @@ class TestGetIntegrationDetails:
             resp = MagicMock()
             resp.tools = []
             mock_from_oauth.return_value = resp
-            mock_users.find_one = AsyncMock(
-                return_value={"name": "Creator", "picture": "https://pic.com"}
+            mock_users.get = AsyncMock(
+                return_value=UserDocument(name="Creator", picture="https://pic.com")
             )
 
             result = await get_integration_details("gmail")
@@ -299,7 +301,7 @@ class TestGetIntegrationDetails:
         assert result.creator == {"name": "Creator", "picture": "https://pic.com"}  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
     @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_resolved_no_platform_no_custom(

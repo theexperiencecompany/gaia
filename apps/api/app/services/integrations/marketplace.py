@@ -2,12 +2,10 @@
 
 import asyncio
 
-from bson import ObjectId
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
 from app.db.repositories.integrations import integration_repository
+from app.db.repositories.users import user_repository
 from app.models.integration_models import (
     Integration,
     IntegrationResponse,
@@ -128,10 +126,9 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
     created_by = resolved.custom_doc.get("created_by") if resolved.custom_doc else None
     if created_by:
         try:
-            creator_doc = await users_collection.find_one(
-                {"_id": ObjectId(created_by)},
-                {"name": 1, "picture": 1},
-            )
+            creator = await user_repository.get(created_by)
+            if creator:
+                creator_doc = {"name": creator.name, "picture": creator.picture}
         except Exception as e:
             log.debug(f"{LogTag.INTEGRATION} Failed to fetch creator info for {created_by}: {e}")
 

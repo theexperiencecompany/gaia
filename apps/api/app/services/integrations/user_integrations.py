@@ -4,18 +4,14 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from bson import ObjectId
-
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import ONE_DAY_TTL, USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    users_collection,
-)
 from app.db.redis import delete_cache
 from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
     IntegrationResponse,
@@ -67,17 +63,10 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
             int_docs[doc_model.integration_id] = doc_model.model_dump()
 
     # One query for all creators referenced by the user's custom integrations.
-    creator_oids = [
-        ObjectId(doc["created_by"])
-        for doc in int_docs.values()
-        if doc.get("created_by") and ObjectId.is_valid(doc["created_by"])
-    ]
+    creator_ids = [doc["created_by"] for doc in int_docs.values() if doc.get("created_by")]
     creators: dict[str, dict] = {}
-    if creator_oids:
-        async for creator in users_collection.find(
-            {"_id": {"$in": creator_oids}}, {"name": 1, "picture": 1}
-        ):
-            creators[str(creator["_id"])] = creator
+    for creator in await user_repository.find_by_ids(creator_ids):
+        creators[creator.id] = {"name": creator.name, "picture": creator.picture}
 
     user_integrations: list[UserIntegrationResponse] = []
     for ui in parsed:

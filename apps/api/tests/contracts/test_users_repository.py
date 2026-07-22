@@ -37,6 +37,13 @@ class TestUserReads:
         assert await repo.get_by_email("x@y.com") == created
         assert await repo.get_by_email("missing@y.com") is None
 
+    async def test_find_by_ids_skips_invalid(self, repo, make_user):
+        a = await repo.create(make_user(email="c1@b.com"))
+        b = await repo.create(make_user(email="c2@b.com"))
+        found = await repo.find_by_ids([a.id, b.id, "not-an-objectid", "0" * 24])
+        assert {u.id for u in found} == {a.id, b.id}
+        assert await repo.find_by_ids([]) == []
+
     async def test_extra_allow_preserves_undeclared_fields(self, repo, make_user):
         # build_user_context spreads the whole doc, so undeclared fields must survive.
         created = await repo.create(make_user(custom_flag=True, nested={"k": "v"}))
