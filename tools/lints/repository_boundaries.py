@@ -63,7 +63,6 @@ COLLECTIONS_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         #    read todos/projects/notes/files raw instead of via that domain's repo.
         "api/v1/endpoints/onboarding.py",
         "helpers/message_helpers.py",
-        "utils/embedding_utils.py",
         # -- (4) One-shot backfill script reading workflows for a data migration.
         "scripts/backfill_public_workflow_descriptions.py",
     }
@@ -86,7 +85,6 @@ BSON_IMPORT_ALLOWLIST: frozenset[str] = frozenset(
         "services/integrations/marketplace.py",
         "services/integrations/user_integrations.py",
         # utils/
-        "utils/embedding_utils.py",
         "utils/profile_card.py",
     }
 )

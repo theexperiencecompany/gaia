@@ -66,3 +66,13 @@ class TestNotesRepository(UserScopedRepositoryContract):
         hits = await repo.search_by_plaintext("searcher", pattern="budget")
         assert [h.plaintext for h in hits] == ["the quarterly budget report"]
         assert hits[0].id == created.id  # the stringified _id, user-isolated
+
+
+class TestNotesFindByIds:
+    async def test_find_by_ids_is_scoped(self, repo, make_doc):
+        a = await repo.create(make_doc(user_id="u1"))
+        b = await repo.create(make_doc(user_id="u1"))
+        await repo.create(make_doc(user_id="u2"))
+        found = await repo.find_by_ids("u1", [a.id, b.id])
+        assert {n.id for n in found} == {a.id, b.id}
+        assert await repo.find_by_ids("u1", []) == []
