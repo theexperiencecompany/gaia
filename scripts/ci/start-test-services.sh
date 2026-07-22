@@ -79,10 +79,10 @@ probe_until_deadline() {
 }
 
 # wait_ready <label> <container> <start_fn> <probe command...> — poll until the
-# probe passes or the timeout elapses. The official images intermittently crash
-# at boot (seen: rabbitmq "/var/lib/rabbitmq/.erlang.cookie: eacces"), so one
-# timeout recreates the container and re-waits; a second fails loud with the
-# container's logs so the cause is diagnosable straight from the CI log.
+# probe passes or the timeout elapses. One timeout recreates the container and
+# re-waits, so a genuine boot flake costs ~90s instead of a red build; a second
+# fails loud with the container's logs so the cause is diagnosable straight
+# from the CI log.
 wait_ready() {
   local label="$1" container="$2" start_fn="$3"
   shift 3
@@ -112,8 +112,13 @@ wait_ready "Redis" gaia-test-redis start_redis \
   docker exec gaia-test-redis redis-cli ping
 wait_ready "MongoDB" gaia-test-mongo start_mongo \
   docker exec gaia-test-mongo mongosh --quiet --eval "db.runCommand({ping:1}).ok"
+# -u rabbitmq is load-bearing: the image has no USER directive, so a plain
+# exec runs as root with HOME=/var/lib/rabbitmq — during boot, a root
+# `rabbitmq-diagnostics` creates .erlang.cookie owned by root and the server
+# (running as rabbitmq) then crashes with eacces
+# (docker-library/rabbitmq#318, rabbitmq-server discussion #11856).
 wait_ready "RabbitMQ" gaia-test-rabbitmq start_rabbitmq \
-  docker exec gaia-test-rabbitmq rabbitmq-diagnostics -q ping
+  docker exec -u rabbitmq gaia-test-rabbitmq rabbitmq-diagnostics -q ping
 # Chroma's heartbeat path moved between API v1 and v2; probe both so an image
 # bump across that boundary can't silently break readiness.
 chroma_heartbeat() {

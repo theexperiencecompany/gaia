@@ -109,9 +109,15 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - Test-service images are pinned to exact tags in
   `scripts/ci/start-test-services.sh` AND `.dagger/src/gaia_ci/main.py` —
   bump both together. The readiness wait recreates a container once on
-  timeout: the official images intermittently crash at boot (seen: rabbitmq
-  `.erlang.cookie: eacces`), and a retry turns that into ~90s instead of a
-  red build. A second timeout still fails loud with container logs.
+  timeout (a genuine boot flake costs ~90s instead of a red build); a second
+  timeout fails loud with container logs.
+- RabbitMQ readiness probes MUST use `docker exec -u rabbitmq`. The image has
+  no USER directive, so a plain exec runs as root with
+  HOME=/var/lib/rabbitmq; probing during boot creates a root-owned
+  `.erlang.cookie` and the server crashes with `eacces`
+  (docker-library/rabbitmq#318). This bit us as an intermittent-looking
+  failure that was actually a race our own probe caused — restart-retry
+  couldn't save it because the recreated container got re-poisoned instantly.
 - Wall-clock per PR ≈ the `test-python` job; everything else finishes earlier
   in parallel. pytest ~2.5 min for ~7.5k tests via xdist.
 - `pnpm install --filter <pkg>` does NOT meaningfully shrink installs here:
