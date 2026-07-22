@@ -331,7 +331,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
         run: |
@@ -368,7 +368,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Install api dev + backend dependencies (uv sync)
         run: |
@@ -419,7 +419,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Docstring coverage on public API surface
         run: |
@@ -448,7 +448,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         run: |
@@ -488,7 +488,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Bandit security scan (zero-warning policy)
         run: |
@@ -527,7 +527,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Install vulture (Python dead-code detector)
         run: |

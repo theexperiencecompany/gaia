@@ -96,11 +96,16 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 
 - Branch protection targets are the two gate jobs, not individual lanes —
   lanes can be added/removed without touching repo settings.
-- Nx Cloud is disabled (`NX_NO_CLOUD=true`; plan exceeded). There is NO remote
-  nx cache: each CI job recomputes everything. Don't assume `nx` caching helps
-  across jobs.
+- Nx Cloud is disabled (`NX_NO_CLOUD=true`; plan exceeded — deliberate, don't
+  re-enable). There is NO remote nx cache: each CI job recomputes everything.
+  The Next.js compiler cache IS persisted (`actions/cache` on
+  `apps/web/.next/cache` in main.yml build + desktop-pr-build prepare).
 - `nx.json` `defaultBase` is `develop` (the integration branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
+- Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
+  nx.json `installation`, uv 0.8.17, pnpm/action-setup + docker/login-action
+  by SHA). `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float
+  on major tags — pin them from a machine with GitHub API access.
 - Wall-clock per PR ≈ the `test-python` job; everything else finishes earlier
   in parallel. pytest ~2.5 min for ~7.5k tests via xdist.
 - `pnpm install --filter <pkg>` does NOT meaningfully shrink installs here:

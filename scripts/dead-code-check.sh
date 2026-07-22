@@ -191,14 +191,14 @@ run_vulture() {
 run_knip() {
   print_section "TypeScript (knip)"
 
-  if ! command -v npx &>/dev/null; then
-    echo -e "  ${DIM}npx not found, skipping TypeScript check.${RESET}"
+  if ! command -v pnpm &>/dev/null; then
+    echo -e "  ${DIM}pnpm not found, skipping TypeScript check.${RESET}"
     echo ""
     return
   fi
 
   local raw_output
-  raw_output=$(npx knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
+  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"

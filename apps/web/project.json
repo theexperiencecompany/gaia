@@ -103,6 +103,13 @@
         "command": "rm -rf .next node_modules .turbo",
         "cwd": "{projectRoot}"
       }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --config vitest.config.ts",
+        "cwd": "{projectRoot}"
+      }
     }
   }
 }
