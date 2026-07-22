@@ -75,7 +75,7 @@ async def check_inactive_users(ctx: dict) -> str:
         email_count = 0
         email_failures = 0
         for user in inactive_users:
-            if not _should_send_inactive_email(user):
+            if not user.email or not _should_send_inactive_email(user):
                 continue
             try:
                 await send_inactive_user_email(user.email, user.name)
