@@ -38,6 +38,14 @@ _IGNORE = [
     ".agents/plans",
 ]
 
+# Service images pinned to exact tags. Keep in sync with
+# scripts/ci/start-test-services.sh (the CI variant of this topology).
+_POSTGRES_IMAGE = "postgres:16.14-alpine3.24"
+_REDIS_IMAGE = "redis:7.4.9-alpine3.21"
+_MONGO_IMAGE = "mongo:7.0.37"
+_CHROMA_IMAGE = "chromadb/chroma:1.5.9"
+_RABBITMQ_IMAGE = "rabbitmq:3.13.7-alpine"
+
 # Type alias for the annotated source directory used by all functions.
 Source = Annotated[
     dagger.Directory,
@@ -294,7 +302,7 @@ class GaiaCi:
         """Start a PostgreSQL 16 service container."""
         return (
             dag.container()
-            .from_("postgres:16-alpine")
+            .from_(_POSTGRES_IMAGE)
             .with_env_variable("POSTGRES_USER", "gaia")
             .with_env_variable("POSTGRES_PASSWORD", "gaia")
             .with_env_variable("POSTGRES_DB", "gaia_test")
@@ -307,7 +315,7 @@ class GaiaCi:
         """Start a Redis 7 service container with 32 databases for xdist worker isolation."""
         return (
             dag.container()
-            .from_("redis:7-alpine")
+            .from_(_REDIS_IMAGE)
             .with_exposed_port(6379)
             .with_exec(["redis-server", "--databases", "32"])
             .as_service()
@@ -318,7 +326,7 @@ class GaiaCi:
         """Start a MongoDB 7 service container."""
         return (
             dag.container()
-            .from_("mongo:7")
+            .from_(_MONGO_IMAGE)
             .with_env_variable("MONGO_INITDB_ROOT_USERNAME", "gaia")
             .with_env_variable("MONGO_INITDB_ROOT_PASSWORD", "gaia")
             .with_exposed_port(27017)
@@ -328,12 +336,12 @@ class GaiaCi:
     @function
     def chroma_service(self) -> dagger.Service:
         """Start a ChromaDB service container."""
-        return dag.container().from_("chromadb/chroma:latest").with_exposed_port(8000).as_service()
+        return dag.container().from_(_CHROMA_IMAGE).with_exposed_port(8000).as_service()
 
     @function
     def rabbitmq_service(self) -> dagger.Service:
         """Start a RabbitMQ 3 service container."""
-        return dag.container().from_("rabbitmq:3-alpine").with_exposed_port(5672).as_service()
+        return dag.container().from_(_RABBITMQ_IMAGE).with_exposed_port(5672).as_service()
 
     def _service_test_container(self, source: Source) -> dagger.Container:
         """Create a test container wired to all live service containers.

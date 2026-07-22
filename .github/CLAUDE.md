@@ -106,6 +106,12 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
   nx.json `installation`, uv 0.8.17, pnpm/action-setup + docker/login-action
   by SHA). `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float
   on major tags — pin them from a machine with GitHub API access.
+- Test-service images are pinned to exact tags in
+  `scripts/ci/start-test-services.sh` AND `.dagger/src/gaia_ci/main.py` —
+  bump both together. The readiness wait recreates a container once on
+  timeout: the official images intermittently crash at boot (seen: rabbitmq
+  `.erlang.cookie: eacces`), and a retry turns that into ~90s instead of a
+  red build. A second timeout still fails loud with container logs.
 - Wall-clock per PR ≈ the `test-python` job; everything else finishes earlier
   in parallel. pytest ~2.5 min for ~7.5k tests via xdist.
 - `pnpm install --filter <pkg>` does NOT meaningfully shrink installs here:
