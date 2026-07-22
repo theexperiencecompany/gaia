@@ -89,6 +89,15 @@ curl -s -X POST "https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_
 - `/v1/text-to-speech/{voice_id}/with-timestamps` returns char-level timing for caption/animation sync. `output_format=pcm_44100` for lossless mastering.
 - Pricing (2026): Free 10min/mo non-commercial; Starter $5+ for commercial rights; API ≈ $0.10/1k chars (v2/v3), $0.05/1k (Flash).
 
+## Mix discipline (defect classes that recur — verify each empirically)
+
+- **Master the render, don't trust the math.** Volume values in code never sum to spec. Always finish with a two-pass loudnorm on the rendered file (measure → apply with `measured_*` values + `linear=true`), then remux audio onto the copied video stream. Verify the final file: −14±0.5 LUFS, ≤ −1 dBTP.
+- **The drop must be the loudest moment of the film.** Three conspirators quietly kill it: (1) a VO duck held across the drop — release the duck ON the drop frame (J-cut the VO to end ~5f before); (2) the riser truncating instead of ENDING on the downbeat — place by `at = drop − riserDurationF + 1` and give the asset a 20ms fade tail; (3) boom attack swell — a "boom" often peaks 15–25ms after its start; nudge accordingly. Verify with momentary loudness: the seconds after the drop must out-measure the seconds before it.
+- **Trim VO head/tail silence before placing** (TTS files carry 120–175ms head + up to 770ms tail). Duck windows must track actual speech, or the bed pumps on dead air. Re-measure durations after trimming and drive scene timing from the real numbers.
+- **Speech separation ≥6 LU**: VO ≈ −16 LUFS stems; check the bed level under speech empirically — remember the music's own arc means late-track sections are hotter than the average.
+- **Endings exhale**: the last VO's duck release must COMPLETE before the fade-out begins; fade from a bar boundary, ~2–3s, exponent ~1.5. Fading a still-crescendoing section mid-phrase reads as someone pulling a fader.
+- **Verify the beat grid empirically** — BPM and phase. Onset-detect the actual track, confirm a musical beat lands within ±2f of every cut. "I computed it from the BPM" is a hypothesis; fitted-phase drift and mp3 trim offsets are real.
+
 ## Mix targets
 
 - **Integrated loudness −14 LUFS**, true peak ≤ **−1.0 dBTP**, LRA 6–11 LU.

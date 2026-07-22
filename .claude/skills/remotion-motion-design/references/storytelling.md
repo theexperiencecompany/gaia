@@ -39,10 +39,20 @@ Rules:
 
 Other templates: PAS 60s (hook 0–3, problem 3–10, reveal 10–15 on the drop, one-workflow capabilities 15–45, proof 45–52, close 52–60); demo-as-story 30s for X (mid-action open 0–2, near-uncut demo 2–20, payoff number 20–26, close 26–30).
 
+## Hook and prop discipline (defect classes that recur)
+
+- **Frame 0 is the thumbnail.** No black frames, no logo warmups, no static shot held >0.5s before the first event. The hook element is on screen at frame 0, its first state change lands inside 15 frames, and the claim line is animating by frame 30.
+- **Genre tropes need earning.** "Dark room + clock + AI worked overnight" is the most common open in the agent genre. If you use it, subvert or compress it — or open on the most surprising receipt instead ("Your investor update went out at 5:02. You were asleep.") and rewind.
+- **Props are testimony — they must not contradict the trust model.** Every status string, timestamp, and chip is evidence in the viewer's cross-examination. If the trust story is "nothing ships without you," nothing may appear pre-queued or auto-sent.
+- **The human acts on camera.** At the decision moment, show the gesture (cursor glides in, taps Approve, then vanishes as automation takes over). An approval that approves itself empties the film's own safety claim.
+- **The close line is the earned thesis.** End on the sentence the film just proved, not the brand's generic tagline — if they differ, the film wins. Every statement headline and the close must read as one voice.
+- **Verb series need semantic range.** Drafted/Written = the same act twice; Drafted/Prepped/Cleared/Planned = four different powers.
+
 ## Believable vs cringe for AI-agent narratives
 
 - **Believable = real UI receipts.** Timestamps, real tool names, plausible message text, notification stacks, a morning summary card.
 - **Cringe = AI replacing human meaning.** Never show the agent doing what audiences believe a human should do (heartfelt writing, relationships, creativity — the Gemini "Dear Sydney" failure). Show it doing what humans resent: scheduling, triage, follow-ups, status reports, drafts-for-review.
+- **Never show AI authoring the user's own public voice.** "It wrote this post while I slept" is a quote-tweet dunk magnet — it confesses to the exact slop accusation the audience already holds. The agent PREPARES from the human's real work (changelog, commits, notes); the human authors and approves. Frame it as "drafted from what you shipped — your voice, your call."
 - **The human stays hero and approver.** Always include a review/approve beat. The agent drafts; the human decides.
 - Time-compression: one ~2s shot (clock / dark window / phone face-down) establishes "asleep." Never spend more than one scene on the human sleeping.
 

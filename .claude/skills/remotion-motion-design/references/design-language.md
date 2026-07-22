@@ -107,6 +107,16 @@ A GAIA video is a **type-led motion piece with product surfaces as evidence** �
 - **Prefer typography and real product components** (composer with live typing + caret, chat bubbles, approval rows, counters) **over photographs/wallpapers/stock imagery.** Atmosphere comes from light (glows, gradient washes) and motion, not from background images.
 - Headings must belong to the composition (overlapping, anchored to the evidence below them) — never a detached "section title" floating above a card like a webpage.
 
+## Surface discipline (defect classes that recur — check every card)
+
+- **One accent means one accent.** Semantic greens/ambers count: a success-green chip recurring across three scenes IS a second accent. Reserve semantic color for at most ONE moment in the film; status chips elsewhere are zinc surfaces with a cyan drawn check.
+- **No blank placeholder shapes.** An empty gray avatar circle is the loudest "AI mockup" tell. Use an initial, a logo, or nothing.
+- **Reading time is math, not vibes.** For every text surface: chars ÷ 17 ≤ seconds actually held (compute from the beat sheet). The emotional-proof card gets the LONGEST hold, not the shortest.
+- **Copy logic must be consistent across scenes.** Props are testimony: a chip that says "Queued" contradicts a later "needs your approval." Before rendering, list every status/claim string and check they tell one story.
+- **No dead card regions.** If a card has an empty right half, right-align metadata there (durations, counts, in mono) or narrow the card. Standardize on at most two card widths per film.
+- **Mono is for time, numbers, URLs, code — nothing else.** A handle or label in mono dilutes the signal the timestamps own.
+- **Show one real sentence of any AI-produced artifact** (email opening line, message text). All-skeleton bodies at the moment of proof read as hiding the goods.
+
 ## What makes GAIA look like GAIA (checklist)
 
 1. `#111111` canvas + one electric cyan `#00bbff`, monochrome zinc everywhere else

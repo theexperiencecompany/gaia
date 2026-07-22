@@ -1,5 +1,20 @@
 # The Motion Craft Rulebook
 
+## The film grammar (non-negotiable structure)
+
+These rules exist because their violations are exactly what makes generated films read as "posters with titles":
+
+1. **Kinetic typography is the storytelling engine.** Statements arrive centered, one phrase at a time, replacing each other on the beat — Apple keynote-film style. The signature letterform behavior: per-word (per-char for hero words) blur-in + rise + slight scale settle (1.05→1), whole-phrase tracking contraction (−0.055em→−0.035em) as it lands; exits breathe out (blur up + drift). Build ONE `KineticPhrase` primitive and use it for every statement — a per-scene one-off entrance is a defect.
+2. **Titles morph; they don't sit.** A statement lands huge (150–210px), then MORPHS — shrinks and glides into a header position — to hand the stage to evidence below. The morph (`scale` + `translateY` on the same element, transform-origin bottom) IS the transition between "type moment" and "evidence moment." Never a static heading floating above a card.
+3. **The film needs a persistent spine.** At least one shared element must live OUTSIDE the scene sequence and persist across every cut (a clock that docks and rolls, an accumulating dock of finished work, a light ramp, a recurring glow). Scene components render content only; connective tissue is global. Without a spine, six scenes = six posters.
+4. **Morphing is the seam language.** Prefer transformation over replacement everywhere: cards compress into chips that fly into the next surface, a giant element becomes a small persistent one, digits roll in place. Every seam should answer "what did the last thing BECOME?"
+5. **Vary the composition.** Alternate layout structures across beats (offset cards left/right, let a number be the hero without chrome, split type/evidence). Two consecutive scenes with identical layout geometry is a defect; five is slop.
+6. **Layout jumps are illusion-breakers.** Any state change inside a surface (typing dots → message text, button → sent state) must reserve its final layout space and crossfade — a single-frame DOM reflow is the loudest amateur tell there is.
+7. **Composite accents.** A beat event (approval, send, land) is ONE 10-frame composite — state flip + subtle surface flash (≤4% white) + settle — landing exactly on the beat frame. Never a color swap on the beat plus stray motion 15 frames later.
+8. **Counters** decrement on nearly every frame: piecewise `[linear → ease-out]` keyframes (e.g. [0, 0.8, 1] → [47, 8, 3]) — a plain ease-out makes the tail judder at half frame rate.
+9. **Typing must be human**: per-character delays with seeded jitter (1.4–3.2f range) and pauses after punctuation (+5f). `setInterval`-even cadence reads robotic. Cursor caret blinks; composer restores its placeholder after send.
+
+
 Professional motion-graphics editing craft (School of Motion, Carbon/Material motion specs, Emil Kowalski, Stripe/Linear/Vercel breakdowns), quantified for code. Frame counts @30fps. Where a rule conflicts with GAIA brand specifics (e.g. grain — GAIA is clean/flat, skip heavy grain), `design-language.md` wins.
 
 ## A. Scene-to-scene transitions
@@ -80,6 +95,14 @@ Professional motion-graphics editing craft (School of Motion, Carbon/Material mo
 52. Glow/bloom only on genuine light sources, screen/add blend, low opacity. Never bloom text bodies or whole scenes.
 53. Depth via light, not borders: separate layers with luminosity, soft shadows, and blur — never outlines.
 54. Motion blur ≈ 180° shutter: directional blur proportional to per-frame velocity × 0.5; 90° (crisper) for tight product motion.
+
+## Momentum, verified (hard requirements at every cut)
+
+- **The momentum system must exist in pixels, not intention.** Wrap EVERY scene (not just some) in exit/enter components; a partially applied system reads as freeze→slam→freeze. Verify with frame diffs (see evaluation rubric), not by reading the code.
+- **A cut frame must never be empty.** Exit dims at most ~25% and translates — if content fades to zero before the cut, you built a fade-to-black, not a momentum cut, and the frame dies.
+- **Exits accelerate (ease-in), entrances decelerate (ease-out), same direction, matched speed.** An exit 3× faster than its entrance makes every beat gasp and restart limp.
+- **The hero beat must measurably peak.** At the climax cut: outgoing scene compresses/accelerates INTO it, incoming opens with the film's largest+longest move, light blooms, the loudest audio hits — motion, scale, light, and sound converge on the same frame. If frame-diff energy at the hero beat is lower than an average scene entrance, it is not a hero beat.
+- **Held ending ≠ freeze frame.** The close keeps a continuous push-in, a breathing glow, and gives the CTA a real staggered entrance. Three seconds of pixel-identical frames is a JPEG, not a hold.
 
 ## H. Anti-slop checklist (reject the render if any are true)
 

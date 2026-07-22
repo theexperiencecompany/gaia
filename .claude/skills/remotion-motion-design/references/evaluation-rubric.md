@@ -4,6 +4,11 @@ The render is guilty until proven innocent. Evaluation is done by a **team of ho
 
 ## Protocol
 
+**Quantitative motion evidence (mandatory for the motion lens).** Prose impressions miss slideshows. Compute a full inter-frame luminance-diff map (mean abs diff per consecutive frame pair over the extracted sequence — a short python script over the jpegs) and report: % of frame pairs below 0.05 ("pixel-frozen"), the largest single-frame spikes outside cuts (pops/layout jumps), per-scene mean energy, and whether the hero beat's entrance energy is actually the film's maximum. A film where >35% of pairs are frozen is a slideshow regardless of how good the stills look. Single-frame spikes comparable to scene cuts are pops — illusion-breakers by definition.
+
+**Regression protocol (round 2+).** Re-evaluations receive the full prior defect list and must verdict each one **FIXED / PARTIAL / REGRESSED** with frame evidence before hunting new defects. A fix pass that doesn't re-verify prior defects doesn't count.
+
+
 1. **Render evidence first.** Export the full MP4 plus:
    - A frame every 0.5s (`npx remotion still` loop or ffmpeg `-vf fps=2`) → contact sheet per scene
    - **Boundary triplets**: for every scene cut at frame N, export N−2, N−1, N, N+1, N+2 — transitions are judged on these, not on prose descriptions
@@ -57,6 +62,7 @@ Go through the full ban list: linear position easing · ease-in entrances · sim
 ## Lens 6 — Audio
 
 - Music: does the energy arc track the story (sparse → riser → drop at reveal → groove → exhale under end card)? Is the genre premium (minimal/electronic/piano), not stock-cheese?
+- **Is the drop the loudest moment?** Measure momentary loudness around the reveal — the seconds after the drop must out-measure the riser before it. Check duck release timing, riser end alignment, boom attack offset.
 - SFX: are entrances/impacts supported by whooshes/ticks/booms at the right frames (±1f)? Are SFX levels −12 to −20 dB below music peaks (felt, not noticed)? Any comedy/cartoon SFX? Instant fail.
 - VO (if present): natural pacing, no robotic cadence artifacts, music ducked −6 to −9 dB under speech, J/L-cuts at scene changes (audio never cut on the video frame)?
 - Mix: integrated loudness ≈ −14 LUFS, true peak ≤ −1 dBTP, no clipping, clean fade-out (no abrupt end)?
