@@ -212,7 +212,13 @@ async def _resolve_record(
         collector_alive = record.subagent_thread_id is not None and await is_executor_busy(
             record.conversation_id
         )
-        if not collector_alive:
+        # An APPROVE with no run to carry it out is a false "going ahead" (nobody would
+        # execute it), so fail loudly and let the sweep expire it. A deny/timeout/abandon
+        # needs no run at all, since its whole point is that the action does NOT happen, so
+        # it is safe to record even with no collector. Closing it here stops the pending
+        # record hijacking the conversation, which is what a batch "Decline all" over such
+        # a record used to do: it raised and orphaned the record pending.
+        if not collector_alive and kind == "approve":
             log.error(f"{LogTag.HIL} No resume context on record", approval_id=record.approval_id)
             raise ApprovalNotResumable()
 
@@ -231,9 +237,11 @@ async def _resolve_record(
     log.set(hil={"approval_id": record.approval_id, "decision": kind, "tool": record.tool_name})
     resume_status = "denied" if kind == "abandon" else _TERMINAL_STATUS[kind]
     if record.resume_item is None:
-        # Decided pre-join: nothing to dispatch, the running executor collects it.
+        # No run to dispatch: either a live collector (a parked subagent whose executor
+        # reads this decision at its join) or an un-resumable deny/timeout/abandon closed
+        # in place. Nothing to resume here either way.
         log.info(
-            f"{LogTag.HIL} Early decision on parked subagent; join will collect",
+            f"{LogTag.HIL} Decision recorded without a resume dispatch",
             approval_id=record.approval_id,
         )
         return record
