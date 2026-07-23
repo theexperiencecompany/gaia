@@ -150,6 +150,7 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
     {
         "retrieve_tools",
         "call_executor",
+        "cancel_executor",
         "handoff",
         "spawn_subagent",
         WAIT_FOR_SUBAGENTS_NAME,

@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
 from app.constants.hil import HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord
@@ -138,6 +138,7 @@ async def interpret_batch_decision_message(
             _batch_prompt(message, pending_summaries),
             label="hil_conversational_resolve_batch",
             timeout=HIL_LLM_TIMEOUT_SECONDS,
+            config=SILENT_LLM_CONFIG,
         )
     except Exception as e:
         log.warning(f"{LogTag.HIL} Batch conversational resolve failed, leaving pending: {e}")
@@ -153,6 +154,7 @@ async def interpret_decision_message(message: str, pending_summaries: list[str])
             _prompt(message, pending_summaries),
             label="hil_conversational_resolve",
             timeout=HIL_LLM_TIMEOUT_SECONDS,
+            config=SILENT_LLM_CONFIG,
         )
     except Exception as e:
         log.warning(f"{LogTag.HIL} Conversational resolve failed, treating as unrelated: {e}")

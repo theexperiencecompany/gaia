@@ -379,6 +379,20 @@ def invoke_llm(
         )
 
 
+# Marks an internal one-shot LLM call so the chat token stream drops its output instead
+# of rendering it as assistant text. Any structured/internal call made while a graph is
+# streaming (HIL tool classification, the intent judge, the conversational resolver) must
+# carry this, or its structured-output tokens leak into the conversation as a bot message.
+# ``silent`` is the flag the messages-stream consumers read (helpers/agent_helpers.py);
+# ``metadata.silent`` is the canonical location, the top-level key mirrors it for the
+# other consumers. Pass as ``config=SILENT_LLM_CONFIG``; it merges with the ambient run
+# config, so tracing and thread context are preserved.
+SILENT_LLM_CONFIG: RunnableConfig = {
+    "silent": True,
+    "metadata": {"silent": True},
+}  # type: ignore[typeddict-unknown-key]
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,

@@ -21,7 +21,7 @@ import hashlib
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
@@ -112,6 +112,7 @@ async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResul
         TOOL_CLASSIFY_PROMPT.format(name=tool_name, description=description or "(none provided)"),
         label="hil_tool_classification",
         timeout=HIL_LLM_TIMEOUT_SECONDS,
+        config=SILENT_LLM_CONFIG,
     )
 
 

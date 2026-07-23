@@ -39,7 +39,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
@@ -178,6 +178,7 @@ async def _ask_judge(
         ),
         label="hil_intent_judge",
         timeout=HIL_LLM_TIMEOUT_SECONDS,
+        config=SILENT_LLM_CONFIG,
     )
 
 
