@@ -24,12 +24,11 @@ from app.constants.cache import WEBPAGE_FETCH_CACHE_TTL
 from app.constants.search import (
     CRAWL4AI_PAGE_TIMEOUT_MS,
     CRAWL4AI_SINGLE_TOTAL_TIMEOUT_SECONDS,
-    MAX_HTTPX_REDIRECTS,
 )
 from app.decorators.caching import Cacheable
 from app.utils.crawl4ai_utils import batch_fetch_with_crawl4ai
 from app.utils.exceptions import FetchError
-from app.utils.url_safety import assert_public_http_url
+from app.utils.url_safety import assert_public_http_url, open_public_http_url
 from shared.py.wide_events import log
 
 _BROWSER_HEADERS = {
@@ -144,35 +143,22 @@ class HttpxFetcher(WebpageFetcher):
         """Always available — pure-Python, no external service."""
         return True
 
-    @staticmethod
-    async def _get_following_redirects(client: httpx.AsyncClient, url: str) -> httpx.Response:
-        """GET ``url``, following redirects manually so each hop is SSRF-checked.
-
-        httpx's own ``follow_redirects`` would let a public URL bounce to a
-        private/metadata address, bypassing the entry validation. Every hop is
-        re-run through ``_ensure_url_allowed`` before it is requested.
-        """
-        await _ensure_url_allowed(url)
-        for _ in range(MAX_HTTPX_REDIRECTS + 1):
-            response = await client.get(url)
-            if not response.is_redirect:
-                return response
-            location = response.headers.get("location")
-            if not location:
-                return response
-            url = str(response.url.join(location))
-            await _ensure_url_allowed(url)
-        raise FetchError("too many redirects", url=url)
-
     async def fetch(self, url: str) -> str:
         """Fetch the page over HTTP and convert its main content to markdown."""
         async with httpx.AsyncClient(
             timeout=_HTTPX_TIMEOUT, follow_redirects=False, headers=_BROWSER_HEADERS
         ) as client:
-            response = await self._get_following_redirects(client, url)
-            response.raise_for_status()
+            try:
+                async with open_public_http_url(
+                    url, lambda hop: client.stream("GET", hop)
+                ) as response:
+                    response.raise_for_status()
+                    await response.aread()
+                    html = response.text
+            except ValueError as e:
+                raise FetchError(str(e), url=url) from e
 
-        soup = BeautifulSoup(response.text, "lxml")
+        soup = BeautifulSoup(html, "lxml")
         for tag in soup(_NON_CONTENT_TAGS):
             tag.decompose()
         node = (

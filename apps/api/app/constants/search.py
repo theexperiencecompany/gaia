@@ -7,7 +7,7 @@ Constants for search service operations including content limits and timeouts.
 # Request timeouts (seconds)
 URL_TIMEOUT = 20.0
 
-# Max redirect hops the httpx fetcher follows manually (each hop is SSRF-checked).
+# Max redirect hops an outbound fetch follows manually (each hop is SSRF-checked).
 MAX_HTTPX_REDIRECTS = 5
 
 # crawl4ai defaults

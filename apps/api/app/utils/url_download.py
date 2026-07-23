@@ -2,10 +2,9 @@
 
 The download counterpart to ``webpage_fetch``: that renders an HTML page to text,
 this pulls a file (image, PDF, dataset) down so the agent can ``read`` it back
-from the workspace. Both share the one SSRF policy in ``url_safety`` and both walk
-redirects by hand so a public URL can't bounce to an internal address mid-chain —
-the difference is this path streams to a byte budget instead of buffering a body
-to convert.
+from the workspace. Both walk redirects through ``url_safety`` so a public URL
+can't bounce to an internal address mid-chain — the difference is this path
+streams to a byte budget instead of buffering a body to convert.
 """
 
 from dataclasses import dataclass
@@ -22,8 +21,7 @@ from app.constants.download import (
     DOWNLOAD_USER_AGENT,
     MAX_DOWNLOAD_BYTES,
 )
-from app.constants.search import MAX_HTTPX_REDIRECTS
-from app.utils.url_safety import assert_public_http_url
+from app.utils.url_safety import open_public_http_url
 
 
 class DownloadError(ValueError):
@@ -44,44 +42,31 @@ def _content_type(response: httpx.Response) -> str | None:
 async def download_public_url(url: str, *, max_bytes: int = MAX_DOWNLOAD_BYTES) -> DownloadedFile:
     """Fetch ``url`` to bytes. Raises ``DownloadError`` on any refusal or failure.
 
-    Redirects are followed manually, re-checking the SSRF policy before every hop,
-    because httpx's own redirect following would dial a redirected-to internal
-    address without re-validation. The body streams under ``max_bytes`` and the
-    server's ``Content-Length`` is never trusted — a lying or chunked response is
-    cut off the moment it crosses the cap.
+    The body streams under ``max_bytes`` and the server's ``Content-Length`` is
+    never trusted — a lying or chunked response is cut off the moment it crosses
+    the cap. Redirects are walked by ``open_public_http_url``, which re-checks the
+    SSRF policy before every hop.
     """
     headers = {"User-Agent": DOWNLOAD_USER_AGENT}
     async with httpx.AsyncClient(
         timeout=DOWNLOAD_TIMEOUT_SECONDS, follow_redirects=False, headers=headers
     ) as client:
         try:
-            for _ in range(MAX_HTTPX_REDIRECTS + 1):
-                await _assert_allowed(url)
-                async with client.stream("GET", url) as response:
-                    if response.is_redirect:
-                        location = response.headers.get("location")
-                        if not location:
-                            raise DownloadError(f"redirect missing location header for {url}")
-                        url = str(response.url.join(location))
-                        continue
-                    try:
-                        response.raise_for_status()
-                    except httpx.HTTPStatusError as exc:
-                        raise DownloadError(
-                            f"server returned {response.status_code} for {url}"
-                        ) from exc
-                    data = await _read_capped(response, max_bytes, url)
-                    return DownloadedFile(data=data, content_type=_content_type(response))
+            async with open_public_http_url(url, lambda hop: client.stream("GET", hop)) as response:
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    raise DownloadError(
+                        f"server returned {response.status_code} for {response.url}"
+                    ) from exc
+                data = await _read_capped(response, max_bytes, url)
+                return DownloadedFile(data=data, content_type=_content_type(response))
+        except DownloadError:
+            raise  # DownloadError is a ValueError; don't re-wrap our own refusals
+        except ValueError as exc:
+            raise DownloadError(str(exc)) from exc
         except httpx.RequestError as exc:
             raise DownloadError(f"network error fetching {url}: {exc}") from exc
-    raise DownloadError(f"too many redirects fetching {url}")
-
-
-async def _assert_allowed(url: str) -> None:
-    try:
-        await assert_public_http_url(url)
-    except ValueError as exc:
-        raise DownloadError(str(exc)) from exc
 
 
 async def _read_capped(response: httpx.Response, max_bytes: int, url: str) -> bytes:
