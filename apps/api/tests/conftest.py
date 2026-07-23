@@ -26,6 +26,13 @@ from app.models.payment_models import PlanType
 # ---------------------------------------------------------------------------
 
 os.environ["ENV"] = "development"
+# Force the dev auth bypass OFF for the suite. A machine set up for agent-driven
+# e2e has DEV_AUTH_BYPASS_EMAIL in apps/api/.env, which would short-circuit
+# WorkOSAuthMiddleware — including in the tests that exercise that middleware.
+# It must be set EMPTY rather than popped: `load_dotenv()` (settings.py) does not
+# override keys already in os.environ, but it would happily supply this one from
+# .env if we removed it. Empty is falsy at every consumer, so the bypass is off.
+os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
