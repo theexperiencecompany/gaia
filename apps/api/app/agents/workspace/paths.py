@@ -161,25 +161,17 @@ def session_artifacts(conv_id: str) -> str:
     return f"{session_dir(conv_id)}/{ARTIFACTS_DIRNAME}"
 
 
+# Both dirs are system-written, like `tool_outputs/` and `archives/`: a place
+# something evicted from context can be read back from. Deliberately NOT
+# `artifacts/` — the watcher only tails that dir, so a capture of the user's screen
+# never lands in their file panel or reaches a bot user as an outbound file.
 def session_screenshot_relpath(filename: str) -> str:
-    """Session-relative path of a captured screenshot (what ``write_session_file`` takes).
-
-    A system-written dir, sitting alongside `tool_outputs/` and `archives/` — all
-    three exist so something evicted from context can be read back. Deliberately
-    NOT `artifacts/`: the watcher only tails that dir, so a capture of the user's
-    screen never lands in their file panel or reaches a bot user as an outbound
-    file.
-    """
+    """Session-relative path of a captured screenshot (what ``write_session_file`` takes)."""
     return f"{SCREENSHOTS_DIRNAME}/{filename}"
 
 
 def session_download_relpath(filename: str) -> str:
-    """Session-relative path of a file the `download` tool fetched from a URL.
-
-    System-written, like `screenshots/`: a landing place for bytes the agent
-    pulled off the internet so it can `read` them back, not a user-facing output
-    (which is `artifacts/`).
-    """
+    """Session-relative path of a file the `download` tool fetched from a URL."""
     return f"{DOWNLOADS_DIRNAME}/{filename}"
 
 

@@ -13,16 +13,11 @@ from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
 from app.agents.tools.coding._context import get_session_id, get_user_id
-from app.agents.workspace.paths import (
-    SESSIONS_DIRNAME,
-    WORKSPACE_ROOT,
-    session_download_relpath,
-)
+from app.agents.workspace.paths import session_download_relpath
 from app.constants.download import DOWNLOAD_HTML_REJECTED, HTML_CONTENT_TYPES
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
 from app.services.storage import write_session_file
-from app.services.storage.juicefs import user_owns_regular_file
 from app.templates.docstrings.download_tool_docs import DOWNLOAD_TOOL
 from app.utils.url_download import (
     DownloadError,
@@ -55,16 +50,10 @@ async def download(
     if not urlparse(url).scheme:
         url = f"https://{url}"
 
-    # When the URL path already names an extension, the on-disk name is knowable
-    # before fetching — so a repeat download of the same URL short-circuits to the
-    # existing file instead of hitting the network again.
-    url_ext = extension_from_url(url)
-    if url_ext:
-        rel = session_download_relpath(download_filename(url, url_ext))
-        if await user_owns_regular_file(user_id, _session_workspace_rel(session_id, rel)):
-            log.set(download={"cache_hit": True})
-            return _abs_path(session_id, rel)
-
+    # Always refetch. The on-disk name is knowable from the URL alone, so an
+    # existing file could be returned without hitting the network — but nothing
+    # invalidates it, so "download it again, it changed" would hand the agent the
+    # stale bytes with no way to ask for the current ones.
     try:
         result = await download_public_url(url)
     except DownloadError as e:
@@ -73,7 +62,7 @@ async def download(
     if result.content_type in HTML_CONTENT_TYPES:
         return DOWNLOAD_HTML_REJECTED.format(content_type=result.content_type)
 
-    ext = url_ext or extension_from_content_type(result.content_type)
+    ext = extension_from_url(url) or extension_from_content_type(result.content_type)
     rel = session_download_relpath(download_filename(url, ext))
     _, sandbox_path = await write_session_file(
         user_id=user_id,
@@ -84,15 +73,6 @@ async def download(
     log.set(download={"bytes": len(result.data), "content_type": result.content_type})
     log.info(f"{LogTag.TOOL} Downloaded a file into the workspace")
     return sandbox_path
-
-
-def _session_workspace_rel(session_id: str, rel: str) -> str:
-    """`/workspace`-relative path of a session file — what ``user_owns_regular_file`` takes."""
-    return f"{SESSIONS_DIRNAME}/{session_id}/{rel}"
-
-
-def _abs_path(session_id: str, rel: str) -> str:
-    return f"{WORKSPACE_ROOT}/{_session_workspace_rel(session_id, rel)}"
 
 
 tools = [download]
