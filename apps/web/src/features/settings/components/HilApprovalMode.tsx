@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { Select, SelectItem } from "@heroui/select";
 import type { HilMode } from "@shared/chat";
 import { useRouter } from "next/navigation";
@@ -47,6 +48,11 @@ export function HilApprovalMode() {
   return (
     <SettingsSection
       title="Approvals"
+      titleAccessory={
+        <Chip size="sm" variant="flat" color="success">
+          Beta
+        </Chip>
+      }
       description="Choose when GAIA checks with you before destructive actions."
     >
       <SettingsRow
