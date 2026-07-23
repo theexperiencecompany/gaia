@@ -333,10 +333,17 @@ class MiddlewareExecutor:
         runtime = self._create_tool_runtime(config, store, tool_name)
         request = create_tool_call_request(tool_call, tool, state, runtime)
 
+        # Holds the tool's own result once it has run, so the fallback below can
+        # tell a middleware that failed *before* the tool from one that failed
+        # after it — only the former is safe to retry.
+        tool_result: ToolMessage | None = None
+
         # Build the handler chain from inside out
         async def final_handler(req: ToolCallRequest) -> ToolMessage:
             """Innermost handler - actually calls the tool."""
-            return await invoke_fn(req.tool_call)
+            nonlocal tool_result
+            tool_result = await invoke_fn(req.tool_call)
+            return tool_result
 
         # Wrap with middleware (reverse order so first middleware is outermost)
         current_handler = final_handler
@@ -370,7 +377,12 @@ class MiddlewareExecutor:
             raise
         except Exception as e:
             log.error(f"{LogTag.AGENT} Middleware wrap_tool_call chain failed for {tool_name}: {e}")
-            # Fallback to direct invocation
+            # The tool already ran — re-invoking would fire its side effects a
+            # second time (another screen capture, another write). Ship the raw
+            # result and lose only the post-tool middleware's transforms.
+            if tool_result is not None:
+                return tool_result
+            # Nothing ran yet: a pre-tool middleware broke, so invoke directly.
             return await invoke_fn(tool_call)
 
     def has_wrap_model_call(self) -> bool:
