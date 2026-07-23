@@ -178,8 +178,15 @@ export function buildFilesystemServer(config: FilesystemServer): McpServer {
             return denied(`Image is too large to read (${info.size} bytes).`);
           }
           const data = await readFile(target);
+          // The text block is not optional: the backend streams and persists only
+          // the text of a tool result, and a lane that cannot see pixels describes
+          // the image from it. Without it the model never learns which file this is.
           return {
             content: [
+              {
+                type: "text",
+                text: `Image file ${target} (${imageMime}, ${info.size} bytes) — shown below.`,
+              },
               {
                 type: "image",
                 data: data.toString("base64"),
