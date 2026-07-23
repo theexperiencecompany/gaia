@@ -70,11 +70,13 @@ async def read(
     # re-checks containment so a model-supplied path can't escape it.
     rel = abs_path[len(WORKSPACE_ROOT) + 1 :] if abs_path != WORKSPACE_ROOT else ""
 
-    if ImageCodec.mime_for_path(abs_path) is not None:
+    mime_type = ImageCodec.mime_for_path(abs_path)
+    if mime_type is not None:
         return await _read_image(
             user_id=user_id,
             rel=rel,
             abs_path=abs_path,
+            mime_type=mime_type,
             session_id=session_id,
         )
 
@@ -117,6 +119,7 @@ async def _read_image(
     user_id: str,
     rel: str,
     abs_path: str,
+    mime_type: str,
     session_id: str | None,
 ) -> str | list[dict[str, Any]]:
     """Read an image file and return it as inline content blocks.
@@ -151,19 +154,22 @@ async def _read_image(
     except InvalidImage as e:
         return f"Error: cannot read {abs_path} as an image — {e}"
 
+    # The file's own type and size, not the inline block's: `ImageCodec` may have
+    # transcoded a large PNG to JPEG for delivery, and naming that here would tell
+    # both the UI and the model the wrong thing about what is on disk.
     safe_emit(
         {
             "file_data": {
                 "operation": "read",
                 "path": abs_path,
                 "bytes": file_size,
-                "mime_type": image.mime_type,
+                "mime_type": mime_type,
             }
         },
         session_id=session_id,
     )
 
-    header = f"Image file {abs_path} ({image.mime_type}, {file_size} bytes)"
+    header = f"Image file {abs_path} ({mime_type}, {file_size} bytes)"
     return [text_content_block(f"{header} — shown below."), image.to_block()]
 
 
