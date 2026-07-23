@@ -18,6 +18,11 @@ AGENT_RECURSION_LIMIT = 40  # Comms + provider subagents (routing / focused work
 # this, so enforcement and analytics stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
 SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# The workflow authoring subagent only discovers integrations/triggers then emits
+# JSON; it never executes. A handful of discovery calls is plenty, so it gets a
+# tighter budget than a full agent. On hitting it the runner forces a final
+# answer instead of crashing, so this doubles as the "stop wandering" bound.
+WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80

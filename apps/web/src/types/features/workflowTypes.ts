@@ -179,8 +179,12 @@ export interface Workflow {
   source_integration?: string;
   system_workflow_key?: string;
 
-  /** Integration slugs the user picked to bias step generation */
-  selected_integrations?: string[];
+  /**
+   * Integration ids this workflow uses — picked by the user or identified from
+   * intent. Scopes the tool palette when generating steps. Never stores
+   * connection state; see required/missing below.
+   */
+  integration_ids?: string[];
 
   /** Integrations required by the workflow's steps (computed at read time) */
   required_integrations?: IntegrationRef[];
@@ -200,8 +204,8 @@ export interface CreateWorkflowRequest {
   generate_immediately?: boolean;
   /** Whether GAIA sends the automatic completion notification after each run */
   notify_on_completion?: boolean;
-  /** Integration slugs selected by the user to hint step generation */
-  selected_integrations?: string[];
+  /** Integration ids this workflow uses; scopes the tool palette when generating steps */
+  integration_ids?: string[];
 }
 
 export interface WorkflowExecutionRequest {

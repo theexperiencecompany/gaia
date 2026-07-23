@@ -201,7 +201,7 @@ class TestListWorkflows:
         with patch(
             f"{_WF_SERVICE}.list_workflows",
             new_callable=AsyncMock,
-            return_value=[_make_workflow()],
+            return_value=([_make_workflow()], 1),
         ):
             response = await client.get(BASE_URL)
 
@@ -211,7 +211,7 @@ class TestListWorkflows:
         with patch(
             f"{_WF_SERVICE}.list_workflows",
             new_callable=AsyncMock,
-            return_value=[],
+            return_value=([], 0),
         ):
             response = await client.get(BASE_URL)
 

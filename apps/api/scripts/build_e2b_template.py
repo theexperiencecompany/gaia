@@ -10,9 +10,12 @@ Usage:
     cd apps/api
     uv run python scripts/build_e2b_template.py [--name gaia-coder]
 
-Requires `E2B_API_KEY` in the env. Prints the resulting template ID — set it
-as `E2B_TEMPLATE_ID` in Infisical (and the gaia-backend container will pick
-it up on next boot).
+Requires `E2B_API_KEY` and `E2B_DOMAIN` in the env (we run on E2B's EU cluster:
+`E2B_DOMAIN=e2b-juliett.dev`). Templates are per-cluster — one built on
+`e2b.app` does not exist on the EU cluster and vice versa — so the domain is
+required rather than defaulted, and must match the API's. Prints the resulting
+template ID — set it as `E2B_TEMPLATE_ID` in Infisical (and the gaia-backend
+container will pick it up on next boot).
 
 Security posture
 ----------------
@@ -54,6 +57,9 @@ JFS_LAUNCHER_PATH = Path(__file__).parent / "jfs_launcher.py"
 def build(name: str) -> str:
     if not os.environ.get("E2B_API_KEY"):
         raise SystemExit("E2B_API_KEY is not set in the environment")
+    domain = os.environ.get("E2B_DOMAIN")
+    if not domain:
+        raise SystemExit("E2B_DOMAIN is not set in the environment")
     if not MOUNT_SCRIPT_PATH.exists():
         raise SystemExit(f"Mount script not found at {MOUNT_SCRIPT_PATH}")
     if not JFS_LAUNCHER_PATH.exists():
@@ -195,7 +201,7 @@ def build(name: str) -> str:
         )
     )
 
-    print(f"Building E2B template '{name}'...", file=sys.stderr)
+    print(f"Building E2B template '{name}' on {domain}...", file=sys.stderr)
 
     def _on_log(entry: object) -> None:
         # E2B streams build logs; surface them so the user can see progress

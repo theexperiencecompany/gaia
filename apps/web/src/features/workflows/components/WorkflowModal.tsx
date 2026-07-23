@@ -203,17 +203,22 @@ export default function WorkflowModal({
   const formData = watch();
 
   // The integration slugs that step generation hints on (and that get persisted)
-  // come from the @-mentions in the instructions. Falls back to the existing
-  // workflow's saved slugs for older prompts that predate mention support.
+  // come from the @-mentions in the instructions. Without mentions, fall back to
+  // whichever source authored this workflow: the existing workflow's saved slugs
+  // when editing (also covers prompts predating mention support), or the
+  // assistant's grounded ids when confirming a draft. An assistant prompt has no
+  // @-mentions, so without that fallback the draft's integrations would be lost
+  // and the API would substitute every connected integration.
   const selectedIntegrationSlugs = useMemo(() => {
     const mentioned = mentionedIntegrationIds(
       formData.prompt ?? "",
       integrations,
     );
-    return mentioned.length > 0
-      ? mentioned
-      : (existingWorkflow?.selected_integrations ?? []);
-  }, [formData.prompt, integrations, existingWorkflow]);
+    if (mentioned.length > 0) return mentioned;
+    return (
+      existingWorkflow?.integration_ids ?? draftData?.integration_ids ?? []
+    );
+  }, [formData.prompt, integrations, existingWorkflow, draftData]);
 
   // The integration backing the selected event trigger, if it still needs
   // connecting. Resolved from the selected trigger slug (not trigger_config,
@@ -460,7 +465,7 @@ export default function WorkflowModal({
 
     const currentFormData = workflowToFormData(existingWorkflow);
 
-    const persistedSlugs = [...(existingWorkflow.selected_integrations ?? [])]
+    const persistedSlugs = [...(existingWorkflow.integration_ids ?? [])]
       .sort((a, b) => a.localeCompare(b))
       .join(",");
     const currentSlugs = [...selectedIntegrationSlugs]
@@ -524,7 +529,7 @@ export default function WorkflowModal({
           : undefined,
         generate_immediately: !hasPredefinedSteps,
         notify_on_completion: data.notify_on_completion,
-        selected_integrations:
+        integration_ids:
           selectedIntegrationSlugs.length > 0
             ? selectedIntegrationSlugs
             : undefined,
@@ -591,13 +596,13 @@ export default function WorkflowModal({
           ...data.trigger_config,
         },
         notify_on_completion: data.notify_on_completion,
-        selected_integrations: selectedIntegrationSlugs,
+        integration_ids: selectedIntegrationSlugs,
       };
 
       // Decide if step regeneration is needed BEFORE persisting,
       // so the comparison runs against the previous truth.
       const previousFormData = workflowToFormData(currentWorkflow);
-      const previousSlugs = [...(currentWorkflow.selected_integrations ?? [])]
+      const previousSlugs = [...(currentWorkflow.integration_ids ?? [])]
         .sort((a, b) => a.localeCompare(b))
         .join(",");
       const currentSlugs = [...selectedIntegrationSlugs]
@@ -639,7 +644,7 @@ export default function WorkflowModal({
             {
               instruction: "Update steps to match the new workflow definition",
               force_different_tools: false,
-              selected_integrations:
+              integration_ids:
                 selectedIntegrationSlugs.length > 0
                   ? selectedIntegrationSlugs
                   : undefined,
@@ -818,7 +823,7 @@ export default function WorkflowModal({
         {
           instruction,
           force_different_tools: forceDifferentTools,
-          selected_integrations:
+          integration_ids:
             selectedIntegrationSlugs.length > 0
               ? selectedIntegrationSlugs
               : undefined,

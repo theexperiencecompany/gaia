@@ -44,6 +44,7 @@ from app.utils.exceptions import TriggerRegistrationError
 from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
     ensure_trigger_config_object,
+    filter_existing_integration_ids,
     handle_workflow_error,
     transform_workflow_document,
 )
@@ -246,7 +247,7 @@ class WorkflowService:
                 is_system_workflow=request.is_system_workflow,
                 source_integration=request.source_integration,
                 system_workflow_key=request.system_workflow_key,
-                selected_integrations=request.selected_integrations,
+                integration_ids=await filter_existing_integration_ids(request.integration_ids),
             )
 
             # Python mode keeps datetimes native (BSON dates) so the scheduler's
@@ -378,11 +379,9 @@ class WorkflowService:
             if not request.steps:
                 # Generate steps
                 if request.generate_immediately:
-                    await WorkflowService._generate_workflow_steps(
-                        workflow.id,
-                        user_id,
-                        selected_integrations=request.selected_integrations,
-                    )
+                    # Scoping comes from the workflow's own (already filtered)
+                    # integration_ids, so the queued path grounds identically.
+                    await WorkflowService._generate_workflow_steps(workflow.id, user_id)
                     # Fetch the updated workflow with generated steps
                     updated_workflow = await WorkflowService.get_workflow(workflow.id, user_id)
                     return updated_workflow or workflow
@@ -455,9 +454,18 @@ class WorkflowService:
 
     @staticmethod
     async def list_workflows(
-        user_id: str, exclude_todo_workflows: bool = True
-    ) -> list[WorkflowWithIntegrations]:
-        """List all workflows for a user, excluding auto-generated todo workflows by default."""
+        user_id: str,
+        exclude_todo_workflows: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> tuple[list[WorkflowWithIntegrations], int]:
+        """List a user's workflows (newest first), excluding auto-generated todo workflows by default.
+
+        Each workflow is enriched with its required/missing integrations using a
+        single connection-status call. Returns ``(workflows, total)`` where
+        ``total`` is the full match count ignoring ``limit``/``offset``. Pass
+        ``limit=None`` to fetch every match.
+        """
         try:
             # Build query - filter out todo workflows by default
             query: dict[str, Any] = {"user_id": user_id}
@@ -467,9 +475,19 @@ class WorkflowService:
                     {"is_todo_workflow": False},
                 ]
 
-            # Use to_list() for better performance
-            docs = (
-                await workflows_collection.find(query).sort("created_at", -1).to_list(length=None)
+            cursor = workflows_collection.find(query).sort("created_at", -1)
+            if offset:
+                cursor = cursor.skip(offset)
+            if limit is not None:
+                cursor = cursor.limit(limit)
+            docs = await cursor.to_list(length=limit)
+
+            # Only a paginated caller needs a separate count; an unpaginated fetch
+            # already holds every match, so counting again is a wasted round-trip.
+            total = (
+                await workflows_collection.count_documents(query)
+                if limit is not None
+                else offset + len(docs)
             )
 
             workflows: list[WorkflowWithIntegrations] = []
@@ -485,18 +503,23 @@ class WorkflowService:
 
             # Enrich all workflows with integration fields in one status call.
             # Deferred import: oauth_service → provisioner → service is circular.
-            from app.services.oauth.oauth_service import get_all_integrations_status
+            if workflows:
+                from app.services.oauth.oauth_service import get_all_integrations_status
 
-            status_map = await get_all_integrations_status(user_id)
-            for workflow in workflows:
-                required = compute_required_integrations(workflow.steps, workflow.trigger_config)
-                (
-                    workflow.required_integrations,
-                    workflow.missing_integrations,
-                ) = build_integration_refs(required, status_map)
+                status_map = await get_all_integrations_status(user_id)
+                for workflow in workflows:
+                    required = compute_required_integrations(
+                        workflow.steps, workflow.trigger_config
+                    )
+                    (
+                        workflow.required_integrations,
+                        workflow.missing_integrations,
+                    ) = build_integration_refs(required, status_map)
 
-            log.debug(f"{LogTag.WORKFLOW} Retrieved {len(workflows)} workflows for user {user_id}")
-            return workflows
+            log.debug(
+                f"{LogTag.WORKFLOW} Retrieved {len(workflows)}/{total} workflows for user {user_id}"
+            )
+            return workflows, total
 
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error listing workflows for user {user_id}: {e!s}")
@@ -546,10 +569,19 @@ class WorkflowService:
                 new_trigger_config.enabled = effective_activated
 
                 # Automatically populate timezone field if it's a scheduled workflow.
-                # The timezone chosen in the UI for this schedule wins; fall back to
-                # the request-resolved user timezone, then UTC.
+                # The timezone chosen in the UI for this schedule wins. When the
+                # update omits it, keep the zone the schedule already runs in —
+                # editing a cron must not silently relocate the schedule to
+                # whichever zone the request happened to resolve. Fall back to the
+                # request-resolved user timezone only for a schedule that never had
+                # one, then UTC.
                 if new_trigger_config.type == "schedule":
-                    timezone_to_use = new_trigger_config.timezone or user_timezone or "UTC"
+                    timezone_to_use = (
+                        new_trigger_config.timezone
+                        or current_workflow.trigger_config.timezone
+                        or user_timezone
+                        or "UTC"
+                    )
                     log.info(
                         f"{LogTag.WORKFLOW} Updating workflow {workflow_id} with timezone: {timezone_to_use}"
                     )
@@ -962,7 +994,7 @@ class WorkflowService:
         user_id: str,
         regeneration_reason: str | None = None,
         force_different_tools: bool = True,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
     ) -> Workflow | None:
         """Regenerate steps for an existing workflow."""
         try:
@@ -970,10 +1002,8 @@ class WorkflowService:
             if not workflow:
                 return None
 
-            effective_slugs = (
-                selected_integrations
-                if selected_integrations is not None
-                else workflow.selected_integrations
+            effective_integration_ids = (
+                integration_ids if integration_ids is not None else workflow.integration_ids
             )
 
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
@@ -981,7 +1011,7 @@ class WorkflowService:
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
-                selected_integrations=effective_slugs,
+                integration_ids=effective_integration_ids or None,
                 user_id=user_id,
             )
 
@@ -996,8 +1026,10 @@ class WorkflowService:
                 "steps": steps_data,
                 "updated_at": datetime.now(UTC),
             }
-            if selected_integrations is not None:
-                update_set["selected_integrations"] = selected_integrations
+            if integration_ids is not None:
+                update_set["integration_ids"] = await filter_existing_integration_ids(
+                    integration_ids
+                )
             if missing:
                 update_set["activated"] = False
                 update_set[TRIGGER_CONFIG_ENABLED_FIELD] = False
@@ -1230,9 +1262,13 @@ class WorkflowService:
     async def _generate_workflow_steps(
         workflow_id: str,
         user_id: str,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
     ) -> None:
-        """Generate workflow steps using LLM with structured output."""
+        """Generate workflow steps using LLM with structured output.
+
+        Falls back to the workflow's own integration_ids so every caller
+        (immediate, queued, agent-created) scopes the tool palette the same way.
+        """
         try:
             await workflows_collection.find_one_and_update(
                 {"_id": workflow_id, "user_id": user_id},
@@ -1250,7 +1286,7 @@ class WorkflowService:
                 workflow.title,
                 workflow.trigger_config,
                 description=workflow.description,
-                selected_integrations=selected_integrations,
+                integration_ids=integration_ids or workflow.integration_ids or None,
                 user_id=user_id,
             )
 

@@ -262,6 +262,7 @@ def create_subagent_middleware(
     subagent_excluded_tools: set[str] | None = None,
     subagent_tool_space: str = "general",
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
+    enable_subagent: bool = True,
 ) -> list[Any]:
     """
     Create middleware stack for provider subagents.
@@ -280,13 +281,15 @@ def create_subagent_middleware(
         subagent_registry: Alternative tool registry for spawned sub-subagents
         subagent_excluded_tools: Tool names to exclude from sub-subagent access
         subagent_tool_space: Tool space for spawned sub-subagent retrieve_tools search
+        enable_subagent: Whether to include the spawn_subagent middleware. False
+            for authoring-only subagents that must not spawn or execute.
 
     Returns:
         List of middleware for provider subagents
     """
     return create_middleware_stack(
         agent_name="provider_subagent",
-        enable_subagent=True,
+        enable_subagent=enable_subagent,
         enable_summarization=False,
         enable_compaction=True,
         subagent_llm=subagent_llm,

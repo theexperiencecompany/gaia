@@ -298,29 +298,49 @@ user-visible output from a subagent STILL goes in the parent session's
 
 NOTIFICATIONS_DOC: Final[str] = """# Notifications & channels
 
-How GAIA reaches the user outside an active chat.
+How GAIA reaches the user — both reading their notification inbox and sending
+them a message on a channel.
 
-## What you can do today
+## Reading notifications
 
-- **Read** the user's notifications: `get_notifications`, `search_notifications`,
-  `get_notification_count`, `mark_notifications_read`.
+- `get_notifications` — the user's notification inbox (filter by status/type).
+- `search_notifications` — text search over their notifications.
+- `get_notification_count` — how many (e.g. unread).
+- `mark_notifications_read` — mark one or more read.
 
-## Delivery channels (current reality)
+## Sending a message to the user — `send_notification`
 
-Notifications can be delivered to web/push, email, and messaging platforms
-(WhatsApp, Telegram, Discord, Slack). Important: a messaging platform is a
-*notification/messaging channel established via a platform link* — it is NOT an
-OAuth integration, so `connect_integration("whatsapp")` will not work and will
-report "not found".
+`send_notification(message, title, channels, notification_type="info")`
+proactively pings the user on a channel. Use it for "text me on WhatsApp when
+X", or to alert the user to an important result when they may be away from the
+app.
 
-Until a dedicated channel tool exists, if the user asks to enable a channel
-("send me a WhatsApp when X happens", "turn on Telegram notifications"):
-- Do NOT claim it's done and do NOT route it through `connect_integration`.
-- Tell the user channels are managed from their notification settings in the
-  app (and, for messaging platforms, by linking the bot), and offer to set up
-  the underlying trigger/tracked-todo that would fire the notification.
+- `channels` is REQUIRED and must be exactly what the user named — "text me on
+  WhatsApp" → `["whatsapp"]`, "ping me on Slack" → `["slack"]`. Valid channels:
+  `whatsapp`, `telegram`, `discord`, `slack`, `inapp`. If the user did NOT name
+  a channel, ASK which one(s) — never guess and never broadcast.
+- A messaging channel only delivers if the user has LINKED that platform
+  (WhatsApp/Telegram/Discord/Slack) and has it enabled; an unlinked channel is
+  silently skipped. The return reports `delivered_channels` — check it. If a
+  channel didn't deliver, tell the user that platform isn't linked and that
+  channels are linked/managed in their settings in the app.
+- Use sparingly: only when the user asked, or for an important/time-sensitive
+  result — not for routine completions already visible in chat, and not on
+  every step of a task.
+- `get_notification_preferences` — which channels are enabled, before targeting
+  one.
 
-This doc will be updated when an agent-driven channel/link tool ships.
+A messaging platform is a *channel established via a platform link*, NOT an
+OAuth integration — so `connect_integration("whatsapp")` will fail with "not
+found". Linking a platform and toggling which channels are enabled are done by
+the user in their app settings; there is no agent tool for that yet.
+
+## Workflow result delivery
+
+When a workflow finishes it delivers its result automatically to the user's
+linked platforms + in-app (unless the workflow is silent). Do NOT also call
+`send_notification` to announce a result that completion delivery already
+sends — that double-notifies. See the `workflows` doc.
 """
 
 
@@ -365,6 +385,256 @@ Memory also updates itself in the background after conversations — you do not
 need to store what a normal exchange already taught the system. Reach for the
 tools when the user explicitly asks you to remember, correct, or forget
 something.
+"""
+
+
+WORKFLOWS_DOC: Final[str] = """# Workflows — saved automations that run on a trigger
+
+A workflow is a reusable automation: a saved instruction set GAIA runs by itself
+when a **trigger** fires — on a schedule, on an external event from a connected
+integration, or on demand. It runs on the full executor with all your tools, in
+the background, exactly as if the user had asked you to do the task in chat. Use
+workflows for anything recurring or event-driven: "every morning summarize my
+unread email", "when a GitHub PR is opened, post it to Slack", "every Friday at
+5pm draft my weekly update".
+
+## Don't confuse it with your other state
+
+- **Workflow** — a recurring/triggered automation that re-runs itself. The thing
+  that *fires* on a schedule or event.
+- **Tracked todo** (`tracked-todos`) — institutional memory of one initiative you
+  act on and follow up over time. Can be scheduled, but it is a record of work,
+  not a reusable automation.
+- **Reminder** — a one-off time-based nudge to the user, no agent action.
+
+## The one rule: `create_workflow` is a delegator, not a constructor
+
+`create_workflow` takes ONLY the user's request — nothing else. A
+dedicated workflow assistant does all the hard parts: understanding intent,
+searching for the right trigger, choosing the trigger type, writing the prompt,
+generating the cron expression, and producing the steps. You must NOT:
+
+- parse or convert the schedule — never write a cron expression yourself, and
+  never convert to UTC (the assistant writes cron in the user's local time),
+- pick the trigger type (manual / schedule / integration),
+- write the title, prompt, or steps,
+- call `search_triggers` yourself for normal creation.
+
+Pass the user's words through verbatim and let the assistant do the rest.
+
+## Tools
+
+- `create_workflow(user_request)` — start creation. Pass the user's request
+  EXACTLY as stated; the assistant does the rest.
+- `edit_workflow(workflow_id, user_request)` — change an existing workflow
+  (behavior, schedule, trigger). Also delegates to the assistant; pass the change
+  verbatim. Find the id with `list_workflows`/`get_workflow` first.
+- `pause_workflow(workflow_id)` — stop a workflow from firing (deactivate).
+- `resume_workflow(workflow_id)` — restart a paused workflow.
+- `list_workflows(page, page_size)` — a page of the user's workflows (title,
+  trigger type, activated, step count, run count) plus `total`/`has_more`. For
+  "what automations do I have?" and to resolve an id before editing/pausing.
+- `get_workflow(workflow_id)` — full detail of one workflow.
+- `execute_workflow(workflow_id)` — run one immediately ("run my digest now").
+- `search_triggers(query)` — find integration triggers. The workflow assistant
+  uses this internally; you rarely call it directly.
+
+Always `list_workflows` (or `get_workflow`) FIRST to get the right `workflow_id`
+before editing, pausing, or resuming. You can only act on the current user's own
+workflows; an id that isn't theirs returns `not_found`.
+
+There is NO delete tool — deleting a workflow is done by the user in the app.
+Offer to pause it instead, or point them to the app to delete.
+
+## What `create_workflow` returns — handle each status
+
+- `created` — created AND auto-activated immediately (carries `workflow_id`).
+  Confirm to the user with the title and schedule.
+- `draft_sent` — a draft card was streamed to the app for the user to confirm or
+  fill in. Tell them to review and confirm it. ALL integration-triggered
+  workflows take this path, because their trigger config (which channels, repos,
+  calendars) can't be guessed.
+- `clarifying` — the assistant needs more info; the `question` field carries the
+  text. Relay it, then call `create_workflow` again with the answer folded into
+  `user_request`.
+- error statuses (`missing_request`, `subagent_failed`, …) — surface the issue.
+
+## Triggers
+
+- **Schedule** — cron in the user's local time ("every morning at 8" →
+  `0 8 * * *` in their timezone). Unambiguous scheduled/manual workflows are
+  created and activated immediately.
+- **Integration** — fires on an external event from a CONNECTED service: Gmail
+  (new mail), Google Calendar (event created / starting soon), GitHub
+  (commit/PR/issue/star), Linear, Notion, Slack, Google Docs/Sheets, Todoist,
+  Asana. Integration workflows always come back `draft_sent` and only run once
+  the underlying integration is connected.
+- **Manual** — runs only when the user (or `execute_workflow`) triggers it.
+
+## How a workflow runs
+
+- **Its own chat.** Each workflow has a dedicated conversation, created once and
+  reused for every run, so the workflow's run history reads like a chat thread.
+  Each run appears there as a turn (a workflow "card" + the result).
+- **Full executor, in the background.** A run executes silently on the same
+  executor with all the same tools you have, exactly like a user-typed task. It
+  is driven by the workflow's `prompt` (the steps are a hint/preview).
+- **It can message the user mid-run.** Because a run has the full toolset, it has
+  `send_notification`. So if the prompt says "send me the result on WhatsApp",
+  the run sends it there itself via that tool. See the `notifications` doc.
+
+## Results & notifications
+
+By default (`notify_on_completion` on) the final result is delivered
+automatically: posted as real messages into the user's linked messaging
+platforms (WhatsApp/Telegram/Discord/Slack) and surfaced as an in-app completion
+notification. A silent workflow delivers nothing on success; it only reaches the
+user if its own prompt sends something (e.g. an explicit `send_notification`).
+Failures always notify. So do NOT add a `send_notification` to announce a result
+that completion delivery already sends, and do NOT double-send if the prompt
+already messages the user. See the `notifications` doc for channel details.
+
+## Typical flow
+
+User: "Every weekday at 8am, summarize my unread emails and text me."
+1. `create_workflow(user_request="every weekday at 8am summarize my unread emails and text me")` — verbatim; don't write the cron or steps.
+2. The assistant recognizes a schedule, writes the prompt + local-time cron, and
+   (schedule + unambiguous) direct-creates → `created` with a `workflow_id`,
+   auto-activated.
+3. Confirm: "Done — 'Morning email summary' runs every weekday at 8am and will
+   text you the result." Delivery to their phone happens via completion delivery
+   if they have a linked platform.
+
+If it returns `clarifying`, relay the question and retry with the answer. If
+`draft_sent`, tell them to confirm the card in the app.
+
+## Gotchas
+
+- `create_workflow` and `edit_workflow` take only the user's words. Passing a
+  title / prompt / steps / cron / trigger is wrong — the assistant owns all of it.
+- Never convert the schedule to UTC; cron stays in the user's local time.
+- Resolve the `workflow_id` with `list_workflows`/`get_workflow` before editing,
+  pausing, or resuming — don't guess it.
+- Changing an integration trigger's config (which channels/repos/calendars) is
+  done by the user in the app's workflow editor, not by `edit_workflow`.
+- Integration workflows never create instantly — expect `draft_sent`, and they
+  need the integration connected first.
+"""
+
+
+REMINDERS_DOC: Final[str] = """# Reminders — one-off and recurring time-based nudges
+
+A reminder is a scheduled ping to the USER: "remind me to call Sam at 3pm",
+"ping me in 20 minutes", "every weekday at 9am tell me to stand up". It fires at
+its time and notifies the user. It does NOT run the agent or perform any action,
+it just nudges. That is the line between a reminder and the rest:
+
+- **Reminder** — fires a notification to the user at a time. No agent work.
+- **Workflow** — runs the full agent (with tools) on a schedule/event. Use it
+  when the automation must DO something (fetch, summarize, post), not just nudge.
+- **Tracked todo** — institutional memory of an initiative GAIA acts on. Can be
+  scheduled, but it records work; it is not a bare nudge.
+
+"Remind me", "ping me", "alert me", "set a timer", "notify me in N minutes" are
+reminders. "Every morning summarize my email" is a workflow.
+
+## How to use it
+
+Reminders are owned by the reminders subagent. Hand the request to it:
+`handoff("reminders", "remind me to ...")`. It owns the reminder tools (create,
+update, list, get, search, delete) and handles scheduling, recurrence, and
+timezones; you do not call those tools directly.
+
+- **Timezone:** times are read in the user's home timezone unless they name
+  another. Do not convert to UTC yourself.
+- **Recurrence:** one-off ("at 3pm today") or recurring ("every weekday at 9am").
+- **Deleting** a reminder is destructive and needs explicit user confirmation.
+
+Reminders show on the user's reminders view in the app and deliver through their
+notification channels when they fire.
+"""
+
+
+GOALS_DOC: Final[str] = """# Goals — long-term objectives and roadmaps
+
+A goal is a HIGH-LEVEL, long-term objective the user wants to work toward: "learn
+Spanish", "launch my startup", "run a marathon". GAIA can break a goal into an
+actionable roadmap (phases and tasks) and track progress over time. Goals are
+distinct from todos: a todo is one concrete action ("buy a Spanish textbook"); a
+goal is the ambition those actions serve. Steer ambitions into goals, day-to-day
+actions into todos.
+
+## How to use it
+
+Goals are owned by the goals subagent: `handoff("goals", "...")`. It owns the
+goal tools (create, list, get, search, statistics, generate or regenerate a
+roadmap, mark roadmap nodes complete) and the roadmap generation; you do not call
+those directly.
+
+Typical flow: create the goal, then offer to generate a roadmap; later, mark
+roadmap nodes complete as the user makes progress, and report completion
+percentages. Deleting a goal also removes its roadmap and needs explicit user
+confirmation.
+
+Goals and their roadmaps show on the user's goals view in the app.
+"""
+
+
+SKILLS_DOC: Final[str] = """# Skills — installable how-to procedures that extend GAIA
+
+A skill is a reusable procedure GAIA can load to do a task a specific way: a
+folder with a `SKILL.md` (name, description, and step-by-step instructions, plus
+any scripts or resources). Skills follow the open Agent Skills standard. Install
+one from GitHub or author one inline when the user wants to teach GAIA a
+repeatable way of doing something ("whenever I post a standup, format it like
+this").
+
+## Scope — who can use a skill
+
+- **global** — every agent (executor and all subagents).
+- **executor** — only the main executor.
+- **a specific subagent** (gmail, github, slack, …) — only that specialist.
+
+Pick the narrowest scope that fits; ask the user if it is ambiguous.
+
+## How to use it
+
+Skills are owned by the skills subagent: `handoff("skills", "...")`. It owns the
+skill tools (install from GitHub, create inline, list installed, enable, disable,
+uninstall) and validates names and scopes; you do not call those directly.
+
+- Installing from GitHub needs the specific skill folder path, not just the repo
+  root (e.g. `owner/repo` with skill_path `skills/pdf-processing`).
+- Skill names are kebab-case.
+- A good description names the trigger phrases that should activate the skill.
+
+Installed skills live in the user's workspace and activate automatically when a
+task matches their description.
+"""
+
+
+DOCUMENTS_DOC: Final[
+    str
+] = """# Documents — generate downloadable files (PDF, Word, slides, spreadsheets)
+
+When the user wants a real downloadable FILE rather than a chat answer ("make a
+PDF report", "export this as a Word doc", "build a slide deck", "create a
+spreadsheet", "generate an invoice"), GAIA produces it with the document
+generator. It writes the document source in the sandbox and compiles it with the
+right toolchain (Typst for PDF, docx for Word, pptx for slides, xlsx/CSV for
+spreadsheets), then delivers the finished file.
+
+## How to use it
+
+The document generator is a subagent: `handoff("docgen", "...")`. Give it the
+request plus the source data (the content to put in the file). It writes,
+compiles, and delivers the file into the session's `artifacts/`, where it renders
+as a downloadable card in chat; you do not run the compile toolchain yourself.
+
+- Use it whenever the deliverable is a file: PDF, `.docx`, `.pptx`, `.xlsx`, or CSV.
+- Do NOT use it to edit documents inside a connected app (Google Docs/Sheets);
+  those belong to that integration's subagent.
+- The finished file lands in `artifacts/` (see the `sessions-and-artifacts` doc).
 """
 
 
@@ -428,26 +698,45 @@ these.
 | "What did we do on <day> / when did we last ...?" | `get_journal` / `search_journal` | `memory` |
 | "Track this / follow up later / what are you tracking?" | tracked-todo tools | `tracked-todos` |
 | "Add to my todo list / what are my tasks?" | the user's todo provider | `user-todos` |
-| "Notify / remind me on WhatsApp/Telegram/email" | see the notifications doc | `notifications` |
-| "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `handoff("docgen", ...)` | docgen subagent |
+| "Set a goal / make a roadmap / track progress on X" | `handoff("goals", ...)` | `goals` |
+| "Remind me / ping me / set a timer at <time>" | `handoff("reminders", ...)` | `reminders` |
+| "Text / notify me on WhatsApp/Telegram/Slack" | `send_notification(channels=[...])` | `notifications` |
+| "Automate X / every morning do Y / set up a workflow" | `create_workflow(user_request)` | `workflows` |
+| "Change / pause / resume a workflow" | `edit_workflow` / `pause_workflow` / `resume_workflow` (list first for the id) | `workflows` |
+| "Install / create a skill / teach you a repeatable procedure" | `handoff("skills", ...)` | `skills` |
+| "Make / export a downloadable file (PDF, Word, slides, spreadsheet, CSV)" | `handoff("docgen", ...)` | `documents` |
 | "How do you work / how do I configure you?" | answer from this core + the doc | (this core) |
+| "What is GAIA / what does it cost / who built it / what can't it do?" | `handoff("gaia_knowledge_guide", ...)` | (product Q&A) |
 
 Persist a preference only when it is DURABLE, not a one-off for this turn.
 
 ## Read more (your topic docs)
 
-When a request matches one of these, read the full doc with
-`read_manual("<name>")` (no sandbox needed) — or it may already be injected.
+Before acting on a self-management task (integrations, tracked-todos, user-todos,
+sessions/artifacts, notifications, workflows, memory), read that topic's doc with
+`read_manual("<name>")` (no sandbox needed) unless its content is already in your
+context. It is cheap and keeps you from guessing how your own machinery works.
 
 - `integrations` — discover, connect, and configure integrations; per-
   integration custom instructions; the subagent model.
 - `tracked-todos` — create / search / update / schedule / complete tracked
   todos; canvas conventions; recurrence; institutional memory.
 - `user-todos` — the user's own todo list and external task providers.
+- `goals` — long-term goals and AI-generated roadmaps; tracking progress (the
+  goals subagent).
+- `reminders` — one-off and recurring time-based nudges to the user; how a
+  reminder differs from a workflow and a tracked todo (the reminders subagent).
 - `sessions-and-artifacts` — working inside a session; producing artifacts.
-- `notifications` — notification channels and delivery.
+- `notifications` — reading the inbox and sending the user a message on a
+  channel (`send_notification`); channel linking is user-managed.
+- `workflows` — saved automations that run on a schedule or integration event;
+  what `create_workflow` does and doesn't do; result delivery.
 - `memory` — your long-term memory about the user: the `/workspace/memory/`
   layout, journal, core documents, and the memory tools.
+- `skills` — install (from GitHub) or author skills inline, scope them, and
+  manage them; how skills extend GAIA (the skills subagent).
+- `documents` — generate downloadable files (PDF, Word, slides, spreadsheets,
+  CSV) from a request and its data (the docgen subagent).
 
 ## Operating rules
 
@@ -500,6 +789,24 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
             body=USER_TODOS_DOC,
         ),
         ManualDoc(
+            name="goals",
+            title="Goals — long-term objectives and roadmaps",
+            description=(
+                "Long-term goals and AI-generated roadmaps: create, track progress, "
+                "and complete roadmap nodes (handoff to the goals subagent)."
+            ),
+            body=GOALS_DOC,
+        ),
+        ManualDoc(
+            name="reminders",
+            title="Reminders — one-off and recurring time-based nudges",
+            description=(
+                "Time-based nudges to the user ('remind me', 'ping me', 'set a "
+                "timer'); how a reminder differs from a workflow and a tracked todo."
+            ),
+            body=REMINDERS_DOC,
+        ),
+        ManualDoc(
             name="sessions-and-artifacts",
             title="Sessions & artifacts — working inside a conversation",
             description="Working inside a session; producing user-facing artifacts.",
@@ -508,8 +815,21 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
         ManualDoc(
             name="notifications",
             title="Notifications & channels",
-            description="Notification channels and delivery (WhatsApp/Telegram/email/push).",
+            description=(
+                "Reading the notification inbox and sending the user a message on a "
+                "channel (send_notification, WhatsApp/Telegram/Slack); channel linking."
+            ),
             body=NOTIFICATIONS_DOC,
+        ),
+        ManualDoc(
+            name="workflows",
+            title="Workflows — saved automations that run on a trigger",
+            description=(
+                "Create, run, and list saved automations (workflows) that fire on a "
+                "schedule or integration event; what create_workflow does and doesn't "
+                "do; result delivery."
+            ),
+            body=WORKFLOWS_DOC,
         ),
         ManualDoc(
             name="memory",
@@ -520,6 +840,24 @@ MANUAL_DOCS: Final[dict[str, ManualDoc]] = {
                 "forget, journal, documents)."
             ),
             body=MEMORY_DOC,
+        ),
+        ManualDoc(
+            name="skills",
+            title="Skills — installable how-to procedures that extend GAIA",
+            description=(
+                "Install (from GitHub) or author skills inline, set their scope, and "
+                "manage them; how skills extend GAIA (handoff to the skills subagent)."
+            ),
+            body=SKILLS_DOC,
+        ),
+        ManualDoc(
+            name="documents",
+            title="Documents — generate downloadable files",
+            description=(
+                "Produce downloadable files (PDF, Word, slides, spreadsheets, CSV) "
+                "from a request and its data (handoff to the docgen subagent)."
+            ),
+            body=DOCUMENTS_DOC,
         ),
     )
 }
@@ -532,9 +870,14 @@ ManualTopic = Literal[
     "integrations",
     "tracked-todos",
     "user-todos",
+    "goals",
+    "reminders",
     "sessions-and-artifacts",
     "notifications",
+    "workflows",
     "memory",
+    "skills",
+    "documents",
 ]
 
 if set(get_args(ManualTopic)) != set(MANUAL_DOCS):
@@ -564,13 +907,18 @@ def manual_index_text() -> str:
 
 
 __all__ = [
+    "DOCUMENTS_DOC",
     "GAIA_CORE",
+    "GOALS_DOC",
     "INTEGRATIONS_DOC",
     "MEMORY_DOC",
     "NOTIFICATIONS_DOC",
+    "REMINDERS_DOC",
     "SESSIONS_ARTIFACTS_DOC",
+    "SKILLS_DOC",
     "TRACKED_TODOS_DOC",
     "USER_TODOS_DOC",
+    "WORKFLOWS_DOC",
     "ManualDoc",
     "ManualTopic",
     "MANUAL_DOCS",

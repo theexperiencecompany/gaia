@@ -75,11 +75,11 @@ async def create_workflow(
         request.is_system_workflow = False
         request.source_integration = None
         request.system_workflow_key = None
-        # Default selected_integrations to the user's connected integrations so
+        # Default integration_ids to the user's connected integrations so
         # step generation is grounded in tools the user can actually use.
-        if request.selected_integrations is None:
+        if request.integration_ids is None:
             status_map = await get_all_integrations_status(user["user_id"])
-            request.selected_integrations = [
+            request.integration_ids = [
                 integration_id
                 for integration_id, is_connected in status_map.items()
                 if is_connected
@@ -128,7 +128,7 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
     )
 
     try:
-        workflows = await WorkflowService.list_workflows(user["user_id"])
+        workflows, _total = await WorkflowService.list_workflows(user["user_id"])
         log.set(
             workflow=WorkflowContext(result_count=len(workflows)),
             outcome="success",
@@ -349,7 +349,7 @@ async def regenerate_workflow_steps(
             user["user_id"],
             regeneration_reason=request.reason,
             force_different_tools=request.force_different_tools,
-            selected_integrations=request.selected_integrations,
+            integration_ids=request.integration_ids,
         )
         if not workflow:
             raise HTTPException(
@@ -668,7 +668,7 @@ async def generate_workflow_prompt_endpoint(
             description=request.description,
             trigger_config=request.trigger_config,
             existing_prompt=request.existing_prompt,
-            selected_integrations=request.selected_integrations,
+            integration_ids=request.integration_ids,
         )
         log.set(outcome="success")
         return GenerateWorkflowPromptResponse(**result)
