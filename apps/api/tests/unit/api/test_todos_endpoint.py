@@ -546,19 +546,15 @@ class TestDeleteProject:
 class TestBulkUpdateTodos:
     """PUT /api/v1/todos/bulk
 
-    Note: PUT /todos/bulk is shadowed by PUT /todos/{todo_id} due to route
-    registration order.  The parameterised route matches first, so "bulk" is
-    treated as a todo_id.  Tests below verify the *actual* production
-    behaviour.
+    The literal /todos/bulk route is declared before /todos/{todo_id}, so it
+    reaches the bulk_update handler (not update_todo with todo_id="bulk").
     """
 
     async def test_bulk_update_success(self, client: AsyncClient) -> None:
-        # PUT /todos/bulk is intercepted by PUT /todos/{todo_id} (todo_id="bulk").
-        # Patching update_todo so the intercepting route succeeds.
         with patch(
-            "app.services.todos.todo_service.TodoService.update_todo",
+            "app.services.todos.todo_service.TodoService.bulk_update_todos",
             new_callable=AsyncMock,
-            return_value=_todo_response("bulk", title="Updated"),
+            return_value=_bulk_response(["t1", "t2"]),
         ):
             resp = await client.put(
                 f"{API}/todos/bulk",
@@ -567,26 +563,22 @@ class TestBulkUpdateTodos:
                     "updates": {"completed": True},
                 },
             )
-        # Hits update_todo route, which returns a TodoResponse
         assert resp.status_code == 200
-        assert resp.json()["id"] == "bulk"
+        body = resp.json()
+        assert body["total"] == 2
+        assert body["success"] == ["t1", "t2"]
 
     async def test_bulk_update_validation_error_empty_ids(self, client: AsyncClient) -> None:
-        # PUT /todos/bulk is intercepted by PUT /todos/{todo_id}.
-        # The body doesn't match TodoUpdateRequest validation, so 422.
+        # An empty todo_ids list violates BulkUpdateRequest (min_length=1) → 422.
         resp = await client.put(
             f"{API}/todos/bulk",
             json={"todo_ids": [], "updates": {"completed": True}},
         )
-        # Body has extra fields but TodoUpdateRequest will still parse what it can.
-        # The update_todo endpoint receives todo_id="bulk", and the body is
-        # interpreted as TodoUpdateRequest (unknown fields ignored), so it hits
-        # the service, which fails because "bulk" is not a valid todo.
-        assert resp.status_code == 500
+        assert resp.status_code == 422
 
     async def test_bulk_update_service_error(self, client: AsyncClient) -> None:
         with patch(
-            "app.services.todos.todo_service.TodoService.update_todo",
+            "app.services.todos.todo_service.TodoService.bulk_update_todos",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -651,39 +643,38 @@ class TestBulkMoveTodos:
 class TestBulkDeleteTodos:
     """DELETE /api/v1/todos/bulk
 
-    Note: DELETE /todos/bulk is shadowed by DELETE /todos/{todo_id} due to
-    route registration order.  "bulk" is treated as a todo_id.
+    The literal /todos/bulk route is declared before /todos/{todo_id}, so it
+    reaches the bulk_delete handler (not delete_todo with todo_id="bulk").
     """
 
     async def test_bulk_delete_success(self, client: AsyncClient) -> None:
-        # DELETE /todos/bulk is intercepted by DELETE /todos/{todo_id} (todo_id="bulk").
         with patch(
-            "app.services.todos.todo_service.TodoService.delete_todo",
+            "app.services.todos.todo_service.TodoService.bulk_delete_todos",
             new_callable=AsyncMock,
+            return_value=_bulk_response(["t1", "t2"]),
         ):
             resp = await client.request(
                 "DELETE",
                 f"{API}/todos/bulk",
                 json=["t1", "t2"],
             )
-        # Hits delete_todo route, which returns 204 on success
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 2
+        assert body["success"] == ["t1", "t2"]
 
     async def test_bulk_delete_validation_error_empty(self, client: AsyncClient) -> None:
-        # DELETE /todos/bulk intercepted by DELETE /todos/{todo_id}.
-        # The delete_todo endpoint does not validate a JSON body — it just
-        # uses the path param (todo_id="bulk") and calls the service.
-        # Without a service patch, the delete_todo service call will fail.
+        # An empty body violates the Body(min_length=1) constraint → 422.
         resp = await client.request(
             "DELETE",
             f"{API}/todos/bulk",
             json=[],
         )
-        assert resp.status_code == 500
+        assert resp.status_code == 422
 
     async def test_bulk_delete_service_error(self, client: AsyncClient) -> None:
         with patch(
-            "app.services.todos.todo_service.TodoService.delete_todo",
+            "app.services.todos.todo_service.TodoService.bulk_delete_todos",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
