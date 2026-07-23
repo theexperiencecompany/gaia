@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import Annotated
 
 from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
@@ -19,6 +20,8 @@ from app.db.mongodb.collections import (
 )
 from app.models.user_models import (
     BioStatus,
+    OnboardingIntegrationsRequest,
+    OnboardingIntegrationsResponse,
     OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
     OnboardingRequest,
@@ -30,6 +33,7 @@ from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
     reset_onboarding,
+    submit_onboarding_integrations,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -66,8 +70,8 @@ def _normalize_example_blocks(raw: object) -> dict | None:
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user),
-    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
+    user: Annotated[dict, Depends(get_current_user)],
+    tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
 ):
     """Complete user onboarding by storing preferences and queuing the intelligence pipeline."""
     log.set(
@@ -95,6 +99,32 @@ async def complete_user_onboarding(
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
+@router.post(
+    "/integrations",
+    responses={500: {"description": "Failed to submit integrations"}},
+)
+async def submit_integrations(
+    request: OnboardingIntegrationsRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> OnboardingIntegrationsResponse:
+    """Persist selected integrations and start the deferred workflows phase (split-mode onboarding)."""
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "submit_integrations"},
+    )
+    try:
+        status = await submit_onboarding_integrations(
+            user["user_id"], request.selected_integrations
+        )
+        log.set(onboarding={"result_status": status.value})
+        return OnboardingIntegrationsResponse(success=True, status=status)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"{LogTag.ONBOARDING} Error submitting integrations: {e!s}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to submit integrations")
+
+
 class ClarifyQuestionsRequest(BaseModel):
     name: str
     profession: str
@@ -104,7 +134,7 @@ class ClarifyQuestionsRequest(BaseModel):
 @router.post("/clarify-questions", response_model=dict)
 async def get_clarify_questions(
     payload: ClarifyQuestionsRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     """Generate the LLM 3-question follow-up for the no-Gmail path."""
     log.set(
@@ -126,7 +156,7 @@ async def get_clarify_questions(
     response_model=dict,
     responses={500: {"description": "Failed to reset onboarding"}},
 )
-async def reset_user_onboarding(user: dict = Depends(get_current_user)):
+async def reset_user_onboarding(user: Annotated[dict, Depends(get_current_user)]):
     """Fully reset onboarding so the user can run the flow again from scratch."""
     log.set(user={"id": user["user_id"]}, onboarding={"operation": "reset"})
     try:
@@ -140,7 +170,7 @@ async def reset_user_onboarding(user: dict = Depends(get_current_user)):
 
 
 @router.get("/status", response_model=dict)
-async def get_onboarding_status(user: dict = Depends(get_current_user)):
+async def get_onboarding_status(user: Annotated[dict, Depends(get_current_user)]):
     """
     Get the current user's onboarding status and preferences.
     """
@@ -160,7 +190,8 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
 
 @router.post("/phase", response_model=dict)
 async def update_onboarding_phase(
-    request: OnboardingPhaseUpdateRequest, user: dict = Depends(get_current_user)
+    request: OnboardingPhaseUpdateRequest,
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Update the user's onboarding phase.
@@ -226,7 +257,8 @@ async def update_onboarding_phase(
 
 @router.patch("/preferences", response_model=dict)
 async def update_user_preferences(
-    preferences: OnboardingPreferences, user: dict = Depends(get_current_user)
+    preferences: OnboardingPreferences,
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Update user's onboarding preferences.
@@ -253,7 +285,7 @@ async def update_user_preferences(
 
 
 @router.get("/personalization")
-async def get_onboarding_personalization(user: dict = Depends(get_current_user)):
+async def get_onboarding_personalization(user: Annotated[dict, Depends(get_current_user)]):
     """
     Get personalization data (house, phrase, bio, workflows) for current authenticated user.
     Used as fallback if WebSocket fails or to refetch data.
@@ -428,7 +460,7 @@ class WritingStyleRegenerateRequest(BaseModel):
 )
 async def save_writing_style(
     request: WritingStyleEditRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> dict:
     """Save a user-edited writing style summary from the onboarding reveal card."""
     user_id: str = user["user_id"]
@@ -448,7 +480,7 @@ async def save_writing_style(
 )
 async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> dict:
     """Generate a new example email from an edited writing style summary."""
     user_id: str = user["user_id"]
@@ -486,7 +518,7 @@ class SocialProfilesConfirmRequest(BaseModel):
 )
 async def confirm_social_profiles(
     request: SocialProfilesConfirmRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> dict:
     """Save user-confirmed (and optionally edited) social profiles from onboarding."""
     user_id: str = user["user_id"]

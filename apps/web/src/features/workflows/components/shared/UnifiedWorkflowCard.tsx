@@ -14,6 +14,7 @@ import { toast } from "@/lib/toast";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
   CommunityWorkflow,
+  IntegrationRef,
   PublicWorkflowStep,
   Workflow,
 } from "@/types/features/workflowTypes";
@@ -24,6 +25,7 @@ import {
   ActivationStatus,
   CreatorAvatar,
   getNextRunDisplay,
+  MissingIntegrationsWarning,
   SystemWorkflowChip,
   TriggerDisplay,
 } from "./WorkflowCardComponents";
@@ -66,6 +68,9 @@ interface UnifiedWorkflowCardProps {
 
   // Button customization
   actionButtonLabel?: string;
+
+  // Explicit missing integrations override (for cards that don't pass a full workflow object)
+  missingIntegrations?: IntegrationRef[];
 }
 
 export default function UnifiedWorkflowCard({
@@ -90,6 +95,7 @@ export default function UnifiedWorkflowCard({
   onActionComplete,
   actionButtonLabel,
   href,
+  missingIntegrations: propMissingIntegrations,
 }: UnifiedWorkflowCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
@@ -132,6 +138,8 @@ export default function UnifiedWorkflowCard({
     ? getTriggerDisplayInfo(workflow, integrations)
     : null;
   const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
+  const resolvedMissingIntegrations =
+    propMissingIntegrations ?? workflow?.missing_integrations;
 
   // Action handlers
   const handleRunWorkflow = async () => {
@@ -285,8 +293,16 @@ export default function UnifiedWorkflowCard({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">{renderToolIcons()}</div>
         <div className="flex items-center gap-2">
-          {shouldShowActivation && workflow && (
-            <ActivationStatus activated={workflow.activated} />
+          {resolvedMissingIntegrations?.length ? (
+            // The warning replaces the activation badge: a workflow with
+            // unconnected integrations can't run, so its activated/deactivated
+            // state is moot until they're connected.
+            <MissingIntegrationsWarning
+              missingIntegrations={resolvedMissingIntegrations}
+            />
+          ) : (
+            shouldShowActivation &&
+            workflow && <ActivationStatus activated={workflow.activated} />
           )}
         </div>
       </div>

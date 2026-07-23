@@ -12,6 +12,8 @@ The subagent has access to:
 - search_memory: Access user memories
 """
 
+import json
+
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
@@ -19,15 +21,53 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
+from langgraph.errors import GraphRecursionError
 
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
 from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
+from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.services.workflow.knowledge import build_connected_integrations_hint
+from app.services.workflow.subagent_output import parse_subagent_response
+from app.utils.workflow_utils import unknown_integration_ids
 from shared.py.wide_events import log
+
+# How many times to hand a validation error back to the agent and let it re-emit a
+# corrected draft before giving up (the persist-time filter is the final backstop).
+MAX_DRAFT_CORRECTIONS = 2
+
+# When the authoring loop exhausts its step budget (a wandering model that keeps
+# calling discovery tools without answering), we force one final turn with this
+# directive. The step budget resets and filter_messages_node drops the dangling
+# tool calls, so the model can only reply with text.
+FORCE_FINALIZE_DIRECTIVE = (
+    "You have already gathered enough information. STOP calling tools now. "
+    "Reply with your final answer as exactly one fenced ```json block and nothing "
+    "else: either a finalized workflow, or a clarifying question if the request is "
+    "genuinely ambiguous. Do not call any more tools."
+)
+
+# Absolute last resort if even the forced-finalize turn fails to converge: a valid
+# clarifying draft, so create_workflow always receives parseable JSON instead of a
+# raw GraphRecursionError.
+FALLBACK_CLARIFY_JSON = (
+    "```json\n"
+    + json.dumps(
+        {
+            "type": "clarifying",
+            "message": (
+                "I had trouble putting this workflow together. Could you restate what "
+                "you want it to do, and when it should run: on demand, on a schedule, "
+                "or when something happens?"
+            ),
+        }
+    )
+    + "\n```"
+)
 
 # Singleton for the workflow subagent graph
 _workflow_subagent_graph = None
@@ -62,6 +102,10 @@ async def get_workflow_subagent():
 
     llm = init_llm()
 
+    # Authoring-only: the workflow assistant emits a draft, it does not execute.
+    # This strips the always-available execution tools (bash/read/web/research),
+    # the plan_tasks/spawn_subagent machinery, and finish_task, so it can only
+    # use its discovery tools and then return the finalized JSON.
     _workflow_subagent_graph = await SubAgentFactory.create_provider_subagent(
         provider="workflow",
         name="workflow_agent",
@@ -69,6 +113,8 @@ async def get_workflow_subagent():
         tool_space="workflow_subagent",
         use_direct_tools=True,
         disable_retrieve_tools=True,
+        include_finish_task=False,
+        authoring_only=True,
     )
 
     log.info(f"{LogTag.WORKFLOW} Workflow subagent graph created successfully")
@@ -114,6 +160,12 @@ class WorkflowSubagentRunner:
         )
         configurable = config.get("configurable", {})
 
+        # Authoring only needs a few discovery calls before it emits JSON. Cap the
+        # loop below a full agent's budget so a wandering model can't burn ~20 tool
+        # cycles, and so the forced-finalize fallback (see the execute loop) kicks
+        # in quickly instead of after a long stall.
+        config["recursion_limit"] = WORKFLOW_SUBAGENT_RECURSION_LIMIT
+
         # Build messages
         system_message = SystemMessage(
             content=WORKFLOW_AGENT_SYSTEM_PROMPT,
@@ -127,8 +179,14 @@ class WorkflowSubagentRunner:
             subagent_id=None,  # No subagent_id for skill retrieval
         )
 
+        # Compact ground truth (which integrations THIS user has connected) folded
+        # into the task. It must NOT be a separate SystemMessage: the subagent's
+        # manage_system_prompts_node keeps only the LATEST static system message,
+        # so a second one here would silently evict WORKFLOW_AGENT_SYSTEM_PROMPT and
+        # the model would lose its whole role/rules/output-format prompt.
+        hint = await build_connected_integrations_hint(user_id)
         human_message = HumanMessage(
-            content=task,
+            content=f"{hint}\n\n---\n\nRequest: {task}",
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
@@ -140,59 +198,162 @@ class WorkflowSubagentRunner:
 
         log.info(f"{LogTag.WORKFLOW} Executing with task: {task[:100]}...")
 
-        complete_message = ""
+        # Generate, validate, and correct: if the agent returns invalid json (bad
+        # structure or integration_ids that name a non-existent integration), hand the
+        # error back and let it re-emit, up to MAX_DRAFT_CORRECTIONS times.
         emitted_tool_calls: set[str] = set()
-
-        async for event in subagent_graph.astream(
-            initial_state,
-            stream_mode=["messages", "custom", "updates"],
-            config=config,
-        ):
-            if len(event) != 2:
-                continue
-            stream_mode, payload = event
-
-            if stream_mode == "updates":
-                # Handle tool updates
-                for node_name, state_update in payload.items():
-                    from app.utils.stream_utils import extract_tool_entries_from_update
-
-                    entries = await extract_tool_entries_from_update(
-                        state_update=state_update,
-                        emitted_tool_calls=emitted_tool_calls,
+        state: dict = initial_state
+        complete_message = ""
+        for attempt in range(MAX_DRAFT_CORRECTIONS + 1):
+            complete_message, hit_limit = await WorkflowSubagentRunner._stream_turn(
+                subagent_graph, state, config, stream_writer, emitted_tool_calls
+            )
+            if hit_limit:
+                # The model wandered past its step budget without answering. Force a
+                # terminal answer so create_workflow never sees a raw crash.
+                complete_message = await WorkflowSubagentRunner._forced_finalize(
+                    subagent_graph, config, stream_writer, emitted_tool_calls
+                )
+                break
+            correction = await WorkflowSubagentRunner._draft_correction_needed(complete_message)
+            if correction is None:
+                break
+            if attempt == MAX_DRAFT_CORRECTIONS:
+                log.warning(
+                    f"{LogTag.WORKFLOW} Draft still invalid after {attempt} correction(s); "
+                    f"handing off as-is: {correction[:150]}"
+                )
+                break
+            log.info(
+                f"{LogTag.WORKFLOW} Draft invalid (attempt {attempt + 1}); re-prompting to correct"
+            )
+            state = {
+                "messages": [
+                    HumanMessage(
+                        content=correction,
+                        additional_kwargs={"visible_to": {"workflow_agent"}},
                     )
-                    for tc_id, tool_entry in entries:
-                        if stream_writer:
-                            stream_writer({"tool_data": tool_entry})
-                continue
-
-            if stream_mode == "messages":
-                chunk, metadata = payload
-                if metadata.get("silent"):
-                    continue
-
-                # Accumulate AI response content
-                if chunk and isinstance(chunk, AIMessageChunk):
-                    content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
-                    if content:
-                        complete_message += content
-
-                # Emit tool_output when ToolMessage arrives
-                elif chunk and isinstance(chunk, ToolMessage):
-                    if stream_writer:
-                        stream_writer(
-                            {
-                                "tool_output": {
-                                    "tool_call_id": chunk.tool_call_id,
-                                    "output": chunk.text(),
-                                }
-                            }
-                        )
-                continue
-
-            if stream_mode == "custom":
-                if stream_writer:
-                    stream_writer(payload)
+                ]
+            }
 
         log.info(f"{LogTag.WORKFLOW} Completed. Response: {len(complete_message)} chars")
         return complete_message if complete_message else "Task completed"
+
+    @staticmethod
+    async def _forced_finalize(
+        subagent_graph,
+        config: RunnableConfig,
+        stream_writer,
+        emitted_tool_calls: set[str],
+    ) -> str:
+        """Force a wandering subagent to emit terminal JSON.
+
+        Re-runs the graph with a stop directive: the step budget resets and the
+        graph's filter node strips the dangling tool calls, so the model can only
+        reply with text. If it still fails to converge, returns a static clarifying
+        draft so the caller always receives parseable JSON.
+        """
+        log.warning(f"{LogTag.WORKFLOW} Authoring loop hit its step budget; forcing a final answer")
+        directive_state = {
+            "messages": [
+                HumanMessage(
+                    content=FORCE_FINALIZE_DIRECTIVE,
+                    additional_kwargs={"visible_to": {"workflow_agent"}},
+                )
+            ]
+        }
+        message, hit_limit = await WorkflowSubagentRunner._stream_turn(
+            subagent_graph, directive_state, config, stream_writer, emitted_tool_calls
+        )
+        if hit_limit or not message.strip():
+            log.warning(
+                f"{LogTag.WORKFLOW} Forced finalize did not converge; using fallback clarifying draft"
+            )
+            return FALLBACK_CLARIFY_JSON
+        return message
+
+    @staticmethod
+    async def _stream_turn(
+        subagent_graph,
+        state: dict,
+        config: RunnableConfig,
+        stream_writer,
+        emitted_tool_calls: set[str],
+    ) -> tuple[str, bool]:
+        """Run one turn of the subagent graph, streaming tool/custom events.
+
+        Returns (assistant_text, hit_recursion_limit). hit_recursion_limit is True
+        when the model exhausted its step budget without producing a final answer,
+        signalling the caller to force a finalize instead of crashing.
+        """
+        complete_message = ""
+        try:
+            async for event in subagent_graph.astream(
+                state,
+                stream_mode=["messages", "custom", "updates"],
+                config=config,
+            ):
+                if len(event) != 2:
+                    continue
+                stream_mode, payload = event
+
+                if stream_mode == "updates":
+                    for _node_name, state_update in payload.items():
+                        from app.utils.stream_utils import extract_tool_entries_from_update
+
+                        entries = await extract_tool_entries_from_update(
+                            state_update=state_update,
+                            emitted_tool_calls=emitted_tool_calls,
+                        )
+                        for _tc_id, tool_entry in entries:
+                            if stream_writer:
+                                stream_writer({"tool_data": tool_entry})
+                    continue
+
+                if stream_mode == "messages":
+                    chunk, metadata = payload
+                    if metadata.get("silent"):
+                        continue
+                    if chunk and isinstance(chunk, AIMessageChunk):
+                        content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
+                        if content:
+                            complete_message += content
+                    elif chunk and isinstance(chunk, ToolMessage):
+                        if stream_writer:
+                            stream_writer(
+                                {
+                                    "tool_output": {
+                                        "tool_call_id": chunk.tool_call_id,
+                                        "output": chunk.text(),
+                                    }
+                                }
+                            )
+                    continue
+
+                if stream_mode == "custom" and stream_writer:
+                    stream_writer(payload)
+        except GraphRecursionError:
+            return complete_message, True
+
+        return complete_message, False
+
+    @staticmethod
+    async def _draft_correction_needed(text: str) -> str | None:
+        """If the agent's reply is a finalized/parseable draft with only real integration
+        ids, return None. Otherwise return a correction instruction to hand back to it."""
+        result = parse_subagent_response(text)
+        if result.mode == "parse_error":
+            return (
+                f"Your previous reply could not be used: {result.parse_error}. Re-emit exactly "
+                "ONE fenced ```json block, either a finalized workflow or a clarifying question."
+            )
+        if result.mode == "finalized" and result.draft:
+            bad = await unknown_integration_ids(result.draft.integration_ids)
+            if bad:
+                return (
+                    f"integration_ids includes ids that are NOT real integrations in GAIA: {bad}. "
+                    "Those services do not exist here. Re-emit the FULL finalized json without them, "
+                    "or if the workflow truly needs one, return a clarifying json telling the user it "
+                    "is not available."
+                )
+        return None

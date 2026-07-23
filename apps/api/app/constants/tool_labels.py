@@ -129,9 +129,12 @@ TOOL_DISPLAY_NAMES: dict[str, str] = {
     "mark_notifications_read": "Marking notifications read",
     # ── Native: workflows ──────────────────────────────────────────────
     "create_workflow": "Building the workflow",
+    "edit_workflow": "Editing the workflow",
     "execute_workflow": "Running the workflow",
     "get_workflow": "Opening the workflow",
     "list_workflows": "Checking your workflows",
+    "pause_workflow": "Pausing the workflow",
+    "resume_workflow": "Resuming the workflow",
     "search_triggers": "Finding triggers",
     # ── Native: integrations ───────────────────────────────────────────
     "list_integrations": "Checking your integrations",

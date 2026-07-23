@@ -93,6 +93,12 @@ export type WorkflowDraftData = {
   trigger_slug?: string | null;
   /** Cron expression for scheduled triggers */
   cron_expression?: string | null;
+  /**
+   * Integrations the assistant grounded this workflow in, including the trigger's.
+   * Carried through to create so the workflow records what it actually depends on
+   * rather than falling back to every integration the user has connected.
+   */
+  integration_ids?: string[] | null;
 };
 
 // Define workflow created data for when a workflow is automatically created

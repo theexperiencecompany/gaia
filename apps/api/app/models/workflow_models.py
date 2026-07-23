@@ -2,6 +2,7 @@
 Clean and lean workflow models for GAIA workflow system.
 """
 
+from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
 from typing import Any
@@ -11,6 +12,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializeAsAny,
     field_serializer,
     field_validator,
     model_validator,
@@ -34,6 +36,13 @@ class TriggerType(str, Enum):
     MANUAL = "manual"
     SCHEDULE = "schedule"
     INTEGRATION = "integration"
+
+
+class IntegrationRef(BaseModel):
+    """Lightweight integration reference for workflow responses."""
+
+    id: str
+    name: str
 
 
 class WorkflowStep(BaseModel):
@@ -238,9 +247,14 @@ class Workflow(BaseScheduledTask):
         ),
     )
 
-    selected_integrations: list[str] | None = Field(
-        default=None,
-        description="Integration slugs the user picked to bias step generation.",
+    integration_ids: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Integration ids this workflow uses — picked by the user or identified "
+            "from intent by the workflow assistant. Scopes the tool palette when "
+            "generating steps. Connection state is never stored here: "
+            "required/missing integrations are derived from the steps at read time."
+        ),
     )
 
     creator: dict[str, Any] | None = Field(
@@ -311,6 +325,21 @@ class Workflow(BaseScheduledTask):
 # Request/Response models for API
 
 
+class WorkflowWithIntegrations(Workflow):
+    """Read-time view of a workflow: the persisted `Workflow` plus its computed
+    integration requirements. Never persisted — the storage model is `Workflow`;
+    these fields are populated by the service on read paths only."""
+
+    required_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Integration IDs required by the workflow's steps.",
+    )
+    missing_integrations: list[IntegrationRef] | None = Field(
+        default=None,
+        description="Required integrations the user has not connected yet.",
+    )
+
+
 class CreateWorkflowRequest(BaseModel):
     """Request model for creating a new workflow."""
 
@@ -333,9 +362,12 @@ class CreateWorkflowRequest(BaseModel):
         default=True,
         description="Whether GAIA sends the automatic completion notification when a run finishes.",
     )
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs selected by the user to hint step generation.",
+        description=(
+            "Integration ids this workflow uses — picked by the user or identified "
+            "from intent. Scopes the tool palette when generating steps."
+        ),
     )
 
     # System workflow fields — set by provisioner, not by regular API users
@@ -379,7 +411,7 @@ class UpdateWorkflowRequest(BaseModel):
     trigger_config: TriggerConfig | None = Field(default=None)
     activated: bool | None = Field(default=None)
     notify_on_completion: bool | None = Field(default=None)
-    selected_integrations: list[str] | None = Field(default=None)
+    integration_ids: list[str] | None = Field(default=None)
 
     @field_validator("title", "prompt")
     @classmethod
@@ -404,14 +436,19 @@ class UpdateWorkflowRequest(BaseModel):
 class WorkflowResponse(BaseModel):
     """Response model for workflow operations."""
 
-    workflow: Workflow
+    # SerializeAsAny so a WorkflowWithIntegrations (from read paths) serializes
+    # its extra integration fields; plain Workflow instances still validate.
+    workflow: SerializeAsAny[Workflow]
     message: str = Field(description="Success or status message")
 
 
 class WorkflowListResponse(BaseModel):
     """Response model for listing workflows."""
 
-    workflows: list[Workflow]
+    # Sequence (not list) because list is invariant: the read path hands us
+    # list[WorkflowWithIntegrations]. SerializeAsAny keeps the subclass's extra
+    # integration fields in the payload while still accepting a plain Workflow.
+    workflows: Sequence[SerializeAsAny[Workflow]]
 
 
 class WorkflowExecutionRequest(BaseModel):
@@ -450,9 +487,9 @@ class RegenerateStepsRequest(BaseModel):
     force_different_tools: bool = Field(
         default=False, description="Force the use of different tools"
     )
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs to bias regeneration; falls back to persisted selection.",
+        description="Integration ids to scope regeneration; falls back to the workflow's own.",
     )
 
 
@@ -480,9 +517,9 @@ class GenerateWorkflowPromptRequest(BaseModel):
     description: str | None = None
     trigger_config: dict[str, Any] | None = None
     existing_prompt: str | None = None  # non-empty → improve mode
-    selected_integrations: list[str] | None = Field(
+    integration_ids: list[str] | None = Field(
         default=None,
-        description="Integration slugs the user picked, used to bias the suggestion.",
+        description="Integration ids the user picked, used to bias the suggestion.",
     )
 
 
