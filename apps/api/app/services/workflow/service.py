@@ -569,10 +569,19 @@ class WorkflowService:
                 new_trigger_config.enabled = effective_activated
 
                 # Automatically populate timezone field if it's a scheduled workflow.
-                # The timezone chosen in the UI for this schedule wins; fall back to
-                # the request-resolved user timezone, then UTC.
+                # The timezone chosen in the UI for this schedule wins. When the
+                # update omits it, keep the zone the schedule already runs in —
+                # editing a cron must not silently relocate the schedule to
+                # whichever zone the request happened to resolve. Fall back to the
+                # request-resolved user timezone only for a schedule that never had
+                # one, then UTC.
                 if new_trigger_config.type == "schedule":
-                    timezone_to_use = new_trigger_config.timezone or user_timezone or "UTC"
+                    timezone_to_use = (
+                        new_trigger_config.timezone
+                        or current_workflow.trigger_config.timezone
+                        or user_timezone
+                        or "UTC"
+                    )
                     log.info(
                         f"{LogTag.WORKFLOW} Updating workflow {workflow_id} with timezone: {timezone_to_use}"
                     )
