@@ -678,10 +678,31 @@ class TestListWorkflows:
 
     @patch("app.services.workflow.service.workflows_collection")
     async def test_list_workflows_db_error_raises(self, mock_collection):
-        mock_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
+        mock_cursor = MagicMock()
+        mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
+        mock_cursor.to_list = AsyncMock(side_effect=Exception("DB error"))
+        mock_collection.find = MagicMock(return_value=mock_cursor)
 
         with pytest.raises(Exception, match="DB error"):
             await WorkflowService.list_workflows(USER_ID)
+
+    @patch("app.services.workflow.service.workflows_collection")
+    async def test_list_workflows_skips_count_when_unpaginated(self, mock_collection):
+        """An unpaginated fetch already holds every match — no second count query."""
+        mock_cursor = MagicMock()
+        mock_cursor.sort = MagicMock(return_value=mock_cursor)
+        mock_cursor.skip = MagicMock(return_value=mock_cursor)
+        mock_cursor.limit = MagicMock(return_value=mock_cursor)
+        mock_cursor.to_list = AsyncMock(return_value=[_workflow_doc(_make_workflow())])
+        mock_collection.find = MagicMock(return_value=mock_cursor)
+        mock_collection.count_documents = AsyncMock(return_value=99)
+
+        result, total = await WorkflowService.list_workflows(USER_ID)
+
+        mock_collection.count_documents.assert_not_called()
+        assert total == len(result) == 1
 
 
 # ===========================================================================

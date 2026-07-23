@@ -1,5 +1,6 @@
 """Integration-specific helper functions."""
 
+from collections.abc import Callable
 import re
 from typing import Any
 
@@ -30,6 +31,24 @@ def build_search_patterns(query: str) -> list[str]:
     """
     words = re.split(r"[\s,;]+", query.lower())
     return [w for w in words if len(w) >= 2 and w not in SEARCH_STOPWORDS]
+
+
+def build_search_matcher(query: str | None) -> Callable[[str], bool]:
+    """Predicate over a lowercase haystack for an optional free-text query.
+
+    Distinguishes the two cases callers keep conflating: no query at all means
+    "list everything", while a query that reduces to no usable words (all
+    stopwords, e.g. "the" or "to my") means "nothing matches". Returning the
+    whole catalog for the latter silently ignores the filter the caller asked for.
+    """
+    if not query or not query.strip():
+        return lambda _haystack: True
+
+    patterns = build_search_patterns(query)
+    if not patterns:
+        return lambda _haystack: False
+
+    return lambda haystack: any(pattern in haystack for pattern in patterns)
 
 
 def generate_integration_slug(

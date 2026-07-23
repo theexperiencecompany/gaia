@@ -18,10 +18,11 @@ from langgraph.config import get_stream_writer
 from app.constants.integrations import (
     MAX_INTEGRATION_SEARCH_RESULTS,
     MAX_INTEGRATION_TOOLS_FOR_LLM,
+    MAX_MY_INTEGRATIONS_RESULTS,
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
-from app.helpers.integration_helpers import build_search_patterns
+from app.helpers.integration_helpers import build_search_matcher
 from app.schemas.integrations.responses import IntegrationTool, MyIntegrationItem
 from app.services.integrations.community_service import list_community_integrations
 from app.services.integrations.my_integrations import (
@@ -126,7 +127,10 @@ async def list_workflows(
             for w in workflows
         ]
 
-        has_more = offset + len(workflow_summaries) < total
+        # Measured against the page window, not the surviving summaries: a
+        # malformed document dropped during validation shrinks the page but does
+        # not mean the collection has more pages than it does.
+        has_more = offset + page_size < total
         payload = {
             "workflows": workflow_summaries,
             "page": page,
@@ -165,16 +169,16 @@ async def get_my_integrations(
         user_id = get_user_id(config)
         mine = (await fetch_my_integrations(user_id)).integrations
 
-        patterns = build_search_patterns(query) if query and query.strip() else []
+        matches = build_search_matcher(query)
 
         def _match(item: MyIntegrationItem) -> bool:
-            if not patterns:
-                return True
-            haystack = f"{item.id} {item.name} {item.category} {item.description}".lower()
-            return any(p in haystack for p in patterns)
+            return matches(f"{item.id} {item.name} {item.category} {item.description}".lower())
 
         matched = [i for i in mine if i.available and _match(i)]
-        capped = matched[:MAX_INTEGRATION_SEARCH_RESULTS]
+        # Connected first: if the cap ever bites, what gets dropped is an
+        # integration the user has not set up, never one they can already use.
+        matched.sort(key=lambda i: i.status != "connected")
+        capped = matched[:MAX_MY_INTEGRATIONS_RESULTS]
         integrations = [
             {
                 "id": i.id,
@@ -281,13 +285,10 @@ async def search_integration_tools(
             )
 
         mine = (await fetch_my_integrations(user_id)).integrations
-        patterns = build_search_patterns(query) if has_query else []
+        matches = build_search_matcher(query)
 
         def _tool_matches(integration_tool: IntegrationTool) -> bool:
-            if not patterns:
-                return True
-            haystack = f"{integration_tool.name} {integration_tool.description or ''}".lower()
-            return any(p in haystack for p in patterns)
+            return matches(f"{integration_tool.name} {integration_tool.description or ''}".lower())
 
         if integration_id and integration_id.strip():
             integration = _resolve_integration(mine, integration_id)

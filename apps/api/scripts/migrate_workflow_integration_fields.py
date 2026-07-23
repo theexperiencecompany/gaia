@@ -75,9 +75,9 @@ async def migrate(apply: bool) -> None:
 
         if merged != current:
             print(f"  {workflow_id}: integration_ids {current!r} -> {merged!r}")
+            changed += 1
         else:
             print(f"  {workflow_id}: dropping legacy {_LEGACY_FIELD} (no new ids)")
-        changed += 1
 
         if apply:
             await workflows_collection.update_one(
@@ -88,7 +88,7 @@ async def migrate(apply: bool) -> None:
                 },
             )
 
-    print(f"\n[{mode}] Done. scanned={scanned} migrated={changed}")
+    print(f"\n[{mode}] Done. scanned={scanned} gaining_ids={changed} legacy_field_dropped={scanned}")
     if not apply:
         print("Re-run with --apply to write these changes.")
 

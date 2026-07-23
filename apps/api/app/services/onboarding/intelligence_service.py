@@ -1705,6 +1705,23 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
     )
 
 
+def _workflow_integration_ids(
+    spec: _WorkflowSpec,
+    selected_integrations: list[str] | None,
+) -> list[str] | None:
+    """The integrations THIS workflow depends on, not the whole onboarding selection.
+
+    The spec's own categories name the tools it uses, so they describe the
+    dependency accurately; writing the user's full selection onto every workflow
+    would claim Slack on a Notion-only workflow. Non-integration categories
+    (todos, reminders, ...) are dropped downstream by
+    filter_existing_integration_ids. Falls back to the selection when the model
+    named no categories, so step generation still has something to ground on.
+    """
+    from_spec = list(dict.fromkeys(spec.categories))
+    return from_spec or (selected_integrations or None)
+
+
 async def _build_one_workflow(
     user_id: str,
     idx: int,
@@ -1732,7 +1749,7 @@ async def _build_one_workflow(
             prompt=workflow_prompt,
             trigger_config=trigger_config,
             generate_immediately=True,
-            integration_ids=selected_integrations or None,
+            integration_ids=_workflow_integration_ids(spec, selected_integrations),
         )
         t_create = time.monotonic()
         workflow = await WorkflowService.create_workflow(

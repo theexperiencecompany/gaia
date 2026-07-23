@@ -475,14 +475,20 @@ class WorkflowService:
                     {"is_todo_workflow": False},
                 ]
 
-            total = await workflows_collection.count_documents(query)
-
             cursor = workflows_collection.find(query).sort("created_at", -1)
             if offset:
                 cursor = cursor.skip(offset)
             if limit is not None:
                 cursor = cursor.limit(limit)
             docs = await cursor.to_list(length=limit)
+
+            # Only a paginated caller needs a separate count; an unpaginated fetch
+            # already holds every match, so counting again is a wasted round-trip.
+            total = (
+                await workflows_collection.count_documents(query)
+                if limit is not None
+                else offset + len(docs)
+            )
 
             workflows: list[WorkflowWithIntegrations] = []
             for doc in docs:

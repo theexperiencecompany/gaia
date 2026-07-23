@@ -25,13 +25,6 @@ class WorkflowConfigError(Exception):
     pass
 
 
-_TRIGGER_TYPE_MAP: dict[str, TriggerType] = {
-    "manual": TriggerType.MANUAL,
-    "scheduled": TriggerType.SCHEDULE,
-    "integration": TriggerType.INTEGRATION,
-}
-
-
 async def handle_workflow_error(
     workflow_id: str,
     user_id: str,
@@ -212,10 +205,8 @@ async def create_workflow_directly(
     try:
         from app.services.workflow import WorkflowService
 
-        backend_trigger_type = _TRIGGER_TYPE_MAP.get(draft.trigger_type, TriggerType.MANUAL)
-
         trigger_config = TriggerConfig(
-            type=backend_trigger_type,
+            type=draft.backend_trigger_type,
             enabled=True,
             cron_expression=draft.cron_expression,
             trigger_name=draft.trigger_slug,
@@ -336,7 +327,7 @@ async def apply_workflow_edit(
     """
     from app.services.workflow import WorkflowService
 
-    new_type = _TRIGGER_TYPE_MAP.get(draft.trigger_type, TriggerType.MANUAL)
+    new_type = draft.backend_trigger_type
     current = workflow.trigger_config
     trigger_changed = (
         new_type != current.type
@@ -357,9 +348,14 @@ async def apply_workflow_edit(
         update_fields["prompt"] = new_prompt
     # Drop hallucinated ids here too, so edits can't persist a fake integration the
     # create path (filter_existing_integration_ids in service.create_workflow) rejects.
-    filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
-    if filtered_integration_ids != (workflow.integration_ids or []):
-        update_fields["integration_ids"] = filtered_integration_ids
+    # An empty list is treated as "the draft omitted the field" rather than "clear
+    # them": every other field here is guarded the same way, and a draft that
+    # forgot to re-emit integration_ids must not silently strip the workflow's
+    # dependencies. Integrations are removed in the workflow editor.
+    if draft.integration_ids:
+        filtered_integration_ids = await filter_existing_integration_ids(draft.integration_ids)
+        if filtered_integration_ids != (workflow.integration_ids or []):
+            update_fields["integration_ids"] = filtered_integration_ids
 
     needs_editor = False
     if trigger_changed:
@@ -372,7 +368,10 @@ async def apply_workflow_edit(
                 enabled=workflow.activated,
                 cron_expression=draft.cron_expression,
                 trigger_name=draft.trigger_slug,
-                timezone=user_timezone,
+                # Keep the zone the schedule was authored in. "Move it to 8am"
+                # means 8am where the workflow already runs, not 8am wherever the
+                # user happens to be asking from.
+                timezone=current.timezone or user_timezone,
             )
 
     if not update_fields:
