@@ -24,14 +24,24 @@ def pick_free_port() -> int:
         return s.getsockname()[1]
 
 
-def worker_redis_url(base_url: str) -> str:
-    """Return a Redis URL with a per-xdist-worker DB number.
+# Test suites that use this helper ``flushdb()`` their Redis client on teardown,
+# so the resolved DB must NEVER be the application's live database. A URL with no
+# DB path (the repo default ``redis://localhost:6379``) and one that pins ``/0``
+# both resolve to DB 0 — the app's live DB — so an unguarded offset (``0 + gw0``)
+# would wipe it. Runs therefore land in a dedicated high-DB block (8–15) whenever
+# the URL pins no DB or DB 0, and the resolved DB is never 0 for any worker. An
+# explicitly configured non-zero DB is a deliberate caller choice and is preserved
+# (offset per worker).
+_TEST_REDIS_DB_BLOCK_START = 8  # first DB of the throwaway block (8–15)
 
-    Offsets from the base DB configured in the URL so ``redis://.../8``
-    becomes ``/8`` on gw0 and ``/9`` on gw1.  This preserves any DB
-    isolation already configured by the caller while still giving each
-    xdist worker its own logical database so ``flushdb()`` teardown
-    cannot wipe another worker's in-flight keys.
+
+def worker_redis_url(base_url: str) -> str:
+    """Return a Redis URL with a per-xdist-worker DB number that is safe to flush.
+
+    Each xdist worker gets its own logical DB so ``flushdb()`` teardown cannot wipe
+    another worker's in-flight keys, and the resolved DB is never 0 — so teardown
+    can never touch the application's live database. When the URL pins no DB (or
+    pins DB 0), the run is relocated into a dedicated high-DB block (8–15).
     """
     worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
     try:
@@ -39,8 +49,15 @@ def worker_redis_url(base_url: str) -> str:
     except ValueError:
         worker_num = 0
     match = re.search(r"/(\d+)$", base_url)
-    base_db = int(match.group(1)) if match else 0
-    db = (base_db + worker_num) % 16
+    configured_db = int(match.group(1)) if match else 0
+    if configured_db:
+        # Deliberate non-zero DB: offset per worker, but never wrap onto DB 0.
+        db = (configured_db + worker_num) % 16 or _TEST_REDIS_DB_BLOCK_START
+    else:
+        # No DB or DB 0 (the app's live DB): use the throwaway block, wrapping
+        # within 8–15 so the flush target is always an isolated test database.
+        block_size = 16 - _TEST_REDIS_DB_BLOCK_START
+        db = _TEST_REDIS_DB_BLOCK_START + (worker_num % block_size)
     if match:
         return re.sub(r"/\d+$", f"/{db}", base_url)
     return base_url.rstrip("/") + f"/{db}"
