@@ -46,11 +46,17 @@ def _build_scoped_tool_dict(
     tool_space: str,
     mcp_tools: list[BaseTool] | None,
     include_finish_task: bool,
+    authoring_only: bool = False,
 ) -> tuple[dict, list[str]]:
     """Assemble the scoped tool dict + initial tool IDs for a subagent.
 
     Split out of `create_provider_subagent` to keep that function's cognitive
     complexity below SonarQube's threshold.
+
+    ``authoring_only`` builds a pure draft-authoring agent (e.g. the workflow
+    assistant): only its tool_space tools, none of the always-available
+    execution tools (coding/FS, web, research, memory), so it cannot try to
+    *do* the work instead of describe it.
     """
     scoped_tool_dict: dict = {}
     initial_tool_ids: list[str] = []
@@ -70,19 +76,20 @@ def _build_scoped_tool_dict(
                 scoped_tool_dict[t.name] = t.tool
                 initial_tool_ids.append(t.name)
 
-    # Always-available tools (memory, coding/FS, search). This branch uses the
-    # JuiceFS-backed coding tools (`read` / `bash`); the legacy `vfs_tools`
-    # module was removed when subagents moved to the E2B sandbox.
-    scoped_tool_dict[search_memory.name] = search_memory
-    scoped_tool_dict[read.name] = read
-    scoped_tool_dict[bash.name] = bash
-    scoped_tool_dict[web_search_tool.name] = web_search_tool
-    scoped_tool_dict[fetch_webpages.name] = fetch_webpages
-    scoped_tool_dict[deep_research.name] = deep_research
-    # Always-on so a subagent can persist a user's durable preference for its
-    # own integration the moment it hears one (its instructions are already in
-    # context, so it can rewrite the full block without a separate read).
-    scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
+    if not authoring_only:
+        # Always-available tools (memory, coding/FS, search). This branch uses the
+        # JuiceFS-backed coding tools (`read` / `bash`); the legacy `vfs_tools`
+        # module was removed when subagents moved to the E2B sandbox.
+        scoped_tool_dict[search_memory.name] = search_memory
+        scoped_tool_dict[read.name] = read
+        scoped_tool_dict[bash.name] = bash
+        scoped_tool_dict[web_search_tool.name] = web_search_tool
+        scoped_tool_dict[fetch_webpages.name] = fetch_webpages
+        scoped_tool_dict[deep_research.name] = deep_research
+        # Always-on so a subagent can persist a user's durable preference for its
+        # own integration the moment it hears one (its instructions are already in
+        # context, so it can rewrite the full block without a separate read).
+        scoped_tool_dict[update_integration_instructions.name] = update_integration_instructions
 
     if include_finish_task:
         scoped_tool_dict[FINISH_TASK_NAME] = finish_task
@@ -106,6 +113,7 @@ class SubAgentFactory:
         include_finish_task: bool = True,
         mcp_tools: list[BaseTool] | None = None,
         source_label: str | None = None,
+        authoring_only: bool = False,
     ) -> CompiledStateGraph:
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -146,6 +154,7 @@ class SubAgentFactory:
             tool_space=tool_space,
             mcp_tools=mcp_tools,
             include_finish_task=include_finish_task,
+            authoring_only=authoring_only,
         )
 
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
@@ -155,10 +164,15 @@ class SubAgentFactory:
         # subagent it spawns can access tools like read, bash, web_search, etc.
         full_tool_dict = tool_registry.get_tool_dict()
 
+        # An authoring-only subagent (the workflow assistant) just emits a draft;
+        # it must not spawn sub-subagents or plan/run tasks. Strip the spawn
+        # middleware and the todo (plan_tasks/update_tasks) tools + hook so it
+        # cannot drift into executing the workflow it is supposed to describe.
         middleware = create_subagent_middleware(
             subagent_llm=llm,
             subagent_registry=full_tool_dict,
             subagent_tool_space=tool_space,
+            enable_subagent=not authoring_only,
         )
 
         subagent_mw = next(
@@ -167,8 +181,10 @@ class SubAgentFactory:
         )
 
         # Create todo tools and register them in the scoped tool registry
-        todo_tools: list[BaseTool] = create_todo_tools(source=provider, source_label=source_label)
-        todo_hook = create_todo_pre_model_hook(source=provider)
+        todo_tools: list[BaseTool] = (
+            [] if authoring_only else create_todo_tools(source=provider, source_label=source_label)
+        )
+        todo_hook = None if authoring_only else create_todo_pre_model_hook(source=provider)
         todo_tool_names: list[str] = []
         for todo_tool in todo_tools:
             scoped_tool_dict[todo_tool.name] = todo_tool
@@ -185,7 +201,7 @@ class SubAgentFactory:
             "pre_model_hooks": [
                 cast(HookType, filter_messages_node),
                 manage_system_prompts_node,
-                todo_hook,
+                *([todo_hook] if todo_hook is not None else []),
             ],
             "end_graph_hooks": [memory_node],
         }
