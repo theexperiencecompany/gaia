@@ -18,6 +18,11 @@ FINISH_TASK_NAME = "finish_task"
 # generated in the executor path rather than the current turn.
 CALL_EXECUTOR_NAME = "call_executor"
 
+# Executor-only join tool: collects background subagents and doubles as the HIL
+# approval barrier. The graph builder, the join middleware and the HIL exempt
+# set all key off it — keep them in sync via this single constant.
+WAIT_FOR_SUBAGENTS_NAME = "wait_for_subagents"
+
 MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
 

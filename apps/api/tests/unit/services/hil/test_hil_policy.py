@@ -5,8 +5,9 @@ Three things decide whether a destructive call runs unattended, and each is atta
 * the user's mode and per-tool overrides (``resolve_policy`` / ``is_gated``);
 * the fail-open in ``_preferences``, which is only safe while HIL is off — it must
   re-raise the moment the default becomes a gating mode;
-* ``has_other_gated_call``, which suppresses auto-approval when a sibling call will
-  pause the node — the guard that stopped one send becoming two.
+* ``has_pausing_sibling``, which suppresses auto-approval when a sibling call will
+  pause the node — the guard that stopped one send becoming two. A sibling pauses
+  either at its own gate or, for ``HIL_PAUSING_TOOLS``, without ever being gated.
 """
 
 from types import SimpleNamespace
@@ -15,7 +16,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.hil_models import HILPreferences
-from app.services.hil.policy import has_other_gated_call, is_gated, resolve_policy
+from app.services.hil.policy import has_pausing_sibling, is_gated, resolve_policy
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
 
 from .conftest import USER_ID, ai_message_with_calls, make_request, make_tool
@@ -114,8 +115,8 @@ class TestPreferencesFailure:
                 await resolve_policy(make_request(), USER_ID, "delete_everything")
 
 
-class TestHasOtherGatedCall:
-    """Auto-approval is only safe when the call is the turn's *only* gated action.
+class TestHasPausingSibling:
+    """Auto-approval is only safe when the call is the turn's *only* pausing action.
     A sibling that pauses re-runs the whole node, so anything that already ran runs
     twice — verified in production: one send became two."""
 
@@ -139,7 +140,7 @@ class TestHasOtherGatedCall:
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-1") is True
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_the_pending_call_does_not_count_as_its_own_sibling(self) -> None:
         # Mutation bait: excluding by *name* instead of id would make every gated call
@@ -150,7 +151,7 @@ class TestHasOtherGatedCall:
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-1") is False
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
     async def test_an_earlier_call_of_the_same_tool_is_a_real_sibling(self) -> None:
         # Same tool name, different id — two sends in one turn. Both must be confirmed
@@ -166,7 +167,7 @@ class TestHasOtherGatedCall:
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-2") is True
+            assert await has_pausing_sibling(request, USER_ID, "call-2") is True
 
     async def test_an_exempt_sibling_does_not_suppress_auto_approval(self) -> None:
         state_messages = [
@@ -180,7 +181,7 @@ class TestHasOtherGatedCall:
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.is_tool_destructive", new=AsyncMock(return_value=True)),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-1") is False
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
     async def test_an_unclassifiable_sibling_suppresses_auto_approval(self) -> None:
         # Fail closed: an unknown sibling might pause, so the pending call must not
@@ -202,7 +203,7 @@ class TestHasOtherGatedCall:
             ),
             patch("app.services.hil.classification.log"),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-1") is True
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_a_sibling_is_classified_with_its_own_tool_object(self) -> None:
         # The regression: resolving a sibling by bare name loses its MCP
@@ -241,7 +242,7 @@ class TestHasOtherGatedCall:
                 new=AsyncMock(return_value=False),
             ),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-1") is True
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is True
 
     async def test_a_safe_sibling_does_not_suppress_auto_approval(self) -> None:
         state_messages = [
@@ -259,4 +260,4 @@ class TestHasOtherGatedCall:
             patch(f"{MODULE}.get_hil_preferences", new=AsyncMock(return_value=prefs())),
             patch(f"{MODULE}.is_tool_destructive", side_effect=classify),
         ):
-            assert await has_other_gated_call(request, USER_ID, "call-1") is False
+            assert await has_pausing_sibling(request, USER_ID, "call-1") is False

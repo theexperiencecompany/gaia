@@ -30,6 +30,15 @@ def _quiet_log():
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_prior_record():
+    """The gate reads any existing record for this call before deciding. Default it to
+    "none yet" — the first-pass case — so each test states only what it is about; the
+    replay tests override it."""
+    with patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)):
+        yield
+
+
 class _Handler:
     """Stands in for the real tool. Records whether the gate let it run — which is the
     only thing any of these tests actually cares about."""

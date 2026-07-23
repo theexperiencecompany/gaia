@@ -8,7 +8,7 @@ This module answers two questions and nothing else, so the gate can stay about a
    user) or ``auto`` (let the intent judge decide). ``always_allow`` gates nothing.
 
 Plus one guard that belongs with the policy because it *suppresses* auto-approval:
-``has_other_gated_call`` — see its docstring for the double-execution it prevents.
+``has_pausing_sibling`` — see its docstring for the double-execution it prevents.
 """
 
 from typing import Literal
@@ -17,7 +17,7 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.constants.hil import HIL_EXEMPT_TOOLS
+from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HIL_DEFAULT_MODE, HILPreferences
 from app.services.hil.classification import is_tool_destructive, mcp_destructive_hint
@@ -72,28 +72,43 @@ async def would_require_approval(user_id: str, tool_name: str, tool: BaseTool | 
     return await is_gated(prefs, tool_name, tool)
 
 
-async def has_other_gated_call(request: ToolCallRequest, user_id: str, tool_call_id: str) -> bool:
-    """Whether the model asked for another gated tool in this same AI message.
+async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_id: str) -> bool:
+    """Whether another call in this same AI message can pause the run.
 
-    If it did, this call must not auto-run. The tool node executes a message's calls in a
+    If one can, this call must not auto-run. The tool node executes a message's calls in a
     sequential loop, the sibling will ``interrupt()``, and LangGraph re-runs the *whole
     node* on resume — so a handler that ran before the pause runs a second time (verified:
     one send became two). Auto-approval therefore applies only when a call is the turn's
-    only gated action; several destructive actions in one turn are confirmed together,
+    only pausing action; several destructive actions in one turn are confirmed together,
     which is the behaviour worth having anyway.
 
-    Siblings arrive as bare tool-call dicts, so each one's tool object is resolved from
-    the registry: classifying it must use the same description and MCP ``destructiveHint``
-    its own gate will use. Classifying without them (a bare name, an empty description)
-    both under-detects the sibling — defeating the double-run guard this exists for — and
-    poisons the registry's name-keyed ``destructive`` flag, since an unclassified tool's
-    verdict is written back there for every later gate check to read.
+    A sibling pauses in one of two ways. It is **gated**, and pauses at its own gate:
+    siblings arrive as bare tool-call dicts, so each one's tool object is resolved from
+    the registry, because classifying it must use the same description and MCP
+    ``destructiveHint`` its own gate will use. Classifying without them (a bare name, an
+    empty description) both under-detects the sibling — defeating the double-run guard
+    this exists for — and poisons the registry's name-keyed ``destructive`` flag, since an
+    unclassified tool's verdict is written back there for every later gate check to read.
+
+    Or it is **exempt but pausing** (``HIL_PAUSING_TOOLS``) — ``handoff`` bubbles up its
+    subagent's gate interrupt, ``wait_for_subagents`` interrupts for the parked-approval
+    batch. Neither is ever gated, so skipping them as exempt would leave exactly the
+    double-run this guard exists to prevent. Checked first, and by name alone, so the
+    common case costs no preference or registry lookup.
     """
+    siblings = [
+        call
+        for call in current_tool_calls(request.state)
+        if call.get("name") and call.get("id") != tool_call_id
+    ]
+    if any(call["name"] in HIL_PAUSING_TOOLS for call in siblings):
+        return True
+
     prefs = await get_hil_preferences(user_id)
     registry = await get_tool_registry()
-    for call in current_tool_calls(request.state):
-        name = call.get("name", "")
-        if not name or name in HIL_EXEMPT_TOOLS or call.get("id") == tool_call_id:
+    for call in siblings:
+        name = str(call["name"])
+        if name in HIL_EXEMPT_TOOLS:
             continue
         meta = registry.get_tool_meta(name)
         if await is_gated(prefs, name, meta.tool if meta else None):

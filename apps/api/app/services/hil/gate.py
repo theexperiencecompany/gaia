@@ -45,6 +45,7 @@ from app.constants.hil import (
     HILToolMessageStatus,
 )
 from app.constants.log_tags import LogTag
+from app.models.hil_models import HILApprovalRecord
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
@@ -56,9 +57,10 @@ from app.services.hil.bridge import (
     remember_declined_call,
 )
 from app.services.hil.intent import IntentDecision, judge_intent
-from app.services.hil.policy import GatingPolicy, has_other_gated_call, resolve_policy
+from app.services.hil.policy import GatingPolicy, has_pausing_sibling, resolve_policy
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.prompts import (
+    ALREADY_RAN_TEMPLATE,
     DENIED_TEMPLATE,
     GATE_ERROR_TEMPLATE,
     TIMEOUT_TEMPLATE,
@@ -174,11 +176,22 @@ async def _gate(
             log.info(f"{LogTag.HIL} auto-denying {call.name}: declined earlier this turn")
             return _refusal_message(call, declined)
 
+        # A replay of a call auto mode already RAN. It must neither run again (the action
+        # is done, and these are irreversible by definition) nor fall through to the pause
+        # below: it never reached ``interrupt()``, so pausing now would wait on an approval
+        # that has no pending record and no card, and would swallow the resume value the
+        # sibling's own ``interrupt()`` is expecting. ``has_pausing_sibling`` keeps auto
+        # mode out of a replayable node in the first place; this is the backstop.
+        record = await get_approval(approval_id)
+        if record is not None and record.status == "auto_approved":
+            log.info(f"{LogTag.HIL} {call.name} already ran under auto mode; not repeating")
+            return _already_ran_message(call)
+
         integration_name = await _integration_name_for(call.name)
         summary = build_summary(call.name, call.args, integration_name)
 
         if policy == "auto":
-            decision = await _judge(request, context, call, approval_id, summary)
+            decision = await _judge(request, context, call, record, summary)
 
         if decision is not None and decision.aligned:
             # The receipt is published BEFORE the handler runs: if the tool then fails,
@@ -257,7 +270,7 @@ async def _judge(
     request: ToolCallRequest,
     context: GateContext,
     call: GatedCall,
-    approval_id: str,
+    record: HILApprovalRecord | None,
     summary: str,
 ) -> IntentDecision | None:
     """Ask the intent judge whether the user's request authorizes this call.
@@ -268,14 +281,15 @@ async def _judge(
     * **A record already exists** — a prior run published a card for this call, so this is
       a resume replay (the node re-runs from the top, and the judge is a non-deterministic
       LLM call). Fall through to the pause, so the resume value lands on the ``interrupt()``
-      that is expecting it.
+      that is expecting it. (An ``auto_approved`` record never gets here — the caller
+      short-circuits it, since that call already ran and never paused.)
     * **A sibling call will pause** — running now would double-execute on resume; see
-      ``policy.has_other_gated_call``.
+      ``policy.has_pausing_sibling``.
     """
-    if await get_approval(approval_id) is not None:
+    if record is not None:
         return None
-    if await has_other_gated_call(request, context.user_id, call.id):
-        log.info(f"{LogTag.HIL} not auto-approving {call.name}: another gated call this turn")
+    if await has_pausing_sibling(request, context.user_id, call.id):
+        log.info(f"{LogTag.HIL} not auto-approving {call.name}: a sibling call may pause")
         return None
     return await judge_intent(
         user_messages=context.user_messages,
@@ -325,6 +339,11 @@ def _gate_error_message(call: GatedCall) -> ToolMessage:
 def _unpausable_denial_message(call: GatedCall) -> ToolMessage:
     """Tell the model a gated call was refused because this run cannot ask for approval."""
     return _tool_message(call, UNPAUSABLE_DENIAL_TEMPLATE.format(tool=call.name), "denied")
+
+
+def _already_ran_message(call: GatedCall) -> ToolMessage:
+    """Tell the model a replayed call already ran, so it does not ask for it again."""
+    return _tool_message(call, ALREADY_RAN_TEMPLATE.format(tool=call.name), "already_ran")
 
 
 def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -> ToolMessage:

@@ -9,7 +9,7 @@ for every tool in the app.
 from typing import Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import FINISH_TASK_NAME, WAIT_FOR_SUBAGENTS_NAME
 
 # The launch switch is ``HIL_DEFAULT_MODE`` in app/models/hil_models.py (the
 # default mode is a HILPreferences field default, so it lives with the model).
@@ -76,7 +76,7 @@ HIL_SUMMARY_MAX_ARG_CHARS = 60
 
 # Marks a synthetic ToolMessage the gate produced (rather than a real tool result).
 HIL_STATUS_KWARG = "hil_status"
-HILToolMessageStatus = Literal["denied", "timeout", "error"]
+HILToolMessageStatus = Literal["denied", "timeout", "error", "already_ran"]
 
 # How long an approval may sit unanswered before the sweep resolves it as a
 # timeout. Nothing waits in-process for this — the paused run is checkpointed.
@@ -152,6 +152,7 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "call_executor",
         "handoff",
         "spawn_subagent",
+        WAIT_FOR_SUBAGENTS_NAME,
         FINISH_TASK_NAME,
         "plan_tasks",
         "update_tasks",
@@ -159,6 +160,13 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
         "search_memory",
     }
 )
+
+# The exempt tools that can nonetheless PAUSE the run: ``handoff`` bubbles up its
+# subagent's gate interrupt, ``wait_for_subagents`` interrupts for the parked-approval
+# batch. A gated sibling of one of these must never auto-run: the pause re-runs the
+# whole tool node, so anything that already executed would execute a second time (see
+# ``policy.has_pausing_sibling``).
+HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"handoff", WAIT_FOR_SUBAGENTS_NAME})
 
 # tool_data entry name for the approval card (mirrored in @gaia/shared/chat).
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"

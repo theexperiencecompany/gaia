@@ -30,6 +30,7 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.executor_tool import call_executor, cancel_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents as wait_for_subagents_tool
+from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
@@ -56,12 +57,12 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
     tool_dict.update({t.name: t for t in todo_tools})
-    tool_dict.update({"wait_for_subagents": wait_for_subagents_tool})
+    tool_dict.update({WAIT_FOR_SUBAGENTS_NAME: wait_for_subagents_tool})
 
     todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Spawned subagents must not see executor-only orchestration tools.
-    excluded_subagent_tools = {"handoff", "wait_for_subagents"}
+    excluded_subagent_tools = {"handoff", WAIT_FOR_SUBAGENTS_NAME}
 
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,

@@ -27,12 +27,10 @@ from langgraph.runtime import Runtime, get_config
 
 from app.agents.core.background.bg_results import has_bg_subagent_results
 from app.agents.core.background.session import get_pending_subagents
-from app.constants.general import FINISH_TASK_NAME
+from app.constants.general import FINISH_TASK_NAME, WAIT_FOR_SUBAGENTS_NAME
 from app.constants.log_tags import LogTag
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from shared.py.wide_events import log
-
-_JOIN_TOOL_NAME = "wait_for_subagents"
 
 
 class SubagentJoinMiddleware(AgentMiddleware):
@@ -70,7 +68,7 @@ class SubagentJoinMiddleware(AgentMiddleware):
 
         dropped = [call.get("name", "") for call in response.tool_calls]
         log.info(
-            f"{LogTag.AGENT} Forcing {_JOIN_TOOL_NAME}: model tried to end the turn "
+            f"{LogTag.AGENT} Forcing {WAIT_FOR_SUBAGENTS_NAME}: model tried to end the turn "
             "with uncollected background subagents",
             dropped_calls=dropped,
             conversation_id=conversation_id,
@@ -78,7 +76,7 @@ class SubagentJoinMiddleware(AgentMiddleware):
         # In-place rewrite (see module docstring). finish_task, if present, is
         # dropped — the model re-finishes after the join returns the results.
         response.tool_calls = [
-            {"name": _JOIN_TOOL_NAME, "args": {}, "id": f"join_{uuid4().hex[:12]}"}
+            {"name": WAIT_FOR_SUBAGENTS_NAME, "args": {}, "id": f"join_{uuid4().hex[:12]}"}
         ]
         return None
 
