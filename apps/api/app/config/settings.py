@@ -155,6 +155,16 @@ class CommonSettings(BaseAppSettings):
     # - Used for discovering and installing skills from GitHub
     GITHUB_TOKEN: str | None = None
 
+    # check_fields=False: E2B_DOMAIN is declared per-environment in the subclasses.
+    # Rejected rather than stripped because the e2b SDK reads os.environ verbatim —
+    # "" there silently falls back to the US cluster, padding yields a broken URL.
+    @field_validator("E2B_DOMAIN", mode="after", check_fields=False)
+    @classmethod
+    def _reject_unusable_e2b_domain(cls, v: str | None) -> str | None:
+        if v is not None and (not v or v != v.strip()):
+            raise ValueError("E2B_DOMAIN must be non-empty and free of surrounding whitespace")
+        return v
+
     # ----------------------------------------------
     # Computed Properties
     # ----------------------------------------------
@@ -295,6 +305,7 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str
     E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
+    E2B_DOMAIN: str
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,
@@ -488,6 +499,7 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str | None = None
     E2B_TEMPLATE_ID: str | None = None
+    E2B_DOMAIN: str | None = None
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,

@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.5.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.4.1...bots-v1.5.0) (2026-07-03)
+
+
+### Features
+
+* **logging:** greppable subsystem prefixes + structured wide events ([#815](https://github.com/theexperiencecompany/gaia/issues/815)) ([b4fca50](https://github.com/theexperiencecompany/gaia/commit/b4fca508e9a0bcb559c89d1d57bafde82b04e3f2))
+* **workflow:** deliver results into linked platform chats as real messages ([#827](https://github.com/theexperiencecompany/gaia/issues/827)) ([02d3c30](https://github.com/theexperiencecompany/gaia/commit/02d3c301a8f144e6fd4e69d408e4eba2d2a99fe0))
+
+## [1.4.1](https://github.com/theexperiencecompany/gaia/compare/bots-v1.4.0...bots-v1.4.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **bots:** copy pnpm patches into Docker build context ([#770](https://github.com/theexperiencecompany/gaia/issues/770)) ([66a4f43](https://github.com/theexperiencecompany/gaia/commit/66a4f43b0428d9a161f78876bfdd60b2a2019bc1))
+* **whatsapp:** send template fallback on any free-form failure ([#790](https://github.com/theexperiencecompany/gaia/issues/790)) ([ca73bab](https://github.com/theexperiencecompany/gaia/commit/ca73babc2c6ef0db575da2793bb318ee50560c97))
+
 ## [1.4.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.3.0...bots-v1.4.0) (2026-06-12)
 
 
