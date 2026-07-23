@@ -218,6 +218,111 @@ async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
         )
 
 
+# Bulk Operations
+# These literal ``/todos/bulk`` paths MUST be declared before the parameterized
+# ``/todos/{todo_id}`` routes below: FastAPI matches in declaration order, so if
+# ``PUT/DELETE /todos/{todo_id}`` came first they would capture ``/todos/bulk``
+# with todo_id="bulk" and 500 instead of running the bulk operation.
+@router.put("/todos/bulk", response_model=BulkOperationResponse)
+@tiered_rate_limit("todo_operations")
+async def bulk_update_todos(request: BulkUpdateRequest, user: dict = Depends(get_current_user)):
+    """
+    Bulk update multiple todos with the same changes.
+
+    Example:
+    ```json
+    {
+        "todo_ids": ["id1", "id2", "id3"],
+        "updates": {
+            "completed": true,
+            "priority": "high"
+        }
+    }
+    ```
+    """
+    log.set(
+        user={"id": user["user_id"]},
+        todo={
+            "operation": "bulk_update",
+            "bulk_count": len(request.todo_ids) if hasattr(request, "todo_ids") else 0,
+        },
+    )
+    try:
+        return await TodoService.bulk_update_todos(request, user["user_id"])
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bulk update failed",
+        )
+
+
+@router.post("/todos/bulk/move", response_model=BulkOperationResponse)
+@tiered_rate_limit("todo_operations")
+async def bulk_move_todos(request: BulkMoveRequest, user: dict = Depends(get_current_user)):
+    """Move multiple todos to a different project."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={
+            "operation": "bulk_move",
+            "bulk_count": len(request.todo_ids),
+            "project_id": request.project_id,
+        },
+    )
+    try:
+        return await TodoService.bulk_move_todos(request, user["user_id"])
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Bulk move failed"
+        )
+
+
+@router.delete("/todos/bulk", response_model=BulkOperationResponse)
+@tiered_rate_limit("todo_operations")
+async def bulk_delete_todos(
+    todo_ids: list[str] = Body(..., min_length=1, max_length=100),
+    user: dict = Depends(get_current_user),
+):
+    """Delete multiple todos."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "bulk_delete", "bulk_count": len(todo_ids)},
+    )
+    try:
+        return await TodoService.bulk_delete_todos(todo_ids, user["user_id"])
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bulk delete failed",
+        )
+
+
+# Special mark complete endpoint for convenience
+@router.post("/todos/bulk/complete", response_model=BulkOperationResponse)
+@tiered_rate_limit("todo_operations")
+async def bulk_complete_todos(
+    todo_ids: list[str] = Body(..., min_length=1, max_length=100),
+    user: dict = Depends(get_current_user),
+):
+    """Mark multiple todos as completed (convenience endpoint)."""
+    log.set(
+        user={"id": user["user_id"]},
+        todo={"operation": "bulk_complete", "bulk_count": len(todo_ids)},
+    )
+    request = BulkUpdateRequest(
+        todo_ids=todo_ids,
+        updates=TodoUpdateRequest(completed=True),
+    )
+    try:
+        return await TodoService.bulk_update_todos(request, user["user_id"])
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Bulk complete failed",
+        )
+
+
 @router.get("/todos/{todo_id}", response_model=TodoResponse)
 async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
     """Get a specific todo by ID."""
@@ -440,107 +545,6 @@ async def get_workflow_status(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow status",
-        )
-
-
-# Bulk Operations
-@router.put("/todos/bulk", response_model=BulkOperationResponse)
-@tiered_rate_limit("todo_operations")
-async def bulk_update_todos(request: BulkUpdateRequest, user: dict = Depends(get_current_user)):
-    """
-    Bulk update multiple todos with the same changes.
-
-    Example:
-    ```json
-    {
-        "todo_ids": ["id1", "id2", "id3"],
-        "updates": {
-            "completed": true,
-            "priority": "high"
-        }
-    }
-    ```
-    """
-    log.set(
-        user={"id": user["user_id"]},
-        todo={
-            "operation": "bulk_update",
-            "bulk_count": len(request.todo_ids) if hasattr(request, "todo_ids") else 0,
-        },
-    )
-    try:
-        return await TodoService.bulk_update_todos(request, user["user_id"])
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Bulk update failed",
-        )
-
-
-@router.post("/todos/bulk/move", response_model=BulkOperationResponse)
-@tiered_rate_limit("todo_operations")
-async def bulk_move_todos(request: BulkMoveRequest, user: dict = Depends(get_current_user)):
-    """Move multiple todos to a different project."""
-    log.set(
-        user={"id": user["user_id"]},
-        todo={
-            "operation": "bulk_move",
-            "bulk_count": len(request.todo_ids),
-            "project_id": request.project_id,
-        },
-    )
-    try:
-        return await TodoService.bulk_move_todos(request, user["user_id"])
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Bulk move failed"
-        )
-
-
-@router.delete("/todos/bulk", response_model=BulkOperationResponse)
-@tiered_rate_limit("todo_operations")
-async def bulk_delete_todos(
-    todo_ids: list[str] = Body(..., min_length=1, max_length=100),
-    user: dict = Depends(get_current_user),
-):
-    """Delete multiple todos."""
-    log.set(
-        user={"id": user["user_id"]},
-        todo={"operation": "bulk_delete", "bulk_count": len(todo_ids)},
-    )
-    try:
-        return await TodoService.bulk_delete_todos(todo_ids, user["user_id"])
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Bulk delete failed",
-        )
-
-
-# Special mark complete endpoint for convenience
-@router.post("/todos/bulk/complete", response_model=BulkOperationResponse)
-@tiered_rate_limit("todo_operations")
-async def bulk_complete_todos(
-    todo_ids: list[str] = Body(..., min_length=1, max_length=100),
-    user: dict = Depends(get_current_user),
-):
-    """Mark multiple todos as completed (convenience endpoint)."""
-    log.set(
-        user={"id": user["user_id"]},
-        todo={"operation": "bulk_complete", "bulk_count": len(todo_ids)},
-    )
-    request = BulkUpdateRequest(
-        todo_ids=todo_ids,
-        updates=TodoUpdateRequest(completed=True),
-    )
-    try:
-        return await TodoService.bulk_update_todos(request, user["user_id"])
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Bulk complete failed",
         )
 
 
