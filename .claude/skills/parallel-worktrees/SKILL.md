@@ -51,6 +51,8 @@ today's defaults. Delete `.env.worktree` to fall back to defaults.
 | API (uvicorn) | `API_PORT` | `8000 + offset` | 8000 |
 | Web (Next.js) | `WEB_PORT` | `3000 + offset` | 3000 |
 | Web → API URL | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:$API_PORT/api/v1/` | …8000/api/v1/ |
+| Bots/`gaia-sim` → API URL | `GAIA_API_URL` | `http://localhost:$API_PORT` | …:8000 |
+| Scripted LLM stub (`dev:sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |
 | Discord bot | `BOT_DISCORD_PORT` | `3200 + offset` | 3200 |
 | Slack bot | `BOT_SLACK_PORT` | `3201 + offset` | 3201 |
 | Telegram bot | `BOT_TELEGRAM_PORT` | `3202 + offset` | 3202 |
@@ -103,10 +105,13 @@ wt remove         # remove the current worktree; deletes the branch if merged
 
 ## Troubleshooting
 
-- **`Address already in use` on `mise dev`** — another worktree (or a stale
-  process) holds the port. `wt list` to see live worktrees; confirm `.env.worktree`
-  exists here (`cat .env.worktree`) and re-run `mise run wt:env` if not. Offset
-  collision between two worktrees → rename one and re-run `wt:env`.
+- **`port NNNN is already in use by PID …` on `mise dev` / `dev:sim`** — the
+  preflight (`scripts/dev/check-ports.sh`) refused to start because another
+  worktree or a stale server holds the port; the message names the process. Kill
+  it, or confirm `.env.worktree` exists here (`cat .env.worktree`) and re-run
+  `mise run wt:env`. Offset collision between two worktrees → rename one and
+  re-run `wt:env`. Without the preflight this failed silently: uvicorn exited,
+  nx kept web alive, and every request went to the *other* worktree's API.
 - **Web calls the wrong API** — check `NEXT_PUBLIC_API_BASE_URL` in `.env.worktree`
   matches this worktree's `API_PORT`; restart `nx dev web` so Next re-reads the env.
 - **`.env.worktree` missing** — run `mise run wt:env`. A brand-new worktree gets it

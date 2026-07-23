@@ -106,8 +106,6 @@ jobs:
             mypy-${{ runner.os }}-
       - name: Ruff lint
         run: npx nx run-many -t lint -p ${{ needs.detect.outputs.python_projects }} --parallel=3
-      - name: Custom Python lints
-        run: python3 tools/lints/run.py apps/api/app
       - name: mypy
         run: npx nx run-many -t type-check -p ${{ needs.detect.outputs.python_projects }} --parallel=3
 
@@ -202,6 +200,24 @@ jobs:
         run: npx nx run-many -t test -p ${{ needs.detect.outputs.typescript_projects }} --parallel=3
         env:
           ENV: test
+
+  # --- Harness tooling: custom lints + their tests (always) ---------------
+  # Deliberately ungated. `tools/` belongs to no Nx project, so a PR that only
+  # touches it leaves `has_python` false — gating this on affected-detection
+  # would let a broken lint rule or directive parser ship green. The Dagger
+  # pytest job cannot cover it either: it runs with workdir apps/api and never
+  # collects tests outside it. Both steps are seconds long, so always-on is free.
+  harness-tools:
+    needs: [detect]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install --break-system-packages uv
+      - name: Custom Python lints
+        run: python3 tools/lints/run.py apps/api/app
+      - name: Lint + LLM-stub unit tests
+        run: uv run --no-project --with pytest pytest tools/lints tools/llm-stub -q
 
   # --- Dead code analysis (runner-native) ---------------------------------
   dead-code:
@@ -345,6 +361,7 @@ jobs:
       - test-python
       - test-typescript
       - dead-code
+      - harness-tools
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking)
       # coverage deliberately excluded (master-only, non-blocking)
@@ -361,6 +378,7 @@ jobs:
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  dead-code:          ${{ needs.dead-code.result }}"
+          echo "  harness-tools:      ${{ needs.harness-tools.result }}"
 
           for r in \
             "${{ needs.detect.result }}" \
@@ -369,7 +387,8 @@ jobs:
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.dead-code.result }}"; do
+            "${{ needs.dead-code.result }}" \
+            "${{ needs.harness-tools.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1

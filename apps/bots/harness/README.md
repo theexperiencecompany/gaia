@@ -23,7 +23,8 @@ nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out
 
 Flags: `--emulate <discord|slack|telegram|whatsapp>`, `--user <email>`,
 `--out <file>` (optional), `--api <url>` (default `$GAIA_API_URL` →
-`http://localhost:8000`), `--channel <id>` (optional).
+`http://localhost:$API_PORT` → `:8000`), `--channel <id>` (optional). Both env
+vars come from `.env.worktree`, so a worktree targets its own API unattended.
 
 Requires a running API (real LLM or the `dev:sim` scripted stub) and the same
 `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`,

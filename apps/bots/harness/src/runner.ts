@@ -16,12 +16,21 @@ import type { Scenario, ScenarioAssertion } from "./scenario.types";
 import { TranscriptRecorder } from "./transcript";
 import type { TranscriptEvent } from "./transcript.types";
 
-/** Default API base URL when neither the CLI flag nor env overrides it. */
-const DEFAULT_API_URL = "http://localhost:8000";
+/** Default API port, matching `apps/api/project.json`'s `${API_PORT:-8000}`. */
+const DEFAULT_API_PORT = "8000";
 
-/** Resolves the API base URL: explicit arg → env → localhost:8000. */
+/**
+ * Resolves the API base URL: explicit arg → `GAIA_API_URL` → `API_PORT` on
+ * localhost. The `API_PORT` step is what makes a worktree work unattended —
+ * `mise run wt:env` puts this worktree's port in `.env.worktree`, so `gaia-sim`
+ * targets its own API instead of whatever process owns port 8000.
+ */
 export function resolveApiUrl(explicit?: string): string {
-  return explicit ?? process.env.GAIA_API_URL ?? DEFAULT_API_URL;
+  return (
+    explicit ??
+    process.env.GAIA_API_URL ??
+    `http://localhost:${process.env.API_PORT ?? DEFAULT_API_PORT}`
+  );
 }
 
 /** Shape returned by `POST /api/v1/dev/users`. */

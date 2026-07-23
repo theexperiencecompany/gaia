@@ -58,6 +58,6 @@ test.describe("smoke", () => {
     // user directive "[[say:Done!]]".
     await expect(
       page.getByText(SCRIPTED_REPLY, { exact: true }).first(),
-    ).toBeVisible({ timeout: 30_000 });
+    ).toBeVisible();
   });
 });

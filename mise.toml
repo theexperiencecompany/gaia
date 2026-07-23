@@ -187,6 +187,11 @@ cat > "$root/.env.worktree" <<EOF
 API_PORT=$api_port
 WEB_PORT=$web_port
 NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
+# Every backend client resolves the API from this, so \`gaia-sim\` and the bots
+# target THIS worktree's API instead of whatever owns port 8000.
+GAIA_API_URL=http://localhost:$api_port
+# Scripted LLM stub (\`mise dev:sim\`). dev:sim derives OPENROUTER_BASE_URL from it.
+LLM_STUB_PORT=$(( 9797 + offset ))
 BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
 BOT_TELEGRAM_PORT=$(( 3202 + offset ))
@@ -213,10 +218,18 @@ echo "seeded $DEV_USER (set DEV_AUTH_BYPASS_EMAIL=$DEV_USER in apps/api/.env if 
 '''
 
 [tasks."dev:sim"]
-description = "Deterministic sim stack: infra + scripted LLM stub (tools/llm-stub, port 9797) + API + web. No OpenRouter credentials or cost — model replies come from [[tool:...]]/[[say:...]] directives in the chat message. Run `mise seed` once the API is up."
+description = "Deterministic sim stack: infra + scripted LLM stub (tools/llm-stub, port 9797 unless LLM_STUB_PORT overrides) + API + web. Refuses to start if any of those ports is already taken. No OpenRouter credentials or cost — model replies come from [[tool:...]]/[[say:...]] directives in the chat message. Run `mise seed` once the API is up."
 run = '''
 set -eu
+# A taken port would make uvicorn exit while nx keeps web running, leaving the
+# stack pointed at whatever already owns 8000. Refuse to start instead.
+bash scripts/dev/check-ports.sh \
+  API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}" LLM_STUB="${LLM_STUB_PORT:-9797}"
 nx run docker:docker:up
+# The stub port is the single source of truth; the client URL is derived from it
+# so a per-worktree LLM_STUB_PORT needs no second variable.
+export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
+export OPENROUTER_BASE_URL="${OPENROUTER_BASE_URL:-http://localhost:$LLM_STUB_PORT/api/v1}"
 uv run tools/llm-stub/server.py &
 stub_pid=$!
 trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
@@ -235,7 +248,12 @@ run = "nx run web:e2e"
 
 [tasks.dev]
 description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this path — use `mise dev:vm` for those."
-run = "nx run docker:docker:up && nx run-many -t dev --projects=api,web --parallel=2"
+run = '''
+set -eu
+bash scripts/dev/check-ports.sh API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}"
+nx run docker:docker:up
+nx run-many -t dev --projects=api,web --parallel=2
+'''
 
 [tasks."dev:api"]
 description = "Run ONLY API server natively + infra in Docker. Same JuiceFS caveat as `mise dev` — see `mise dev:vm` for the dockered-API variant."
