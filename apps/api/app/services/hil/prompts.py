@@ -103,16 +103,22 @@ TOOL_CLASSIFY_PROMPT = (
 
 # --- what a blocked call tells the agent -----------------------------------------------
 
-# "Adjust your approach" alone was ambiguous on a BARE decline (no feedback), where it
-# reads as "find another way" — the one thing a decline must not license. With feedback
-# ("send it to Alice instead") a modified action is exactly right, so the permission is
-# tied to the feedback rather than granted unconditionally.
+# A decline ENDS the run, and the executor's final text is delivered to the user as a
+# completed result (comms re-voices it). So anything phrased as a question or a half-done
+# "let me redo it now" becomes an open loop the user cannot close, and reads as either
+# confusion or a false success. The template forces a CLOSED report instead. Feedback is
+# carried as context for the NEXT turn, not acted on now: with no channel to receive a
+# reply, "send it to Alice instead" is an instruction for later, not a thing to chase
+# this turn. (An earlier version said "follow that / ask them what they would like
+# instead", which made the executor emit a question that comms then narrated as garbage.)
 DENIED_TEMPLATE = (
     "The user declined to run `{tool}`. The action was NOT performed.{feedback} "
-    "Do not retry the same call unchanged, and do not use another tool to produce the "
-    "same effect — a decline is not an obstacle to route around. If they said what they "
-    "wanted changed, follow that; otherwise report whatever you did complete or prepare "
-    "and ask them what they would like instead."
+    "This ends the run. Do not retry the same call, and do not use another tool to produce "
+    "the same effect — a decline is not an obstacle to route around. Give a final report, "
+    "not a question: state plainly that the action did not happen, include anything you did "
+    "complete or prepare, and if they said what they wanted changed, note it as the open "
+    "item for next time. Do not ask the user for more input or pose a follow-up question — "
+    "this run cannot receive a reply, so a question would just hang unanswered."
 )
 
 # An expiry is not a dead end: the run has usually done real work before reaching the
