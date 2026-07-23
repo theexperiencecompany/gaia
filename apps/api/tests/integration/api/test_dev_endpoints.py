@@ -49,7 +49,7 @@ def _build_app() -> FastAPI:
 
 async def _client(app: FastAPI) -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-    return httpx.AsyncClient(transport=transport, base_url="http://testserver")  # NOSONAR
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
 # ---------------------------------------------------------------------------

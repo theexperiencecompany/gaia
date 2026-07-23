@@ -84,6 +84,20 @@ override explicitly, e.g. `BOT_SERVER_PORT=$BOT_WHATSAPP_PORT nx dev bot-whatsap
 (`BOT_SERVER_PORT` overrides all four defaults, so set it per single-bot launch,
 not globally).
 
+## Shared database — one seeded dev user at a time
+
+Ports are per-worktree; the Docker infra (Mongo/Postgres/Redis/RabbitMQ/Chroma)
+is **shared**. So anything that writes to a fixed key collides across worktrees.
+The web e2e suite is the sharp edge: its `global-setup` resets → mints → seeds
+`DEV_USER` (default `dev@gaia.local`), so two worktrees running `mise e2e:web`
+at once wipe each other's data mid-run.
+
+Rule: run e2e in **one worktree at a time**, or give a worktree its own identity
+by setting `DEV_USER` (the e2e seed target) **and** the matching
+`DEV_AUTH_BYPASS_EMAIL` on its API to the same address — browser page loads carry
+no `X-Dev-User` header, so the seeded user must equal the server's bypass email.
+Full per-worktree DB isolation is deferred; until then this is the constraint.
+
 ## Merge back
 
 Repo git rules apply (see root `CLAUDE.md`):
