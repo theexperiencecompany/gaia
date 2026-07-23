@@ -976,6 +976,7 @@ class TestGenerationServiceRetries:
                 await WorkflowGenerationService.generate_steps_with_llm(
                     prompt="Test prompt",
                     title="Test Workflow",
+                    user_id="test-user",
                 )
 
 

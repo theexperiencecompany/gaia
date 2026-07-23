@@ -39,11 +39,14 @@ _LATENCY_PROBE_QUERIES = (
     "what food does Arjun like",
     "which Jira ticket is Arjun working on",
 )
-# Advisory only — printed, never asserted. The recall pipeline's wall-clock cost
-# is dominated by fastembed + a cross-encoder rerank whose speed swings ~10x
-# across a GPU CI runner, a CPU laptop, and a contended `-n 4` worker. No single
-# number is a stable pass/fail line across all three, so a hard bound here only
-# produces flakes (which is what this replaced).
+# The production target is <150ms P95 (see app/memory/retrieval.py), measured on
+# prod hardware under real concurrency. This test can't reproduce that: its
+# wall-clock cost is dominated by fastembed + a cross-encoder rerank whose speed
+# swings ~10x across a GPU CI runner, a CPU laptop, and a contended `-n 4` worker,
+# and a single test run is not a P95. So the number below is NOT the P95 SLO — it
+# is a loose sanity ceiling (~10x the prod target) that is printed, never
+# asserted. A hard wall-clock bound here only produced flakes (what this replaced);
+# the real latency SLO is owned by prod telemetry, not this correctness test.
 _RECALL_LATENCY_SOFT_TARGET_MS = 1500
 
 # 60+ memories across 10 folders. Several share vocabulary on purpose.

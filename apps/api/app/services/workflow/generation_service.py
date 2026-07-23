@@ -150,7 +150,8 @@ class WorkflowGenerationService:
         trigger_config=None,
         description: str | None = None,
         integration_ids: list[str] | None = None,
-        user_id: str | None = None,
+        *,
+        user_id: str,
     ) -> list:
         """Generate workflow steps using the LLM's native structured output.
 
@@ -347,6 +348,8 @@ class WorkflowGenerationService:
         existing_prompt: str | None = None,
         connected_integration_ids: set[str] | None = None,
         integration_ids: list[str] | None = None,
+        *,
+        user_id: str,
     ) -> dict:
         """Generate or improve workflow instructions using LLM.
 
@@ -393,7 +396,12 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        result = await ainvoke_structured(GeneratedPromptOutput, messages, label="workflow_prompt")
+        result = await ainvoke_structured(
+            GeneratedPromptOutput,
+            messages,
+            label="workflow_prompt",
+            config=metered_config(user_id),
+        )
 
         suggested: SuggestedTrigger | None = None
         if result.trigger_type in ("manual", "schedule", "integration"):

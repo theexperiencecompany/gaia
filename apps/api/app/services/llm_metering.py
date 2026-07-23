@@ -48,7 +48,16 @@ async def record_llm_call(
         )
         total_cost = float(cost.get("total_cost", 0.0))
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Token cost calc failed for {model_name}: {e}")
+        # Pricing is pure computation over a model lookup — a failure here is an
+        # unexpected bug (bad/missing pricing entry), not an infra blip, so it is
+        # surfaced loudly and alertably. We still return 0.0 rather than raising:
+        # the provider call already completed and charged, and raising would fail
+        # the user's turn for a metering bug. The dropped spend is greppable via
+        # this event so the budget under-count is visible, not silent.
+        log.error(
+            f"{LogTag.AGENT} Token cost calc failed for {model_name} — spend recorded "
+            f"as $0 (budget will under-count this call): {e}"
+        )
         total_cost = 0.0
 
     try:
@@ -56,6 +65,10 @@ async def record_llm_call(
             user_id, total_cost, root_request_id, input_tokens + output_tokens
         )
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Cost/token budget recording failed: {e}")
+        # Infra fail-open per the cost-budget module's documented degradation
+        # philosophy (a Redis blip must never fail an already-completed call).
+        # record_model_call_usage already fails open per-op internally; this is
+        # the outer backstop.
+        log.warning(f"{LogTag.AGENT} Cost/token budget recording failed (failing open): {e}")
 
     return total_cost

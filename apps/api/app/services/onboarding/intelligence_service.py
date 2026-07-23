@@ -1738,6 +1738,7 @@ async def _build_one_workflow(
         gen_result = await WorkflowGenerationService.generate_workflow_prompt(
             title=spec.title,
             description=spec.description,
+            user_id=user_id,
         )
         prompt_duration_s = round(time.monotonic() - t_prompt, 2)
         workflow_prompt = (gen_result.get("prompt") or spec.description).strip()
