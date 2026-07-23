@@ -43,6 +43,8 @@ async def create_note_endpoint(
         result = await create_note_service(note, user["user_id"])
         log.set(outcome="success")
         return result
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error creating note: {e!s}")
         raise HTTPException(
@@ -69,6 +71,8 @@ async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)
         log.set(note_id=note_id)
         log.set(outcome="success")
         return result
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error getting note {note_id}: {e!s}")
         raise HTTPException(
@@ -94,6 +98,8 @@ async def get_all_notes_endpoint(user: dict = Depends(get_current_user)):
         log.set(result_count=len(notes))
         log.set(outcome="success")
         return notes
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error listing notes: {e!s}")
         raise HTTPException(
@@ -126,6 +132,8 @@ async def update_note_endpoint(
         log.set(note_id=note_id)
         log.set(outcome="success")
         return result
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error updating note {note_id}: {e!s}")
         raise HTTPException(
@@ -152,6 +160,8 @@ async def delete_note_endpoint(
         await delete_note(note_id, user["user_id"])
         log.set(note_id=note_id)
         log.set(outcome="success")
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error deleting note {note_id}: {e!s}")
         raise HTTPException(
