@@ -18,6 +18,7 @@ from bson import ObjectId
 from freezegun import freeze_time as _freeze_time
 import pytest
 
+from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import OnboardingPhase, UserDocument
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
@@ -658,16 +659,22 @@ class TestWorkflowGenerationTask:
         mock_workflow.steps = [MagicMock(), MagicMock(), MagicMock()]
         mock_workflow.model_dump = MagicMock(return_value={"id": "wf-gen-1"})
 
-        mock_update_result = MagicMock()
-        mock_update_result.modified_count = 1
+        linked_todo = TodoDocument.model_validate(
+            {
+                "id": "aaaaaaaaaaaaaaaaaaaaaaaa",
+                "user_id": FAKE_USER_ID,
+                "title": "Write report",
+                "workflow_id": "wf-gen-1",
+            }
+        )
+        mock_todo_update = AsyncMock(return_value=linked_todo)
 
         mock_ws_manager = AsyncMock()
         mock_ws_manager.broadcast_to_user = AsyncMock()
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
-            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.todo_repository.update", mock_todo_update),
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws_manager,
@@ -677,8 +684,6 @@ class TestWorkflowGenerationTask:
             ) as mock_queue_svc,
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=mock_workflow)
-            mock_todos.update_one = AsyncMock(return_value=mock_update_result)
-            mock_todo_svc._invalidate_cache = AsyncMock()
             mock_queue_svc.clear_workflow_generating_flag = AsyncMock()
 
             result = await process_workflow_generation_task(
@@ -692,12 +697,14 @@ class TestWorkflowGenerationTask:
             # Verify workflow was created
             mock_wf_svc.create_workflow.assert_awaited_once()
 
-            # Verify todo was updated with workflow_id
-            mock_todos.update_one.assert_awaited_once()
-            update_filter = mock_todos.update_one.call_args[0][0]
-            assert update_filter["_id"] == ObjectId("aaaaaaaaaaaaaaaaaaaaaaaa")
-            update_set = mock_todos.update_one.call_args[0][1]["$set"]
-            assert update_set["workflow_id"] == "wf-gen-1"
+            # Verify the todo was linked to the workflow through the repository,
+            # scoped to the owner, with a typed workflow_id update.
+            mock_todo_update.assert_awaited_once()
+            assert mock_todo_update.await_args.args[0] == "aaaaaaaaaaaaaaaaaaaaaaaa"
+            assert mock_todo_update.await_args.kwargs["user_id"] == FAKE_USER_ID
+            applied_update = mock_todo_update.await_args.kwargs["update"]
+            assert isinstance(applied_update, TodoUpdate)
+            assert applied_update.workflow_id == "wf-gen-1"
 
             # Verify WebSocket broadcast
             mock_ws_manager.broadcast_to_user.assert_awaited_once()
