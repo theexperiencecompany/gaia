@@ -14,8 +14,10 @@ export {
   resolveEmulation,
 } from "./emulation";
 export {
+  type LinkedDevUser,
   linkDevUser,
   runScenario,
+  type ScenarioResult,
   type SendResult,
   sendOneShot,
 } from "./runner";

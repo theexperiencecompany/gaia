@@ -12,7 +12,8 @@
         "command": "pnpm tsup",
         "cwd": "{projectRoot}"
       },
-      "cache": true
+      "cache": true,
+      "outputs": ["{projectRoot}/dist"]
     },
     "sim": {
       "executor": "nx:run-commands",

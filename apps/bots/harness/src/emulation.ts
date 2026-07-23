@@ -75,13 +75,11 @@ export function resolveEmulation(platform: PlatformName): PlatformEmulation {
   };
 }
 
-/** The four platforms the harness can emulate. */
-export const EMULATABLE_PLATFORMS: readonly PlatformName[] = [
-  "discord",
-  "slack",
-  "telegram",
-  "whatsapp",
-];
+/** Derived from the exhaustive SUPPORTS_EDIT record so a new PlatformName
+ * can't be silently unemulatable. */
+export const EMULATABLE_PLATFORMS: readonly PlatformName[] = Object.keys(
+  SUPPORTS_EDIT,
+) as PlatformName[];
 
 /** Type guard: is `value` a platform the harness knows how to emulate? */
 export function isEmulatablePlatform(value: string): value is PlatformName {

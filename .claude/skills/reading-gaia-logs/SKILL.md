@@ -82,7 +82,7 @@ LOKI=http://localhost:3100
 # URL-encode the LogQL in `query`; window via start/end (RFC3339 or unix-ns)
 curl -sG "$LOKI/loki/api/v1/query_range" \
   --data-urlencode 'query={service="gaia-backend"} | json | trace_id="<TRACE_ID>"' \
-  --data-urlencode "start=$(date -u -v-1H +%s)000000000" | jq '.data.result'
+  --data-urlencode "start=$(python3 -c 'import time; print(int((time.time()-3600)*1e9))')" | jq '.data.result'
 ```
 (Grafana Explore: paste the same LogQL into the Loki datasource.)
 

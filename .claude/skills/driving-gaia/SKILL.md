@@ -31,7 +31,7 @@ Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env`. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app is authenticated on page load. Development only; production refuses to boot with it set.
+Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env`. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only; production refuses to boot with it set.
 
 The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and seeds them — it is mounted **only** when `ENV=development` **and** `DEV_AUTH_BYPASS_EMAIL` is set (`app/core/app_factory.py:139`), and 404s otherwise. It is itself exempt from the bypass, so you can mint the first user before any user exists.
 
@@ -51,7 +51,7 @@ Then set `DEV_AUTH_BYPASS_EMAIL` to that email in `apps/api/.env` (the task prin
 Source of truth: `app/api/v1/endpoints/dev.py`, `app/services/dev_service.py`, `app/schemas/dev_schemas.py`.
 
 ```bash
-API=http://localhost:8000/api/v1
+API=http://localhost:${API_PORT:-8000}/api/v1
 
 # Mint — idempotent find-or-create via the real signup path (store_user_info).
 curl -sfS -X POST "$API/dev/users" -H 'content-type: application/json' \
@@ -80,7 +80,7 @@ Under `mise dev:sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every 
 **When to use sim mode** — verifying plumbing, not intelligence: does a tool call flow comms → executor → real tool → Mongo; does the SSE stream shape render; does a bot/Playwright flow work end to end; any test that must pass identically every run with no credentials.
 **When NOT to use it** — anything judging real model behavior: prompt changes, tool-selection quality, response tone/format, memory extraction quality, model regressions. The stub does exactly what the directive says and nothing else, so "the agent chose the right tool" is meaningless under sim. Use `mise dev` with real keys for those, and expect nondeterminism.
 
-```
+```text
 [[tool:<name> <json-args>]]   one scripted tool call — repeatable, ordered
 [[say:<text>]]                the final assistant reply — at most one, terminal
 ```
@@ -94,6 +94,8 @@ Under `mise dev:sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every 
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 
+Stub knobs: `LLM_STUB_PORT` (default 9797) / `LLM_STUB_HOST` (default 127.0.0.1) on the stub process; `OPENROUTER_BASE_URL` on the API to point at a non-default stub address. The stub's own unit tests: `uv run --no-project --with pytest pytest tools/llm-stub -q`.
+
 ---
 
 ## 4. Drive the REST/SSE API directly
@@ -103,7 +105,7 @@ All routes under `/api/v1`. Under the bypass, add `-H 'X-Dev-User: <email>'` to 
 **Chat (streaming turn).** `POST /api/v1/chat-stream` (`app/api/v1/endpoints/chat.py:99`). Body is `MessageRequestWithHistory` (`app/models/message_models.py`): `messages` is a list of `{role, content}`; `conversation_id` optional (server mints one if absent); `turn_id` optional idempotency key (duplicate → 409). Response is SSE (`text/event-stream`); the stream id is on the `X-Stream-Id` response header, and the turn **continues in the background and persists to Mongo even if you disconnect**.
 
 ```bash
-curl -sN -X POST http://localhost:8000/api/v1/chat-stream \
+curl -sN -X POST "http://localhost:${API_PORT:-8000}/api/v1/chat-stream" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
   -d '{"messages":[{"role":"user","content":"[[say:hello from sim]]"}]}'
 # SSE frames stream as `data: ...`; grab X-Stream-Id from the response headers (-D -) to reattach/cancel.
@@ -115,8 +117,8 @@ curl -sN -X POST http://localhost:8000/api/v1/chat-stream \
 **Todos.** `GET /api/v1/todos` (list), `POST /api/v1/todos` (create) (`app/api/v1/endpoints/todos.py`):
 
 ```bash
-curl -sfS http://localhost:8000/api/v1/todos -H 'X-Dev-User: alice@gaia.local'
-curl -sfS -X POST http://localhost:8000/api/v1/todos \
+curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/todos" -H 'X-Dev-User: alice@gaia.local'
+curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/todos" \
   -H 'content-type: application/json' -H 'X-Dev-User: alice@gaia.local' \
   -d '{"title":"from curl"}'
 ```
@@ -133,11 +135,38 @@ mongosh 'mongodb://localhost:27017/GAIA' --quiet --eval \
 
 ---
 
-## 5. Drive the browser
+## 5. Drive one agent layer in isolation (executor / subagents)
+
+The full chain is comms → executor → `handoff` → subagent. §4's `/chat-stream` always enters at comms; these dev-only routes (same mount gate as the rest of `/dev`, §2) enter lower, so you can test one layer without scripting the hops above it. Responses are plain JSON — the agent's final message — not SSE.
+
+```bash
+# what can I invoke? (ids are what POST /dev/subagents/{id} accepts)
+curl -sfS "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents"
+
+# run the EXECUTOR directly (skips comms entirely)
+curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/executor" \
+  -H 'content-type: application/json' \
+  -d '{"email":"dev@gaia.local","task":"[[tool:create_todo {\"title\":\"direct\"}]] [[say:Done.]]"}'
+
+# run ONE subagent directly (skips comms AND the executor)
+curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents/gmail" \
+  -H 'content-type: application/json' \
+  -d '{"email":"dev@gaia.local","task":"list unread emails"}'
+```
+
+- Runs reuse the exact production preparation (`prepare_executor_execution` / `prepare_subagent_execution` — the same code the `handoff` tool calls), so a direct run cannot drift from what a real hand-off does.
+- Response `{user_id, conversation_id, thread_id, agent, message}` — `message` is the final text to assert on; verify side effects in Mongo (§4).
+- Multi-turn: pass the returned `conversation_id` back on the next call — the derived agent thread is reused, so the layer keeps its history.
+- Sim directives (§3) work unchanged in `task`; under `dev:sim` the executor's `retrieve_tools` hop is handled automatically, same as via chat.
+- Failures are loud: unknown email → 404 naming the mint fix; unknown subagent id → 400 pointing at `GET /dev/subagents`.
+
+---
+
+## 6. Drive the browser
 
 Every page load is already authenticated (§2), so there is no login step — just navigate and act.
 
-**Interactive / exploratory → agent-browser.** Snapshot → act on the stable element ref → assert. Install and usage are documented in the root `CLAUDE.md` "Agent-Driven E2E Testing" section. Run `mise dev` (or `dev:sim`), open `http://localhost:3000`, and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
+**Interactive / exploratory → agent-browser.** Snapshot → act on the stable element ref → assert. Install and usage are documented in the root `CLAUDE.md` "Agent-Driven E2E Testing" section. Run `mise dev` (or `dev:sim`), open `http://localhost:${WEB_PORT:-3000}` (your worktree's `WEB_PORT`), and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
 
 **Repeatable / scripted → Playwright.** Minimal setup lives in `apps/web/e2e/` (`playwright.config.ts`, `global-setup.ts`, `smoke.spec.ts`, `harness.ts`). One command:
 
@@ -152,7 +181,7 @@ E2E_SIM=1 mise e2e:web   # also runs the scripted-chat spec (needs `mise dev:sim
 
 ---
 
-## 6. Drive bot conversations (`gaia-sim`)
+## 7. Drive bot conversations (`gaia-sim`)
 
 `gaia-sim` (package `@gaia/bot-harness`, `apps/bots/harness`) is a fifth `BaseBotAdapter` that runs the **real** shared bot pipeline against the running API while emulating a platform's real limits/converters, and writes a JSONL transcript you assert on. It exercises platform-link, streaming, splitting, and formatting paths without a real Telegram/Slack/WhatsApp connection.
 
@@ -161,14 +190,14 @@ Run it via the nx `sim` target (or `pnpm --filter @gaia/bot-harness dev`). The o
 ```bash
 # one-shot: mint+link the dev user, inject one message emulating a platform,
 # print the JSONL transcript (and write it to --out)
-nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
+pnpm nx run bot-harness:sim -- send --emulate telegram --user dev@gaia.local --out t.jsonl "remind me tomorrow"
 
 # multi-turn YAML scenario with transcript assertions (exits non-zero on failure)
-nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
+pnpm nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml --out run.jsonl
 ```
 
 Flags (see `apps/bots/harness/src/cli.ts`):
-- `send`: `--emulate <discord|slack|telegram|whatsapp>` (required), `--user <email>` (required), `--out <file>` (optional), `--api <url>` (optional; default `$GAIA_API_URL` → `http://localhost:8000`), `--channel <id>` (optional). The message is the trailing positional arg.
+- `send`: `--emulate <discord|slack|telegram|whatsapp>` (required), `--user <email>` (required), `--out <file>` (optional), `--api <url>` (optional; default `$GAIA_API_URL` → `http://localhost:${API_PORT:-8000}`), `--channel <id>` (optional). The message is the trailing positional arg.
 - `run <scenario.yaml>`: `--out <file>`, `--api <url>`. Scenario schema lives in `apps/bots/harness/src/scenario.types.ts`; starters are in `apps/bots/harness/scenarios/` (`plain-reply.yaml`, `tool-call.yaml`, `multi-turn.yaml`).
 
 Details:
@@ -179,7 +208,7 @@ Details:
 
 ---
 
-## 7. When something misbehaves
+## 8. When something misbehaves
 
 Read logs with the **`reading-gaia-logs`** skill (wide events, where logs land per mode, Loki/LogQL, LangGraph/Langfuse, bot logs). Common surfaces you'll hit while driving:
 
@@ -190,3 +219,24 @@ Read logs with the **`reading-gaia-logs`** skill (wide events, where logs land p
 | `JuiceFSUnavailable` on `mise dev` | Native host has no FUSE mount — expected for workspace v2 / file / artifact / sandbox paths. | Switch to `mise dev:vm`. Never stub/silence the mount check. |
 | Stub returns HTTP 500 echoing a directive | Malformed `[[tool:… <json>]]` args (or a literal `]]` inside them). | Fix the JSON in the message (§3). |
 | Telegram `409 Conflict` | Same bot token running twice (dev + Docker, or two worktrees). | Run one instance only — see `parallel-worktrees` + `apps/bots/CLAUDE.md`. |
+
+---
+
+## 9. The full testing map
+
+Every way to test or simulate GAIA, in one table — this skill covers the live-stack rows in depth; the others are pointers so nothing is invisible.
+
+| Surface | Command | Docs |
+|---|---|---|
+| Chat via comms (SSE, full chain) | `curl POST /api/v1/chat-stream` (§4) | this skill |
+| Executor directly | `curl POST /api/v1/dev/executor` (§5) | this skill |
+| One subagent directly | `curl POST /api/v1/dev/subagents/{id}` (§5) | this skill |
+| Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
+| Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |
+| Deterministic LLM | `mise dev:sim` → directives (§3) | this skill, `tools/llm-stub/` |
+| Python unit (mocked infra) | `mise test:python:unit` | `apps/api/CLAUDE.md` |
+| Python full suite vs live services | `mise test:python` (Dagger local) / CI `test-python` | `apps/api/CLAUDE.md`, `.github/CLAUDE.md` |
+| Python e2e tier (incl. device-bridge black box) | `nx run api:test:e2e` | `apps/api/tests/service/README.md` |
+| TypeScript tests | `mise test` / `mise test:bots` / `mise test:cli` | `apps/bots/CLAUDE.md` |
+| LLM stub's own tests | `uv run --no-project --with pytest pytest tools/llm-stub -q` (§3) | this skill |
+| Parallel branches | `wt switch -c …` + per-worktree ports | `parallel-worktrees` skill |

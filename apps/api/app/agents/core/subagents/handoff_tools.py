@@ -424,6 +424,121 @@ def _resolve_display_metadata(
     )
 
 
+async def prepare_subagent_execution(
+    subagent_id: str,
+    task: str,
+    configurable: dict,
+    stream_id: str | None = None,
+) -> tuple[SubagentExecutionContext | None, IntegrationMetadata | None, str | None]:
+    """Resolve a subagent and build everything needed to execute it.
+
+    The single preparation path for running one subagent — used by the
+    executor's `handoff` tool and the dev direct-invocation endpoint.
+    Returns (ctx, integration_metadata, None) on success or
+    (None, None, error_message) when the subagent can't be resolved.
+    """
+    user_id = configurable.get("user_id")
+
+    (
+        subagent_graph,
+        resolved_agent_name,
+        int_id_or_error,
+        is_custom,
+    ) = await _resolve_subagent(subagent_id, user_id)
+
+    if subagent_graph is None or resolved_agent_name is None or int_id_or_error is None:
+        return None, None, int_id_or_error or "Unknown error resolving subagent"
+
+    agent_name: str = resolved_agent_name
+    integration_id: str = int_id_or_error
+    log.set(
+        subagent={
+            "name": agent_name,
+            "provider": integration_id,
+            "is_custom": is_custom,
+            "task_length": len(task),
+        }
+    )
+
+    thread_id = configurable.get("thread_id", "")
+    subagent_thread_id = f"{integration_id}_{thread_id}"
+
+    user = {
+        "user_id": user_id,
+        "email": configurable.get("email"),
+        "name": configurable.get("user_name"),
+    }
+
+    subagent_config = build_agent_config(
+        conversation_id=thread_id,
+        user=user,
+        thread_id=subagent_thread_id,
+        base_configurable=configurable,
+        agent_name=agent_name,
+        subagent_id=agent_name,
+    )
+    new_configurable = subagent_config.get("configurable", {})
+
+    system_message = await create_subagent_system_message(
+        integration_id=integration_id,
+        agent_name=agent_name,
+        user_id=user_id,
+    )
+
+    # Avoid passing Gaia display name as a service username
+    provider_meta = None
+    provider_name = None
+    platform_subagent = get_subagent_by_id(integration_id)
+    if platform_subagent and platform_subagent.provider and user_id:
+        provider_name = platform_subagent.provider
+        provider_meta = await get_provider_metadata(user_id, platform_subagent.provider)
+    service_username = _extract_service_username(provider_meta)
+    integration_usernames: dict[str, str] = {}
+    if provider_name and service_username:
+        integration_usernames[provider_name] = service_username
+    sanitized_task = _sanitize_task_user_reference(
+        task=task,
+        gaia_name=user.get("name"),
+        provider_hint=(provider_name or integration_id),
+        service_username=service_username,
+    )
+
+    messages = await build_initial_messages(
+        system_message=system_message,
+        agent_name=agent_name,
+        configurable=new_configurable,
+        task=sanitized_task,
+        user_id=user_id,
+        subagent_id=agent_name,
+        # Without this the custom-instructions/provider-metadata lookup falls
+        # back to agent_name ("gmail_agent"), which never matches the stored
+        # integration id ("gmail"), so the user's instructions are dropped.
+        integration_id=integration_id,
+        # Only forward metadata we actually fetched — None keeps the context
+        # builder's own fetch-or-skip decision intact.
+        provider_metadata=provider_meta if provider_name else None,
+    )
+
+    ctx = SubagentExecutionContext(
+        subagent_graph=subagent_graph,
+        agent_name=agent_name,
+        config=subagent_config,
+        configurable=new_configurable,
+        integration_id=integration_id,
+        initial_state={
+            "messages": messages,
+            "todos": [],
+            "intent": sanitized_task,
+            "integration_usernames": integration_usernames,
+        },
+        user_id=user_id,
+        stream_id=stream_id,
+    )
+
+    integration_metadata = await _build_integration_metadata(is_custom, integration_id)
+    return ctx, integration_metadata, None
+
+
 async def _run_blocking_handoff(
     ctx: SubagentExecutionContext,
     metadata: IntegrationMetadata | None,
@@ -513,113 +628,23 @@ async def handoff(
 
         # Fallback: try to get user_id from metadata if not in configurable
         if not user_id:
-            metadata = config.get("metadata", {})
-            user_id = metadata.get("user_id")
-            if user_id and "configurable" in config:
-                # Update configurable with user_id for consistency
-                config["configurable"]["user_id"] = user_id
+            user_id = config.get("metadata", {}).get("user_id")
+            if user_id:
+                configurable["user_id"] = user_id
 
         stream_id = configurable.get("stream_id")  # Extract stream_id for cancellation
 
-        # Resolve subagent and get graph
-        (
-            subagent_graph,
-            resolved_agent_name,
-            int_id_or_error,
-            is_custom,
-        ) = await _resolve_subagent(subagent_id, user_id)
-
-        if subagent_graph is None or resolved_agent_name is None or int_id_or_error is None:
-            return int_id_or_error or "Unknown error resolving subagent"
-
-        agent_name: str = resolved_agent_name
-        integration_id: str = int_id_or_error
-        log.set(
-            subagent={
-                "name": agent_name,
-                "provider": integration_id,
-                "is_custom": is_custom,
-                "task_length": len(task),
-            }
-        )
-
-        # Build config
-        thread_id = configurable.get("thread_id", "")
-        subagent_thread_id = f"{integration_id}_{thread_id}"
-
-        user = {
-            "user_id": user_id,
-            "email": configurable.get("email"),
-            "name": configurable.get("user_name"),
-        }
-
-        subagent_config = build_agent_config(
-            conversation_id=thread_id,
-            user=user,
-            thread_id=subagent_thread_id,
-            base_configurable=configurable,
-            agent_name=agent_name,
-            subagent_id=agent_name,
-        )
-        new_configurable = subagent_config.get("configurable", {})
-
-        # Create system message
-        system_message = await create_subagent_system_message(
-            integration_id=integration_id,
-            agent_name=agent_name,
-            user_id=user_id,
-        )
-
-        # Avoid passing Gaia display name as a service username
-        provider_meta = None
-        provider_name = None
-        platform_subagent = get_subagent_by_id(integration_id)
-        if platform_subagent and platform_subagent.provider and user_id:
-            provider_name = platform_subagent.provider
-            provider_meta = await get_provider_metadata(user_id, platform_subagent.provider)
-        service_username = _extract_service_username(provider_meta)
-        integration_usernames: dict[str, str] = {}
-        if provider_name and service_username:
-            integration_usernames[provider_name] = service_username
-        sanitized_task = _sanitize_task_user_reference(
+        ctx, integration_metadata, error = await prepare_subagent_execution(
+            subagent_id=subagent_id,
             task=task,
-            gaia_name=user.get("name"),
-            provider_hint=(provider_name or integration_id),
-            service_username=service_username,
-        )
-
-        # Build messages using shared helper (includes context message - fixes the bug!)
-        messages = await build_initial_messages(
-            system_message=system_message,
-            agent_name=agent_name,
-            configurable=new_configurable,
-            task=sanitized_task,
-            user_id=user_id,
-            subagent_id=agent_name,
-            # Without this the custom-instructions/provider-metadata lookup falls
-            # back to agent_name ("gmail_agent"), which never matches the stored
-            # integration id ("gmail"), so the user's instructions are dropped.
-            integration_id=integration_id,
-        )
-
-        # Create execution context with stream_id for cancellation
-        ctx = SubagentExecutionContext(
-            subagent_graph=subagent_graph,
-            agent_name=agent_name,
-            config=subagent_config,
-            configurable=new_configurable,
-            integration_id=integration_id,
-            initial_state={
-                "messages": messages,
-                "todos": [],
-                "intent": sanitized_task,
-                "integration_usernames": integration_usernames,
-            },
-            user_id=user_id,
+            configurable=configurable,
             stream_id=stream_id,
         )
+        if ctx is None:
+            return error or "Unknown error resolving subagent"
 
-        integration_metadata = await _build_integration_metadata(is_custom, integration_id)
+        agent_name: str = ctx.agent_name
+        integration_id: str = ctx.integration_id
 
         # Background mode: spawn subagent as asyncio task and return immediately.
         # Caller must use wait_for_subagents() to collect results.

@@ -89,7 +89,9 @@ def _instance_methods(cls: ast.ClassDef) -> list[str]:
         }
         if deco_names & {"staticmethod", "classmethod"}:
             continue
-        if item.args.args and item.args.args[0].arg == "self":
+        # posonlyargs first: `def method(self, /)` stores self there, not in args.
+        parameters = [*item.args.posonlyargs, *item.args.args]
+        if parameters and parameters[0].arg == "self":
             found.append(item.name)
     return found
 

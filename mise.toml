@@ -225,7 +225,7 @@ set -eu
 # stack pointed at whatever already owns 8000. Refuse to start instead.
 bash scripts/dev/check-ports.sh \
   API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}" LLM_STUB="${LLM_STUB_PORT:-9797}"
-nx run docker:docker:up
+pnpm nx run docker:docker:up
 # The stub port is the single source of truth; the client URL is derived from it
 # so a per-worktree LLM_STUB_PORT needs no second variable.
 export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
@@ -235,12 +235,12 @@ stub_pid=$!
 trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
 # One switch: settings + app/agents/llm/client.py derive everything else.
 # Real keys in apps/api/.env stay untouched and unused in sim mode.
-GAIA_SIM_MODE=1 nx run-many -t dev --projects=api,web --parallel=2
+GAIA_SIM_MODE=1 pnpm nx run-many -t dev --projects=api,web --parallel=2
 '''
 
 [tasks."e2e:web"]
 description = "Run web Playwright e2e against a running dev stack. Start `mise dev:sim` (or `mise dev` with DEV_AUTH_BYPASS_EMAIL set) in another terminal first. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
-run = "nx run web:e2e"
+run = "pnpm nx run web:e2e"
 
 # ─────────────────────────────────────────────────────────────────────────────
 # DEVELOPMENT COMMANDS

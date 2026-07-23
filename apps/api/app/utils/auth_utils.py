@@ -8,8 +8,6 @@ from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
 from shared.py.wide_events import log
 
-# T is the return type of the wrapped function
-
 
 async def resolve_dev_bypass_user(headers: Any) -> tuple[str, dict[str, Any] | None]:
     """Resolve the dev-bypass target to its Mongo user.

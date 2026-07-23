@@ -179,11 +179,13 @@ async function main(): Promise<number> {
   }
 }
 
-main()
-  .then((code) => process.exit(code))
-  .catch((error: unknown) => {
-    log(
-      `gaia-sim failed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-    process.exit(1);
-  });
+// exitCode (not process.exit) lets pending stdout writes — the JSONL
+// transcript can be large — flush before the process ends.
+try {
+  process.exitCode = await main();
+} catch (error: unknown) {
+  log(
+    `gaia-sim failed: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  process.exitCode = 1;
+}

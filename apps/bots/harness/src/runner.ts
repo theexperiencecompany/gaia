@@ -55,12 +55,14 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    // A hung API (container not ready, deadlock) must fail the run loudly,
+    // not hang linkDevUser/sendOneShot/runScenario forever.
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(
-      `${url} returned ${res.status} ${res.statusText}${detail ? `: ${detail}` : ""}`,
-    );
+    const suffix = detail ? `: ${detail}` : "";
+    throw new Error(`${url} returned ${res.status} ${res.statusText}${suffix}`);
   }
   return (await res.json()) as T;
 }
