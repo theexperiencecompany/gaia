@@ -147,9 +147,7 @@ async def get_clarify_questions(
     if not focus:
         raise HTTPException(status_code=400, detail="Focus is required")
 
-    questions = await generate_clarify_questions(
-        name, profession, focus, user_id=user["user_id"]
-    )
+    questions = await generate_clarify_questions(name, profession, focus, user_id=user["user_id"])
     return {"questions": questions}
 
 

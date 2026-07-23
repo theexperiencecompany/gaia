@@ -209,7 +209,9 @@ class TestExtractUsernameWithLLM:
         assert result == "NOT_FOUND"
 
     async def test_unknown_platform_returns_not_found(self) -> None:
-        result = await extract_username_with_llm("unknown_platform", [{"messageText": "hi"}], user_id="u1")
+        result = await extract_username_with_llm(
+            "unknown_platform", [{"messageText": "hi"}], user_id="u1"
+        )
         assert result == "NOT_FOUND"
 
     @patch("app.agents.memory.profile_extractor.settings")
@@ -272,7 +274,9 @@ class TestExtractUsernameWithLLM:
 
         emails = [{"messageText": "Welcome @jdoe to GitHub", "subject": "Test"}]
 
-        result = await extract_username_with_llm("github", emails, user_name="John Doe", user_id="u1")
+        result = await extract_username_with_llm(
+            "github", emails, user_name="John Doe", user_id="u1"
+        )
         assert result == "jdoe"
 
     @patch("app.agents.memory.profile_extractor.settings")
