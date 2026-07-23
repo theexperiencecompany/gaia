@@ -341,13 +341,13 @@ jobs:
           echo "::group::ruff check + format --check"
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx ruff@0.14.13 check apps/api apps/voice-agent libs/shared/py
-            uvx ruff@0.14.13 format --check apps/api apps/voice-agent libs/shared/py
+            uvx --no-build ruff@0.14.13 check apps/api apps/voice-agent libs/shared/py
+            uvx --no-build ruff@0.14.13 format --check apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx ruff@0.14.13 check $FILES
-            uvx ruff@0.14.13 format --check $FILES
+            uvx --no-build ruff@0.14.13 check $FILES
+            uvx --no-build ruff@0.14.13 format --check $FILES
           fi
           echo "::endgroup::"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
