@@ -17,6 +17,7 @@ import httpx
 import pytest
 
 from app.constants.auth import DEV_USER_MISSING_HINT
+from app.models.user_models import UserDocument
 
 DEV_EMAIL = "dev@gaia.local"
 
@@ -260,8 +261,10 @@ class TestDevUserImpersonation:
     @pytest.fixture
     def bypass_users(self):
         return {
-            DEV_EMAIL: {"_id": ObjectId(), "email": DEV_EMAIL, "name": "Dev"},
-            "other@gaia.local": {"_id": ObjectId(), "email": "other@gaia.local", "name": "Other"},
+            email: UserDocument.model_validate(
+                {"id": str(ObjectId()), "email": email, "name": name}
+            )
+            for email, name in ((DEV_EMAIL, "Dev"), ("other@gaia.local", "Other"))
         }
 
     @pytest.fixture
@@ -270,13 +273,13 @@ class TestDevUserImpersonation:
 
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
 
-        async def fake_find_one(query):
-            return bypass_users.get(query.get("email"))
+        async def fake_get_by_email(email):
+            return bypass_users.get(email)
 
-        mock_users = MagicMock()
-        mock_users.find_one = AsyncMock(side_effect=fake_find_one)
-
-        with patch("app.api.v1.middleware.auth.users_collection", mock_users):
+        with patch(
+            "app.api.v1.middleware.auth.user_repository.get_by_email",
+            AsyncMock(side_effect=fake_get_by_email),
+        ):
             app = _build_bypass_probe_app()
             client = await _client(app)
             async with client:
