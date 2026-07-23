@@ -469,21 +469,22 @@ async def _run_blocking_handoff(
     )
     start_time = time.monotonic()
 
-    # When the executor resumes, THIS node re-runs from the top while the subagent's
-    # own thread is still parked on its interrupt. Re-invoking it fresh would redo
-    # everything it already did, so a parked checkpoint means "recover, don't rerun".
-    # A parked subagent can only exist on a resume replay, so fresh runs skip the
-    # checkpoint probe (a per-handoff Postgres read) entirely.
-    parked = await _parked_interrupt(ctx) if probe_parked else None
-    if parked is None:
+    # When the executor resumes, THIS node re-runs from the top over a subagent thread
+    # that already holds work — parked on its interrupt, or finished before a LATER
+    # sibling in the same node paused. Either way, re-invoking it fresh would redo
+    # everything it already did, so an existing checkpoint means "recover, don't rerun".
+    # A recoverable checkpoint can only exist on a resume replay, so fresh runs skip the
+    # probe (a per-handoff Postgres read) entirely.
+    recovered = await _recover_from_checkpoint(ctx) if probe_parked else None
+    if recovered is not None:
+        outcome = recovered
+    else:
         outcome = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
             integration_metadata=metadata,
             subagent_id=sa_id,
         )
-    else:
-        outcome = SubagentOutcome(text="", interrupt=parked)
 
     # The subagent was invoked imperatively, so its GraphInterrupt never reaches
     # the executor's runtime — bubble each pause up explicitly. A LOOP, not an if:
@@ -512,16 +513,28 @@ async def _run_blocking_handoff(
     return outcome.text
 
 
-async def _parked_interrupt(ctx: SubagentExecutionContext) -> dict[str, Any] | None:
-    """The approval payload this subagent's thread is parked on.
+async def _recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutcome | None:
+    """What this subagent's own thread already holds, or ``None`` if it never ran.
 
-    ``None`` = not parked; ``{}`` = parked but the payload is unreadable, which
-    downstream treats as a malformed approval and fails the run rather than act.
+    Three states, and conflating the last two is how a completed subagent gets driven a
+    second time:
+
+    * **Parked** (``snapshot.next``) — mid-run on a HIL interrupt. Returned as a paused
+      outcome so the caller bubbles the approval up. A paused outcome with an empty
+      payload means the interrupt is unreadable, which downstream treats as a malformed
+      approval and fails the run rather than act.
+    * **Finished** — no pending work but state on the thread. Returned as its
+      checkpointed final answer: re-running would repeat every action it took.
+    * **Never ran** — no state at all. ``None``, so the caller starts it normally.
     """
     snapshot = await ctx.subagent_graph.aget_state(ctx.config)
-    if not snapshot.next:
+    if snapshot.next:
+        return SubagentOutcome(
+            text="", interrupt=interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
+        )
+    if not _snapshot_messages(snapshot):
         return None
-    return interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
+    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
 
 
 async def _has_parked_subagent(ctx: SubagentExecutionContext) -> bool:
@@ -583,9 +596,14 @@ async def resume_parked_subagent(
         stream_id=str(configurable.get("stream_id") or "") or None,
     )
 
-    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
-    if not snapshot.next:
-        return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+    recovered = await _recover_from_checkpoint(ctx)
+    if recovered is None:
+        # The record says a subagent parked on this thread, but the thread holds no
+        # state — its checkpoint is gone. Nothing to resume, and starting fresh would
+        # run the task again from an empty initial state, so say so instead.
+        return SubagentOutcome(text=f"Error resuming {agent_name}: its checkpoint is missing.")
+    if not recovered.paused:
+        return recovered
 
     decision = {
         "status": _subagent_resume_status(record.status),
@@ -608,9 +626,15 @@ def _subagent_resume_status(status: str) -> str:
     return "denied"
 
 
-def _final_text_from_snapshot(snapshot: Any) -> str:
+def _snapshot_messages(snapshot: Any) -> list[Any]:
+    """The messages a checkpoint holds. Empty means the thread has never run."""
     values = getattr(snapshot, "values", None) or {}
     messages = values.get("messages") if isinstance(values, dict) else None
+    return messages if isinstance(messages, list) else []
+
+
+def _final_text_from_snapshot(snapshot: Any) -> str:
+    messages = _snapshot_messages(snapshot)
     if not messages:
         return ""
     content = getattr(messages[-1], "content", "")
