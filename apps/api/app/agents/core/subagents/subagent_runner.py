@@ -113,6 +113,7 @@ async def build_initial_messages(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    provider_metadata: dict | None = None,
     include_connected_integrations: bool = False,
 ) -> list:
     """Build the [static_prompt, dynamic_context, human_task] triplet.
@@ -141,6 +142,8 @@ async def build_initial_messages(
             parallel with its own work and pass it down here to avoid the
             subagent running a duplicate ChromaDB lookup.
         skills_text: Pre-fetched skills section; same rationale.
+        provider_metadata: Pre-fetched provider metadata dict; same rationale
+            (the handoff path fetches it for task sanitization already).
         include_connected_integrations: Executor-only; appends the live
             connected-integrations manifest to the dynamic-context message.
     """
@@ -154,6 +157,7 @@ async def build_initial_messages(
         integration_id=integration_id,
         memories_text=memories_text,
         skills_text=skills_text,
+        provider_metadata=provider_metadata,
         include_connected_integrations=include_connected_integrations,
     )
 

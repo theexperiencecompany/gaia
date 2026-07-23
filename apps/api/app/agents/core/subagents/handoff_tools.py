@@ -514,6 +514,9 @@ async def prepare_subagent_execution(
         # back to agent_name ("gmail_agent"), which never matches the stored
         # integration id ("gmail"), so the user's instructions are dropped.
         integration_id=integration_id,
+        # Only forward metadata we actually fetched — None keeps the context
+        # builder's own fetch-or-skip decision intact.
+        provider_metadata=provider_meta if provider_name else None,
     )
 
     ctx = SubagentExecutionContext(
