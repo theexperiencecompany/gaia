@@ -94,7 +94,7 @@ class ActionConfig(BaseModel):
     modal: ModalConfig | None = None
 
     @model_validator(mode="after")
-    def validate_single_config(self):
+    def validate_single_config(self) -> "ActionConfig":
         """Ensure only one action config is set"""
         configs = [self.redirect, self.api_call, self.modal]
         non_none_configs = [c for c in configs if c is not None]
@@ -169,7 +169,7 @@ class NotificationRequest(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("priority", mode="before")
-    def validate_priority(cls, v):
+    def validate_priority(cls, v: int) -> int:
         """Reject priorities outside the inclusive 1–5 range."""
         if not 1 <= v <= 5:
             raise ValueError("Priority must be between 1 and 5")

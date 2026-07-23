@@ -89,6 +89,17 @@ module = [
     "app.models.usage_models",
     "app.models.search_models",
     "app.models.integration_instructions_models",
+    "app.models.user_models",
+    "app.models.workflow_models",
+    "app.models.reminder_models",
+    "app.models.integration_models",
+    "app.models.calendar_models",
+    "app.models.files_models",
+    "app.models.blog_models",
+    "app.models.bot_models",
+    "app.models.sandbox_models",
+    "app.models.support_models",
+    "app.models.notification.notification_models",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

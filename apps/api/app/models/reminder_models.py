@@ -99,7 +99,7 @@ class CreateReminderRequest(BaseModel):
 
     @field_validator("repeat")
     @classmethod
-    def check_repeat_cron(cls, v):
+    def check_repeat_cron(cls, v: str | None) -> str | None:
         from app.utils.cron_utils import validate_cron_expression
 
         if v is not None and not validate_cron_expression(v):
@@ -108,7 +108,7 @@ class CreateReminderRequest(BaseModel):
 
     @field_validator("scheduled_at")
     @classmethod
-    def check_scheduled_at_future(cls, v):
+    def check_scheduled_at_future(cls, v: datetime | None) -> datetime | None:
         if v is not None:
             # Ensure timezone-aware datetime
             if v.tzinfo is None:
@@ -126,14 +126,14 @@ class CreateReminderRequest(BaseModel):
 
     @field_validator("max_occurrences")
     @classmethod
-    def check_max_occurrences(cls, v):
+    def check_max_occurrences(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
             raise ValueError("max_occurrences must be greater than 0")
         return v
 
     @field_validator("stop_after")
     @classmethod
-    def check_stop_after_future(cls, v):
+    def check_stop_after_future(cls, v: datetime | None) -> datetime | None:
         if v is not None:
             # Ensure timezone-aware datetime
             if v.tzinfo is None:
@@ -200,28 +200,28 @@ class CreateReminderToolRequest(BaseModel):
 
     @field_validator("repeat")
     @classmethod
-    def check_repeat_cron(cls, v):
+    def check_repeat_cron(cls, v: str | None) -> str | None:
         if v is not None and not validate_cron_expression(v):
             raise ValueError(f"Invalid cron expression: {v}")
         return v
 
     @field_validator("max_occurrences")
     @classmethod
-    def check_max_occurrences(cls, v):
+    def check_max_occurrences(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
             raise ValueError("max_occurrences must be greater than 0")
         return v
 
     @field_validator("delay_seconds")
     @classmethod
-    def check_delay_seconds(cls, v):
+    def check_delay_seconds(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
             raise ValueError("delay_seconds must be greater than 0")
         return v
 
     @field_validator("timezone_offset", "stop_after_timezone_offset")
     @classmethod
-    def validate_timezone_offset(cls, v):
+    def validate_timezone_offset(cls, v: str | None) -> str | None:
         """Validate timezone offset format (+|-)HH:MM"""
         if v is not None:
             import re
@@ -301,7 +301,7 @@ class UpdateReminderRequest(BaseModel):
 
     @field_validator("repeat")
     @classmethod
-    def check_repeat_cron(cls, v):
+    def check_repeat_cron(cls, v: str | None) -> str | None:
         from app.utils.cron_utils import validate_cron_expression
 
         if v is not None and not validate_cron_expression(v):
@@ -310,7 +310,7 @@ class UpdateReminderRequest(BaseModel):
 
     @field_validator("scheduled_at", "stop_after")
     @classmethod
-    def ensure_timezone_aware(cls, v):
+    def ensure_timezone_aware(cls, v: datetime | None) -> datetime | None:
         """Ensure datetime fields are timezone-aware (UTC if no timezone)."""
         if v is not None and v.tzinfo is None:
             v = v.replace(tzinfo=UTC)
@@ -318,14 +318,14 @@ class UpdateReminderRequest(BaseModel):
 
     @field_validator("max_occurrences")
     @classmethod
-    def check_max_occurrences(cls, v):
+    def check_max_occurrences(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
             raise ValueError("max_occurrences must be greater than 0")
         return v
 
     @field_validator("stop_after")
     @classmethod
-    def check_stop_after_future(cls, v):
+    def check_stop_after_future(cls, v: datetime | None) -> datetime | None:
         from datetime import datetime
 
         if v is not None:

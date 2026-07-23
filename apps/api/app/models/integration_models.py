@@ -122,7 +122,7 @@ class Integration(MongoDocument):
 
     @field_validator("clone_count", mode="before")
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: int | None) -> int:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
@@ -266,7 +266,7 @@ class IntegrationResponse(BaseModel):
 
     @field_validator("clone_count", mode="before")
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: int | None) -> int:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 

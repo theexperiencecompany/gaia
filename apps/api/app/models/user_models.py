@@ -62,7 +62,7 @@ class OnboardingPreferences(BaseModel):
 
     @field_validator("profession")
     @classmethod
-    def validate_profession(cls, v):
+    def validate_profession(cls, v: str | None) -> str | None:
         if v is not None and v != "":
             v = v.strip()
             if not v:
@@ -75,7 +75,7 @@ class OnboardingPreferences(BaseModel):
 
     @field_validator("response_style")
     @classmethod
-    def validate_response_style(cls, v):
+    def validate_response_style(cls, v: str | None) -> str | None:
         if v is not None and v != "":
             valid_styles = {"brief", "detailed", "casual", "professional"}
             v = v.strip()
@@ -88,7 +88,7 @@ class OnboardingPreferences(BaseModel):
 
     @field_validator("custom_instructions")
     @classmethod
-    def validate_custom_instructions(cls, v):
+    def validate_custom_instructions(cls, v: str | None) -> str | None:
         if v is not None and v != "":
             v = v.strip()
             if len(v) > 500:
@@ -144,7 +144,7 @@ class OnboardingRequest(BaseModel):
 
     @field_validator("name")
     @classmethod
-    def validate_name(cls, v):
+    def validate_name(cls, v: str) -> str:
         v = v.strip()
         if not v:
             raise ValueError("Name cannot be empty")
@@ -156,7 +156,7 @@ class OnboardingRequest(BaseModel):
 
     @field_validator("profession")
     @classmethod
-    def validate_profession(cls, v):
+    def validate_profession(cls, v: str) -> str:
         v = v.strip()
         if not v:
             raise ValueError("Profession cannot be empty")
@@ -166,7 +166,7 @@ class OnboardingRequest(BaseModel):
 
     @field_validator("timezone")
     @classmethod
-    def validate_timezone(cls, v):
+    def validate_timezone(cls, v: str | None) -> str | None:
         if v is not None and v.strip():
             v = v.strip()
             # Canonical validation: accepts IANA names, ±HH:MM offsets, and UTC.
@@ -217,7 +217,7 @@ class OnboardingPhaseUpdateRequest(BaseModel):
 
     @field_validator("phase")
     @classmethod
-    def validate_phase_progression(cls, v):
+    def validate_phase_progression(cls, v: OnboardingPhase) -> OnboardingPhase:
         """Ensure phase values are valid"""
         # Phase validation is handled by the enum type
         # Additional business logic validation should be in the service layer

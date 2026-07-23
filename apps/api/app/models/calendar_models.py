@@ -2,7 +2,14 @@ from datetime import datetime
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from app.db.repositories.base import MongoDocument
 
@@ -32,7 +39,7 @@ class CalendarEventsQueryRequest(BaseModel):
 
     @field_validator("start_date", "end_date")
     @classmethod
-    def validate_date_format(cls, v):
+    def validate_date_format(cls, v: str | None) -> str | None:
         """Validate date format is YYYY-MM-DD and date is valid."""
         if v is not None:
             date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -88,7 +95,7 @@ class RecurrenceRule(BaseModel):
 
     @field_validator("by_day")
     @classmethod
-    def validate_by_day(cls, v):
+    def validate_by_day(cls, v: list[str] | None) -> list[str] | None:
         if v:
             valid_days = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
             for day in v:
@@ -98,7 +105,7 @@ class RecurrenceRule(BaseModel):
 
     @field_validator("by_month_day")
     @classmethod
-    def validate_by_month_day(cls, v):
+    def validate_by_month_day(cls, v: list[int] | None) -> list[int] | None:
         if v:
             for day in v:
                 if day < 1 or day > 31:
@@ -107,7 +114,7 @@ class RecurrenceRule(BaseModel):
 
     @field_validator("by_month")
     @classmethod
-    def validate_by_month(cls, v):
+    def validate_by_month(cls, v: list[int] | None) -> list[int] | None:
         if v:
             for month in v:
                 if month < 1 or month > 12:
@@ -180,7 +187,7 @@ class RecurrenceRule(BaseModel):
 
     @field_validator("exclude_dates", "include_dates")
     @classmethod
-    def validate_dates(cls, v):
+    def validate_dates(cls, v: list[str] | None) -> list[str] | None:
         if v:
             date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
             for date in v:
@@ -464,7 +471,7 @@ class EventCreateRequest(BaseCalendarEvent):
     # Validate that start and end times are in ISO format or date format
     @field_validator("start", "end")
     @classmethod
-    def validate_time_format(cls, v, info):
+    def validate_time_format(cls, v: str, info: ValidationInfo) -> str:
         field_name = info.field_name
 
         try:
@@ -636,7 +643,7 @@ class AddRecurrenceInput(BaseModel):
 
     @field_validator("by_day")
     @classmethod
-    def validate_by_day(cls, v):
+    def validate_by_day(cls, v: list[str]) -> list[str]:
         if v:
             valid_days = {"SU", "MO", "TU", "WE", "TH", "FR", "SA"}
             for day in v:
@@ -645,7 +652,7 @@ class AddRecurrenceInput(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_recurrence(self):
+    def validate_recurrence(self) -> "AddRecurrenceInput":
         if self.count > 0 and self.until_date:
             raise ValueError("Cannot specify both 'count' and 'until_date'")
         return self

@@ -144,7 +144,7 @@ class TriggerConfig(BaseModel):
 
     @field_validator("cron_expression")
     @classmethod
-    def validate_cron_expression(cls, v):
+    def validate_cron_expression(cls, v: str | None) -> str | None:
         """Validate cron expression if provided."""
         if v is not None:
             if not validate_cron_expression(v):
@@ -258,7 +258,7 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data):
+    def __init__(self, **data: Any) -> None:
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
         # Ensure user_id is provided (it's required by BaseScheduledTask)
         if "user_id" not in data:
@@ -303,7 +303,7 @@ class Workflow(BaseScheduledTask):
 
     @model_validator(mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data):
+    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:
         """Ensure legacy records still expose prompt and non-null description."""
         if isinstance(data, dict):
             description = data.get("description") or ""
@@ -379,7 +379,7 @@ class CreateWorkflowRequest(BaseModel):
 
     @field_validator("title", "prompt")
     @classmethod
-    def validate_non_empty_strings(cls, v):
+    def validate_non_empty_strings(cls, v: str) -> str:
         """Require non-blank title/prompt and strip surrounding whitespace."""
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
@@ -387,7 +387,7 @@ class CreateWorkflowRequest(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_optional_description(cls, v):
+    def validate_optional_description(cls, v: str | None) -> str | None:
         """Normalize an optional description, coercing blank values to None/empty."""
         if v is not None and not v.strip():
             return ""
@@ -408,7 +408,7 @@ class UpdateWorkflowRequest(BaseModel):
 
     @field_validator("title", "prompt")
     @classmethod
-    def validate_optional_non_empty_strings(cls, v):
+    def validate_optional_non_empty_strings(cls, v: str | None) -> str | None:
         """Strip provided title/prompt updates and reject blank-only values."""
         if v is not None:
             if not v.strip():
@@ -418,7 +418,7 @@ class UpdateWorkflowRequest(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_optional_update_description(cls, v):
+    def validate_optional_update_description(cls, v: str | None) -> str | None:
         """Normalize a description update, coercing blank values to None."""
         if v is None:
             return None
