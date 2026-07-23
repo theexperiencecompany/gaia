@@ -29,7 +29,7 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
-async def _require_user(email: str) -> dict:
+async def require_dev_user(email: str) -> dict:
     """Load a user by email or raise a 404 that points at the mint endpoint."""
     user = await users_collection.find_one({"email": email})
     if not user:
@@ -86,7 +86,7 @@ async def seed_dev_data(
                 status_code=400,
             )
 
-    user = await _require_user(email)
+    user = await require_dev_user(email)
     user_id = str(user["_id"])
 
     # A seeded account must be ready to use: mark onboarding complete the same
@@ -164,7 +164,7 @@ async def seed_dev_data(
 
 async def delete_dev_user(email: str) -> dict:
     """Remove a dev user and the todos/conversations/projects it owns."""
-    user = await _require_user(email)
+    user = await require_dev_user(email)
     user_id = str(user["_id"])
 
     todos_deleted = (await todos_collection.delete_many({"user_id": user_id})).deleted_count

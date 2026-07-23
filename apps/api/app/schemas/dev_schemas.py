@@ -50,3 +50,38 @@ class DeleteDevUserResponse(BaseModel):
     email: str
     user_id: str
     deleted: dict[str, int]
+
+
+class RunDevAgentRequest(BaseModel):
+    """Run the executor or one subagent directly, skipping the comms agent."""
+
+    email: str = Field(min_length=3, max_length=320, description="Dev user to run as")
+    task: str = Field(
+        min_length=1,
+        max_length=20000,
+        description="Task text; sim-mode directives ([[tool:...]], [[say:...]]) work here",
+    )
+    conversation_id: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Pass the same id across calls to keep the agent's thread state",
+    )
+
+
+class DevAgentRunResponse(BaseModel):
+    """Outcome of a direct agent run."""
+
+    user_id: str
+    conversation_id: str
+    thread_id: str
+    agent: str
+    message: str
+
+
+class DevSubagentInfo(BaseModel):
+    """A subagent id/name pair accepted by the direct-run endpoint."""
+
+    id: str
+    name: str
+    short_name: str | None = None
+    agent_name: str

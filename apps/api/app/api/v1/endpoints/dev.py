@@ -12,9 +12,17 @@ from fastapi.responses import JSONResponse
 from app.schemas.dev_schemas import (
     CreateDevUserRequest,
     DeleteDevUserResponse,
+    DevAgentRunResponse,
+    DevSubagentInfo,
     DevUserResponse,
+    RunDevAgentRequest,
     SeedDevDataRequest,
     SeedDevDataResponse,
+)
+from app.services.dev_agent_service import (
+    list_dev_subagents,
+    run_executor_direct,
+    run_subagent_direct,
 )
 from app.services.dev_service import delete_dev_user, mint_dev_user, seed_dev_data
 from shared.py.wide_events import log
@@ -55,4 +63,33 @@ async def remove_dev_user(email: str) -> JSONResponse:
     log.set(dev={"operation": "delete_user", "email": email})
     result = await delete_dev_user(email)
     log.set(dev={"user_id": result["user_id"]})
+    return JSONResponse(content=result)
+
+
+@router.get("/subagents", response_model=list[DevSubagentInfo])
+async def list_subagents() -> JSONResponse:
+    """List every registered subagent runnable via POST /dev/subagents/{id}."""
+    log.set(dev={"operation": "list_subagents"})
+    subagents = list_dev_subagents()
+    log.set(dev={"count": len(subagents)})
+    return JSONResponse(content=subagents)
+
+
+@router.post("/executor", response_model=DevAgentRunResponse)
+async def run_executor(payload: RunDevAgentRequest) -> JSONResponse:
+    """Run the executor agent directly with a task, skipping the comms agent."""
+    log.set(dev={"operation": "run_executor", "email": payload.email})
+    result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
+    log.set(dev={"user_id": result["user_id"], "thread_id": result["thread_id"]})
+    return JSONResponse(content=result)
+
+
+@router.post("/subagents/{subagent_id}", response_model=DevAgentRunResponse)
+async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> JSONResponse:
+    """Run one subagent directly with a task, skipping comms and the executor."""
+    log.set(dev={"operation": "run_subagent", "email": payload.email, "subagent_id": subagent_id})
+    result = await run_subagent_direct(
+        payload.email, subagent_id, payload.task, payload.conversation_id
+    )
+    log.set(dev={"user_id": result["user_id"], "thread_id": result["thread_id"]})
     return JSONResponse(content=result)
