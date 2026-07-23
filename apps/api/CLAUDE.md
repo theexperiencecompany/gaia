@@ -273,7 +273,8 @@ Related: `GAIA_SIM_MODE=1` (`mise dev:sim`) routes every LLM call to the local s
 
 - The user must exist in Mongo. Mint one without a WorkOS login via the dev router: `POST /api/v1/dev/users {"email": ...}` (idempotent; reuses the real signup path). A bypass target that resolves to no user fails loud with a 401 whose message names the fix ("mint it via POST /api/v1/dev/users") instead of a generic auth error.
 - Per-request impersonation: with the bypass active, an `X-Dev-User: <email>` request header authenticates as that user instead of `DEV_AUTH_BYPASS_EMAIL`, so one server can act as many users without restarts. Applies to HTTP (middleware) and WebSocket paths.
-- The dev router (`/api/v1/dev/*` — mint, seed, delete) is mounted only when `ENV=development` and `DEV_AUTH_BYPASS_EMAIL` is set; it 404s otherwise. It is excluded from the auth bypass so minting the first user is possible before any user exists.
+- The dev router (`/api/v1/dev/*` — mint, seed, delete, direct agent runs) is mounted only when `ENV=development` and `DEV_AUTH_BYPASS_EMAIL` is set; it 404s otherwise. It is excluded from the auth bypass so minting the first user is possible before any user exists.
+- Direct layer invocation for tests: `POST /api/v1/dev/executor` runs the executor without the comms front door; `POST /api/v1/dev/subagents/{id}` runs one subagent without comms or the executor (`GET /api/v1/dev/subagents` lists ids). Both reuse the production preparation paths (`prepare_executor_execution` / `prepare_subagent_execution`) — see the `driving-gaia` skill §5.
 - Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
 - WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
