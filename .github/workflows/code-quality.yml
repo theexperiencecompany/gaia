@@ -334,17 +334,20 @@ jobs:
           version: "0.8.17"
           enable-cache: true
       - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        # Pinned to the uv.lock ruff version — bump both together. Unpinned,
+        # a ruff release can flip this lane red with zero code changes
+        # (0.16.0 shipped ISC004/RUF036 four minutes before a run here).
         run: |
           echo "::group::ruff check + format --check"
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx ruff check apps/api apps/voice-agent libs/shared/py
-            uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+            uvx ruff@0.14.13 check apps/api apps/voice-agent libs/shared/py
+            uvx ruff@0.14.13 format --check apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx ruff check $FILES
-            uvx ruff format --check $FILES
+            uvx ruff@0.14.13 check $FILES
+            uvx ruff@0.14.13 format --check $FILES
           fi
           echo "::endgroup::"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"

@@ -103,9 +103,13 @@ rule/why/exact-fix/doc-pointer on failure (see `tools/lints/`).
 - `nx.json` `defaultBase` is `develop` (the integration branch). CI passes
   explicit bases; `defaultBase` matters for local `nx affected` / mise tasks.
 - Versions are pinned where a trusted SHA/number was resolvable (nx 22.7.7 in
-  nx.json `installation`, uv 0.8.17, pnpm/action-setup + docker/login-action
-  by SHA). `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float
-  on major tags — pin them from a machine with GitHub API access.
+  nx.json `installation`, uv 0.8.17, `uvx ruff@<uv.lock version>` in the ruff
+  lane, pnpm/action-setup + docker/login-action by SHA).
+  `actions/checkout`/`setup-node`/`cache`/`nx-set-shas` still float on major
+  tags — pin them from a machine with GitHub API access.
+- Never run a linter unpinned in a lane: ruff 0.16.0 shipped new rules
+  (ISC004, RUF036) four minutes before a scheduled run and turned the lane
+  red with zero code changes. Pin to the uv.lock version; bump deliberately.
 - Test-service images are digest-pinned (`tag@sha256:...`) in
   `scripts/ci/start-test-services.sh` AND `.dagger/src/gaia_ci/main.py` —
   bump both together; the tag part is a readability label, the digest is
