@@ -53,8 +53,6 @@ class InlineImage:
 
     @property
     def extension(self) -> str:
-        """Filename suffix for ``data``. Always resolves — ``_fit`` only ever
-        emits a provider-safe MIME."""
         return IMAGE_EXTENSION_BY_MIME[self.mime_type]
 
     def to_block(self) -> ContentBlock:
@@ -78,8 +76,8 @@ class ImageCodec:
     async def from_base64(cls, data_b64: str) -> InlineImage:
         """Fit already-base64-encoded image data (MCP tool results, the bridge).
 
-        The encoded length is checked before decoding, so a hostile or buggy MCP
-        server cannot make us materialize a 200 MB payload in memory.
+        The encoded length is checked before decoding, so a hostile or buggy server
+        cannot make us materialize a 200 MB payload in memory.
         """
         if len(data_b64) > MAX_IMAGE_FILE_BYTES * _BASE64_EXPANSION:
             raise InvalidImage(f"image exceeds the {MAX_IMAGE_FILE_BYTES}-byte inline limit")
@@ -106,24 +104,23 @@ class ImageCodec:
         # Bytes and pixels are separate budgets, and either one alone can blow up
         # a request: providers bill images by pixel area, so a flat 8000x8000 PNG
         # that zips down to 200 KB is still enormous once tiled.
-        fits = (
-            mime_type in PROVIDER_SAFE_IMAGE_MIMES
+        safe_mime = mime_type if mime_type in PROVIDER_SAFE_IMAGE_MIMES else None
+        if (
+            safe_mime is not None
             and len(data) <= TARGET_INLINE_IMAGE_BYTES
             and max(width, height) <= DOWNSCALE_LONGEST_EDGE
-        )
-        if fits and mime_type is not None:
-            return cls._encode(data, mime_type)
+        ):
+            return cls._encode(data, safe_mime)
         return cls._encode(cls._transcode(data), TRANSCODE_MIME)
 
     @staticmethod
     def _probe(data: bytes) -> tuple[str | None, tuple[int, int]]:
         """The sniffed MIME and dimensions of a real image. Raises ``InvalidImage``.
 
-        The MIME is read off the decoded header, never from the caller — a file
-        extension and an MCP server's declared ``mimeType`` can both lie, and a
-        block whose mime_type contradicts its payload is rejected outright by the
-        provider (Gemini 400s on `inline_data`), which kills the whole turn.
-        ``None`` means a format we have no safe MIME for, so it transcodes.
+        The MIME comes off the decoded header, never from the caller — a file
+        extension and an MCP server's declared ``mimeType`` can both lie, and a block
+        whose mime_type contradicts its payload is rejected outright by the provider
+        (Gemini 400s on `inline_data`). ``None`` means a format with no safe MIME.
         """
         try:
             with Image.open(BytesIO(data)) as image:
