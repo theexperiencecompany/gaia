@@ -743,7 +743,13 @@ export class TurnSession {
     // result message (useBgMessageWebSocket), executor cancel, or this timeout.
     setTimeout(() => {
       const state = useStreamStore.getState();
-      if (state.sessions[key]?.phase === "awaiting_executor") {
+      const session = state.sessions[key];
+      // A run paused on an approval is waiting on a HUMAN, not on a late executor:
+      // its window is hours, so this timeout must not tear the state down and drop
+      // the "Waiting for your approval" indicator. Whatever the user decides (or the
+      // server-side expiry), the resumed run delivers a result message and that ends
+      // the session through the same path a normal executor tail does.
+      if (session?.phase === "awaiting_executor" && !session.awaitingApproval) {
         state.endSession(key);
       }
     }, EXECUTOR_RESULT_TIMEOUT_MS);
