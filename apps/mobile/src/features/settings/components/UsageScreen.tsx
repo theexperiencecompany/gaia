@@ -125,27 +125,11 @@ function SummaryCard({ summary, period }: SummaryCardProps) {
     }
   }
 
-  // Token totals (token_usage is not populated by the current summary endpoint)
-  let totalTokens = 0;
-  let tokenLimit = 0;
-  for (const tok of Object.values(summary.token_usage ?? {})) {
-    const p = tok.periods[period];
-    if (p) {
-      totalTokens += p.total_tokens;
-      tokenLimit += p.limit;
-    }
-  }
-
   const stats: Array<{ label: string; value: string; sub?: string }> = [
     {
       label: "API Calls",
       value: formatNumber(apiCalls),
       sub: `of ${formatNumber(totalLimit)} limit`,
-    },
-    {
-      label: "Tokens Used",
-      value: formatNumber(totalTokens),
-      sub: tokenLimit > 0 ? `of ${formatNumber(tokenLimit)} limit` : undefined,
     },
     {
       label: "Plan",
@@ -411,121 +395,6 @@ function FeatureBars({ summary, period }: FeatureBarsProps) {
           </View>
         );
       })}
-    </View>
-  );
-}
-
-// ─── Token model breakdown ────────────────────────────────────────────────────
-
-interface ModelBreakdownProps {
-  summary: UsageSummary;
-  period: PeriodKey;
-}
-
-function ModelBreakdown({ summary, period }: ModelBreakdownProps) {
-  const { spacing, fontSize } = useResponsive();
-  const entries = Object.entries(summary.token_usage ?? {}).filter(
-    ([, t]) => t.periods[period],
-  );
-
-  if (entries.length === 0) return null;
-
-  return (
-    <View>
-      <Text
-        style={{
-          fontSize: fontSize.xs,
-          fontWeight: "600",
-          textTransform: "uppercase",
-          letterSpacing: 0.8,
-          color: C.textMuted,
-          marginBottom: spacing.xs,
-          paddingHorizontal: 4,
-        }}
-      >
-        Token Usage by Model
-      </Text>
-      <View
-        style={{
-          backgroundColor: C.sectionBg,
-          borderRadius: 16,
-          overflow: "hidden",
-        }}
-      >
-        {entries.map(([key, tok], index) => {
-          const p = tok.periods[period];
-          if (!p) return null;
-          const pct =
-            p.limit > 0 ? Math.min((p.total_tokens / p.limit) * 100, 100) : 0;
-          return (
-            <View key={key}>
-              {index > 0 && (
-                <View
-                  style={{
-                    height: 1,
-                    backgroundColor: C.divider,
-                    marginHorizontal: 16,
-                  }}
-                />
-              )}
-              <View style={{ padding: spacing.md, gap: spacing.sm }}>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                  }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      style={{
-                        fontSize: fontSize.sm,
-                        fontWeight: "500",
-                        color: C.text,
-                      }}
-                    >
-                      {tok.title}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs,
-                        color: C.textMuted,
-                        marginTop: 2,
-                      }}
-                    >
-                      In: {formatNumber(p.input_tokens)} · Out:{" "}
-                      {formatNumber(p.output_tokens)}
-                    </Text>
-                  </View>
-                  <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
-                    {formatNumber(p.total_tokens)}{" "}
-                    {p.limit > 0 ? `/ ${formatNumber(p.limit)}` : "tokens"}
-                  </Text>
-                </View>
-                {p.limit > 0 ? (
-                  <View
-                    style={{
-                      height: 4,
-                      borderRadius: 2,
-                      backgroundColor: "rgba(255,255,255,0.08)",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <View
-                      style={{
-                        height: "100%",
-                        width: `${pct}%`,
-                        borderRadius: 2,
-                        backgroundColor: getBarColor(pct),
-                      }}
-                    />
-                  </View>
-                ) : null}
-              </View>
-            </View>
-          );
-        })}
-      </View>
     </View>
   );
 }
@@ -901,9 +770,6 @@ export default function UsageScreen() {
 
           {/* Feature usage bars */}
           <FeatureBars summary={summary} period={period} />
-
-          {/* Token / model breakdown */}
-          <ModelBreakdown summary={summary} period={period} />
 
           {/* 7-day chart */}
           {isLoadingHistory ? (

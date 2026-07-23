@@ -28,7 +28,7 @@ from typing import Any, TypeVar
 from bson import ObjectId
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
@@ -1411,7 +1411,10 @@ async def _create_focus_todos(
     try:
         t_llm = time.monotonic()
         parsed: _FocusTodoList = await ainvoke_structured(
-            _FocusTodoList, prompt, label="onboarding_focus_todos"
+            _FocusTodoList,
+            prompt,
+            label="onboarding_focus_todos",
+            config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
@@ -1494,7 +1497,10 @@ async def _create_todos_from_triage(
     try:
         t_llm = time.monotonic()
         parsed: _TodoListFromEmails = await ainvoke_structured(
-            _TodoListFromEmails, prompt, label="onboarding_todos_from_emails"
+            _TodoListFromEmails,
+            prompt,
+            label="onboarding_todos_from_emails",
+            config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
@@ -1670,7 +1676,10 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
     for attempt in range(_WORKFLOW_SPEC_MAX_ATTEMPTS):
         try:
             candidate: _WorkflowList = await ainvoke_structured(
-                _WorkflowList, prompt, label="onboarding_workflow_suggestions"
+                _WorkflowList,
+                prompt,
+                label="onboarding_workflow_suggestions",
+                config=metered_config(user_id),
             )
             if len(candidate.workflows) == 4:
                 return candidate

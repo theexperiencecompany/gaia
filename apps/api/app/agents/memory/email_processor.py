@@ -592,7 +592,7 @@ async def _process_single_platform(
 
         # 1. Extract username via LLM
         t0_llm = time.monotonic()
-        username = await extract_username_with_llm(platform, emails, user_name)
+        username = await extract_username_with_llm(platform, emails, user_name, user_id=user_id)
         llm_elapsed = time.monotonic() - t0_llm
         log.info(
             f"{LogTag.MEMORY} [{platform}] LLM username extraction: {llm_elapsed:.1f}s → '{username}'"

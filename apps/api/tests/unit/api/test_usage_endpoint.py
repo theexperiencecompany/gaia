@@ -51,6 +51,8 @@ class TestGetUsageSummary:
             "chat": {
                 "title": "Chat Messages",
                 "description": "AI chat messages",
+                # Pro's limits ride every feature so a free UI can show the delta.
+                "upgrade": {"day": 0, "month": 60000},
                 "periods": {
                     "day": {
                         "used": 5,

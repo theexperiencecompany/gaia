@@ -6,7 +6,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -301,7 +301,10 @@ class WorkflowGenerationService:
 
             try:
                 result = await ainvoke_structured(
-                    GeneratedWorkflow, formatted_prompt, label="workflow_generation"
+                    GeneratedWorkflow,
+                    formatted_prompt,
+                    label="workflow_generation",
+                    config=metered_config(user_id),
                 )
             except (ValidationError, OutputParserException) as e:
                 # Schema-invalid structured output is regenerable; provider errors

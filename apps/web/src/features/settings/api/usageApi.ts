@@ -4,8 +4,6 @@ import { apiauth } from "@/lib/api/client";
 export type {
   ActivityDay,
   FeatureUsage,
-  TokenUsage,
-  TokenUsagePeriod,
   UsageActivity,
   UsagePeriod,
   UsageSummary,

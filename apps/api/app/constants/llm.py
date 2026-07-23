@@ -157,7 +157,14 @@ PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
 # Rolling daily USD cost budget. Free: a real usage wall — when the UTC day's
 # cumulative cost reaches it, ALL chat is blocked until reset. Pro: an
 # abuse-level burst guard only — a legitimate power user must never hit it.
-FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
+#
+# The free budget covers the user's WHOLE cost footprint, not just their chat
+# turns: auxiliary spend (memory extraction/reconcile/consolidation, follow-up
+# suggestions, onboarding) is metered through the same windows via
+# ``ainvoke_structured``. It is set at 0.05 of chat allowance + 0.02 of measured
+# background COGS for a typical free user, so metering that background spend
+# did not silently shrink how much a free user can actually chat.
+FREE_DAILY_COST_BUDGET_USD = 0.07  # TUNE
 PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the

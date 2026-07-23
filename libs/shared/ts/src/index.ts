@@ -438,8 +438,6 @@ export {
   type TodoLabel,
   type TodoListResponse,
   type TodoUpdate,
-  type TokenUsage,
-  type TokenUsagePeriod,
   type Tool,
   type ToolCategory,
   type ToolsByCategoryResponse,

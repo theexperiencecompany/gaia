@@ -34,14 +34,11 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.runtime import Runtime, get_config
 
-from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
 from app.models.payment_models import PlanType
-from app.services.cost_budget import (
-    get_budget_stop_reason,
-    record_model_call_usage,
-)
+from app.services.cost_budget import get_budget_stop_reason
+from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import ModelContext, log
 
 
@@ -255,35 +252,21 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         provider = configurable.get("provider", "unknown")
         user_id = configurable.get("user_id")
 
-        # Cost in USD. Pass full input_tokens + cached_tokens so the cached
-        # subset is billed at the discounted rate, not free.
-        try:
-            cost = await calculate_token_cost(
-                model_name=str(model_name),
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cached_tokens=cached_tokens,
-            )
-            total_cost = float(cost.get("total_cost", 0.0))
-        except Exception as e:
-            log.warning(f"{LogTag.AGENT} Token cost calc failed for {model_name}: {e}")
-            total_cost = 0.0
-
-        # Record real spend into the day/month budget windows and the request
-        # tree's aggregate token counter in a single Redis round trip. This hook
-        # runs for every model call on every execution path (chat, workflows,
-        # bots, voice, subagents), making it the single metering seam. Fail-open:
-        # a Redis hiccup must never fail the model call.
+        # Price the call (full input_tokens + cached_tokens, so the cached subset
+        # is billed at the discounted rate rather than free) and record it into
+        # the day/month budget windows plus the request tree's aggregate token
+        # counter. This hook runs for every model call on every agent execution
+        # path (chat, workflows, bots, voice, subagents); auxiliary one-shot
+        # calls reach the same helper via ``ainvoke_structured``.
         root_request_id = configurable.get("root_request_id")
-        try:
-            await record_model_call_usage(
-                str(user_id) if user_id else None,
-                total_cost,
-                str(root_request_id) if root_request_id else None,
-                input_tokens + output_tokens,
-            )
-        except Exception as e:
-            log.warning(f"{LogTag.AGENT} Cost/token budget recording failed: {e}")
+        total_cost = await record_llm_call(
+            user_id=str(user_id) if user_id else None,
+            model_name=str(model_name),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            root_request_id=str(root_request_id) if root_request_id else None,
+        )
 
         step_index = self._next_step(thread_id)
         start = self._start_ts.pop(thread_id, None)

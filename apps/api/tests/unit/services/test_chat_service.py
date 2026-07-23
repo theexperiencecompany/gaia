@@ -325,10 +325,6 @@ class TestSaveConversationAsync:
                 "app.services.chat.persistence.update_messages",
                 new=mock_update,
             ),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=basic_body,
@@ -361,10 +357,6 @@ class TestSaveConversationAsync:
         mock_update = AsyncMock()
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=body,
@@ -389,10 +381,6 @@ class TestSaveConversationAsync:
         mock_update = AsyncMock()
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=body,
@@ -412,10 +400,6 @@ class TestSaveConversationAsync:
         mock_update = AsyncMock()
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=basic_body,
@@ -435,10 +419,6 @@ class TestSaveConversationAsync:
         mock_update = AsyncMock()
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=basic_body,
@@ -454,74 +434,6 @@ class TestSaveConversationAsync:
         assert request_arg.messages[0].message_id == "umsg_specific"
         assert request_arg.messages[1].message_id == "bmsg_specific"
 
-    async def test_token_processing_called_when_metadata_present(self, test_user, basic_body):
-        mock_token_processor = AsyncMock()
-        mock_update = AsyncMock()
-        metadata = {"claude-3-5-sonnet": {"input_tokens": 100, "output_tokens": 50}}
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=mock_token_processor,
-            ),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="ok",
-                tool_data={},
-                metadata=metadata,
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        mock_token_processor.assert_called_once_with("user_abc", metadata)
-
-    async def test_token_processing_skipped_when_no_metadata(self, test_user, basic_body):
-        mock_token_processor = AsyncMock()
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=mock_token_processor,
-            ),
-        ):
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="ok",
-                tool_data={},
-                metadata={},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        mock_token_processor.assert_not_called()
-
-    async def test_token_processing_error_does_not_propagate(self, test_user, basic_body):
-        """A token processing failure must not prevent the conversation from saving."""
-        mock_update = AsyncMock()
-        with (
-            patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(side_effect=Exception("payment service down")),
-            ),
-        ):
-            # Should not raise
-            await _save_conversation_async(
-                body=basic_body,
-                user=test_user,
-                conversation_id="conv_123",
-                complete_message="ok",
-                tool_data={},
-                metadata={"model": {"input_tokens": 10, "output_tokens": 5}},
-                user_message_id="u",
-                bot_message_id="b",
-            )
-        assert mock_update.called
-
     async def test_tool_data_applied_to_bot_message(self, test_user, basic_body):
         mock_update = AsyncMock()
         tool_data = {
@@ -529,10 +441,6 @@ class TestSaveConversationAsync:
         }
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=basic_body,
@@ -552,10 +460,6 @@ class TestSaveConversationAsync:
         mock_update = AsyncMock()
         with (
             patch("app.services.chat.persistence.update_messages", new=mock_update),
-            patch(
-                "app.services.chat.persistence.process_token_usage_and_cost",
-                new=AsyncMock(),
-            ),
         ):
             await _save_conversation_async(
                 body=basic_body,

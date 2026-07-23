@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models.usage_models import (
-    CreditUsage,
     FeatureUsage,
     UsagePeriod,
     UserUsageSnapshot,
@@ -64,13 +63,6 @@ def sample_snapshot():
                 limit=50,
                 reset_time=now + timedelta(days=15),
             ),
-        ],
-        credits=[
-            CreditUsage(
-                credits_used=1.5,
-                period=UsagePeriod.MONTH,
-                reset_time=now + timedelta(days=15),
-            )
         ],
     )
 

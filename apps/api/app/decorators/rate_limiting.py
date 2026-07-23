@@ -306,6 +306,9 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
     ``trigger_workflow_executions``) for the 429 payload and reset copy.
     """
     plan_type = await payment_service.get_cached_plan_type(user_id)
+    # The tier this request was priced against, on the wide event — this gate is
+    # the one place on the chat path that resolves the plan before any work runs.
+    log.set(user_plan=plan_type.value)
     spent = await get_cost(user_id, RateLimitPeriod.DAY)
     if spent >= get_daily_cost_budget_usd(plan_type):
         log.warning(

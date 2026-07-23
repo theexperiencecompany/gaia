@@ -13,6 +13,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.config.rate_limits import RateLimitPeriod
 from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
+from app.models.usage_models import FeatureUsage, UsagePeriod
 
 
 def _noop_create_task(coro, **kwargs):
@@ -330,35 +331,38 @@ class TestSyncUsageRealTime:
         new_callable=AsyncMock,
     )
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
-    async def test_syncs_with_credits(
+    async def test_snapshots_feature_usage(
         self,
         mock_reset: MagicMock,
         mock_save: AsyncMock,
     ) -> None:
         mock_reset.return_value = datetime(2026, 4, 1, tzinfo=UTC)
-        self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
-
-        await self.limiter._sync_usage_real_time(
-            "user1", "chat_messages", PlanType.PRO, credits_used=1.5
+        usage = FeatureUsage(
+            feature_key="chat_messages",
+            feature_title="Chat Messages",
+            period=UsagePeriod.DAY,
+            used=3,
+            limit=0,
+            reset_time=datetime(2026, 4, 1, tzinfo=UTC),
         )
+        self.limiter._collect_feature_usage = AsyncMock(return_value=[usage])  # type: ignore[method-assign]
+
+        await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
 
         mock_save.assert_called_once()
         snapshot = mock_save.call_args[0][0]
-        assert len(snapshot.credits) == 1
-        assert snapshot.credits[0].credits_used == pytest.approx(1.5)
+        assert snapshot.plan_type == "pro"
+        assert [f.feature_key for f in snapshot.features] == ["chat_messages"]
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.UsageService.save_usage_snapshot",
         new_callable=AsyncMock,
     )
-    async def test_syncs_without_credits(self, mock_save: AsyncMock) -> None:
+    async def test_no_usage_means_no_snapshot(self, mock_save: AsyncMock) -> None:
         self.limiter._collect_feature_usage = AsyncMock(return_value=[])  # type: ignore[method-assign]
 
-        await self.limiter._sync_usage_real_time(
-            "user1", "chat_messages", PlanType.PRO, credits_used=0.0
-        )
+        await self.limiter._sync_usage_real_time("user1", "chat_messages", PlanType.PRO)
 
-        # No features, no credits -> no save
         mock_save.assert_not_called()
 
     @patch("app.api.v1.middleware.tiered_rate_limiter.log")

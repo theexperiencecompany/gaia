@@ -18,23 +18,6 @@ export interface FeatureUsage {
   };
 }
 
-export interface TokenUsagePeriod {
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  limit: number;
-  percentage: number;
-  remaining: number;
-}
-
-export interface TokenUsage {
-  title: string;
-  periods: {
-    day?: TokenUsagePeriod;
-    month?: TokenUsagePeriod;
-  };
-}
-
 /** One cost-budget window: only how much of the allowance is used (0-100) and
  * when it resets. The backend never sends raw USD spend — see cost_budget.py. */
 export interface BudgetWindow {
@@ -80,6 +63,4 @@ export interface UsageSummary {
   features: Record<string, FeatureUsage>;
   budget: UsageBudget;
   last_updated: string;
-  /** Vestigial: the summary endpoint does not currently populate this. */
-  token_usage?: Record<string, TokenUsage>;
 }

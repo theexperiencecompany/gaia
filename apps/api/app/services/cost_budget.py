@@ -6,6 +6,11 @@ readers:
 - ``LLMAccountingMiddleware.aafter_model`` increments both windows after every
   model call (the single seam every execution path passes through — chat,
   workflows, bots, voice, subagents).
+- ``ainvoke_structured`` increments them for auxiliary one-shot calls (memory
+  extraction/reconcile/consolidation, follow-ups, onboarding, …), which run
+  outside the agent graph and so never reach the middleware. Both routes go
+  through ``app.services.llm_metering.record_llm_call`` so spend is priced and
+  recorded identically.
 - The chat endpoint checks the daily window BEFORE running the agent (429 wall).
 - ``LLMAccountingMiddleware.awrap_model_call`` checks the daily window and the
   per-request token ceiling as the unbypassable backstop; the monthly window
@@ -38,6 +43,7 @@ from app.constants.llm import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
+from app.schemas.usage import BudgetWindow, UsageBudget
 from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import record_cost
 from shared.py.wide_events import log
@@ -245,13 +251,13 @@ async def get_budget_stop_reason(
     return None
 
 
-def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> dict[str, Any]:
+def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> BudgetWindow:
     """One window's allowance as a 0-100 percentage + when it resets. No dollars."""
     pct = round(min(spent / budget * 100, 100.0), 1) if budget > 0 else 0.0
-    return {"percentage": pct, "reset_time": get_reset_time(period).isoformat()}
+    return BudgetWindow(percentage=pct, reset_time=get_reset_time(period).isoformat())
 
 
-async def get_budget_status(user_id: str, plan_type: PlanType) -> dict[str, Any]:
+async def get_budget_status(user_id: str, plan_type: PlanType) -> UsageBudget:
     """Read-only cost-budget view for the Usage UI.
 
     Returns only the *percentage* of each window's allowance consumed (plus its
@@ -272,9 +278,10 @@ async def get_budget_status(user_id: str, plan_type: PlanType) -> dict[str, Any]
         daily_spent = await get_cost(user_id, RateLimitPeriod.DAY)
         monthly = None
 
-    daily = _allowance_used(daily_spent, get_daily_cost_budget_usd(plan_type), RateLimitPeriod.DAY)
-    return {
-        "daily": daily,
-        "monthly": monthly,
-        "per_request_token_ceiling": get_per_request_token_ceiling(plan_type),
-    }
+    return UsageBudget(
+        daily=_allowance_used(
+            daily_spent, get_daily_cost_budget_usd(plan_type), RateLimitPeriod.DAY
+        ),
+        monthly=monthly,
+        per_request_token_ceiling=get_per_request_token_ceiling(plan_type),
+    )

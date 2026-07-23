@@ -388,7 +388,7 @@ async def summarize_episode(user_id: str, date: date_type) -> None:
         return
 
     lines = [f"{entry.get('time', '')} {entry.get('text', '')}" for entry in episode.entries]
-    summary = await summarize_episode_entries(lines)
+    summary = await summarize_episode_entries(lines, user_id=user_id)
     if summary is None:
         return
 
@@ -420,7 +420,10 @@ async def _build_single_fact(
 
     folder_tree = await pg_store.get_folder_tree(user_id)
     categorization = await categorize_fact(
-        content, folder_tree=_format_folder_tree(folder_tree), current_date=now
+        content,
+        user_id=user_id,
+        folder_tree=_format_folder_tree(folder_tree),
+        current_date=now,
     )
     if categorization is None:
         return ExtractedFact(

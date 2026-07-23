@@ -40,7 +40,6 @@ class UsageService:
                 "$set": {
                     "plan_type": snapshot.plan_type,
                     "features": [f.model_dump() for f in snapshot.features],
-                    "credits": [c.model_dump() for c in snapshot.credits],
                     "updated_at": datetime.now(UTC),
                 }
             }

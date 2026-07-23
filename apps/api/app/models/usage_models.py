@@ -27,19 +27,9 @@ class FeatureUsage(BaseModel):
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class CreditUsage(BaseModel):
-    """Tracks the monetary cost (credits) of usage."""
-
-    credits_used: float = 0.0  # Total credits used (in USD)
-    period: UsagePeriod = UsagePeriod.MONTH
-    reset_time: datetime
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-
 class UserUsageSnapshot(BaseModel):
     user_id: str
     plan_type: str
     features: list[FeatureUsage] = []
-    credits: list[CreditUsage] = []  # Field for tracking credits
     snapshot_date: datetime = Field(default_factory=lambda: datetime.now(UTC))
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

@@ -19,6 +19,12 @@ from app.config.rate_limits import (
 )
 from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
+from app.schemas.usage import (
+    FeaturePeriodUsage,
+    FeatureUpgrade,
+    FeatureUsageSummary,
+    UsageSummary,
+)
 from app.services.cost_budget import get_budget_status
 from app.services.payments.payment_service import payment_service
 from app.services.usage_activity import get_activity
@@ -30,7 +36,7 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
-async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str, Any]:
+async def get_usage_summary(user: dict = Depends(get_current_user)) -> UsageSummary:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
     user_id = user.get("user_id")
@@ -50,16 +56,16 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")
-        return {
-            "user_id": user_id,
-            "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
+        return UsageSummary(
+            user_id=user_id,
+            plan_type=user_plan.value if hasattr(user_plan, "value") else str(user_plan),
             # The feature the usage UI leads with (its free wall is the cost
             # budget) — sourced from config so client and server never drift.
-            "primary_feature": PRIMARY_METERED_FEATURE,
-            "features": features_formatted,
-            "budget": budget,
-            "last_updated": datetime.now(UTC).isoformat(),
-        }
+            primary_feature=PRIMARY_METERED_FEATURE,
+            features=features_formatted,
+            budget=budget,
+            last_updated=datetime.now(UTC).isoformat(),
+        )
     except Exception as e:
         log.error(f"Error getting usage summary: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get usage summary")
@@ -139,20 +145,14 @@ async def get_usage_activity(
         raise HTTPException(status_code=500, detail="Failed to get usage activity")
 
 
-async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Any]:
+async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, FeatureUsageSummary]:
     """Get real-time usage data directly from Redis for all features."""
-    features_formatted: dict[str, dict[str, Any]] = {}
+    features_formatted: dict[str, FeatureUsageSummary] = {}
 
     for feature_key in FEATURE_LIMITS:
         feature_info = get_feature_info(feature_key)
         pro_limits = get_limits_for_plan(feature_key, PlanType.PRO)
-        features_formatted[feature_key] = {
-            "title": feature_info["title"],
-            "description": feature_info["description"],
-            # Pro tier's limits, so a free user's UI can show the upgrade delta.
-            "upgrade": {"day": pro_limits.day, "month": pro_limits.month},
-            "periods": {},
-        }
+        periods: dict[str, FeaturePeriodUsage] = {}
 
         current_limits = get_limits_for_plan(feature_key, user_plan)
 
@@ -167,15 +167,20 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, An
                 current_usage = int(current_usage) if current_usage else 0
 
                 reset_time = get_reset_time(getattr(RateLimitPeriod, period.upper()))
-                percentage = (current_usage / limit * 100) if limit > 0 else 0
-                remaining = max(0, limit - current_usage)
+                periods[period] = FeaturePeriodUsage(
+                    used=current_usage,
+                    limit=limit,
+                    percentage=(current_usage / limit * 100),
+                    reset_time=reset_time.isoformat(),
+                    remaining=max(0, limit - current_usage),
+                )
 
-                features_formatted[feature_key]["periods"][period] = {
-                    "used": current_usage,
-                    "limit": limit,
-                    "percentage": percentage,
-                    "reset_time": reset_time.isoformat(),
-                    "remaining": remaining,
-                }
+        features_formatted[feature_key] = FeatureUsageSummary(
+            title=feature_info["title"],
+            description=feature_info["description"],
+            # Pro tier's limits, so a free user's UI can show the upgrade delta.
+            upgrade=FeatureUpgrade(day=pro_limits.day, month=pro_limits.month),
+            periods=periods,
+        )
 
     return features_formatted

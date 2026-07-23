@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.decorators import tiered_rate_limit
@@ -275,7 +275,12 @@ async def process_email(
             learned_writing_style=learned_style_block,
         )
 
-        composed = await ainvoke_structured(ComposedEmailOutput, prompt, label="mail_compose")
+        composed = await ainvoke_structured(
+            ComposedEmailOutput,
+            prompt,
+            label="mail_compose",
+            config=metered_config(str(current_user.get("user_id"))),
+        )
         return {"subject": composed.subject, "body": composed.body}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

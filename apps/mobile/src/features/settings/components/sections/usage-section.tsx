@@ -266,63 +266,6 @@ export function UsageSection() {
           )}
         </Card.Body>
       </Card>
-
-      {Object.entries(summary.token_usage ?? {}).length > 0 && (
-        <View style={{ gap: spacing.sm }}>
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              textTransform: "uppercase",
-              letterSpacing: 1,
-            }}
-          >
-            Token Usage
-          </Text>
-          <Card variant="secondary" className="rounded-2xl bg-surface">
-            <Card.Body className="gap-4 px-4 py-4">
-              {Object.entries(summary.token_usage ?? {}).map(([key, tok]) => {
-                const period = tok.periods[periodKey];
-                if (!period) return null;
-                const pct = Math.min(period.percentage, 100);
-                return (
-                  <View key={key} style={{ gap: spacing.xs }}>
-                    <View
-                      style={{
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                      }}
-                    >
-                      <Text style={{ fontSize: fontSize.sm }}>{tok.title}</Text>
-                      <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                        {period.total_tokens.toLocaleString()} /{" "}
-                        {period.limit.toLocaleString()}
-                      </Text>
-                    </View>
-                    <View
-                      style={{
-                        height: 6,
-                        borderRadius: 3,
-                        backgroundColor: "rgba(255,255,255,0.1)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <View
-                        style={{
-                          height: "100%",
-                          width: `${pct}%`,
-                          borderRadius: 3,
-                          backgroundColor: barColor(period.percentage),
-                        }}
-                      />
-                    </View>
-                  </View>
-                );
-              })}
-            </Card.Body>
-          </Card>
-        </View>
-      )}
     </ScrollView>
   );
 }

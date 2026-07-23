@@ -19,7 +19,7 @@ from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -340,7 +340,7 @@ def _deduplicate_emails(emails: list[dict]) -> list[dict]:
 
 
 async def extract_username_with_llm(
-    platform: str, emails: list[dict], user_name: str | None = None
+    platform: str, emails: list[dict], user_name: str | None = None, *, user_id: str
 ) -> str:
     """Use an LLM with structured output to extract the user's username from
     platform emails. Returns the username or "NOT_FOUND"."""
@@ -431,7 +431,12 @@ async def extract_username_with_llm(
             user_context=user_context,
             emails_text=emails_text,
         )
-        result = await ainvoke_structured(UsernameExtraction, prompt, label="profile_extraction")
+        result = await ainvoke_structured(
+            UsernameExtraction,
+            prompt,
+            label="profile_extraction",
+            config=metered_config(user_id),
+        )
 
         username = result.username.strip()
         confidence = result.confidence

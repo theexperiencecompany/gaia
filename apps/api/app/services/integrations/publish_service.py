@@ -78,6 +78,7 @@ async def publish_custom_integration(
     )
 
     content = await infer_integration_content(
+        user_id=user_id,
         name=integration.get("name", ""),
         description=integration.get("description", ""),
         tools=tools,

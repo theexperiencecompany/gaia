@@ -26,7 +26,6 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
 from app.models.usage_models import (
-    CreditUsage,
     FeatureUsage,
     UsageInfo,
     UsagePeriod,
@@ -115,7 +114,6 @@ class TieredRateLimiter:
         user_id: str,
         feature_key: str,
         user_plan: PlanType,
-        credits_used: float = 0.0,
     ) -> dict[str, UsageInfo]:
         """Enforce all limits for a feature, then atomically count this use.
 
@@ -126,7 +124,7 @@ class TieredRateLimiter:
         agent tools.
         """
         try:
-            return await self._check_and_increment(user_id, feature_key, user_plan, credits_used)
+            return await self._check_and_increment(user_id, feature_key, user_plan)
         except RateLimitExceededException:
             schedule_limit_upsell(user_id, feature_key, user_plan)
             raise
@@ -136,7 +134,6 @@ class TieredRateLimiter:
         user_id: str,
         feature_key: str,
         user_plan: PlanType,
-        credits_used: float = 0.0,
     ) -> dict[str, UsageInfo]:
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
@@ -235,7 +232,6 @@ class TieredRateLimiter:
                 user_id=user_id,
                 feature_key=feature_key,
                 user_plan=user_plan,
-                credits_used=credits_used,
             )
         )
 
@@ -250,38 +246,19 @@ class TieredRateLimiter:
         user_id: str,
         feature_key: str,
         user_plan: PlanType,
-        credits_used: float = 0.0,
     ) -> None:
-        """
-        Sync usage data to database in real-time after rate limit usage.
-        Runs asynchronously to avoid blocking the main request.
-        Creates comprehensive snapshot with ALL features that have usage data.
-        Tracks credits used for billing purposes.
+        """Snapshot every feature that has usage, for the usage-history charts.
+
+        Runs as a background task so it never blocks the request.
         """
         try:
-            # Get feature usage
             all_feature_usage = await self._collect_feature_usage(user_id, user_plan)
-
-            # Create credit usage object if credits were used
-            credit_usage_list = []
-            if credits_used > 0:
-                credit_usage = CreditUsage(
-                    credits_used=credits_used,
-                    period=UsagePeriod.MONTH,
-                    reset_time=get_reset_time(RateLimitPeriod.MONTH),
-                )
-                credit_usage_list.append(credit_usage)
-
-            if all_feature_usage or credit_usage_list:
-                # Create and save comprehensive usage snapshot
-
+            if all_feature_usage:
                 snapshot = UserUsageSnapshot(
                     user_id=user_id,
                     plan_type=(user_plan.value if hasattr(user_plan, "value") else str(user_plan)),
                     features=all_feature_usage,
-                    credits=credit_usage_list,  # Add credits to snapshot
                 )
-
                 await UsageService.save_usage_snapshot(snapshot)
 
         except Exception as e:

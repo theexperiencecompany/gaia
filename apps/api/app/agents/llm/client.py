@@ -1,7 +1,8 @@
 from collections.abc import Callable, Mapping
 from functools import cache
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -34,6 +35,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -362,6 +364,85 @@ def invoke_llm(
         )
 
 
+def metered_config(user_id: str) -> RunnableConfig:
+    """The minimal run config for an auxiliary :func:`ainvoke_structured` call:
+    who its spend is billed to. Call sites that already forward a graph config
+    (which carries ``configurable.user_id`` already) don't need this."""
+    return cast(RunnableConfig, {"configurable": {"user_id": user_id}})
+
+
+def _with_usage_handler(
+    config: RunnableConfig | None, handler: BaseCallbackHandler
+) -> RunnableConfig:
+    """Return ``config`` with ``handler`` attached, never mutating the caller's
+    object — several callers pass a shared module-level config constant, and
+    graph nodes forward a config whose ``callbacks`` is a live manager."""
+    merged: dict[str, Any] = dict(config) if config else {}
+    existing = merged.get("callbacks")
+    if existing is None:
+        merged["callbacks"] = [handler]
+    elif isinstance(existing, list):
+        merged["callbacks"] = [*existing, handler]
+    else:
+        manager = existing.copy()
+        manager.add_handler(handler, inherit=True)
+        merged["callbacks"] = manager
+    return cast(RunnableConfig, merged)
+
+
+async def _record_auxiliary_usage(
+    handler: UsageMetadataCallbackHandler, label: str, user_id: str | None
+) -> None:
+    """Meter one auxiliary (non-agent) model call into the user's cost budget.
+
+    ``ainvoke_structured`` runs outside the agent graph, so
+    ``LLMAccountingMiddleware`` never sees it — without this, memory
+    extraction/reconcile/consolidation and every other one-shot helper would
+    spend real money that no budget wall and no usage chart ever counted.
+
+    Tokens are deliberately NOT charged to the per-request token ceiling: that
+    counter bounds a single agent tree against runaway loops, and this work is
+    background/one-shot (memory ingestion outlives the turn that spawned it).
+    The spend itself lands in the same day/month windows the wall reads, and the
+    ``llm_call`` event carries ``background=True`` so analytics can split
+    auxiliary COGS from in-turn agent spend.
+    """
+    for model_name, usage in handler.usage_metadata.items():
+        input_tokens = int(usage.get("input_tokens", 0) or 0)
+        output_tokens = int(usage.get("output_tokens", 0) or 0)
+        if not (input_tokens or output_tokens):
+            continue
+        details = usage.get("input_token_details") or {}
+        cached_tokens = int(details.get("cache_read", 0) or 0)
+
+        if user_id is None:
+            log.warning(
+                f"{LogTag.AGENT} auxiliary llm '{label}' spend not metered — no "
+                "user_id in config.configurable (threading gap?)",
+                llm={"label": label, "model": model_name},
+            )
+
+        cost = await record_llm_call(
+            user_id=user_id,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+        )
+        log.info(
+            "llm_call",
+            llm_event="llm_call",
+            background=True,
+            agent_name=label,
+            model=model_name,
+            user_id=user_id,
+            input_tokens=input_tokens,
+            cached_tokens=cached_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+        )
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -373,8 +454,19 @@ async def ainvoke_structured(
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
     message list — and ``config`` carries optional run config (e.g. silent tags that
-    keep internal tokens out of the chat stream). Adds the transient-retry + fallback
+    keep internal tokens out of the chat stream, and ``configurable.user_id``, which
+    is what the call's spend is metered against). Adds the transient-retry + fallback
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
-    return await ainvoke_llm(structured, prompt, config=config, label=label)
+    usage_handler = UsageMetadataCallbackHandler()
+    configurable = (config or {}).get("configurable") or {}
+    user_id = configurable.get("user_id")
+    try:
+        return await ainvoke_llm(
+            structured, prompt, config=_with_usage_handler(config, usage_handler), label=label
+        )
+    finally:
+        # ``finally``: a failed structured call still burned the tokens of every
+        # attempt the retry/fallback made, and that spend is just as real.
+        await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
