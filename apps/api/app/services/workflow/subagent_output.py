@@ -159,9 +159,7 @@ def _result_from_payload(data: dict, response: str) -> ParseResult | None:
         try:
             clarifying = ClarifyingOutput(**data)
             log.info(f"{LogTag.WORKFLOW} Successfully parsed clarifying response")
-            return ParseResult(
-                mode="clarifying", message=clarifying.message, raw_response=response
-            )
+            return ParseResult(mode="clarifying", message=clarifying.message, raw_response=response)
         except Exception:
             return ParseResult(
                 mode="clarifying",

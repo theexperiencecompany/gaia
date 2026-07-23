@@ -88,7 +88,9 @@ async def migrate(apply: bool) -> None:
                 },
             )
 
-    print(f"\n[{mode}] Done. scanned={scanned} gaining_ids={changed} legacy_field_dropped={scanned}")
+    print(
+        f"\n[{mode}] Done. scanned={scanned} gaining_ids={changed} legacy_field_dropped={scanned}"
+    )
     if not apply:
         print("Re-run with --apply to write these changes.")
 
