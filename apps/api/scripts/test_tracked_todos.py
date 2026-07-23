@@ -489,8 +489,10 @@ def _check_search_first(chat_results: list[ChatResult]) -> tuple[list[str], list
     search_before = any(t["name"] == "search_todo_context" for t in all_tool_calls[:create_idx])
     if not search_before:
         return [
-            "create_tracked_todo called WITHOUT prior search_todo_context "
-            "(search-first rule violated)"
+            (
+                "create_tracked_todo called WITHOUT prior search_todo_context "
+                "(search-first rule violated)"
+            )
         ], []
     return [], ["✓ search_todo_context was called before create_tracked_todo"]
 
