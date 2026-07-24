@@ -25,6 +25,7 @@ from app.workers.tasks import (
     regenerate_workflow_steps,
     sweep_idle_sandboxes,
 )
+from app.workers.tasks.day_zero_hello_tasks import send_day_zero_hello
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.tracked_todo_tasks import (
@@ -54,6 +55,7 @@ _execute_tracked_todo = instrument_task(execute_tracked_todo)
 _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
+_send_day_zero_hello = instrument_task(send_day_zero_hello)
 WorkerSettings.functions = [
     _process_reminder,
     _cleanup_expired_reminders,
@@ -71,6 +73,7 @@ WorkerSettings.functions = [
     _execute_tracked_todo,
     _backfill_active_users,
     _backfill_user_memories,
+    _send_day_zero_hello,
 ]
 
 WorkerSettings.cron_jobs = [

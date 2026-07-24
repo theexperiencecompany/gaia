@@ -8,12 +8,21 @@ from typing import Any, Final
 
 ONBOARDING_TODO_LIMIT = 3
 
-# DEPRECATED: legacy discriminator for GAIA-owned todos, superseded by the
-# ``assignee`` field on the todo model. Retained only for the one-release
-# dual-read migration window (see ``gaia_assigned_filter``); removed once the
-# backfill (scripts/migrate_todo_assignee.py) has run everywhere. New code MUST
-# key off ``assignee`` / ``ASSIGNEE_GAIA``, never this label.
+# DEPRECATED: legacy discriminator for GAIA-owned todos, fully superseded by the
+# ``assignee`` field. The runtime no longer reads it — only the one-time backfill
+# (scripts/migrate_todo_assignee.py) still references this constant to find and
+# strip the label. Delete both once the backfill has run everywhere.
 GAIA_TRACKED_LABEL: Final[str] = "gaia-tracked"
+
+# Bookkeeping label the executor stamps on a todo that has exhausted its retry
+# attempts; the execution loop reads it to skip permanently-failed todos, and the
+# retry transition clears it to let the re-run proceed.
+FAILED_LABEL: Final[str] = "failed"
+
+# Cap on user-initiated retries of a failed GAIA todo. Distinct from the
+# executor's internal per-run backoff counter (``gaia_retry_count``): this bounds
+# how many times a human may re-run a todo that keeps failing.
+MAX_GAIA_USER_RETRIES: Final[int] = 3
 
 # Todo assignee values. ``assignee`` replaces GAIA_TRACKED_LABEL as the
 # discriminator for who owns a todo. Kept as constants (not a magic string)
@@ -53,22 +62,22 @@ GAIA_TODO_EXECUTIONS_FEATURE: Final[str] = "gaia_todo_executions"
 
 
 def gaia_assigned_filter() -> dict[str, Any]:
-    """Mongo fragment selecting GAIA-assigned todos.
+    """Mongo fragment selecting GAIA-assigned todos (``assignee == "gaia"``).
 
-    Dual-read for the migration window: a todo is GAIA-owned if
-    ``assignee == "gaia"`` OR it still carries the legacy ``gaia-tracked``
-    label. Retired to ``{"assignee": ASSIGNEE_GAIA}`` once the backfill lands.
+    Assumes the assignee backfill (scripts/migrate_todo_assignee.py) has run, so
+    every GAIA-owned todo carries ``assignee``; the legacy ``gaia-tracked`` label
+    is no longer consulted.
     """
-    return {"$or": [{"assignee": ASSIGNEE_GAIA}, {"labels": GAIA_TRACKED_LABEL}]}
+    return {"assignee": ASSIGNEE_GAIA}
 
 
 def user_assigned_filter() -> dict[str, Any]:
-    """Mongo fragment excluding GAIA-assigned todos (inverse of dual-read).
+    """Mongo fragment excluding GAIA-assigned todos (matches user todos).
 
-    Matches user todos: ``assignee != "gaia"`` (covers unmigrated docs with no
-    ``assignee`` field) AND no legacy ``gaia-tracked`` label.
+    ``assignee != "gaia"`` also matches unmigrated docs with no ``assignee``
+    field, which are user todos by default.
     """
-    return {"assignee": {"$ne": ASSIGNEE_GAIA}, "labels": {"$nin": [GAIA_TRACKED_LABEL]}}
+    return {"assignee": {"$ne": ASSIGNEE_GAIA}}
 
 
 # --- Facets --------------------------------------------------------------

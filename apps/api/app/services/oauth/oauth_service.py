@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
@@ -38,6 +39,14 @@ from app.services.workspace_sync import schedule_user_provision
 from app.utils.email_utils import add_contact_to_resend, send_welcome_email
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import OAuthContext, log
+
+# Signup's ESP calls are fire-and-forget; this bounds each one so a hung provider
+# can't leak a task that never finishes.
+SIGNUP_EMAIL_TIMEOUT_SECONDS = 10
+
+# Strong refs to in-flight signup email tasks (asyncio only holds weak refs, so
+# an unreferenced task can be garbage-collected mid-flight).
+_signup_email_tasks: set[asyncio.Task] = set()
 
 
 async def store_user_info(
@@ -116,21 +125,27 @@ async def store_user_info(
     except Exception as e:
         log.error(f"{LogTag.OAUTH} Failed to track signup in PostHog for {email}: {e!s}")
 
-    # Send welcome email to new user
-    try:
-        await send_welcome_email(email, name)
-        log.info(f"{LogTag.OAUTH} Welcome email sent to new user: {email}")
-    except Exception as e:
-        log.error(f"{LogTag.OAUTH} Failed to send welcome email to {email}: {e!s}")
-        # Don't raise exception - user creation should still succeed
+    # Welcome email + marketing contact are ESP round-trips that signup must not
+    # wait on: a slow or unreachable provider used to hang user creation for as
+    # long as the HTTP client allowed (observed: 90s+ with no timeout anywhere in
+    # the path). Bounded, and failures only log — the account is already created.
+    async def _deliver_signup_emails() -> None:
+        try:
+            async with asyncio.timeout(SIGNUP_EMAIL_TIMEOUT_SECONDS):
+                await send_welcome_email(email, name)
+            log.info(f"{LogTag.OAUTH} Welcome email sent to new user: {email}")
+        except Exception as e:
+            log.error(f"{LogTag.OAUTH} Failed to send welcome email to {email}: {e!s}")
+        try:
+            async with asyncio.timeout(SIGNUP_EMAIL_TIMEOUT_SECONDS):
+                await add_contact_to_resend(email, name)
+            log.info(f"{LogTag.OAUTH} Contact added to Resend audience for new user: {email}")
+        except Exception as e:
+            log.error(f"{LogTag.OAUTH} Failed to add contact to Resend audience for {email}: {e!s}")
 
-    # Add contact to Resend audience
-    try:
-        await add_contact_to_resend(email, name)
-        log.info(f"{LogTag.OAUTH} Contact added to Resend audience for new user: {email}")
-    except Exception as e:
-        log.error(f"{LogTag.OAUTH} Failed to add contact to Resend audience for {email}: {e!s}")
-        # Don't raise exception - user creation should still succeed
+    task = asyncio.create_task(_deliver_signup_emails())
+    _signup_email_tasks.add(task)
+    task.add_done_callback(_signup_email_tasks.discard)
 
     # Provision the user's workspace (system files + skills catalog) now, instead
     # of lazily on the first chat turn. Fire-and-forget so signup isn't blocked.

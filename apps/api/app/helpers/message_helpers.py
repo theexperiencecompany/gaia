@@ -224,8 +224,8 @@ BACKGROUND_EXECUTION_BANNER = (
     "   - You were woken by a scheduled trigger. There is no user to ask.\n"
     "   - Do NOT ask clarifying questions, present plans for approval, or seek confirmation.\n"
     '   - Do NOT produce conversational acknowledgements ("Sure, I\'ll…", "Let me know if…").\n'
-    "   - Just execute. If you need a decision you cannot make, write the question into "
-    "the active todo's canvas (Context section) and stop.\n"
+    "   - Just execute. If you hit a decision only the user can make, call block_todo "
+    "with one clear question and stop; the run resumes when they answer.\n"
     "   - Your output is consumed by the system, not a human. Be terse and action-only.\n"
     "   - ONE user-facing message per run, maximum. Never send status updates, retries, or "
     "reworded variants of the same news — a blocked run flips the todo to needs_you and says "

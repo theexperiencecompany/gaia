@@ -32,6 +32,12 @@ MAX_YOU_ITEMS: Final[int] = 3
 # winback mode. At/above this the run sends one adaptive winback then backs off.
 WINBACK_THRESHOLD: Final[int] = 3
 
+# Idle wind-down: consecutive daily runs that found nothing to work on (no goal,
+# no lanes) before the brief warns plainly, then pauses the whole loop (brief,
+# night shift, weekly digest) until a reactivation signal.
+IDLE_WARN_DAYS: Final[int] = 2
+IDLE_DORMANT_DAYS: Final[int] = 3
+
 # Weekly digest hours-saved heuristic: every completed GAIA todo is credited this
 # many minutes of user time. Named so the estimate is auditable, not magic.
 MINUTES_SAVED_PER_GAIA_TODO: Final[int] = 20

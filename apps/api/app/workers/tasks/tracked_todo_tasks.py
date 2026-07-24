@@ -17,14 +17,27 @@ from uuid import uuid4
 from bson import ObjectId
 
 from app.agents.core.agent import call_agent_silent
-from app.constants.todos import FACET_DELIVERABLE, FACET_NOTES
+from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_KIND_TODO_DONE
+from app.constants.todos import (
+    FACET_DELIVERABLE,
+    FACET_LOG,
+    FACET_NOTES,
+    FAILED_LABEL,
+    gaia_assigned_filter,
+)
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    ChannelConfig,
+    NotificationAction,
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
+    RedirectConfig,
 )
 from app.models.todo_models import ExecutionStatus
 from app.services.model_service import get_default_model
@@ -109,8 +122,9 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         )
         return f"expired:{todo_id}"
 
-    # Skip failed todos — user must manually reset before re-execution
-    if "failed" in doc.get("labels", []):
+    # Skip failed todos — the user must retry (POST /todos/{id}/retry clears this
+    # label) before re-execution.
+    if FAILED_LABEL in doc.get("labels", []):
         log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
         return f"skipped:{todo_id} (marked failed)"
 
@@ -129,7 +143,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
 
     try:
         await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.RUNNING)
-        await _run_execution(doc, user_id, user_data=user_data)
+        run_summary = await _run_execution(doc, user_id, user_data=user_data)
 
         # Resolve the post-run state. The agent may have completed the todo
         # mid-run (DONE), or turned it into a proposal awaiting approval, or hit
@@ -152,17 +166,14 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         ):
             if doc.get("recurrence"):
                 await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.QUEUED)
-            elif doc.get("execution_intent") == "release":
-                # A release run completes ONLY when the agent explicitly calls
-                # complete_tracked_todo after a real send (see _RELEASE_DIRECTIVE).
-                # Reaching here means it finished without that signal — the outward
-                # action was NOT confirmed, so hand it to the user instead of
-                # silently marking an unsent action done.
-                await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU)
             else:
                 await tracked_todo_service.complete_tracked_todo(
                     todo_id, user_id, summary="Completed overnight by GAIA."
                 )
+
+        # Ping the user when a run actually finished (DONE), scoped so goal-lane
+        # prep stays silent — the morning brief narrates those instead.
+        await _notify_done_if_scoped(todo_id, user_id, doc, run_summary)
 
         # Reset retry counter on success
         await todos_collection.update_one(
@@ -235,11 +246,11 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> None:
+async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> str | None:
     """
     Dispatch execution to the correct path:
-    - If the todo has a workflow_id, queue the workflow.
-    - Otherwise, run the agent directly.
+    - If the todo has a workflow_id, queue the workflow (no summary to return).
+    - Otherwise, run the agent directly and return its completion summary.
     """
     workflow_id: str | None = doc.get("workflow_id")
 
@@ -259,8 +270,8 @@ async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> None:
             workflow_id=workflow_id,
             todo_id=str(doc["_id"]),
         )
-    else:
-        await _execute_via_agent(doc, user_id, user_data=user_data)
+        return None
+    return await _execute_via_agent(doc, user_id, user_data=user_data)
 
 
 def _extract_learnings(ref_canvas: str) -> str | None:
@@ -302,10 +313,10 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
 # complete, kept apart from GAIA's scratch. This directive is what stops the
 # canvas from becoming a mixed blob of research + logs + half-drafts.
 _FACET_AUTHORING_DIRECTIVE = (
-    "This is a background prep run. Do the REAL work — research the web, draft, "
-    "compile — and never invent facts (no fabricated names, numbers, or quotes; "
+    "This is a background prep run. Do the REAL work (research the web, draft, "
+    "compile) and never invent facts (no fabricated names, numbers, or quotes; "
     "if you can't verify it, leave it out).\n\n"
-    "CRITICAL — this todo has SEPARATE facets, not one canvas with sections. "
+    "CRITICAL: this todo has SEPARATE facets, not one canvas with sections. "
     "Where results go decides whether the user ever sees them:\n"
     "- Your process (research, findings, drafts-in-progress, the plan) goes in "
     "NOTES: update_tracked_todo_canvas(todo_id, facet='notes', ...).\n"
@@ -313,16 +324,37 @@ _FACET_AUTHORING_DIRECTIVE = (
     "output to the DELIVERABLE facet as the final step:\n"
     "    update_tracked_todo_canvas(todo_id, facet='deliverable', mode='replace', "
     "content=<the whole finished result>)\n"
-    "  The deliverable is the actual thing the user uses or sends — the real code, "
-    "the real vetted list, the real drafts — complete, with NO placeholders like "
+    "  The deliverable is the actual thing the user uses or sends (the real code, "
+    "the real vetted list, the real drafts), complete, with NO placeholders like "
     "[Name] and NO research/log/'Work Order' sections mixed in. This is exactly "
     "what the user reads and what Approve releases.\n"
     "- Do NOT put a '## Deliverable' or '## Output' section inside notes. The "
     "finished output lives ONLY in the deliverable facet; notes must never hold it.\n"
-    "- log: one short line of what you did this run.\n\n"
+    "- log: one short line of what you did this run.\n"
+    '- Before finishing, end NOTES with a "## Learnings" section: 2-4 bullets a '
+    "FUTURE run on a similar task must know, written for a stranger: what worked, "
+    'what to avoid, key contacts/links/IDs with dates (e.g. "Replies came only '
+    'from subject lines naming their portfolio company", "foo@fund.com bounced '
+    '2026-07-09, use their partner form"). Not a diary of this run; only reusable '
+    "knowledge.\n\n"
     "Before you finish, check: is the complete finished result in the DELIVERABLE "
     "facet (not just notes)? If not, write it there now. If a real value doesn't "
-    "exist yet, do the work to get it — never ship a placeholder."
+    "exist yet, do the work to get it; never ship a placeholder.\n\n"
+    "THE BAR: the user must be able to tap Approve without editing a single word. "
+    "For each draft, match the target channel's real format: an email gets a "
+    "specific subject line and a first line only its recipient could receive (a "
+    "researched fact about them: their fund's recent investment, their post, their "
+    "product); a LinkedIn post gets a hook line and short paragraphs; a tweet fits "
+    "the length and reads native. Before writing the deliverable, do the "
+    "recipient/audience research the draft depends on. Final check: read the "
+    "deliverable as the user would; if they would change anything before sending, "
+    "fix it now, in this run.\n\n"
+    "Anything a human will read in the deliverable (emails, posts, messages, docs) "
+    "must sound like the USER wrote it, not an LLM: vary sentence length, open on "
+    "the point (no 'I hope this finds you well'), use plain words, take a position "
+    "instead of hedging, and never use an em dash or filler like 'delve', "
+    "'seamless', 'leverage', or 'excited to connect'. Keep it natural and specific, "
+    "not forced or quirky."
 )
 
 
@@ -330,47 +362,48 @@ _FACET_AUTHORING_DIRECTIVE = (
 # the (already-final) deliverable, not re-draft it. Without this an approved run
 # hits the prep directive above and just rewrites the draft, so nothing is sent.
 _RELEASE_DIRECTIVE = (
-    "The user has APPROVED this — your job now is to PERFORM the action, not to "
+    "The user has APPROVED this; your job now is to PERFORM the action, not to "
     "draft, plan, or propose it. Actually send the emails, post the content, or "
     "create the records described above, using the EXACT approved content in the "
     "deliverable and the appropriate connected integration (Gmail, LinkedIn, X, "
-    "etc.). Do NOT reword, re-draft, re-plan, or ask again — the content is final "
+    "etc.). Do NOT reword, re-draft, re-plan, or ask again: the content is final "
     "and approved. Send to EXACTLY the recipients/destinations named in the "
     "deliverable and no others.\n"
-    "Do NOT edit the notes or canvas, and do NOT call update_tracked_todo_canvas "
-    "or any notes-writing tool — the content is already final. Your ONLY job is to "
-    "DELIVER the action and then confirm it.\n"
-    "The user's approval has ALREADY happened — this run IS the post-approval send "
-    "step, so you must complete the delivery, not stop at a draft. For an email, "
-    "follow the two-step flow to the end: create the draft with "
-    "GMAIL_CREATE_EMAIL_DRAFT, then IMMEDIATELY call GMAIL_SEND_DRAFT with the "
-    "returned draft_id to actually deliver it to the recipient's inbox. Do NOT "
-    "stop after the draft — a draft that is never sent does NOT count.\n"
-    "When — and ONLY when — the send tool has returned a real success, call "
-    "complete_tracked_todo(todo_id='{todo_id}', summary=...) with a one-line "
-    "summary of exactly what you sent and to whom. That call is how you confirm "
-    "the action is truly done; it is the last thing you do.\n"
-    "If the integration is not connected, or the send genuinely fails, or you did "
-    "NOT get a real success back, do NOT call complete_tracked_todo — instead say "
-    "plainly what went wrong so the user can step in. Never claim it was sent when "
-    "it was not, and never quietly turn it back into a draft."
+    "Sends are per-recipient. The send record above lists any recipient already "
+    "marked sent; those are DONE, so never send to them again, even on a retry. As "
+    "each send completes or fails, immediately append one line to the log facet "
+    "(update_tracked_todo_canvas, facet='log'): recipient, outcome, confirmation "
+    "ID. One failure does not stop the rest: complete every remaining recipient, "
+    "then report the exact split ('sent 3 of 5: A, B, C; failed for D (bounce), E "
+    "(rate limit)'). A partial send is reported as partial: never round it up to "
+    "done, and never re-send a success to make the count clean. If the integration "
+    "is not connected at all, STOP and say so plainly; never claim anything was "
+    "sent when it was not.\n"
+    "The log facet is the permanent record of this release: the briefing and "
+    "every future follow-up run read it, so it must contain the full recipient "
+    "list, timestamps, and confirmation IDs even when everything succeeded."
 )
 
 
 def _build_execution_prompt(
     *,
-    todo_id: str,
     title: str,
     description: str,
     deliverable: str | None,
     notes: str | None,
     reference_context: str,
     intent: str | None = None,
+    log_facet: str | None = None,
+    instruction: str | None = None,
 ) -> str:
     """Assemble the scheduled-run prompt from the todo's facets and context.
 
     ``intent='release'`` means the user approved this proposal, so the run must
     PERFORM the outward action from the deliverable instead of doing prep/drafting.
+    For a release, the LOG facet is injected as the send record so a retry sees
+    which recipients already went out — instead of trusting the agent to fetch it.
+    ``instruction`` is the user's verbatim qualification at approval; it overrides
+    the staged content where they conflict.
     """
     if intent == "release":
         parts = [f"APPROVED ACTION — execute this now: {title}"]
@@ -380,9 +413,21 @@ def _build_execution_prompt(
             parts.append(
                 f"The approved content to send/perform (final — do not change it):\n{deliverable}"
             )
+        if instruction and instruction.strip():
+            parts.append(
+                "The user approved WITH an instruction, in their own words — follow "
+                "it exactly; where it narrows or adjusts the approved content (e.g. "
+                "send only a subset), the instruction wins over the staged content:\n"
+                f"{instruction.strip()}"
+            )
+        if log_facet and log_facet.strip():
+            parts.append(
+                "Send record from previous runs (recipients already marked sent are "
+                f"DONE — never send to them again):\n{log_facet.strip()}"
+            )
         if reference_context:
             parts.append(reference_context)
-        parts.append(_RELEASE_DIRECTIVE.replace("{todo_id}", todo_id))
+        parts.append(_RELEASE_DIRECTIVE)
         return "\n\n".join(parts)
 
     prompt_parts = [f"Execute the following scheduled task: {title}"]
@@ -396,6 +441,65 @@ def _build_execution_prompt(
         prompt_parts.append(reference_context)
     prompt_parts.append(_FACET_AUTHORING_DIRECTIVE)
     return "\n\n".join(prompt_parts)
+
+
+# An approved (release) run must actually PERFORM the outward action. We verify
+# this from the run's REAL tool results, not the agent's prose — the agent can
+# fabricate what it *says* ("sent, msg-12345") but not what a tool *returns*.
+# Deterministic + free (no model call, which matters when the primary model is
+# unavailable): a release counts as performed only if a tool whose name denotes
+# an outward action (send/post/create — NOT a draft or a read) was actually
+# invoked. Limitation: a called-but-errored action still counts; refine to parse
+# tool outputs when a real end-to-end trace is available to validate against.
+_RELEASE_ACTION_VERBS = (
+    "SEND",
+    "POST",
+    "PUBLISH",
+    "SUBMIT",
+    "REPLY",
+    "CREATE",
+    "ADD",
+    "INSERT",
+    "UPDATE",
+    "DELETE",
+)
+_RELEASE_NAME_KEYS = ("tool_name", "name", "tool", "toolName")
+
+
+def _collect_tool_names(blob: object) -> list[str]:
+    """Recursively pull every tool-name string out of a tool_data structure,
+    flattening nested subagent groups (the send may run inside a sub-agent)."""
+    names: list[str] = []
+    if isinstance(blob, dict):
+        for key in _RELEASE_NAME_KEYS:
+            v = blob.get(key)
+            if isinstance(v, str) and v and v not in ("subagent_group", "tool_calls_data"):
+                names.append(v)
+        for v in blob.values():
+            names.extend(_collect_tool_names(v))
+    elif isinstance(blob, list):
+        for item in blob:
+            names.extend(_collect_tool_names(item))
+    return names
+
+
+def _release_performed(tool_data: object) -> bool:
+    """True if the run actually invoked an outward-action tool (not a draft/read).
+
+    Integration/composio tools that reach external services are UPPER_SNAKE
+    (``GMAIL_SEND_EMAIL``); GAIA's own internal tools are lower_snake
+    (``update_tracked_todo_canvas``) — only the former perform outward actions, so
+    an internal tool that merely *contains* an action verb (update/create) never
+    counts.
+    """
+    for raw in _collect_tool_names(tool_data):
+        if not raw.isupper():
+            continue
+        if "DRAFT" in raw:
+            continue
+        if any(verb in raw for verb in _RELEASE_ACTION_VERBS):
+            return True
+    return False
 
 
 async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str:
@@ -413,11 +517,17 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         log.warning("tracked_todo.model_config_failed", todo_id=todo_id, error=str(exc))
 
     # Read the notes + deliverable facets from the todo's Mongo-backed fields.
+    # A release run also reads the LOG facet: it holds the per-recipient send
+    # record so a retry never double-sends a recipient that already went out.
     notes: str | None = None
     deliverable: str | None = None
+    log_facet: str | None = None
+    is_release = doc.get("execution_intent") == "release"
     try:
         notes = await read_facet(todo_id, user_id, FACET_NOTES)
         deliverable = await read_facet(todo_id, user_id, FACET_DELIVERABLE)
+        if is_release:
+            log_facet = await read_facet(todo_id, user_id, FACET_LOG)
     except Exception as exc:
         log.warning(
             "tracked_todo.facet_read_failed",
@@ -431,18 +541,26 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     # Build prompt
     title: str = doc.get("title", "Untitled Todo")
     prompt = _build_execution_prompt(
-        todo_id=todo_id,
         title=title,
         description=doc.get("description", ""),
         deliverable=deliverable,
         notes=notes,
         reference_context=reference_context,
         intent=doc.get("execution_intent"),
+        log_facet=log_facet,
+        instruction=doc.get("approve_instruction"),
     )
 
     # Generate a fresh conversation_id for each execution to prevent
     # history accumulation in PostgreSQL. Each execution is independent.
     conversation_id = str(uuid4())
+
+    # Persisted up front so the dashboard can link into the live run, not just
+    # the finished one.
+    await todos_collection.update_one(
+        {"_id": ObjectId(todo_id)},
+        {"$set": {"last_run_conversation_id": conversation_id}},
+    )
 
     # The human turn must be in `messages` — construct_langchain_messages does
     # not consult `message` alone when no workflow/tool is selected, so an empty
@@ -478,7 +596,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
 
     complete_message: str = ""
     try:
-        complete_message, _tool_data = await call_agent_silent(
+        complete_message, tool_data = await call_agent_silent(
             request=request,
             conversation_id=conversation_id,
             user=user_data,
@@ -507,12 +625,88 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         entry=f"✓ {end_iso} — scheduled run finished (summary={summary!r})",
     )
 
-    # Approved (release) runs confirm themselves: the agent calls
-    # complete_tracked_todo ONLY after a real send succeeds (see _RELEASE_DIRECTIVE).
-    # If it didn't, the todo stays not-completed and _execute_todo_with_retry routes
-    # it to needs_you — so an unsent action is never silently marked done.
+    # Honesty gate for approved (release) runs: the agent may claim it sent when
+    # it only drafted or did nothing. Verify from the REAL tool results — if no
+    # outward-action tool actually ran, DON'T let this be marked done/sent; flip
+    # it to needs_you with the truth so the user is never told a lie.
+    if is_release and not _release_performed(
+        tool_data.get("tool_data") if isinstance(tool_data, dict) else tool_data
+    ):
+        log.warning("tracked_todo.release_not_performed", todo_id=todo_id)
+        await lifecycle.mark_execution_status(
+            todo_id,
+            user_id,
+            ExecutionStatus.NEEDS_YOU,
+            blocker_question=(
+                "GAIA prepared this but couldn't confirm the send actually went "
+                "through. Retry the send, or will you handle it yourself?"
+            ),
+        )
+
     log.info("tracked_todo.agent_completed", todo_id=todo_id)
     return complete_message[:200] if complete_message else ""
+
+
+async def _notify_done_if_scoped(
+    todo_id: str, user_id: str, doc: dict, run_summary: str | None
+) -> None:
+    """In-app ping when a run finished (DONE), scoped to work the user asked for.
+
+    Fires only for a release run (approved outward action) or a standalone todo
+    (no ``goal_id``). Goal-lane prep completions stay silent — the morning brief
+    narrates them. Explicit ``inapp`` channel so this never double-delivers over
+    chat (standalone chat delivery already happens in the run). Best-effort: the
+    completion is already persisted, so a delivery failure only drops the ping.
+
+    Workflow-backed todos are excluded: they carry their own completion
+    notification (WORKFLOW_DONE_COPY), so a second ping here would double up.
+    """
+    if doc.get("workflow_id"):
+        return
+    final = await todos_collection.find_one(
+        {"_id": ObjectId(todo_id)}, {"execution_status": 1, "title": 1}
+    )
+    if not final or final.get("execution_status") != ExecutionStatus.DONE.value:
+        return
+    if doc.get("execution_intent") != "release" and doc.get("goal_id"):
+        return
+
+    title: str = final.get("title") or "your todo"
+    body = (run_summary or "").strip()[:200] or "GAIA finished this and it's ready for you."
+    try:
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.BACKGROUND_JOB,
+                type=NotificationType.SUCCESS,
+                channels=[ChannelConfig(channel_type=CHANNEL_TYPE_INAPP)],
+                content=NotificationContent(
+                    title=f"Shipped: {title}",
+                    body=body,
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label="Open todo",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url=f"/todos?todoId={todo_id}",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                metadata={"kind": NOTIFICATION_KIND_TODO_DONE, "todo_id": todo_id},
+            )
+        )
+    except Exception as notify_exc:
+        log.warning(
+            "tracked_todo.done_notification_failed",
+            todo_id=todo_id,
+            error=str(notify_exc),
+        )
 
 
 async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
@@ -523,7 +717,7 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
     await todos_collection.update_one(
         {"_id": ObjectId(todo_id)},
         {
-            "$addToSet": {"labels": "failed"},
+            "$addToSet": {"labels": FAILED_LABEL},
             "$set": {"updated_at": datetime.now(UTC)},
         },
     )
@@ -640,7 +834,7 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
     Queries todos where:
     - scheduled_at <= now
     - completed = False
-    - labels includes "gaia-tracked"
+    - assignee == "gaia"
     - gaia_retry_count < MAX_RETRY_ATTEMPTS
 
     For each, checks whether the execution lock already exists; if not,
@@ -654,7 +848,7 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
             {
                 "scheduled_at": {"$lte": now},
                 "completed": False,
-                "labels": "gaia-tracked",
+                **gaia_assigned_filter(),
                 "gaia_retry_count": {"$lt": MAX_RETRY_ATTEMPTS},
             }
         ).limit(100)

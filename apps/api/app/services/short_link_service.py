@@ -1,28 +1,39 @@
-"""Short-link service — mint and resolve heygaia.link/<slug> handles.
+"""Short-link service — mint and resolve heygaia.link/<slug> capability URLs.
 
-Slugs live in a per-user namespace (unique only within one user's links) and
-resolution is viewer-scoped, so the same URL points at a different artifact for
-each signed-in viewer and a forwarded private link leaks nothing.
+The slug IS the capability: high-entropy and globally unique, it grants
+read-only access to one artifact's deliverable with no session — briefing links
+must open from Telegram/WhatsApp, where the viewer is never signed in. Links
+expire (each briefing re-mint pushes the expiry forward) and can be revoked, so
+a forwarded link shares exactly what a share link shares, for as long as the
+owner lets it.
 """
 
+from datetime import UTC, datetime, timedelta
 import secrets
 
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.config.settings import settings
-from app.db.mongodb.collections import short_links_collection
+from app.constants.todos import FACET_DELIVERABLE, facet_from_doc
+from app.db.mongodb.collections import short_links_collection, todos_collection
 from app.models.short_link_models import ShortLink, ShortLinkTarget
+from app.models.todo_models import ExecutionStatus
 from shared.py.wide_events import log
 
-# Slug namespace: lowercase a–z, 3 chars → 26³ = 17,576 handles per user, far
-# more than any user accrues, so collisions are rare and retries near-free.
-SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz"
-SLUG_LENGTH = 3
+# Slug namespace: lowercase a–z + digits, 8 chars → 36⁸ ≈ 2.8 trillion. The slug
+# is the capability, so it must be unguessable: enumeration is hopeless at this
+# size behind the resolver's rate limit.
+SLUG_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789"
+SLUG_LENGTH = 8
 
-# Cap on random-slug attempts before failing. With a near-empty per-user
-# namespace this is never reached; exhausting it means the namespace is
-# saturated (or the unique index is missing), which must fail loudly rather
-# than silently reuse or truncate a slug.
+# Links die on their own when the briefing stops re-minting them; every reuse
+# pushes the expiry forward so a live artifact's link keeps working.
+LINK_TTL_DAYS = 30
+
+# Cap on random-slug attempts before failing. With a namespace this large the
+# cap is never reached; exhausting it means the unique index is missing, which
+# must fail loudly rather than silently reuse a slug.
 MAX_SLUG_ATTEMPTS = 10
 
 
@@ -59,12 +70,21 @@ async def get_or_create_short_link(
     """Return the heygaia.link URL for ``(user, target)``, minting it once.
 
     Idempotent per target: repeated calls for the same artifact return the same
-    slug, so re-running a briefing reuses one link instead of spawning a new one
-    each run.
+    slug (with a refreshed expiry), so re-running a briefing reuses one link
+    instead of spawning a new one each run. A revoked link stays dead — the next
+    mint draws a fresh slug.
     """
-    existing = await short_links_collection.find_one(
-        {"user_id": user_id, "target_type": target_type, "target_id": target_id},
-        {"slug": 1},
+    now = datetime.now(UTC)
+    expires_at = now + timedelta(days=LINK_TTL_DAYS)
+    existing = await short_links_collection.find_one_and_update(
+        {
+            "user_id": user_id,
+            "target_type": target_type,
+            "target_id": target_id,
+            "revoked": {"$ne": True},
+        },
+        {"$set": {"expires_at": expires_at}},
+        projection={"slug": 1},
     )
     if existing:
         return _build_url(existing["slug"])
@@ -75,11 +95,12 @@ async def get_or_create_short_link(
             user_id=user_id,
             target_type=target_type,
             target_id=target_id,
+            expires_at=expires_at,
         )
         try:
             await short_links_collection.insert_one(link.model_dump())
         except DuplicateKeyError:
-            # Slug already taken in this user's namespace — draw another.
+            # Slug already taken — draw another.
             continue
         return _build_url(link.slug)
 
@@ -89,9 +110,54 @@ async def get_or_create_short_link(
     )
 
 
-async def resolve_short_link(user_id: str, slug: str) -> ShortLink | None:
-    """Resolve ``slug`` within the viewer's namespace, or ``None`` if unknown."""
-    doc = await short_links_collection.find_one({"user_id": user_id, "slug": slug})
+async def resolve_public_short_link(slug: str) -> ShortLink | None:
+    """Resolve ``slug`` globally; ``None`` when unknown, revoked, or expired."""
+    doc = await short_links_collection.find_one({"slug": slug})
     if doc is None:
         return None
-    return ShortLink.model_validate(doc)
+    link = ShortLink.model_validate(doc)
+    if link.revoked:
+        return None
+    expires = link.expires_at
+    if expires is not None:
+        # Mongo returns naive UTC datetimes; normalize before comparing.
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        if expires < datetime.now(UTC):
+            return None
+    return link
+
+
+async def get_public_artifact(slug: str) -> dict | None:
+    """Read-only artifact content behind a capability slug, or ``None``.
+
+    The read is scoped by the OWNER stored on the link doc, never a viewer.
+    Only the deliverable facet is exposed (notes/log are GAIA's working
+    memory); a still-proposed todo may fall back to its legacy canvas, exactly
+    like the briefing's artifact summary does.
+    """
+    link = await resolve_public_short_link(slug)
+    if link is None or link.target_type != "todo_canvas":
+        return None
+    doc = await todos_collection.find_one(
+        {"_id": ObjectId(link.target_id), "user_id": link.user_id},
+        {"title": 1, "execution_status": 1, "deliverable_content": 1, "canvas_content": 1},
+    )
+    if not doc:
+        return None
+    allow_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
+    content = facet_from_doc(doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_fallback)
+    return {
+        "title": doc.get("title", "Artifact"),
+        "content": content or "",
+        "todo_id": link.target_id,
+        "target_type": link.target_type,
+    }
+
+
+async def revoke_short_link(user_id: str, slug: str) -> bool:
+    """Owner revocation: the URL goes dead immediately. False if not the owner's."""
+    result = await short_links_collection.update_one(
+        {"slug": slug, "user_id": user_id}, {"$set": {"revoked": True}}
+    )
+    return result.matched_count > 0

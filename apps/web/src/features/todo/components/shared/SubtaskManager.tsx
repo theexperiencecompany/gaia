@@ -113,14 +113,14 @@ export default function SubtaskManager({
             value={newSubtaskTitle}
             onChange={(e) => setNewSubtaskTitle(e.target.value)}
             onKeyDown={(e) => handleKeyDown(e, "add")}
-            className="hover:bg-zinc-750 h-9 rounded-lg border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 focus:ring-0 focus:outline-none focus-visible:ring-zinc-500 focus-visible:ring-2"
+            className="h-9 rounded-lg border-0 bg-zinc-800 text-sm text-zinc-200 placeholder:text-zinc-500 hover:bg-zinc-700/60 focus:ring-0 focus:outline-none focus-visible:ring-zinc-500 focus-visible:ring-2"
           />
         </div>
         <Button
           size="sm"
           onClick={handleAddSubtask}
           disabled={!newSubtaskTitle.trim()}
-          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "hover:bg-zinc-750 bg-zinc-800 text-zinc-600" : "hover:bg-zinc-750 bg-zinc-800 text-zinc-200"}`}
+          className={`h-9 w-9 rounded-lg border-0 p-0 ${!newSubtaskTitle.trim() ? "bg-zinc-800 text-zinc-600 hover:bg-zinc-700/60" : "bg-zinc-800 text-zinc-200 hover:bg-zinc-700/60"}`}
         >
           <PlusSignIcon size={16} />
         </Button>
@@ -132,7 +132,7 @@ export default function SubtaskManager({
           {subtasks.map((subtask) => (
             <div
               key={subtask.id}
-              className="group hover:bg-zinc-800/50 flex items-center gap- rounded-xl transition-colors p-2"
+              className="group hover:bg-zinc-800/50 flex items-center gap-2 rounded-xl transition-colors p-2"
             >
               <Checkbox
                 isSelected={subtask.completed}
@@ -148,7 +148,7 @@ export default function SubtaskManager({
                     value={editingTitle}
                     onChange={(e) => setEditingTitle(e.target.value)}
                     onKeyDown={(e) => handleKeyDown(e, "edit")}
-                    className="bg-zinc-750 h-7 flex-1 rounded-md border-0 text-sm text-zinc-200 focus:ring-0 focus:outline-none focus-visible:ring-zinc-700 focus-visible:ring-2"
+                    className="h-7 flex-1 rounded-md border-0 bg-zinc-800 text-sm text-zinc-200 focus:ring-0 focus:outline-none focus-visible:ring-zinc-700 focus-visible:ring-2"
                     autoFocus
                   />
                   <Button

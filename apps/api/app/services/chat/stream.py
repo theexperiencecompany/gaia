@@ -513,6 +513,7 @@ async def _persist_turn(
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
         error=state.error or None,
+        follow_up_actions=state.follow_up_actions or None,
     )
     state.saved = True
 

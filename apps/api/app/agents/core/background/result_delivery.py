@@ -324,6 +324,7 @@ async def _safe_inline_follow_ups(
             notification_text=notification_text,
             user_msg_content=user_msg_content,
             user_id=user_id,
+            conversation_id=conversation_id,
         )
     except Exception as e:  # follow-ups are best-effort
         log.error(
@@ -341,6 +342,7 @@ async def _build_follow_up_actions(
     notification_text: str,
     user_msg_content: str,
     user_id: str,
+    conversation_id: str,
 ) -> list[str]:
     """Generate follow-up suggestions on the executor's final answer.
 
@@ -359,6 +361,7 @@ async def _build_follow_up_actions(
         follow_up_context,
         user_id,
         {"configurable": {"user_id": user_id}},
+        conversation_id,
     )
 
 
@@ -409,6 +412,7 @@ async def _generate_and_push_follow_ups(
             notification_text=bot_message.response,
             user_msg_content=user_msg_content,
             user_id=user_id,
+            conversation_id=run.conversation_id,
         )
         if not follow_up_actions:
             return

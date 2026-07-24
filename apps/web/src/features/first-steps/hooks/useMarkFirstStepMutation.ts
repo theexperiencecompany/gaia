@@ -24,12 +24,13 @@ export const useMarkFirstStepMutation = () => {
 
       queryClient.setQueryData<FirstStepsResponse>(
         FIRST_STEPS_QUERY_KEY,
-        (old) => ({
-          steps: {
-            ...old?.steps,
-            [step]: new Date().toISOString(),
-          },
-        }),
+        (old) =>
+          old
+            ? {
+                ...old,
+                steps: { ...old.steps, [step]: new Date().toISOString() },
+              }
+            : old,
       );
 
       return { previous };

@@ -1,9 +1,9 @@
 """Short-link models (heygaia.link/<slug>).
 
-A short link is a per-user, 3-char handle pointing at an artifact. Slugs are
-unique only within a user's namespace and resolution is viewer-scoped (the
-signed-in viewer's own slug), so the same URL means different things per user
-and a forwarded private link leaks nothing.
+A short link is a capability URL: the slug is a high-entropy, globally unique
+handle granting read-only access to exactly one artifact, so the owner can open
+it from a chat app without a signed-in session (share-link semantics). Links
+expire and can be revoked; resolution never requires auth.
 """
 
 from datetime import UTC, datetime
@@ -23,3 +23,5 @@ class ShortLink(BaseModel):
     target_type: ShortLinkTarget
     target_id: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    expires_at: datetime | None = None
+    revoked: bool = False

@@ -4,28 +4,29 @@ export interface FirstStepDefinition {
   href: string;
 }
 
-// Ordered activation checklist shown in the FirstStepsWidget. Order matches
-// the product spec (openspec/changes/daily-briefing-self-executing-todos).
+// Ordered activation checklist shown in the FirstStepsWidget. Each step maps to
+// a real signal the backend tracks (a stated goal, an integration, a linked
+// chat platform, the Today view, the first Approve).
 export const FIRST_STEPS: FirstStepDefinition[] = [
-  { key: "explore_workflows", label: "Explore workflows", href: "/workflows" },
+  { key: "tell_gaia_goal", label: "Tell GAIA your goal", href: "/c" },
   {
     key: "connect_integration",
     label: "Connect an integration",
     href: "/integrations",
   },
   {
-    key: "link_telegram",
-    label: "Link Telegram",
+    key: "link_platform",
+    label: "Link Telegram or WhatsApp",
     href: "/settings/linked-accounts",
   },
-  { key: "visit_dashboard", label: "Meet Mission Control", href: "/dashboard" },
+  {
+    key: "visit_dashboard",
+    label: "Check your Today view",
+    href: "/dashboard",
+  },
   {
     key: "first_approve",
     label: "Approve your first GAIA todo",
     href: "/todos",
   },
 ];
-
-// Special step value PATCHed to mark the entire widget dismissed, independent
-// of individual step completion.
-export const DISMISSED_ALL_STEP = "dismissed_all";

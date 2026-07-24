@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, WINBACK_THRESHOLD
 from app.constants.todos import (
+    ASSIGNEE_GAIA,
     FACET_NOTES,
     facet_from_doc,
     gaia_assigned_filter,
@@ -23,8 +24,10 @@ from app.db.mongodb.collections import (
     workflows_collection,
 )
 from app.memory.engine import memory_engine
+from app.memory.mappers import entry_to_note
 from app.models.briefing_models import BriefingMood
 from app.models.todo_models import ExecutionStatus
+from app.services.briefing import dormancy
 from shared.py.wide_events import log
 
 # GAIA todos that are live work (shown in the plan block).
@@ -97,11 +100,20 @@ async def get_yesterday_payload(
     return doc.get("payload") if doc else None
 
 
+# Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
+_JUNK_FOCUS_VALUES = {"nothing", "none", "n/a", "na", "-", "idk", "no"}
+
+
+def has_meaningful_focus(focus: str | None) -> bool:
+    """Whether the onboarding focus is a real stated goal (not blank or junk)."""
+    cleaned = (focus or "").strip()
+    return bool(cleaned) and cleaned.lower() not in _JUNK_FOCUS_VALUES
+
+
 async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
     """Return (formatted goal block, has_goal). ``has_goal`` gates cold-start."""
     focus = ((user.get("onboarding") or {}).get("focus") or "").strip()
-    # Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
-    if focus.lower() in {"nothing", "none", "n/a", "na", "-", "idk", "no"}:
+    if not has_meaningful_focus(focus):
         focus = ""
     lines: list[str] = []
     if focus:
@@ -112,12 +124,12 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
             user_id, "what is the user currently working on and their goals", limit=5
         )
         for entry in result.memories:
-            content = (entry.content or "").strip()
-            if content and content not in lines:
-                lines.append(f"- {content}")
+            note = entry_to_note(entry).strip()
+            if note and note not in lines:
+                lines.append(f"- {note}")
     except Exception as exc:
         # Memory recall is best-effort context, not a hard dependency of the run.
-        log.debug("briefing.goal_block.memory_recall_failed", user_id=user_id, error=str(exc))
+        log.warning("briefing.goal_block_recall_failed", user_id=user_id, error=str(exc))
 
     if not lines:
         return (
@@ -143,6 +155,54 @@ class GoalLane:
 
 
 _LANE_CANVAS_EXCERPT_CHARS = 700
+# The nightly pass writes its freshest thinking into these sections, so they lead
+# the excerpt regardless of where they sit in the notes facet.
+_PRIORITY_CANVAS_SECTIONS = ("current state", "next steps")
+
+
+def _split_markdown_sections(text: str) -> list[tuple[str, str]]:
+    """Split markdown into (heading, block) pairs by ``## `` headers.
+
+    Each block keeps its own heading line; text before the first header is
+    returned under an empty heading.
+    """
+    sections: list[tuple[str, str]] = []
+    heading = ""
+    buf: list[str] = []
+    for line in text.splitlines():
+        if line.lstrip().startswith("## "):
+            if buf:
+                sections.append((heading, "\n".join(buf).strip()))
+            heading = line.lstrip()[3:].strip()
+            buf = [line]
+        else:
+            buf.append(line)
+    if buf:
+        sections.append((heading, "\n".join(buf).strip()))
+    return sections
+
+
+def _excerpt_canvas(notes: str) -> str:
+    """The freshest slice of a goal's notes facet for the night shift to plan from.
+
+    A head-truncation converges on the oldest plan text as the notes grow, hiding
+    exactly the ``## Current State`` the nightly pass should plan from. So the
+    priority sections lead, the rest of the budget is filled from the top of
+    everything else, and when no such sections exist the tail (most recently
+    appended) wins over the head.
+    """
+    notes = notes.strip()
+    if len(notes) <= _LANE_CANVAS_EXCERPT_CHARS:
+        return notes
+    sections = _split_markdown_sections(notes)
+    priority = [b for h, b in sections if h.lower() in _PRIORITY_CANVAS_SECTIONS]
+    if not priority:
+        return notes[-_LANE_CANVAS_EXCERPT_CHARS:].strip()
+    rest = [b for h, b in sections if h.lower() not in _PRIORITY_CANVAS_SECTIONS]
+    excerpt = "\n\n".join(priority).strip()
+    if rest and len(excerpt) < _LANE_CANVAS_EXCERPT_CHARS:
+        excerpt += "\n\n" + "\n\n".join(rest).strip()
+    return excerpt[:_LANE_CANVAS_EXCERPT_CHARS].strip()
 
 
 async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
@@ -162,7 +222,7 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
         lane = GoalLane(
             goal_id=goal_id,
             title=goal.get("title", "untitled goal"),
-            canvas_excerpt=goal_notes[:_LANE_CANVAS_EXCERPT_CHARS],
+            canvas_excerpt=_excerpt_canvas(goal_notes),
         )
         async for child in todos_collection.find(
             {"user_id": user_id, "goal_id": goal_id},
@@ -173,6 +233,7 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
                 "notes_content": 1,
                 "canvas_content": 1,
                 "completed_at": 1,
+                "created_at": 1,
                 "error_message": 1,
             },
         ):
@@ -222,9 +283,11 @@ def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
         if lane.canvas_excerpt.strip():
             lines.append(f"strategy canvas:\n{lane.canvas_excerpt.strip()}")
         for label, docs in (
+            ("done since yesterday", lane.completed),
             ("open work", lane.running),
             ("staged proposals", lane.staged),
             ("failed", lane.failed),
+            ("blocked on the user", lane.needs_you),
         ):
             if docs:
                 lines.append(label + ": " + "; ".join(d.get("title", "?") for d in docs))
@@ -234,14 +297,20 @@ def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
     return "\n\n".join(parts)
 
 
-async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork:
+async def gather_completed_since(
+    user_id: str, since: datetime, *, include_deliverables: bool = False
+) -> CompletedWork:
+    projection = {"title": 1, "assignee": 1, "labels": 1, "completed_at": 1, "serves": 1}
+    if include_deliverables:
+        # The weekly digest voices deliverable snippets; the daily look-back only
+        # needs titles, so it skips the heavier facet fields.
+        projection |= {"deliverable_content": 1, "canvas_content": 1}
     work = CompletedWork()
     cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$gte": since}},
-        {"title": 1, "assignee": 1, "labels": 1, "completed_at": 1, "serves": 1},
+        {"user_id": user_id, "completed_at": {"$gte": since}}, projection
     )
     async for doc in cursor:
-        is_gaia = doc.get("assignee") == "gaia" or "gaia-tracked" in doc.get("labels", [])
+        is_gaia = doc.get("assignee") == ASSIGNEE_GAIA
         (work.gaia if is_gaia else work.user).append(doc)
     return work
 
@@ -279,6 +348,20 @@ async def format_todos_block(user_id: str) -> str:
     if user_lines:
         parts.append("Yours:\n" + "\n".join(user_lines))
     return "\n\n".join(parts)
+
+
+async def user_open_todo_summary(user_id: str) -> tuple[int, list[str]]:
+    """Count + first titles of the user's own open todos, for the brief's facts.
+
+    The voice pass gets these so an empty-lane day can't be voiced as "all
+    clear" while the user's own list still has work in it.
+    """
+    cursor = todos_collection.find(
+        {"user_id": user_id, "completed": False, **user_assigned_filter()},
+        {"title": 1},
+    ).limit(50)
+    titles = [d.get("title", "untitled") async for d in cursor]
+    return len(titles), titles[:5]
 
 
 async def format_lookback_block(
@@ -326,8 +409,14 @@ async def format_lookback_block(
 async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     """Count consecutive most-recent daily briefings the user never acknowledged.
 
-    Acknowledgement is honest and channel-agnostic: the briefing was opened, OR a
-    real todo completed after it went out (the user acted on the loop).
+    Acknowledgement is honest and channel-agnostic: the briefing was opened, OR the
+    user was active since it went out (a reactivation signal — goal created, session
+    active, or any message). A todo completing is deliberately NOT an ack: GAIA's
+    night shift completes its own todos autonomously, so counting completions would
+    let GAIA acknowledge its own briefings and winback would never fire.
+
+    The loop breaks at the first acknowledged briefing, so the reactivation-signal
+    lookup runs only for the unacknowledged tail (at most one extra call past it).
     """
     briefings = (
         await briefings_collection.find(
@@ -341,17 +430,13 @@ async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
-    latest_completion = await todos_collection.find_one(
-        {"user_id": user_id, "completed_at": {"$ne": None}},
-        {"completed_at": 1},
-        sort=[("completed_at", -1)],
-    )
-    last_completed_at = latest_completion.get("completed_at") if latest_completion else None
-
     unacknowledged = 0
     for doc in briefings:
-        acknowledged = doc.get("opened_at") is not None or (
-            last_completed_at is not None and last_completed_at > doc["created_at"]
+        created_at = doc["created_at"]
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=UTC)
+        acknowledged = doc.get("opened_at") is not None or await dormancy.reactivation_signal_since(
+            user_id, created_at
         )
         if acknowledged:
             break

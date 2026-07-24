@@ -31,7 +31,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.constants.todos import FACET_DELIVERABLE, facet_from_doc
+from app.constants.todos import FACET_DELIVERABLE, PROPOSAL_TTL_HOURS, facet_from_doc
 from app.db.mongodb.collections import users_collection
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -39,6 +39,7 @@ from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
     ActionType,
+    ChannelConfig,
     NotificationAction,
     NotificationContent,
     NotificationRequest,
@@ -47,7 +48,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.todo_models import ExecutionStatus
-from app.services.briefing import context, repository
+from app.services.briefing import chat_sync, context, delivery_channels, dormancy, repository
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
@@ -154,13 +155,31 @@ def _format_awards(badge_labels: list[str]) -> str:
     )
 
 
+def _group_by_serves(docs: list[dict]) -> str:
+    """GAIA completions grouped by the goal they served, each with a deliverable
+    snippet so the digest voices specifics instead of bare titles."""
+    groups: dict[str, list[dict]] = {}
+    for d in docs[:15]:
+        key = (d.get("serves") or "").strip() or "unfiled"
+        groups.setdefault(key, []).append(d)
+    lines: list[str] = []
+    for serves, items in groups.items():
+        lines.append(f"{serves}:")
+        for d in items:
+            snippet = _canvas_snippet(
+                facet_from_doc(d, FACET_DELIVERABLE, allow_canvas_fallback=True)
+            )
+            title = d.get("title", "untitled")
+            lines.append(f"  - {title}" + (f": {snippet}" if snippet else ""))
+    return "\n".join(lines)
+
+
 def _format_week(completed: context.CompletedWork) -> str:
     gaia_n, user_n = len(completed.gaia), len(completed.user)
     lines = [f"GAIA completed {gaia_n} todo(s); you completed {user_n}."]
     if completed.gaia:
         lines.append(
-            "GAIA shipped:\n"
-            + "\n".join(f"- {d.get('title', 'untitled')}" for d in completed.gaia[:15])
+            "GAIA shipped, grouped by the goal it served:\n" + _group_by_serves(completed.gaia)
         )
     if completed.user:
         lines.append(
@@ -272,29 +291,43 @@ async def _gather_artifacts(
     return out
 
 
+def _platform_parts(payload: BriefingPayload) -> list[str]:
+    """Chat-platform bubbles for this payload.
+
+    The voice pass decides how many bubbles and where they break; this only
+    filters blanks. The weekly digest emits no bubbles, so it falls back to its
+    single message.
+    """
+    return [b for b in payload.bubbles if b.strip()] or (
+        [payload.message] if payload.message else []
+    )
+
+
 async def _deliver(
-    user_id: str, briefing: BriefingModel, payload: BriefingPayload, notification_kind: str
+    user_id: str,
+    user: dict,
+    briefing: BriefingModel,
+    payload: BriefingPayload,
+    notification_kind: str,
 ) -> list[str]:
     """Fan out the briefing via the notification orchestrator (in-app + platforms).
 
-    ``metadata.kind`` selects the email template and ``content.rich_content``
-    carries the full payload the email adapter renders — both are the delivery
-    contract the channels layer keys off (without them email falls back to the
-    plain template).
+    Channels are resolved to a single chat platform (per the user's priority) plus
+    in-app and email, then passed explicitly — which suppresses the orchestrator's
+    all-platforms auto-inject so one brief never triple-delivers. ``metadata.kind``
+    selects the email template and ``content.rich_content`` carries the full
+    payload the email adapter renders — both are the delivery contract the channels
+    layer keys off (without them email falls back to the plain template).
     """
-    # One bubble per goal — no canvas dumps. Each bubble names its goal, states
-    # the result inline, and links out (heygaia.link) only when the artifact is
-    # large or awaiting the user, so small results never cost a tap. The weekly
-    # digest has no per-goal bubbles, so it falls back to its single message.
-    platform_parts = [b for b in payload.bubbles if b.strip()] or (
-        [payload.message] if payload.message else []
-    )
+    platform_parts = _platform_parts(payload)
+    resolved = await delivery_channels.resolve_briefing_channels(user_id, user)
     record = await notification_service.create_notification(
         NotificationRequest(
             user_id=user_id,
             source=NotificationSourceEnum.BACKGROUND_JOB,
             type=NotificationType.INFO,
             priority=2,
+            channels=[ChannelConfig(channel_type=channel) for channel in resolved],
             content=NotificationContent(
                 title=payload.headline,
                 body=_delivery_body(payload),
@@ -326,8 +359,18 @@ async def _deliver(
     return channels or ["inapp"]
 
 
+def _expires_within_a_day(created_at: datetime | None, now: datetime) -> bool:
+    """True when a staged proposal's PROPOSAL_TTL expiry falls within 24h of now."""
+    if created_at is None:
+        return False
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=UTC)
+    return created_at + timedelta(hours=PROPOSAL_TTL_HOURS) - now <= timedelta(hours=24)
+
+
 def _lane_items(lane: context.GoalLane) -> list[dict]:
     """Code-built items for one goal lane. Truth by construction."""
+    now = datetime.now(UTC)
     items: list[dict] = []
     for d in lane.completed:
         items.append(
@@ -338,9 +381,12 @@ def _lane_items(lane: context.GoalLane) -> list[dict]:
             }
         )
     for d in lane.staged:
+        expiry = (
+            " (expires within a day)" if _expires_within_a_day(d.get("created_at"), now) else ""
+        )
         items.append(
             {
-                "text": f"Staged and ready: {d.get('title')} — one tap or reply releases it.",
+                "text": f"Staged and ready: {d.get('title')}{expiry} — a reply releases it.",
                 "todo_id": str(d["_id"]),
                 "kind": "proposal",
             }
@@ -375,6 +421,7 @@ def _build_facts(
     lanes: list[context.GoalLane],
     curation_note: str,
     artifacts: dict[str, _ArtifactFact],
+    user_todos_note: str,
 ) -> tuple[list[dict], list[dict], str]:
     """Assemble sections + stats deterministically from lane state.
 
@@ -423,7 +470,11 @@ def _build_facts(
                 line += f" | link: {art.link}"
             fact_lines.append(line)
     if not sections:
-        fact_lines.append("No goal lanes have any work or results to report.")
+        fact_lines.append(
+            "No goal lanes exist and no background work ran. Do not claim anything "
+            "ran, finished, or is pending beyond what is stated here."
+        )
+    fact_lines.append(user_todos_note)
     return sections, stats, "\n".join(fact_lines)
 
 
@@ -495,6 +546,16 @@ async def run_overnight_work(user_id: str) -> None:
     user["user_id"] = user_id
     clock = context.resolve_clock(user.get("timezone"))
 
+    # Dormant loop: only the daily run mutates dormancy state, but the night
+    # shift must not burn an LLM run for a paused user — unless a reactivation
+    # signal already arrived (then tonight's work resumes immediately).
+    dstate = dormancy.state_from_user(user)
+    if dstate.dormant_since and not await dormancy.reactivation_signal_since(
+        user_id, dstate.dormant_since
+    ):
+        log.info("briefing.overnight_dormant_skip", user_id=user_id)
+        return
+
     lanes = await context.gather_goal_lanes(user_id, context.day_start_utc(clock, days_ago=1))
     if not lanes:
         # No confirmed goal lanes: the night shift has nothing legitimate to
@@ -502,12 +563,16 @@ async def run_overnight_work(user_id: str) -> None:
         log.info("briefing.overnight_no_goal_skip", user_id=user_id)
         return
     strikes = await get_rejection_strikes_summary(user_id)
+    replies_block = await chat_sync.format_replies_block(
+        user_id, context.day_start_utc(clock, days_ago=1)
+    )
 
     prompt = build_overnight_work_prompt(
         date_local=clock.date_str,
         goal_block=context.format_goal_lanes_block(lanes),
         todos_block=await context.format_todos_block(user_id),
         strikes_block=strikes,
+        replies_block=replies_block,
     )
     # Reuse the silent-run plumbing; the run's value is its side effects (todos,
     # canvases, drafts), so the text result is only logged.
@@ -523,6 +588,19 @@ async def run_daily_briefing(user_id: str) -> None:
         raise BriefingGenerationError(f"Cannot brief unknown user {user_id}")
     user["user_id"] = user_id
     clock = context.resolve_clock(user.get("timezone"))
+
+    # Dormant loop: wake on a reactivation signal (goal created, user active,
+    # any message), otherwise skip before any LLM cost. The daily run is the
+    # only writer of dormancy state.
+    dstate = dormancy.state_from_user(user)
+    if dstate.dormant_since:
+        if await dormancy.reactivation_signal_since(user_id, dstate.dormant_since):
+            await dormancy.clear_dormancy(user_id)
+            dstate = dormancy.DormancyState(idle_days=0, date=None, dormant_since=None)
+            log.info("briefing.dormancy_cleared", user_id=user_id)
+        else:
+            log.info("briefing.dormant_skip", user_id=user_id)
+            return
 
     goal_block, has_goal = await context.format_goal_block(user_id, user)
     if _bootstrap_should_skip(user, clock, has_goal):
@@ -551,16 +629,35 @@ async def run_daily_briefing(user_id: str) -> None:
     # Facts are assembled by code from lane state; the model only voices them.
     lanes = await context.gather_goal_lanes(user_id, since)
     artifacts = await _gather_artifacts(user_id, lanes)
-    sections, stats, facts_block = _build_facts(lanes, _format_curation(expired), artifacts)
+    open_count, open_titles = await context.user_open_todo_summary(user_id)
+    user_todos_note = (
+        f"The user's own open todo list holds {open_count} item(s)"
+        + (f" (first few: {'; '.join(open_titles)})" if open_titles else "")
+        + ". Only a count of 0 may be voiced as a clear or empty list."
+        if open_count
+        else "The user's own todo list is empty."
+    )
+    sections, stats, facts_block = _build_facts(
+        lanes, _format_curation(expired), artifacts, user_todos_note
+    )
+
+    # Idle ladder: nothing to advance (no lanes, no goal knowledge) escalates
+    # from the goal question to a plain warning to one goodbye, then dormancy.
+    idle = not lanes and not has_goal
+    idle_days = await dormancy.record_idle_day(user_id, dstate, idle, clock.date_str)
+    wind_down = dormancy.wind_down_stage(idle_days) if idle else None
 
     prompt = build_briefing_voice_prompt(
         date_local=clock.date_str,
         facts_block=facts_block,
+        goal_block=goal_block,
         lookback_block=lookback_block,
+        replies_block=await chat_sync.format_replies_block(user_id, since),
         strikes_block=strikes_block or "No blocked proposal kinds.",
         awards_block=_format_awards(badge_labels),
-        winback=winback.is_winback,
+        winback=winback.is_winback and wind_down is None,
         is_first_briefing=is_first,
+        wind_down=wind_down,
     )
     voice = _parse_voice(
         await _run_silent(user, clock, prompt, conversation_key=BRIEFING_KIND_DAILY)
@@ -585,9 +682,17 @@ async def run_daily_briefing(user_id: str) -> None:
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_DAILY, payload
     )
-    channels = await _deliver(user_id, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
+    channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
     await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_DAILY, channels)
+    # The bot's conversation must contain the brief it "sent", so replies like
+    # "yeah send them" land with real context instead of a cold thread.
+    await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
     await _clear_bootstrap(user_id, user)
+
+    # The goodbye went out — pause the loop until a reactivation signal.
+    if wind_down == dormancy.WIND_DOWN_FINAL:
+        await dormancy.enter_dormancy(user_id)
+        log.info("briefing.dormancy_entered", user_id=user_id, idle_days=idle_days)
 
     track(
         user_id,
@@ -606,8 +711,16 @@ async def run_weekly_digest(user_id: str) -> None:
     user["user_id"] = user_id
     clock = context.resolve_clock(user.get("timezone"))
 
+    # A dormant loop has nothing to zoom out on; the daily run owns reactivation.
+    dstate = dormancy.state_from_user(user)
+    if dstate.dormant_since and not await dormancy.reactivation_signal_since(
+        user_id, dstate.dormant_since
+    ):
+        log.info("briefing.weekly_dormant_skip", user_id=user_id)
+        return
+
     since = context.day_start_utc(clock, days_ago=7)
-    completed = await context.gather_completed_since(user_id, since)
+    completed = await context.gather_completed_since(user_id, since, include_deliverables=True)
     hours_saved = round(len(completed.gaia) * MINUTES_SAVED_PER_GAIA_TODO / 60)
     streak = await activity.compute_streak(user_id, clock.tz)
     badge_labels = await check_and_award_badges(user_id, clock, streak)
@@ -626,8 +739,9 @@ async def run_weekly_digest(user_id: str) -> None:
     briefing = await repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload
     )
-    channels = await _deliver(user_id, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
+    channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
     await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_WEEKLY, channels)
+    await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
 
     track(
         user_id,

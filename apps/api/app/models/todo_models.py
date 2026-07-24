@@ -139,6 +139,10 @@ class TodoBase(BaseModel):
         default=0,
         description="Number of failed execution attempts (managed by system)",
     )
+    gaia_user_retry_count: int = Field(
+        default=0,
+        description="Number of times the user has manually retried this todo after failure (capped by MAX_GAIA_USER_RETRIES)",
+    )
     expires_at: datetime | None = Field(
         default=None,
         description="When this todo becomes irrelevant regardless of completion (LLM-set relevance window)",
@@ -176,9 +180,27 @@ class TodoBase(BaseModel):
         default=None,
         description="Human-readable failure cause; set when execution_status == 'failed'.",
     )
+    blocker_question: str | None = Field(
+        default=None,
+        description=(
+            "The decision the run is blocked on; set when execution_status == 'needs_you'. "
+            "Answering it (lifecycle.answer) re-queues the run."
+        ),
+    )
+    last_run_conversation_id: str | None = Field(
+        default=None,
+        description=(
+            "Conversation of the most recent execution run — the dashboard's "
+            "click-through into where the work happened/is happening."
+        ),
+    )
     gaia_offer: str | None = Field(
         default=None,
         description="Silent-classification offer to hand a user todo to GAIA (non-blocking affordance, no notification).",
+    )
+    gaia_offer_dismissed: bool = Field(
+        default=False,
+        description="Set when the user dismisses the gaia_offer affordance; suppresses it on every surface.",
     )
     pitch_expires_at: datetime | None = Field(
         default=None,

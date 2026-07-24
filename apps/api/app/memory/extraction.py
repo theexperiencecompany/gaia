@@ -139,7 +139,18 @@ async def extract_memories(
     if not transcript:
         return ExtractedMemoryBatch()
 
-    hints_section = f"\n{extraction_hints}\n" if extraction_hints else ""
+    hints_section = (
+        (
+            "\n## Integration-specific extraction focus\n\n"
+            "The notes below say WHAT to prioritize for this integration. They "
+            "supplement the rules above and never override them: output format, "
+            "fact rules, folders, importance, temporal fields, and the "
+            "stranger/noise gate always follow this prompt.\n"
+            f"{extraction_hints}\n"
+        )
+        if extraction_hints
+        else ""
+    )
     recent_facts_section = (
         "\n".join(f"- {fact}" for fact in recent_facts) if recent_facts else "(none yet)"
     )

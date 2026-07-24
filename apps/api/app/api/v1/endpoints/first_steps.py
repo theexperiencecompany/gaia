@@ -22,3 +22,12 @@ async def mark_first_step(
 ) -> dict[str, Any]:
     await first_steps_service.mark_step(user["user_id"], step)
     return await first_steps_service.get_steps(user["user_id"])
+
+
+@router.patch("/hide")
+async def hide_first_step(
+    user: Annotated[dict, Depends(get_current_user)],
+    step: str = Body(embed=True),
+) -> dict[str, Any]:
+    await first_steps_service.hide_step(user["user_id"], step)
+    return await first_steps_service.get_steps(user["user_id"])

@@ -2,12 +2,15 @@
 
 import { AlertCircleIcon } from "@icons";
 import type React from "react";
+import { RetryTodoButton } from "@/features/todo/components/shared/RetryTodoButton";
 
 interface GaiaTodoMetaProps {
   /** Why GAIA proposed/is executing this todo, e.g. "you asked about this last week". */
   serves?: string | null;
   /** Populated when execution failed — rendered loudly, not muted. */
   errorMessage?: string | null;
+  /** When set alongside `errorMessage`, renders a Retry action for the failed run. */
+  todoId?: string;
 }
 
 /**
@@ -34,6 +37,7 @@ function cleanServes(serves: string): string {
 export const GaiaTodoMeta: React.FC<GaiaTodoMetaProps> = ({
   serves,
   errorMessage,
+  todoId,
 }) => {
   if (!serves && !errorMessage) return null;
 
@@ -41,7 +45,7 @@ export const GaiaTodoMeta: React.FC<GaiaTodoMetaProps> = ({
     <div className="mt-1 space-y-1">
       {serves && (
         <p className="truncate text-xs text-zinc-500">
-          because: {cleanServes(serves)}
+          For: {cleanServes(serves)}
         </p>
       )}
       {errorMessage && (
@@ -49,6 +53,11 @@ export const GaiaTodoMeta: React.FC<GaiaTodoMetaProps> = ({
           <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>{errorMessage}</span>
         </p>
+      )}
+      {errorMessage && todoId && (
+        <div className="pt-1">
+          <RetryTodoButton todoId={todoId} />
+        </div>
       )}
     </div>
   );

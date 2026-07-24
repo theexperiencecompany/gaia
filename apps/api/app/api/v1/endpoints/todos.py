@@ -998,12 +998,15 @@ async def approve_gaia_todo(
     todo_id: str,
     user: Annotated[dict, Depends(get_current_user)],
     channel: str = Body(default="web", embed=True),
+    instruction: str | None = Body(default=None, embed=True),
 ):
     """Approve a proposed GAIA todo: meter quota, queue it, enqueue execution."""
     user_id = user["user_id"]
     user_plan = await payment_service.get_cached_plan_type(user_id)
     try:
-        await lifecycle.approve(todo_id, user_id, user_plan, channel=channel)
+        await lifecycle.approve(
+            todo_id, user_id, user_plan, channel=channel, instruction=instruction
+        )
     except ExecutionQuotaError as e:
         return JSONResponse(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
@@ -1038,6 +1041,23 @@ async def dismiss_gaia_todo(
     return {"success": True, "todo_id": todo_id, "execution_status": "dismissed"}
 
 
+@router.post("/todos/{todo_id}/answer", status_code=status.HTTP_200_OK)
+async def answer_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    answer: str = Body(embed=True, min_length=1),
+    channel: str = Body(default="web", embed=True),
+):
+    """Answer a blocked (needs_you) GAIA todo: record the reply and re-queue the run."""
+    user_id = user["user_id"]
+    try:
+        await lifecycle.answer(todo_id, user_id, answer, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    await delete_cache(f"counts:{user_id}")
+    return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
+
+
 @router.post("/todos/{todo_id}/handoff", status_code=status.HTTP_200_OK)
 async def handoff_todo_to_gaia(
     todo_id: str,
@@ -1051,3 +1071,40 @@ async def handoff_todo_to_gaia(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     await delete_cache(f"counts:{user_id}")
     return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
+
+
+@router.post("/todos/{todo_id}/retry", status_code=status.HTTP_200_OK)
+async def retry_gaia_todo(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    channel: str = Body(default="web", embed=True),
+):
+    """Re-run a failed GAIA todo: clear the failure state and re-queue execution."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "retry", "id": todo_id})
+    try:
+        await lifecycle.retry(todo_id, user_id, channel=channel)
+    except InvalidTransitionError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    await delete_cache(f"counts:{user_id}")
+    log.set(todo={"execution_status": "queued"})
+    return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
+
+
+@router.post("/todos/{todo_id}/dismiss_offer", status_code=status.HTTP_200_OK)
+async def dismiss_gaia_offer(
+    todo_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+):
+    """Dismiss the GAIA-takeover offer on a user todo, suppressing it everywhere."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "dismiss_offer", "id": todo_id})
+    updated = await todos_collection.find_one_and_update(
+        {"_id": ObjectId(todo_id), "user_id": user_id},
+        {"$set": {"gaia_offer_dismissed": True, "updated_at": datetime.now(UTC)}},
+        return_document=ReturnDocument.AFTER,
+    )
+    if not updated:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
+    await TodoService._invalidate_cache(user_id, updated.get("project_id"), todo_id, "update_minor")
+    return {"success": True, "todo_id": todo_id, "gaia_offer_dismissed": True}

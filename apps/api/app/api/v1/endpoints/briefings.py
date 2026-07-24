@@ -11,8 +11,13 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import BRIEFING_KIND_DAILY
-from app.models.briefing_models import BriefingListResponse, BriefingModel
-from app.services.briefing import repository
+from app.models.briefing_models import (
+    BriefingListResponse,
+    BriefingModel,
+    ChannelPriorityResponse,
+    ChannelPriorityUpdate,
+)
+from app.services.briefing import delivery_channels, repository
 from app.utils.analytics import track
 from shared.py.wide_events import log
 
@@ -40,6 +45,31 @@ async def get_latest_briefing(
             latest = opened
 
     return latest
+
+
+@router.get("/preferences")
+async def get_briefing_preferences(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> ChannelPriorityResponse:
+    """The user's ordered chat-channel priority for briefing delivery."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, briefing={"operation": "get_preferences"})
+    priority = await delivery_channels.get_channel_priority(user_id)
+    return ChannelPriorityResponse(chat_channel_priority=priority)
+
+
+@router.patch("/preferences")
+async def update_briefing_preferences(
+    payload: ChannelPriorityUpdate,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> ChannelPriorityResponse:
+    """Persist the user's chat-channel priority; the brief lands on the first
+    linked and enabled platform in this order."""
+    user_id = user["user_id"]
+    log.set(user={"id": user_id}, briefing={"operation": "update_preferences"})
+    await delivery_channels.set_channel_priority(user_id, payload.chat_channel_priority)
+    log.set(briefing={"channel_priority": payload.chat_channel_priority})
+    return ChannelPriorityResponse(chat_channel_priority=payload.chat_channel_priority)
 
 
 @router.get("")

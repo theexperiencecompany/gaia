@@ -1,10 +1,10 @@
 """Existing-user rollout — no cold starts.
 
-For each existing user: provision the briefing workflows, then announce on all
-connected channels. Users we can derive a goal for get a normal "briefings are
-here" announcement and a real first briefing next morning; users we can't get a
-short bootstrap interview and their briefings are held (``briefing_bootstrap``
-marker) until a goal memory arrives or the grace window elapses.
+For each existing user: provision the briefing workflows. Users we can derive a
+goal for get a real first briefing next morning; sparse users with no derivable
+goal have their briefings held (``briefing_bootstrap`` marker) until a goal
+memory arrives or the grace window elapses. The user-facing announcement is a
+manual email, not an in-app notification, so this only provisions and gates.
 """
 
 from datetime import UTC, datetime
@@ -17,40 +17,16 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
     users_collection,
 )
-from app.models.notification.notification_models import (
-    NotificationContent,
-    NotificationRequest,
-    NotificationSourceEnum,
-    NotificationType,
-)
 from app.services.briefing import context
 from app.services.briefing.service import BOOTSTRAP_FIELD
-from app.services.notification_service import notification_service
 from app.services.system_workflows.provisioner import provision_briefing_workflows
 from app.services.user_service import get_user_by_id
 from app.utils.analytics import track
 from shared.py.wide_events import log
 
-# When we can't derive a goal AND the account is this sparse, interview instead
-# of guessing.
+# When we can't derive a goal AND the account is this sparse, hold for bootstrap
+# instead of guessing a goal.
 _SPARSE_INTEGRATION_MAX = 1
-
-_ANNOUNCE_TITLE = "Your daily briefing starts tomorrow"
-_ANNOUNCE_BODY = (
-    "Every morning I'll curate your list, look back at what shipped, and plan the "
-    "day in one short brief — with work you can approve in a tap. First one lands "
-    "tomorrow morning. Change the time or turn it off anytime in your workflows."
-)
-
-_BOOTSTRAP_TITLE = "Let's set up your daily briefing"
-_BOOTSTRAP_BODY = (
-    "I'm about to start sending you a morning brief. Three quick things so it's "
-    "actually useful:\n"
-    "1. What are you working on right now?\n"
-    "2. What should I take off your plate?\n"
-    "3. What hour do you want your briefing?\n"
-    "Reply here and your first brief lands the next morning."
-)
 
 
 async def _is_sparse_account(user_id: str) -> bool:
@@ -63,26 +39,14 @@ async def _is_sparse_account(user_id: str) -> bool:
     return gaia_todos == 0
 
 
-async def _announce(user_id: str, title: str, body: str) -> None:
-    await notification_service.create_notification(
-        NotificationRequest(
-            user_id=user_id,
-            source=NotificationSourceEnum.BACKGROUND_JOB,
-            type=NotificationType.INFO,
-            priority=2,
-            content=NotificationContent(title=title, body=body),
-            metadata={"briefing_announcement": True},
-        )
-    )
-
-
-async def announce_and_provision(user_id: str) -> str:
+async def provision_existing_user(user_id: str) -> str:
     """Roll out briefings to one existing user. Returns the path taken.
 
-    ``"normal"`` — goal derivable, standard announcement, briefings begin next day.
-    ``"bootstrap"`` — sparse + no goal, interview announcement, briefings held.
+    ``"normal"`` — goal derivable, briefings begin next day.
+    ``"bootstrap"`` — sparse + no goal, briefings held until a goal arrives or the
+    grace window elapses.
     """
-    log.set(service="briefing_rollout", operation="announce_and_provision", user_id=user_id)
+    log.set(service="briefing_rollout", operation="provision_existing_user", user_id=user_id)
     user = await get_user_by_id(user_id)
     if not user:
         log.warning("briefing_rollout.unknown_user", user_id=user_id)
@@ -97,10 +61,8 @@ async def announce_and_provision(user_id: str) -> str:
             {"_id": ObjectId(user_id)},
             {"$set": {BOOTSTRAP_FIELD: {"pending": True, "since": datetime.now(UTC)}}},
         )
-        await _announce(user_id, _BOOTSTRAP_TITLE, _BOOTSTRAP_BODY)
-        track(user_id, "briefing_announced", {"path": "bootstrap"})
+        track(user_id, "briefing_provisioned", {"path": "bootstrap"})
         return "bootstrap"
 
-    await _announce(user_id, _ANNOUNCE_TITLE, _ANNOUNCE_BODY)
-    track(user_id, "briefing_announced", {"path": "normal"})
+    track(user_id, "briefing_provisioned", {"path": "normal"})
     return "normal"

@@ -1,5 +1,10 @@
+import type { NotificationPlatform } from "@/features/notification/constants";
 import { apiService } from "@/lib/api/service";
 import type { Briefing } from "@/types/features/briefingTypes";
+
+export interface BriefingPreferences {
+  chat_channel_priority: NotificationPlatform[];
+}
 
 export const briefingApi = {
   // Fetch the most recent briefing. 404 means the user has none yet — that's
@@ -26,5 +31,23 @@ export const briefingApi = {
       { silent: true },
     );
     return response.briefings;
+  },
+
+  // The ordered chat-channel priority: the brief lands on the first connected,
+  // enabled platform in this order.
+  fetchChannelPriority: async (): Promise<BriefingPreferences> => {
+    return apiService.get<BriefingPreferences>("/briefings/preferences", {
+      silent: true,
+    });
+  },
+
+  updateChannelPriority: async (
+    order: NotificationPlatform[],
+  ): Promise<BriefingPreferences> => {
+    return apiService.patch<BriefingPreferences>(
+      "/briefings/preferences",
+      { chat_channel_priority: order },
+      { silent: true },
+    );
   },
 };

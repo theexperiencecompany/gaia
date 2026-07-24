@@ -9,6 +9,7 @@ import {
   Clock01Icon,
   Flag02Icon,
   Folder02Icon,
+  SparklesIcon,
   Tag01Icon,
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
@@ -28,7 +29,6 @@ import {
 import { formatDate } from "@/utils/date/dateUtils";
 import { INTERNAL_LABELS } from "../constants";
 import { ExecutionStatusGlyph } from "./shared/ExecutionStatusGlyph";
-import { GaiaOfferBanner } from "./shared/GaiaOfferBanner";
 import { GaiaTodoBadge } from "./shared/GaiaTodoBadge";
 import { GaiaTodoMeta } from "./shared/GaiaTodoMeta";
 import { TodoTitle } from "./TodoTitle";
@@ -120,7 +120,12 @@ export default memo(function TodoItem({
   const todoProject = projects?.find((p) => p.id === todo.project_id);
 
   const isGaiaTodo = todo.assignee === "gaia";
-  const isProposed = isGaiaTodo && todo.execution_status === "proposed";
+  const hasActiveExecution =
+    isGaiaTodo &&
+    !!todo.execution_status &&
+    ["proposed", "queued", "running", "needs_you"].includes(
+      todo.execution_status,
+    );
 
   const isOverdue = useMemo(
     () =>
@@ -154,18 +159,28 @@ export default memo(function TodoItem({
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
       <div className="flex h-full items-start gap-2">
-        <div onClick={(e) => e.stopPropagation()}>
-          <Checkbox
-            isSelected={todo.completed}
-            onChange={handleToggleComplete}
-            color={todo.completed ? "default" : priorityColors[todo.priority]}
-            radius="full"
-            classNames={{
-              wrapper: `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`,
-              label: "w-[30vw]",
-            }}
-          />
-        </div>
+        {/* Active GAIA work leads with its status mark instead of a checkbox:
+            one circle, and completion stays with the execution lifecycle. */}
+        {hasActiveExecution ? (
+          <div
+            className="mt-1 flex size-6 shrink-0 items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <ExecutionStatusGlyph status={todo.execution_status} size={20} />
+          </div>
+        ) : (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              isSelected={todo.completed}
+              onChange={handleToggleComplete}
+              color={todo.completed ? "default" : priorityColors[todo.priority]}
+              radius="full"
+              classNames={{
+                wrapper: `mt-1 ${todo.completed ? "" : `${priorityRingColors[todo.priority]} border-dashed! border-1 before:border-0! bg-zinc-900`}`,
+              }}
+            />
+          </div>
+        )}
 
         <div className="min-w-0 flex-1">
           <div>
@@ -183,19 +198,8 @@ export default memo(function TodoItem({
               >
                 <TodoTitle title={todo.title} />
               </h4>
-              {isGaiaTodo && (
+              {isGaiaTodo && !hasActiveExecution && (
                 <ExecutionStatusGlyph status={todo.execution_status} />
-              )}
-              {isProposed && (
-                <Chip
-                  className="ml-auto shrink-0"
-                  size="sm"
-                  radius="sm"
-                  color="warning"
-                  variant="flat"
-                >
-                  Needs approval
-                </Chip>
               )}
             </div>
             {todo.description && (
@@ -213,8 +217,13 @@ export default memo(function TodoItem({
                 }
               />
             )}
+            {/* In the list the offer is a hint, not a control — the CTA lives
+                in the sidebar and the dashboard's Suggested section. */}
             {!isGaiaTodo && todo.gaia_offer && (
-              <GaiaOfferBanner todoId={todo.id} offer={todo.gaia_offer} />
+              <p className="mt-1 flex items-center gap-1.5 text-xs text-zinc-500">
+                <SparklesIcon className="size-3.5 shrink-0 text-violet-400" />
+                <span className="truncate">{todo.gaia_offer}</span>
+              </p>
             )}
           </div>
 
@@ -249,7 +258,7 @@ export default memo(function TodoItem({
                   className="flex items-center text-zinc-400 px-1"
                   size="sm"
                   radius="sm"
-                  color="primary"
+                  color="default"
                   variant="flat"
                   startContent={
                     <Clock01Icon width={16} height={16} className="mx-1" />
@@ -277,11 +286,15 @@ export default memo(function TodoItem({
                 </Chip>
               )}
 
-              <GaiaTodoBadge
-                kind={todo.kind}
-                assignee={todo.assignee}
-                vfsPath={todo.vfs_path}
-              />
+              {/* Only goals keep an identity chip in the list — for tasks the
+                  leading status mark already says GAIA. */}
+              {todo.kind === "goal" && (
+                <GaiaTodoBadge
+                  kind={todo.kind}
+                  assignee={todo.assignee}
+                  vfsPath={todo.vfs_path}
+                />
+              )}
 
               {todoProject && (
                 <Chip

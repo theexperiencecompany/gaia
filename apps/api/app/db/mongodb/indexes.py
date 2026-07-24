@@ -48,6 +48,7 @@ from app.db.mongodb.collections import (
     workflows_collection,
 )
 from app.helpers.integration_helpers import generate_unique_integration_slug
+from app.services.short_link_service import SLUG_LENGTH
 from shared.py.wide_events import log
 
 
@@ -248,10 +249,22 @@ async def create_todo_indexes():
                 [("user_id", 1), ("project_id", 1), ("due_date", 1)],
                 name="user_project_due",
             ),
-            # For tracked-todo cron sweeps (safety-net + maintenance). Both
-            # scan by gaia-tracked label + completion, then range on
-            # scheduled_at / gaia_retry_count. ESR ordering: equality fields
-            # first (labels, completed), then range fields.
+            # For tracked-todo cron sweeps (safety-net + maintenance). Both now
+            # scan by assignee + completion, then range on scheduled_at /
+            # gaia_retry_count. ESR ordering: equality fields first (assignee,
+            # completed), then range fields.
+            todos_collection.create_index(
+                [
+                    ("assignee", 1),
+                    ("completed", 1),
+                    ("scheduled_at", 1),
+                    ("gaia_retry_count", 1),
+                ],
+                name="tracked_sweep_assignee",
+            ),
+            # Legacy label-based sweep index. Superseded by tracked_sweep_assignee
+            # once the assignee backfill (scripts/migrate_todo_assignee.py) has run
+            # everywhere — safe to drop then.
             todos_collection.create_index(
                 [
                     ("labels", 1),
@@ -1005,14 +1018,32 @@ async def create_e2b_sandbox_indexes() -> None:
 async def create_short_link_indexes() -> None:
     """Create indexes for the short_links collection.
 
-    The (user_id, slug) unique index enforces the per-user slug namespace and
-    is the constraint the mint retry loop races against on collision.
+    Slugs are capability URLs: globally unique, so one index enforces the whole
+    namespace and the mint retry loop races against it. Legacy per-user 3-char
+    links predate the capability model (their resolution was auth-gated and is
+    gone); they are derived data the briefing re-mints on its next run, so they
+    are deleted rather than migrated — a global unique index cannot be built
+    over per-user slugs.
     """
     try:
+        legacy = await short_links_collection.delete_many(
+            {"$expr": {"$lt": [{"$strLenCP": "$slug"}, SLUG_LENGTH]}}
+        )
+        if legacy.deleted_count:
+            log.info(f"{LogTag.MONGO} Deleted {legacy.deleted_count} legacy per-user short links")
+        try:
+            await short_links_collection.drop_index("user_slug_unique")
+        except OperationFailure:
+            pass  # index (or the collection itself) never existed — nothing to drop
         await short_links_collection.create_index(
-            [("user_id", 1), ("slug", 1)],
+            [("slug", 1)],
             unique=True,
-            name="user_slug_unique",
+            name="slug_unique",
+        )
+        # Mint-idempotency lookup: one link per (user, target).
+        await short_links_collection.create_index(
+            [("user_id", 1), ("target_type", 1), ("target_id", 1)],
+            name="user_target",
         )
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating short link indexes: {e!s}")

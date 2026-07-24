@@ -10,6 +10,7 @@ from uuid import uuid4
 from bson import ObjectId
 
 from app.agents.core.agent import call_agent_silent
+from app.constants.todos import gaia_assigned_filter
 from app.db.mongodb.collections import todos_collection
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -110,7 +111,7 @@ async def _classify_tracked_todos(
     Todos still inside their notification backoff are skipped. Each tier is capped
     at 20 entries per sweep.
     """
-    cursor = todos_collection.find({"completed": False, "labels": "gaia-tracked"}).limit(200)
+    cursor = todos_collection.find({"completed": False, **gaia_assigned_filter()}).limit(200)
 
     expired: list[dict] = []
     overdue: list[dict] = []

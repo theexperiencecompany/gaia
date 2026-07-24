@@ -1,6 +1,6 @@
 """Mongo → VFS glue for ``/workspace/gaia-tasks/``.
 
-The Mongo side: ``todos`` collection, ``gaia-tracked`` label, 30-day
+The Mongo side: ``todos`` collection, ``assignee == "gaia"``, 30-day
 completion window.
 
 The VFS side: :mod:`app.services.storage.gaia_tasks_vfs`.
@@ -62,8 +62,8 @@ schedule_gaia_tasks_sync = make_scheduler(sync_user_gaia_tasks, log_name="gaia_t
 async def _fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
     """Pull the user's active gaia-tasks from Mongo.
 
-    Filter: carries the ``gaia-tracked`` label AND (open OR completed
-    within the last 30 days).
+    Filter: ``assignee == "gaia"`` AND (open OR completed within the last
+    30 days).
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
     cursor = todos_collection.find(

@@ -3,18 +3,19 @@
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
-import { Delete02Icon } from "@icons";
+import { BubbleChatIcon, Delete02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
+import { useRouter } from "next/navigation";
 import type React from "react";
 import { useState } from "react";
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { ExecutionStatusChip } from "@/features/todo/components/shared/ExecutionStatusChip";
-import { ExecutionStatusGlyph } from "@/features/todo/components/shared/ExecutionStatusGlyph";
+import { ExecutionStatusLine } from "@/features/todo/components/shared/ExecutionStatusLine";
 import { GaiaOfferBanner } from "@/features/todo/components/shared/GaiaOfferBanner";
 import { GaiaTodoBadge } from "@/features/todo/components/shared/GaiaTodoBadge";
 import { GaiaTodoMeta } from "@/features/todo/components/shared/GaiaTodoMeta";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
+import { TodoAnswerCard } from "@/features/todo/components/shared/TodoAnswerCard";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import { TodoProposalActions } from "@/features/todo/components/shared/TodoProposalActions";
 import WorkLogSection from "@/features/todo/components/shared/WorkLogSection";
@@ -40,6 +41,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
   onDelete,
   projects,
 }) => {
+  const router = useRouter();
   const user = useUser();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
@@ -103,19 +105,38 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
     <div className="flex h-full flex-col">
       <SidebarContent className="flex-1 overflow-y-auto pl-6 pr-3 outline-0">
         <div className="space-y-4 pt-4">
-          {/* Title and Description Section */}
+          {/* One sentence of lifecycle state for GAIA todos. Proposals and
+              blocked runs skip it — their decision card carries the state. */}
+          {isGaiaTodo &&
+            !isProposed &&
+            todo.execution_status !== "needs_you" &&
+            (todo.kind === "goal" ? (
+              <GaiaTodoBadge
+                kind={todo.kind}
+                assignee={todo.assignee}
+                vfsPath={todo.vfs_path}
+                size="md"
+              />
+            ) : (
+              <ExecutionStatusLine status={todo.execution_status} />
+            ))}
+
+          {/* Title and Description Section. No completion checkbox on GAIA
+              todos: their state belongs to the execution lifecycle, and the
+              checkbox would flip `completed` around it. */}
           <div className="flex items-start gap-1">
-            <Checkbox
-              isSelected={todo.completed}
-              onValueChange={handleToggleComplete}
-              size="lg"
-              color="success"
-              radius="full"
-              classNames={{
-                wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
-                label: "w-[30vw]",
-              }}
-            />
+            {!isGaiaTodo && (
+              <Checkbox
+                isSelected={todo.completed}
+                onValueChange={handleToggleComplete}
+                size="lg"
+                color="success"
+                radius="full"
+                classNames={{
+                  wrapper: `mt-1 ${todo.completed ? "" : "border-zinc-500 border-dashed! border-1 before:border-0! bg-zinc-900 "}`,
+                }}
+              />
+            )}
             <div className="flex-1 space-y-3">
               {/* Editable Title */}
               {isEditingTitle ? (
@@ -140,18 +161,12 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                   variant="underlined"
                 />
               ) : (
-                <div className="flex items-center gap-2">
-                  <h1
-                    onClick={() => setIsEditingTitle(true)}
-                    style={{ wordBreak: "break-all" }}
-                    className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
-                  >
-                    {todo.title}
-                  </h1>
-                  {isGaiaTodo && (
-                    <ExecutionStatusGlyph status={todo.execution_status} />
-                  )}
-                </div>
+                <h1
+                  onClick={() => setIsEditingTitle(true)}
+                  className={`cursor-pointer text-2xl leading-tight font-medium break-words transition-colors hover:text-zinc-200 ${todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"}`}
+                >
+                  {todo.title}
+                </h1>
               )}
               {isGaiaTodo && (
                 <GaiaTodoMeta
@@ -164,21 +179,37 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
                       ? todo.error_message
                       : null
                   }
-                />
-              )}
-              {isProposed && (
-                <TodoProposalActions
                   todoId={todo.id}
-                  fallbackPreview={todo.description}
                 />
-              )}
-              {!isGaiaTodo && todo.gaia_offer && (
-                <GaiaOfferBanner todoId={todo.id} offer={todo.gaia_offer} />
               )}
             </div>
           </div>
 
-          {isEditingDescription ? (
+          {/* Full-width, out of the checkbox column — same rule as the
+              decision cards: offers act at page width, not title width. */}
+          {!isGaiaTodo && todo.gaia_offer && !todo.gaia_offer_dismissed && (
+            <GaiaOfferBanner todoId={todo.id} offer={todo.gaia_offer} />
+          )}
+
+          {/* The decision surface, full-width: the staged work + the tap. */}
+          {isProposed && (
+            <TodoProposalActions
+              todoId={todo.id}
+              fallbackPreview={todo.description}
+              className="mt-0"
+            />
+          )}
+
+          {/* Blocked runs get the same treatment: question + answer, one card. */}
+          {isGaiaTodo && todo.execution_status === "needs_you" && (
+            <TodoAnswerCard todoId={todo.id} question={todo.blocker_question} />
+          )}
+
+          {/* Proposals skip the description (the decision card already shows
+              it), and GAIA todos never show the empty "Add a description"
+              affordance — their descriptions are agent-written. */}
+          {isProposed ||
+          (isGaiaTodo && !todo.description) ? null : isEditingDescription ? (
             <Textarea
               defaultValue={todo.description || ""}
               onKeyDown={(e) => {
@@ -207,30 +238,36 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             </p>
           )}
 
-          {/* GAIA's canvas.md — a task's work log, or a goal's strategy doc.
-              Opens in a modal from a compact trigger button. */}
+          {/* GAIA's canvas.md — a task's work log, or a goal's strategy doc —
+              plus a jump into the chat where the run happened/is happening. */}
           {isGaiaTodo && (
-            <WorkLogSection todoId={todo.id} isGoal={todo.kind === "goal"} />
+            <div className="flex items-center gap-2">
+              <WorkLogSection todoId={todo.id} isGoal={todo.kind === "goal"} />
+              {todo.last_run_conversation_id && (
+                <Button
+                  size="sm"
+                  variant="flat"
+                  radius="lg"
+                  onPress={() =>
+                    router.push(`/c/${todo.last_run_conversation_id}`)
+                  }
+                  startContent={
+                    <BubbleChatIcon className="size-4 text-zinc-400" />
+                  }
+                  className="text-zinc-300"
+                >
+                  {todo.execution_status === "running" ||
+                  todo.execution_status === "queued"
+                    ? "View live run"
+                    : "View run chat"}
+                </Button>
+              )}
+            </div>
           )}
 
-          {/* Editable fields, with the GAIA identity badge grouped inline. */}
+          {/* Editable fields. */}
           <div className="py-2">
             <TodoFieldsRow
-              prefix={
-                isGaiaTodo ? (
-                  <>
-                    <GaiaTodoBadge
-                      kind={todo.kind}
-                      assignee={todo.assignee}
-                      vfsPath={todo.vfs_path}
-                      size="md"
-                    />
-                    {todo.kind !== "goal" && (
-                      <ExecutionStatusChip status={todo.execution_status} />
-                    )}
-                  </>
-                ) : undefined
-              }
               priority={todo.priority}
               projectId={todo.project_id}
               projects={projects}
@@ -254,21 +291,29 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({
             />
           </div>
 
-          <div
-            className={`py-4 border-y-1 border-zinc-800 ${todo?.subtasks?.length > 0 ? "pt-6r" : ""}`}
-          >
-            <SubtaskManager
-              subtasks={todo.subtasks}
-              onSubtasksChange={handleSubtasksChange}
-            />
-          </div>
+          {/* Subtasks and workflow generation are user-todo machinery: GAIA
+              todos execute through their own facets/work log, so offering
+              "Generate Workflow" or a subtask composer on them is noise. */}
+          {(!isGaiaTodo || todo.subtasks.length > 0) && (
+            <div className="py-4 border-y-1 border-zinc-800">
+              <SubtaskManager
+                subtasks={todo.subtasks}
+                onSubtasksChange={handleSubtasksChange}
+              />
+            </div>
+          )}
 
-          <WorkflowSection
-            key={todo.id}
-            hideBg={true}
-            todoId={todo.id}
-            onWorkflowLinked={handleWorkflowLinked}
-          />
+          {/* One AI affordance per todo: when GAIA is offering to take the
+              whole thing over (gaia_offer), don't also pitch a generated
+              workflow — two competing "AI helps" paths read as noise. */}
+          {!isGaiaTodo && !todo.gaia_offer && (
+            <WorkflowSection
+              key={todo.id}
+              hideBg={true}
+              todoId={todo.id}
+              onWorkflowLinked={handleWorkflowLinked}
+            />
+          )}
         </div>
       </SidebarContent>
 

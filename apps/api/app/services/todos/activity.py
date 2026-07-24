@@ -1,17 +1,20 @@
-"""Completed-work aggregation — the single source for streak + heatmap.
+"""Completed-work aggregation — the single source for the streak.
 
-Everything here derives from ``completed_at`` only: a day is green iff at least
-one todo (either assignee) completed that day in the user's timezone. Heartbeat
-activity (sweeps, syncs) never has a ``completed_at`` and so never counts — gray
-days stay honest, and there is no mechanism to pad or repair a streak. Both the
-dashboard heatmap endpoint and the briefing engine consume these helpers so the
-two surfaces can never disagree.
+Everything here derives from ``completed_at`` only. The streak counts a day iff
+the *user* completed at least one todo that day in their timezone: GAIA's night
+shift completes its own todos autonomously, so counting those would let GAIA pad
+the user's streak. ``DayCounts`` still carries ``gaia_count`` for display copy
+(the weekly digest narrates GAIA's work), but only ``user_count`` advances the
+streak. Heartbeat activity (sweeps, syncs) never has a ``completed_at`` and so
+never counts — gray days stay honest, and there is no mechanism to pad or repair a
+streak. The briefing engine and badges consume these helpers so no two surfaces
+can disagree.
 """
 
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from app.constants.todos import ASSIGNEE_GAIA, GAIA_TRACKED_LABEL
+from app.constants.todos import ASSIGNEE_GAIA
 from app.db.mongodb.collections import todos_collection
 
 # date-iso -> {"user_count": n, "gaia_count": n}
@@ -22,8 +25,7 @@ DEFAULT_STREAK_LOOKBACK_DAYS = 366
 
 
 def _is_gaia(doc: dict) -> bool:
-    # Dual-read during the migration window (assignee field OR legacy label).
-    return doc.get("assignee") == ASSIGNEE_GAIA or GAIA_TRACKED_LABEL in doc.get("labels", [])
+    return doc.get("assignee") == ASSIGNEE_GAIA
 
 
 def window_start_utc(tz: ZoneInfo, days: int) -> datetime:
@@ -47,15 +49,16 @@ async def completed_day_counts(user_id: str, tz: ZoneInfo, since: datetime) -> D
 
 
 def streak_from_counts(counts: DayCounts, today: date, max_days: int) -> int:
-    """Consecutive days (ending today) with >=1 completion. Empty today is grace.
+    """Consecutive days (ending today) with >=1 user completion. Empty today is grace.
 
-    An empty *today* does not break the streak (the day isn't over); any earlier
-    empty day does. Mirrors the heatmap's honest-streak rule exactly.
+    Only the user's own completions count — GAIA's autonomous night-shift work
+    never advances the streak. An empty *today* does not break the streak (the day
+    isn't over); any earlier empty day does.
     """
     streak = 0
     for offset in range(max_days):
         bucket = counts.get((today - timedelta(days=offset)).isoformat())
-        if bucket and (bucket["user_count"] + bucket["gaia_count"]) > 0:
+        if bucket and bucket["user_count"] > 0:
             streak += 1
         elif offset == 0:
             continue
