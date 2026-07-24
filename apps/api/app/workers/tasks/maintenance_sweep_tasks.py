@@ -7,10 +7,8 @@ import random
 from typing import Any
 from uuid import uuid4
 
-from bson import ObjectId
-
 from app.agents.core.agent import call_agent_silent
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -110,14 +108,18 @@ async def _classify_tracked_todos(
     Todos still inside their notification backoff are skipped. Each tier is capped
     at 20 entries per sweep.
     """
-    cursor = todos_collection.find({"completed": False, "labels": "gaia-tracked"}).limit(200)
+    todos = await todo_repository.list_active_tracked_all_users(limit=200)
 
     expired: list[dict] = []
     overdue: list[dict] = []
     dormant: list[dict] = []
 
-    async for doc in cursor:
-        todo_id = str(doc["_id"])
+    for todo in todos:
+        # Legacy dict bridge: the tier helpers still thread raw todo dicts (a
+        # deferred TodoDocument conversion). model_dump carries every field they
+        # read; ``_id`` mirrors the string id they key on.
+        doc = {**todo.model_dump(mode="python"), "_id": todo.id}
+        todo_id = todo.id
 
         # Skip todos still inside their (escalating) notification backoff.
         if await pool.exists(_cooldown_key(todo_id)):
@@ -412,13 +414,7 @@ async def _notify_overdue(doc: dict, pool: Any) -> bool:
     )
 
     # Add needs-follow-up label
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id)},
-        {
-            "$addToSet": {"labels": "needs-follow-up"},
-            "$set": {"updated_at": now},
-        },
-    )
+    await todo_repository.add_labels(todo_id, user_id=user_id, labels=["needs-follow-up"])
 
     log.info(
         "maintenance_sweep.overdue_notified",

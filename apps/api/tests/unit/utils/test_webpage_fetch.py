@@ -1,11 +1,23 @@
 """Webpage fetch failover behaviour and the httpx engine's HTML->markdown parse."""
 
+from collections.abc import Callable
+from unittest.mock import patch
+
 import httpx
 import pytest
 import respx
 
 from app.utils.exceptions import FetchError
 from app.utils.webpage_fetch import HttpxFetcher, WebpageFetcher, _fetch_first_success
+
+
+def _resolver(host_to_ip: dict[str, str]) -> Callable[[str, int], list[str]]:
+    """Build a fake DNS resolver that maps host -> single IP for the SSRF guard."""
+
+    def _fake(host: str, port: int) -> list[str]:
+        return [host_to_ip[host]]
+
+    return _fake
 
 
 class FakeFetcher(WebpageFetcher):
@@ -78,3 +90,53 @@ async def test_httpx_fetcher_extracts_main_content_to_markdown() -> None:
     assert "Hello world body text." in markdown
     assert "navigation menu" not in markdown
     assert "footer junk" not in markdown
+
+
+@respx.mock
+async def test_httpx_fetcher_blocks_private_first_url() -> None:
+    # The entry URL itself resolves to loopback: the fetch must be refused
+    # before any outbound request is made (no SSRF to an internal service).
+    route = respx.get("https://internal.test/").mock(return_value=httpx.Response(200, text="x"))
+
+    with patch("app.utils.url_safety._resolve", _resolver({"internal.test": "127.0.0.1"})):
+        with pytest.raises(FetchError):
+            await HttpxFetcher().fetch("https://internal.test/")
+
+    assert route.called is False
+
+
+@respx.mock
+async def test_httpx_fetcher_blocks_redirect_to_private_address() -> None:
+    # A public entry URL that 302s to an internal address must be refused at
+    # the redirect hop, not followed. httpx's own follow_redirects is disabled;
+    # each hop is re-validated by the SSRF guard.
+    respx.get("https://public.test/").mock(
+        return_value=httpx.Response(302, headers={"location": "https://internal.test/secret"})
+    )
+    internal = respx.get("https://internal.test/secret").mock(
+        return_value=httpx.Response(200, text="secret")
+    )
+
+    resolver = _resolver({"public.test": "93.184.216.34", "internal.test": "127.0.0.1"})
+    with patch("app.utils.url_safety._resolve", resolver):
+        with pytest.raises(FetchError):
+            await HttpxFetcher().fetch("https://public.test/")
+
+    assert internal.called is False
+
+
+@respx.mock
+async def test_httpx_fetcher_follows_public_redirect() -> None:
+    # Control case: a redirect to another public host is followed normally.
+    respx.get("https://public.test/").mock(
+        return_value=httpx.Response(302, headers={"location": "https://other-public.test/page"})
+    )
+    respx.get("https://other-public.test/page").mock(
+        return_value=httpx.Response(200, text="<html><body><main>ok</main></body></html>")
+    )
+
+    resolver = _resolver({"public.test": "93.184.216.34", "other-public.test": "93.184.216.35"})
+    with patch("app.utils.url_safety._resolve", resolver):
+        markdown = await HttpxFetcher().fetch("https://public.test/")
+
+    assert "ok" in markdown

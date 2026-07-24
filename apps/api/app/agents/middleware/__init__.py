@@ -36,6 +36,7 @@ from app.agents.middleware.factory import (
     get_summarization_llm,
 )
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
     BigtoolToolRuntime,
@@ -52,6 +53,7 @@ __all__ = [
     "BigtoolToolRuntime",
     "LLMAccountingMiddleware",
     "LoopGuardMiddleware",
+    "MediaDescriptionMiddleware",
     "MiddlewareExecutor",
     "SubagentMiddleware",
     "WorkspaceArchivingSummarizationMiddleware",

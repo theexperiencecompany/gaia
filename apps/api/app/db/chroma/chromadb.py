@@ -7,6 +7,7 @@ from langchain_chroma import Chroma
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.db.chroma.noop_telemetry import NOOP_PRODUCT_TELEMETRY_IMPL
 from shared.py.wide_events import log
 
 
@@ -155,10 +156,13 @@ async def init_chromadb_client():
     host: str = settings.CHROMADB_HOST  # type: ignore
     port: int = settings.CHROMADB_PORT  # type: ignore
 
-    # Initialize ChromaDB async http client
+    # Route telemetry to a no-op client (see NoopProductTelemetry): the bundled
+    # posthog telemetry is incompatible with the installed posthog and errors on
+    # every collection op.
     client = await chromadb.AsyncHttpClient(
         host=host,
         port=port,
+        settings=Settings(chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL),
     )
 
     response = await client.heartbeat()
@@ -213,11 +217,12 @@ def init_chromadb_constructor():
     host: str = settings.CHROMADB_HOST  # type: ignore
     port: int = settings.CHROMADB_PORT  # type: ignore
 
-    # Initialize ChromaDB client for langchain
+    # Initialize ChromaDB client for langchain (telemetry off, see init_chromadb_client)
     constructor_client = chromadb.Client(
         settings=Settings(
             chroma_server_host=host,
             chroma_server_http_port=port,
+            chroma_product_telemetry_impl=NOOP_PRODUCT_TELEMETRY_IMPL,
         )
     )
 

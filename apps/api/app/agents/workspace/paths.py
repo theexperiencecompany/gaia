@@ -118,6 +118,8 @@ WORKSPACE_ROOT = "/workspace"
 ARTIFACTS_DIRNAME = "artifacts"
 USER_UPLOADED_DIRNAME = "user-uploaded"
 SCRATCH_DIRNAME = "scratch"
+SCREENSHOTS_DIRNAME = "screenshots"
+DOWNLOADS_DIRNAME = "downloads"
 GAIA_RUNTIME_DIRNAME = ".gaia"
 RUNS_DIRNAME = "runs"
 SESSIONS_DIRNAME = "sessions"
@@ -157,6 +159,20 @@ def session_user_uploaded(conv_id: str) -> str:
 def session_artifacts(conv_id: str) -> str:
     """Absolute workspace path of a session's agent-generated artifacts dir."""
     return f"{session_dir(conv_id)}/{ARTIFACTS_DIRNAME}"
+
+
+# Both dirs are system-written, like `tool_outputs/` and `archives/`: a place
+# something evicted from context can be read back from. Deliberately NOT
+# `artifacts/` — the watcher only tails that dir, so a capture of the user's screen
+# never lands in their file panel or reaches a bot user as an outbound file.
+def session_screenshot_relpath(filename: str) -> str:
+    """Session-relative path of a captured screenshot (what ``write_session_file`` takes)."""
+    return f"{SCREENSHOTS_DIRNAME}/{filename}"
+
+
+def session_download_relpath(filename: str) -> str:
+    """Session-relative path of a file the `download` tool fetched from a URL."""
+    return f"{DOWNLOADS_DIRNAME}/{filename}"
 
 
 def runs_log_dir() -> str:

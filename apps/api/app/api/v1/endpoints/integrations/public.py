@@ -1,21 +1,15 @@
 """Public integration routes (no auth required for SEO/sharing)."""
 
-import re
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-    workflows_collection,
-)
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
+from app.db.repositories.workflows import workflow_repository
 from app.helpers.integration_helpers import (
-    build_public_integration_pipeline,
-    build_slug_lookup_pipeline,
     format_public_integration_response,
     generate_integration_slug,
     parse_integration_slug,
@@ -33,8 +27,8 @@ from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
-from app.utils.creator import creator_lookup_stage, format_creator
+from app.services.mcp.mcp_tools_service import get_integration_tools
+from app.utils.creator import format_creator
 from shared.py.wide_events import log
 
 router = APIRouter()
@@ -61,8 +55,7 @@ async def get_public_integration(
             elif native.managed_by in ("self", "composio"):
                 auth_type = "oauth"
 
-            tools_store = get_mcp_tools_store()
-            stored_tools = await tools_store.get_tools(native.id) or []
+            stored_tools = await get_integration_tools(native.id)
             integration_tools = [
                 IntegrationTool(name=t["name"], description=t.get("description"))
                 for t in stored_tools
@@ -89,23 +82,19 @@ async def get_public_integration(
             )
 
         # 2. Try direct slug match first (new format without hash)
-        pipeline = build_slug_lookup_pipeline(identifier)
-        cursor = integrations_collection.aggregate(pipeline)
-        docs = await cursor.to_list(length=1)
+        integration = await integration_repository.get_public_by_slug(identifier)
 
         # Fallback: legacy hash-based lookup
-        if not docs:
+        if not integration:
             slug_parts = parse_integration_slug(identifier)
             short_id = slug_parts.get("shortid")
             if short_id:
-                pipeline = build_public_integration_pipeline(short_id)
-                cursor = integrations_collection.aggregate(pipeline)
-                docs = await cursor.to_list(length=1)
+                integration = await integration_repository.get_public_by_id_prefix(short_id)
 
-        if not docs:
+        if not integration:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        response_data = format_public_integration_response(docs[0])
+        response_data = format_public_integration_response(integration)
         log.set(integration_name=response_data.get("name"))
         log.set(outcome="success")
         return PublicIntegrationDetailResponse(**response_data)
@@ -131,19 +120,15 @@ async def add_public_integration(
             user={"id": user_id},
             integration={"id": integration_id},
         )
-        original_doc = await integrations_collection.find_one(
-            {"integration_id": integration_id, "is_public": True}
-        )
-        if not original_doc:
+        original = await integration_repository.get_public(integration_id)
+        if not original:
             raise HTTPException(status_code=404, detail="Integration not found")
 
-        integration_name = original_doc["name"]
+        integration_name = original.name
 
-        existing = await user_integrations_collection.find_one(
-            {"user_id": user_id, "integration_id": integration_id}
-        )
+        existing = await user_integration_repository.get_for_user(user_id, integration_id)
         if existing:
-            if existing.get("status") == "connected":
+            if existing.status == "connected":
                 return AddIntegrationResponse(
                     integration_id=integration_id,
                     name=integration_name,
@@ -163,17 +148,14 @@ async def add_public_integration(
             except ValueError:
                 pass
 
-            await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {"$inc": {"clone_count": 1}},
-            )
+            await integration_repository.increment_clone_count(integration_id)
 
             log.info(f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id}")
 
-        mcp_config = original_doc.get("mcp_config", {})
-        server_url = mcp_config.get("server_url")
-        requires_auth = mcp_config.get("requires_auth", False)
-        auth_type = mcp_config.get("auth_type")
+        mcp_config = original.mcp_config
+        server_url = mcp_config.server_url if mcp_config else None
+        requires_auth = mcp_config.requires_auth if mcp_config else False
+        auth_type = mcp_config.auth_type if mcp_config else None
 
         # For bearer auth without token provided, return bearer_required status
         if auth_type == "bearer" and requires_auth and not request.bearer_token:
@@ -234,21 +216,18 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
         relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
         integration_ids = list(relevance_map.keys())
 
-        cursor = integrations_collection.find(
-            {"integration_id": {"$in": integration_ids}, "is_public": True}
-        )
-        docs = await cursor.to_list(length=20)
-        docs_map = {doc["integration_id"]: doc for doc in docs}
+        integrations = await integration_repository.find_public_by_ids(integration_ids)
+        by_id = {i.integration_id: i for i in integrations}
 
         formatted = []
         for iid in integration_ids:
-            doc = docs_map.get(iid)
-            if not doc:
+            integration = by_id.get(iid)
+            if not integration:
                 continue
 
             slug = generate_integration_slug(
-                name=doc.get("name", ""),
-                category=doc.get("category", "custom"),
+                name=integration.name,
+                category=integration.category,
                 integration_id=iid,
             )
 
@@ -256,13 +235,13 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
                 SearchIntegrationItem(
                     integration_id=iid,
                     slug=slug,
-                    name=doc.get("name", ""),
-                    description=doc.get("description", ""),
-                    category=doc.get("category", "custom"),
+                    name=integration.name,
+                    description=integration.description,
+                    category=integration.category,
                     relevance_score=relevance_map.get(iid, 0.0),
-                    clone_count=doc.get("clone_count", 0),
-                    tool_count=len(doc.get("tools", [])),
-                    icon_url=doc.get("icon_url"),
+                    clone_count=integration.clone_count,
+                    tool_count=len(integration.tools),
+                    icon_url=integration.icon_url,
                 )
             )
 
@@ -294,87 +273,36 @@ async def get_related_workflows(
         limit = max(1, min(limit, 50))
         offset = max(0, offset)
 
-        # Escape the identifier so it is treated as a literal string in the
-        # MongoDB regex, preventing ReDoS and regex-injection attacks.
-        escaped_identifier = re.escape(identifier)
-
-        # Mix featured (is_explore) and community (is_public) workflows that
-        # use this integration, sorted by total runs so the most popular ones
-        # surface first regardless of source.
-        match_stage: dict[str, object] = {
-            "$or": [{"is_public": True}, {"is_explore": True}],
-            "steps": {
-                "$elemMatch": {
-                    "category": {
-                        "$regex": escaped_identifier,
-                        "$options": "i",
-                    }
-                }
-            },
-        }
-
-        pipeline: list = [
-            {"$match": match_stage},
-            {"$sort": {"total_executions": -1, "created_at": -1}},
-            {"$skip": offset},
-            {"$limit": limit},
-            creator_lookup_stage(),
-            {
-                "$project": {
-                    "_id": 1,
-                    "title": 1,
-                    "description": 1,
-                    "slug": 1,
-                    "prompt": 1,
-                    "steps": {
-                        "$map": {
-                            "input": "$steps",
-                            "as": "step",
-                            "in": {
-                                "id": "$$step.id",
-                                "title": "$$step.title",
-                                "category": "$$step.category",
-                                "description": "$$step.description",
-                            },
-                        }
-                    },
-                    "total_executions": 1,
-                    "created_at": 1,
-                    "created_by": 1,
-                    "creator_info": 1,
-                }
-            },
-        ]
-
-        workflows = await workflows_collection.aggregate(pipeline).to_list(length=limit)
-
-        total = await workflows_collection.count_documents(match_stage)
+        # Mix featured (is_explore) and community (is_public) workflows that use
+        # this integration, most-run first. The repository regex-escapes the
+        # identifier so it matches literally (ReDoS / injection guard).
+        rows = await workflow_repository.find_public_by_step_category(
+            identifier, limit=limit, offset=offset
+        )
+        total = await workflow_repository.count_public_by_step_category(identifier)
 
         formatted_workflows = []
-        for workflow in workflows:
-            raw_steps = workflow.get("steps", [])
-            normalized_steps = []
-            for step in raw_steps:
-                normalized_steps.append(
-                    {
-                        "id": step.get("id", ""),
-                        "title": step.get("title", ""),
-                        "description": step.get("description", ""),
-                        "category": step.get("category") or step.get("tool_category", "general"),
-                    }
-                )
-
+        for row in rows:
+            normalized_steps = [
+                {
+                    "id": step.id,
+                    "title": step.title,
+                    "description": step.description,
+                    "category": step.category or "general",
+                }
+                for step in row.steps
+            ]
             formatted_workflows.append(
                 {
-                    "id": workflow["_id"],
-                    "title": workflow["title"],
-                    "description": workflow.get("description"),
-                    "slug": workflow.get("slug"),
-                    "prompt": workflow.get("prompt"),
+                    "id": row.id,
+                    "title": row.title,
+                    "description": row.description,
+                    "slug": row.slug,
+                    "prompt": row.prompt,
                     "steps": normalized_steps,
-                    "total_executions": workflow.get("total_executions", 0),
-                    "created_at": workflow["created_at"],
-                    "creator": format_creator(workflow),
+                    "total_executions": row.total_executions,
+                    "created_at": row.created_at,
+                    "creator": format_creator(row),
                 }
             )
 

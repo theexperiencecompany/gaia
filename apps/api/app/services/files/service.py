@@ -8,6 +8,7 @@ Each public method orchestrates the concern-specific helpers (`store`, `sandbox`
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 import uuid
 
 from fastapi import HTTPException, UploadFile
@@ -16,9 +17,9 @@ import httpx
 from app.agents.workspace.paths import safe_upload_filename
 from app.constants.cache import FILES_CACHE_PATTERN
 from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
-from app.db.mongodb.collections import files_collection
-from app.db.utils import serialize_document
+from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
+from app.models.files_models import FileDocument, FileUpdate
 from app.models.message_models import FileData as MessageFileData
 from app.services.files.sandbox import mirror_upload, write_summary_sidecar
 from app.services.files.store import (
@@ -38,6 +39,10 @@ from app.utils.file_utils import generate_file_summary
 from app.utils.upload_validation import validate_upload
 from shared.py.wide_events import FileContext, log
 
+# Client-editable file metadata fields. Anything else in the incoming payload is
+# ignored to prevent mass-assignment of protected fields (user_id, created_at…).
+ALLOWED_FILE_UPDATE_FIELDS = ("filename", "description")
+
 
 @dataclass(frozen=True, slots=True)
 class _PreparedUpload:
@@ -56,6 +61,19 @@ class _PreparedUpload:
     @property
     def public_id(self) -> str:
         return f"file_{self.file_id}_{self.filename.replace(' ', '_')}"
+
+
+def _serialize_file_response(file: FileDocument) -> dict:
+    """Shape a file document for the update endpoint's JSON response.
+
+    Preserves the pre-repository contract: the Mongo ``_id`` surfaces as ``id``
+    and the timestamps are ISO-format strings.
+    """
+    data = file.model_dump()
+    data["created_at"] = file.created_at.isoformat()
+    if file.updated_at is not None:
+        data["updated_at"] = file.updated_at.isoformat()
+    return data
 
 
 def _page_count(page_wise_summary: PageWiseSummary) -> int:
@@ -93,26 +111,24 @@ def _build_file_metadata(
     page_wise_summary: PageWiseSummary,
     sandbox_path: str | None,
     conversation_id: str | None,
-) -> dict:
+) -> FileDocument:
     """Assemble the authoritative Mongo document for an uploaded file."""
     now = datetime.now(UTC)
-    metadata = {
-        "file_id": upload.file_id,
-        "filename": upload.filename,
-        "type": upload.content_type,
-        "size": upload.size_bytes,
-        "url": url,
-        "public_id": upload.public_id,
-        "user_id": user_id,
-        "description": description,
-        "page_wise_summary": page_wise_summary,
-        "sandbox_path": sandbox_path,
-        "created_at": now,
-        "updated_at": now,
-    }
-    if conversation_id:
-        metadata["conversation_id"] = conversation_id
-    return metadata
+    return FileDocument(
+        file_id=upload.file_id,
+        filename=upload.filename,
+        type=upload.content_type,
+        size=upload.size_bytes,
+        url=url,
+        public_id=upload.public_id,
+        user_id=user_id,
+        description=description,
+        page_wise_summary=page_wise_summary,
+        sandbox_path=sandbox_path,
+        conversation_id=conversation_id,
+        created_at=now,
+        updated_at=now,
+    )
 
 
 class FileService:
@@ -222,14 +238,9 @@ class FileService:
         if not file_ids:
             return {}
 
-        docs = await files_collection.find(
-            {"file_id": {"$in": file_ids}, "user_id": user_id},
-            projection={"_id": 0, "file_id": 1, "description": 1},
-        ).to_list(length=None)
+        documents = await file_repository.find_by_ids_for_user(file_ids, user_id)
         return {
-            doc["file_id"]: doc["description"]
-            for doc in docs
-            if doc.get("file_id") and doc.get("description")
+            document.file_id: document.description for document in documents if document.description
         }
 
     @staticmethod
@@ -239,27 +250,16 @@ class FileService:
         Lets the executor surface the conversation's uploads from only the
         conversation id (it never sees the request payload).
         """
-        docs = await files_collection.find(
-            {"user_id": user_id, "conversation_id": conversation_id},
-            projection={
-                "_id": 0,
-                "file_id": 1,
-                "filename": 1,
-                "url": 1,
-                "type": 1,
-                "description": 1,
-            },
-        ).to_list(length=None)
+        documents = await file_repository.find_for_conversation(conversation_id, user_id)
         return [
             MessageFileData(
-                fileId=doc["file_id"],
-                url=doc.get("url", ""),
-                filename=doc["filename"],
-                type=doc.get("type"),
-                description=doc.get("description"),
+                fileId=document.file_id,
+                url=document.url,
+                filename=document.filename,
+                type=document.type,
+                description=document.description,
             )
-            for doc in docs
-            if doc.get("file_id") and doc.get("filename")
+            for document in documents
         ]
 
     @staticmethod
@@ -271,16 +271,15 @@ class FileService:
             raise HTTPException(status_code=400, detail="User ID is required")
         log.set(file=FileContext(operation="delete", file_id=file_id))
 
-        file_data = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
+        file_data = await file_repository.get_by_file_id(file_id, user_id)
         if not file_data:
             log.warning(f"[files] delete: file_id={file_id} not found for user")
             raise HTTPException(status_code=404, detail="File not found")
 
-        result = await files_collection.delete_one({"file_id": file_id, "user_id": user_id})
-        if result.deleted_count == 0:
+        if not await file_repository.delete_by_file_id(file_id, user_id):
             raise HTTPException(status_code=404, detail="File not found")
 
-        public_id = file_data.get("public_id")
+        public_id = file_data.public_id
         if public_id:
             destroy_in_cloudinary(public_id)
         else:
@@ -292,7 +291,7 @@ class FileService:
         return {
             "message": "File deleted successfully",
             "file_id": file_id,
-            "filename": file_data.get("filename", "Unknown"),
+            "filename": file_data.filename,
         }
 
     @staticmethod
@@ -308,35 +307,39 @@ class FileService:
         log.info(f"[files] update start file_id={file_id}")
         log.set(file=FileContext(operation="update", file_id=file_id))
 
-        file_data = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
+        file_data = await file_repository.get_by_file_id(file_id, user_id)
         if not file_data:
             raise HTTPException(status_code=404, detail="File not found")
 
-        conversation_id = conversation_id or file_data.get("conversation_id")
-        update_data["updated_at"] = datetime.now(UTC)
+        conversation_id = conversation_id or file_data.conversation_id
+
+        # Build the update from allowlisted fields only — never spread the raw
+        # payload, or a client could mass-assign protected fields (user_id, …).
+        set_fields: dict[str, Any] = {
+            field: update_data[field]
+            for field in ALLOWED_FILE_UPDATE_FIELDS
+            if update_data.get(field) is not None
+        }
 
         if file_content:
             try:
-                content_type = update_data.get("type") or file_data.get("type")
-                filename = update_data.get("filename") or file_data.get("filename")
                 generated_summary = await generate_file_summary(
-                    file_content=file_content, content_type=content_type, filename=filename
+                    file_content=file_content,
+                    content_type=file_data.type,
+                    filename=set_fields.get("filename") or file_data.filename,
                 )
                 description, page_wise_summary = process_summary(generated_summary)
-                update_data["description"] = description
-                update_data["page_wise_summary"] = page_wise_summary
+                set_fields["description"] = description
+                set_fields["page_wise_summary"] = page_wise_summary
             except Exception as e:
                 log.error(f"[files] update: summary regeneration failed: {e!s}", exc_info=True)
                 raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}")
 
-        description_updated = "description" in update_data
-        result = await files_collection.update_one(
-            {"file_id": file_id, "user_id": user_id}, {"$set": update_data}
+        description_updated = "description" in set_fields
+        # updated_at is stamped by the repository.
+        updated_file = await file_repository.apply_metadata_update(
+            file_id, user_id=user_id, update=FileUpdate(**set_fields)
         )
-        if result.modified_count == 0:
-            log.warning(f"[files] update: no fields changed for file_id={file_id}")
-
-        updated_file = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
         if not updated_file:
             raise HTTPException(status_code=404, detail="File not found after update")
 
@@ -344,14 +347,14 @@ class FileService:
             await reindex_file(
                 file_id=file_id,
                 user_id=user_id,
-                filename=updated_file.get("filename", ""),
-                content_type=updated_file.get("type", ""),
-                summary=update_data["description"],
+                filename=updated_file.filename,
+                content_type=updated_file.type,
+                summary=set_fields["description"],
                 conversation_id=conversation_id,
             )
 
         log.info(f"[files] update complete file_id={file_id}")
-        return serialize_document(updated_file)
+        return _serialize_file_response(updated_file)
 
     @staticmethod
     async def seed_uploads(
@@ -448,27 +451,23 @@ class FileService:
             content_type=file.type or "application/octet-stream",
         )
 
-        doc = await files_collection.find_one(
-            {"file_id": file.fileId, "user_id": user_id},
-            projection={"_id": 0, "description": 1, "page_wise_summary": 1, "type": 1},
-        )
-        if not doc:
+        document = await file_repository.get_by_file_id(file.fileId, user_id)
+        if not document:
             return
 
-        if doc.get("description") or doc.get("page_wise_summary"):
+        if document.description or document.page_wise_summary:
             await write_summary_sidecar(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 safe_filename=safe_name,
                 summary_md=render_summary_markdown(
                     filename=file.filename,
-                    content_type=doc.get("type") or file.type or "application/octet-stream",
-                    description=doc.get("description"),
-                    page_wise_summary=doc.get("page_wise_summary"),
+                    content_type=document.type or file.type or "application/octet-stream",
+                    description=document.description,
+                    page_wise_summary=document.page_wise_summary,
                 ),
             )
 
-        await files_collection.update_one(
-            {"file_id": file.fileId, "user_id": user_id},
-            {"$set": {"conversation_id": conversation_id}},
+        await file_repository.apply_metadata_update(
+            file.fileId, user_id=user_id, update=FileUpdate(conversation_id=conversation_id)
         )

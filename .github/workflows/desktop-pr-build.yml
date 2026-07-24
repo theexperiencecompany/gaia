@@ -48,6 +48,7 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/restore-nextjs-cache
       - name: Build web (standalone)
         run: pnpm nx build web --skip-nx-cache
       - name: Build Electron main/preload

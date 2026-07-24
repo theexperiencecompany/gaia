@@ -5,7 +5,7 @@ status codes, response bodies, validation, and conversation ownership checks.
 """
 
 from io import BytesIO
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 import pytest
@@ -42,11 +42,14 @@ class TestUploadFile:
         assert data["message"] == "File uploaded successfully"
 
     @patch(
+        "app.api.v1.endpoints.file.conversation_repository",
+    )
+    @patch(
         "app.api.v1.endpoints.file.FileService.upload",
         new_callable=AsyncMock,
     )
     async def test_upload_file_with_conversation_id(
-        self, mock_upload: AsyncMock, client: AsyncClient
+        self, mock_upload: AsyncMock, mock_convs, client: AsyncClient
     ):
         mock_upload.return_value = {
             "file_id": "file-002",
@@ -54,37 +57,37 @@ class TestUploadFile:
             "filename": "doc.pdf",
             "type": "file",
         }
-        mock_conversations = MagicMock()
-        mock_conversations.find_one = AsyncMock(return_value={"_id": "conv-doc-id"})
+        # Simulate that the conversation is owned by the authenticated user.
+        mock_convs.exists = AsyncMock(return_value=True)
         file_content = BytesIO(b"fake pdf data")
-        with patch("app.api.v1.endpoints.file.conversations_collection", mock_conversations):
-            response = await client.post(
-                f"{FILE_BASE}/upload",
-                files={"file": ("doc.pdf", file_content, "application/pdf")},
-                data={"conversation_id": "conv-123"},
-            )
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("doc.pdf", file_content, "application/pdf")},
+            data={"conversation_id": "conv-123"},
+        )
         assert response.status_code == 201
         mock_upload.assert_awaited_once()
         call_kwargs = mock_upload.call_args.kwargs
         assert call_kwargs["conversation_id"] == "conv-123"
 
     @patch(
+        "app.api.v1.endpoints.file.conversation_repository",
+    )
+    @patch(
         "app.api.v1.endpoints.file.FileService.upload",
         new_callable=AsyncMock,
     )
     async def test_upload_file_unowned_conversation_returns_403(
-        self, mock_upload: AsyncMock, client: AsyncClient
+        self, mock_upload: AsyncMock, mock_convs, client: AsyncClient
     ):
         """Uploads targeting a conversation the user does not own are rejected."""
-        mock_conversations = MagicMock()
-        mock_conversations.find_one = AsyncMock(return_value=None)
+        mock_convs.exists = AsyncMock(return_value=False)
         file_content = BytesIO(b"fake pdf data")
-        with patch("app.api.v1.endpoints.file.conversations_collection", mock_conversations):
-            response = await client.post(
-                f"{FILE_BASE}/upload",
-                files={"file": ("doc.pdf", file_content, "application/pdf")},
-                data={"conversation_id": "conv-not-mine"},
-            )
+        response = await client.post(
+            f"{FILE_BASE}/upload",
+            files={"file": ("doc.pdf", file_content, "application/pdf")},
+            data={"conversation_id": "conv-not-mine"},
+        )
         assert response.status_code == 403
         mock_upload.assert_not_awaited()
 

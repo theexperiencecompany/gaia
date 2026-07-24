@@ -7,8 +7,9 @@ from langchain_core.tools import tool
 from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import files_collection
+from app.db.repositories.files import file_repository
 from app.decorators import with_doc, with_rate_limiting
+from app.models.files_models import FileDocument
 from app.templates.docstrings.file_tool_docs import SEARCH_UPLOADED_FILES
 from shared.py.wide_events import log
 
@@ -48,17 +49,18 @@ async def search_uploaded_files(
         log.info(f"{LogTag.TOOL} Similar documents found: {similar_documents}")
 
         document_ids = list(
-            set([document.metadata.get("file_id") for document, score in similar_documents])
+            {
+                str(file_id)
+                for document, _ in similar_documents
+                if (file_id := document.metadata.get("file_id")) is not None
+            }
         )
 
         log.info(f"{LogTag.TOOL} Document IDs: {document_ids}")
 
-        documents = await files_collection.find(
-            filter={
-                "file_id": {"$in": document_ids},
-                "user_id": configurable["user_id"],
-            },
-        ).to_list(length=None)
+        documents = await file_repository.find_by_ids_for_user(
+            document_ids, configurable["user_id"]
+        )
 
         log.info(f"{LogTag.TOOL} Documents found: {documents}")
 
@@ -93,22 +95,9 @@ async def _get_similar_documents(
         log.error(f"{LogTag.TOOL} ChromaDB client is not available.")
         return []
 
-    # Files uploaded before conversation scoping existed carry no
-    # conversation_id (the old web client never sent one, and only new
-    # conversations get backfilled). Keep those legacy docs searchable —
-    # don't "simplify" this back to an exact conversation_id match.
-    conversation_files = await files_collection.find(
-        {
-            "user_id": user_id,
-            "$or": [
-                {"conversation_id": conversation_id},
-                {"conversation_id": {"$exists": False}},
-                {"conversation_id": None},
-            ],
-        },
-        projection={"_id": 0, "file_id": 1},
-    ).to_list(length=None)
-    conversation_file_ids = [doc["file_id"] for doc in conversation_files if doc.get("file_id")]
+    conversation_file_ids = await file_repository.find_ids_for_conversation(
+        conversation_id, user_id
+    )
     if not conversation_file_ids:
         return []
 
@@ -119,7 +108,7 @@ async def _get_similar_documents(
     else:
         target_file_ids = conversation_file_ids
 
-    filters = {
+    filters: dict[str, object] = {
         "$and": [
             {"user_id": user_id},
             {"file_id": {"$in": target_file_ids}},
@@ -133,7 +122,9 @@ async def _get_similar_documents(
     )
 
 
-def _construct_content(documents: list, similar_documents: list[tuple[Document, float]]) -> str:
+def _construct_content(
+    documents: list[FileDocument], similar_documents: list[tuple[Document, float]]
+) -> str:
     """
     Helper function to construct a formatted response from similar documents.
 
@@ -154,7 +145,7 @@ def _construct_content(documents: list, similar_documents: list[tuple[Document, 
     for similar_document, score in similar_documents:
         document_id = similar_document.metadata["file_id"]
         document = next(
-            (doc for doc in documents if str(doc["file_id"]) == str(document_id)),
+            (doc for doc in documents if str(doc.file_id) == str(document_id)),
             None,
         )
 
@@ -162,8 +153,8 @@ def _construct_content(documents: list, similar_documents: list[tuple[Document, 
             log.error(f"{LogTag.TOOL} Document with ID {document_id} not found.")
             continue
 
-        document_content = document["page_wise_summary"]
-        description = document["description"]
+        document_content = document.page_wise_summary
+        description = document.description
 
         if not document_content:
             content += f"Document ID: {document_id}\n"
@@ -184,7 +175,7 @@ def _construct_content(documents: list, similar_documents: list[tuple[Document, 
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
         else:
             log.error(
-                f"{LogTag.TOOL} Unexpected document description type: {type(document['description'])}"
+                f"{LogTag.TOOL} Unexpected document description type: {type(document.description)}"
             )
             content += f"Document ID: {document_id}\n"
             content += "Description: Invalid format\n\n"

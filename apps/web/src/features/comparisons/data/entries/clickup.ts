@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "All-in-one project management platform",
   description:
     "ClickUp is a feature-rich project management tool. GAIA adds AI intelligence to automate work proactively rather than requiring manual project management.",
-  metaTitle: "ClickUp Alternative with Proactive AI | GAIA vs ClickUp",
+  metaTitle: "ClickUp Alternative with Proactive AI — GAIA vs ClickUp",
   metaDescription:
     "ClickUp is powerful but still requires manual management. GAIA is an open-source ClickUp alternative with proactive AI that auto-creates tasks from email, manages your calendar, and automates workflows across 50+ tools — with a free tier.",
   keywords: [

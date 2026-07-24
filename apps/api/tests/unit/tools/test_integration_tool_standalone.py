@@ -99,8 +99,8 @@ class TestBuildSearchPatterns:
 
 @pytest.mark.unit
 class TestListIntegrations:
-    @patch(f"{MODULE}.integrations_collection")
-    @patch(f"{MODULE}.user_integrations_collection")
+    @patch(f"{MODULE}.integration_repository")
+    @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
@@ -108,18 +108,13 @@ class TestListIntegrations:
         self,
         mock_status: AsyncMock,
         mock_gsw: MagicMock,
-        mock_user_int: MagicMock,
-        mock_int_coll: MagicMock,
+        mock_repo: MagicMock,
+        mock_int_repo: MagicMock,
     ) -> None:
         mock_gsw.return_value = _writer()
         mock_status.return_value = {}
 
-        # user_integrations_collection.find returns async iterable with no docs
-        async def _empty_cursor():
-            return
-            yield  # noqa
-
-        mock_user_int.find.return_value = _empty_cursor()
+        mock_repo.list_for_user = AsyncMock(return_value=[])
 
         from app.agents.tools.integration_tool import list_integrations
 
@@ -127,8 +122,8 @@ class TestListIntegrations:
         assert result["connected"] == []
         assert result["available"] == []
 
-    @patch(f"{MODULE}.integrations_collection")
-    @patch(f"{MODULE}.user_integrations_collection")
+    @patch(f"{MODULE}.integration_repository")
+    @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(
@@ -139,17 +134,13 @@ class TestListIntegrations:
         self,
         mock_status: AsyncMock,
         mock_gsw: MagicMock,
-        mock_user_int: MagicMock,
-        mock_int_coll: MagicMock,
+        mock_repo: MagicMock,
+        mock_int_repo: MagicMock,
     ) -> None:
         mock_gsw.return_value = _writer()
         mock_status.return_value = {"gmail": True, "notion": False}
 
-        async def _empty_cursor():
-            return
-            yield  # noqa
-
-        mock_user_int.find.return_value = _empty_cursor()
+        mock_repo.list_for_user = AsyncMock(return_value=[])
 
         from app.agents.tools.integration_tool import list_integrations
 
@@ -182,8 +173,8 @@ class TestListIntegrations:
         result = await list_integrations.coroutine(config=_cfg())  # type: ignore[attr-defined]
         assert "Error" in result
 
-    @patch(f"{MODULE}.integrations_collection")
-    @patch(f"{MODULE}.user_integrations_collection")
+    @patch(f"{MODULE}.integration_repository")
+    @patch(f"{MODULE}.user_integration_repository")
     @patch(f"{MODULE}.get_stream_writer")
     @patch(f"{MODULE}.check_multiple_integrations_status", new_callable=AsyncMock)
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [_make_integration(available=False)])
@@ -191,17 +182,13 @@ class TestListIntegrations:
         self,
         mock_status: AsyncMock,
         mock_gsw: MagicMock,
-        mock_user_int: MagicMock,
-        mock_int_coll: MagicMock,
+        mock_repo: MagicMock,
+        mock_int_repo: MagicMock,
     ) -> None:
         mock_gsw.return_value = _writer()
         mock_status.return_value = {}
 
-        async def _empty_cursor():
-            return
-            yield  # noqa
-
-        mock_user_int.find.return_value = _empty_cursor()
+        mock_repo.list_for_user = AsyncMock(return_value=[])
 
         from app.agents.tools.integration_tool import list_integrations
 

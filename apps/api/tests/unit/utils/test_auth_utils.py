@@ -6,14 +6,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import UserDocument
 from app.utils.auth_utils import authenticate_workos_session
+
+
+def _as_user(db_doc: dict) -> UserDocument:
+    data = {k: v for k, v in db_doc.items() if k != "_id"}
+    if "_id" in db_doc:
+        data["id"] = str(db_doc["_id"])
+    return UserDocument.model_validate(data)
+
 
 # ---------------------------------------------------------------------------
 # Patch targets
 # ---------------------------------------------------------------------------
 
 _PATCH_SETTINGS = "app.utils.auth_utils.settings"
-_PATCH_USERS_COLLECTION = "app.utils.auth_utils.users_collection"
+_PATCH_USER_REPO = "app.utils.auth_utils.user_repository"
 _PATCH_LOG = "app.utils.auth_utils.log"
 _PATCH_WORKOS_CLIENT = "app.utils.auth_utils.AsyncWorkOSClient"
 
@@ -135,8 +144,8 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
         db_doc = _db_user_doc()
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG):
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG):
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="sealed_tok", workos_client=client
@@ -162,8 +171,8 @@ class TestAuthenticateWorkosSession:
             timezone="Europe/London",
         )
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG):
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG):
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             user_info, _ = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -193,14 +202,14 @@ class TestAuthenticateWorkosSession:
         db_doc = _db_user_doc()
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
             mock_settings.WORKOS_COOKIE_PASSWORD = (
                 "cookie_pass_32chars_long_enough"  # NOSONAR  # pragma: allowlist secret
             )
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="old_tok", workos_client=client
@@ -345,8 +354,8 @@ class TestAuthenticateWorkosSession:
         session = _make_session(auth_response)
         client = _make_workos_client(session)
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG) as mock_log:
-            mock_col.find_one = AsyncMock(return_value=None)
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG) as mock_log:
+            mock_col.get_by_email = AsyncMock(return_value=None)
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -370,14 +379,14 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
             mock_settings.WORKOS_COOKIE_PASSWORD = (
                 "cookie_pass"  # NOSONAR  # pragma: allowlist secret
             )
-            mock_col.find_one = AsyncMock(return_value=None)
+            mock_col.get_by_email = AsyncMock(return_value=None)
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -437,8 +446,8 @@ class TestAuthenticateWorkosSession:
         session = _make_session(auth_response)
         client = _make_workos_client(session)
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG) as mock_log:
-            mock_col.find_one = AsyncMock(side_effect=Exception("MongoDB connection lost"))
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG) as mock_log:
+            mock_col.get_by_email = AsyncMock(side_effect=Exception("MongoDB connection lost"))
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -462,14 +471,14 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
             mock_settings.WORKOS_COOKIE_PASSWORD = (
                 "cookie_pass"  # NOSONAR  # pragma: allowlist secret
             )
-            mock_col.find_one = AsyncMock(side_effect=Exception("timeout"))
+            mock_col.get_by_email = AsyncMock(side_effect=Exception("timeout"))
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -489,11 +498,11 @@ class TestAuthenticateWorkosSession:
         db_doc = _db_user_doc()
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_WORKOS_CLIENT) as mock_cls,
         ):
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
@@ -509,7 +518,7 @@ class TestAuthenticateWorkosSession:
         mock_client = _make_workos_client(session)
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_WORKOS_CLIENT, return_value=mock_client) as mock_cls,
             patch(_PATCH_SETTINGS) as mock_settings,
@@ -519,7 +528,7 @@ class TestAuthenticateWorkosSession:
             mock_settings.WORKOS_COOKIE_PASSWORD = (
                 "cookie_pass"  # NOSONAR  # pragma: allowlist secret
             )
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             await authenticate_workos_session(session_token="tok", workos_client=None)
 
@@ -537,12 +546,12 @@ class TestAuthenticateWorkosSession:
         session = _make_session(auth_response)
         client = _make_workos_client(session)
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG):
-            mock_col.find_one = AsyncMock(return_value=None)
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG):
+            mock_col.get_by_email = AsyncMock(return_value=None)
 
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
-        mock_col.find_one.assert_awaited_once_with({"email": "query@test.com"})
+        mock_col.get_by_email.assert_awaited_once_with("query@test.com")
 
     # -- user_info merges db data with auth_provider and user_id -----------
 
@@ -562,8 +571,8 @@ class TestAuthenticateWorkosSession:
             "preferences": {"theme": "dark"},
         }
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG):
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG):
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             user_info, _ = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -620,14 +629,14 @@ class TestAuthenticateWorkosSession:
         db_doc = _db_user_doc()
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
             mock_settings.WORKOS_COOKIE_PASSWORD = (
                 "cookie_pass"  # NOSONAR  # pragma: allowlist secret
             )
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             user_info, new_session = await authenticate_workos_session(
                 session_token="tok", workos_client=client
@@ -646,8 +655,8 @@ class TestAuthenticateWorkosSession:
         client = _make_workos_client(session)
         db_doc = _db_user_doc(email="logged@example.com")
 
-        with patch(_PATCH_USERS_COLLECTION) as mock_col, patch(_PATCH_LOG) as mock_log:
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+        with patch(_PATCH_USER_REPO) as mock_col, patch(_PATCH_LOG) as mock_log:
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
@@ -717,12 +726,12 @@ class TestAuthenticateWorkosSession:
         db_doc = _db_user_doc()
 
         with (
-            patch(_PATCH_USERS_COLLECTION) as mock_col,
+            patch(_PATCH_USER_REPO) as mock_col,
             patch(_PATCH_LOG),
             patch(_PATCH_SETTINGS) as mock_settings,
         ):
             mock_settings.WORKOS_COOKIE_PASSWORD = "pw_123"  # NOSONAR  # pragma: allowlist secret
-            mock_col.find_one = AsyncMock(return_value=db_doc)
+            mock_col.get_by_email = AsyncMock(return_value=_as_user(db_doc))
 
             await authenticate_workos_session(session_token="my_sealed_token", workos_client=client)
 

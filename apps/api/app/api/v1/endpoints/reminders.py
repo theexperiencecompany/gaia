@@ -89,6 +89,8 @@ async def create_reminder_endpoint(
 
         return ReminderResponse(**reminder.model_dump())
 
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error creating reminder: {e}")
         raise HTTPException(
@@ -143,6 +145,8 @@ async def get_reminder_endpoint(reminder_id: str, user: dict = Depends(get_curre
 
         return ReminderResponse(**reminder.model_dump())
 
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error getting reminder {reminder_id}: {e}")
         raise HTTPException(
@@ -218,6 +222,8 @@ async def update_reminder_endpoint(
 
         return ReminderResponse(**updated_reminder.model_dump())
 
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error updating reminder {reminder_id}: {e}")
         raise HTTPException(
@@ -260,6 +266,8 @@ async def cancel_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cu
 
         log.set(outcome="success")
 
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error cancelling reminder {reminder_id}: {e}")
         raise HTTPException(
@@ -317,6 +325,8 @@ async def list_reminders_endpoint(
 
         return [ReminderResponse(**reminder.model_dump()) for reminder in reminders]
 
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error listing reminders for user {user_id}: {e}")
         raise HTTPException(
@@ -370,6 +380,8 @@ async def pause_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cur
 
         return ReminderResponse(**updated_reminder.model_dump())
 
+    except HTTPException:
+        raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
         log.error(f"{LogTag.API} Error pausing reminder {reminder_id}: {e}")
         raise HTTPException(

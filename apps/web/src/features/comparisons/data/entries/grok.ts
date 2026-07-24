@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "xAI's real-time AI assistant integrated with X/Twitter",
   description:
     "Grok is xAI's AI assistant with real-time access to X/Twitter data and the latest world events. GAIA is a proactive productivity AI that manages your email, calendar, tasks, and workflows — turning AI into a system that works for you, not just answers questions.",
-  metaTitle: "Grok Alternative for Productivity Automation | GAIA vs Grok",
+  metaTitle: "Grok Alternative for Productivity Automation — GAIA vs Grok",
   metaDescription:
     "Grok answers questions in real time but won't manage your inbox or automate tasks. GAIA is an open-source alternative that proactively manages your workflow across Gmail, calendar, and 50+ integrations.",
   keywords: [

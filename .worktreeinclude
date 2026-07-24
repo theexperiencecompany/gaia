@@ -1,5 +1,12 @@
-# Copy gitignored .env files (with secrets) into every new Conductor workspace.
-# Uses .gitignore syntax. See https://conductor.build/docs/reference/files-to-copy
+# Gitignored files copied into a fresh dev worktree/workspace. This one file is
+# consumed by BOTH worktrunk (`wt step copy-ignored`) and Conductor
+# (https://conductor.build/docs/reference/files-to-copy) — same .gitignore syntax.
+# A file is copied only if it is BOTH gitignored AND matched here. Keep it to
+# secret-bearing env files a fresh worktree cannot reconstruct — never add
+# node_modules/.venv/.next (pnpm store + `nx run api:sync` rebuild those fast) and
+# never add .env.worktree (each worktree mints its own via `mise run wt:env`).
 apps/api/.env
 apps/web/.env
+apps/web/.env.local
 apps/mobile/.env
+apps/bots/.env

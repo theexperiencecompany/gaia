@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "The fastest email client in the world",
   description:
     "Superhuman is a premium, keyboard-driven email client that helps power users move through Gmail and Outlook faster. GAIA is a proactive AI productivity OS that actually manages your email — triaging urgency, drafting replies, creating tasks, and automating workflows — rather than just displaying it more quickly.",
-  metaTitle: "Free Superhuman Alternative with AI | GAIA vs Superhuman",
+  metaTitle: "Free Superhuman Alternative with AI — GAIA vs Superhuman",
   metaDescription:
     "Superhuman costs $30/month and speeds up reading — but still requires you to do the work. GAIA is a free-tier, open-source Superhuman alternative that uses AI to triage, draft replies, and automate your inbox autonomously.",
   keywords: [

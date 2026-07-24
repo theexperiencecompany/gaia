@@ -18,11 +18,16 @@ from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 from pydantic import ValidationError
 import pytest
 
+from app.models.integration_models import IntegrationTool
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import MCPToolsStore, _format_tools
+from app.services.mcp.mcp_tools_service import (
+    _format_tools,
+    get_integration_tools,
+    store_mcp_tools,
+)
 from app.services.mcp.oauth_discovery import discover_oauth_config
 from app.services.mcp.token_management import (
     resolve_client_credentials,
@@ -920,37 +925,31 @@ class TestConnectionPooling:
 
 @pytest.mark.integration
 class TestToolDiscovery:
-    """Test MCPToolsStore: tool storage and retrieval."""
+    """Test the global MCP tool metadata service over the integrations repository."""
 
-    async def test_store_tools_writes_to_mongodb(self):
-        """store_tools calls MongoDB update_one with formatted tool data."""
-        store = MCPToolsStore()
-
+    async def test_store_tools_writes_to_repository(self):
+        """store_mcp_tools formats the tools and hands them to the repository."""
         raw_tools = [
             {"name": "get_data", "description": "Gets data from API"},
             {"name": "post_data", "description": "Posts data to API"},
         ]
 
+        mock_store = AsyncMock()
         with (
-            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
             patch(
-                "app.services.mcp.mcp_tools_store.delete_cache",
-                new=AsyncMock(),
+                "app.services.mcp.mcp_tools_service.integration_repository.store_tools",
+                mock_store,
             ),
-            patch.object(store, "_refresh_cache", new=AsyncMock()),
+            patch("app.services.mcp.mcp_tools_service.delete_cache", new=AsyncMock()),
+            patch("app.services.mcp.mcp_tools_service._schedule_refresh", new=MagicMock()),
         ):
-            mock_col.update_one = AsyncMock()
+            await store_mcp_tools("tool-int", raw_tools)
 
-            await store.store_tools("tool-int", raw_tools)
-
-            mock_col.update_one.assert_awaited_once()
-            call_args = mock_col.update_one.call_args
-            filter_doc = call_args[0][0]
-            assert filter_doc == {"integration_id": "tool-int"}
-            update_doc = call_args[0][1]
-            stored_tools = update_doc["$set"]["tools"]
-            assert len(stored_tools) == 2
-            assert stored_tools[0]["name"] == "get_data"
+        mock_store.assert_awaited_once()
+        integration_id, stored_tools = mock_store.await_args.args
+        assert integration_id == "tool-int"
+        assert [t.name for t in stored_tools] == ["get_data", "post_data"]
+        assert all(isinstance(t, IntegrationTool) for t in stored_tools)
 
     def test_format_tools_strips_whitespace_and_filters_empty(self):
         """_format_tools strips whitespace and drops tools without names."""
@@ -962,47 +961,40 @@ class TestToolDiscovery:
         ]
         result = _format_tools(tools)
         assert len(result) == 2
-        assert result[0]["name"] == "valid_tool"
-        assert result[0]["description"] == "desc"
-        assert result[1]["name"] == "another_tool"
+        assert result[0].name == "valid_tool"
+        assert result[0].description == "desc"
+        assert result[1].name == "another_tool"
 
     async def test_store_tools_skips_empty_list(self):
-        """store_tools is a no-op for empty tool list."""
-        store = MCPToolsStore()
-
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("empty-int", [])
-            mock_col.update_one.assert_not_awaited()
+        """store_mcp_tools is a no-op (no repository write) for an empty tool list."""
+        mock_store = AsyncMock()
+        with patch(
+            "app.services.mcp.mcp_tools_service.integration_repository.store_tools",
+            mock_store,
+        ):
+            await store_mcp_tools("empty-int", [])
+        mock_store.assert_not_awaited()
 
     async def test_get_tools_returns_stored_tools(self):
-        """get_tools returns tools from MongoDB for the integration."""
-        store = MCPToolsStore()
+        """get_integration_tools returns the repository's stored tools as dicts."""
+        with patch(
+            "app.services.mcp.mcp_tools_service.integration_repository.get_tools",
+            AsyncMock(return_value=[IntegrationTool(name="tool_a", description="Tool A")]),
+        ):
+            result = await get_integration_tools("my-int")
 
-        stored_doc = {
-            "tools": [
-                {"name": "tool_a", "description": "Tool A"},
-            ]
-        }
-
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.find_one = AsyncMock(return_value=stored_doc)
-
-            result = await store.get_tools("my-int")
-
-        assert result is not None
         assert len(result) == 1
         assert result[0]["name"] == "tool_a"
 
-    async def test_get_tools_returns_none_when_not_found(self):
-        """get_tools returns None when integration has no stored tools."""
-        store = MCPToolsStore()
+    async def test_get_tools_returns_empty_when_not_found(self):
+        """get_integration_tools returns an empty list when nothing is stored."""
+        with patch(
+            "app.services.mcp.mcp_tools_service.integration_repository.get_tools",
+            AsyncMock(return_value=[]),
+        ):
+            result = await get_integration_tools("missing-int")
 
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.find_one = AsyncMock(return_value=None)
-            result = await store.get_tools("missing-int")
-
-        assert result is None
+        assert result == []
 
 
 # ---------------------------------------------------------------------------
@@ -1182,8 +1174,8 @@ class TestConcurrentConnectionIsolation:
                 side_effect=lambda tools, **kw: tools,
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",

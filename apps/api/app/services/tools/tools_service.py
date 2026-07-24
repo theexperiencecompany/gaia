@@ -19,7 +19,7 @@ from app.decorators.caching import Cacheable
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
 from app.schemas.integrations.responses import IntegrationTool
 from app.services.integrations.user_integrations import get_user_integration_records
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
 from app.utils.request_coalescing import coalesce_request
 from shared.py.wide_events import log
 
@@ -120,9 +120,8 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     # MCP tools (platform + custom) live only in the global store. Scoping to the
     # workspace here is also the leak guard: an entry the user hasn't added — a
     # platform MCP they never connected, or another user's custom MCP — is skipped.
-    mcp_store = get_mcp_tools_store()
     try:
-        global_mcp_tools: dict[str, dict[str, Any]] = await mcp_store.get_all_mcp_tools()
+        global_mcp_tools: dict[str, dict[str, Any]] = await get_all_mcp_tools()
     except Exception as e:
         log.warning(f"{LogTag.TOOL} Failed to fetch MCP tools: {e}")
         global_mcp_tools = {}
@@ -224,7 +223,7 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
             for tool in category_obj.tools
         ]
 
-    stored = await get_mcp_tools_store().get_tools(integration_id)
+    stored = await get_integration_tools(integration_id)
     return [
         IntegrationTool(name=tool["name"], description=tool.get("description"))
         for tool in stored

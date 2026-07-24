@@ -122,6 +122,7 @@ def _make_workflow(
     trigger_name: str = "calendar_event_created",
     trigger_type: TriggerType = TriggerType.INTEGRATION,
     composio_trigger_ids: list[str] | None = None,
+    trigger_data: Any = None,
 ) -> Workflow:
     """Build a minimal valid Workflow for testing."""
     return Workflow(
@@ -136,6 +137,7 @@ def _make_workflow(
             enabled=True,
             trigger_name=trigger_name,
             composio_trigger_ids=composio_trigger_ids or [],
+            trigger_data=trigger_data,
         ),
     )
 
@@ -154,25 +156,6 @@ def _make_trigger_config(
         trigger_data=trigger_data,
         composio_trigger_ids=composio_trigger_ids,
     )
-
-
-class _AsyncCursorMock:
-    """Mock for MongoDB async cursor that supports async iteration."""
-
-    def __init__(self, documents: list[dict[str, Any]]) -> None:
-        self._documents = documents
-        self._index = 0
-
-    def __aiter__(self):
-        self._index = 0
-        return self
-
-    async def __anext__(self):
-        if self._index >= len(self._documents):
-            raise StopAsyncIteration
-        doc = self._documents[self._index].copy()
-        self._index += 1
-        return doc
 
 
 # ===========================================================================
@@ -383,44 +366,6 @@ class TestTriggerHandlerBase:
             )
         assert exc_info.value.trigger_name == "test_trigger"
 
-    # -- _load_workflows_from_query --
-
-    @patch("app.services.triggers.base.workflows_collection")
-    async def test_load_workflows_from_query_success(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Test",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {"type": "integration", "enabled": True},
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
-
-        handler = _ConcreteTriggerHandler()
-        workflows = await handler._load_workflows_from_query({"user_id": USER_ID}, "test")
-        assert len(workflows) == 1
-        assert workflows[0].user_id == USER_ID
-
-    @patch("app.services.triggers.base.workflows_collection")
-    async def test_load_workflows_from_query_invalid_doc_skipped(self, mock_collection):
-        """Invalid workflow documents are skipped, not crashing the whole method."""
-        invalid_doc = {"_id": "bad", "missing": "fields"}
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([invalid_doc]))
-
-        handler = _ConcreteTriggerHandler()
-        workflows = await handler._load_workflows_from_query({}, "test")
-        assert len(workflows) == 0
-
-    @patch("app.services.triggers.base.workflows_collection")
-    async def test_load_workflows_from_query_empty(self, mock_collection):
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([]))
-
-        handler = _ConcreteTriggerHandler()
-        workflows = await handler._load_workflows_from_query({}, "test")
-        assert workflows == []
-
     # -- process_event --
 
     @patch("app.services.triggers.base.WorkflowQueueService")
@@ -597,105 +542,67 @@ class TestGmailTriggerHandler:
         with pytest.raises(TypeError, match="Expected GmailNewMessageConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "gmail_new_message", config)
 
-    @patch("app.services.triggers.handlers.gmail.workflows_collection")
-    async def test_find_workflows_no_user_id(self, mock_collection):
+    # find_workflows delegates to the workflow_repository finders (contract-tested):
+    # strategy 1 (account-level) -> find_active_integration_workflows, strategy 2
+    # (poll, by trigger id) -> find_active_by_composio_trigger. Here we verify the
+    # handler's routing and the neither-id guard.
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_find_workflows_no_user_id(self, mock_repo):
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
+
         handler = GmailTriggerHandler()
         result = await handler.find_workflows("GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {})
-        assert result == []
 
-    @patch("app.services.triggers.handlers.gmail.workflows_collection")
-    async def test_find_workflows_with_user_id_matches(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Gmail Workflow",
-            "prompt": "Process email",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_new_message",
-            },
-        }
-        mock_collection.find = MagicMock(
-            side_effect=[
-                _AsyncCursorMock([workflow_doc]),
-                _AsyncCursorMock([]),
-            ]
+        assert result == []
+        # No user_id -> the account-level strategy is skipped.
+        mock_repo.find_active_integration_workflows.assert_not_awaited()
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with(
+            TRIGGER_ID, trigger_name="gmail_poll_inbox"
         )
+
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_find_workflows_with_user_id_matches(self, mock_repo):
+        wf = _make_workflow(trigger_name="gmail_new_message")
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[wf])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         handler = GmailTriggerHandler()
         result = await handler.find_workflows(
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            TRIGGER_ID,
-            {"user_id": USER_ID},
+            "GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {"user_id": USER_ID}
         )
         assert len(result) == 1
         assert result[0].user_id == USER_ID
-
-    @patch("app.services.triggers.handlers.gmail.workflows_collection")
-    async def test_find_workflows_poll_query_also_runs(self, mock_collection):
-        """Both user_query and poll_query are executed."""
-        poll_doc = {
-            "_id": "wf_poll_001",
-            "user_id": USER_ID,
-            "title": "Poll Workflow",
-            "prompt": "Poll email",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_poll_inbox",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(
-            side_effect=[
-                _AsyncCursorMock([]),
-                _AsyncCursorMock([poll_doc]),
-            ]
+        mock_repo.find_active_integration_workflows.assert_awaited_once_with(
+            USER_ID, GmailTriggerHandler.SUPPORTED_TRIGGERS
         )
+
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_find_workflows_poll_query_also_runs(self, mock_repo):
+        """Both strategies run: account-level empty, poll matches by trigger id."""
+        poll_wf = _make_workflow(
+            workflow_id="wf_poll_001",
+            trigger_name="gmail_poll_inbox",
+            composio_trigger_ids=[TRIGGER_ID],
+        )
+        mock_repo.find_active_integration_workflows = AsyncMock(return_value=[])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[poll_wf])
 
         handler = GmailTriggerHandler()
         result = await handler.find_workflows(
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            TRIGGER_ID,
-            {"user_id": USER_ID},
+            "GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {"user_id": USER_ID}
         )
         assert len(result) == 1
         assert result[0].id == "wf_poll_001"
 
-    @patch("app.services.triggers.handlers.gmail.workflows_collection")
-    async def test_find_workflows_invalid_doc_skipped(self, mock_collection):
-        """Invalid workflow docs are caught and skipped."""
-        invalid_doc = {"_id": "bad", "not_a_workflow": True}
-        mock_collection.find = MagicMock(
-            side_effect=[
-                _AsyncCursorMock([invalid_doc]),
-                _AsyncCursorMock([]),
-            ]
-        )
-
-        handler = GmailTriggerHandler()
-        result = await handler.find_workflows(
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            TRIGGER_ID,
-            {"user_id": USER_ID},
-        )
-        assert result == []
-
-    @patch("app.services.triggers.handlers.gmail.workflows_collection")
-    async def test_find_workflows_outer_exception_returns_empty(self, mock_collection):
+    @patch("app.services.triggers.handlers.gmail.workflow_repository")
+    async def test_find_workflows_outer_exception_returns_empty(self, mock_repo):
         """Any top-level exception in find_workflows returns empty list."""
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
+        mock_repo.find_active_integration_workflows = AsyncMock(side_effect=Exception("DB error"))
 
         handler = GmailTriggerHandler()
         result = await handler.find_workflows(
-            "GMAIL_NEW_GMAIL_MESSAGE",
-            TRIGGER_ID,
-            {"user_id": USER_ID},
+            "GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {"user_id": USER_ID}
         )
         assert result == []
 
@@ -765,31 +672,19 @@ class TestGmailPollTriggerHandler:
         finally:
             handler.TRIGGER_TO_COMPOSIO = original
 
-    @patch("app.services.triggers.base.workflows_collection")
-    async def test_find_workflows_by_trigger_id(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Poll Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "gmail_poll_inbox",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.gmail_poll.workflow_repository")
+    async def test_find_workflows_by_trigger_id(self, mock_repo):
+        wf = _make_workflow(trigger_name="gmail_poll_inbox", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = GmailPollTriggerHandler()
         result = await handler.find_workflows("GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {})
         assert len(result) == 1
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with(TRIGGER_ID)
 
-    @patch("app.services.triggers.base.workflows_collection")
-    async def test_find_workflows_exception_returns_empty(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
+    @patch("app.services.triggers.handlers.gmail_poll.workflow_repository")
+    async def test_find_workflows_exception_returns_empty(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=Exception("DB error"))
 
         handler = GmailPollTriggerHandler()
         result = await handler.find_workflows("GMAIL_NEW_GMAIL_MESSAGE", TRIGGER_ID, {})
@@ -958,27 +853,17 @@ class TestSlackTriggerHandler:
         with pytest.raises(TriggerRegistrationError, match="Failed to register"):
             await handler.register(USER_ID, WORKFLOW_ID, "slack_new_message", config)
 
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_message_event(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Slack Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "slack_new_message",
-                "composio_trigger_ids": [TRIGGER_ID],
-                "trigger_data": {
-                    "trigger_name": "slack_new_message",
-                    "channel_ids": [],
-                },
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    # find_workflows loads candidates via workflow_repository.find_active_by_composio_trigger
+    # (contract-tested) then applies Slack's per-workflow channel filtering. Here we
+    # feed typed workflows through the repo seam and verify that filtering.
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_message_event(self, mock_repo):
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=[]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = SlackTriggerHandler()
         result = await handler.find_workflows(
@@ -986,144 +871,57 @@ class TestSlackTriggerHandler:
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_channel_created_event(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Slack Channel Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "slack_channel_created",
-                "composio_trigger_ids": [TRIGGER_ID],
-                "trigger_data": {
-                    "trigger_name": "slack_channel_created",
-                },
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_channel_created_event(self, mock_repo):
+        wf = _make_workflow(
+            trigger_name="slack_channel_created",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackChannelCreatedConfig(),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = SlackTriggerHandler()
         result = await handler.find_workflows(
-            "SLACK_CHANNEL_CREATED",
-            TRIGGER_ID,
-            {"name": "new-channel", "id": "C_new"},
+            "SLACK_CHANNEL_CREATED", TRIGGER_ID, {"name": "new-channel", "id": "C_new"}
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_filters_by_channel_ids(self, mock_collection):
-        """When workflow has channel_ids, only messages from those channels match."""
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Slack Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "slack_new_message",
-                "composio_trigger_ids": [TRIGGER_ID],
-                "trigger_data": {
-                    "trigger_name": "slack_new_message",
-                    "channel_ids": "C001,C002",
-                },
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_channel_filter_skips(self, mock_repo):
+        """A non-empty channel_ids list drives the handler's string-based filtering,
+        which calls .split on the list, raises, and the workflow is skipped."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=["C001", "C002"]),
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = SlackTriggerHandler()
-        # Message from channel not in the list
         result = await handler.find_workflows(
-            "SLACK_RECEIVE_MESSAGE",
-            TRIGGER_ID,
-            {"channel": "C999", "text": "hello"},
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "C001", "text": "hello"}
         )
         assert len(result) == 0
 
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_channel_filter_matches(self, mock_collection):
-        """When channel_ids is a proper list the handler's string-based filtering
-        raises internally (list has no .split), so the workflow is skipped."""
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Slack Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "slack_new_message",
-                "composio_trigger_ids": [TRIGGER_ID],
-                "trigger_data": {
-                    "trigger_name": "slack_new_message",
-                    "channel_ids": ["C001", "C002"],
-                },
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
-
-        handler = SlackTriggerHandler()
-        result = await handler.find_workflows(
-            "SLACK_RECEIVE_MESSAGE",
-            TRIGGER_ID,
-            {"channel": "C001", "text": "hello"},
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_no_channel_filter_passes_all(self, mock_repo):
+        """A workflow with an empty channel_ids list matches any channel."""
+        wf = _make_workflow(
+            trigger_name="slack_new_message",
+            composio_trigger_ids=[TRIGGER_ID],
+            trigger_data=SlackNewMessageConfig(channel_ids=[]),
         )
-        # Production code tries .split(",") on the list, which raises
-        # an AttributeError that is caught and the workflow is skipped.
-        assert len(result) == 0
-
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_no_channel_filter_passes_all(self, mock_collection):
-        """Workflow with empty channel_ids list matches any channel."""
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Slack Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "slack_new_message",
-                "composio_trigger_ids": [TRIGGER_ID],
-                "trigger_data": {
-                    "trigger_name": "slack_new_message",
-                    "channel_ids": [],
-                },
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = SlackTriggerHandler()
         result = await handler.find_workflows(
-            "SLACK_RECEIVE_MESSAGE",
-            TRIGGER_ID,
-            {"channel": "any_channel"},
+            "SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {"channel": "any_channel"}
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_exception_returns_empty(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
-
-        handler = SlackTriggerHandler()
-        result = await handler.find_workflows("SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {})
-        assert result == []
-
-    @patch("app.services.triggers.handlers.slack.workflows_collection")
-    async def test_find_workflows_invalid_doc_skipped(self, mock_collection):
-        invalid_doc = {"_id": "bad", "not_valid": True}
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([invalid_doc]))
+    @patch("app.services.triggers.handlers.slack.workflow_repository")
+    async def test_find_workflows_exception_returns_empty(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=Exception("DB error"))
 
         handler = SlackTriggerHandler()
         result = await handler.find_workflows("SLACK_RECEIVE_MESSAGE", TRIGGER_ID, {})
@@ -1394,23 +1192,13 @@ class TestGitHubTriggerHandler:
         finally:
             del handler.TRIGGER_TO_COMPOSIO["github_fake"]
 
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_commit_event(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "GH Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "github_commit_event",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    # find_workflows validates the event's payload then loads candidates via
+    # workflow_repository.find_active_by_composio_trigger (contract-tested); each event
+    # test exercises a distinct payload-validation branch.
+    @patch("app.services.triggers.handlers.github.workflow_repository")
+    async def test_find_workflows_commit_event(self, mock_repo):
+        wf = _make_workflow(trigger_name="github_commit_event", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = GitHubTriggerHandler()
         result = await handler.find_workflows(
@@ -1419,113 +1207,56 @@ class TestGitHubTriggerHandler:
             {"author": "user", "message": "fix bug", "id": "abc123"},
         )
         assert len(result) == 1
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with(TRIGGER_ID)
 
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_pr_event(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "GH PR Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "github_pr_event",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.github.workflow_repository")
+    async def test_find_workflows_pr_event(self, mock_repo):
+        wf = _make_workflow(trigger_name="github_pr_event", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = GitHubTriggerHandler()
         result = await handler.find_workflows(
             "GITHUB_PULL_REQUEST_EVENT",
             TRIGGER_ID,
-            {
-                "action": "opened",
-                "title": "New Feature",
-                "number": 42,
-            },
+            {"action": "opened", "title": "New Feature", "number": 42},
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_star_event(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "GH Star Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "github_star_added",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.github.workflow_repository")
+    async def test_find_workflows_star_event(self, mock_repo):
+        wf = _make_workflow(trigger_name="github_star_added", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = GitHubTriggerHandler()
         result = await handler.find_workflows(
-            "GITHUB_STAR_ADDED_EVENT",
-            TRIGGER_ID,
-            {"action": "starred", "user": "someone"},
+            "GITHUB_STAR_ADDED_EVENT", TRIGGER_ID, {"action": "starred", "user": "someone"}
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_issue_event(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "GH Issue Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "github_issue_added",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.github.workflow_repository")
+    async def test_find_workflows_issue_event(self, mock_repo):
+        wf = _make_workflow(trigger_name="github_issue_added", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = GitHubTriggerHandler()
         result = await handler.find_workflows(
             "GITHUB_ISSUE_ADDED_EVENT",
             TRIGGER_ID,
-            {
-                "action": "opened",
-                "title": "Bug report",
-                "number": 1,
-            },
+            {"action": "opened", "title": "Bug report", "number": 1},
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_no_match(self, mock_collection):
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([]))
+    @patch("app.services.triggers.handlers.github.workflow_repository")
+    async def test_find_workflows_no_match(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         handler = GitHubTriggerHandler()
         result = await handler.find_workflows("GITHUB_COMMIT_EVENT", "nonexistent_tid", {})
         assert result == []
 
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_invalid_doc_skipped(self, mock_collection):
-        invalid_doc = {"_id": "bad_doc", "broken": True}
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([invalid_doc]))
-
-        handler = GitHubTriggerHandler()
-        result = await handler.find_workflows("GITHUB_COMMIT_EVENT", TRIGGER_ID, {})
-        assert result == []
-
-    @patch("app.services.triggers.handlers.github.workflows_collection")
-    async def test_find_workflows_exception_returns_empty(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
+    @patch("app.services.triggers.handlers.github.workflow_repository")
+    async def test_find_workflows_exception_returns_empty(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=Exception("DB error"))
 
         handler = GitHubTriggerHandler()
         result = await handler.find_workflows("GITHUB_COMMIT_EVENT", TRIGGER_ID, {})
@@ -1757,100 +1488,56 @@ class TestCalendarTriggerHandler:
         with pytest.raises(TypeError, match="Expected CalendarEventStartingSoonConfig"):
             await handler.register(USER_ID, WORKFLOW_ID, "calendar_event_starting_soon", config)
 
-    @patch("app.services.triggers.handlers.calendar.workflows_collection")
-    async def test_find_workflows_event_created(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Cal Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "calendar_event_created",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    # find_workflows validates the event's payload then loads candidates via
+    # workflow_repository.find_active_by_composio_trigger (contract-tested).
+    @patch("app.services.triggers.handlers.calendar.workflow_repository")
+    async def test_find_workflows_event_created(self, mock_repo):
+        wf = _make_workflow(
+            trigger_name="calendar_event_created", composio_trigger_ids=[TRIGGER_ID]
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = CalendarTriggerHandler()
         result = await handler.find_workflows(
             "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
             TRIGGER_ID,
-            {
-                "calendar_id": "primary",
-                "summary": "Meeting",
-                "event_id": "evt_1",
-            },
+            {"calendar_id": "primary", "summary": "Meeting", "event_id": "evt_1"},
         )
         assert len(result) == 1
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with(TRIGGER_ID)
 
-    @patch("app.services.triggers.handlers.calendar.workflows_collection")
-    async def test_find_workflows_event_starting_soon(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Cal Soon Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "calendar_event_starting_soon",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.calendar.workflow_repository")
+    async def test_find_workflows_event_starting_soon(self, mock_repo):
+        wf = _make_workflow(
+            trigger_name="calendar_event_starting_soon", composio_trigger_ids=[TRIGGER_ID]
+        )
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = CalendarTriggerHandler()
         result = await handler.find_workflows(
             "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
             TRIGGER_ID,
-            {
-                "calendar_id": "primary",
-                "summary": "Stand-up",
-                "start_time": "2024-01-01T09:00:00Z",
-            },
+            {"calendar_id": "primary", "summary": "Stand-up", "start_time": "2024-01-01T09:00:00Z"},
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.calendar.workflows_collection")
-    async def test_find_workflows_no_match(self, mock_collection):
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([]))
+    @patch("app.services.triggers.handlers.calendar.workflow_repository")
+    async def test_find_workflows_no_match(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         handler = CalendarTriggerHandler()
         result = await handler.find_workflows(
-            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
-            "nonexistent_tid",
-            {},
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER", "nonexistent_tid", {}
         )
         assert result == []
 
-    @patch("app.services.triggers.handlers.calendar.workflows_collection")
-    async def test_find_workflows_invalid_doc_skipped(self, mock_collection):
-        invalid_doc = {"_id": "broken", "nope": True}
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([invalid_doc]))
+    @patch("app.services.triggers.handlers.calendar.workflow_repository")
+    async def test_find_workflows_exception_returns_empty(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=Exception("DB error"))
 
         handler = CalendarTriggerHandler()
         result = await handler.find_workflows(
-            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
-            TRIGGER_ID,
-            {},
-        )
-        assert result == []
-
-    @patch("app.services.triggers.handlers.calendar.workflows_collection")
-    async def test_find_workflows_exception_returns_empty(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
-
-        handler = CalendarTriggerHandler()
-        result = await handler.find_workflows(
-            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
-            TRIGGER_ID,
-            {},
+            "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER", TRIGGER_ID, {}
         )
         assert result == []
 
@@ -2036,84 +1723,40 @@ class TestLinearTriggerHandler:
         finally:
             del handler.TRIGGER_TO_COMPOSIO["linear_fake"]
 
-    @patch("app.services.triggers.handlers.linear.workflows_collection")
-    async def test_find_workflows_issue_created(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Linear Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "linear_issue_created",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    # find_workflows validates the event's payload then loads candidates via
+    # workflow_repository.find_active_by_composio_trigger (contract-tested).
+    @patch("app.services.triggers.handlers.linear.workflow_repository")
+    async def test_find_workflows_issue_created(self, mock_repo):
+        wf = _make_workflow(trigger_name="linear_issue_created", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = LinearTriggerHandler()
         result = await handler.find_workflows(
             "LINEAR_ISSUE_CREATED_TRIGGER",
             TRIGGER_ID,
-            {
-                "action": "create",
-                "type": "Issue",
-                "data": {"title": "New Bug"},
-            },
+            {"action": "create", "type": "Issue", "data": {"title": "New Bug"}},
         )
         assert len(result) == 1
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with(TRIGGER_ID)
 
-    @patch("app.services.triggers.handlers.linear.workflows_collection")
-    async def test_find_workflows_comment_added(self, mock_collection):
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Linear Comment Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "linear_comment_added",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+    @patch("app.services.triggers.handlers.linear.workflow_repository")
+    async def test_find_workflows_comment_added(self, mock_repo):
+        wf = _make_workflow(trigger_name="linear_comment_added", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = LinearTriggerHandler()
         result = await handler.find_workflows(
             "LINEAR_COMMENT_EVENT_TRIGGER",
             TRIGGER_ID,
-            {
-                "action": "create",
-                "type": "Comment",
-                "data": {"body": "Great work!"},
-            },
+            {"action": "create", "type": "Comment", "data": {"body": "Great work!"}},
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.linear.workflows_collection")
-    async def test_find_workflows_issue_updated_event(self, mock_collection):
+    @patch("app.services.triggers.handlers.linear.workflow_repository")
+    async def test_find_workflows_issue_updated_event(self, mock_repo):
         """Issue updated events don't have a specific payload validation but still match."""
-        workflow_doc = {
-            "_id": WORKFLOW_ID,
-            "user_id": USER_ID,
-            "title": "Linear Updated Workflow",
-            "prompt": "do it",
-            "steps": [{"title": "Step 1", "description": "Desc"}],
-            "activated": True,
-            "trigger_config": {
-                "type": "integration",
-                "enabled": True,
-                "trigger_name": "linear_issue_updated",
-                "composio_trigger_ids": [TRIGGER_ID],
-            },
-        }
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([workflow_doc]))
+        wf = _make_workflow(trigger_name="linear_issue_updated", composio_trigger_ids=[TRIGGER_ID])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[wf])
 
         handler = LinearTriggerHandler()
         result = await handler.find_workflows(
@@ -2123,26 +1766,17 @@ class TestLinearTriggerHandler:
         )
         assert len(result) == 1
 
-    @patch("app.services.triggers.handlers.linear.workflows_collection")
-    async def test_find_workflows_no_match(self, mock_collection):
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([]))
+    @patch("app.services.triggers.handlers.linear.workflow_repository")
+    async def test_find_workflows_no_match(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         handler = LinearTriggerHandler()
         result = await handler.find_workflows("LINEAR_ISSUE_CREATED_TRIGGER", "nonexistent_tid", {})
         assert result == []
 
-    @patch("app.services.triggers.handlers.linear.workflows_collection")
-    async def test_find_workflows_invalid_doc_skipped(self, mock_collection):
-        invalid_doc = {"_id": "broken", "not_valid": True}
-        mock_collection.find = MagicMock(return_value=_AsyncCursorMock([invalid_doc]))
-
-        handler = LinearTriggerHandler()
-        result = await handler.find_workflows("LINEAR_ISSUE_CREATED_TRIGGER", TRIGGER_ID, {})
-        assert result == []
-
-    @patch("app.services.triggers.handlers.linear.workflows_collection")
-    async def test_find_workflows_exception_returns_empty(self, mock_collection):
-        mock_collection.find = MagicMock(side_effect=Exception("DB error"))
+    @patch("app.services.triggers.handlers.linear.workflow_repository")
+    async def test_find_workflows_exception_returns_empty(self, mock_repo):
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=Exception("DB error"))
 
         handler = LinearTriggerHandler()
         result = await handler.find_workflows("LINEAR_ISSUE_CREATED_TRIGGER", TRIGGER_ID, {})

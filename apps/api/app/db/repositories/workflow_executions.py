@@ -1,0 +1,67 @@
+"""Repository for the workflow_executions collection.
+
+Identity is the business key ``execution_id`` (Mongo's ``_id`` is an incidental
+ObjectId). A global repository: completion is keyed by ``execution_id`` alone
+with no user in context, while history listing filters by workflow + user.
+"""
+
+from datetime import UTC, datetime
+
+from app.db.repositories.base import MongoRepository
+from app.models.workflow_execution_models import (
+    WorkflowExecutionDocument,
+    WorkflowExecutionUpdate,
+)
+
+
+class WorkflowExecutionsRepository(
+    MongoRepository[WorkflowExecutionDocument, WorkflowExecutionUpdate]
+):
+    collection_name = "workflow_executions"
+    document_model = WorkflowExecutionDocument
+    update_model = WorkflowExecutionUpdate
+    uses_object_id = True
+    identity_field = "execution_id"
+    cache_policy = None
+
+    async def complete(
+        self,
+        execution_id: str,
+        *,
+        status: str,
+        summary: str | None = None,
+        error_message: str | None = None,
+        conversation_id: str | None = None,
+    ) -> WorkflowExecutionDocument | None:
+        """Mark an execution finished, computing its duration from ``started_at``.
+        Returns the updated document, or ``None`` if the execution was not found."""
+        execution = await self.get(execution_id)
+        if execution is None:
+            return None
+
+        completed_at = datetime.now(UTC)
+        fields: dict[str, object] = {
+            "status": status,
+            "completed_at": completed_at,
+            "duration_seconds": (completed_at - execution.started_at).total_seconds(),
+        }
+        if summary:
+            fields["summary"] = summary
+        if error_message:
+            fields["error_message"] = error_message
+        if conversation_id:
+            fields["conversation_id"] = conversation_id
+
+        return await self.update(execution_id, WorkflowExecutionUpdate.model_validate(fields))
+
+    async def list_for_workflow(
+        self, workflow_id: str, user_id: str, *, limit: int, offset: int
+    ) -> tuple[list[WorkflowExecutionDocument], int]:
+        """A page of a workflow's executions (most recent first) plus the total."""
+        filter_: dict[str, object] = {"workflow_id": workflow_id, "user_id": user_id}
+        total = await self._count(filter_)
+        executions = await self._find(filter_, sort=[("started_at", -1)], limit=limit, skip=offset)
+        return executions, total
+
+
+workflow_executions_repository = WorkflowExecutionsRepository()

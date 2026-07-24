@@ -10,7 +10,7 @@ Handles all calendar-specific trigger logic including:
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import (
     GoogleCalendarEventCreatedPayload,
     GoogleCalendarEventStartingSoonPayload,
@@ -19,7 +19,7 @@ from app.models.trigger_configs import (
     CalendarEventCreatedConfig,
     CalendarEventStartingSoonConfig,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import TriggerContext, log
@@ -154,13 +154,6 @@ class CalendarTriggerHandler(TriggerHandler):
         """Find workflows matching a calendar trigger event."""
         log.set_ns("trigger", integration_id="google_calendar", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
             # optional: validate payload for calendar events
             # Validate payload based on event type
             if "event_created" in event_type.lower():
@@ -178,22 +171,8 @@ class CalendarTriggerHandler(TriggerHandler):
                         f"{LogTag.TRIGGER} Calendar event starting soon payload validation failed: {e}"
                     )
 
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-
-                except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
-                    continue
-
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
@@ -209,7 +188,7 @@ class CalendarTriggerHandler(TriggerHandler):
             # Import here to avoid circular imports
             from app.services import calendar_service
 
-            calendars = calendar_service.list_calendars(user_id)
+            calendars = await calendar_service.list_calendars(user_id)
 
             if isinstance(calendars, dict) and "items" in calendars:
                 return [cal.get("id", "primary") for cal in calendars["items"] if cal.get("id")]

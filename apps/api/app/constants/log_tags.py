@@ -57,3 +57,4 @@ class LogTag:
     MONGO: Final[str] = "[MONGO]"  # db/mongodb
     CHROMA: Final[str] = "[CHROMA]"  # db/chroma (vector store)
     STARTUP: Final[str] = "[STARTUP]"  # app boot / provider registration / lifespan
+    DEV: Final[str] = "[DEV]"  # dev-only tooling (identity minting, seeding)

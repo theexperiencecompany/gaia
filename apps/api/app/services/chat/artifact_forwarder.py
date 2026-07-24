@@ -30,8 +30,8 @@ from app.constants.artifacts import (
 )
 from app.constants.outbound import OUTBOUND_QUEUES
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import conversations_collection
 from app.db.redis import redis_cache
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.chat.artifacts_registry import (
@@ -239,15 +239,13 @@ class ArtifactForwarder:
             return
         try:
             for attempt in range(ARTIFACT_PERSIST_MAX_ATTEMPTS):
-                result = await conversations_collection.update_one(
-                    {
-                        "user_id": self.user_id,
-                        "conversation_id": self.conversation_id,
-                        "messages.message_id": self.bot_message_id,
-                    },
-                    {"$push": {"messages.$.tool_data": entry}},
+                matched = await conversation_repository.append_message_tool_data(
+                    self.conversation_id,
+                    user_id=self.user_id,
+                    message_id=self.bot_message_id,
+                    entries=[entry],
                 )
-                if result.matched_count:
+                if matched:
                     return
                 await asyncio.sleep(ARTIFACT_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
             log.warning(

@@ -26,36 +26,26 @@ def extract_settings_validator(file_path):
                     value = keyword.value
 
                     if key == "name":
-                        if isinstance(value, ast.Constant):  # Python 3.8+
+                        if isinstance(value, ast.Constant):
                             group["name"] = value.value
-                        elif isinstance(value, ast.Str):
-                            group["name"] = value.s
                     elif key == "description":
                         if isinstance(value, ast.Constant):
                             group["description"] = value.value
-                        elif isinstance(value, ast.Str):
-                            group["description"] = value.s
                     elif key == "affected_features":
                         if isinstance(value, ast.Constant):
                             group["affectedFeatures"] = value.value
-                        elif isinstance(value, ast.Str):
-                            group["affectedFeatures"] = value.s
                     elif key == "required_in_prod":
-                        if isinstance(value, ast.Constant) or isinstance(value, ast.NameConstant):
+                        if isinstance(value, ast.Constant):
                             group["requiredInProd"] = value.value
                     elif key == "all_required":
-                        if isinstance(value, ast.Constant) or isinstance(value, ast.NameConstant):
+                        if isinstance(value, ast.Constant):
                             group["allRequired"] = value.value
                     elif key == "docs_url":
                         if isinstance(value, ast.Constant):
                             group["docsUrl"] = value.value
-                        elif isinstance(value, ast.Str):
-                            group["docsUrl"] = value.s
                     elif key == "alternative_group":
                         if isinstance(value, ast.Constant):
                             group["alternativeGroup"] = value.value
-                        elif isinstance(value, ast.Str):
-                            group["alternativeGroup"] = value.s
                     elif key == "keys":
                         # List of strings
                         if isinstance(value, ast.List):
@@ -63,8 +53,6 @@ def extract_settings_validator(file_path):
                             for elt in value.elts:
                                 if isinstance(elt, ast.Constant):
                                     keys.append(elt.value)
-                                elif isinstance(elt, ast.Str):
-                                    keys.append(elt.s)
                             group["_keys"] = keys
 
                 groups.append(group)
@@ -118,8 +106,6 @@ def extract_settings(file_path):
                                     default_val = body_item.value.value
                                     if default_val is None:
                                         is_optional = True
-                                elif isinstance(body_item.value, ast.Str):
-                                    default_val = body_item.value.s
                                 # If default is not None, effectively optional (has fallback)
                                 # But we want to know if USER INPUT is required.
                                 # If default is "", maybe required?

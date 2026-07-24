@@ -1,4 +1,5 @@
 import { apiService } from "@/lib/api/service";
+import { sanitizeRedirectUrl } from "@/lib/url-safety";
 import type { CommunityWorkflowsResponse } from "@/types/features/workflowTypes";
 
 import type {
@@ -12,32 +13,6 @@ import type {
   MyIntegrationsResponse,
   PublicIntegrationResponse,
 } from "../types";
-
-/**
- * Sanitizes a redirect URL to prevent XSS attacks.
- * Only allows http: and https: protocols.
- * Blocks dangerous schemes like javascript:, data:, vbscript:, etc.
- *
- * @param url - The URL to sanitize
- * @returns The sanitized URL if safe, null if dangerous
- */
-function sanitizeRedirectUrl(url: string): string | null {
-  try {
-    const parsed = new URL(url);
-
-    // Only allow http and https protocols
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      console.warn(`Blocked redirect to unsafe URL scheme: ${parsed.protocol}`);
-      return null;
-    }
-
-    return url;
-  } catch {
-    // Invalid URL format
-    console.warn(`Blocked redirect to malformed URL: ${url}`);
-    return null;
-  }
-}
 
 export interface IntegrationConfigResponse {
   integrations: Integration[];

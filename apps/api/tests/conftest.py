@@ -26,6 +26,11 @@ from app.models.payment_models import PlanType
 # ---------------------------------------------------------------------------
 
 os.environ["ENV"] = "development"
+# The unit suite must be deterministic regardless of a developer's dev-bypass .env.
+# Force an empty (falsy) value rather than popping: an empty value keeps the
+# prod-guard off, and because the key is now present, load_dotenv(override=False)
+# — called at settings import — will not re-inject a value from the developer's .env.
+os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
@@ -38,6 +43,14 @@ os.environ.setdefault(
     "MCP_ENCRYPTION_KEY",
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
+os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+
+# Imported AFTER the env setup above, not with the top-level imports: document
+# models now extend MongoDocument, so importing any of them pulls in
+# app.db.repositories.base -> app.db.redis -> app.config.settings, which
+# instantiates settings at import time. Without ENV set first, that resolves to
+# ProductionSettings and fails validation (CI has no production keys).
+from app.models.payment_models import PlanType  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy

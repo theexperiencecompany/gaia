@@ -7,6 +7,7 @@ LangChain adapter schema sanitization, and resilient adapter retry/skip logic.
 """
 
 import asyncio
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 import json
@@ -18,17 +19,18 @@ from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
 import pytest
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
+from app.models.device import Device
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.services.mcp.mcp_client import (
     DCRNotSupportedException,
     MCPClient,
     StepUpAuthRequired,
+    _parse_device_server_url,
     get_mcp_client,
 )
 from app.services.mcp.mcp_client_pool import MCPClientPool, PooledClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import MCPToolsStore, _format_tools
 from app.services.mcp.oauth_discovery import discover_oauth_config, probe_mcp_connection
 from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 from app.services.mcp.token_management import (
@@ -202,20 +204,15 @@ class TestMCPClientProbeConnection:
 class TestMCPClientUpdateIntegrationAuthStatus:
     async def test_updates_mongodb(self):
         client = MCPClient(user_id=USER_ID)
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        with patch("app.services.mcp.mcp_client.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock(return_value=mock_result)
+        with patch("app.services.mcp.mcp_client.integration_repository") as mock_repo:
+            mock_repo.set_mcp_auth = AsyncMock(return_value=True)
             await client.update_integration_auth_status(INTEGRATION_ID, True, "oauth")
-            mock_col.update_one.assert_awaited_once()
-            call_args = mock_col.update_one.call_args
-            assert call_args[0][0] == {"integration_id": INTEGRATION_ID}
-            assert call_args[0][1]["$set"]["mcp_config.requires_auth"] is True
+            mock_repo.set_mcp_auth.assert_awaited_once_with(INTEGRATION_ID, True, "oauth")
 
     async def test_handles_exception_gracefully(self):
         client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock(side_effect=Exception("DB failure"))
+        with patch("app.services.mcp.mcp_client.integration_repository") as mock_repo:
+            mock_repo.set_mcp_auth = AsyncMock(side_effect=Exception("DB failure"))
             # Should not raise
             await client.update_integration_auth_status(INTEGRATION_ID, False, "none")
 
@@ -334,11 +331,20 @@ class TestMCPClientConnect:
 
 @pytest.mark.unit
 class TestMCPClientDoConnect:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.mcp_client.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     @patch("app.services.mcp.mcp_client.IntegrationResolver")
     @patch("app.services.mcp.mcp_client.BaseMCPClient")
     @patch("app.services.mcp.mcp_client.ResilientLangChainAdapter")
     @patch("app.services.mcp.mcp_client.wrap_tools_with_null_filter")
-    @patch("app.services.mcp.mcp_client.get_mcp_tools_store")
+    @patch("app.services.mcp.mcp_client.store_mcp_tools", new_callable=AsyncMock)
     @patch(
         "app.services.mcp.mcp_client.update_user_integration_status",
         new_callable=AsyncMock,
@@ -346,7 +352,7 @@ class TestMCPClientDoConnect:
     async def test_successful_connect(
         self,
         mock_update_status,
-        mock_get_store,
+        mock_store_tools,
         mock_wrap,
         mock_adapter_cls,
         mock_base_client_cls,
@@ -371,10 +377,6 @@ class TestMCPClientDoConnect:
 
         # Wrap returns same tools
         mock_wrap.return_value = tools
-
-        # Tools store
-        mock_store = AsyncMock()
-        mock_get_store.return_value = mock_store
 
         client = MCPClient(user_id=USER_ID)
         client.token_store.get_bearer_token = AsyncMock(return_value=None)
@@ -482,6 +484,82 @@ class TestMCPClientDoConnect:
 
 
 @pytest.mark.unit
+class TestParseDeviceServerUrl:
+    def test_parses_device_id_and_server_key(self):
+        device_id, server_key = _parse_device_server_url("device://dev-123/filesystem")
+        assert device_id == "dev-123"
+        assert server_key == "filesystem"
+
+    def test_rejects_non_device_scheme(self):
+        with pytest.raises(ValueError, match="Not a device server URL"):
+            _parse_device_server_url("https://example.com/dev-123/filesystem")
+
+    def test_rejects_missing_server_key(self):
+        with pytest.raises(ValueError, match="Malformed device server URL"):
+            _parse_device_server_url("device://dev-123")
+
+    def test_rejects_missing_device_id(self):
+        with pytest.raises(ValueError, match="Malformed device server URL"):
+            _parse_device_server_url("device://")
+
+
+@pytest.mark.unit
+class TestMCPClientBuildDeviceClient:
+    """The hard cross-user isolation gate: a device session must never build for a device the caller does not own."""
+
+    def _device_config(self, device_id: str = "dev-123", server_key: str = "filesystem"):
+        return _make_mcp_config(server_url=f"device://{device_id}/{server_key}", transport="device")
+
+    async def test_raises_when_device_not_found(self):
+        client = MCPClient(user_id=USER_ID)
+        with patch(
+            "app.services.device.device_service.get_active_device",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            with pytest.raises(ValueError, match="not an active device owned by"):
+                await client._build_device_client(INTEGRATION_ID, self._device_config())
+
+    async def test_raises_when_device_owned_by_different_user(self):
+        """A valid, active device that simply belongs to someone else must still be rejected."""
+        client = MCPClient(user_id=USER_ID)
+        someone_elses_device = MagicMock(spec=Device)
+        someone_elses_device.user_id = "a_completely_different_user"
+        with patch(
+            "app.services.device.device_service.get_active_device",
+            new_callable=AsyncMock,
+            return_value=someone_elses_device,
+        ):
+            with pytest.raises(ValueError, match="not an active device owned by"):
+                await client._build_device_client(INTEGRATION_ID, self._device_config())
+
+    async def test_succeeds_when_device_owned_by_caller(self):
+        client = MCPClient(user_id=USER_ID)
+        own_device = MagicMock(spec=Device)
+        own_device.user_id = USER_ID
+
+        mock_session = AsyncMock()
+        with (
+            patch(
+                "app.services.device.device_service.get_active_device",
+                new_callable=AsyncMock,
+                return_value=own_device,
+            ),
+            patch("app.services.mcp.mcp_client.DeviceConnector") as mock_connector_cls,
+            patch(
+                "app.services.mcp.mcp_client.MCPSession", return_value=mock_session
+            ) as mock_session_cls,
+        ):
+            result = await client._build_device_client(INTEGRATION_ID, self._device_config())
+
+            mock_connector_cls.assert_called_once_with("dev-123", "filesystem")
+            mock_session_cls.assert_called_once()
+            mock_session.initialize.assert_awaited_once()
+            assert result.sessions[INTEGRATION_ID] is mock_session
+            assert INTEGRATION_ID in result.active_sessions
+
+
+@pytest.mark.unit
 class TestMCPClientDisconnect:
     async def test_disconnect_cleans_up(self):
         client = MCPClient(user_id=USER_ID)
@@ -494,14 +572,14 @@ class TestMCPClientDisconnect:
                 "app.services.mcp.mcp_client.delete_cache",
                 new_callable=AsyncMock,
             ),
-            patch("app.services.mcp.mcp_client.integrations_collection") as mock_col,
+            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.update_one = AsyncMock()
+            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -521,14 +599,14 @@ class TestMCPClientDisconnect:
 
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.integrations_collection") as mock_col,
+            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.update_one = AsyncMock()
+            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -543,14 +621,14 @@ class TestMCPClientDisconnect:
         client = MCPClient(user_id=USER_ID)
         with (
             patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock),
-            patch("app.services.mcp.mcp_client.integrations_collection") as mock_col,
+            patch("app.services.mcp.mcp_client.integration_repository") as mock_repo,
             patch("app.services.mcp.mcp_client.IntegrationResolver") as mock_resolver,
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
         ):
-            mock_col.update_one = AsyncMock()
+            mock_repo.clear_tools = AsyncMock()
             mock_resolver.resolve = AsyncMock(return_value=None)
             client.token_store.get_oauth_discovery = AsyncMock(return_value=None)
             client.token_store.delete_credentials = AsyncMock()
@@ -589,16 +667,15 @@ class TestMCPClientIsConnected:
 class TestMCPClientIsConnectedDb:
     async def test_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.user_integrations_collection") as mock_col:
-            mock_col.find_one = AsyncMock(
-                return_value={"user_id": USER_ID, "integration_id": INTEGRATION_ID}
-            )
+        with patch("app.services.mcp.mcp_client.user_integration_repository") as mock_repo:
+            mock_repo.is_connected = AsyncMock(return_value=True)
             assert await client.is_connected_db(INTEGRATION_ID) is True
+            mock_repo.is_connected.assert_awaited_once_with(USER_ID, INTEGRATION_ID)
 
     async def test_not_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
-        with patch("app.services.mcp.mcp_client.user_integrations_collection") as mock_col:
-            mock_col.find_one = AsyncMock(return_value=None)
+        with patch("app.services.mcp.mcp_client.user_integration_repository") as mock_repo:
+            mock_repo.is_connected = AsyncMock(return_value=False)
             assert await client.is_connected_db(INTEGRATION_ID) is False
 
 
@@ -1754,6 +1831,15 @@ class TestDiscoverOAuthConfig:
 
 @pytest.mark.unit
 class TestProbeMcpConnection:
+    @pytest.fixture(autouse=True)
+    def _mock_ssrf_guard(self) -> Iterator[None]:
+        """Neutralize the DNS-resolving SSRF guard so tests use fake hostnames."""
+        with patch(
+            "app.services.mcp.oauth_discovery.assert_public_http_url",
+            new_callable=AsyncMock,
+        ):
+            yield
+
     async def test_auth_required(self):
         with patch(
             "app.services.mcp.oauth_discovery.extract_auth_challenge",
@@ -3084,122 +3170,63 @@ class TestMCPClientCallToolOnServerAdditional:
         assert "content" in result
 
 
-# ===========================================================================
-# MCPToolsStore Tests
-# ===========================================================================
+@pytest.mark.unit
+class TestMCPClientDoConnectSSRF:
+    """The connect path must run the real SSRF guard (no autouse mock here).
+
+    Regression fence for the connect-time DNS-rebinding re-check: a config whose
+    server_url points at the cloud-metadata / a private address must be refused
+    *before* any MCP client is constructed or any outbound connection is made.
+    """
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    async def test_private_server_url_blocked_before_connect(
+        self, mock_resolver, mock_base_client_cls
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(server_url="https://169.254.169.254/mcp")
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        client = MCPClient(user_id=USER_ID)
+
+        with pytest.raises(ValueError, match="non-public"):
+            await client._do_connect(INTEGRATION_ID)
+
+        # The guard fired first: no outbound MCP client was ever built.
+        mock_base_client_cls.assert_not_called()
+
+    @patch("app.services.mcp.mcp_client.BaseMCPClient")
+    @patch("app.services.mcp.mcp_client.IntegrationResolver")
+    async def test_loopback_server_url_blocked_before_connect(
+        self, mock_resolver, mock_base_client_cls
+    ):
+        resolved = MagicMock()
+        resolved.mcp_config = _make_mcp_config(server_url="https://127.0.0.1:8000/mcp")
+        resolved.source = "platform"
+        resolved.custom_doc = None
+        mock_resolver.resolve = AsyncMock(return_value=resolved)
+
+        client = MCPClient(user_id=USER_ID)
+
+        with pytest.raises(ValueError, match="non-public"):
+            await client._do_connect(INTEGRATION_ID)
+
+        mock_base_client_cls.assert_not_called()
 
 
 @pytest.mark.unit
-class TestMCPToolsStoreFormatTools:
-    def test_formats_tools(self):
-        tools = [
-            {"name": "  tool1  ", "description": "  desc1  "},
-            {"name": "tool2", "description": "desc2"},
-        ]
-        result = _format_tools(tools)
-        assert len(result) == 2
-        assert result[0]["name"] == "tool1"
-        assert result[0]["description"] == "desc1"
+class TestProbeMcpConnectionSSRF:
+    """probe_mcp_connection must run the real SSRF guard before probing."""
 
-    def test_filters_empty_names(self):
-        tools = [
-            {"name": "", "description": "no name"},
-            {"name": "   ", "description": "whitespace"},
-            {"name": "valid", "description": "ok"},
-        ]
-        result = _format_tools(tools)
-        assert len(result) == 1
-        assert result[0]["name"] == "valid"
+    @patch("app.services.mcp.oauth_discovery.extract_auth_challenge", new_callable=AsyncMock)
+    async def test_private_url_is_refused_without_probing(self, mock_extract):
+        result = await probe_mcp_connection("https://169.254.169.254/mcp")
 
-    def test_handles_missing_fields(self):
-        tools = [
-            {"name": "tool1"},
-            {"description": "no name"},
-        ]
-        result = _format_tools(tools)
-        assert len(result) == 1
-        assert result[0]["description"] == ""
-
-
-@pytest.mark.unit
-class TestMCPToolsStoreStore:
-    async def test_store_tools_success(self):
-        store = MCPToolsStore()
-        tools = [{"name": "tool1", "description": "desc"}]
-
-        with (
-            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
-            patch(
-                "app.services.mcp.mcp_tools_store.delete_cache",
-                new_callable=AsyncMock,
-            ),
-        ):
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("int1", tools)
-            mock_col.update_one.assert_awaited_once()
-
-    async def test_store_tools_skips_empty(self):
-        store = MCPToolsStore()
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("int1", [])
-            mock_col.update_one.assert_not_awaited()
-
-    async def test_store_tools_skips_after_format_empty(self):
-        store = MCPToolsStore()
-        tools = [{"name": "", "description": "no name"}]
-        with patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col:
-            mock_col.update_one = AsyncMock()
-            await store.store_tools("int1", tools)
-            mock_col.update_one.assert_not_awaited()
-
-
-@pytest.mark.unit
-class TestMCPToolsStoreGetAll:
-    async def test_get_all_tools_from_cache(self):
-        store = MCPToolsStore()
-        cached = {"int1": [{"name": "t1"}]}
-        with patch(
-            "app.services.mcp.mcp_tools_store.get_cache",
-            new_callable=AsyncMock,
-            return_value=cached,
-        ):
-            result = await store.get_all_mcp_tools()
-        assert result == cached
-
-    async def test_get_all_tools_from_db(self):
-        store = MCPToolsStore()
-
-        docs = [
-            {
-                "integration_id": "int1",
-                "tools": [{"name": "t1", "description": "d"}],
-                "name": "Integration 1",
-                "icon_url": "https://ex.com/icon.png",
-            },
-        ]
-
-        # Build an async iterator for `async for doc in cursor:`
-        async def _aiter():
-            for doc in docs:
-                yield doc
-
-        mock_cursor = _aiter()
-
-        with (
-            patch(
-                "app.services.mcp.mcp_tools_store.get_cache",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch("app.services.mcp.mcp_tools_store.integrations_collection") as mock_col,
-            patch(
-                "app.services.mcp.mcp_tools_store.set_cache",
-                new_callable=AsyncMock,
-            ),
-        ):
-            mock_col.find.return_value = mock_cursor
-            result = await store.get_all_mcp_tools()
-
-        assert "int1" in result
-        assert result["int1"]["name"] == "Integration 1"
+        # The guard rejected it: surfaced as an error, and no outbound probe ran.
+        assert result["auth_type"] == "unknown"
+        assert result["requires_auth"] is False
+        assert "error" in result
+        mock_extract.assert_not_awaited()

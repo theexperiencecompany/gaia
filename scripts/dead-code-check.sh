@@ -191,14 +191,14 @@ run_vulture() {
 run_knip() {
   print_section "TypeScript (knip)"
 
-  if ! command -v npx &>/dev/null; then
-    echo -e "  ${DIM}npx not found, skipping TypeScript check.${RESET}"
+  if ! command -v pnpm &>/dev/null; then
+    echo -e "  ${DIM}pnpm not found, skipping TypeScript check.${RESET}"
     echo ""
     return
   fi
 
   local raw_output
-  raw_output=$(npx knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
+  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"
@@ -261,7 +261,20 @@ fi
 
 echo "════════════════════════════════════════════════════════"
 if $FOUND_ISSUES && $STRICT; then
-  echo -e "${RED}Dead code found. Fix the issues above or update whitelists.${RESET}"
+  echo -e "${RED}${BOLD}Dead-code gate FAILED.${RESET}"
+  echo ""
+  echo -e "${DIM}Why: unused functions, classes, files, and exports rot — they mislead"
+  echo -e "readers, break under refactors no one exercises, and hide what is really used.${RESET}"
+  echo ""
+  echo -e "Fix: for each item listed above, delete the unused code and every reference"
+  echo -e "to it (imports, re-exports, tests). Do not comment it out or keep it"
+  echo -e "\"just in case\". If a symbol is genuinely used only via dynamic dispatch or a"
+  echo -e "framework entrypoint the scanner cannot see, register it in the config so the"
+  echo -e "scanner stops flagging it — TS/knip: config/knip.config.ts; Python/vulture:"
+  echo -e "the [tool.vulture] ignore_names / ignore_decorators lists in ./pyproject.toml"
+  echo -e "(add a comment saying why). Never widen the config to silence real dead code."
+  echo ""
+  echo -e "Rule: .claude/rules/general.md § \"Dead Code\"."
   exit 1
 elif $FOUND_ISSUES; then
   echo -e "${YELLOW}Dead code found (warning only). Use --strict to enforce.${RESET}"

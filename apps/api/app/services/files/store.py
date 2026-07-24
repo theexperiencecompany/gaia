@@ -2,7 +2,7 @@
 
 Three backends, one per concern:
 - Cloudinary — the durable blob copy.
-- MongoDB `files_collection` — authoritative file metadata + summary.
+- MongoDB (via `file_repository`) — authoritative file metadata + summary.
 - ChromaDB `documents` — the vector index powering `search_uploaded_files`.
 
 ChromaDB writes are best-effort: a failure degrades search but must never fail
@@ -20,7 +20,8 @@ from langchain_core.documents import Document
 
 from app.constants.files import CHROMA_DOCUMENTS_COLLECTION
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import files_collection
+from app.db.repositories.files import file_repository
+from app.models.files_models import FileDocument
 from app.services.files.summaries import GeneratedSummary
 from shared.py.wide_events import log
 
@@ -51,11 +52,9 @@ def destroy_in_cloudinary(public_id: str) -> None:
         log.error(f"[files] cloudinary delete failed: {e!s}", exc_info=True)
 
 
-async def insert_metadata(metadata: dict) -> None:
-    """Persist a file's metadata document; raise if the insert is rejected."""
-    result = await files_collection.insert_one(document=metadata)
-    if not result.inserted_id:
-        raise HTTPException(status_code=500, detail="Failed to store file metadata")
+async def insert_metadata(document: FileDocument) -> None:
+    """Persist a file's metadata document."""
+    await file_repository.create(document)
 
 
 def _build_index_documents(

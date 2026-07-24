@@ -10,12 +10,11 @@ execution pipeline (trigger → webhook → queue → agent) handles them with n
 """
 
 from collections.abc import Callable
-from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionStyle,
@@ -88,9 +87,7 @@ async def provision_system_workflows(
 
     for key, factory in entries:
         # Idempotency: skip if this key already exists for this user
-        existing = await workflows_collection.find_one(
-            {"user_id": user_id, "system_workflow_key": key, "is_system_workflow": True}
-        )
+        existing = await workflow_repository.find_system_workflow(user_id, key)
         if existing:
             log.info(
                 f"{LogTag.WORKFLOW} System workflow '{key}' already exists for user {user_id}, skipping"
@@ -202,13 +199,11 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
         user_id=user_id,
         workflow_id=workflow_id,
     )
-    existing = await workflows_collection.find_one(
-        {"_id": workflow_id, "user_id": user_id, "is_system_workflow": True}
-    )
+    existing = await workflow_repository.get_system_workflow_for_user(workflow_id, user_id)
     if not existing:
         return False
 
-    key: str | None = existing.get("system_workflow_key")
+    key: str | None = existing.system_workflow_key
     factory = SYSTEM_WORKFLOW_REGISTRY.get(key) if key else None
     if not factory:
         log.warning(
@@ -219,10 +214,8 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     request = factory()
     trigger_config = ensure_trigger_config_object(request.trigger_config)
 
-    old_trigger_ids: list[str] = (
-        existing.get("trigger_config", {}).get("composio_trigger_ids") or []
-    )
-    trigger_name: str | None = existing.get("trigger_config", {}).get("trigger_name")
+    old_trigger_ids: list[str] = existing.trigger_config.composio_trigger_ids or []
+    trigger_name: str | None = existing.trigger_config.trigger_name
 
     # Register fresh triggers FIRST (old still active if this fails)
     new_trigger_ids: list[str] = []
@@ -262,22 +255,13 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
                 f"{LogTag.WORKFLOW} Failed to unregister old triggers during reset of {workflow_id} (non-fatal): {e}"
             )
 
-    # Python mode keeps trigger_config.next_run a native datetime (BSON date),
-    # consistent with the create and re-arm paths.
-    trigger_doc = trigger_config.model_dump()
-    trigger_doc["composio_trigger_ids"] = new_trigger_ids
-
-    await workflows_collection.update_one(
-        {"_id": workflow_id},
-        {
-            "$set": {
-                "title": request.title,
-                "description": request.description,
-                "steps": [s.model_dump() for s in (request.steps or [])],
-                "trigger_config": trigger_doc,
-                "updated_at": datetime.now(UTC),
-            }
-        },
+    await workflow_repository.reset_system_workflow(
+        workflow_id,
+        title=request.title,
+        description=request.description or "",
+        steps=request.steps or [],
+        trigger_config=trigger_config,
+        composio_trigger_ids=new_trigger_ids,
     )
 
     log.info(

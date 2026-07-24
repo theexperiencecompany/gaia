@@ -317,10 +317,17 @@ class TestTodoCounts:
     """GET /api/v1/todos/counts"""
 
     async def test_counts_success(self, client: AsyncClient) -> None:
-        counts = {"inbox": 3, "today": 1, "upcoming": 2, "completed": 5, "overdue": 0}
+        from app.models.todo_models import TodoCounts
+
+        counts = TodoCounts(inbox=3, today=1, upcoming=2, completed=5, overdue=0)
         with (
             patch(
-                "app.api.v1.endpoints.todos.get_cache",
+                "app.api.v1.endpoints.todos.project_repository.get_default_inbox",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.api.v1.endpoints.todos.todo_repository.compute_counts",
                 new_callable=AsyncMock,
                 return_value=counts,
             ),
@@ -334,9 +341,9 @@ class TestTodoCounts:
     async def test_counts_service_error(self, client: AsyncClient) -> None:
         with (
             patch(
-                "app.api.v1.endpoints.todos.get_cache",
+                "app.api.v1.endpoints.todos.project_repository.get_default_inbox",
                 new_callable=AsyncMock,
-                side_effect=Exception("Redis down"),
+                side_effect=Exception("Mongo down"),
             ),
         ):
             resp = await client.get(f"{API}/todos/counts")
@@ -352,12 +359,13 @@ class TestTodoLabels:
     """GET /api/v1/todos/labels"""
 
     async def test_labels_success(self, client: AsyncClient) -> None:
-        labels = [{"name": "work", "count": 5}, {"name": "personal", "count": 3}]
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(return_value=labels)
+        from app.models.todo_models import TodoLabelCount
+
+        labels = [TodoLabelCount(name="work", count=5), TodoLabelCount(name="personal", count=3)]
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.aggregate",
-            return_value=mock_cursor,
+            "app.api.v1.endpoints.todos.todo_repository.top_labels",
+            new_callable=AsyncMock,
+            return_value=labels,
         ):
             resp = await client.get(f"{API}/todos/labels")
         assert resp.status_code == 200
@@ -538,19 +546,15 @@ class TestDeleteProject:
 class TestBulkUpdateTodos:
     """PUT /api/v1/todos/bulk
 
-    Note: PUT /todos/bulk is shadowed by PUT /todos/{todo_id} due to route
-    registration order.  The parameterised route matches first, so "bulk" is
-    treated as a todo_id.  Tests below verify the *actual* production
-    behaviour.
+    The literal /todos/bulk route is declared before /todos/{todo_id}, so it
+    reaches the bulk_update handler (not update_todo with todo_id="bulk").
     """
 
     async def test_bulk_update_success(self, client: AsyncClient) -> None:
-        # PUT /todos/bulk is intercepted by PUT /todos/{todo_id} (todo_id="bulk").
-        # Patching update_todo so the intercepting route succeeds.
         with patch(
-            "app.services.todos.todo_service.TodoService.update_todo",
+            "app.services.todos.todo_service.TodoService.bulk_update_todos",
             new_callable=AsyncMock,
-            return_value=_todo_response("bulk", title="Updated"),
+            return_value=_bulk_response(["t1", "t2"]),
         ):
             resp = await client.put(
                 f"{API}/todos/bulk",
@@ -559,26 +563,22 @@ class TestBulkUpdateTodos:
                     "updates": {"completed": True},
                 },
             )
-        # Hits update_todo route, which returns a TodoResponse
         assert resp.status_code == 200
-        assert resp.json()["id"] == "bulk"
+        body = resp.json()
+        assert body["total"] == 2
+        assert body["success"] == ["t1", "t2"]
 
     async def test_bulk_update_validation_error_empty_ids(self, client: AsyncClient) -> None:
-        # PUT /todos/bulk is intercepted by PUT /todos/{todo_id}.
-        # The body doesn't match TodoUpdateRequest validation, so 422.
+        # An empty todo_ids list violates BulkUpdateRequest (min_length=1) → 422.
         resp = await client.put(
             f"{API}/todos/bulk",
             json={"todo_ids": [], "updates": {"completed": True}},
         )
-        # Body has extra fields but TodoUpdateRequest will still parse what it can.
-        # The update_todo endpoint receives todo_id="bulk", and the body is
-        # interpreted as TodoUpdateRequest (unknown fields ignored), so it hits
-        # the service, which fails because "bulk" is not a valid todo.
-        assert resp.status_code == 500
+        assert resp.status_code == 422
 
     async def test_bulk_update_service_error(self, client: AsyncClient) -> None:
         with patch(
-            "app.services.todos.todo_service.TodoService.update_todo",
+            "app.services.todos.todo_service.TodoService.bulk_update_todos",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -643,39 +643,38 @@ class TestBulkMoveTodos:
 class TestBulkDeleteTodos:
     """DELETE /api/v1/todos/bulk
 
-    Note: DELETE /todos/bulk is shadowed by DELETE /todos/{todo_id} due to
-    route registration order.  "bulk" is treated as a todo_id.
+    The literal /todos/bulk route is declared before /todos/{todo_id}, so it
+    reaches the bulk_delete handler (not delete_todo with todo_id="bulk").
     """
 
     async def test_bulk_delete_success(self, client: AsyncClient) -> None:
-        # DELETE /todos/bulk is intercepted by DELETE /todos/{todo_id} (todo_id="bulk").
         with patch(
-            "app.services.todos.todo_service.TodoService.delete_todo",
+            "app.services.todos.todo_service.TodoService.bulk_delete_todos",
             new_callable=AsyncMock,
+            return_value=_bulk_response(["t1", "t2"]),
         ):
             resp = await client.request(
                 "DELETE",
                 f"{API}/todos/bulk",
                 json=["t1", "t2"],
             )
-        # Hits delete_todo route, which returns 204 on success
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["total"] == 2
+        assert body["success"] == ["t1", "t2"]
 
     async def test_bulk_delete_validation_error_empty(self, client: AsyncClient) -> None:
-        # DELETE /todos/bulk intercepted by DELETE /todos/{todo_id}.
-        # The delete_todo endpoint does not validate a JSON body — it just
-        # uses the path param (todo_id="bulk") and calls the service.
-        # Without a service patch, the delete_todo service call will fail.
+        # An empty body violates the Body(min_length=1) constraint → 422.
         resp = await client.request(
             "DELETE",
             f"{API}/todos/bulk",
             json=[],
         )
-        assert resp.status_code == 500
+        assert resp.status_code == 422
 
     async def test_bulk_delete_service_error(self, client: AsyncClient) -> None:
         with patch(
-            "app.services.todos.todo_service.TodoService.delete_todo",
+            "app.services.todos.todo_service.TodoService.bulk_delete_todos",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -736,40 +735,35 @@ class TestBulkCompleteTodos:
 # ===========================================================================
 
 
+def _subtask_todo(oid: str, subtasks: list[dict]):
+    """Build a TodoDocument the subtask endpoints return via the repository."""
+    from app.models.todo_models import TodoDocument
+
+    return TodoDocument.model_validate(
+        {
+            "id": oid,
+            "user_id": USER_ID,
+            "title": "Parent",
+            "priority": "none",
+            "completed": False,
+            "project_id": "proj1",
+            "subtasks": subtasks,
+            "created_at": NOW,
+            "updated_at": NOW,
+        }
+    )
+
+
 @pytest.mark.unit
 class TestCreateSubtask:
     """POST /api/v1/todos/{todo_id}/subtasks"""
 
     async def test_create_subtask_success(self, client: AsyncClient) -> None:
-        # Use a valid ObjectId hex string — the endpoint calls ObjectId(todo_id)
         valid_oid = "507f1f77bcf86cd799439011"
-        with (
-            patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
-                new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "user_id": USER_ID,
-                    "title": "Parent",
-                    "description": None,
-                    "labels": [],
-                    "due_date": None,
-                    "due_date_timezone": None,
-                    "priority": "none",
-                    "project_id": None,
-                    "completed": False,
-                    "subtasks": [{"id": "s1", "title": "Sub 1", "completed": False}],
-                    "workflow_id": None,
-                    "created_at": NOW,
-                    "updated_at": NOW,
-                    "completed_at": None,
-                    "workflow_categories": [],
-                },
-            ),
-            patch(
-                "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
-            ),
+        with patch(
+            "app.api.v1.endpoints.todos.todo_repository.add_subtask",
+            new_callable=AsyncMock,
+            return_value=_subtask_todo(valid_oid, [{"id": "s1", "title": "Sub 1"}]),
         ):
             resp = await client.post(f"{API}/todos/{valid_oid}/subtasks", json={"title": "Sub 1"})
         assert resp.status_code == 201
@@ -777,7 +771,7 @@ class TestCreateSubtask:
     async def test_create_subtask_todo_not_found(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439022"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+            "app.api.v1.endpoints.todos.todo_repository.add_subtask",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -795,7 +789,7 @@ class TestCreateSubtask:
     async def test_create_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+            "app.api.v1.endpoints.todos.todo_repository.add_subtask",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -804,43 +798,17 @@ class TestCreateSubtask:
         assert "Failed to create subtask" in resp.json()["detail"]
 
 
-# ===========================================================================
-# Update Subtask
-# ===========================================================================
-
-
 @pytest.mark.unit
 class TestUpdateSubtask:
     """PUT /api/v1/todos/{todo_id}/subtasks/{subtask_id}"""
 
     async def test_update_subtask_success(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
-        with (
-            patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
-                new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "user_id": USER_ID,
-                    "title": "Parent",
-                    "description": None,
-                    "labels": [],
-                    "due_date": None,
-                    "due_date_timezone": None,
-                    "priority": "none",
-                    "project_id": None,
-                    "completed": False,
-                    "subtasks": [{"id": "s1", "title": "Updated Sub", "completed": True}],
-                    "workflow_id": None,
-                    "created_at": NOW,
-                    "updated_at": NOW,
-                    "completed_at": None,
-                    "workflow_categories": [],
-                },
-            ),
-            patch(
-                "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
+        with patch(
+            "app.api.v1.endpoints.todos.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            return_value=_subtask_todo(
+                valid_oid, [{"id": "s1", "title": "Updated Sub", "completed": True}]
             ),
         ):
             resp = await client.put(
@@ -852,78 +820,40 @@ class TestUpdateSubtask:
     async def test_update_subtask_todo_not_found(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439022"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+            "app.api.v1.endpoints.todos.todo_repository.set_subtask_fields",
             new_callable=AsyncMock,
             return_value=None,
         ):
-            resp = await client.put(
-                f"{API}/todos/{valid_oid}/subtasks/s1",
-                json={"title": "X"},
-            )
+            resp = await client.put(f"{API}/todos/{valid_oid}/subtasks/s1", json={"title": "X"})
         assert resp.status_code == 404
 
     async def test_update_subtask_subtask_not_found(self, client: AsyncClient) -> None:
-        """When the subtask ID doesn't match any subtask in the todo, the
-        endpoint raises HTTPException(404) inside the try block, which is
-        caught by the generic `except Exception` handler and becomes 500.
-        This is the actual production behavior."""
+        """A non-matching subtask id: the doc comes back without it, the endpoint
+        raises 404 inside the try, and `except Exception` re-raises it as 500."""
         valid_oid = "507f1f77bcf86cd799439011"
-        with (
-            patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
-                new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "user_id": USER_ID,
-                    "title": "Parent",
-                    "description": None,
-                    "labels": [],
-                    "due_date": None,
-                    "due_date_timezone": None,
-                    "priority": "none",
-                    "project_id": None,
-                    "completed": False,
-                    "subtasks": [{"id": "other", "title": "Other", "completed": False}],
-                    "workflow_id": None,
-                    "created_at": NOW,
-                    "updated_at": NOW,
-                    "completed_at": None,
-                    "workflow_categories": [],
-                },
-            ),
-            patch(
-                "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
-            ),
+        with patch(
+            "app.api.v1.endpoints.todos.todo_repository.set_subtask_fields",
+            new_callable=AsyncMock,
+            return_value=_subtask_todo(valid_oid, [{"id": "other", "title": "Other"}]),
         ):
             resp = await client.put(
-                f"{API}/todos/{valid_oid}/subtasks/missing_subtask",
-                json={"title": "X"},
+                f"{API}/todos/{valid_oid}/subtasks/missing_subtask", json={"title": "X"}
             )
-        # HTTPException(404) is caught by `except Exception:` -> re-raised as 500
         assert resp.status_code == 500
 
     async def test_update_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+            "app.api.v1.endpoints.todos.todo_repository.set_subtask_fields",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
-            resp = await client.put(
-                f"{API}/todos/{valid_oid}/subtasks/s1",
-                json={"title": "X"},
-            )
+            resp = await client.put(f"{API}/todos/{valid_oid}/subtasks/s1", json={"title": "X"})
         assert resp.status_code == 500
 
     async def test_update_subtask_requires_auth(self, unauthed_client: AsyncClient) -> None:
         resp = await unauthed_client.put(f"{API}/todos/t1/subtasks/s1", json={"title": "X"})
         assert resp.status_code == 401
-
-
-# ===========================================================================
-# Delete Subtask
-# ===========================================================================
 
 
 @pytest.mark.unit
@@ -932,33 +862,10 @@ class TestDeleteSubtask:
 
     async def test_delete_subtask_success(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
-        with (
-            patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
-                new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "user_id": USER_ID,
-                    "title": "Parent",
-                    "description": None,
-                    "labels": [],
-                    "due_date": None,
-                    "due_date_timezone": None,
-                    "priority": "none",
-                    "project_id": None,
-                    "completed": False,
-                    "subtasks": [],
-                    "workflow_id": None,
-                    "created_at": NOW,
-                    "updated_at": NOW,
-                    "completed_at": None,
-                    "workflow_categories": [],
-                },
-            ),
-            patch(
-                "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
-            ),
+        with patch(
+            "app.api.v1.endpoints.todos.todo_repository.remove_subtask",
+            new_callable=AsyncMock,
+            return_value=_subtask_todo(valid_oid, []),
         ):
             resp = await client.delete(f"{API}/todos/{valid_oid}/subtasks/s1")
         assert resp.status_code == 200
@@ -966,7 +873,7 @@ class TestDeleteSubtask:
     async def test_delete_subtask_todo_not_found(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439022"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+            "app.api.v1.endpoints.todos.todo_repository.remove_subtask",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -974,37 +881,13 @@ class TestDeleteSubtask:
         assert resp.status_code == 404
 
     async def test_delete_subtask_not_found_still_exists(self, client: AsyncClient) -> None:
-        """When $pull didn't remove the subtask (it still exists), the endpoint
-        raises HTTPException(404) inside try, but `except Exception` catches it
-        and returns 500."""
+        """The subtask still present (nothing pulled): endpoint raises 404 inside
+        try, caught by `except Exception` -> 500."""
         valid_oid = "507f1f77bcf86cd799439011"
-        with (
-            patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
-                new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "user_id": USER_ID,
-                    "title": "Parent",
-                    "description": None,
-                    "labels": [],
-                    "due_date": None,
-                    "due_date_timezone": None,
-                    "priority": "none",
-                    "project_id": None,
-                    "completed": False,
-                    "subtasks": [{"id": "s1", "title": "Still here", "completed": False}],
-                    "workflow_id": None,
-                    "created_at": NOW,
-                    "updated_at": NOW,
-                    "completed_at": None,
-                    "workflow_categories": [],
-                },
-            ),
-            patch(
-                "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
-            ),
+        with patch(
+            "app.api.v1.endpoints.todos.todo_repository.remove_subtask",
+            new_callable=AsyncMock,
+            return_value=_subtask_todo(valid_oid, [{"id": "s1", "title": "Still here"}]),
         ):
             resp = await client.delete(f"{API}/todos/{valid_oid}/subtasks/s1")
         assert resp.status_code == 500
@@ -1012,7 +895,7 @@ class TestDeleteSubtask:
     async def test_delete_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+            "app.api.v1.endpoints.todos.todo_repository.remove_subtask",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -1024,11 +907,6 @@ class TestDeleteSubtask:
         assert resp.status_code == 401
 
 
-# ===========================================================================
-# Toggle Subtask Completion
-# ===========================================================================
-
-
 @pytest.mark.unit
 class TestToggleSubtaskCompletion:
     """POST /api/v1/todos/{todo_id}/subtasks/{subtask_id}/toggle"""
@@ -1037,39 +915,18 @@ class TestToggleSubtaskCompletion:
         valid_oid = "507f1f77bcf86cd799439011"
         with (
             patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one",
+                "app.api.v1.endpoints.todos.todo_repository.get",
                 new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "project_id": "proj1",
-                    "subtasks": [{"id": "s1", "title": "Sub", "completed": False}],
-                },
+                return_value=_subtask_todo(
+                    valid_oid, [{"id": "s1", "title": "Sub", "completed": False}]
+                ),
             ),
             patch(
-                "app.api.v1.endpoints.todos.todos_collection.find_one_and_update",
+                "app.api.v1.endpoints.todos.todo_repository.set_subtask_fields",
                 new_callable=AsyncMock,
-                return_value={
-                    "_id": valid_oid,
-                    "user_id": USER_ID,
-                    "title": "Parent",
-                    "description": None,
-                    "labels": [],
-                    "due_date": None,
-                    "due_date_timezone": None,
-                    "priority": "none",
-                    "project_id": "proj1",
-                    "completed": False,
-                    "subtasks": [{"id": "s1", "title": "Sub", "completed": True}],
-                    "workflow_id": None,
-                    "created_at": NOW,
-                    "updated_at": NOW,
-                    "completed_at": None,
-                    "workflow_categories": [],
-                },
-            ),
-            patch(
-                "app.services.todos.todo_service.TodoService._invalidate_cache",
-                new_callable=AsyncMock,
+                return_value=_subtask_todo(
+                    valid_oid, [{"id": "s1", "title": "Sub", "completed": True}]
+                ),
             ),
         ):
             resp = await client.post(f"{API}/todos/{valid_oid}/subtasks/s1/toggle")
@@ -1078,7 +935,7 @@ class TestToggleSubtaskCompletion:
     async def test_toggle_subtask_todo_not_found(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439022"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one",
+            "app.api.v1.endpoints.todos.todo_repository.get",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -1089,13 +946,9 @@ class TestToggleSubtaskCompletion:
         """HTTPException(404) raised inside try is caught by except Exception -> 500."""
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one",
+            "app.api.v1.endpoints.todos.todo_repository.get",
             new_callable=AsyncMock,
-            return_value={
-                "_id": valid_oid,
-                "project_id": "proj1",
-                "subtasks": [],
-            },
+            return_value=_subtask_todo(valid_oid, []),
         ):
             resp = await client.post(f"{API}/todos/{valid_oid}/subtasks/missing/toggle")
         assert resp.status_code == 500
@@ -1103,7 +956,7 @@ class TestToggleSubtaskCompletion:
     async def test_toggle_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
-            "app.api.v1.endpoints.todos.todos_collection.find_one",
+            "app.api.v1.endpoints.todos.todo_repository.get",
             new_callable=AsyncMock,
             side_effect=Exception("DB down"),
         ):
@@ -1431,50 +1284,33 @@ class TestListTodosFilters:
 
 
 @pytest.mark.unit
-class TestTodoCountsCacheMiss:
-    """GET /api/v1/todos/counts — cache miss triggers aggregation."""
+class TestTodoCountsWithInbox:
+    """GET /api/v1/todos/counts — resolves the inbox then delegates to the repo."""
 
-    async def test_counts_cache_miss(self, client: AsyncClient) -> None:
-        mock_cursor = MagicMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "inbox": [{"count": 2}],
-                    "today": [{"count": 1}],
-                    "upcoming": [],
-                    "completed": [{"count": 5}],
-                    "overdue": [],
-                }
-            ]
+    async def test_counts_with_inbox(self, client: AsyncClient) -> None:
+        from app.models.todo_models import ProjectDocument, TodoCounts
+
+        inbox = ProjectDocument.model_validate(
+            {"id": "inbox_id", "user_id": USER_ID, "name": "Inbox", "is_default": True}
         )
         with (
             patch(
-                "app.api.v1.endpoints.todos.get_cache",
+                "app.api.v1.endpoints.todos.project_repository.get_default_inbox",
                 new_callable=AsyncMock,
-                return_value=None,
+                return_value=inbox,
             ),
             patch(
-                "app.api.v1.endpoints.todos.projects_collection.find_one",
+                "app.api.v1.endpoints.todos.todo_repository.compute_counts",
                 new_callable=AsyncMock,
-                return_value={"_id": "inbox_id", "is_default": True},
-            ),
-            patch(
-                "app.api.v1.endpoints.todos.todos_collection.aggregate",
-                return_value=mock_cursor,
-            ),
-            patch(
-                "app.api.v1.endpoints.todos.set_cache",
-                new_callable=AsyncMock,
-            ),
+                return_value=TodoCounts(inbox=2, today=1, upcoming=0, completed=5, overdue=0),
+            ) as mock_counts,
         ):
             resp = await client.get(f"{API}/todos/counts")
         assert resp.status_code == 200
         data = resp.json()
         assert data["inbox"] == 2
-        assert data["today"] == 1
-        assert data["upcoming"] == 0
         assert data["completed"] == 5
-        assert data["overdue"] == 0
+        assert mock_counts.call_args.kwargs["inbox_project_id"] == "inbox_id"
 
 
 # ===========================================================================

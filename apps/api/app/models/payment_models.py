@@ -2,11 +2,13 @@
 Payment and subscription related models for Dodo Payments integration.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import MongoDocument
 
 
 class PlanType(str, Enum):
@@ -70,31 +72,85 @@ class UserSubscriptionStatus(BaseModel):
 
 
 # Database Models (Internal)
-class PlanDB(BaseModel):
-    """Database model for subscription plan."""
+class PlanDocument(MongoDocument):
+    """A subscription plan as stored in the ``subscription_plans`` collection.
 
-    id: str | None = Field(None, alias="_id")
-    dodo_product_id: str = Field(..., description="Dodo product ID")
-    name: str = Field(..., description="Plan name")
-    description: str | None = Field(None, description="Plan description")
-    amount: int = Field(..., description="Plan amount")
-    currency: str = Field(..., description="Currency")
-    duration: str = Field(..., description="Billing duration")
-    max_users: int | None = Field(None, description="Maximum users")
-    features: list[str] = Field(default_factory=list, description="Features")
-    is_active: bool = Field(True, description="Active status")
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        description="Creation timestamp",
-    )
-    updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
-        description="Update timestamp",
-    )
+    Global (not user-scoped); ``id`` is the stringified Mongo ``_id``. Seeded by
+    scripts and read-only in the app, so the base never stamps its timestamps.
+    """
 
-    class Config:
-        populate_by_name = True
-        allow_population_by_field_name = True
+    model_config = ConfigDict(extra="ignore")
+
+    dodo_product_id: str | None = None
+    name: str
+    description: str | None = None
+    amount: int
+    currency: str
+    duration: str
+    max_users: int | None = None
+    features: list[str] = Field(default_factory=list)
+    is_active: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlanUpdate(BaseModel):
+    """Typed ``$set`` fields for a plan row (admin/seed edits)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool | None = None
+
+
+class SubscriptionDocument(MongoDocument):
+    """A subscription as stored in the ``subscriptions`` collection.
+
+    Global (webhook updates key on ``dodo_subscription_id`` with no user in scope);
+    ``user_id`` is a plain field. ``id`` is the stringified Mongo ``_id`` — kept so
+    the status endpoint returns the same id it did before the repository.
+    ``extra="allow"`` preserves the many Dodo billing fields verbatim in responses.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    dodo_subscription_id: str
+    user_id: str
+    product_id: str | None = None
+    status: str = "pending"
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SubscriptionUpdate(BaseModel):
+    """Typed ``$set`` fields for a subscription (the common status transition)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: str | None = None
+
+
+class ProcessedWebhookDocument(MongoDocument):
+    """An idempotency record in the ``processed_webhooks`` collection.
+
+    Keyed by the business ``webhook_id`` (a unique index enforces
+    once-only processing). ``processed_at`` carries a 30-day TTL (see indexes).
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    webhook_id: str
+    event_type: str | None = None
+    status: str | None = None
+    message: str | None = None
+    payment_id: str | None = None
+    subscription_id: str | None = None
+    processed_at: datetime | None = None
+
+
+class ProcessedWebhookUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str | None = None
 
 
 class PaymentVerificationResponse(BaseModel):

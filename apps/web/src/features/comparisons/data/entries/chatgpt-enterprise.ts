@@ -9,7 +9,7 @@ export const entry: ComparisonData = {
   description:
     "ChatGPT Enterprise gives organisations a secure, managed version of ChatGPT with admin controls, SSO, higher usage limits, and data privacy guarantees. GAIA goes beyond conversational AI to proactively manage workflows, email, calendar, and 50+ tool integrations with autonomous action — and is fully open source with self-hosting available.",
   metaTitle:
-    "ChatGPT Enterprise Alternative with Proactive AI Workflows | GAIA vs ChatGPT Enterprise",
+    "ChatGPT Enterprise Alternative with Proactive AI Workflows — GAIA vs ChatGPT Enterprise",
   metaDescription:
     "ChatGPT Enterprise answers questions but won't proactively manage your workflow. GAIA is an open-source alternative that autonomously manages email, tasks, and 50+ integrations — self-hostable and free tier available.",
   keywords: [

@@ -15,8 +15,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.system_docs import GAIA_TASKS_GUIDE_MD
-from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import TodoDocument
 from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
 from app.services.storage.gaia_tasks_vfs import (
     GaiaTaskProjection,
@@ -60,40 +60,31 @@ async def _fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
     within the last 30 days).
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
-    cursor = todos_collection.find(
-        {
-            "user_id": user_id,
-            "labels": GAIA_TRACKED_LABEL,
-            "$or": [
-                {"completed": {"$ne": True}},
-                {"completed_at": {"$gte": cutoff}},
-            ],
-        }
-    )
-    return [_project(doc) async for doc in cursor]
+    docs = await todo_repository.list_active_gaia_tracked_since(user_id, completed_since=cutoff)
+    return [_project(doc) for doc in docs]
 
 
-def _project(doc: dict) -> GaiaTaskProjection:
-    """Mongo doc → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
+def _project(doc: TodoDocument) -> GaiaTaskProjection:
+    """``TodoDocument`` → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
     return {
-        "id": str(doc["_id"]),
-        "canvas": doc.get("canvas_content") or "",
-        "log": doc.get("log_content") or "",
+        "id": doc.id,
+        "canvas": doc.canvas_content or "",
+        "log": doc.log_content or "",
         "meta": {
-            "title": doc.get("title"),
-            "completed": bool(doc.get("completed", False)),
-            "completed_at": doc.get("completed_at"),
-            "priority": doc.get("priority"),
-            "due_date": doc.get("due_date"),
-            "due_date_timezone": doc.get("due_date_timezone"),
-            "labels": doc.get("labels", []),
-            "references": doc.get("references", []),
-            "scheduled_at": doc.get("scheduled_at"),
-            "recurrence": doc.get("recurrence"),
-            "expires_at": doc.get("expires_at"),
-            "project_id": doc.get("project_id"),
-            "created_at": doc.get("created_at"),
-            "updated_at": doc.get("updated_at"),
-            "vfs_path": doc.get("vfs_path"),
+            "title": doc.title,
+            "completed": doc.completed,
+            "completed_at": doc.completed_at,
+            "priority": doc.priority.value,
+            "due_date": doc.due_date,
+            "due_date_timezone": doc.due_date_timezone,
+            "labels": doc.labels,
+            "references": doc.references,
+            "scheduled_at": doc.scheduled_at,
+            "recurrence": doc.recurrence,
+            "expires_at": doc.expires_at,
+            "project_id": doc.project_id,
+            "created_at": doc.created_at,
+            "updated_at": doc.updated_at,
+            "vfs_path": doc.vfs_path,
         },
     }

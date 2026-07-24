@@ -448,6 +448,41 @@ class TestGmailSchemaModifiers:
         assert "GMAIL_CREATE_EMAIL_DRAFT" in result.description
         assert "GMAIL_SEND_DRAFT" in result.description
 
+    def test_fetch_emails_schema_sets_defaults(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_fetch_emails_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={
+                "properties": {
+                    "max_results": {"type": "integer"},
+                    "label_ids": {"type": "array"},
+                    "format": {"type": "string"},
+                },
+            }
+        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
+        props = result.input_parameters["properties"]
+        assert props["max_results"]["default"] == 10
+        # label_ids intentionally has no default: Gmail ANDs it with the query,
+        # so a stale default silently zeroes folder-scoped searches (e.g. in:sent).
+        assert "default" not in props["label_ids"]
+        assert props["format"]["default"] == "full"
+        assert "GMAIL SEARCH SYNTAX" in result.description
+
+    def test_fetch_emails_schema_adds_hard_limit_note(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            GMAIL_FULL_FETCH_HARD_LIMIT,
+            gmail_fetch_emails_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"max_results": {"type": "integer"}}}
+        )
+        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "GMAIL", schema)
+        assert str(GMAIL_FULL_FETCH_HARD_LIMIT) in result.description
+
     def test_fetch_message_by_id_schema_sets_format_default(self) -> None:
         from app.utils.composio_hooks.gmail_hooks import (
             gmail_fetch_message_schema_modifier,

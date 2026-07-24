@@ -1,5 +1,9 @@
 # Service Tests
 
-Tests for service-layer modules that don't fit neatly into the `unit/services/` structure — primarily the MCP tools store and the user service at a higher integration level.
+Legacy home for service-layer tests, now nearly empty: the repository-layer
+migration re-authored these against the repository seam and moved them into
+`unit/services/`. What remains here is `test_user_service.py`, which duplicates
+`unit/services/test_user_service.py` and should be folded into it.
 
-The MCP tools store tests exercise the ChromaDB-backed tool indexing pipeline: indexing tools by namespace, cache invalidation via Redis, and lookup by tool name or namespace filter. The user service tests cover account creation, preference updates, and lookup by external ID.
+Add new service tests to `unit/services/` (mock the domain's `*_repository`
+singleton, assert on the service's own behaviour) — not here.

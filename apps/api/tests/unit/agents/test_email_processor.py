@@ -13,6 +13,7 @@ from app.agents.memory.email_processor import (
     _search_platform_emails_parallel,
     process_gmail_to_memory,
 )
+from app.models.user_models import UserDocument
 
 # Valid 24-char hex string for ObjectId compatibility
 USER_ID = "507f1f77bcf86cd799439011"
@@ -20,7 +21,7 @@ USER_ID = "507f1f77bcf86cd799439011"
 # ---------------------------------------------------------------------------
 # Shared patch targets
 # ---------------------------------------------------------------------------
-_PATCH_USERS = "app.agents.memory.email_processor.users_collection"
+_PATCH_USERS = "app.agents.memory.email_processor.user_repository"
 _PATCH_SEARCH = "app.agents.memory.email_processor.search_messages"
 _PATCH_EMIT = "app.agents.memory.email_processor.emit_progress"
 _PATCH_PROCESS = "app.agents.memory.email_processor.process_email_content"
@@ -275,12 +276,8 @@ class TestProcessGmailToMemory:
 
     @patch(_PATCH_USERS)
     async def test_already_processed_user_returns_early(self, mock_users: MagicMock) -> None:
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": USER_ID,
-                "email_memory_processed": True,
-                "name": "Test",
-            }
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(id=USER_ID, email_memory_processed=True, name="Test")
         )
         result = await process_gmail_to_memory(USER_ID)
         assert result["already_processed"] is True
@@ -301,15 +298,15 @@ class TestProcessGmailToMemory:
         mock_search: AsyncMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": USER_ID,
-                "email_memory_processed": False,
-                "name": "Test User",
-                "email": "test@test.com",
-            }
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID,
+                email_memory_processed=False,
+                name="Test User",
+                email="test@test.com",
+            )
         )
-        mock_users.update_one = AsyncMock()
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
 
         mock_search.return_value = {
             "messages": [{"id": "1"}, {"id": "2"}],
@@ -340,15 +337,12 @@ class TestProcessGmailToMemory:
         mock_search: AsyncMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": USER_ID,
-                "email_memory_processed": False,
-                "name": "Test",
-                "email": "t@t.com",
-            }
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID, email_memory_processed=False, name="Test", email="t@t.com"
+            )
         )
-        mock_users.update_one = AsyncMock()
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = {"messages": []}
         mock_profiles.return_value = {"profiles_stored": 0}
 
@@ -361,8 +355,8 @@ class TestProcessGmailToMemory:
     @patch(_PATCH_USERS)
     async def test_handles_null_user(self, mock_users: MagicMock) -> None:
         """If user not found in DB, should proceed without crashing."""
-        mock_users.find_one = AsyncMock(return_value=None)
-        mock_users.update_one = AsyncMock()
+        mock_users.get = AsyncMock(return_value=None)
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
 
         with (
             patch(_PATCH_SEARCH, new_callable=AsyncMock) as mock_search,
@@ -394,16 +388,16 @@ class TestProcessGmailToMemory:
         mock_users: MagicMock,
     ) -> None:
         ts = datetime(2025, 1, 1, tzinfo=UTC)
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": USER_ID,
-                "email_memory_processed": False,
-                "name": "Test",
-                "email": "t@t.com",
-                "integration_scan_states": {"gmail": {"last_scan_timestamp": ts}},
-            }
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID,
+                email_memory_processed=False,
+                name="Test",
+                email="t@t.com",
+                integration_scan_states={"gmail": {"last_scan_timestamp": ts}},
+            )
         )
-        mock_users.update_one = AsyncMock()
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = {"messages": []}
         mock_profiles.return_value = {"profiles_stored": 0}
 
@@ -429,15 +423,12 @@ class TestProcessGmailToMemory:
         mock_users: MagicMock,
     ) -> None:
         """Profile extraction failure should not block completion."""
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": USER_ID,
-                "email_memory_processed": False,
-                "name": "Test",
-                "email": "t@t.com",
-            }
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID, email_memory_processed=False, name="Test", email="t@t.com"
+            )
         )
-        mock_users.update_one = AsyncMock()
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = {
             "messages": [{"id": "1"}],
             "nextPageToken": None,
@@ -470,15 +461,12 @@ class TestProcessGmailToMemory:
         mock_search: AsyncMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": USER_ID,
-                "email_memory_processed": False,
-                "name": "Test",
-                "email": "t@t.com",
-            }
+        mock_users.get = AsyncMock(
+            return_value=UserDocument(
+                id=USER_ID, email_memory_processed=False, name="Test", email="t@t.com"
+            )
         )
-        mock_users.update_one = AsyncMock()
+        mock_users.set_gmail_scan_timestamp = AsyncMock()
         mock_search.return_value = {
             "messages": [{"id": "1"}],
             "nextPageToken": None,
@@ -507,7 +495,7 @@ class TestExtractProfilesFromParallelSearches:
     async def test_returns_zero_when_no_platform_emails(
         self, mock_parallel: AsyncMock, mock_users: MagicMock
     ) -> None:
-        mock_users.find_one = AsyncMock(return_value={"name": "Test"})
+        mock_users.get = AsyncMock(return_value=UserDocument(name="Test"))
         mock_parallel.return_value = {"github": [], "twitter": []}
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
@@ -518,7 +506,7 @@ class TestExtractProfilesFromParallelSearches:
     async def test_handles_exception_gracefully(
         self, mock_parallel: AsyncMock, mock_users: MagicMock
     ) -> None:
-        mock_users.find_one = AsyncMock(side_effect=RuntimeError("db down"))
+        mock_users.get = AsyncMock(side_effect=RuntimeError("db down"))
 
         result = await _extract_profiles_from_parallel_searches(USER_ID)
         assert result["profiles_stored"] == 0

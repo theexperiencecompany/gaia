@@ -43,7 +43,7 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
             "app.services.chat.stream.stream_manager",
             "app.services.chat.chunks.stream_manager",
             "app.services.chat.state.stream_manager",
-            "app.services.chat.artifact_forwarder.stream_manager",
+            "app.services.chat.workspace.stream_manager",
             "app.utils.stream_publishers.stream_manager",
         ):
             stack.enter_context(patch(path, sm))

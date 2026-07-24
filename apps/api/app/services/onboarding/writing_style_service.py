@@ -3,15 +3,13 @@
 from collections.abc import Awaitable, Callable
 import time
 
-from bson import ObjectId
-
 from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleExampleOutput,
@@ -159,17 +157,13 @@ async def regenerate_example_for_style(
 
 async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
     """Persist a user-edited writing style summary as the canonical style."""
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.writing_style.user_edited_summary": edited_summary}},
-    )
+    await user_repository.set_writing_style_user_summary(user_id, edited_summary)
     log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for {user_id}")
 
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.writing_style.example": example.model_dump()}},
+    await user_repository.set_writing_style_and_triage(
+        user_id, writing_style_example=example.model_dump()
     )
     log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")

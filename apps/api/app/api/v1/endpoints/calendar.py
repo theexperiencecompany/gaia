@@ -45,7 +45,7 @@ async def get_calendar_list(
 
         log.set(user={"id": user_id}, calendar={"operation": "list_calendars"})
 
-        calendars = calendar_service.list_calendars(str(user_id))
+        calendars = await calendar_service.list_calendars(str(user_id))
         log.set(
             calendar={
                 "operation": "list_calendars",
@@ -111,7 +111,7 @@ async def query_events(
             },
         )
 
-        result = calendar_service.get_calendar_events(
+        result = await calendar_service.get_calendar_events(
             user_id=str(user_id),
             page_token=None,
             selected_calendars=request.selected_calendars,
@@ -190,7 +190,7 @@ async def get_events(
             },
         )
 
-        result = calendar_service.get_calendar_events(
+        result = await calendar_service.get_calendar_events(
             user_id=str(user_id),
             page_token=page_token,
             selected_calendars=selected_calendars,
@@ -267,7 +267,7 @@ async def get_events_by_calendar(
             },
         )
 
-        result = calendar_service.get_calendar_events_by_id(
+        result = await calendar_service.get_calendar_events_by_id(
             calendar_id=calendar_id,
             user_id=str(user_id),
             page_token=page_token,
@@ -308,7 +308,7 @@ async def create_event(
             },
         )
 
-        return calendar_service.create_calendar_event(event, str(user_id))
+        return await calendar_service.create_calendar_event(event, str(user_id))
     except HTTPException:
         raise
     except Exception as e:
@@ -323,7 +323,7 @@ async def get_calendar_preferences(
     try:
         user_id = current_user.get("user_id")
         log.set(user={"id": user_id}, calendar={"operation": "get_preferences"})
-        return calendar_service.get_user_calendar_preferences(str(user_id or ""))
+        return await calendar_service.get_user_calendar_preferences(str(user_id or ""))
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -340,7 +340,7 @@ async def update_calendar_preferences(
     try:
         user_id = current_user.get("user_id")
         log.set(user={"id": user_id}, calendar={"operation": "update_preferences"})
-        return calendar_service.update_user_calendar_preferences(
+        return await calendar_service.update_user_calendar_preferences(
             str(user_id), preferences.selected_calendars
         )
     except Exception as e:
@@ -361,7 +361,7 @@ async def delete_event(
 
         log.set(user={"id": user_id}, calendar={"operation": "delete_event"})
 
-        return delete_calendar_event(event, str(user_id))
+        return await delete_calendar_event(event, str(user_id))
     except HTTPException:
         raise
     except Exception as e:
@@ -382,7 +382,7 @@ async def update_event(
 
         log.set(user={"id": user_id}, calendar={"operation": "update_event"})
 
-        return update_calendar_event(event, str(user_id))
+        return await update_calendar_event(event, str(user_id))
     except HTTPException:
         raise
     except Exception as e:
@@ -407,7 +407,7 @@ async def create_events_batch(
 
         for event in batch_request.events:
             try:
-                created_event = calendar_service.create_calendar_event(event, str(user_id))
+                created_event = await calendar_service.create_calendar_event(event, str(user_id))
                 results["successful"].append(created_event)
             except Exception as e:
                 results["failed"].append(
@@ -442,7 +442,7 @@ async def update_events_batch(
 
         for event in batch_request.events:
             try:
-                updated_event = update_calendar_event(event, str(user_id))
+                updated_event = await update_calendar_event(event, str(user_id))
                 results["successful"].append(updated_event)
             except Exception as e:
                 results["failed"].append(
@@ -477,7 +477,7 @@ async def delete_events_batch(
 
         for event in batch_request.events:
             try:
-                delete_calendar_event(event, str(user_id))
+                await delete_calendar_event(event, str(user_id))
                 results["successful"].append(
                     {
                         "event_id": event.event_id,

@@ -2,7 +2,6 @@
 
 from fastapi import (
     APIRouter,
-    Body,
     Depends,
     File,
     Form,
@@ -13,9 +12,10 @@ from fastapi import (
 )
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
+from app.schemas.file import UpdateFileRequest
 from app.services.files import FileService
 from app.services.storage import SAFE_PATH_ID_PATTERN
 from shared.py.wide_events import log
@@ -42,11 +42,7 @@ async def upload_file_endpoint(
         # Reject uploads targeting a conversation the authenticated user does
         # not own — otherwise alice could pollute her own session tree with
         # artifacts keyed under bob's conversation id.
-        owner = await conversations_collection.find_one(
-            {"user_id": user_id, "conversation_id": conversation_id},
-            projection={"_id": 1},
-        )
-        if owner is None:
+        if not await conversation_repository.exists(conversation_id, user_id=user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Conversation not found or not owned by this user",
@@ -90,7 +86,7 @@ async def upload_file_endpoint(
 @router.put("/{file_id}", status_code=status.HTTP_200_OK)
 async def update_file_endpoint(
     file_id: str,
-    update_data: dict = Body(...),
+    payload: UpdateFileRequest,
     user: dict = Depends(get_current_user),
 ):
     """Update file metadata; regenerates the embedding when the description changes."""
@@ -102,7 +98,7 @@ async def update_file_endpoint(
         result = await FileService.update(
             file_id=file_id,
             user_id=user_id,
-            update_data=update_data,
+            update_data=payload.model_dump(exclude_none=True),
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")

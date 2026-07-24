@@ -8,6 +8,7 @@ from bson import ObjectId
 from langchain_core.documents import Document
 import pytest
 
+from app.models.notes_models import NoteDocument
 from app.utils.embedding_utils import (
     search_by_similarity,
     search_notes_by_similarity,
@@ -184,20 +185,17 @@ class TestSearchBySimilarity:
 
         created = datetime(2026, 1, 1, 12, 0, 0)
         updated = datetime(2026, 1, 2, 12, 0, 0)
-        mock_mongo_cursor = AsyncMock()
-        mock_mongo_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "_id": ObjectId(note_id),
-                    "user_id": "user1",
-                    "title": "My Note",
-                    "created_at": created,
-                    "updated_at": updated,
-                }
-            ]
+        note_doc = NoteDocument.model_validate(
+            {
+                "id": note_id,
+                "user_id": "user1",
+                "content": "<p>note body</p>",
+                "plaintext": "note body",
+                "title": "My Note",
+                "created_at": created,
+                "updated_at": updated,
+            }
         )
-        mock_notes_col = MagicMock()
-        mock_notes_col.find = MagicMock(return_value=mock_mongo_cursor)
 
         with (
             patch(
@@ -206,8 +204,9 @@ class TestSearchBySimilarity:
                 return_value=mock_collection,
             ),
             patch(
-                "app.utils.embedding_utils.notes_collection",
-                mock_notes_col,
+                "app.utils.embedding_utils.note_repository.find_by_ids",
+                new_callable=AsyncMock,
+                return_value=[note_doc],
             ),
             patch("app.utils.embedding_utils.log"),
         ):
@@ -372,7 +371,8 @@ class TestSearchBySimilarity:
         assert results[0]["id"] == "valid1"
 
     async def test_files_collection_uses_file_id_field(self) -> None:
-        """When collection_name is 'files', the id_field should be 'file_id'."""
+        """The 'files' collection keys off the file_id metadata field. Files never
+        request detail-enrichment (only notes do), so the item is returned as-is."""
         file_id = str(ObjectId())
         doc = _make_document(
             page_content="file content",
@@ -381,30 +381,11 @@ class TestSearchBySimilarity:
         mock_collection = AsyncMock()
         mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.2)])
 
-        mock_mongo_cursor = AsyncMock()
-        mock_mongo_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "_id": ObjectId(file_id),
-                    "user_id": "user1",
-                    "folder": "/docs",
-                    "tags": ["important"],
-                    "created_at": datetime(2026, 3, 1),
-                }
-            ]
-        )
-        mock_files_col = MagicMock()
-        mock_files_col.find = MagicMock(return_value=mock_mongo_cursor)
-
         with (
             patch(
                 "app.utils.embedding_utils.ChromaClient.get_langchain_client",
                 new_callable=AsyncMock,
                 return_value=mock_collection,
-            ),
-            patch(
-                "app.utils.embedding_utils.files_collection",
-                mock_files_col,
             ),
             patch("app.utils.embedding_utils.log"),
         ):
@@ -417,56 +398,10 @@ class TestSearchBySimilarity:
 
         assert len(results) == 1
         assert results[0]["id"] == file_id
-        assert results[0]["folder"] == "/docs"
-        assert results[0]["tags"] == ["important"]
-
-    async def test_files_collection_folder_and_tags_defaults(self) -> None:
-        """Files results default to empty folder/tags when mongo doc lacks them."""
-        file_id = str(ObjectId())
-        doc = _make_document(
-            page_content="file content",
-            metadata={"file_id": file_id, "user_id": "user1"},
-        )
-        mock_collection = AsyncMock()
-        mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.2)])
-
-        mock_mongo_cursor = AsyncMock()
-        mock_mongo_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "_id": ObjectId(file_id),
-                    "user_id": "user1",
-                    # no folder or tags keys
-                }
-            ]
-        )
-        mock_files_col = MagicMock()
-        mock_files_col.find = MagicMock(return_value=mock_mongo_cursor)
-
-        with (
-            patch(
-                "app.utils.embedding_utils.ChromaClient.get_langchain_client",
-                new_callable=AsyncMock,
-                return_value=mock_collection,
-            ),
-            patch(
-                "app.utils.embedding_utils.files_collection",
-                mock_files_col,
-            ),
-            patch("app.utils.embedding_utils.log"),
-        ):
-            results = await search_by_similarity(
-                input_text="query",
-                user_id="user1",
-                collection_name="files",
-                fetch_mongo_details=True,
-            )
-
-        assert results[0]["folder"] == ""
-        assert results[0]["tags"] == []
+        assert "folder" not in results[0]
 
     async def test_mongo_item_not_found_does_not_crash(self) -> None:
-        """If MongoDB returns no match for a ChromaDB ID, the item is still returned."""
+        """If the repository returns no match for a ChromaDB id, the item is still returned."""
         note_id = str(ObjectId())
         doc = _make_document(
             page_content="orphan",
@@ -475,11 +410,6 @@ class TestSearchBySimilarity:
         mock_collection = AsyncMock()
         mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.1)])
 
-        mock_mongo_cursor = AsyncMock()
-        mock_mongo_cursor.to_list = AsyncMock(return_value=[])  # nothing found
-        mock_notes_col = MagicMock()
-        mock_notes_col.find = MagicMock(return_value=mock_mongo_cursor)
-
         with (
             patch(
                 "app.utils.embedding_utils.ChromaClient.get_langchain_client",
@@ -487,8 +417,9 @@ class TestSearchBySimilarity:
                 return_value=mock_collection,
             ),
             patch(
-                "app.utils.embedding_utils.notes_collection",
-                mock_notes_col,
+                "app.utils.embedding_utils.note_repository.find_by_ids",
+                new_callable=AsyncMock,
+                return_value=[],
             ),
             patch("app.utils.embedding_utils.log"),
         ):
@@ -505,7 +436,7 @@ class TestSearchBySimilarity:
         assert "created_at" not in results[0]
 
     async def test_mongo_item_without_timestamps_no_isoformat(self) -> None:
-        """MongoDB doc without created_at/updated_at doesn't add those fields."""
+        """A note without created_at/updated_at doesn't add those fields."""
         note_id = str(ObjectId())
         doc = _make_document(
             page_content="no dates",
@@ -514,12 +445,15 @@ class TestSearchBySimilarity:
         mock_collection = AsyncMock()
         mock_collection.asimilarity_search_with_score = AsyncMock(return_value=[(doc, 0.1)])
 
-        mock_mongo_cursor = AsyncMock()
-        mock_mongo_cursor.to_list = AsyncMock(
-            return_value=[{"_id": ObjectId(note_id), "user_id": "user1", "title": "No Dates"}]
+        note_doc = NoteDocument.model_validate(
+            {
+                "id": note_id,
+                "user_id": "user1",
+                "content": "<p>no dates</p>",
+                "plaintext": "no dates",
+                "title": "No Dates",
+            }
         )
-        mock_notes_col = MagicMock()
-        mock_notes_col.find = MagicMock(return_value=mock_mongo_cursor)
 
         with (
             patch(
@@ -528,8 +462,9 @@ class TestSearchBySimilarity:
                 return_value=mock_collection,
             ),
             patch(
-                "app.utils.embedding_utils.notes_collection",
-                mock_notes_col,
+                "app.utils.embedding_utils.note_repository.find_by_ids",
+                new_callable=AsyncMock,
+                return_value=[note_doc],
             ),
             patch("app.utils.embedding_utils.log"),
         ):

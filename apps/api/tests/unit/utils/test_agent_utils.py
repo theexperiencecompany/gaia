@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.integration_models import Integration
 from app.utils.agent_utils import (
     _lookup_custom_integration_name,
     _resolve_handoff_display_name,
@@ -15,6 +16,17 @@ from app.utils.agent_utils import (
     parse_subagent_id,
     process_custom_event_for_tools,
 )
+
+
+def _integration(integration_id: str, name: str) -> Integration:
+    return Integration(
+        integration_id=integration_id,
+        name=name,
+        description="",
+        category="custom",
+        managed_by="mcp",
+    )
+
 
 # ---------------------------------------------------------------------------
 # parse_subagent_id
@@ -51,15 +63,17 @@ class TestParseSubagentId:
 class TestLookupCustomIntegrationName:
     @pytest.mark.asyncio
     async def test_found(self) -> None:
-        with patch("app.utils.agent_utils.integrations_collection") as mock_coll:
-            mock_coll.find_one = AsyncMock(return_value={"name": "My Custom Tool"})
+        with patch("app.utils.agent_utils.integration_repository") as mock_repo:
+            mock_repo.find_by_id_prefix = AsyncMock(
+                return_value=_integration("custom_id_123", "My Custom Tool")
+            )
             result = await _lookup_custom_integration_name.__wrapped__("custom_id_123")  # type: ignore[attr-defined]
         assert result == "My Custom Tool"
 
     @pytest.mark.asyncio
     async def test_not_found(self) -> None:
-        with patch("app.utils.agent_utils.integrations_collection") as mock_coll:
-            mock_coll.find_one = AsyncMock(return_value=None)
+        with patch("app.utils.agent_utils.integration_repository") as mock_repo:
+            mock_repo.find_by_id_prefix = AsyncMock(return_value=None)
             result = await _lookup_custom_integration_name.__wrapped__("unknown_id")  # type: ignore[attr-defined]
         assert result is None
 

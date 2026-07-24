@@ -1,6 +1,5 @@
 """Integration config, catalog, and connection routes."""
 
-from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -9,7 +8,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_use
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -248,11 +247,11 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
     # ignore it. user_id is trusted (it came from a server-bound, single-use code).
     user_email = ""
     try:
-        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user_doc = await user_repository.get(user_id)
     except InvalidId:
         return _connect_link_error("invalid_or_expired_link")
     if user_doc:
-        user_email = user_doc.get("email", "")
+        user_email = user_doc.email or ""
 
     result = await initiate_integration_connection(
         user_id=user_id,

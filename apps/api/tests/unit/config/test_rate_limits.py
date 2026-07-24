@@ -159,6 +159,7 @@ class TestFeatureLimits:
         "document_generation",
         "web_search",
         "webpage_fetch",
+        "download",
         "workflow_operations",
         "trigger_workflow_executions",
         "todo_operations",

@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Visual project boards, lists, and cards",
   description:
     "Trello is a kanban-style project management tool owned by Atlassian. GAIA goes far beyond visual boards to proactively manage your entire digital workflow with AI.",
-  metaTitle: "Trello Alternative with AI Automation | GAIA vs Trello",
+  metaTitle: "Trello Alternative with AI Automation — GAIA vs Trello",
   metaDescription:
     "Trello's kanban boards still require manual work. GAIA is an open-source Trello alternative with AI automation that creates tasks from email, automates workflows, and manages your calendar across 50+ tools — with a free tier.",
   keywords: [

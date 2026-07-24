@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class SupportRequestType(str, Enum):
@@ -105,3 +107,36 @@ class SupportEmailNotification(BaseModel):
     created_at: datetime
     support_emails: list[EmailStr]
     attachments: list[SupportAttachment] = []
+
+
+class SupportRequestDocument(UserScopedDocument):
+    """A support request as stored in the ``support_requests`` collection.
+
+    User-scoped; ``id`` is a caller-minted UUID stored as the Mongo ``_id``
+    (string, not ObjectId). ``updated_at`` is stamped by the base on every write.
+    """
+
+    ticket_id: str
+    user_email: str
+    user_name: str | None = None
+    type: SupportRequestType
+    title: str
+    description: str
+    status: SupportRequestStatus = SupportRequestStatus.OPEN
+    priority: SupportRequestPriority = SupportRequestPriority.MEDIUM
+    created_at: datetime
+    updated_at: datetime | None = None
+    resolved_at: datetime | None = None
+    tags: list[str] = Field(default_factory=list)
+    attachments: list[SupportAttachment] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SupportRequestUpdate(BaseModel):
+    """Mutable fields of a support request (triage/resolution)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: SupportRequestStatus | None = None
+    priority: SupportRequestPriority | None = None
+    resolved_at: datetime | None = None

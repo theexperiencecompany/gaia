@@ -620,12 +620,14 @@ def get_retrieve_tools_function(
             return RetrieveToolsResult(
                 tools_to_bind=[],
                 response=[
-                    "retrieve_tools received no usable argument (an empty "
-                    "exact_tool_names counts as none). Next step: pass "
-                    "query='what you want to do' to discover, or "
-                    "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
-                    "subagent (a 'subagent:' result), do NOT call retrieve_tools "
-                    "again; call handoff(subagent_id='gmail', task='...') directly."
+                    (
+                        "retrieve_tools received no usable argument (an empty "
+                        "exact_tool_names counts as none). Next step: pass "
+                        "query='what you want to do' to discover, or "
+                        "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
+                        "subagent (a 'subagent:' result), do NOT call retrieve_tools "
+                        "again; call handoff(subagent_id='gmail', task='...') directly."
+                    )
                 ],
             )
 

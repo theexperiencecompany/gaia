@@ -1,0 +1,17 @@
+# A two-turn conversation on Slack against the sim stack. Demonstrates that the
+# harness holds one booted pipeline across turns and asserts each turn's reply.
+#
+#   mise dev:sim
+#   nx run bot-harness:sim -- run apps/bots/harness/scenarios/multi-turn.yaml
+name: multi-turn conversation
+emulate: slack
+user: dev@gaia.local
+turns:
+  - send: "hello there [[say:Hi! How can I help?]]"
+    expect:
+      - bubbleCount: 1
+      - contains: "How can I help"
+  - send: "what can you do [[say:I can manage todos, run workflows, and chat.]]"
+    expect:
+      - bubbleCount: 1
+      - contains: "workflows"

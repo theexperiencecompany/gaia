@@ -352,6 +352,16 @@ Each app has its own `.env` file:
 
 Refer to `.env.example` files in each directory for required variables.
 
+## Agent-Driven E2E Testing
+
+To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout. Three skills cover the whole loop:
+
+- **`driving-gaia`** — the cookbook: boot the right stack (`mise dev` / `dev:vm` / `dev:sim`), authenticate with zero login via the dev bypass, drive the REST/SSE API + browser + bots, invoke the executor or any subagent directly (`/api/v1/dev/executor`, `/api/v1/dev/subagents/{id}`), and verify outcomes in Mongo. Ends with the full testing map — every test/sim surface and where it's documented.
+- **`reading-gaia-logs`** — debug a failing run: wide events, per-mode log locations, Loki/LogQL, LangGraph/Langfuse, and a symptom→fix table.
+- **`parallel-worktrees`** — run several branches at once with their own ports.
+
+**agent-browser** is the recommended browser driver (`npm i -g agent-browser && agent-browser install`): a Rust CDP daemon + MCP server with accessibility-tree snapshots, stable element refs (`@e1`), and persistent encrypted profiles. The dev bypass means every page load is already authenticated. chrome-devtools MCP is the alternative when you need console/network introspection.
+
 ## Docker
 
 Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:

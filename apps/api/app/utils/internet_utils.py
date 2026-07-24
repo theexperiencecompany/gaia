@@ -8,10 +8,9 @@ from fastapi import HTTPException, status
 import httpx
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import search_urls_collection
 from app.db.redis import get_cache, set_cache
-from app.db.utils import serialize_document
-from app.models.search_models import URLResponse
+from app.db.repositories.search_urls import search_url_repository
+from app.models.search_models import SearchUrlDocument, URLResponse
 from shared.py.wide_events import log
 
 # Cap scraped HTML to 2 MiB so a single URL cannot exhaust memory
@@ -158,14 +157,17 @@ async def fetch_url_metadata(url: str) -> URLResponse:
     await _validate_url_for_fetch(url)
 
     cache_key = f"url_metadata:{url}"
-    metadata = await get_cache(cache_key) or await search_urls_collection.find_one({"url": url})
+    cached = await get_cache(cache_key)
+    if cached:
+        return URLResponse(**cached)
 
-    if metadata:
-        return URLResponse(**metadata)
+    stored = await search_url_repository.get_by_url(url)
+    if stored is not None:
+        return URLResponse(**stored.model_dump())
 
     metadata = await scrape_url_metadata(url)
-    await search_urls_collection.insert_one(metadata)
-    await set_cache(cache_key, serialize_document(metadata), 864000)
+    await search_url_repository.create(SearchUrlDocument(**metadata))
+    await set_cache(cache_key, metadata, 864000)
 
     return URLResponse(**metadata)
 

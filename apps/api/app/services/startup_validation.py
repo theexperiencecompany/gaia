@@ -3,25 +3,21 @@ Startup validation for GAIA.
 """
 
 from app.core.lazy_loader import lazy_provider
-from app.db.mongodb.collections import (
-    ai_models_collection,
-    plans_collection,
-)
+from app.db.repositories.ai_models import ai_model_repository
+from app.db.repositories.plans import plan_repository
 from shared.py.wide_events import log
 
 
 # @Cacheable(key="startup:models_seeded", ttl=2592000)  # 30 days cache
 async def are_models_seeded() -> bool:
     """Check if AI models are seeded in database."""
-    count = await ai_models_collection.count_documents({})
-    return count > 0
+    return await ai_model_repository.count() > 0
 
 
 # @Cacheable(key="startup:payment_setup", ttl=2592000)  # 30 days cache
 async def is_payment_setup() -> bool:
     """Check if payment plans are set up in database."""
-    count = await plans_collection.count_documents({})
-    return count > 0
+    return await plan_repository.count() > 0
 
 
 @lazy_provider(

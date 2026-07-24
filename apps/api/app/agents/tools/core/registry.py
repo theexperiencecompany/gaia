@@ -8,7 +8,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import store_mcp_tools_batch
 from shared.py.wide_events import log
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
@@ -126,6 +126,9 @@ class ToolCategory:
     ):
         self.name = name
         self.space = space
+        # True for integration-specific categories (Composio toolkits) that need
+        # the user to have connected that integration; core built-in categories
+        # leave it False. `get_core_categories` filters on this flag.
         self.require_integration = require_integration
         self.integration_name = integration_name
         self.is_delegated = is_delegated
@@ -225,6 +228,7 @@ class ToolRegistry:
         from app.agents.tools import (
             context_tool,
             desktop_tools,
+            download_tool,
             file_tools,
             finish_task_tool,
             flowchart_tool,
@@ -251,6 +255,7 @@ class ToolRegistry:
                 webpage_tool.web_search_tool,
                 webpage_tool.fetch_webpages,
                 research_tool.deep_research,
+                *download_tool.tools,
             ],
         )
 
@@ -383,7 +388,6 @@ class ToolRegistry:
         from app.db.chroma.chroma_tools_store import index_tools_to_store
 
         composio_service = get_composio_service()
-        mcp_store = get_mcp_tools_store()
 
         integrations = [
             integration
@@ -452,7 +456,7 @@ class ToolRegistry:
 
         if mongo_batch:
             try:
-                await mcp_store.store_tools_batch(mongo_batch)
+                await store_mcp_tools_batch(mongo_batch)
             except Exception as e:
                 log.warning(
                     f"{LogTag.TOOL} Failed to store provider catalog metadata to Mongo: {e}"

@@ -15,36 +15,8 @@ import asyncio
 from pymongo.errors import OperationFailure
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    ai_models_collection,
-    blog_collection,
-    bot_sessions_collection,
-    calendars_collection,
-    conversations_collection,
-    device_tokens_collection,
-    e2b_sandboxes_collection,
-    e2b_warm_pool_collection,
-    files_collection,
-    integration_instructions_collection,
-    integrations_collection,
-    mail_collection,
-    notes_collection,
-    notifications_collection,
-    payments_collection,
-    plans_collection,
-    processed_webhooks_collection,
-    projects_collection,
-    reminders_collection,
-    skills_collection,
-    subscriptions_collection,
-    todos_collection,
-    usage_snapshots_collection,
-    user_integrations_collection,
-    users_collection,
-    workflow_executions_collection,
-    workflows_collection,
-)
-from app.helpers.integration_helpers import generate_unique_integration_slug
+from app.db.mongodb.collections import get_async_collection
+from app.db.repositories.integrations import integration_repository
 from shared.py.wide_events import log
 
 
@@ -144,6 +116,7 @@ async def create_all_indexes():
 
 async def create_user_indexes():
     """Create indexes for users collection."""
+    users_collection = get_async_collection("users")
     try:
         # Create all user indexes concurrently
         await asyncio.gather(
@@ -172,6 +145,7 @@ async def create_user_indexes():
 
 async def create_conversation_indexes():
     """Create indexes for conversations collection."""
+    conversations_collection = get_async_collection("conversations")
     try:
         # Create all conversation indexes concurrently
         await asyncio.gather(
@@ -196,6 +170,7 @@ async def create_conversation_indexes():
 
 async def create_todo_indexes():
     """Create indexes for todos collection."""
+    todos_collection = get_async_collection("todos")
     try:
         # Create all todo indexes concurrently
         await asyncio.gather(
@@ -261,6 +236,7 @@ async def create_todo_indexes():
 
 async def create_project_indexes():
     """Create indexes for projects collection."""
+    projects_collection = get_async_collection("projects")
     try:
         # Create all project indexes concurrently
         await asyncio.gather(
@@ -279,6 +255,7 @@ async def create_project_indexes():
 
 async def create_note_indexes():
     """Create indexes for notes collection."""
+    notes_collection = get_async_collection("notes")
     try:
         # Create all note indexes concurrently
         await asyncio.gather(
@@ -299,6 +276,7 @@ async def create_note_indexes():
 
 async def create_file_indexes():
     """Create indexes for files collection."""
+    files_collection = get_async_collection("files")
     try:
         # Create all file indexes concurrently
         await asyncio.gather(
@@ -319,6 +297,7 @@ async def create_file_indexes():
 
 async def create_mail_indexes():
     """Create indexes for mail collection."""
+    mail_collection = get_async_collection("mail")
     try:
         # Create all mail indexes concurrently
         await asyncio.gather(
@@ -335,6 +314,7 @@ async def create_mail_indexes():
 
 async def create_calendar_indexes():
     """Create indexes for calendar collection."""
+    calendars_collection = get_async_collection("calendar")
     try:
         # Create all calendar indexes concurrently
         await asyncio.gather(
@@ -353,6 +333,7 @@ async def create_calendar_indexes():
 
 async def create_blog_indexes():
     """Create indexes for blog collection."""
+    blog_collection = get_async_collection("blog")
     try:
         # Create all blog indexes concurrently
         await asyncio.gather(
@@ -366,15 +347,6 @@ async def create_blog_indexes():
             blog_collection.create_index("authors"),
             # Compound index for published blogs
             blog_collection.create_index([("date", -1), ("category", 1)]),
-            # Text search index
-            blog_collection.create_index(
-                [
-                    ("title", "text"),
-                    ("content", "text"),
-                    ("description", "text"),
-                    ("tags", "text"),
-                ]
-            ),
         )
 
     except Exception as e:
@@ -384,6 +356,7 @@ async def create_blog_indexes():
 
 async def create_notification_indexes():
     """Create indexes for notifications collection."""
+    notifications_collection = get_async_collection("notifications")
     try:
         # Create all notification indexes concurrently
         await asyncio.gather(
@@ -404,6 +377,7 @@ async def create_notification_indexes():
 
 async def create_reminder_indexes():
     """Create indexes for the reminders collection."""
+    reminders_collection = get_async_collection("reminders")
     try:
         await asyncio.gather(
             reminders_collection.create_index([("user_id", 1)]),
@@ -421,6 +395,7 @@ async def create_reminder_indexes():
 
 async def create_workflow_indexes():
     """Create indexes for workflows collection for optimal query performance."""
+    workflows_collection = get_async_collection("workflows")
     try:
         # Drop the old non-unique slug index if present so the partial-unique
         # replacement below can take over. Mongo error code 27 = IndexNotFound.
@@ -520,6 +495,7 @@ async def create_workflow_indexes():
 
 async def create_workflow_execution_indexes():
     """Create indexes for workflow_executions collection."""
+    workflow_executions_collection = get_async_collection("workflow_executions")
     try:
         await asyncio.gather(
             workflow_executions_collection.create_index(
@@ -536,6 +512,9 @@ async def create_workflow_execution_indexes():
 
 async def create_payment_indexes():
     """Create indexes for payment-related collections."""
+    payments_collection = get_async_collection("payments")
+    plans_collection = get_async_collection("subscription_plans")
+    subscriptions_collection = get_async_collection("subscriptions")
     try:
         # Create payment collection indexes
         await asyncio.gather(
@@ -573,6 +552,7 @@ async def create_processed_webhook_indexes():
     - Unique index for idempotency check
     - TTL index for automatic cleanup
     """
+    processed_webhooks_collection = get_async_collection("processed_webhooks")
     try:
         await asyncio.gather(
             # Unique index on webhook_id - required for idempotency
@@ -598,6 +578,7 @@ async def create_usage_indexes():
     - Find usage history by user_id and date range
     - Automatic cleanup via TTL index
     """
+    usage_snapshots_collection = get_async_collection("usage_snapshots")
     try:
         await asyncio.gather(
             # Primary query: get latest usage by user
@@ -637,6 +618,7 @@ async def create_ai_models_indexes():
     - Find default models
     - Pricing lookups
     """
+    ai_models_collection = get_async_collection("ai_models")
     try:
         await asyncio.gather(
             # Primary model lookup
@@ -692,6 +674,7 @@ async def create_integration_indexes():
     - Featured integrations lookup
     - Public custom integrations for marketplace
     """
+    integrations_collection = get_async_collection("integrations")
     try:
         await asyncio.gather(
             # Primary unique index on integration_id
@@ -755,6 +738,7 @@ async def create_integration_indexes():
 
 async def _backfill_integration_slugs() -> None:
     """Populate slug field for public integrations missing it."""
+    integrations_collection = get_async_collection("integrations")
     try:
         total_backfilled = 0
         while True:
@@ -768,11 +752,10 @@ async def _backfill_integration_slugs() -> None:
 
             log.info(f"{LogTag.MONGO} Backfilling slugs for {len(docs)} public integrations")
             for doc in docs:
-                slug = await generate_unique_integration_slug(
+                slug = await integration_repository.ensure_unique_slug(
                     name=doc.get("name", ""),
                     category=doc.get("category", "custom"),
                     integration_id=doc["integration_id"],
-                    collection=integrations_collection,
                 )
                 await integrations_collection.update_one(
                     {"integration_id": doc["integration_id"]},
@@ -797,6 +780,7 @@ async def create_user_integration_indexes():
     - Get user's connected integrations only
     - Check if user has added a specific integration
     """
+    user_integrations_collection = get_async_collection("user_integrations")
     try:
         await asyncio.gather(
             # Primary compound index for user's integrations
@@ -839,6 +823,7 @@ async def create_integration_instructions_indexes():
     - Read one integration's instructions: user_id + integration_id (unique)
     - List all of a user's instructions for materialization
     """
+    integration_instructions_collection = get_async_collection("integration_instructions")
     try:
         await _create_index_safe(
             integration_instructions_collection,
@@ -854,6 +839,7 @@ async def create_integration_instructions_indexes():
 
 async def create_device_token_indexes():
     """Create indexes for device_tokens collection for push notifications."""
+    device_tokens_collection = get_async_collection("device_tokens")
     try:
         await asyncio.gather(
             # Primary lookup by user
@@ -871,6 +857,7 @@ async def create_device_token_indexes():
 
 async def create_bot_session_indexes():
     """Create indexes for bot_sessions collection for optimal query performance and automatic cleanup."""
+    bot_sessions_collection = get_async_collection("bot_sessions")
     try:
         await asyncio.gather(
             # Unique session key index (critical for session lookup)
@@ -900,6 +887,7 @@ async def create_installed_skills_indexes() -> None:
     - Agent skills: enabled + target + $or[user_id, "system"] (get_skills_for_agent)
     - User listing: user_id + installed_at (list_skills)
     """
+    skills_collection = get_async_collection("skills")
     try:
         await asyncio.gather(
             # Unique: one skill per name per target per user
@@ -946,6 +934,8 @@ async def create_e2b_sandbox_indexes() -> None:
     - Sweeper: scan by last_used_at to find evictable sandboxes
     - Warm pool: claim a ready sandbox by (shard_id, state)
     """
+    e2b_sandboxes_collection = get_async_collection("e2b_sandboxes")
+    e2b_warm_pool_collection = get_async_collection("e2b_warm_pool")
     try:
         await asyncio.gather(
             e2b_sandboxes_collection.create_index("user_id", unique=True),

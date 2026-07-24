@@ -30,11 +30,12 @@ import urllib.parse
 
 import httpx
 from langchain_core.tools import BaseTool
-from mcp_use import MCPClient as BaseMCPClient
+from mcp_use import MCPClient as BaseMCPClient, MCPSession
 from pydantic import AnyHttpUrl, AnyUrl
 
 from app.config.settings import settings
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
+from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import (
     COMPOSIO_MCP_HOST,
@@ -46,11 +47,9 @@ from app.constants.mcp import (
 )
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-)
 from app.db.redis import delete_cache
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -62,9 +61,10 @@ from app.services.integrations.user_integrations import (
     get_user_integration_records,
     invalidate_user_integration_caches,
 )
+from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import store_mcp_tools
 from app.services.mcp.oauth_discovery import (
     discover_oauth_config,
     probe_mcp_connection,
@@ -90,6 +90,7 @@ from app.utils.mcp_oauth_utils import (
 from app.utils.mcp_utils import (
     wrap_tools_with_null_filter,
 )
+from app.utils.url_safety import assert_public_http_url
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
     create_client_registration_request,
@@ -236,6 +237,18 @@ def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
     return task
 
 
+def _parse_device_server_url(server_url: str) -> tuple[str, str]:
+    """Split a ``device://<device_id>/<server_key>`` URL into its parts."""
+    prefix = f"{DEVICE_TRANSPORT}://"
+    if not server_url.startswith(prefix):
+        raise ValueError(f"Not a device server URL: {server_url}")
+    remainder = server_url[len(prefix) :]
+    device_id, _, server_key = remainder.partition("/")
+    if not device_id or not server_key:
+        raise ValueError(f"Malformed device server URL: {server_url}")
+    return device_id, server_key
+
+
 class MCPClient:
     """
     MCP client wrapper implementing MCP OAuth 2.1 spec.
@@ -286,16 +299,10 @@ class MCPClient:
         discovered from the server, fixing stale requires_auth flags.
         """
         try:
-            result = await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {
-                    "$set": {
-                        "mcp_config.requires_auth": requires_auth,
-                        "mcp_config.auth_type": auth_type,
-                    }
-                },
+            updated = await integration_repository.set_mcp_auth(
+                integration_id, requires_auth, auth_type
             )
-            if result.modified_count > 0:
+            if updated:
                 log.info(
                     f"{LogTag.MCP} Updated auth status for {integration_id}: "
                     f"requires_auth={requires_auth}, auth_type={auth_type}"
@@ -584,6 +591,41 @@ class MCPClient:
             "oauth discovery cache clear",
         )
 
+    async def _build_device_client(
+        self, integration_id: str, mcp_config: MCPConfig
+    ) -> BaseMCPClient:
+        """Build an mcp_use client whose only session tunnels to a paired device.
+
+        The device MCP server has no outbound URL, so we bypass config-based
+        connector creation and inject a :class:`DeviceConnector`-backed session
+        directly. Everything downstream (adapter, tool conversion) reads from
+        ``get_all_active_sessions()``, which this populates.
+        """
+        device_id, server_key = _parse_device_server_url(mcp_config.server_url)
+
+        # Defense in depth: never tunnel to a device the calling user does not
+        # own. Integration-list scoping already keeps other users' device
+        # integrations out of this user's tool set, but this is the hard gate —
+        # a mixed-up or leaked integration_id can't cross the user boundary,
+        # and a revoked device can't be reached on a stale integration doc.
+        from app.services.device.device_service import get_active_device
+
+        device = await get_active_device(device_id)
+        if device is None or device.user_id != self.user_id:
+            raise ValueError(
+                f"Device {device_id} is not an active device owned by user {self.user_id}"
+            )
+
+        connector = DeviceConnector(device_id, server_key)
+        session = MCPSession(connector, auto_connect=True)
+        await session.initialize()
+
+        client = BaseMCPClient(config={"mcpServers": {}})
+        client.sessions[integration_id] = session
+        if integration_id not in client.active_sessions:
+            client.active_sessions.append(integration_id)
+        return client
+
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:
         """Internal connect implementation.
 
@@ -597,22 +639,35 @@ class MCPClient:
 
         mcp_config = resolved.mcp_config
         is_custom = resolved.source == "custom"
-
-        config = await self._build_config(integration_id, mcp_config)
+        is_device = mcp_config.transport == DEVICE_TRANSPORT
 
         try:
-            log.info(
-                f"{LogTag.MCP} [{integration_id}] Starting connection to MCP server. Config: {self._sanitize_config(config)}"
-            )
+            if is_device:
+                # Device servers have no outbound URL (device://...) and are reached
+                # over the tunnel, so the SSRF re-check below doesn't apply to them.
+                log.info(f"{LogTag.MCP} [{integration_id}] Opening device-tunnel MCP session")
+                client = await self._build_device_client(integration_id, mcp_config)
+            else:
+                # SSRF re-check (DNS-rebinding defense): the schema validator only ran a
+                # shape check at create/update time. Re-resolve the host right before the
+                # outbound connection, inside the try so a rejection is handled like any
+                # other connection failure rather than escaping uncaught. Run it before
+                # _build_config, which can trigger an OAuth token refresh (outbound I/O)
+                # to the still-unvalidated host.
+                await assert_public_http_url(mcp_config.server_url)
 
-            log.info(f"{LogTag.MCP} [{integration_id}] Creating BaseMCPClient instance")
-            client = BaseMCPClient(config)
+                config = await self._build_config(integration_id, mcp_config)
 
-            log.info(
-                f"{LogTag.MCP} [{integration_id}] Creating session with integration_id={integration_id}"
-            )
-            await client.create_session(integration_id)
-            log.info(f"{LogTag.MCP} [{integration_id}] Session created successfully")
+                log.info(
+                    f"{LogTag.MCP} [{integration_id}] Starting connection to MCP server. Config: {self._sanitize_config(config)}"
+                )
+                log.info(f"{LogTag.MCP} [{integration_id}] Creating BaseMCPClient instance")
+                client = BaseMCPClient(config)
+                log.info(
+                    f"{LogTag.MCP} [{integration_id}] Creating session with integration_id={integration_id}"
+                )
+                await client.create_session(integration_id)
+                log.info(f"{LogTag.MCP} [{integration_id}] Session created successfully")
 
             # Use resilient adapter that handles invalid schemas gracefully
             # It will skip tools with bad schemas and return the ones that work
@@ -714,8 +769,7 @@ class MCPClient:
             log.info(
                 f"{LogTag.MCP} [{integration_id}] Storing {len(tool_metadata)} tools to MongoDB"
             )
-            global_store = get_mcp_tools_store()
-            post_tasks.append(global_store.store_tools(integration_id, tool_metadata))
+            post_tasks.append(store_mcp_tools(integration_id, tool_metadata))
 
             # 3. Index integration tools in ChromaDB. Custom MCPs use a
             # URL-derived namespace and also register a subagent doc; platform
@@ -1521,10 +1575,7 @@ class MCPClient:
 
         # Remove tool metadata from MongoDB so ghost tools don't appear
         try:
-            await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {"$unset": {"tools": ""}},
-            )
+            await integration_repository.clear_tools(integration_id)
             # Invalidate the global MCP tools Redis cache
             await delete_cache(MCP_TOOLS_CACHE_KEY)
         except Exception as e:
@@ -1587,14 +1638,7 @@ class MCPClient:
 
     async def is_connected_db(self, integration_id: str) -> bool:
         """Check if integration is connected (in MongoDB user_integrations)."""
-        doc = await user_integrations_collection.find_one(
-            {
-                "user_id": self.user_id,
-                "integration_id": integration_id,
-                "status": "connected",
-            }
-        )
-        return doc is not None
+        return await user_integration_repository.is_connected(self.user_id, integration_id)
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
         """

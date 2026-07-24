@@ -23,6 +23,13 @@ export interface CompleteOnboardingArgs {
   timezone: string;
   focus: string;
   clarify_answers?: CompleteOnboardingClarifyAnswer[];
+  selected_integrations?: string[];
+  defer_workflows?: boolean;
+}
+
+export interface SubmitIntegrationsResponse {
+  success: boolean;
+  status: "queued" | "already_running" | "already_complete";
 }
 
 export interface ClarifyQuestionsResponse {
@@ -40,6 +47,16 @@ export function completeOnboarding(
   args: CompleteOnboardingArgs,
 ): Promise<CompleteOnboardingResponse> {
   return authApi.completeOnboarding(args);
+}
+
+export function submitOnboardingIntegrations(
+  selectedIntegrations: string[],
+): Promise<SubmitIntegrationsResponse> {
+  return apiService.post<SubmitIntegrationsResponse>(
+    "/onboarding/integrations",
+    { selected_integrations: selectedIntegrations },
+    { silent: true },
+  );
 }
 
 export function getPersonalization(): Promise<PersonalizationData> {

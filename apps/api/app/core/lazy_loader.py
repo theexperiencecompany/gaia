@@ -647,6 +647,16 @@ class ProviderRegistry:
             return False
         return self._providers[name].is_initialized()
 
+    def reset(self, name: str) -> None:
+        """Reset a provider so the next aget()/get() re-initializes it from scratch.
+
+        For testing only: a process-lifetime resource (e.g. an asyncpg engine)
+        that gets disposed but not reset here would otherwise be handed back,
+        already-closed, to a later test running under a different event loop.
+        """
+        if name in self._providers:
+            self._providers[name].reset()
+
 
 # Global registry instance
 providers = ProviderRegistry()
