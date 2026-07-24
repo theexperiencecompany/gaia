@@ -29,10 +29,6 @@ from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command, interrupt
 
-from app.agents.core.subagents.spawn_results import (
-    recall_spawn_result,
-    remember_spawn_result,
-)
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
     SubagentOutcome,
@@ -45,7 +41,7 @@ from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.constants.general import SPAWN_AGENT_NAME
+from app.constants.general import SPAWN_AGENT_NAME, SPAWN_THREAD_PREFIX
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
@@ -184,16 +180,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
     ) -> str:
         """Run one spawned subagent to completion, pausing the parent for approvals."""
         configurable = config.get("configurable", {})
-        conversation_id = str(configurable.get("conversation_id") or "")
-        # Only a resume replay can find work already done under this tool call, so
-        # the recall and the checkpoint probe are both gated on it — a fresh spawn
-        # (effectively all of them) pays for neither.
+        # A fresh spawn has a brand-new tool_call_id, so nothing can already exist on
+        # its thread — only a resume replay can, which is why the checkpoint probe is
+        # gated on it and effectively every spawn skips that Postgres read.
         replaying = bool(configurable.get(HIL_RESUME_CONFIG_KEY))
-        if replaying and conversation_id:
-            remembered = await recall_spawn_result(conversation_id, tool_call_id)
-            if remembered is not None:
-                log.info(f"{LogTag.HIL} Reusing finished spawn result on replay")
-                return remembered
 
         ctx = await self._build_context(task, context, config, tool_call_id, inherited_tool_names)
 
@@ -235,11 +225,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     }
                 )
 
-        # Finished: nothing will ever read this thread again. Remember only the
-        # answer (for a sibling's replay) and drop the graph state.
-        if conversation_id:
-            await remember_spawn_result(conversation_id, tool_call_id, outcome.text)
-        await self._delete_thread(ctx)
+        # The thread deliberately outlives the run: a later sibling in this same AI
+        # message can still pause, which replays the tool node from the top, and the
+        # checkpoint is what tells the replay this spawn already finished instead of
+        # redoing its whole task. The nightly sweep reclaims it once it is stale.
         return outcome.text
 
     async def _drive(
@@ -299,15 +288,13 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             middleware_factory=lambda: middleware_factory(tool_space),
         )
 
-        # Disposable and never reused: one thread per spawn call, deleted the
-        # moment it finishes. ``tool_call_id`` is unique per call AND stable
-        # across node replays (it lives in the checkpointed AI message), which is
-        # what lets a resumed spawn find its own parked run instead of starting a
-        # second one. The conversation uuid is embedded because the orphan sweep
-        # (workers/tasks/checkpoint_retention_tasks.py) reclaims a thread by
-        # extracting that uuid — the backstop for a spawn that dies before it can
-        # delete its own thread.
-        thread_id = f"spawn_{conversation_id}_{tool_call_id}"
+        # One thread per spawn call, never reused. ``tool_call_id`` is unique per call
+        # AND stable across node replays (it lives in the checkpointed AI message),
+        # which is what lets a resumed spawn find its own run — parked or finished —
+        # instead of starting a second one. The ``spawn_`` prefix is what
+        # workers/tasks/checkpoint_retention_tasks.py selects on to reclaim these once
+        # stale; the conversation uuid keeps them collectable with the conversation.
+        thread_id = f"{SPAWN_THREAD_PREFIX}{conversation_id}_{tool_call_id}"
 
         spawn_config = build_agent_config(
             conversation_id=conversation_id,
@@ -355,28 +342,6 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             user_id=user_id,
             stream_id=configurable.get("stream_id"),
         )
-
-    async def _delete_thread(self, ctx: SubagentExecutionContext) -> None:
-        """Drop a finished spawn's checkpoint thread.
-
-        A spawn is disposable — its thread exists only to carry the run, and to
-        hold it while parked on an approval. Once it has produced its answer
-        nothing will ever read that thread again, so it goes now rather than
-        waiting for the nightly sweep. Best-effort: the answer is already in
-        hand, and the orphan sweep reclaims anything left behind.
-        """
-        checkpointer = ctx.subagent_graph.checkpointer
-        thread_id = str(ctx.configurable.get("thread_id") or "")
-        if checkpointer is None or not thread_id:
-            return
-        try:
-            await checkpointer.adelete_thread(thread_id)
-        except Exception as e:
-            log.warning(
-                f"{LogTag.AGENT} Failed to delete spawned subagent thread",
-                thread_id=thread_id,
-                error=str(e),
-            )
 
     def set_spawn_graph_provider(self, provider: SpawnGraphProvider) -> None:
         """Wire the builder that compiles the graph a spawn runs on.
