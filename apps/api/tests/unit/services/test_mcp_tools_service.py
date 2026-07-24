@@ -26,6 +26,12 @@ class TestFormatTools:
         assert [t.name for t in result] == ["ok"]
         assert result[0].description == ""
 
+    def test_drops_entries_without_a_name_key(self):
+        assert mcp_tools_service._format_tools([{"description": "no name key"}, {}]) == []
+
+    def test_empty_input(self):
+        assert mcp_tools_service._format_tools([]) == []
+
 
 @pytest.mark.unit
 class TestStoreMcpTools:
@@ -54,6 +60,69 @@ class TestStoreMcpTools:
         mock_repo.store_tools.assert_not_awaited()
         mock_del.assert_not_awaited()
 
+    async def test_skips_when_tool_list_is_empty(self):
+        with (
+            patch(f"{_MOD}.integration_repository") as mock_repo,
+            patch(f"{_MOD}.delete_cache", new_callable=AsyncMock) as mock_del,
+        ):
+            mock_repo.store_tools = AsyncMock()
+            await mcp_tools_service.store_mcp_tools("int1", [])
+
+        mock_repo.store_tools.assert_not_awaited()
+        mock_del.assert_not_awaited()
+
+
+@pytest.mark.unit
+class TestStoreMcpToolsBatch:
+    async def test_stores_every_integration_with_valid_tools(self):
+        with (
+            patch(f"{_MOD}.integration_repository") as mock_repo,
+            patch(f"{_MOD}.delete_cache", new_callable=AsyncMock) as mock_del,
+            patch(f"{_MOD}._schedule_refresh"),
+        ):
+            mock_repo.store_tools_batch = AsyncMock()
+            await mcp_tools_service.store_mcp_tools_batch(
+                [
+                    ("i1", [{"name": "t1", "description": "d1"}]),
+                    ("i2", [{"name": "t2", "description": "d2"}]),
+                ]
+            )
+
+        mock_repo.store_tools_batch.assert_awaited_once()
+        (items,) = mock_repo.store_tools_batch.await_args.args
+        assert [(iid, [t.name for t in tools]) for iid, tools in items] == [
+            ("i1", ["t1"]),
+            ("i2", ["t2"]),
+        ]
+        mock_del.assert_awaited_once()
+
+    async def test_drops_integrations_whose_tools_are_all_invalid(self):
+        with (
+            patch(f"{_MOD}.integration_repository") as mock_repo,
+            patch(f"{_MOD}.delete_cache", new_callable=AsyncMock),
+            patch(f"{_MOD}._schedule_refresh"),
+        ):
+            mock_repo.store_tools_batch = AsyncMock()
+            await mcp_tools_service.store_mcp_tools_batch(
+                [("i1", []), ("i2", [{"name": "", "description": "bad"}]), ("i3", [{"name": "t3"}])]
+            )
+
+        (items,) = mock_repo.store_tools_batch.await_args.args
+        assert [iid for iid, _ in items] == ["i3"]
+
+    async def test_skips_write_when_nothing_valid_remains(self):
+        with (
+            patch(f"{_MOD}.integration_repository") as mock_repo,
+            patch(f"{_MOD}.delete_cache", new_callable=AsyncMock) as mock_del,
+        ):
+            mock_repo.store_tools_batch = AsyncMock()
+            await mcp_tools_service.store_mcp_tools_batch(
+                [("i1", []), ("i2", [{"name": "", "description": "bad"}])]
+            )
+
+        mock_repo.store_tools_batch.assert_not_awaited()
+        mock_del.assert_not_awaited()
+
 
 @pytest.mark.unit
 class TestGetIntegrationTools:
@@ -65,6 +134,11 @@ class TestGetIntegrationTools:
             result = await mcp_tools_service.get_integration_tools("int1")
 
         assert result == [{"name": "t1", "description": "d1"}]
+
+    async def test_returns_empty_when_the_repository_fails(self):
+        with patch(f"{_MOD}.integration_repository") as mock_repo:
+            mock_repo.get_tools = AsyncMock(side_effect=Exception("DB error"))
+            assert await mcp_tools_service.get_integration_tools("int1") == []
 
 
 @pytest.mark.unit
@@ -94,3 +168,15 @@ class TestGetAllMcpTools:
         assert result["int1"]["icon_url"] == "https://ex.com/icon.png"
         assert result["int1"]["tools"] == [{"name": "t1", "description": "d"}]
         mock_set.assert_awaited_once()
+
+    async def test_returns_empty_when_the_repository_fails(self):
+        with (
+            patch(f"{_MOD}.get_cache", new_callable=AsyncMock, return_value=None),
+            patch(f"{_MOD}.set_cache", new_callable=AsyncMock) as mock_set,
+            patch(f"{_MOD}.integration_repository") as mock_repo,
+        ):
+            mock_repo.all_with_tools = AsyncMock(side_effect=Exception("DB error"))
+            result = await mcp_tools_service.get_all_mcp_tools()
+
+        assert result == {}
+        mock_set.assert_not_awaited()
