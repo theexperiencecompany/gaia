@@ -15,6 +15,7 @@ from uuid import uuid4
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
 from app.agents.core.subagents.registry import all_subagents
 from app.agents.core.subagents.subagent_runner import (
+    SubagentOutcome,
     execute_subagent_stream,
     prepare_executor_execution,
 )
@@ -59,6 +60,22 @@ async def _dev_base_configurable(
     return config["configurable"], user_id, cid
 
 
+def _reject_pause(outcome: SubagentOutcome, agent_name: str) -> None:
+    """Fail loud when a direct run parks on a HIL approval.
+
+    A direct run has no stream and therefore no approval channel to answer the
+    interrupt on, so ``outcome.text`` is meaningless — returning it would hand
+    back an empty message as if it were the agent's answer.
+    """
+    if outcome.paused:
+        raise create_error(
+            message=f"{agent_name} paused for approval",
+            why="A direct run has no approval channel to resume the HIL interrupt on",
+            fix="Drive the run through the chat endpoint, or use a task that gates no tools",
+            status_code=409,
+        )
+
+
 async def run_executor_direct(email: str, task: str, conversation_id: str | None = None) -> dict:
     """Run the executor agent directly with a task, returning its final message."""
     configurable, user_id, cid = await _dev_base_configurable(
@@ -71,20 +88,21 @@ async def run_executor_direct(email: str, task: str, conversation_id: str | None
             why=error or "prepare_executor_execution returned no context",
             status_code=503,
         )
-    message = await execute_subagent_stream(ctx)
+    outcome = await execute_subagent_stream(ctx)
+    _reject_pause(outcome, ctx.agent_name)
     log.info(
         f"{LogTag.DEV} ran executor directly",
         email=email,
         user_id=user_id,
         conversation_id=cid,
-        response_length=len(message),
+        response_length=len(outcome.text),
     )
     return {
         "user_id": user_id,
         "conversation_id": cid,
         "thread_id": ctx.configurable.get("thread_id", ""),
         "agent": ctx.agent_name,
-        "message": message,
+        "message": outcome.text,
     }
 
 
@@ -105,19 +123,20 @@ async def run_subagent_direct(
             fix="GET /api/v1/dev/subagents lists the runnable ids",
             status_code=400,
         )
-    message = await execute_subagent_stream(ctx, integration_metadata=integration_metadata)
+    outcome = await execute_subagent_stream(ctx, integration_metadata=integration_metadata)
+    _reject_pause(outcome, ctx.agent_name)
     log.info(
         f"{LogTag.DEV} ran subagent directly",
         email=email,
         user_id=user_id,
         subagent=ctx.agent_name,
         conversation_id=cid,
-        response_length=len(message),
+        response_length=len(outcome.text),
     )
     return {
         "user_id": user_id,
         "conversation_id": cid,
         "thread_id": ctx.configurable.get("thread_id", ""),
         "agent": ctx.agent_name,
-        "message": message,
+        "message": outcome.text,
     }

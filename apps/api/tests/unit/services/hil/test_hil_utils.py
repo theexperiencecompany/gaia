@@ -62,7 +62,9 @@ class TestUntrustedFence:
     def test_the_fence_is_unguessable_from_one_call_to_the_next(self) -> None:
         # A fixed tag can be closed by an attacker who has seen the prompt. If this ever
         # returns a constant, the fence stops being a fence.
-        assert untrusted_fence() != untrusted_fence()
+        first, second = untrusted_fence(), untrusted_fence()
+
+        assert first != second
 
 
 class TestPriorCalls:
@@ -131,7 +133,10 @@ class TestApprovalId:
     def test_the_same_call_always_derives_the_same_id(self) -> None:
         # The node re-runs from the top on every resume replay. A random id here would
         # mint a second approval card on every replay.
-        assert approval_id_for("conv-1", "call-1") == approval_id_for("conv-1", "call-1")
+        first_pass = approval_id_for("conv-1", "call-1")
+        replay = approval_id_for("conv-1", "call-1")
+
+        assert first_pass == replay
 
     def test_different_calls_in_a_conversation_get_different_ids(self) -> None:
         assert approval_id_for("conv-1", "call-1") != approval_id_for("conv-1", "call-2")
