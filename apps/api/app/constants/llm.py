@@ -19,3 +19,25 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # model via OpenRouter.
 PAID_MODEL_PROVIDER = "openrouter"
 PAID_MODEL_NAME = "minimax/minimax-m3"
+
+# MiniMax M3's 524288-token context is SHARED between input and output, and
+# OpenRouter validates ``input + max_tokens <= context`` up front. Reserving the
+# model's full 512k output ceiling left ~12k for the prompt → 400 over-context
+# errors. Cap output generously but well under the window; the summarization /
+# compaction middleware keeps input bounded (compaction at 0.40, summary at 0.60
+# of the window), so 64k of output leaves ample headroom for the prompt.
+OPENROUTER_MAX_OUTPUT_TOKENS = 64_000
+
+# Reasoning config shared by all OpenRouter (thinking) models.
+OPENROUTER_REASONING = {"effort": "medium"}
+# Default OpenRouter request body: reasoning on, provider auto-routed by OpenRouter.
+OPENROUTER_DEFAULT_EXTRA_BODY = {"reasoning": OPENROUTER_REASONING}
+# Pin the paid model to the first-party "minimax" provider on OpenRouter. Without
+# this, OpenRouter load-balances minimax/minimax-m3 across resellers (Parasail,
+# Together, Morph, …) whose shared non-BYOK pools get rate-limited upstream (429).
+# `only` forces the first-party lane and disables fallback to those resellers.
+PAID_MODEL_PROVIDER_SLUG = "minimax"
+PAID_MODEL_EXTRA_BODY = {
+    "reasoning": OPENROUTER_REASONING,
+    "provider": {"only": [PAID_MODEL_PROVIDER_SLUG]},
+}
