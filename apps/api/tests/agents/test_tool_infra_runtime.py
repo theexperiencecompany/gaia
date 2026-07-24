@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool, tool
 import pytest
 
 from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.spawn_agent import _build_spawn_graph
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core.registry import ToolRegistry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
@@ -19,6 +20,7 @@ from app.agents.tools.core.tool_runtime_config import (
     build_executor_child_tool_runtime_config,
     build_provider_parent_tool_runtime_config,
 )
+from app.constants.general import FINISH_TASK_NAME
 from app.override.langgraph_bigtool.create_agent import create_agent
 
 
@@ -278,144 +280,92 @@ async def test_tool_runtime_config_builders_cover_direct_and_dynamic_modes():
     assert "retrieve_tools_coroutine" in kwargs
 
 
-@pytest.mark.asyncio
-async def test_spawned_child_toolset_excludes_spawn_and_respects_retrieve_toggle():
-    registry = {
-        "vfs_read": vfs_read,
-        "normal_tool": normal_tool,
-        "spawn_subagent": spawn_subagent,
-    }
-    mw = SubagentMiddleware(
-        llm=None,
-        tool_registry=registry,
-        excluded_tool_names={"spawn_subagent"},
-        store=MagicMock(),
-        tool_runtime_config=ToolRuntimeConfig(
-            initial_tool_names=["vfs_read"], enable_retrieve_tools=True
-        ),
-    )
+async def _spawn_graph_agent_kwargs(
+    *, registry: dict[str, BaseTool], excluded: set[str], runtime: ToolRuntimeConfig
+) -> dict[str, Any]:
+    """The kwargs ``_build_spawn_graph`` hands to ``create_agent`` for this config.
 
-    tools_by_name, dynamic, _ = mw._build_child_toolset(
-        config={},
-        inherited_tool_names=["normal_tool", "spawn_subagent"],
-    )
-    assert dynamic is True
-    assert "retrieve_tools" in tools_by_name
-    assert "vfs_read" in tools_by_name
-    assert "normal_tool" in tools_by_name
-    assert "spawn_subagent" not in tools_by_name
+    Store, checkpointer and agent builder are stubbed because they are the
+    boundaries; the scoping under test is the real production code between them.
+    """
+    captured: dict[str, Any] = {}
 
-    mw_no_retrieve = SubagentMiddleware(
-        llm=None,
-        tool_registry=registry,
-        excluded_tool_names={"spawn_subagent"},
-        store=MagicMock(),
-        tool_runtime_config=ToolRuntimeConfig(
-            initial_tool_names=["vfs_read"], enable_retrieve_tools=False
+    def _fake_create_agent(**kwargs: Any) -> Any:
+        captured.update(kwargs)
+        return SimpleNamespace(compile=lambda **_kwargs: MagicMock())
+
+    with (
+        patch("app.agents.core.subagents.spawn_agent.get_tools_store", new=AsyncMock()),
+        patch(
+            "app.agents.core.subagents.spawn_agent.get_checkpointer_manager",
+            new=AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: MagicMock())),
         ),
-    )
-    tools_no_retrieve, dynamic_no_retrieve, _ = mw_no_retrieve._build_child_toolset(
-        config={}, inherited_tool_names=["normal_tool"]
-    )
-    assert dynamic_no_retrieve is False
-    assert "retrieve_tools" not in tools_no_retrieve
-    assert "vfs_read" in tools_no_retrieve
+        patch("app.agents.core.subagents.spawn_agent.create_agent", new=_fake_create_agent),
+    ):
+        await _build_spawn_graph(
+            llm=_FakeLLM(),
+            registry=registry,
+            excluded_tool_names=excluded,
+            tool_space="provider_space",
+            runtime=runtime,
+            middleware_factory=list,
+        )
+    return captured
 
 
 @pytest.mark.asyncio
-async def test_spawned_child_toolset_edge_cases_dedupe_and_fallback():
-    registry = {
-        "vfs_read": vfs_read,
-        "normal_tool": normal_tool,
-        "handoff": handoff,
-    }
-    mw = SubagentMiddleware(
-        llm=None,
-        tool_registry=registry,
-        excluded_tool_names={"handoff"},
-        store=MagicMock(),
-        tool_runtime_config=ToolRuntimeConfig(
-            initial_tool_names=["vfs_read", "vfs_read", "missing_tool"],
-            enable_retrieve_tools=False,
-        ),
+async def test_spawn_graph_scopes_the_registry_to_what_the_parent_allows():
+    # A spawn must not be able to spawn again, so the excluded set is applied
+    # before create_agent ever sees the registry. finish_task is added back:
+    # a one-shot agent with no way to declare itself done never terminates.
+    captured = await _spawn_graph_agent_kwargs(
+        registry={
+            "vfs_read": vfs_read,
+            "normal_tool": normal_tool,
+            "spawn_subagent": spawn_subagent,
+        },
+        excluded={"spawn_subagent"},
+        runtime=ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=True),
     )
 
-    tools_by_name, dynamic, _ = mw._build_child_toolset(
-        config={},
-        inherited_tool_names=["normal_tool", "normal_tool", "handoff", "missing_tool"],
-    )
-    assert dynamic is False
-    assert set(tools_by_name.keys()) == {"vfs_read", "normal_tool"}
-
-    mw_fallback = SubagentMiddleware(
-        llm=None,
-        tool_registry=registry,
-        excluded_tool_names={"handoff"},
-        store=MagicMock(),
-        tool_runtime_config=ToolRuntimeConfig(
-            initial_tool_names=["missing_tool"], enable_retrieve_tools=False
-        ),
-    )
-    fallback_tools, _dynamic, _ = mw_fallback._build_child_toolset(
-        config={},
-        inherited_tool_names=["missing_tool"],
-    )
-    # fallback path should bind all eligible tools from registry
-    assert "vfs_read" in fallback_tools
-    assert "normal_tool" in fallback_tools
-    assert "handoff" not in fallback_tools
+    bindable = set(captured["tool_registry"])
+    assert "spawn_subagent" not in bindable
+    assert {"vfs_read", "normal_tool", FINISH_TASK_NAME} <= bindable
+    assert "retrieve_tools_coroutine" in captured
 
 
 @pytest.mark.asyncio
-async def test_retrieve_tool_requires_store_even_if_enabled():
-    mw = SubagentMiddleware(
-        llm=None,
-        tool_registry={"vfs_read": vfs_read},
-        store=None,
-        tool_runtime_config=ToolRuntimeConfig(
-            initial_tool_names=["vfs_read"], enable_retrieve_tools=True
-        ),
+async def test_spawn_graph_disables_retrieve_when_the_parent_did():
+    captured = await _spawn_graph_agent_kwargs(
+        registry={"vfs_read": vfs_read},
+        excluded={"spawn_subagent"},
+        runtime=ToolRuntimeConfig(initial_tool_names=["vfs_read"], enable_retrieve_tools=False),
     )
-    assert mw._build_retrieve_tool(config={}) is None
+
+    assert captured["disable_retrieve_tools"] is True
+    assert "retrieve_tools_coroutine" not in captured
 
 
 @pytest.mark.asyncio
-async def test_executor_spawned_child_retrieve_excludes_subagent_and_handoff_not_bound():
-    registry = {
-        "vfs_read": vfs_read,
-        "normal_tool": normal_tool,
-        "handoff": handoff,
-    }
-    mw = SubagentMiddleware(
-        llm=None,
-        tool_registry=registry,
-        excluded_tool_names={"handoff"},
-        store=MagicMock(),
-        tool_runtime_config=build_executor_child_tool_runtime_config(),
+async def test_spawned_retrieve_cannot_bind_back_an_excluded_tool():
+    # The scoped registry travels on as retrieve_tools' bindable set, so a tool
+    # the parent excluded cannot be pulled back in at retrieval time.
+    captured = await _spawn_graph_agent_kwargs(
+        registry={"vfs_read": vfs_read, "normal_tool": normal_tool, "handoff": handoff},
+        excluded={"handoff"},
+        runtime=build_executor_child_tool_runtime_config(),
     )
-    tools_by_name, _dynamic, retrieve_tool = mw._build_child_toolset(
-        config={},
-        inherited_tool_names=["handoff", "normal_tool"],
-    )
-    assert "handoff" not in tools_by_name
-    assert "normal_tool" in tools_by_name
-    assert retrieve_tool is not None
-
-    class _DummyRetrieveRegistry:
-        def get_tool_names(self):
-            return ["normal_tool", "vfs_read"]
-
-        def get_category_of_tool(self, tool_name: str) -> str:
-            return "general_cat"
 
     with patch(
         "app.agents.tools.core.retrieval.get_tool_registry",
-        new=AsyncMock(return_value=_DummyRetrieveRegistry()),
+        new=AsyncMock(return_value=_RetrieveRegistry(["normal_tool", "vfs_read", "handoff"])),
     ):
-        result = await retrieve_tool.ainvoke(
-            {"exact_tool_names": ["subagent:gmail", "handoff", "normal_tool"]},
+        result = await captured["retrieve_tools_coroutine"](
+            store=MagicMock(),
             config={"configurable": {"user_id": "u1"}},
+            exact_tool_names=["subagent:gmail", "handoff", "normal_tool"],
         )
+
     assert "subagent:gmail" not in result["tools_to_bind"]
     assert "handoff" not in result["tools_to_bind"]
     assert "normal_tool" in result["tools_to_bind"]
