@@ -71,6 +71,7 @@ from app.override.langgraph_bigtool.utils import (
     format_selected_tools,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
@@ -277,8 +278,10 @@ def create_agent(
             preview = []
             for msg in recent_messages:
                 role = msg.__class__.__name__
-                content = getattr(msg, "content", "")
-                if isinstance(content, str) and len(content) > 200:
+                # extract_text_content, not the raw content: a tool result carrying
+                # inline media holds megabytes of base64 that must never reach a log.
+                content = extract_text_content(getattr(msg, "content", ""))
+                if len(content) > 200:
                     content = content[:197] + "..."
                 preview.append({"role": role, "content": content})
             log.info("acall_model message preview", preview=preview)

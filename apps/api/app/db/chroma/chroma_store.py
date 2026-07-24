@@ -532,7 +532,7 @@ class ChromaStore(BaseStore):
         # silently swallows every failure. Surface them so we don't end up with
         # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
         # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
-        results: list[None | BaseException] = await asyncio.gather(*tasks, return_exceptions=True)
+        results: list[BaseException | None] = await asyncio.gather(*tasks, return_exceptions=True)
         failures: list[tuple[str, BaseException]] = [
             (d, r) for d, r in zip(doc_ids, results) if isinstance(r, BaseException)
         ]

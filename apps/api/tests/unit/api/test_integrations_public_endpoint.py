@@ -236,7 +236,13 @@ class TestAddPublicIntegration:
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
-                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                    {
+                        **original_doc,
+                        "managed_by": "mcp",
+                        "description": "",
+                        "category": "custom",
+                        "source": "custom",
+                    }
                 )
             )
             mock_user_coll.get_for_user = AsyncMock(return_value=existing)
@@ -276,7 +282,13 @@ class TestAddPublicIntegration:
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
-                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                    {
+                        **original_doc,
+                        "managed_by": "mcp",
+                        "description": "",
+                        "category": "custom",
+                        "source": "custom",
+                    }
                 )
             )
             mock_repo.increment_clone_count = AsyncMock()
@@ -325,7 +337,13 @@ class TestAddPublicIntegration:
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
-                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                    {
+                        **original_doc,
+                        "managed_by": "mcp",
+                        "description": "",
+                        "category": "custom",
+                        "source": "custom",
+                    }
                 )
             )
             mock_repo.increment_clone_count = AsyncMock()
@@ -372,7 +390,13 @@ class TestAddPublicIntegration:
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
-                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                    {
+                        **original_doc,
+                        "managed_by": "mcp",
+                        "description": "",
+                        "category": "custom",
+                        "source": "custom",
+                    }
                 )
             )
             mock_user_coll.get_for_user = AsyncMock(return_value=existing)
@@ -421,7 +445,13 @@ class TestAddPublicIntegration:
         ):
             mock_repo.get_public = AsyncMock(
                 return_value=Integration.model_validate(
-                    {**original_doc, "managed_by": "mcp", "description": "", "category": "custom", "source": "custom"}
+                    {
+                        **original_doc,
+                        "managed_by": "mcp",
+                        "description": "",
+                        "category": "custom",
+                        "source": "custom",
+                    }
                 )
             )
             mock_repo.increment_clone_count = AsyncMock()

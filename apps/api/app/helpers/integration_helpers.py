@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+import re
 from typing import TYPE_CHECKING
 
 from app.helpers.slug_helpers import slugify
@@ -10,6 +12,50 @@ if TYPE_CHECKING:
     # Import under TYPE_CHECKING only: integration_models imports this module for
     # generate_integration_slug, so a runtime import back would be circular.
     from app.models.integration_models import IntegrationWithCreator
+
+# Stopwords filtered out of free-text integration/tool search queries.
+SEARCH_STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "to",
+    "for",
+    "with",
+    "and",
+    "or",
+    "in",
+    "on",
+    "my",
+}
+
+
+def build_search_patterns(query: str) -> list[str]:
+    """Split a query into individual lowercase words for flexible matching.
+
+    E.g. "Render deployment" -> ["render", "deployment"], so "Render" still
+    matches when the query is "Render deployment". Short and common words are
+    dropped so they do not match everything.
+    """
+    words = re.split(r"[\s,;]+", query.lower())
+    return [w for w in words if len(w) >= 2 and w not in SEARCH_STOPWORDS]
+
+
+def build_search_matcher(query: str | None) -> Callable[[str], bool]:
+    """Predicate over a lowercase haystack for an optional free-text query.
+
+    Distinguishes the two cases callers keep conflating: no query at all means
+    "list everything", while a query that reduces to no usable words (all
+    stopwords, e.g. "the" or "to my") means "nothing matches". Returning the
+    whole catalog for the latter silently ignores the filter the caller asked for.
+    """
+    if not query or not query.strip():
+        return lambda _haystack: True
+
+    patterns = build_search_patterns(query)
+    if not patterns:
+        return lambda _haystack: False
+
+    return lambda haystack: any(pattern in haystack for pattern in patterns)
 
 
 def generate_integration_slug(

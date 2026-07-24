@@ -112,6 +112,44 @@ def test_parse_tool_missing_name_raises():
 # --------------------------------------------------------------------------- #
 
 
+def test_trailing_context_user_message_does_not_hide_script():
+    """The graph injects context slots as trailing user-role messages; the stub
+    must script from the newest user message that carries directives."""
+    messages = [
+        _user("[[say:SCRIPTED]]"),
+        _user("=== dynamic context ===\ncurrent todos: none"),
+    ]
+    assert resolve_response(messages, EXECUTOR_TOOLS) == SayResponse(text="SCRIPTED")
+
+
+def test_bigtool_executor_retrieves_then_calls():
+    """Unbound scripted tool + retrieve_tools available → bind first, call second,
+    and the retrieval turn never advances the script cursor."""
+    script = '[[tool:create_todo {"title": "x"}]] [[say:Done]]'
+    bigtool = frozenset({"retrieve_tools"})
+
+    first = resolve_response([_user(script)], bigtool)
+    assert first == ToolCallResponse(
+        name="retrieve_tools", args={"query": "create_todo", "exact_tool_names": ["create_todo"]}
+    )
+
+    after_retrieval = [
+        _user(script),
+        _assistant_tool_call("retrieve_tools", {"exact_tool_names": ["create_todo"]}),
+        _tool_result("retrieve_tools"),
+    ]
+    bound = frozenset({"retrieve_tools", "create_todo"})
+    assert resolve_response(after_retrieval, bound) == ToolCallResponse(
+        name="create_todo", args={"title": "x"}
+    )
+
+    after_call = after_retrieval + [
+        _assistant_tool_call("create_todo", {"title": "x"}),
+        _tool_result("create_todo"),
+    ]
+    assert resolve_response(after_call, bound) == SayResponse(text="Done")
+
+
 def test_executor_first_turn_emits_first_tool():
     messages = [_user('[[tool:create_reminder {"title": "x"}]] [[say:Done]]')]
     got = resolve_response(messages, EXECUTOR_TOOLS)

@@ -1,0 +1,15 @@
+name: Restore Next.js build cache
+description: >
+  Persist apps/web/.next/cache across runs so `next build` compiles warm.
+  Single source of truth for the cache key — used by main.yml (build) and
+  desktop-pr-build.yml (prepare).
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v4
+      with:
+        path: apps/web/.next/cache
+        key: nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ hashFiles('apps/web/src/**/*.js', 'apps/web/src/**/*.jsx', 'apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx') }}
+        restore-keys: |
+          nextjs-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-

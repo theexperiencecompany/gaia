@@ -1991,23 +1991,3 @@ def get_memory_extraction_prompt(integration_id: str) -> str | None:
     if not integration or not integration.subagent_config:
         return None
     return integration.subagent_config.memory_prompt
-
-
-@cache
-def get_toolkit_to_integration_map() -> dict[str, str]:
-    """Map Composio toolkit names (e.g. 'GMAIL') to integration IDs (e.g. 'gmail').
-
-    Single source of truth for tool-prefix -> integration-category mapping; used by the
-    workflow context extractor to infer categories from tool names.
-    """
-    mapping = {}
-    for integration in OAUTH_INTEGRATIONS:
-        # From composio_config.toolkit (e.g., 'GMAIL' -> 'gmail')
-        if integration.composio_config and integration.composio_config.toolkit:
-            mapping[integration.composio_config.toolkit] = integration.id
-
-        # Also add uppercase ID for internal integrations (e.g., 'TODO' -> 'todos')
-        # and for agent name patterns
-        mapping[integration.id.upper()] = integration.id
-
-    return mapping

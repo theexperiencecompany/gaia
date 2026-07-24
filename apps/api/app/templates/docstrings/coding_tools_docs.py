@@ -68,6 +68,10 @@ Returns the file's contents with line numbers (cat -n style). Use this to
 inspect code you've written, uploaded files, or data. The file must be inside
 the workspace.
 
+Image files (png, jpg, jpeg, webp, gif) are returned as the actual image when
+the model can view images, or as a detailed text description otherwise —
+`offset`/`limit` are ignored for images.
+
 PARAMETERS:
 - path (str): Workspace path. Relative paths resolve against your session
   root (e.g. `user-uploaded/data.csv`, `scratch/out.txt`); absolute paths
@@ -78,11 +82,13 @@ PARAMETERS:
 OUTPUT:
 File contents with `   1\\tfirst line\\n   2\\tsecond line\\n …` formatting.
 If the file is larger than `limit` lines, a footer indicates the remaining
-range so you can call again with `offset`.
+range so you can call again with `offset`. Images return the image itself
+(or its description) instead of numbered lines.
 
 EXAMPLES:
 ✅ read("script.py")
 ✅ read("data/large.csv", offset=1000, limit=200)
+✅ read("user-uploaded/photo.jpg")
 """
 
 WRITE_TOOL = """

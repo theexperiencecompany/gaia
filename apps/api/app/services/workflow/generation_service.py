@@ -149,7 +149,7 @@ class WorkflowGenerationService:
         title: str,
         trigger_config=None,
         description: str | None = None,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
         user_id: str | None = None,
     ) -> list:
         """Generate workflow steps using the LLM's native structured output.
@@ -162,7 +162,7 @@ class WorkflowGenerationService:
         log.info(f"{LogTag.WORKFLOW} Getting tool registry...")
         tool_registry = await get_tool_registry()
 
-        normalized_slugs = _normalize_slugs(selected_integrations)
+        normalized_slugs = _normalize_slugs(integration_ids)
         prefer_set = set(normalized_slugs)
         explicit_set = _extract_explicit_mentions(prompt)
         # Union of preferred integrations and those explicitly named in the prompt.
@@ -343,7 +343,7 @@ class WorkflowGenerationService:
         trigger_config: dict | None = None,
         existing_prompt: str | None = None,
         connected_integration_ids: set[str] | None = None,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
     ) -> dict:
         """Generate or improve workflow instructions using LLM.
 
@@ -351,13 +351,13 @@ class WorkflowGenerationService:
 
         If `connected_integration_ids` is provided, the available-triggers
         list shown to the LLM is restricted to those integrations.
-        If `selected_integrations` is provided, the LLM is hinted to prefer
+        If `integration_ids` is provided, the LLM is hinted to prefer
         those integrations when naming triggers/actions.
         """
         trigger_hint = _build_trigger_hint(trigger_config)
         available_triggers = _build_available_triggers(connected_integration_ids)
 
-        normalized_slugs = _normalize_slugs(selected_integrations)
+        normalized_slugs = _normalize_slugs(integration_ids)
         if normalized_slugs:
             friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
             integrations_hint = (

@@ -690,7 +690,9 @@ class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
     @patch("app.services.integrations.user_integrations.user_integration_repository")
-    async def test_skips_integration_with_no_details(self, mock_repo, mock_int_repo, mock_users_col):
+    async def test_skips_integration_with_no_details(
+        self, mock_repo, mock_int_repo, mock_users_col
+    ):
         mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("deleted-int")])
         # Not in the catalog and no stored doc → _build_integration_response returns None.
         mock_int_repo.find_by_ids = AsyncMock(return_value=[])

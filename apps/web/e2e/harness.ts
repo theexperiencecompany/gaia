@@ -13,10 +13,33 @@
 const WEB_PORT = process.env.WEB_PORT ?? "3000";
 const API_PORT = process.env.API_PORT ?? "8000";
 
-/** The seeded dev user. Matches the `mise seed` / `mise dev:sim` default. */
+/**
+ * The seeded dev user. Matches the `mise seed` / `mise dev:sim` default.
+ *
+ * Ports are per-worktree but the Docker infra (Mongo) is shared across all
+ * worktrees, and `global-setup` resets → mints → seeds this user. So two
+ * worktrees running e2e at once against the SAME `DEV_USER` will clobber each
+ * other's data mid-run. Run e2e in one worktree at a time, or give a worktree
+ * its own identity by setting `DEV_USER` here AND the matching
+ * `DEV_AUTH_BYPASS_EMAIL` on its API (browser page loads carry no `X-Dev-User`
+ * header, so the seeded user must equal the server's bypass email).
+ */
 export const DEV_USER = process.env.DEV_USER ?? "dev@gaia.local";
-export const SEED_TODOS = Number(process.env.SEED_TODOS ?? "5");
-export const SEED_CONVERSATIONS = Number(process.env.SEED_CONVERSATIONS ?? "2");
+
+/** Fail loud on malformed seed counts instead of sending NaN/negatives to the API. */
+function seedCount(name: string, fallback: number, min: number): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < min) {
+    throw new Error(`${name} must be an integer >= ${min}, got "${raw}"`);
+  }
+  return value;
+}
+
+// SEED_TODOS >= 1: the smoke spec asserts on the first seeded todo.
+export const SEED_TODOS = seedCount("SEED_TODOS", 5, 1);
+export const SEED_CONVERSATIONS = seedCount("SEED_CONVERSATIONS", 2, 0);
 
 export const WEB_BASE_URL = `http://localhost:${WEB_PORT}`;
 export const API_BASE_URL = `http://localhost:${API_PORT}/api/v1`;

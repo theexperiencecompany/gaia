@@ -5,12 +5,16 @@ from typing import Any
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 from app.config.settings import settings
-from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
+from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserUpdate, user_to_legacy_dict
-from app.utils.auth_utils import authenticate_workos_session, build_user_context
+from app.utils.auth_utils import (
+    authenticate_workos_session,
+    build_user_context,
+    resolve_dev_bypass_user,
+)
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
 from shared.py.wide_events import log
 
@@ -108,8 +112,7 @@ async def get_current_user_ws(websocket: WebSocket):
     # including the X-Dev-User per-request impersonation header. get_settings()
     # hard-fails if this is set in production.
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
-        target_email = websocket.headers.get(DEV_USER_HEADER) or settings.DEV_AUTH_BYPASS_EMAIL
-        user_data = await user_repository.get_by_email(target_email)
+        target_email, user_data = await resolve_dev_bypass_user(websocket.headers)
         if user_data is not None:
             return build_user_context(
                 user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True

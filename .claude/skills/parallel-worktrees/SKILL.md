@@ -51,6 +51,8 @@ today's defaults. Delete `.env.worktree` to fall back to defaults.
 | API (uvicorn) | `API_PORT` | `8000 + offset` | 8000 |
 | Web (Next.js) | `WEB_PORT` | `3000 + offset` | 3000 |
 | Web → API URL | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:$API_PORT/api/v1/` | …8000/api/v1/ |
+| Bots/`gaia-sim` → API URL | `GAIA_API_URL` | `http://localhost:$API_PORT` | …:8000 |
+| Scripted LLM stub (`dev:sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |
 | Discord bot | `BOT_DISCORD_PORT` | `3200 + offset` | 3200 |
 | Slack bot | `BOT_SLACK_PORT` | `3201 + offset` | 3201 |
 | Telegram bot | `BOT_TELEGRAM_PORT` | `3202 + offset` | 3202 |
@@ -82,18 +84,32 @@ override explicitly, e.g. `BOT_SERVER_PORT=$BOT_WHATSAPP_PORT nx dev bot-whatsap
 (`BOT_SERVER_PORT` overrides all four defaults, so set it per single-bot launch,
 not globally).
 
+## Shared database — one seeded dev user at a time
+
+Ports are per-worktree; the Docker infra (Mongo/Postgres/Redis/RabbitMQ/Chroma)
+is **shared**. So anything that writes to a fixed key collides across worktrees.
+The web e2e suite is the sharp edge: its `global-setup` resets → mints → seeds
+`DEV_USER` (default `dev@gaia.local`), so two worktrees running `mise e2e:web`
+at once wipe each other's data mid-run.
+
+Rule: run e2e in **one worktree at a time**, or give a worktree its own identity
+by setting `DEV_USER` (the e2e seed target) **and** the matching
+`DEV_AUTH_BYPASS_EMAIL` on its API to the same address — browser page loads carry
+no `X-Dev-User` header, so the seeded user must equal the server's bypass email.
+Full per-worktree DB isolation is deferred; until then this is the constraint.
+
 ## Merge back
 
 Repo git rules apply (see root `CLAUDE.md`):
 
 - `develop` is the base branch — branch from and merge into `develop`, not `master`.
 - Plain merge only. Never `git rebase` / `git pull --rebase` against `origin/develop`.
-- Never merge PRs (`gh pr merge` is forbidden) — the team merges.
+- Never merge PRs (`gh pr merge` and `wt merge` are both off-limits) — the team merges.
+
+Hand-off flow: sync with develop, push the branch, open a PR:
 
 ```bash
-wt merge          # squash-merges this branch into the default base + cleans up
-# or, staying explicit with the repo's rules:
-git fetch origin && git merge origin/develop && git push
+git fetch origin && git merge origin/develop && git push -u origin HEAD
 ```
 
 ```bash
@@ -103,10 +119,13 @@ wt remove         # remove the current worktree; deletes the branch if merged
 
 ## Troubleshooting
 
-- **`Address already in use` on `mise dev`** — another worktree (or a stale
-  process) holds the port. `wt list` to see live worktrees; confirm `.env.worktree`
-  exists here (`cat .env.worktree`) and re-run `mise run wt:env` if not. Offset
-  collision between two worktrees → rename one and re-run `wt:env`.
+- **`port NNNN is already in use by PID …` on `mise dev` / `dev:sim`** — the
+  preflight (`scripts/dev/check-ports.sh`) refused to start because another
+  worktree or a stale server holds the port; the message names the process. Kill
+  it, or confirm `.env.worktree` exists here (`cat .env.worktree`) and re-run
+  `mise run wt:env`. Offset collision between two worktrees → rename one and
+  re-run `wt:env`. Without the preflight this failed silently: uvicorn exited,
+  nx kept web alive, and every request went to the *other* worktree's API.
 - **Web calls the wrong API** — check `NEXT_PUBLIC_API_BASE_URL` in `.env.worktree`
   matches this worktree's `API_PORT`; restart `nx dev web` so Next re-reads the env.
 - **`.env.worktree` missing** — run `mise run wt:env`. A brand-new worktree gets it

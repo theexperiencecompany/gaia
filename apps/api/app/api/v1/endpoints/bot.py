@@ -265,6 +265,12 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                     yield chunk
                     continue
 
+                # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...")
+                # for Last-Event-ID resume — split the id line off before the data
+                # checks, or every content frame is silently dropped.
+                if chunk.startswith("id: "):
+                    _, _, chunk = chunk.partition("\n")
+
                 if not chunk.startswith("data: "):
                     continue
 

@@ -3,12 +3,25 @@ from typing import Any
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
+from app.constants.auth import DEV_USER_HEADER
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import user_to_legacy_dict
+from app.models.user_models import UserDocument, user_to_legacy_dict
 from shared.py.wide_events import log
 
-# T is the return type of the wrapped function
+
+async def resolve_dev_bypass_user(headers: Any) -> tuple[str, UserDocument | None]:
+    """Resolve the dev-bypass target to its Mongo user.
+
+    The single definition of bypass semantics for BOTH the HTTP middleware and
+    the WebSocket dependency: the ``X-Dev-User`` header (per-request
+    impersonation) wins over ``DEV_AUTH_BYPASS_EMAIL``. Callers own their own
+    failure handling (HTTP 401 vs WS close) but must not re-implement the
+    resolution. ``headers`` is any Mapping-like with ``.get`` (Starlette
+    ``Headers`` for both HTTP and WS).
+    """
+    target_email: str = headers.get(DEV_USER_HEADER) or settings.DEV_AUTH_BYPASS_EMAIL or ""
+    return target_email, await user_repository.get_by_email(target_email)
 
 
 def build_user_context(

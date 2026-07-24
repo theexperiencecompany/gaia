@@ -16,6 +16,7 @@ def _as_user(db_doc: dict) -> UserDocument:
         data["id"] = str(db_doc["_id"])
     return UserDocument.model_validate(data)
 
+
 # ---------------------------------------------------------------------------
 # Patch targets
 # ---------------------------------------------------------------------------

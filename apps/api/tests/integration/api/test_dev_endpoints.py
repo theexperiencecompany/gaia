@@ -50,7 +50,7 @@ def _build_app() -> FastAPI:
 
 async def _client(app: FastAPI) -> httpx.AsyncClient:
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
-    return httpx.AsyncClient(transport=transport, base_url="http://testserver")  # NOSONAR
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
 # ---------------------------------------------------------------------------
@@ -60,9 +60,20 @@ async def _client(app: FastAPI) -> httpx.AsyncClient:
 
 @pytest.mark.integration
 class TestDevRouterMounting:
-    async def test_dev_routes_absent_without_bypass(self, test_client):
-        """With no DEV_AUTH_BYPASS_EMAIL, the router is never mounted → 404."""
-        response = await test_client.post("/api/v1/dev/users", json={"email": DEV_EMAIL})
+    async def test_dev_routes_absent_without_bypass(self, monkeypatch):
+        """With no DEV_AUTH_BYPASS_EMAIL, the router is never mounted → 404.
+
+        Explicitly clears the bypass rather than relying on the developer's
+        ambient .env, which legitimately sets it in local dev.
+        """
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", None)
+        app = _build_app()
+
+        client = await _client(app)
+        async with client:
+            response = await client.post("/api/v1/dev/users", json={"email": DEV_EMAIL})
         assert response.status_code == 404
 
     async def test_dev_routes_mounted_with_bypass(self, monkeypatch):
@@ -84,6 +95,80 @@ class TestDevRouterMounting:
         assert response.status_code == 200
         assert response.json()["email"] == DEV_EMAIL
         mock_mint.assert_awaited_once_with(DEV_EMAIL, None)
+
+    # The direct agent-invocation routes run the executor / a subagent with the
+    # full tool registry as any impersonated user — the highest-blast-radius
+    # surface on the router. Nothing but the mount condition keeps them off a
+    # prod deployment, so pin every one of them to 404-when-unmounted. A future
+    # refactor that registers any of these on a router assembled outside the
+    # ENV+bypass gate (e.g. a stray include_router at import time) fails here
+    # instead of silently exposing account-takeover-grade endpoints.
+    HIGH_BLAST_RADIUS_ROUTES = [
+        ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
+        ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
+        ("GET", "/api/v1/dev/subagents", None),
+        ("DELETE", "/api/v1/dev/users/dev@gaia.local", None),
+    ]
+
+    @pytest.mark.parametrize(
+        ("method", "path", "body"),
+        HIGH_BLAST_RADIUS_ROUTES,
+        ids=lambda v: v if isinstance(v, str) else "",
+    )
+    async def test_privileged_routes_absent_without_bypass(self, monkeypatch, method, path, body):
+        """Every privileged dev route — not just /users — 404s when unmounted."""
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", None)
+        app = _build_app()
+
+        client = await _client(app)
+        async with client:
+            response = await client.request(method, path, json=body)
+        assert response.status_code == 404
+
+    async def test_privileged_routes_mounted_with_bypass(self, monkeypatch):
+        """With the bypass set, the executor + subagent routes are registered and
+        reach their service layer (200) — proving the 404s above are the mount
+        gate, not a typo'd path that would 404 in every environment."""
+        from app.config.settings import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
+        app = _build_app()
+
+        agent_result = {
+            "user_id": "u1",
+            "conversation_id": "c1",
+            "thread_id": "t1",
+            "agent": "executor",
+            "message": "ok",
+        }
+        with (
+            patch(
+                "app.api.v1.endpoints.dev.run_executor_direct",
+                new_callable=AsyncMock,
+                return_value=agent_result,
+            ) as mock_exec,
+            patch(
+                "app.api.v1.endpoints.dev.run_subagent_direct",
+                new_callable=AsyncMock,
+                return_value={**agent_result, "agent": "some_agent"},
+            ) as mock_sub,
+        ):
+            client = await _client(app)
+            async with client:
+                exec_response = await client.post(
+                    "/api/v1/dev/executor", json={"email": DEV_EMAIL, "task": "noop"}
+                )
+                sub_response = await client.post(
+                    "/api/v1/dev/subagents/some_agent",
+                    json={"email": DEV_EMAIL, "task": "noop"},
+                )
+
+        assert exec_response.status_code == 200
+        assert sub_response.status_code == 200
+        mock_exec.assert_awaited_once_with(DEV_EMAIL, "noop", None)
+        mock_sub.assert_awaited_once_with(DEV_EMAIL, "some_agent", "noop", None)
 
     async def test_seed_endpoint_forwards_payload(self, monkeypatch):
         from app.config.settings import settings as app_settings

@@ -885,9 +885,11 @@ LARGE OUTPUT HANDLING
 - Use spawn_subagent to read/process that workspace file and return only needed results.
 
 WORKFLOWS
-- Use create_workflow directly (not handoff):
-  - create_workflow(user_request="...", mode="new")
-  - create_workflow(user_request="...", mode="from_conversation")
+- Use these directly (not handoff):
+  - create_workflow(user_request="...") to build a new workflow
+  - edit_workflow(workflow_id, user_request="...") to change one (list_workflows or get_workflow first to find the id)
+  - pause_workflow(workflow_id) / resume_workflow(workflow_id) to stop or restart it
+  - list_workflows(page, page_size) to browse them
 - After creating a workflow that PERFORMS actions (sends, creates, updates, posts to
   external systems), create a tracked todo to link it to GAIA's memory:
   create_tracked_todo(

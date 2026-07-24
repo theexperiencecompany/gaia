@@ -5,7 +5,6 @@ on it. Updates are free-form field patches (an action result may set arbitrary
 fields), so they go through ``update_fields`` rather than a rigid update model.
 """
 
-
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.notification.notification_models import (

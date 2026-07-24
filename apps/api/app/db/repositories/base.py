@@ -357,6 +357,8 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         filter_: Mapping[str, object],
         *,
         sort: Sequence[tuple[str, int]] | None = None,
+        limit: int = 0,
+        skip: int = 0,
     ) -> list[TDoc]:
         """Like ``_find``, but a single row that fails model validation is skipped
         and logged loudly rather than failing the whole read.
@@ -369,6 +371,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         cursor = get_async_collection(self.collection_name).find(dict(filter_))
         if sort is not None:
             cursor = cursor.sort(list(sort))
+        if skip:
+            cursor = cursor.skip(skip)
+        if limit:
+            cursor = cursor.limit(limit)
         docs: list[TDoc] = []
         async for raw in cursor:
             try:

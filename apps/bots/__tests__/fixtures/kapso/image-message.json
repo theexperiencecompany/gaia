@@ -1,0 +1,20 @@
+{
+  "message": {
+    "id": "wamid.SYNTHETIC0002",
+    "timestamp": "0",
+    "type": "image",
+    "image": {
+      "id": "media_synthetic_img_1",
+      "mime_type": "image/jpeg",
+      "caption": "what is in this picture?"
+    }
+  },
+  "conversation": {
+    "id": "conv_synthetic_2",
+    "phone_number": "+15550000002",
+    "phone_number_id": "pn_synthetic",
+    "status": "active"
+  },
+  "is_new_conversation": false,
+  "phone_number_id": "pn_synthetic"
+}

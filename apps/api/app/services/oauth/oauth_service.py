@@ -43,6 +43,8 @@ async def store_user_info(
     name: str,
     email: str,
     picture_url: str | None,
+    *,
+    external_side_effects: bool = True,
 ) -> tuple[str, bool]:
     """
     Stores user info from Google callback.
@@ -54,6 +56,10 @@ async def store_user_info(
         name (str): The user's name.
         email (str): The user's email.
         picture_url (str): The URL of the profile picture from Google.
+        external_side_effects: When False, skip the outbound effects of signup
+            (PostHog events, welcome email, marketing audience, workspace
+            provisioning) while keeping the stored data shape identical — for
+            dev/test minting, which must never email or pollute analytics.
 
     Returns:
         tuple[str, bool]: (user_id, is_new_user)
@@ -77,21 +83,25 @@ async def store_user_info(
             update_fields["picture"] = ""
 
         await user_repository.update(existing_user.id, UserUpdate(**update_fields))
-        try:
-            track_login(
-                user_id=email,
-                email=email,
-                name=name,
-                login_method=LOGIN_METHOD_WORKOS,
-            )
-        except Exception as e:
-            log.error(f"{LogTag.OAUTH} Failed to track login in PostHog for {email}: {e!s}")
+        if external_side_effects:
+            try:
+                track_login(
+                    user_id=email,
+                    email=email,
+                    name=name,
+                    login_method=LOGIN_METHOD_WORKOS,
+                )
+            except Exception as e:
+                log.error(f"{LogTag.OAUTH} Failed to track login in PostHog for {email}: {e!s}")
 
         return existing_user.id, False
 
     created = await user_repository.create(
         UserDocument(name=name, email=email, picture=picture_url or "")
     )
+
+    if not external_side_effects:
+        return created.id, True
 
     # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
     try:

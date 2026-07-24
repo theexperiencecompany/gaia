@@ -79,11 +79,31 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         """A workflow by id, scoped to its owner — the owned-read path."""
         return await self._find_one({"_id": workflow_id, "user_id": user_id})
 
+    @staticmethod
+    def _list_query(user_id: str, *, exclude_todo_workflows: bool) -> dict[str, Any]:
+        """The shared filter for a user's listed workflows — the single source of
+        truth for both ``list_for_user`` and ``count_for_user`` so a paginated
+        list and its total can never drift out of the same predicate."""
+        query: dict[str, Any] = {"user_id": user_id}
+        if exclude_todo_workflows:
+            query["$or"] = [
+                {"is_todo_workflow": {"$exists": False}},
+                {"is_todo_workflow": False},
+            ]
+        return query
+
     async def list_for_user(
-        self, user_id: str, *, exclude_todo_workflows: bool = True
+        self,
+        user_id: str,
+        *,
+        exclude_todo_workflows: bool = True,
+        limit: int | None = None,
+        offset: int = 0,
     ) -> list[WorkflowDocument]:
         """A user's workflows, newest first. Auto-generated todo workflows are
         excluded by default (they are an implementation detail, not user-authored).
+        ``limit=None`` fetches every match; pass ``limit``/``offset`` to paginate
+        (``count_for_user`` gives the full match count for the same filter).
 
         A single legacy-malformed row is skipped and logged loudly rather than
         failing the whole read — one corrupt document must not blank a user's
@@ -91,13 +111,19 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         only: the single-document reads (``get``/``get_for_user``) stay strict so a
         fetch of a known id surfaces the corruption instead of hiding it.
         """
-        query: dict[str, Any] = {"user_id": user_id}
-        if exclude_todo_workflows:
-            query["$or"] = [
-                {"is_todo_workflow": {"$exists": False}},
-                {"is_todo_workflow": False},
-            ]
-        return await self._find_lenient(query, sort=[("created_at", -1)])
+        return await self._find_lenient(
+            self._list_query(user_id, exclude_todo_workflows=exclude_todo_workflows),
+            sort=[("created_at", -1)],
+            limit=limit or 0,
+            skip=offset,
+        )
+
+    async def count_for_user(self, user_id: str, *, exclude_todo_workflows: bool = True) -> int:
+        """Total workflows a user has under the same filter as ``list_for_user`` —
+        the ``total`` a paginated list reports, independent of ``limit``/``offset``."""
+        return await self._count(
+            self._list_query(user_id, exclude_todo_workflows=exclude_todo_workflows)
+        )
 
     async def find_by_ids(self, workflow_ids: list[str]) -> list[WorkflowDocument]:
         """Workflows whose ids are in ``workflow_ids`` (no user scoping)."""
@@ -358,14 +384,14 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         steps: list[WorkflowStep],
         *,
         deactivate: bool = False,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
     ) -> WorkflowDocument | None:
         """Replace a workflow's steps (LLM generation/regeneration). When the new
         steps need integrations the user hasn't connected, ``deactivate`` forces the
         workflow inactive so an enabled-but-unrunnable workflow can't keep firing."""
         set_fields: dict[str, Any] = {"steps": [s.model_dump() for s in steps]}
-        if selected_integrations is not None:
-            set_fields["selected_integrations"] = selected_integrations
+        if integration_ids is not None:
+            set_fields["integration_ids"] = integration_ids
         if deactivate:
             set_fields["activated"] = False
             set_fields["trigger_config.enabled"] = False
@@ -469,10 +495,10 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         status: ScheduledTaskStatus,
         *,
         user_id: str | None = None,
-        scheduled_at: datetime | None | _Unset = UNSET,
+        scheduled_at: datetime | _Unset | None = UNSET,
         occurrence_count: int | None = None,
         repeat: str | None = None,
-        next_run: datetime | None | _Unset = UNSET,
+        next_run: datetime | _Unset | None = UNSET,
     ) -> bool:
         """Set a workflow's run-state ``status`` plus the scheduler's re-arm fields.
         Returns whether a workflow matched. ``user_id`` adds the owner guard where

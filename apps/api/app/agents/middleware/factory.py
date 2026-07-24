@@ -12,6 +12,7 @@ from app.agents.llm.client import get_default_llm
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.loop_guard import LoopGuardMiddleware
+from app.agents.middleware.media import MediaDescriptionMiddleware
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
@@ -187,6 +188,13 @@ def create_middleware_stack(
         middleware.append(compaction)
         log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
 
+    # Media description — a lane that can't see pixels gets prose for any tool
+    # result carrying images. Inner to compaction, so the description is attached
+    # before compaction inspects the result; compaction never spills media anyway.
+    # No enable flag: it no-ops on every result without media, i.e. nearly all.
+    middleware.append(MediaDescriptionMiddleware())
+    log.debug(f"{LogTag.AGENT} Media description middleware enabled for {agent_name}")
+
     # Loop-guard middleware — added LAST so it sits innermost and observes the
     # raw tool result before compaction/summarization transform it, counting the
     # tool's actual failures. warn-only unless hard_stop is enabled.
@@ -262,6 +270,7 @@ def create_subagent_middleware(
     subagent_excluded_tools: set[str] | None = None,
     subagent_tool_space: str = "general",
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
+    enable_subagent: bool = True,
 ) -> list[Any]:
     """
     Create middleware stack for provider subagents.
@@ -280,13 +289,15 @@ def create_subagent_middleware(
         subagent_registry: Alternative tool registry for spawned sub-subagents
         subagent_excluded_tools: Tool names to exclude from sub-subagent access
         subagent_tool_space: Tool space for spawned sub-subagent retrieve_tools search
+        enable_subagent: Whether to include the spawn_subagent middleware. False
+            for authoring-only subagents that must not spawn or execute.
 
     Returns:
         List of middleware for provider subagents
     """
     return create_middleware_stack(
         agent_name="provider_subagent",
-        enable_subagent=True,
+        enable_subagent=enable_subagent,
         enable_summarization=False,
         enable_compaction=True,
         subagent_llm=subagent_llm,

@@ -561,28 +561,35 @@ class TestListWorkflows:
     async def test_list_workflows_returns_workflows(self, mock_list):
         mock_list.return_value = [_make_workflow_doc(_make_workflow())]
 
-        result = await WorkflowService.list_workflows(USER_ID)
+        result, total = await WorkflowService.list_workflows(USER_ID)
         assert len(result) == 1
         assert isinstance(result[0], Workflow)
+        # Unpaginated: total is derived from the rows, no separate count query.
+        assert total == 1
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
     async def test_list_workflows_empty(self, _mock_list):
-        result = await WorkflowService.list_workflows(USER_ID)
+        result, total = await WorkflowService.list_workflows(USER_ID)
         assert result == []
+        assert total == 0
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
     async def test_list_workflows_excludes_todo_workflows_by_default(self, mock_list):
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=True)
 
         # The todo-exclusion filter is the repository's contract; the service just
-        # forwards the flag.
-        mock_list.assert_awaited_once_with(USER_ID, exclude_todo_workflows=True)
+        # forwards the flag (and the unpaginated limit/offset).
+        mock_list.assert_awaited_once_with(
+            USER_ID, exclude_todo_workflows=True, limit=None, offset=0
+        )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
     async def test_list_workflows_includes_todo_workflows_when_false(self, mock_list):
         await WorkflowService.list_workflows(USER_ID, exclude_todo_workflows=False)
 
-        mock_list.assert_awaited_once_with(USER_ID, exclude_todo_workflows=False)
+        mock_list.assert_awaited_once_with(
+            USER_ID, exclude_todo_workflows=False, limit=None, offset=0
+        )
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
     async def test_list_workflows_returns_all_repo_rows(self, mock_list):
@@ -594,8 +601,34 @@ class TestListWorkflows:
             _make_workflow_doc(_make_workflow(workflow_id="wf_b")),
         ]
 
-        result = await WorkflowService.list_workflows(USER_ID)
+        result, total = await WorkflowService.list_workflows(USER_ID)
         assert len(result) == 2
+        assert total == 2
+
+    @patch(f"{_REPO}.count_for_user", new_callable=AsyncMock, return_value=42)
+    @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock, return_value=[])
+    async def test_list_workflows_paginated_forwards_and_counts(self, mock_list, mock_count):
+        # A paginated caller: limit/offset are forwarded to the repo and the repo's
+        # full match count (not len(result)) is reported as total.
+        _result, total = await WorkflowService.list_workflows(USER_ID, limit=10, offset=20)
+
+        mock_list.assert_awaited_once_with(
+            USER_ID, exclude_todo_workflows=True, limit=10, offset=20
+        )
+        mock_count.assert_awaited_once_with(USER_ID, exclude_todo_workflows=True)
+        assert total == 42
+
+    @patch(f"{_REPO}.count_for_user", new_callable=AsyncMock)
+    @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
+    async def test_list_workflows_skips_count_when_unpaginated(self, mock_list, mock_count):
+        # An unpaginated fetch already holds every match, so total is derived from
+        # the rows and the second count round-trip is skipped.
+        mock_list.return_value = [_make_workflow_doc(_make_workflow())]
+
+        _result, total = await WorkflowService.list_workflows(USER_ID)
+
+        mock_count.assert_not_awaited()
+        assert total == 1
 
     @patch(f"{_REPO}.list_for_user", new_callable=AsyncMock)
     async def test_list_workflows_db_error_raises(self, mock_list):

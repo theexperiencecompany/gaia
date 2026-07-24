@@ -5,6 +5,17 @@ MAX_CONNECTED_FOR_LLM = 20
 MAX_AVAILABLE_FOR_LLM = 15
 MAX_SUGGESTED_FOR_LLM = 10
 
+# Caps for the workflow assistant's discovery tools (search_integrations /
+# search_integration_tools) so a single call stays compact.
+MAX_INTEGRATION_SEARCH_RESULTS = 25
+MAX_INTEGRATION_TOOLS_FOR_LLM = 40
+
+# get_my_integrations lists THIS user's own integrations — the assistant's
+# ground truth for what a workflow can be built on, so it must not silently drop
+# the tail. Sized well above the built-in catalog so only a user with an unusual
+# number of custom integrations can truncate at all.
+MAX_MY_INTEGRATIONS_RESULTS = 100
+
 # Integration connection status values
 INTEGRATION_STATUS_CONNECTED = "connected"
 

@@ -6,18 +6,22 @@ make clear the action happens on the user's machine via the GAIA desktop app.
 
 TAKE_SCREENSHOT = """
 Look at the user's screen. Captures a screenshot of the user's computer display
-via the GAIA desktop app and returns a detailed description of what is visible.
+via the GAIA desktop app and shows it to you directly.
 
 Use this whenever the user references what they are looking at ("what's on my
 screen?", "help me with this error", "summarize this page I have open") or when
 you need visual context from their computer.
 
+The capture is saved to the session workspace and the result names its path. Only
+the most recent screenshots stay in your context — `read` that path to look at an
+older one again.
+
 Args:
-    query (str): What to look for or describe. Be specific — e.g. "the error
-        dialog text", "what app is focused and what is it showing".
+    query (str): What to look for. Be specific — e.g. "the error dialog text",
+        "what app is focused and what is it showing".
 
 Returns:
-    str: A detailed description of the screen contents, focused on the query.
+    The screenshot itself, plus the workspace path it was saved to.
 """
 
 READ_CLIPBOARD = """

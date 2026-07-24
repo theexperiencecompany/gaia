@@ -232,7 +232,6 @@ class TestIntegrationsRepository:
         assert [i.integration_id for i in found] == [custom_id]
 
     async def test_list_public_custom_newest_first_and_category(self, repo):
-
         await repo.create(
             _integration(
                 f"old-{uuid.uuid4().hex}",

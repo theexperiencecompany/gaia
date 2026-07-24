@@ -459,13 +459,13 @@ class TestWorkflowsPublishAndWrites:
             owner,
             [WorkflowStep(title="new", category="todos", description="d")],
             deactivate=True,
-            selected_integrations=["gmail"],
+            integration_ids=["gmail"],
         )
         assert updated is not None
         assert [s.title for s in updated.steps] == ["new"]
         assert updated.activated is False
         assert updated.trigger_config.enabled is False
-        assert updated.selected_integrations == ["gmail"]
+        assert updated.integration_ids == ["gmail"]
 
     async def test_touch_and_mark_error(self, repo):
         owner = _uid("owner")

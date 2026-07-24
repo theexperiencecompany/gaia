@@ -199,6 +199,7 @@ class TestSkillSource:
         assert SkillSource.UPLOAD.value == "upload"
         assert SkillSource.INLINE.value == "inline"
 
+
 def _skill(**overrides: object) -> Skill:
     data: dict = dict(
         id="s1",
@@ -290,9 +291,7 @@ class TestGetSkillsForAgent:
     @pytest.fixture(autouse=True)
     def bypass_cache(self):
         with (
-            patch(
-                "app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None
-            ),
+            patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
             patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
         ):
             yield
@@ -312,9 +311,7 @@ class TestGetSkillsForAgent:
     async def test_cache_hit_returns_without_repo_call(self, mock_skill_repo):
         mock_skill_repo.for_agent = AsyncMock()
         cached = [_skill(id="s1", name="cached-skill")]
-        with patch(
-            "app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=cached
-        ):
+        with patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=cached):
             result = await get_skills_for_agent(user_id="u1", agent_name="executor")
         mock_skill_repo.for_agent.assert_not_awaited()
         assert result == cached

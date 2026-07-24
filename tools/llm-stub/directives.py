@@ -45,6 +45,10 @@ from typing import Any
 
 DEFAULT_REPLY = "ok (llm-stub)"
 CALL_EXECUTOR_TOOL = "call_executor"
+# The bigtool executor binds tools at inference: when a scripted tool is not yet
+# bound, the stub first emits retrieve_tools(exact_tool_names=[name]) so the
+# graph binds it, then emits the tool itself on the next invocation.
+RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 
 # Non-greedy body capture up to the closing ``]]``. See the module limitation
 # note: a literal ``]]`` inside the body terminates the match early.
@@ -140,6 +144,19 @@ def _last_user_index(messages: Sequence[dict[str, Any]]) -> int | None:
     return None
 
 
+def _script_message_index(messages: Sequence[dict[str, Any]]) -> int | None:
+    """Index of the newest user message carrying directives.
+
+    The agent graph injects context slots (dynamic context, todos, time) as
+    trailing user-role messages, so the LAST user message is often not the one
+    a test scripted. A malformed directive raises here — fail loud."""
+    for idx in range(len(messages) - 1, -1, -1):
+        message = messages[idx]
+        if message.get("role") == "user" and parse_directives(message_text(message)):
+            return idx
+    return None
+
+
 def _emitted_tool_names(messages: Sequence[dict[str, Any]]) -> list[str]:
     """Ordered tool-call names from assistant messages, flattened."""
     names: list[str] = []
@@ -173,6 +190,9 @@ def _cursor(
                 and CALL_EXECUTOR_TOOL in available_tools
             ):
                 di += 1
+        elif name == RETRIEVE_TOOLS_TOOL:
+            # Binding plumbing, not a scripted action — never advances the script.
+            continue
         else:
             di += 1
     return di
@@ -183,7 +203,7 @@ def resolve_response(
     available_tools: frozenset[str] = frozenset(),
 ) -> Response:
     """Pick the next scripted action for this invocation (stateless)."""
-    latest = _last_user_index(messages)
+    latest = _script_message_index(messages)
     if latest is None:
         return SayResponse(DEFAULT_REPLY)
 
@@ -199,8 +219,14 @@ def resolve_response(
 
     if di < len(tool_dirs):
         nxt = tool_dirs[di]
-        if nxt.name not in available_tools and CALL_EXECUTOR_TOOL in available_tools:
-            return ToolCallResponse(name=CALL_EXECUTOR_TOOL, args={"task": user_text})
+        if nxt.name not in available_tools:
+            if CALL_EXECUTOR_TOOL in available_tools:
+                return ToolCallResponse(name=CALL_EXECUTOR_TOOL, args={"task": user_text})
+            if RETRIEVE_TOOLS_TOOL in available_tools:
+                return ToolCallResponse(
+                    name=RETRIEVE_TOOLS_TOOL,
+                    args={"query": nxt.name, "exact_tool_names": [nxt.name]},
+                )
         return ToolCallResponse(name=nxt.name, args=nxt.args)
 
     return SayResponse(say.text if say is not None else DEFAULT_REPLY)
