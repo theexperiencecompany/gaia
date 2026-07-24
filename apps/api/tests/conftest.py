@@ -17,10 +17,6 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 import pytest
 
-# payment_models is settings-free (pure pydantic/enum), so importing it here does
-# not trip the "no app modules before env setup" invariant below.
-from app.models.payment_models import PlanType
-
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
 # ---------------------------------------------------------------------------
@@ -44,6 +40,13 @@ os.environ.setdefault(
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+
+# Imported AFTER the env setup above, not with the top-level imports: document
+# models now extend MongoDocument, so importing any of them pulls in
+# app.db.repositories.base -> app.db.redis -> app.config.settings, which
+# instantiates settings at import time. Without ENV set first, that resolves to
+# ProductionSettings and fails validation (CI has no production keys).
+from app.models.payment_models import PlanType  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy
