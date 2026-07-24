@@ -13,7 +13,7 @@ Covers:
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
@@ -74,26 +74,25 @@ class TestTodoCounts:
     """GET /api/v1/todos/counts"""
 
     async def test_counts_returns_expected_shape(self, client: AsyncClient):
-        mock_aggregate = AsyncMock()
-        mock_aggregate.to_list = AsyncMock(
-            return_value=[
-                {
-                    "inbox": [{"count": 2}],
-                    "today": [{"count": 1}],
-                    "upcoming": [],
-                    "overdue": [],
-                    "completed": [{"count": 3}],
-                }
-            ]
+        from app.models.todo_models import ProjectDocument, TodoCounts
+
+        inbox = ProjectDocument.model_validate(
+            {
+                "id": "proj_inbox",
+                "user_id": FAKE_USER["user_id"],
+                "name": "Inbox",
+                "is_default": True,
+            }
         )
-        mock_inbox = {"_id": "proj_inbox", "is_default": True}
 
         with (
-            patch("app.api.v1.endpoints.todos.projects_collection") as mock_proj_col,
-            patch("app.api.v1.endpoints.todos.todos_collection") as mock_todo_col,
+            patch("app.api.v1.endpoints.todos.project_repository") as mock_projects,
+            patch("app.api.v1.endpoints.todos.todo_repository") as mock_todos,
         ):
-            mock_proj_col.find_one = AsyncMock(return_value=mock_inbox)
-            mock_todo_col.aggregate = MagicMock(return_value=mock_aggregate)
+            mock_projects.get_default_inbox = AsyncMock(return_value=inbox)
+            mock_todos.compute_counts = AsyncMock(
+                return_value=TodoCounts(inbox=2, today=1, upcoming=0, overdue=0, completed=3)
+            )
 
             resp = await client.get("/api/v1/todos/counts")
 
@@ -102,6 +101,10 @@ class TestTodoCounts:
         assert body["inbox"] == 2
         assert body["today"] == 1
         assert body["completed"] == 3
+        # Counts must be computed against the caller's own inbox project.
+        mock_todos.compute_counts.assert_awaited_once_with(
+            user_id=FAKE_USER["user_id"], inbox_project_id="proj_inbox"
+        )
 
     async def test_counts_requires_auth(self, unauthed_client: AsyncClient):
         resp = await unauthed_client.get("/api/v1/todos/counts")
