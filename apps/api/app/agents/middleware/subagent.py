@@ -30,6 +30,7 @@ from langgraph.types import Command
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm, is_default_model_config
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.llm.vision import adapt_media_for_model, describe_tool_media
 from app.agents.middleware.compaction import compact_tool_output, estimate_context_usage
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
@@ -48,6 +49,7 @@ from app.utils.agent_utils import (
     format_subagent_end_event,
     format_subagent_start_event,
 )
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
@@ -352,7 +354,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 AIMessage,
                 await ainvoke_llm(
                     llm_with_tools,
-                    messages,
+                    # Fit inline media to the active lane at the request
+                    # boundary only, so the loop state keeps the original
+                    # messages (canonical blocks in tool results).
+                    await adapt_media_for_model(messages, config),
                     fallback=_fallback,
                     config=config,
                     label="subagent",
@@ -456,22 +461,31 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         compaction_threshold=COMPACTION_THRESHOLD,
                         status=tool_status,
                     )
-                    tool_message = (
-                        compacted
-                        if compacted is not None
-                        else ToolMessage(
-                            content=str(raw_content),
+                    if compacted is not None:
+                        tool_message = compacted
+                    else:
+                        # Preserve block-list content (inline media) — str() would
+                        # destroy it; only non-message shapes stringify.
+                        content = (
+                            raw_content if isinstance(raw_content, str | list) else str(raw_content)
+                        )
+                        tool_message = ToolMessage(
+                            content=content,
                             tool_call_id=tc_id,
                             name=name,
                             status=tool_status,
                         )
-                    )
+                    # This loop runs outside the middleware stack, so it calls the
+                    # description helper directly — same split as compaction above.
+                    described = await describe_tool_media(tool_message, config)
+                    if described is not None:
+                        tool_message = described
                     if stream_writer and subagent_id:
                         stream_writer(
                             {
                                 "tool_output": {
                                     "tool_call_id": tc_id or "",
-                                    "output": str(tool_message.content),
+                                    "output": extract_text_content(tool_message.content),
                                     "subagent_id": subagent_id,
                                 }
                             }
@@ -505,7 +519,9 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         # no tools here (none are needed for the final answer).
         final = await ainvoke_llm(
             llm,
-            messages,
+            # Fit inline media to the active lane here too — the max-turn final
+            # request carries the same canonical blocks as the loop above.
+            await adapt_media_for_model(messages, config),
             fallback=lambda: fallback_llm,
             config=config,
             label="subagent_final",

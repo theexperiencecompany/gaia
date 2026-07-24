@@ -100,9 +100,16 @@ flowchart TD
 ## Per-Workflow Steps
 ### `.github/workflows/main.yml`
 1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
-2. Run master promotion policy guard (`develop` or `release-please--*` to `master`).
-3. Delegate the full quality gate to the Dagger module via `dagger call quality-checks`. All toolchain setup, dependency installation, linting, type-checking, building, testing, dead code detection, and release manifest validation run inside the Dagger container. No host-level pre-flight steps.
-4. If run is a successful push on `master`, call `build.yml`.
+2. `detect`: run master promotion policy guard (`develop` or `release-please--*` to `master`), validate the release manifest, and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
+3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — pytest run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness). Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
+4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
+5. If run is a successful push on `master`, call `build.yml`.
+
+### `.github/workflows/code-quality.yml`
+1. Enter from PRs targeting `develop`/`master`, pushes to those branches, and manual dispatch.
+2. `changes`: one cheap no-toolchain job detects which languages a PR touches; Python lanes and TypeScript lanes are skipped wholesale when their language is untouched (on push/dispatch everything runs).
+3. Sixteen hygiene lanes (Biome, deps, circular, file-size, types-location, components-per-file, jscpd, type-coverage, package hygiene, tsc, ruff + custom AST lints, mypy, interrogate, xenon, bandit, knip/vulture dead code), each self-scoping to changed files via `scripts/ci/changed-files.sh`.
+4. `Quality gate (required)` (the single required status check) enforces lanes with a marker file under `.github/quality-gate/enforced/`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate.
 
 ### `.github/workflows/build.yml`
 1. Start two build lanes: `docker-release` and `docker-web`.
@@ -149,10 +156,10 @@ flowchart TD
 2. Validate PR title against configured semantic type list.
 
 ## File Map
-- `.github/workflows/main.yml`: CI quality gate and master promotion policy — delegates to Dagger for quality checks.
+- `.github/workflows/main.yml`: CI correctness gate (build + tests) and master promotion policy. Python tests run runner-native against live service containers.
+- `.github/workflows/code-quality.yml`: code-hygiene lanes (lint/type/dead-code/complexity/security) behind the ratcheted `Quality gate (required)` check.
 - `.github/workflows/build.yml`: Docker image build/publish via Dagger, deploy planning, and deploy triggers.
 - `.github/workflows/deploy-swarm-prod.yml`: production backend deploy and rollback via Docker Swarm stack on Hetzner VM.
-- `.github/workflows/deploy.yml`: legacy compose-based deploy (superseded by deploy-swarm-prod.yml, kept for reference).
 - `.github/workflows/deploy-frontend.yml`: frontend sync path for Vercel source repository.
 - `.github/workflows/release-please.yml`: release PR/tag automation and CLI publish dispatch.
 - `.github/workflows/publish-cli.yml`: CLI package validation/build/publish workflow.

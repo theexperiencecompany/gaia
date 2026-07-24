@@ -18,6 +18,7 @@ from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
+from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, read
@@ -200,6 +201,7 @@ class SubAgentFactory:
             "middleware": middleware,
             "pre_model_hooks": [
                 cast(HookType, filter_messages_node),
+                cast(HookType, adapt_media_node),
                 manage_system_prompts_node,
                 *([todo_hook] if todo_hook is not None else []),
             ],

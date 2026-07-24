@@ -1,10 +1,12 @@
 """Unit tests for app.utils.file_utils (DocumentProcessor & generate_file_summary)."""
 
 import base64
+import io
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage
+from PIL import Image
 import pytest
 
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
@@ -38,6 +40,18 @@ def _make_md_document(text: str) -> MagicMock:
     doc = MagicMock()
     doc.text = text
     return doc
+
+
+def _encode_image(fmt: str, size: tuple[int, int] = (16, 16)) -> bytes:
+    """Real image bytes — ImageCodec decodes them, so fake payloads won't do."""
+    buf = io.BytesIO()
+    Image.new("RGB", size, "red").save(buf, format=fmt)
+    return buf.getvalue()
+
+
+def _mock_vision(description: str | None):
+    """Patch the one vision call ``process_image`` makes."""
+    return patch("app.utils.file_utils.describe_image", AsyncMock(return_value=description))
 
 
 # ---------------------------------------------------------------------------
@@ -138,38 +152,46 @@ class TestProcessFileRouting:
 @pytest.mark.unit
 class TestProcessImage:
     async def test_success_returns_description(self, processor: DocumentProcessor) -> None:
-        processor.llm = _mock_llm(invoke_return="A scenic mountain view")
-        result = await processor.process_image(b"\x89PNG\r\n")
+        with _mock_vision("A scenic mountain view"):
+            result = await processor.process_image(_encode_image("PNG"))
         assert result == "A scenic mountain view"
 
-    async def test_list_content_blocks_flattened(self, processor: DocumentProcessor) -> None:
-        """Gemini returns content as a list of blocks; ``.text`` flattens it to a string."""
-        processor.llm = _mock_llm(
-            invoke_return=AIMessage(
-                content=[{"type": "text", "text": "A scenic "}, {"type": "text", "text": "view"}]
-            )
-        )
-        result = await processor.process_image(b"img")
-        assert result == "A scenic view"
+    async def test_the_mime_is_sniffed_from_the_bytes_not_assumed(
+        self, processor: DocumentProcessor
+    ) -> None:
+        """Every `image/*` upload used to be labelled `image/jpeg`, whatever it
+        actually was. A block whose mime_type contradicts its payload is rejected
+        outright by the provider, so a PNG upload silently lost its summary."""
+        with _mock_vision("desc") as vision:
+            await processor.process_image(_encode_image("PNG"))
 
-    async def test_base64_encoding_in_prompt(self, processor: DocumentProcessor) -> None:
-        """Verify the image is base64-encoded in the LLM prompt."""
-        raw = b"\x89PNG\r\n\x1a\n"
-        expected_b64 = base64.b64encode(raw).decode("utf-8")
-        processor.llm = _mock_llm(invoke_return="desc")
+        assert vision.call_args.args[1] == "image/png"
 
-        await processor.process_image(raw)
+    async def test_the_image_reaching_the_model_is_the_uploaded_one(
+        self, processor: DocumentProcessor
+    ) -> None:
+        raw = _encode_image("PNG")
+        with _mock_vision("desc") as vision:
+            await processor.process_image(raw)
 
-        call_args = processor.llm.ainvoke.call_args
-        content_blocks = call_args[0][0][0]["content"]
-        image_block = [b for b in content_blocks if b["type"] == "image_url"][0]
-        assert expected_b64 in image_block["image_url"]["url"]
+        assert base64.b64decode(vision.call_args.args[0]) == raw
 
-    async def test_exception_returns_fallback(self, processor: DocumentProcessor) -> None:
-        processor.llm = _mock_llm()
-        processor.llm.ainvoke.side_effect = RuntimeError("LLM down")
-        result = await processor.process_image(b"data")
+    async def test_a_failed_vision_call_returns_the_fallback(
+        self, processor: DocumentProcessor
+    ) -> None:
+        with _mock_vision(None):
+            result = await processor.process_image(_encode_image("PNG"))
         assert "could not be generated" in result
+
+    async def test_undecodable_bytes_return_the_fallback(
+        self, processor: DocumentProcessor
+    ) -> None:
+        """A corrupt or mislabelled upload must not raise out of file processing."""
+        with _mock_vision("desc") as vision:
+            result = await processor.process_image(b"this is not an image")
+
+        assert "could not be generated" in result
+        vision.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

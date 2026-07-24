@@ -29,9 +29,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # --- Change detection (no toolchain install) -----------------------------
+  # Skips whole language lanes a PR doesn't touch; lanes still self-scope to
+  # exact changed files. Push/dispatch → __FULL__ → everything runs.
+  changes:
+    name: Detect changed languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_python: ${{ steps.detect.outputs.has_python }}
+      has_typescript: ${{ steps.detect.outputs.has_typescript }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changed languages
+        id: detect
+        run: |
+          set -euo pipefail
+          # Deliberate superset (toml/lock/json/yaml include dep manifests):
+          # lanes still self-skip when nothing relevant changed.
+          # No `| head` — closing the pipe early SIGPIPEs the script (exit 141).
+          py_files=$(scripts/ci/changed-files.sh py toml lock)
+          ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
+          py=${py_files%%$'\n'*}
+          ts=${ts_files%%$'\n'*}
+          echo "has_python=$([[ -n "$py" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "has_typescript=$([[ -n "$ts" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          echo "python: ${py:-none} | typescript: ${ts:-none}"
+
   # --- Biome lint + format -------------------------------------------------
   biome:
     name: Biome lint + format
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -63,6 +94,8 @@ jobs:
   # --- Workspace dependency hygiene ---------------------------------------
   deps:
     name: Workspace dependency hygiene
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -90,6 +123,8 @@ jobs:
   # --- Circular dependency check ------------------------------------------
   circular:
     name: No circular imports
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -105,6 +140,8 @@ jobs:
   # --- File size limit (per-extension + allowlist + hard cap) -------------
   file-size:
     name: File size limits
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -129,6 +166,8 @@ jobs:
   # --- Types must live in dedicated type files ----------------------------
   types-location:
     name: Types live in dedicated *.types.ts files
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -153,6 +192,8 @@ jobs:
   # --- Components-per-file ------------------------------------------------
   components-per-file:
     name: At most 2 React components per file
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -177,6 +218,8 @@ jobs:
   # --- Copy-paste detection -----------------------------------------------
   duplicates:
     name: Copy-paste detection (jscpd)
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -200,6 +243,8 @@ jobs:
   # --- Type coverage ------------------------------------------------------
   type-coverage:
     name: Explicit-type coverage per workspace
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -215,6 +260,8 @@ jobs:
   # --- Published package hygiene ------------------------------------------
   package-hygiene:
     name: Published package hygiene (publint + attw)
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -242,6 +289,8 @@ jobs:
   # --- TypeScript strict type-check ---------------------------------------
   type-check:
     name: TypeScript strict type-check (all workspaces)
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -272,6 +321,8 @@ jobs:
   # --- Python ruff --------------------------------------------------------
   python-ruff:
     name: Python ruff (strict rule set)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -280,27 +331,38 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: ruff check + format (PL, RUF, FAST, S, B, A, COM, C4, DTZ, ISC, RET, SIM, ARG, PTH, TRY, PERF, UP, FURB, LOG, G + more)
+        # Pinned to the uv.lock ruff version — bump both together. Unpinned,
+        # a ruff release can flip this lane red with zero code changes
+        # (0.16.0 shipped ISC004/RUF036 four minutes before a run here).
         run: |
           echo "::group::ruff check + format --check"
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx ruff check apps/api apps/voice-agent libs/shared/py
-            uvx ruff format --check apps/api apps/voice-agent libs/shared/py
+            uvx --no-build ruff@0.14.13 check apps/api apps/voice-agent libs/shared/py
+            uvx --no-build ruff@0.14.13 format --check apps/api apps/voice-agent libs/shared/py
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
-            uvx ruff check $FILES
-            uvx ruff format --check $FILES
+            uvx --no-build ruff@0.14.13 check $FILES
+            uvx --no-build ruff@0.14.13 format --check $FILES
           fi
           echo "::endgroup::"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
+      - name: Custom Python AST lints (route contract, no service classes, wide events)
+        run: |
+          echo "::group::custom lints"
+          python3 tools/lints/run.py apps/api/app
+          echo "::endgroup::"
+          echo "Custom lints: OK (3 rules pass)"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
     name: Python mypy (staged-strict)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -309,7 +371,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Install api dev + backend dependencies (uv sync)
         run: |
@@ -350,6 +412,8 @@ jobs:
   # --- Python docstring coverage ------------------------------------------
   python-interrogate:
     name: Python docstring coverage (interrogate ≥ 80%)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -358,7 +422,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Docstring coverage on public API surface
         run: |
@@ -377,6 +441,8 @@ jobs:
   # --- Python cyclomatic complexity ---------------------------------------
   python-xenon:
     name: Python cyclomatic complexity (xenon)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -385,7 +451,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Complexity scan (max-absolute F, max-modules E, max-average B)
         run: |
@@ -415,6 +481,8 @@ jobs:
   # --- Python security (bandit gates; pip-audit advisory) -----------------
   python-security:
     name: Python security (bandit; pip-audit advisory)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -423,7 +491,7 @@ jobs:
           fetch-depth: 0
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Bandit security scan (zero-warning policy)
         run: |
@@ -450,9 +518,11 @@ jobs:
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
   # lane. The scan is tightened to drop systematic false positives (tests,
   # Pydantic/dynamic-dispatch, framework-consumed files) — see config/knip.config.ts
-  # and apps/api/scripts/vulture-whitelist.py.
+  # and the [tool.vulture] ignore_names / ignore_decorators lists in pyproject.toml.
   dead-code:
     name: Dead code (knip + vulture, strict)
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -460,7 +530,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
-          version: "latest"
+          version: "0.8.17"
           enable-cache: true
       - name: Install vulture (Python dead-code detector)
         run: |
@@ -479,6 +549,7 @@ jobs:
     name: Quality gate (required)
     if: always()
     needs:
+      - changes
       - biome
       - deps
       - circular
@@ -502,6 +573,7 @@ jobs:
       - name: Verdict
         env:
           # Lane results passed through env to avoid inline-expansion injection.
+          CHANGES: ${{ needs.changes.result }}
           BIOME: ${{ needs.biome.result }}
           DEPS: ${{ needs.deps.result }}
           CIRCULAR: ${{ needs.circular.result }}
@@ -519,6 +591,12 @@ jobs:
           PYTHON_SECURITY: ${{ needs.python-security.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
         run: |
+          # Lane skips are only trustworthy if change detection succeeded.
+          if [[ "$CHANGES" != "success" ]]; then
+            echo "::error::change detection failed (result: $CHANGES) — cannot trust lane skips"
+            exit 1
+          fi
+
           declare -A RESULT=(
             [biome]="$BIOME"
             [deps]="$DEPS"
@@ -571,7 +649,8 @@ jobs:
           failed=0
           for lane in "${ENFORCED[@]}"; do
             r="${RESULT[$lane]}"
-            if [[ "$r" != "success" ]]; then
+            # skipped = changes proved the lane's language wasn't touched
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
               echo "::error::enforced lane '$lane' did not pass (result: $r)"
               failed=$((failed + 1))
             fi

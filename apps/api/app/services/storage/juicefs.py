@@ -237,6 +237,36 @@ async def read_user_file(
     return await asyncio.to_thread(_read)
 
 
+async def read_user_file_bytes(
+    user_id: str,
+    workspace_rel_path: str,
+    *,
+    max_bytes: int,
+) -> bytes:
+    """Read a workspace file's raw bytes from the host mount (binary content
+    such as images — ``read_user_file`` is line-oriented and decodes UTF-8).
+
+    Same containment rules as ``read_user_file``. Raises ``ValueError`` when
+    the file exceeds ``max_bytes`` and ``FileNotFoundError`` when it is missing.
+    """
+
+    def _read() -> bytes:
+        base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+        target = _contained(base, rel, root_label="workspace root")
+        if not target.is_file():
+            raise FileNotFoundError(workspace_rel_path)
+        # Enforce the cap while reading rather than off a preflight stat(): the
+        # file can grow between the two, and read_bytes() would then allocate the
+        # whole oversized body past the limit.
+        with target.open("rb") as handle:
+            data = handle.read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise ValueError(f"file exceeds the {max_bytes}-byte limit")
+        return data
+
+    return await asyncio.to_thread(_read)
+
+
 async def user_owns_regular_file(user_id: str, workspace_rel_path: str) -> bool:
     """True if the user has a real (non-symlink) regular file at this path.
 

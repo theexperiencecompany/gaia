@@ -12,6 +12,18 @@ from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware, get_current_user
 
+
+@pytest.fixture(autouse=True)
+def _no_dev_bypass(monkeypatch):
+    """This file tests the WorkOS session/agent paths. The developer's ambient
+    .env legitimately sets DEV_AUTH_BYPASS_EMAIL, which would short-circuit the
+    middleware before anything under test runs — pin it off. The bypass path
+    itself is covered in tests/integration/api/test_dev_endpoints.py."""
+    from app.config.settings import settings
+
+    monkeypatch.setattr(settings, "DEV_AUTH_BYPASS_EMAIL", None)
+
+
 # ---------------------------------------------------------------------------
 # get_current_user dependency
 # ---------------------------------------------------------------------------

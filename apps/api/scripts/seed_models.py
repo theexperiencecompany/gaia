@@ -60,6 +60,32 @@ def get_models_configuration() -> list[dict[str, Any]]:
     """
     Define the desired models configuration.
     This is the single source of truth for what models should exist.
+
+    BEFORE ADDING A MODEL WITH inference_provider == OPENROUTER, RUN:
+
+        GAIA_ONBOARD_MODELS=<provider_model_name> \
+          uv run pytest tests/model_onboarding -m model_onboarding -v
+
+    It checks one thing nothing else can: whether the model actually *sees* an
+    image delivered inside a tool result. Tool results are how every media
+    producer reaches the model (the `read` tool, screenshots, MCP images), and
+    the agent hands them over via `MediaDelivery.KEEP_IN_TOOL_RESULTS`.
+
+    There is no capability flag for this. OpenRouter's models API only reports
+    whether a model takes images at all — `openai/gpt-5-mini` and
+    `openai/gpt-4o-mini` are byte-identical in `architecture`, yet the first
+    accepts tool-result images and the second returns
+    "Image URLs are only allowed for messages with role 'user'". So it has to be
+    measured, once, per model.
+
+    IF THE TEST FAILS: do not seed the model, and raise it to the user rather
+    than working around it. Its tool results would 400 mid-turn. Supporting such
+    a model needs a per-model delivery path, which is a deliberate decision — not
+    something to add silently alongside a seed entry.
+
+    Once it passes, add the model to the list below and nowhere else. The test
+    parameterises itself off this function, so a seeded model is covered from
+    then on with no second list to keep in sync.
     """
     return [
         # Default model — available to all users, model selector is disabled.

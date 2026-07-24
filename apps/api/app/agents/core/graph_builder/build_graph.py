@@ -13,6 +13,7 @@ from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_node,
 )
+from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
@@ -84,6 +85,7 @@ async def build_executor_graph(
 
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),
+        cast(HookType, adapt_media_node),
         manage_system_prompts_node,
         todo_hook,
     ]

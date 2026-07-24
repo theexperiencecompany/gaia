@@ -75,6 +75,19 @@ class CommonSettings(BaseAppSettings):
     """Common settings required for all environments."""
 
     # ----------------------------------------------
+    # Dev-only overrides — declared on the COMMON base so production code can
+    # safely read them (app/agents/llm/client.py evaluates GAIA_SIM_MODE in
+    # decorator args at import time; an AttributeError there crashes prod boot).
+    # get_settings() refuses to start in production when either is enabled.
+    # ----------------------------------------------
+    # Sim mode: every LLM factory resolves to the local scripted stub
+    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev:sim`.
+    GAIA_SIM_MODE: bool = False
+    # Where the scripted stub lives when sim mode is on; consumed only by
+    # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
+    OPENROUTER_BASE_URL: str | None = None
+
+    # ----------------------------------------------
     # Database Connections
     # ----------------------------------------------
     MONGO_DB: str
@@ -576,6 +589,9 @@ class DevelopmentSettings(CommonSettings):
     # production when this is set.
     DEV_AUTH_BYPASS_EMAIL: str | None = None
 
+    # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
+    # production import path reads them) — see the note there.
+
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
@@ -665,6 +681,28 @@ def get_settings():
                 raise RuntimeError(
                     "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
                     "the dev auth bypass must never be enabled in production."
+                )
+            # Same policy as the auth bypass: the OpenRouter base-URL override
+            # redirects the model to a local scripted stub, so production must
+            # refuse to boot rather than run against it.
+            if os.getenv("OPENROUTER_BASE_URL"):
+                raise RuntimeError(
+                    "OPENROUTER_BASE_URL is set but ENV=production — "
+                    "the OpenRouter base-URL override is a development-only stub hook."
+                )
+            # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
+            # legitimate way to DISABLE sim mode and must not trip the guard
+            # (unlike the string-valued overrides above, where set == enabled).
+            if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
+                raise RuntimeError(
+                    "GAIA_SIM_MODE is set but ENV=production — "
+                    "sim mode routes every model call to a local scripted stub."
                 )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")

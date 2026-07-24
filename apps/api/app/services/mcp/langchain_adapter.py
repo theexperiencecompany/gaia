@@ -3,11 +3,102 @@ Custom LangChain adapter with schema sanitization for MCP tools.
 
 This adapter fixes field name issues that cause Pydantic validation failures
 when MCP servers return tool schemas with leading underscores (e.g., _postman_id).
+It also replaces mcp_use's tool-result parsing, which stringifies the MCP
+content list (leaking ``TextContent(...)`` pydantic reprs to the model and
+destroying image content entirely).
 """
 
-from typing import Any
+import asyncio
+from typing import Any, NoReturn
 
+from langchain_core.tools import BaseTool
+
+# Module import (not a direct symbol import) so this adapter picks up the
+# memoized jsonschema_to_pydantic that resilient_adapter patches onto the module.
+import mcp_use.agents.adapters.langchain_adapter as _mcp_use_lc_adapter
 from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
+from mcp_use.client.connectors.base import BaseConnector
+from mcp_use.errors.error_formatting import format_error
+from pydantic import BaseModel
+
+from app.constants.mcp import (
+    EMPTY_TOOL_RESULT,
+    MCP_MEDIA_DROPPED_NOTICE,
+    MCP_UNSUPPORTED_CONTENT_NOTICE,
+)
+from app.constants.media import MAX_MEDIA_BLOCKS_PER_TOOL_RESULT
+from app.utils.image_codec import ImageCodec, InvalidImage
+from app.utils.multimodal import text_content_block
+from mcp.types import (
+    CallToolResult,
+    ContentBlock,
+    EmbeddedResource,
+    ImageContent,
+    TextContent,
+    TextResourceContents,
+    Tool as MCPTool,
+)
+
+
+async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
+    """Map MCP content items to LangChain message content.
+
+    Text-only results collapse to a plain string (the common case). Image items
+    become inline media blocks so multimodal models see the actual pixels;
+    per-lane delivery is decided later, at the request boundary (see
+    `app/agents/llm/vision/`).
+
+    MCP servers are third-party code we do not control, so images are held to
+    the same budget as any other producer: `ImageCodec` bounds and validates
+    each one, and `MAX_MEDIA_BLOCKS_PER_TOOL_RESULT` bounds how many a single
+    result may contribute. A rejected image degrades to a note rather than
+    failing the tool call — the text half of the result is usually the point.
+    """
+    images = [item for item in result.content if isinstance(item, ImageContent)]
+    kept = images[:MAX_MEDIA_BLOCKS_PER_TOOL_RESULT]
+    dropped = len(images) - len(kept)
+    # Decoding is CPU-bound and hops to a thread per image, so run the whole
+    # (budget-bounded) batch at once rather than serializing the result's images.
+    decoded = iter(await asyncio.gather(*(_image_block(item) for item in kept)))
+
+    blocks: list[dict[str, Any]] = []
+    for item in result.content:
+        if isinstance(item, TextContent):
+            blocks.append(text_content_block(item.text))
+        elif isinstance(item, ImageContent):
+            block = next(decoded, None)
+            if block is not None:
+                blocks.append(block)
+        else:
+            blocks.append(text_content_block(_non_media_text(item)))
+    if dropped:
+        blocks.append(text_content_block(MCP_MEDIA_DROPPED_NOTICE.format(count=dropped)))
+
+    if not blocks:
+        return EMPTY_TOOL_RESULT
+    if any(block["type"] != "text" for block in blocks):
+        return blocks
+    return "\n".join(block["text"] for block in blocks)
+
+
+def _non_media_text(item: ContentBlock) -> str:
+    """Text for a content item that is neither plain text nor an inline image.
+
+    Never ``str(item)`` — that is the pydantic repr this adapter exists to keep
+    out of the model's context. An embedded text resource (what filesystem and
+    database servers return) carries real text; anything else has none.
+    """
+    if isinstance(item, EmbeddedResource) and isinstance(item.resource, TextResourceContents):
+        return item.resource.text
+    return MCP_UNSUPPORTED_CONTENT_NOTICE.format(kind=type(item).__name__)
+
+
+async def _image_block(item: ImageContent) -> dict[str, Any]:
+    try:
+        image = await ImageCodec.from_base64(item.data)
+    except InvalidImage as exc:
+        return text_content_block(f"[Image from this result could not be read: {exc}]")
+    return image.to_block()
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):
@@ -74,3 +165,47 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             return [self.fix_schema(item) for item in schema]
 
         return schema
+
+    def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:
+        """Convert an MCP tool to LangChain format.
+
+        Mirrors mcp_use's implementation except for result parsing: upstream
+        returns ``str(tool_result.content)``, which leaks pydantic reprs and
+        destroys media blocks — this version parses content items properly
+        (see ``_tool_result_to_content``).
+        """
+        if mcp_tool.name in self.disallowed_tools:
+            return None
+
+        adapter_self = self
+
+        class McpToLangChainAdapter(BaseTool):
+            name: str = mcp_tool.name or "NO NAME"
+            description: str = mcp_tool.description or ""
+            args_schema: type[BaseModel] = _mcp_use_lc_adapter.jsonschema_to_pydantic(
+                adapter_self.fix_schema(mcp_tool.inputSchema)
+            )
+            tool_connector: BaseConnector = connector
+            handle_tool_error: bool = True
+
+            def __repr__(self) -> str:
+                return f"MCP tool: {self.name}: {self.description}"
+
+            def _run(self, **kwargs: Any) -> NoReturn:
+                raise NotImplementedError("MCP tools only support async operations")
+
+            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]]:
+                try:
+                    tool_result: CallToolResult = await self.tool_connector.call_tool(
+                        self.name, kwargs
+                    )
+                    try:
+                        return await _tool_result_to_content(tool_result)
+                    except Exception as e:
+                        return format_error(e, tool=self.name)
+                except Exception as e:
+                    if self.handle_tool_error:
+                        return format_error(e, tool=self.name)
+                    raise
+
+        return McpToLangChainAdapter()

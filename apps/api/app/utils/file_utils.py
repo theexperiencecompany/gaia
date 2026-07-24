@@ -4,7 +4,6 @@ the default LLM summarizes images, text, and parsed document pages. Summaries
 are embedded into ChromaDB for retrieval.
 """
 
-import base64
 import os
 import tempfile
 from typing import Union
@@ -13,10 +12,15 @@ from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm, with_llm_retry
+from app.agents.llm.vision import describe_image
+from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
+from app.utils.image_codec import ImageCodec, InvalidImage
 from shared.py.wide_events import log
+
+_IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
 
 
 class DocumentProcessor:
@@ -64,46 +68,26 @@ class DocumentProcessor:
             return f"File processing failed for {filename}"
 
     async def process_image(self, image_data: bytes) -> str:
-        """
-        Process and summarize an image using the default vision-capable LLM.
+        """Summarize an uploaded image for retrieval.
 
-        Args:
-            image_data: Raw image bytes
-
-        Returns:
-            Summary of the image content
+        Runs on the same codec and vision call as every other image path, so the
+        MIME the provider is told about is sniffed from the bytes rather than
+        assumed: a PNG or WEBP upload used to be labelled ``image/jpeg``, which
+        the provider rejects outright.
         """
         try:
-            base64_image = base64.b64encode(image_data).decode("utf-8")
+            inline = await ImageCodec.from_bytes(image_data)
+        except InvalidImage as e:
+            log.error(f"{LogTag.TOOL} Failed to process image: {e!s}")
+            return _IMAGE_SUMMARY_UNAVAILABLE
 
-            response = await ainvoke_llm(
-                self.llm,
-                [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": """
-                                Provide a concise summary of the content in this image. Assume it is part of a document like a PDF or DOCX, and ensure the summary is relevant for semantic search and accurately describes the image.
-
-                                Note: Only respond with the summary text, without any additional information or context.""",
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"},
-                            },
-                        ],
-                    }
-                ],
-                label="file_image_summary",
-            )
-
-            return response.text.strip()
-
-        except Exception as e:
-            log.error(f"{LogTag.TOOL} Failed to process image: {e!s}", exc_info=True)
-            return "Image description could not be generated."
+        description = await describe_image(
+            inline.base64,
+            inline.mime_type,
+            prompt=DOCUMENT_IMAGE_SUMMARY_PROMPT,
+            label="file_image_summary",
+        )
+        return description or _IMAGE_SUMMARY_UNAVAILABLE
 
     async def process_doc(
         self,

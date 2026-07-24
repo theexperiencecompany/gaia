@@ -40,7 +40,9 @@ _LATENCY_PROBE_QUERIES = (
     "which Jira ticket is Arjun working on",
 )
 # The production target is <150ms P95 (see app/memory/retrieval.py), measured on
-# prod hardware under real concurrency. This test can't reproduce that: its
+# prod hardware under real concurrency. On CI runners this pipeline lands around
+# 300-500ms in practice (a 506ms run once failed a 500ms bound — the flake this
+# replaced), and multiples of that on a CPU laptop. This test can't reproduce that: its
 # wall-clock cost is dominated by fastembed + a cross-encoder rerank whose speed
 # swings ~10x across a GPU CI runner, a CPU laptop, and a contended `-n 4` worker,
 # and a single test run is not a P95. So the number below is NOT the P95 SLO — it
