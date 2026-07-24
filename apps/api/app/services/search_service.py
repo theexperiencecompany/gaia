@@ -7,13 +7,9 @@ import time
 
 from fastapi import HTTPException, status
 
-from app.db.mongodb.collections import (
-    conversations_collection,
-    notes_collection,
-)
-from app.db.utils import serialize_document
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.notes import note_repository
 from app.utils.general_utils import get_context_window
-from app.utils.tool_data_utils import convert_legacy_tool_data
 from shared.py.wide_events import log
 
 
@@ -44,89 +40,24 @@ async def search_messages(query: str, user_id: str) -> dict:
     search_start = time.monotonic()
     escaped_query = re.escape(query)
     try:
-        results = await conversations_collection.aggregate(
-            [
-                {"$match": {"user_id": user_id}},
-                {
-                    "$facet": {
-                        "messages": [
-                            {"$unwind": "$messages"},
-                            {
-                                "$match": {
-                                    "$or": [
-                                        {
-                                            "messages.response": {
-                                                "$regex": escaped_query,
-                                                "$options": "i",
-                                            }
-                                        },
-                                    ]
-                                }
-                            },
-                            {
-                                "$project": {
-                                    "_id": 0,
-                                    "conversation_id": 1,
-                                    "message": "$messages",
-                                }
-                            },
-                        ],
-                        "conversations": [
-                            {
-                                "$match": {
-                                    "description": {"$regex": escaped_query, "$options": "i"},
-                                }
-                            },
-                            {
-                                "$project": {
-                                    "_id": 0,
-                                    "conversation_id": 1,
-                                    "description": 1,
-                                    "conversation": "$conversations",
-                                }
-                            },
-                        ],
-                    }
-                },
-            ]
-        ).to_list(None)
+        conversation_results = await conversation_repository.search(user_id, pattern=escaped_query)
+        note_hits = await note_repository.search_by_plaintext(user_id, pattern=escaped_query)
 
-        notes_results = await notes_collection.aggregate(
-            [
-                {
-                    "$match": {
-                        "user_id": user_id,
-                        "plaintext": {"$regex": escaped_query, "$options": "i"},
-                    }
-                },
-                {
-                    "$project": {
-                        "id": {"$toString": "$_id"},
-                        "note_id": 1,
-                        "plaintext": 1,
-                    }
-                },
-            ]
-        ).to_list(None)
+        messages = []
+        for hit in conversation_results.messages:
+            row = hit.model_dump(mode="json")
+            # Snippet for search highlighting, centered on the matched response.
+            row["snippet"] = get_context_window(hit.message.response, query, chars_before=30)
+            messages.append(row)
 
-        messages = results[0]["messages"] if results else []
-        conversations = results[0]["conversations"] if results else []
-
-        for message in messages:
-            # Convert legacy tool data in the message
-            if "message" in message:
-                message["message"] = convert_legacy_tool_data(message["message"])
-                # Add snippet for search highlighting
-                message["snippet"] = get_context_window(
-                    message["message"]["response"], query, chars_before=30
-                )
+        conversations = [hit.model_dump(mode="json") for hit in conversation_results.conversations]
 
         notes_with_snippets = [
             {
-                **serialize_document(note),
-                "snippet": get_context_window(note["plaintext"], query, chars_before=30),
+                **hit.model_dump(mode="json"),
+                "snippet": get_context_window(hit.plaintext, query, chars_before=30),
             }
-            for note in notes_results
+            for hit in note_hits
         ]
 
         result_count = len(messages) + len(conversations) + len(notes_with_snippets)

@@ -10,10 +10,10 @@ unlinked.
 
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Any
 
-from bson import ObjectId
-
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import user_to_legacy_dict
 
 
 class Platform(str, Enum):
@@ -43,9 +43,12 @@ class PlatformLinkService:
     """Service for platform account linking operations."""
 
     @staticmethod
-    async def get_user_by_platform_id(platform: str, platform_user_id: str) -> dict | None:
+    async def get_user_by_platform_id(
+        platform: str, platform_user_id: str
+    ) -> dict[str, Any] | None:
         """Find a GAIA user by their platform account ID (queries the nested .id field)."""
-        return await users_collection.find_one({f"platform_links.{platform}.id": platform_user_id})
+        user = await user_repository.get_by_platform_id(platform, platform_user_id)
+        return user_to_legacy_dict(user) if user else None
 
     @staticmethod
     async def list_platform_user_ids(platform: str, limit: int = 500) -> list[str]:
@@ -55,14 +58,7 @@ class PlatformLinkService:
         inbound DMs resolve even on a cold restart. Bounded by ``limit`` to keep
         startup cost predictable.
         """
-        field = f"platform_links.{platform}.id"
-        cursor = users_collection.find({field: {"$exists": True}}, {field: 1}).limit(limit)
-        ids: list[str] = []
-        async for doc in cursor:
-            pid = doc.get("platform_links", {}).get(platform, {}).get("id")
-            if pid:
-                ids.append(str(pid))
-        return ids
+        return await user_repository.list_platform_user_ids(platform, limit=limit)
 
     @staticmethod
     async def link_account(
@@ -82,19 +78,15 @@ class PlatformLinkService:
         if not platform_user_id:
             raise ValueError("platform_user_id must not be empty")
 
-        query_value = ObjectId(user_id)
-
         # Reject if this platform ID is already linked to a different user
-        existing = await users_collection.find_one(
-            {f"platform_links.{platform}.id": platform_user_id}
-        )
-        if existing and str(existing.get("_id")) != user_id:
+        existing = await user_repository.get_by_platform_id(platform, platform_user_id)
+        if existing and existing.id != user_id:
             raise ValueError(f"This {platform} account is already linked to another GAIA user")
 
         # Reject if the user already has a different platform ID stored
-        user = await users_collection.find_one({"_id": query_value})
+        user = await user_repository.get(user_id)
         if user:
-            current_link = user.get("platform_links", {}).get(platform)
+            current_link = (user.platform_links or {}).get(platform)
             if isinstance(current_link, dict):
                 current_id = current_link.get("id", "")
                 if current_id and current_id != platform_user_id:
@@ -105,30 +97,20 @@ class PlatformLinkService:
         now = datetime.now(UTC).isoformat()
 
         # Build the stored dict value
-        link_value: dict = {"id": platform_user_id}
+        link_value: dict[str, Any] = {"id": platform_user_id}
         if profile:
             if profile.get("username"):
                 link_value["username"] = str(profile["username"])
             if profile.get("display_name"):
                 link_value["display_name"] = str(profile["display_name"])
 
-        result = await users_collection.update_one(
-            {"_id": query_value},
-            {
-                "$set": {
-                    f"platform_links.{platform}": link_value,
-                    f"platform_links_connected_at.{platform}": now,
-                }
-            },
-        )
-
-        if result.matched_count == 0:
+        result = await user_repository.link_platform(user_id, platform, link_value, now)
+        if result is None:
             raise ValueError("User not found")
 
-        previously_linked_same = bool(
-            user
-            and isinstance(user.get("platform_links", {}).get(platform), dict)
-            and user["platform_links"][platform].get("id") == platform_user_id
+        prior_link = (user.platform_links or {}).get(platform) if user else None
+        previously_linked_same = (
+            isinstance(prior_link, dict) and prior_link.get("id") == platform_user_id
         )
 
         return {
@@ -144,19 +126,9 @@ class PlatformLinkService:
     @staticmethod
     async def unlink_account(user_id: str, platform: str, _use_object_id: bool = False) -> dict:
         """Unlink a platform account from a GAIA user. Raises ValueError if the user is not found."""
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$unset": {
-                    f"platform_links.{platform}": "",
-                    f"platform_links_connected_at.{platform}": "",
-                }
-            },
-        )
-
-        if result.matched_count == 0:
+        result = await user_repository.unlink_platform(user_id, platform)
+        if result is None:
             raise ValueError("User not found")
-
         return {"status": "disconnected", "platform": platform}
 
     @staticmethod
@@ -166,20 +138,12 @@ class PlatformLinkService:
         Only platforms stored as a dict with a non-empty "id" are returned;
         legacy string/int values are skipped.
         """
-        # Project only the link fields: this runs on the outbound delivery hot
-        # path (once per platform adapter, fanned out per notification), so
-        # fetching the whole user document would pull conversations/settings/etc.
-        # we never read here.
-        user = await users_collection.find_one(
-            {"_id": ObjectId(user_id)},
-            {"platform_links": 1, "platform_links_connected_at": 1},
-        )
-
-        if not user:
+        user = await user_repository.get(user_id)
+        if user is None:
             return {}
 
-        platform_links = user.get("platform_links", {})
-        connected_at = user.get("platform_links_connected_at", {})
+        platform_links = user.platform_links or {}
+        connected_at = user.platform_links_connected_at or {}
 
         result = {}
         for platform in Platform.values():

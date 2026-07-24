@@ -1,15 +1,12 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from datetime import UTC, datetime
 from typing import Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
-from app.db.utils import serialize_document
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -39,14 +36,12 @@ async def handle_workflow_error(
         deactivate=deactivate,
     )
     try:
-        update_data: dict[str, Any] = {"updated_at": datetime.now(UTC)}
-        if deactivate:
-            update_data["activated"] = False
+        # Imported lazily: workflow_utils is imported by app.services.workflow, which
+        # the repository's ChromaDB/oauth chain reaches back into — a module-level
+        # import would form a cycle.
+        from app.db.repositories.workflows import workflow_repository
 
-        await workflows_collection.find_one_and_update(
-            {"_id": workflow_id, "user_id": user_id},
-            {"$set": update_data},
-        )
+        await workflow_repository.mark_error(workflow_id, user_id, deactivate=deactivate)
         log.error(f"{LogTag.WORKFLOW} Workflow {workflow_id} error: {error}")
     except Exception as update_error:
         log.error(
@@ -59,43 +54,6 @@ def ensure_trigger_config_object(trigger_config: Any) -> TriggerConfig:
     if isinstance(trigger_config, dict):
         return TriggerConfig(**trigger_config)
     return trigger_config
-
-
-def transform_workflow_document(doc: dict) -> dict:
-    """Transform workflow document with trigger_config handling and status migration."""
-    transformed_doc = serialize_document(doc)
-
-    # Handle trigger_config transformation
-    if "trigger_config" in transformed_doc and isinstance(transformed_doc["trigger_config"], dict):
-        transformed_doc["trigger_config"] = ensure_trigger_config_object(
-            transformed_doc["trigger_config"]
-        )
-
-    # Backward compatibility for legacy documents.
-    if transformed_doc.get("description") is None:
-        transformed_doc["description"] = ""
-
-    # Ensure prompt exists for legacy workflows.
-    if not transformed_doc.get("prompt"):
-        transformed_doc["prompt"] = transformed_doc.get("description") or ""
-
-    # Handle legacy status values - migrate old "failed" to new enum
-    if "status" in transformed_doc:
-        old_status = transformed_doc["status"]
-        if old_status not in [
-            "scheduled",
-            "executing",
-            "completed",
-            "failed",
-            "cancelled",
-            "paused",
-        ]:
-            log.warning(
-                f"{LogTag.WORKFLOW} Unknown status '{old_status}' in workflow {doc.get('_id')}, defaulting to 'failed'"
-            )
-            transformed_doc["status"] = "failed"
-
-    return transformed_doc
 
 
 def error_response(error_code: str, message: str) -> dict:

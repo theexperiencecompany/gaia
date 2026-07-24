@@ -9,14 +9,13 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Annotated
 
-from bson import ObjectId
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import Priority, TodoResponse
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpdate
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
@@ -143,6 +142,7 @@ def _resolve_first_fire(
 
 async def _persist_scheduling_fields(
     todo_id: str,
+    user_id: str,
     parsed_scheduled_at: datetime | None,
     recurrence: str | None,
     expires_at: str | None,
@@ -150,22 +150,17 @@ async def _persist_scheduling_fields(
     """Save scheduled_at / recurrence / expires_at onto a freshly-created todo doc."""
     if not (parsed_scheduled_at or recurrence or expires_at):
         return None
-    update_fields: dict[str, object] = {}
+    fields: dict[str, object] = {}
     if parsed_scheduled_at:
-        update_fields["scheduled_at"] = parsed_scheduled_at
+        fields["scheduled_at"] = parsed_scheduled_at
     if recurrence:
-        update_fields["recurrence"] = recurrence
+        fields["recurrence"] = recurrence
     if expires_at:
         try:
-            update_fields["expires_at"] = datetime.fromisoformat(
-                expires_at.replace("Z", _UTC_OFFSET)
-            )
+            fields["expires_at"] = datetime.fromisoformat(expires_at.replace("Z", _UTC_OFFSET))
         except ValueError:
             return f"Error: invalid expires_at format '{expires_at}'."
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id)},
-        {"$set": update_fields},
-    )
+    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate.model_validate(fields))
     return None
 
 
@@ -327,41 +322,38 @@ async def _build_recurrence_update(
     return None
 
 
-def _build_list_detail_parts(doc: dict, now: datetime) -> list[str]:
+def _build_list_detail_parts(doc: TodoDocument, now: datetime) -> list[str]:
     """Build the pipe-separated detail fragments shown on the second line of each todo."""
     parts: list[str] = []
-    if due_date := doc.get("due_date"):
-        days_until = (due_date - now).days
+    if doc.due_date:
+        days_until = (doc.due_date - now).days
         parts.append(f"Due: OVERDUE {-days_until}d" if days_until < 0 else f"Due: {days_until}d")
-    if scheduled := doc.get("scheduled_at"):
-        parts.append(f"Scheduled: {scheduled.isoformat()}")
-    if recurrence := doc.get("recurrence"):
-        parts.append(f"Recurrence: {recurrence}")
-    if expires := doc.get("expires_at"):
-        expires_days = (expires - now).days
+    if doc.scheduled_at:
+        parts.append(f"Scheduled: {doc.scheduled_at.isoformat()}")
+    if doc.recurrence:
+        parts.append(f"Recurrence: {doc.recurrence}")
+    if doc.expires_at:
+        expires_days = (doc.expires_at - now).days
         parts.append(
             f"Expires: EXPIRED {-expires_days}d ago"
             if expires_days < 0
             else f"Expires: in {expires_days}d"
         )
-    if doc.get("gaia_retry_count", 0) > 0:
-        parts.append(f"Retries: {doc['gaia_retry_count']}")
+    if doc.gaia_retry_count > 0:
+        parts.append(f"Retries: {doc.gaia_retry_count}")
     return parts
 
 
-def _format_tracked_todo_full(doc: dict, now: datetime) -> str:
+def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
     """Format one tracked-todo doc as the multi-line block used by list_tracked_todos."""
-    todo_id = str(doc["_id"])
-    title = doc.get("title", "Untitled")
-    labels = [lbl for lbl in doc.get("labels", []) if lbl != "gaia-tracked"]
+    labels = [lbl for lbl in doc.labels if lbl != GAIA_TRACKED_LABEL]
     labels_str = f" [{', '.join(labels)}]" if labels else ""
-    priority = doc.get("priority", "none")
-    age_days = (now - doc.get("created_at", now)).days
-    last_update = (now - doc.get("updated_at", now)).days
+    age_days = (now - (doc.created_at or now)).days
+    last_update = (now - (doc.updated_at or now)).days
 
     parts = [
-        f'- "{title}"{labels_str} (ID: {todo_id})',
-        f"  Priority: {priority} | Age: {age_days}d | Last updated: {last_update}d ago",
+        f'- "{doc.title}"{labels_str} (ID: {doc.id})',
+        f"  Priority: {doc.priority.value} | Age: {age_days}d | Last updated: {last_update}d ago",
     ]
     detail_parts = _build_list_detail_parts(doc, now)
     if detail_parts:
@@ -518,7 +510,7 @@ async def create_tracked_todo(
     )
 
     persist_error = await _persist_scheduling_fields(
-        result.id, parsed_scheduled_at, recurrence, expires_at
+        result.id, user_id, parsed_scheduled_at, recurrence, expires_at
     )
     if persist_error:
         return persist_error
@@ -618,10 +610,7 @@ async def update_tracked_todo_canvas(
     if mode == "section" and not section:
         return "Error: 'section' mode requires a section name."
 
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"_id": 1},
-    )
+    doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
         return f"Error: tracked todo {todo_id} not found"
 
@@ -756,26 +745,22 @@ async def update_tracked_todo(
 
     # Validate the resulting state against the existing doc — the in-call guards
     # alone can't catch corruption when the DB already has scheduling fields set.
-    existing = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id, "vfs_path": {"$exists": True}}
-    )
+    existing = await todo_repository.get(todo_id, user_id=user_id)
     if not existing:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
-    effective_scheduled_at = update_fields.get("scheduled_at", existing.get("scheduled_at"))
-    effective_recurrence = update_fields.get("recurrence", existing.get("recurrence"))
+    effective_scheduled_at = update_fields.get("scheduled_at", existing.scheduled_at)
+    effective_recurrence = update_fields.get("recurrence", existing.recurrence)
     if effective_recurrence and not effective_scheduled_at:
         return (
             "Error: cannot have recurrence without scheduled_at. "
             "Either clear recurrence or provide a scheduled_at value."
         )
 
-    update_fields["updated_at"] = datetime.now(UTC)
-    result = await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": update_fields},
+    updated = await todo_repository.update(
+        todo_id, user_id=user_id, update=TodoUpdate.model_validate(update_fields)
     )
-    if result.matched_count == 0:
+    if updated is None:
         return f"Error: tracked todo {todo_id} not found or not a tracked todo."
 
     # If scheduled_at landed in update_fields with a real datetime (agent-passed or
@@ -784,12 +769,9 @@ async def update_tracked_todo(
     if isinstance(new_scheduled_at, datetime):
         await tracked_todo_service.reschedule_execution(todo_id, new_scheduled_at)
 
-    updated_keys = [k for k in update_fields if k != "updated_at"]
+    updated_keys = list(update_fields)
     if references is not None:
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {"$addToSet": {"references": {"$each": references}}},
-        )
+        await todo_repository.add_references(todo_id, user_id=user_id, references=references)
         updated_keys.append("references")
 
     msg = f"Updated tracked todo {todo_id}: {', '.join(updated_keys)}"
@@ -813,19 +795,7 @@ async def list_tracked_todos(
     if not user_id:
         return _ERR_NO_USER_ID
 
-    cursor = (
-        todos_collection.find(
-            {
-                "user_id": user_id,
-                "labels": "gaia-tracked",
-                "completed": False,
-            }
-        )
-        .sort("updated_at", -1)
-        .limit(50)
-    )
-
-    docs = await cursor.to_list(length=50)
+    docs = await todo_repository.list_active_tracked(user_id, limit=50)
     if not docs:
         return "No active tracked todos."
 

@@ -2,7 +2,6 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
-from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.prompts.onboarding_prompts import (
@@ -23,12 +22,10 @@ from app.agents.workspace.paths import (
     safe_upload_filename,
     session_dir,
 )
-from app.db.mongodb.collections import (
-    conversations_collection,
-    todos_collection,
-    users_collection,
-)
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.message_models import (
@@ -37,6 +34,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
@@ -242,9 +240,9 @@ def build_workspace_session_banner(session_id: str) -> str:
     return f"Session directory: {session_dir(session_id)}"
 
 
-def _format_active_todo_banner(todo: dict) -> str:
-    title = todo.get("title", "Untitled")
-    todo_id = str(todo.get("_id") or todo.get("id") or "")
+def _format_active_todo_banner(todo: TodoDocument) -> str:
+    title = todo.title or "Untitled"
+    todo_id = todo.id
     return (
         "🎯 ACTIVE TODO (this run is bound to this todo)\n"
         f"   id: {todo_id}\n"
@@ -261,7 +259,7 @@ async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) ->
     if not active_todo_id:
         return ""
     try:
-        doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
+        doc = await todo_repository.get(active_todo_id, user_id=user_id)
         if not doc:
             return ""
         return _format_active_todo_banner(doc)
@@ -704,11 +702,8 @@ async def get_onboarding_system_prompt_if_applicable(
 ) -> str | None:
     """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-        )
-        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        probe = await conversation_repository.get_onboarding_probe(conversation_id)
+        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
@@ -717,30 +712,24 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
-            message_count = len(conv.get("messages", [])) if conv else 0
+            message_count = probe.message_count if probe else 0
             if message_count >= 7:
-                await users_collection.update_one(
-                    {"_id": ObjectId(user_id)},
-                    {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
-                )
+                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED.value)
                 log.info(
                     f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
                 )
                 return None
 
-        user_doc = await users_collection.find_one(
-            {"_id": ObjectId(user_id)},
-            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
-        )
+        user_doc = await user_repository.get(user_id)
         if not user_doc:
             return None
 
-        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        onboarding = user_doc.onboarding or {}
+        phase = onboarding.get("phase", "initial")
         if phase == OnboardingPhase.COMPLETED:
             return None
 
-        name = user_doc.get("name", "there")
-        onboarding = user_doc.get("onboarding", {})
+        name = user_doc.name or "there"
         profession = onboarding.get("preferences", {}).get("profession", "")
         triage_summary = onboarding.get("triage_summary", "")
 

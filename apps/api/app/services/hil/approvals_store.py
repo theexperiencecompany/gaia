@@ -7,8 +7,8 @@ so a duplicate or racing decision cannot double-resolve the same request.
 
 Writes are idempotent because the gate's pre-``interrupt()`` code re-runs from the
 top of the node on every resume replay: the id is derived from the tool call
-(:func:`approval_id_for`) and creation is an upsert, so a replay neither creates a
-second record nor resets a decided one.
+(:func:`approval_id_for`) and stored as the unique ``_id``, so a replay neither
+creates a second record nor resets a decided one.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -16,8 +16,8 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_UNRESUMED_SWEEP_STATUSES
-from app.db.mongodb.collections import hil_approvals_collection
-from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.db.repositories.hil import hil_approval_repository
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HILApprovalUpdate
 
 
 def approval_id_for(conversation_id: str, tool_call_id: str) -> str:
@@ -45,9 +45,9 @@ async def upsert_pending_approval(
 ) -> bool:
     """Create the pending record if absent. Returns ``True`` only when newly created.
 
-    ``$setOnInsert`` so a resume replay never resurrects a decided record. The
-    return value is what the caller uses to publish the approval card exactly
-    once (a replay must not re-publish it).
+    A resume replay never resurrects a decided record (the duplicate insert is a
+    no-op). The return value is what the caller uses to publish the approval
+    card exactly once (a replay must not re-publish it).
     """
     now = datetime.now(UTC)
     record = HILApprovalRecord(
@@ -63,12 +63,7 @@ async def upsert_pending_approval(
         created_at=now,
         expires_at=now + timedelta(seconds=HIL_APPROVAL_TIMEOUT_SECONDS),
     )
-    doc = record.model_dump()
-    doc["_id"] = approval_id
-    result = await hil_approvals_collection.update_one(
-        {"_id": approval_id}, {"$setOnInsert": doc}, upsert=True
-    )
-    return result.upserted_id is not None
+    return await hil_approval_repository.create_if_absent(record)
 
 
 async def record_auto_approval(
@@ -87,8 +82,8 @@ async def record_auto_approval(
     """Log an action auto mode ran without asking — the receipt behind its card.
 
     Written already-decided (never ``pending``), so it is a record, not a request: no
-    sweep expires it and no decision endpoint can resolve it. ``$setOnInsert`` keeps it
-    idempotent for the same reason the pending upsert is.
+    sweep expires it and no decision endpoint can resolve it. The duplicate-insert
+    no-op keeps it idempotent for the same reason the pending upsert is.
     """
     now = datetime.now(UTC)
     record = HILApprovalRecord(
@@ -107,22 +102,12 @@ async def record_auto_approval(
         created_at=now,
         expires_at=now,
     )
-    doc = record.model_dump()
-    doc["_id"] = approval_id
-    await hil_approvals_collection.update_one(
-        {"_id": approval_id}, {"$setOnInsert": doc}, upsert=True
-    )
-
-
-def _hydrate(doc: dict[str, Any]) -> HILApprovalRecord:
-    doc.pop("_id", None)
-    return HILApprovalRecord(**doc)
+    await hil_approval_repository.create_if_absent(record)
 
 
 async def get_approval(approval_id: str) -> HILApprovalRecord | None:
     """Load one approval record, or ``None`` when it does not exist."""
-    doc = await hil_approvals_collection.find_one({"_id": approval_id})
-    return _hydrate(doc) if doc else None
+    return await hil_approval_repository.get(approval_id)
 
 
 async def mark_decided(
@@ -139,24 +124,14 @@ async def mark_decided(
     record was missing or already decided — the caller uses this to enforce
     one-time resolution before resuming the paused run.
     """
-    result = await hil_approvals_collection.update_one(
-        {"_id": approval_id, "status": "pending"},
-        {
-            "$set": {
-                "status": status,
-                "feedback": feedback,
-                "scope": scope,
-                "decided_by": decided_by,
-                "decided_at": datetime.now(UTC),
-            }
-        },
+    return await hil_approval_repository.mark_decided(
+        approval_id, status, feedback=feedback, scope=scope, decided_by=decided_by
     )
-    return result.modified_count == 1
 
 
 async def set_resume_item(approval_id: str, item: dict[str, Any]) -> None:
     """Attach the paused run's re-dispatch context to its approval record."""
-    await hil_approvals_collection.update_one({"_id": approval_id}, {"$set": {"resume_item": item}})
+    await hil_approval_repository.update(approval_id, HILApprovalUpdate(resume_item=item))
 
 
 async def stamp_subagent_resume(
@@ -168,14 +143,11 @@ async def stamp_subagent_resume(
     subagent after the executor's own pause — the deterministic thread id survives the
     resume where the in-process session does not.
     """
-    await hil_approvals_collection.update_one(
-        {"_id": approval_id},
-        {
-            "$set": {
-                "subagent_thread_id": subagent_thread_id,
-                "subagent_agent_name": subagent_agent_name,
-            }
-        },
+    await hil_approval_repository.update(
+        approval_id,
+        HILApprovalUpdate(
+            subagent_thread_id=subagent_thread_id, subagent_agent_name=subagent_agent_name
+        ),
     )
 
 
@@ -190,56 +162,36 @@ async def list_parked_subagents_for_conversation(conversation_id: str) -> list[H
     because the executor busy lock guarantees one run per conversation; ``stream_id``
     cannot be used — it changes on resume.
     """
-    cursor = hil_approvals_collection.find(
-        {
-            "conversation_id": conversation_id,
-            "subagent_thread_id": {"$ne": None},
-            "subagent_collected_at": None,
-        }
-    ).sort("created_at", 1)
-    return [_hydrate(doc) async for doc in cursor]
+    return await hil_approval_repository.list_parked_subagents_for_conversation(conversation_id)
 
 
 async def mark_subagent_collected(approval_id: str) -> None:
     """Stamp that the join resumed this parked subagent and collected its result."""
-    await hil_approvals_collection.update_one(
-        {"_id": approval_id}, {"$set": {"subagent_collected_at": datetime.now(UTC)}}
+    await hil_approval_repository.update(
+        approval_id, HILApprovalUpdate(subagent_collected_at=datetime.now(UTC))
     )
 
 
 async def mark_resumed(approval_id: str) -> None:
     """Stamp that the decided run was re-dispatched (sweep skips it)."""
-    await hil_approvals_collection.update_one(
-        {"_id": approval_id}, {"$set": {"resumed_at": datetime.now(UTC)}}
+    await hil_approval_repository.update(
+        approval_id, HILApprovalUpdate(resumed_at=datetime.now(UTC))
     )
 
 
 async def list_expired_pending() -> list[HILApprovalRecord]:
     """Pending approvals past ``expires_at`` — the timeout sweep's work list."""
-    cursor = hil_approvals_collection.find(
-        {"status": "pending", "expires_at": {"$lt": datetime.now(UTC)}}
-    )
-    return [_hydrate(doc) async for doc in cursor]
+    return await hil_approval_repository.list_expired_pending()
 
 
 async def list_decided_unresumed(grace_seconds: float) -> list[HILApprovalRecord]:
     """Decided records whose resume never dispatched (crash between the decided
     transition and the run spawn) — the sweep re-dispatches them."""
-    cutoff = datetime.now(UTC) - timedelta(seconds=grace_seconds)
-    cursor = hil_approvals_collection.find(
-        {
-            "status": {"$in": list(HIL_UNRESUMED_SWEEP_STATUSES)},
-            "resumed_at": None,
-            "resume_item": {"$ne": None},
-            "decided_at": {"$lt": cutoff},
-        }
+    return await hil_approval_repository.list_decided_unresumed(
+        list(HIL_UNRESUMED_SWEEP_STATUSES), grace_seconds
     )
-    return [_hydrate(doc) async for doc in cursor]
 
 
 async def list_pending_for_conversation(conversation_id: str) -> list[HILApprovalRecord]:
     """Every still-pending approval in a conversation, oldest first."""
-    cursor = hil_approvals_collection.find(
-        {"conversation_id": conversation_id, "status": "pending"}
-    ).sort("created_at", 1)
-    return [_hydrate(doc) async for doc in cursor]
+    return await hil_approval_repository.list_pending_for_conversation(conversation_id)

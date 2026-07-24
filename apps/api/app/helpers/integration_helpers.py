@@ -1,10 +1,17 @@
 """Integration-specific helper functions."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
 import re
-from typing import Any
+from typing import TYPE_CHECKING
 
 from app.helpers.slug_helpers import slugify
+
+if TYPE_CHECKING:
+    # Import under TYPE_CHECKING only: integration_models imports this module for
+    # generate_integration_slug, so a runtime import back would be circular.
+    from app.models.integration_models import IntegrationWithCreator
 
 # Stopwords filtered out of free-text integration/tool search queries.
 SEARCH_STOPWORDS = {
@@ -78,38 +85,6 @@ def generate_integration_slug(
     return slug.rstrip("-")
 
 
-async def generate_unique_integration_slug(
-    name: str,
-    category: str,
-    integration_id: str,
-    collection: Any,
-) -> str:
-    """Generate a slug that is unique across published integrations.
-
-    If the base slug is already taken by a different integration,
-    appends -2, -3, etc. until a free slug is found.
-    """
-    base_slug = generate_integration_slug(name, category, integration_id)
-
-    existing = await collection.find_one(
-        {"slug": base_slug, "integration_id": {"$ne": integration_id}}
-    )
-    if not existing:
-        return base_slug
-
-    suffix = 2
-    while suffix <= 100:
-        candidate = f"{base_slug}-{suffix}"
-        existing = await collection.find_one(
-            {"slug": candidate, "integration_id": {"$ne": integration_id}}
-        )
-        if not existing:
-            return candidate
-        suffix += 1
-
-    return f"{base_slug}-{integration_id[:6]}"
-
-
 def parse_integration_slug(slug: str) -> dict:
     """Parse slug to extract: name_part, category, shortid.
 
@@ -143,107 +118,42 @@ def parse_integration_slug(slug: str) -> dict:
     return result
 
 
-def _creator_lookup_stages() -> list:
-    """Return the shared $lookup, $addFields, and $project stages for creator info."""
-    return [
-        {
-            "$lookup": {
-                "from": "users",
-                "let": {
-                    "creator_id": {
-                        "$convert": {
-                            "input": "$created_by",
-                            "to": "objectId",
-                            "onError": None,
-                            "onNull": None,
-                        }
-                    }
-                },
-                "pipeline": [
-                    {"$match": {"$expr": {"$eq": ["$_id", "$$creator_id"]}}},
-                    {"$project": {"name": 1, "picture": 1}},
-                ],
-                "as": "creator_info",
-            }
-        },
-        {
-            "$addFields": {
-                "creator": {
-                    "$cond": {
-                        "if": {"$gt": [{"$size": "$creator_info"}, 0]},
-                        "then": {"$arrayElemAt": ["$creator_info", 0]},
-                        "else": None,
-                    }
-                }
-            }
-        },
-        {"$project": {"creator_info": 0}},
-    ]
-
-
-def build_public_integration_pipeline(short_id: str) -> list:
-    """Build MongoDB pipeline for fetching public integration with creator lookup."""
-    return [
-        {
-            "$match": {
-                "integration_id": {"$regex": f"^{short_id}", "$options": "i"},
-                "is_public": True,
-            }
-        },
-        *_creator_lookup_stages(),
-    ]
-
-
-def build_slug_lookup_pipeline(slug: str) -> list:
-    """Build MongoDB pipeline for slug-based integration lookup."""
-    return [
-        {"$match": {"slug": slug, "is_public": True}},
-        *_creator_lookup_stages(),
-    ]
-
-
-def format_public_integration_response(doc: dict) -> dict:
-    """Format MongoDB integration doc to response dict.
+def format_public_integration_response(integration: IntegrationWithCreator) -> dict:
+    """Format an integration (with joined creator) into a response dict.
 
     Returns a dict that can be unpacked into PublicIntegrationDetailResponse.
     """
-    mcp_config_doc = doc.get("mcp_config", {})
     mcp_config = None
-    if mcp_config_doc:
+    if integration.mcp_config:
         mcp_config = {
-            "server_url": mcp_config_doc.get("server_url"),
-            "requires_auth": mcp_config_doc.get("requires_auth", False),
-            "auth_type": mcp_config_doc.get("auth_type"),
+            "server_url": integration.mcp_config.server_url,
+            "requires_auth": integration.mcp_config.requires_auth,
+            "auth_type": integration.mcp_config.auth_type,
         }
 
     creator = None
-    creator_data = doc.get("creator")
-    if creator_data:
-        creator = {
-            "name": creator_data.get("name"),
-            "picture": creator_data.get("picture"),
-        }
+    if integration.creator:
+        creator = {"name": integration.creator.name, "picture": integration.creator.picture}
 
-    tools = doc.get("tools", [])
-    slug = doc.get("slug") or generate_integration_slug(
-        name=doc.get("name", ""),
-        category=doc.get("category", "custom"),
-        integration_id=doc["integration_id"],
+    slug = integration.slug or generate_integration_slug(
+        name=integration.name,
+        category=integration.category,
+        integration_id=integration.integration_id,
     )
 
     return {
-        "integration_id": doc["integration_id"],
+        "integration_id": integration.integration_id,
         "slug": slug,
-        "name": doc["name"],
-        "description": doc.get("description", ""),
-        "category": doc.get("category", "custom"),
-        "icon_url": doc.get("icon_url"),
+        "name": integration.name,
+        "description": integration.description,
+        "category": integration.category,
+        "icon_url": integration.icon_url,
         "creator": creator,
         "mcp_config": mcp_config,
-        "tools": [{"name": t.get("name", ""), "description": t.get("description")} for t in tools],
-        "clone_count": doc.get("clone_count", 0),
-        "tool_count": len(tools),
-        "published_at": doc.get("published_at"),
+        "tools": [{"name": t.name, "description": t.description} for t in integration.tools],
+        "clone_count": integration.clone_count,
+        "tool_count": len(integration.tools),
+        "published_at": integration.published_at,
         "source": "custom",  # MongoDB integrations are always custom
-        "content": doc.get("content"),  # LLM-generated; None until published/backfilled
+        "content": integration.content,  # LLM-generated; None until published/backfilled
     }

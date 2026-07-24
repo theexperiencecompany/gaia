@@ -3,7 +3,6 @@ Clean workflow service for GAIA workflow system.
 Handles CRUD operations and execution coordination.
 """
 
-from datetime import UTC, datetime
 import secrets
 from typing import Any
 import uuid
@@ -12,20 +11,22 @@ from pymongo.errors import DuplicateKeyError
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.decorators.caching import Cacheable
-from app.models.scheduler_models import ScheduledTaskStatus
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    PublicWorkflowRow,
     PublicWorkflowsResponse,
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
     Workflow,
+    WorkflowDocument,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
     WorkflowStep,
+    WorkflowUpdate,
     WorkflowWithIntegrations,
 )
 from app.services.workflow.integration_requirements import (
@@ -37,7 +38,6 @@ from app.services.workflow.integration_requirements import (
 from app.services.workflow.trigger_service import TriggerService
 from app.utils.creator import (
     SYSTEM_CREATOR_NAME,
-    creator_lookup_stage,
     format_creator,
 )
 from app.utils.exceptions import TriggerRegistrationError
@@ -46,7 +46,6 @@ from app.utils.workflow_utils import (
     ensure_trigger_config_object,
     filter_existing_integration_ids,
     handle_workflow_error,
-    transform_workflow_document,
 )
 from shared.py.utils.slugify import slugify
 from shared.py.wide_events import log
@@ -58,7 +57,6 @@ from .validators import WorkflowValidator
 
 _SLUG_SUFFIX_LEN = 6
 _SLUG_MAX_RETRIES = 5
-TRIGGER_CONFIG_ENABLED_FIELD = "trigger_config.enabled"
 
 
 def _slug_suffix() -> str:
@@ -77,10 +75,10 @@ async def generate_unique_workflow_slug(title: str, exclude_id: str | None = Non
 
     for _ in range(_SLUG_MAX_RETRIES):
         candidate = f"{base}-{_slug_suffix()}"
-        query: dict = {"slug": candidate, "is_public": True}
-        if exclude_id:
-            query["_id"] = {"$ne": exclude_id}
-        if not await workflows_collection.find_one(query):
+        conflict = await workflow_repository.find_public_slug_conflict(
+            candidate, exclude_id=exclude_id
+        )
+        if conflict is None:
             return candidate
 
     raise RuntimeError(
@@ -88,40 +86,29 @@ async def generate_unique_workflow_slug(title: str, exclude_id: str | None = Non
     )
 
 
-async def ensure_public_workflow_slug(workflow_doc: dict) -> dict:
+async def ensure_public_workflow_slug(workflow: WorkflowDocument) -> None:
     """Lazily backfill a slug on a legacy public workflow that's missing one.
 
-    Mutates and returns the same doc. No-op when the workflow is private or
-    already has a slug. Persists the new slug to Mongo.
+    Mutates ``workflow.slug`` in place. No-op when the workflow is private or
+    already has a slug. Persists the new slug via the repository.
     """
-    if not workflow_doc.get("is_public") or workflow_doc.get("slug"):
-        return workflow_doc
-
-    workflow_id = workflow_doc.get("_id") or workflow_doc.get("id")
-    if not workflow_id:
-        return workflow_doc
-
-    title = workflow_doc.get("title", "")
+    if not workflow.is_public or workflow.slug:
+        return
 
     for _ in range(_SLUG_MAX_RETRIES):
-        slug = await generate_unique_workflow_slug(title, exclude_id=workflow_id)
+        slug = await generate_unique_workflow_slug(workflow.title, exclude_id=workflow.id)
         try:
-            result = await workflows_collection.update_one(
-                {"_id": workflow_id, "$or": [{"slug": None}, {"slug": ""}]},
-                {"$set": {"slug": slug}},
-            )
-            if result.matched_count:
-                workflow_doc["slug"] = slug
+            result = await workflow_repository.backfill_public_slug(workflow.id, slug)
+            if result is not None:
+                workflow.slug = result.slug
             else:
                 # Someone else won the race — re-read the persisted slug.
-                fresh = await workflows_collection.find_one({"_id": workflow_id}, {"slug": 1})
-                if fresh and fresh.get("slug"):
-                    workflow_doc["slug"] = fresh["slug"]
-            return workflow_doc
+                fresh = await workflow_repository.get(workflow.id)
+                if fresh and fresh.slug:
+                    workflow.slug = fresh.slug
+            return
         except DuplicateKeyError:
             continue
-
-    return workflow_doc
 
 
 class WorkflowService:
@@ -250,18 +237,14 @@ class WorkflowService:
                 integration_ids=await filter_existing_integration_ids(request.integration_ids),
             )
 
-            # Python mode keeps datetimes native (BSON dates) so the scheduler's
-            # `scheduled_at: {"$lte": now}` scan can match. `creator` is a
-            # response-only computed field, excluded from the persisted document.
-            workflow_dict = workflow.model_dump(exclude={"creator"})
-            workflow_dict["_id"] = workflow_dict["id"]
+            if workflow.is_public and not workflow.slug:
+                workflow.slug = await generate_unique_workflow_slug(workflow.title)
 
-            if workflow_dict.get("is_public") and not workflow_dict.get("slug"):
-                workflow_dict["slug"] = await generate_unique_workflow_slug(workflow_dict["title"])
-
-            result = await workflows_collection.insert_one(workflow_dict)
-            if not result.inserted_id:
-                raise ValueError("Failed to create workflow in database")
+            # Persist through the repository (python mode keeps datetimes native so
+            # the scheduler's `scheduled_at: {"$lte": now}` scan matches; it raises
+            # if the insert can't be read back). The local ``workflow`` stays the
+            # response object the saga mutates and returns.
+            await workflow_repository.create(WorkflowDocument(**workflow.model_dump()))
 
             workflow_id = workflow.id
             log.set(
@@ -334,17 +317,9 @@ class WorkflowService:
                 )
             else:
                 # Step 3: Activate workflow and store trigger IDs. enabled mirrors
-                # activated.
-                update_data: dict[str, Any] = {
-                    "activated": True,
-                    TRIGGER_CONFIG_ENABLED_FIELD: True,
-                }
-                if trigger_ids:
-                    update_data["trigger_config.composio_trigger_ids"] = trigger_ids
-
-                await workflows_collection.update_one(
-                    {"_id": workflow.id},
-                    {"$set": update_data},
+                # activated; keyed by id alone (the create saga owns the row).
+                await workflow_repository.mark_activated_with_triggers(
+                    workflow.id, trigger_ids=trigger_ids
                 )
 
                 # Update local workflow object
@@ -402,7 +377,7 @@ class WorkflowService:
             log.error(f"{LogTag.WORKFLOW} Trigger registration failed, rolling back workflow: {e}")
             if workflow_id:
                 try:
-                    await workflows_collection.delete_one({"_id": workflow_id})
+                    await workflow_repository.delete_for_user(workflow_id, user_id)
                     log.info(f"{LogTag.WORKFLOW} Rolled back workflow {workflow_id}")
                 except Exception as delete_error:
                     log.error(
@@ -422,7 +397,7 @@ class WorkflowService:
                             await TriggerService.unregister_triggers(
                                 user_id, trigger_name, trigger_ids, workflow_id
                             )
-                    await workflows_collection.delete_one({"_id": workflow_id})
+                    await workflow_repository.delete_for_user(workflow_id, user_id)
                     log.info(f"{LogTag.WORKFLOW} Rolled back workflow {workflow_id} after error")
                 except Exception as cleanup_error:
                     log.error(
@@ -434,17 +409,13 @@ class WorkflowService:
     async def get_workflow(workflow_id: str, user_id: str) -> Workflow | None:
         """Get a workflow by ID."""
         try:
-            workflow_doc = await workflows_collection.find_one(
-                {"_id": workflow_id, "user_id": user_id}
-            )
-
-            if not workflow_doc:
+            doc = await workflow_repository.get_for_user(workflow_id, user_id)
+            if not doc:
                 return None
 
-            await ensure_public_workflow_slug(workflow_doc)
+            await ensure_public_workflow_slug(doc)
 
-            transformed_doc = transform_workflow_document(workflow_doc)
-            workflow = WorkflowWithIntegrations(**transformed_doc)
+            workflow = WorkflowWithIntegrations(**doc.model_dump())
             await WorkflowService._enrich_integration_fields(workflow, user_id)
             return workflow
 
@@ -467,39 +438,26 @@ class WorkflowService:
         ``limit=None`` to fetch every match.
         """
         try:
-            # Build query - filter out todo workflows by default
-            query: dict[str, Any] = {"user_id": user_id}
-            if exclude_todo_workflows:
-                query["$or"] = [
-                    {"is_todo_workflow": {"$exists": False}},
-                    {"is_todo_workflow": False},
-                ]
-
-            cursor = workflows_collection.find(query).sort("created_at", -1)
-            if offset:
-                cursor = cursor.skip(offset)
-            if limit is not None:
-                cursor = cursor.limit(limit)
-            docs = await cursor.to_list(length=limit)
+            docs = await workflow_repository.list_for_user(
+                user_id,
+                exclude_todo_workflows=exclude_todo_workflows,
+                limit=limit,
+                offset=offset,
+            )
 
             # Only a paginated caller needs a separate count; an unpaginated fetch
             # already holds every match, so counting again is a wasted round-trip.
             total = (
-                await workflows_collection.count_documents(query)
+                await workflow_repository.count_for_user(
+                    user_id, exclude_todo_workflows=exclude_todo_workflows
+                )
                 if limit is not None
                 else offset + len(docs)
             )
 
-            workflows: list[WorkflowWithIntegrations] = []
-            for doc in docs:
-                try:
-                    transformed_doc = transform_workflow_document(doc)
-                    workflows.append(WorkflowWithIntegrations(**transformed_doc))
-                except Exception as e:
-                    log.warning(
-                        f"{LogTag.WORKFLOW} Skipping malformed workflow document {doc.get('_id')}: {e}"
-                    )
-                    continue
+            workflows: list[WorkflowWithIntegrations] = [
+                WorkflowWithIntegrations(**doc.model_dump()) for doc in docs
+            ]
 
             # Enrich all workflows with integration fields in one status call.
             # Deferred import: oauth_service → provisioner → service is circular.
@@ -555,7 +513,6 @@ class WorkflowService:
             if not current_workflow:
                 return None
 
-            update_data = {"updated_at": datetime.now(UTC)}
             update_fields = request.model_dump(exclude_unset=True)
 
             # enabled mirrors activated (the single liveness field). Resolve the
@@ -648,17 +605,24 @@ class WorkflowService:
                 if registered_trigger_ids is not None:
                     update_fields["trigger_config"]["composio_trigger_ids"] = registered_trigger_ids
 
-            update_data.update(update_fields)
-
-            # activated changed without a trigger_config rewrite: sync the nested
-            # enabled flag via a dotted key (the sub-document sync above only runs
-            # when trigger_config is part of the update).
+            # activated changed without a trigger_config rewrite: mirror the nested
+            # `enabled` flag by rewriting the sub-document from the current config
+            # (the typed update can't express a dotted `trigger_config.enabled` set;
+            # the trigger_config branch above already syncs enabled in Case A).
             if "trigger_config" not in update_fields and "activated" in update_fields:
-                update_data[TRIGGER_CONFIG_ENABLED_FIELD] = effective_activated
+                synced = current_workflow.trigger_config
+                synced.enabled = effective_activated
+                update_fields["trigger_config"] = synced.model_dump()
+
+            # An empty request (nothing set) is a bare touch, matching the prior
+            # always-stamp-updated_at behavior — the typed update rejects an empty set.
+            if not update_fields:
+                await workflow_repository.touch(workflow_id, user_id)
+                return await WorkflowService.get_workflow(workflow_id, user_id)
 
             try:
-                result = await workflows_collection.update_one(
-                    {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
+                updated = await workflow_repository.update_for_user(
+                    workflow_id, user_id, WorkflowUpdate(**update_fields)
                 )
             except Exception as db_err:
                 # Compensate: unregister newly created triggers so they don't become orphaned
@@ -675,7 +639,7 @@ class WorkflowService:
                     )
                 raise db_err
 
-            if result.matched_count == 0:
+            if updated is None:
                 return None
 
             log.info(f"{LogTag.WORKFLOW} Updated workflow {workflow_id} for user {user_id}")
@@ -710,9 +674,9 @@ class WorkflowService:
                             f"{LogTag.WORKFLOW} No trigger_name found for workflow {workflow_id}, cannot unregister triggers"
                         )
 
-            result = await workflows_collection.delete_one({"_id": workflow_id, "user_id": user_id})
+            deleted = await workflow_repository.delete_for_user(workflow_id, user_id)
 
-            if result.deleted_count == 0:
+            if not deleted:
                 return False
 
             log.set(workflow={"id": workflow_id, "status": "deleted"})
@@ -737,12 +701,8 @@ class WorkflowService:
             WorkflowValidator.validate_for_execution(workflow)
 
             # Update last execution timestamp
-            result = await workflows_collection.find_one_and_update(
-                {"_id": workflow_id, "user_id": user_id},
-                {"$set": {"updated_at": datetime.now(UTC)}},
-            )
-
-            if not result:
+            touched = await workflow_repository.touch(workflow_id, user_id)
+            if not touched:
                 raise ValueError(f"Failed to update workflow {workflow_id}")
 
             execution_id = f"exec_{workflow_id}_{uuid.uuid4().hex[:8]}"
@@ -874,21 +834,14 @@ class WorkflowService:
 
             # 2. Activate: set liveness (activated) and re-arm run-state to idle
             # (status=scheduled) with the freshly recomputed next_run.
-            update_data: dict[str, Any] = {
-                "activated": True,
-                TRIGGER_CONFIG_ENABLED_FIELD: True,
-                "trigger_config.composio_trigger_ids": trigger_ids,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-                "scheduled_at": trigger_config.next_run,
-                "trigger_config.next_run": trigger_config.next_run,
-                "updated_at": datetime.now(UTC),
-            }
-
-            result = await workflows_collection.update_one(
-                {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
+            activated = await workflow_repository.activate(
+                workflow_id,
+                user_id,
+                trigger_ids=trigger_ids,
+                next_run=trigger_config.next_run,
             )
 
-            if result.matched_count == 0:
+            if activated is None:
                 # Rollback triggers if DB update fails (pass workflow_id for reference counting)
                 if trigger_ids and trigger_name:
                     await TriggerService.unregister_triggers(
@@ -966,18 +919,9 @@ class WorkflowService:
                     )
 
             # Update trigger to disabled and clear trigger IDs
-            update_data: dict[str, Any] = {
-                "activated": False,
-                TRIGGER_CONFIG_ENABLED_FIELD: False,
-                "trigger_config.composio_trigger_ids": [],
-                "updated_at": datetime.now(UTC),
-            }
+            deactivated = await workflow_repository.deactivate(workflow_id, user_id)
 
-            result = await workflows_collection.update_one(
-                {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
-            )
-
-            if result.matched_count == 0:
+            if deactivated is None:
                 return None
 
             log.set(workflow={"id": workflow_id, "status": "deactivated"})
@@ -1022,31 +966,30 @@ class WorkflowService:
             required = compute_required_integrations(steps_as_models)
             missing = await compute_missing_integrations(required, user_id)
 
-            update_set: dict[str, Any] = {
-                "steps": steps_data,
-                "updated_at": datetime.now(UTC),
-            }
-            if integration_ids is not None:
-                update_set["integration_ids"] = await filter_existing_integration_ids(
-                    integration_ids
-                )
+            # Persist only integration_ids the user still has connected — a stale
+            # id from the client must not resurrect an integration they removed.
+            filtered_integration_ids = (
+                await filter_existing_integration_ids(integration_ids)
+                if integration_ids is not None
+                else None
+            )
+
             if missing:
-                update_set["activated"] = False
-                update_set[TRIGGER_CONFIG_ENABLED_FIELD] = False
                 log.info(
                     f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
                     f"missing step integrations: {[m.id for m in missing]}"
                 )
 
-            result = await workflows_collection.find_one_and_update(
-                {"_id": workflow_id, "user_id": user_id},
-                {"$set": update_set},
-                return_document=True,
+            result = await workflow_repository.set_steps(
+                workflow_id,
+                user_id,
+                steps_as_models,
+                deactivate=bool(missing),
+                integration_ids=filtered_integration_ids,
             )
 
             if result:
-                transformed_doc = transform_workflow_document(result)
-                workflow = WorkflowWithIntegrations(**transformed_doc)
+                workflow = WorkflowWithIntegrations(**result.model_dump())
                 # Match get_workflow/list_workflows so the regenerated steps'
                 # required/missing integrations surface in the UI.
                 await WorkflowService._enrich_integration_fields(workflow, user_id)
@@ -1063,20 +1006,9 @@ class WorkflowService:
     ) -> bool:
         """Increment workflow execution statistics."""
         try:
-            inc_data = {"total_executions": 1}
-            if is_successful:
-                inc_data["successful_executions"] = 1
-
-            update_data = {
-                "$inc": inc_data,
-                "$set": {"last_executed_at": datetime.now(UTC)},
-            }
-
-            result = await workflows_collection.update_one(
-                {"_id": workflow_id, "user_id": user_id}, update_data
+            success = await workflow_repository.record_execution(
+                workflow_id, user_id, successful=is_successful
             )
-
-            success = result.matched_count > 0
             if success:
                 log.debug(
                     f"{LogTag.WORKFLOW} Updated execution count for workflow {workflow_id}: total +1, successful +{1 if is_successful else 0}"
@@ -1103,89 +1035,48 @@ class WorkflowService:
     ) -> PublicWorkflowsResponse:
         """Get public workflows from the community marketplace with caching."""
         try:
-            pipeline = [
-                {
-                    "$match": {
-                        "is_public": True,
-                        "$or": [
-                            {"is_explore": {"$exists": False}},
-                            {"is_explore": False},
-                        ],
-                    }
-                },
-                {"$sort": {"created_at": -1}},
-                {"$skip": offset},
-                {"$limit": limit},
-                creator_lookup_stage(),
-                {
-                    "$project": {
-                        "_id": 1,
-                        "title": 1,
-                        "description": 1,
-                        "slug": 1,
-                        "steps": {
-                            "$map": {
-                                "input": "$steps",
-                                "as": "step",
-                                "in": {
-                                    "title": "$$step.title",
-                                    "category": "$$step.category",
-                                    "description": "$$step.description",
-                                },
-                            }
-                        },
-                        "upvoted_by": 1,
-                        "created_at": 1,
-                        "created_by": 1,
-                        "creator_info": 1,
-                    }
-                },
+            rows = await workflow_repository.find_community(limit=limit, offset=offset)
+            total = await workflow_repository.count_community()
+
+            formatted_workflows = [
+                await WorkflowService._format_public_workflow(row) for row in rows
             ]
-
-            workflows = await workflows_collection.aggregate(pipeline).to_list(length=limit)
-            # Exclude explore workflows from community count
-            total = await workflows_collection.count_documents(
-                {
-                    "is_public": True,
-                    "$or": [{"is_explore": {"$exists": False}}, {"is_explore": False}],
-                }
-            )
-
-            formatted_workflows = []
-            for workflow in workflows:
-                await ensure_public_workflow_slug(workflow)
-
-                # Normalize steps to use 'category' field (handle legacy 'tool_category')
-                raw_steps = workflow.get("steps", [])
-                normalized_steps = []
-                for step in raw_steps:
-                    normalized_step = {
-                        "id": step.get("id", ""),
-                        "title": step.get("title", ""),
-                        "description": step.get("description", ""),
-                        # Use 'category' if present, fall back to 'tool_category'
-                        "category": step.get("category") or step.get("tool_category", "general"),
-                    }
-                    normalized_steps.append(normalized_step)
-
-                wf_id = workflow["_id"]
-                formatted_workflow = {
-                    "id": wf_id,
-                    "title": workflow["title"],
-                    "description": workflow.get("description"),
-                    "slug": workflow.get("slug"),
-                    "prompt": workflow.get("prompt"),
-                    "steps": normalized_steps,
-                    "created_at": workflow["created_at"],
-                    "creator": format_creator(workflow),
-                }
-                formatted_workflows.append(formatted_workflow)
 
             return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error fetching community workflows: {e!s}")
             raise
+
+    @staticmethod
+    async def _format_public_workflow(
+        row: PublicWorkflowRow, *, default_creator_name: str | None = None
+    ) -> dict[str, Any]:
+        """Shape one hydrated marketplace row into the public-card dict.
+
+        Shared by the community and explore lists so the two payloads can't drift.
+        Backfills a legacy public workflow's missing slug in place first.
+        """
+        await ensure_public_workflow_slug(row)
+        normalized_steps = [
+            {
+                "id": step.id,
+                "title": step.title,
+                "description": step.description,
+                "category": step.category or "general",
+            }
+            for step in row.steps
+        ]
+        return {
+            "id": row.id,
+            "title": row.title,
+            "description": row.description,
+            "slug": row.slug,
+            "prompt": row.prompt,
+            "steps": normalized_steps,
+            "created_at": row.created_at,
+            "creator": format_creator(row, default_name=default_creator_name),
+        }
 
     @staticmethod
     @Cacheable(smart_hash=True, ttl=600, model=PublicWorkflowsResponse)
@@ -1195,62 +1086,20 @@ class WorkflowService:
     ) -> PublicWorkflowsResponse:
         """Get explore/featured workflows for the discover section with caching."""
         try:
-            # Query for explore workflows (is_explore = True)
-            query = {"is_explore": True}
+            rows = await workflow_repository.find_explore(limit=limit, offset=offset)
+            total = await workflow_repository.count_explore()
 
-            # Get total count
-            total = await workflows_collection.count_documents(query)
-
-            # Get workflows with pagination, sorted by execution count and recency
-            workflows = await workflows_collection.aggregate(
-                [
-                    {"$match": query},
-                    {"$sort": {"total_executions": -1, "updated_at": -1}},
-                    {"$skip": offset},
-                    {"$limit": limit},
-                    {
-                        "$lookup": {
-                            "from": "users",
-                            "localField": "created_by",
-                            "foreignField": "_id",
-                            "as": "creator_info",
-                        }
-                    },
-                ]
-            ).to_list(length=None)
-
-            # Format workflows with creator information
             formatted_workflows = []
-            for workflow in workflows:
-                await ensure_public_workflow_slug(workflow)
-
-                # Normalize steps to use 'category' field (handle legacy 'tool_category')
-                raw_steps = workflow.get("steps", [])
-                normalized_steps = []
-                for step in raw_steps:
-                    normalized_step = {
-                        "id": step.get("id", ""),
-                        "title": step.get("title", ""),
-                        "description": step.get("description", ""),
-                        # Use 'category' if present, fall back to 'tool_category'
-                        "category": step.get("category") or step.get("tool_category", "general"),
-                    }
-                    normalized_steps.append(normalized_step)
-
-                wf_id = workflow["_id"]
-                formatted_workflow = {
-                    "id": wf_id,
-                    "title": workflow["title"],
-                    "description": workflow.get("description", ""),
-                    "slug": workflow.get("slug"),
-                    "prompt": workflow.get("prompt") or workflow.get("description", ""),
-                    "steps": normalized_steps,
-                    "created_at": workflow["created_at"],
-                    "categories": workflow.get("use_case_categories", ["featured"]),
-                    "total_executions": workflow.get("total_executions", 0),
-                    "creator": format_creator(workflow, default_name=SYSTEM_CREATOR_NAME),
-                }
-                formatted_workflows.append(formatted_workflow)
+            for row in rows:
+                # Explore rows carry the community card shape plus the featured-only
+                # categories/total_executions, and default the creator to the GAIA
+                # team (the plain lookup never resolves a real user — see the repo).
+                formatted = await WorkflowService._format_public_workflow(
+                    row, default_creator_name=SYSTEM_CREATOR_NAME
+                )
+                formatted["categories"] = row.use_case_categories
+                formatted["total_executions"] = row.total_executions
+                formatted_workflows.append(formatted)
 
             return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 
@@ -1270,10 +1119,7 @@ class WorkflowService:
         (immediate, queued, agent-created) scopes the tool palette the same way.
         """
         try:
-            await workflows_collection.find_one_and_update(
-                {"_id": workflow_id, "user_id": user_id},
-                {"$set": {"updated_at": datetime.now(UTC)}},
-            )
+            await workflow_repository.touch(workflow_id, user_id)
 
             workflow = await WorkflowService.get_workflow(workflow_id, user_id)
             if not workflow:
@@ -1294,37 +1140,22 @@ class WorkflowService:
             required = compute_required_integrations(steps_as_models)
             missing = await compute_missing_integrations(required, user_id)
 
-            update: dict[str, Any] = {
-                "steps": steps_data,
-                "updated_at": datetime.now(UTC),
-            }
             if missing:
                 # Keep deactivated when step integrations are not connected.
-                update["activated"] = False
-                update[TRIGGER_CONFIG_ENABLED_FIELD] = False
                 log.info(
                     f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
                     f"missing step integrations: {[m.id for m in missing]}"
                 )
 
-            await workflows_collection.find_one_and_update(
-                {"_id": workflow_id, "user_id": user_id},
-                {"$set": update},
+            await workflow_repository.set_steps(
+                workflow_id, user_id, steps_as_models, deactivate=bool(missing)
             )
 
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error generating workflow steps for {workflow_id}: {e!s}")
             # Persist the error message so the status endpoint can report why it failed
             try:
-                await workflows_collection.find_one_and_update(
-                    {"_id": workflow_id, "user_id": user_id},
-                    {
-                        "$set": {
-                            "error_message": str(e),
-                            "updated_at": datetime.now(UTC),
-                        }
-                    },
-                )
+                await workflow_repository.set_error_message(workflow_id, user_id, str(e))
             except Exception as db_err:
                 log.error(
                     f"{LogTag.WORKFLOW} Failed to persist error_message for {workflow_id}: {db_err}"

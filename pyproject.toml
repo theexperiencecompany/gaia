@@ -483,6 +483,64 @@ exclude = "app/agents/skills/builtin/[^/]+/(templates|scripts)/"
 module = "shared.*"
 warn_no_return = true
 
+# Strict-mypy island (API repository layer) — grows as each domain is migrated
+# onto it, never shrinks. The generics only bite (rejecting cross-domain confusion
+# at the call site) when the repositories and their document/update models are
+# checked strictly. This override lives in the ROOT config (not apps/api) so the
+# app-level pyproject.toml cannot shadow this baseline; `nx type-check api` runs
+# mypy from apps/api and discovers this file, applying baseline + island together.
+#
+# The strict flags are enumerated individually, NOT via `strict = true`: mypy
+# applies a bare `strict = true` inside a per-module override GLOBALLY (it turns
+# the whole app strict — 2000+ errors), whereas the individual flags are correctly
+# scoped to the matched module. This set is exactly what `--strict` enables, minus
+# `disallow_any_explicit`.
+#
+# `disallow_any_explicit` is deliberately omitted: subclassing `pydantic.BaseModel`
+# trips mypy's `explicit-any` at the class-definition line (BaseModel's own typing
+# carries an Any the check attributes to every subclass — the pydantic mypy plugin
+# does not change this), so the flag is incompatible with any module holding a
+# document/update model. The explicit `Any` / `dict[str, Any]` ban is instead
+# enforced on repository public signatures by the `repository-boundaries` lint
+# (Type-Safety Layer 2).
+[[tool.mypy.overrides]]
+module = [
+  "app.db.repositories.*",
+  "app.models.notes_models",
+  "app.models.todo_models",
+  "app.models.mail_models",
+  "app.models.workflow_execution_models",
+  "app.models.conversation_models",
+  "app.models.models_models",
+  "app.models.payment_models",
+  "app.models.usage_models",
+  "app.models.search_models",
+  "app.models.integration_instructions_models",
+  "app.models.user_models",
+  "app.models.workflow_models",
+  "app.models.reminder_models",
+  "app.models.integration_models",
+  "app.models.calendar_models",
+  "app.models.files_models",
+  "app.models.blog_models",
+  "app.models.bot_models",
+  "app.models.sandbox_models",
+  "app.models.support_models",
+  "app.models.notification.notification_models",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+check_untyped_defs = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
+warn_unused_ignores = true
+
 # Tests stay loose everywhere — fixtures and mocks often pass through Any.
 # This block comes last so it wins for test modules under shared/.
 [[tool.mypy.overrides]]

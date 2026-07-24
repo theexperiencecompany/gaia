@@ -1,57 +1,26 @@
-"""Unit tests for blog service operations."""
+"""Unit tests for the blog service.
+
+The service is thin orchestration over ``blog_repository`` (pagination + a 404):
+these tests mock that repository seam. The aggregation, author-join and content
+normalisation live in the repository and are covered by its real-DB contract
+suite; the regex-injection guard is asserted here against the repository's own
+pipeline builder because it is security-critical.
+"""
 
 import re
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 import pytest
 
-from app.models.blog_models import BlogPost
+from app.db.repositories.blog import blog_repository
+from app.models.blog_models import AuthorDetails, BlogPost
 from app.services.blog_service import BlogService
 from tests.unit.services.regex_helpers import collect_regex_values
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
 
-
-@pytest.fixture
-def mock_blog_collection():
-    with patch("app.services.blog_service.blog_collection") as mock_col:
-        yield mock_col
-
-
-@pytest.fixture
-def mock_cacheable():
-    """Bypass the @Cacheable decorator so we test the raw function logic."""
-    with (
-        patch("app.services.blog_service.Cacheable", lambda **kw: lambda fn: fn),
-        patch("app.services.blog_service.CacheInvalidator", lambda **kw: lambda fn: fn),
-    ):
-        # We need to reimport the module to pick up the patched decorators.
-        # Instead, we patch the cache helpers that @Cacheable wraps.
-        yield
-
-
-@pytest.fixture
-def mock_redis_cache():
-    """Patch low-level redis helpers used by @Cacheable / @CacheInvalidator."""
-    with (
-        patch(
-            "app.decorators.caching.get_cache",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
-        patch("app.decorators.caching.delete_cache", new_callable=AsyncMock),
-    ):
-        yield
-
-
-@pytest.fixture
-def sample_blog_aggregate_result():
-    return {
-        "_id": MagicMock(),
+def _blog_post(**overrides: object) -> BlogPost:
+    data: dict[str, object] = {
         "id": "blog123",
         "slug": "test-blog",
         "title": "Test Blog Post",
@@ -59,264 +28,132 @@ def sample_blog_aggregate_result():
         "authors": ["author1"],
         "category": "Tech",
         "content": "Blog content here.",
-        "image": "https://example.com/blog.jpg",
-        "author_details": [
-            {"id": "author1", "name": "Alice", "role": "Writer"},
-        ],
+        "image": None,
+        "author_details": [AuthorDetails(id="author1", name="Alice", role="Writer")],
     }
+    data.update(overrides)
+    return BlogPost.model_validate(data)
 
 
 @pytest.fixture
-def sample_blog_no_author_details():
-    return {
-        "_id": MagicMock(),
-        "id": "blog456",
-        "slug": "no-author-blog",
-        "title": "No Author Blog",
-        "date": "2025-02-01",
-        "authors": ["unknown_id"],
-        "category": "General",
-        "content": "Content without author.",
-        "image": None,
-        "author_details": [],
-    }
+def mock_blog_repo():
+    repo = AsyncMock()
+    with patch("app.services.blog_service.blog_repository", repo):
+        yield repo
 
 
-# ---------------------------------------------------------------------------
-# get_all_blogs
-# ---------------------------------------------------------------------------
+@pytest.fixture
+def mock_redis_cache():
+    """Bypass the @Cacheable layer so the wrapped function body runs."""
+    with (
+        patch("app.decorators.caching.get_cache", new_callable=AsyncMock, return_value=None),
+        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        patch("app.decorators.caching.delete_cache", new_callable=AsyncMock),
+    ):
+        yield
 
 
 @pytest.mark.unit
 class TestGetAllBlogs:
-    async def test_returns_blog_posts(
-        self, mock_blog_collection, mock_redis_cache, sample_blog_aggregate_result
-    ):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[sample_blog_aggregate_result])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_returns_blog_posts(self, mock_blog_repo, mock_redis_cache):
+        mock_blog_repo.list_page = AsyncMock(return_value=[_blog_post()])
 
         result = await BlogService.get_all_blogs(page=1, limit=20)
 
         assert len(result) == 1
-        assert isinstance(result[0], BlogPost)
         assert result[0].title == "Test Blog Post"
 
-    async def test_pagination_calculates_skip(self, mock_blog_collection, mock_redis_cache):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_pagination_calculates_skip(self, mock_blog_repo, mock_redis_cache):
+        mock_blog_repo.list_page = AsyncMock(return_value=[])
 
         await BlogService.get_all_blogs(page=3, limit=10)
 
-        pipeline = mock_blog_collection.aggregate.call_args[0][0]
-        skip_stage = next(s for s in pipeline if "$skip" in s)
-        assert skip_stage["$skip"] == 20  # (3-1) * 10
+        call = mock_blog_repo.list_page.await_args
+        assert call.kwargs["skip"] == 20  # (3-1) * 10
+        assert call.kwargs["limit"] == 10
 
-    async def test_excludes_content_when_flag_false(self, mock_blog_collection, mock_redis_cache):
-        blog_without_content = {
-            "_id": MagicMock(),
-            "id": "blogX",
-            "slug": "no-content",
-            "title": "Title",
-            "date": "2025-01-01",
-            "authors": [],
-            "category": "Misc",
-            "image": None,
-            "author_details": [],
-        }
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[blog_without_content])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_include_content_flag_passthrough(self, mock_blog_repo, mock_redis_cache):
+        mock_blog_repo.list_page = AsyncMock(return_value=[])
 
-        result = await BlogService.get_all_blogs(include_content=False)
+        await BlogService.get_all_blogs(include_content=False)
 
-        assert len(result) == 1
-        assert result[0].content == ""
+        assert mock_blog_repo.list_page.await_args.kwargs["include_content"] is False
 
-    async def test_returns_empty_list(self, mock_blog_collection, mock_redis_cache):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_returns_empty_list(self, mock_blog_repo, mock_redis_cache):
+        mock_blog_repo.list_page = AsyncMock(return_value=[])
 
-        result = await BlogService.get_all_blogs()
-
-        assert result == []
-
-    async def test_fallback_author_details(
-        self, mock_blog_collection, mock_redis_cache, sample_blog_no_author_details
-    ):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[sample_blog_no_author_details])
-        mock_blog_collection.aggregate.return_value = cursor
-
-        result = await BlogService.get_all_blogs()
-
-        assert len(result) == 1
-        assert result[0].author_details is not None
-        assert result[0].author_details[0].name == "unknown_id"
-        assert result[0].author_details[0].role == "Author"
-
-
-# ---------------------------------------------------------------------------
-# get_blog_by_slug
-# ---------------------------------------------------------------------------
+        assert await BlogService.get_all_blogs() == []
 
 
 @pytest.mark.unit
 class TestGetBlogBySlug:
-    async def test_returns_blog_by_slug(
-        self, mock_blog_collection, mock_redis_cache, sample_blog_aggregate_result
-    ):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[sample_blog_aggregate_result])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_returns_blog_by_slug(self, mock_blog_repo, mock_redis_cache):
+        mock_blog_repo.get_by_slug = AsyncMock(return_value=_blog_post(slug="test-blog"))
 
         result = await BlogService.get_blog_by_slug("test-blog")
 
         assert isinstance(result, BlogPost)
         assert result.slug == "test-blog"
 
-    async def test_raises_404_when_not_found(self, mock_blog_collection, mock_redis_cache):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_raises_404_when_not_found(self, mock_blog_repo, mock_redis_cache):
+        mock_blog_repo.get_by_slug = AsyncMock(return_value=None)
 
         with pytest.raises(HTTPException) as exc_info:
             await BlogService.get_blog_by_slug("nonexistent")
 
         assert exc_info.value.status_code == 404
 
-    async def test_fallback_author_when_no_details(
-        self, mock_blog_collection, mock_redis_cache, sample_blog_no_author_details
-    ):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[sample_blog_no_author_details])
-        mock_blog_collection.aggregate.return_value = cursor
-
-        result = await BlogService.get_blog_by_slug("no-author-blog")
-
-        assert result.author_details[0].role == "Author"
-
-
-# ---------------------------------------------------------------------------
-# get_blog_count
-# ---------------------------------------------------------------------------
-
 
 @pytest.mark.unit
 class TestGetBlogCount:
-    async def test_returns_document_count(self, mock_blog_collection):
-        mock_blog_collection.count_documents = AsyncMock(return_value=42)
+    async def test_returns_repository_count(self, mock_blog_repo):
+        mock_blog_repo.count = AsyncMock(return_value=42)
 
-        result = await BlogService.get_blog_count()
-
-        assert result == 42
-        mock_blog_collection.count_documents.assert_called_once_with({})
-
-    async def test_returns_zero_when_empty(self, mock_blog_collection):
-        mock_blog_collection.count_documents = AsyncMock(return_value=0)
-
-        result = await BlogService.get_blog_count()
-
-        assert result == 0
-
-
-# ---------------------------------------------------------------------------
-# search_blogs
-# ---------------------------------------------------------------------------
+        assert await BlogService.get_blog_count() == 42
 
 
 @pytest.mark.unit
 class TestSearchBlogs:
-    async def test_searches_by_query(
-        self, mock_blog_collection, mock_redis_cache, sample_blog_aggregate_result
-    ):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[sample_blog_aggregate_result])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_searches_by_query(self, mock_blog_repo):
+        mock_blog_repo.search = AsyncMock(return_value=[_blog_post(category="Tech")])
 
         result = await BlogService.search_blogs("Tech")
 
         assert len(result) == 1
         assert result[0].category == "Tech"
+        assert mock_blog_repo.search.await_args.args[0] == "Tech"
 
-    async def test_search_pagination(self, mock_blog_collection, mock_redis_cache):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_search_pagination(self, mock_blog_repo):
+        mock_blog_repo.search = AsyncMock(return_value=[])
 
         await BlogService.search_blogs("test", page=2, limit=5)
 
-        pipeline = mock_blog_collection.aggregate.call_args[0][0]
-        skip_stage = next(s for s in pipeline if "$skip" in s)
-        assert skip_stage["$skip"] == 5  # (2-1) * 5
+        call = mock_blog_repo.search.await_args
+        assert call.kwargs["skip"] == 5  # (2-1) * 5
+        assert call.kwargs["limit"] == 5
 
-    async def test_search_returns_empty(self, mock_blog_collection, mock_redis_cache):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-        mock_blog_collection.aggregate.return_value = cursor
+    async def test_search_returns_empty(self, mock_blog_repo):
+        mock_blog_repo.search = AsyncMock(return_value=[])
 
-        result = await BlogService.search_blogs("nonexistent")
-
-        assert result == []
-
-    async def test_search_excludes_content_when_flag_false(
-        self, mock_blog_collection, mock_redis_cache
-    ):
-        blog_no_content = {
-            "_id": MagicMock(),
-            "id": "blogSearch1",
-            "slug": "search-no-content",
-            "title": "Search Result",
-            "date": "2025-01-01",
-            "authors": [],
-            "category": "Test",
-            "image": None,
-            "author_details": [],
-        }
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[blog_no_content])
-        mock_blog_collection.aggregate.return_value = cursor
-
-        result = await BlogService.search_blogs("Search", include_content=False)
-
-        assert len(result) == 1
-        assert result[0].content == ""
-
-    async def test_search_fallback_author_details(
-        self, mock_blog_collection, mock_redis_cache, sample_blog_no_author_details
-    ):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[sample_blog_no_author_details])
-        mock_blog_collection.aggregate.return_value = cursor
-
-        result = await BlogService.search_blogs("General")
-
-        assert result[0].author_details[0].name == "unknown_id"
-
-
-# ---------------------------------------------------------------------------
-# search_blogs — regex-injection hardening ($regex escaping)
-# ---------------------------------------------------------------------------
+        assert await BlogService.search_blogs("nonexistent") == []
 
 
 @pytest.mark.unit
 class TestSearchBlogsRegexEscaping:
-    async def test_search_query_is_regex_escaped(self, mock_blog_collection, mock_redis_cache):
-        """Blog search must feed a literal (escaped) query into every $regex
-        stage; a raw metacharacter query would run as an arbitrary pattern."""
+    async def test_search_query_is_regex_escaped(self):
+        """The repository must feed a literal (escaped) query into every $regex
+        stage; a raw metacharacter query would otherwise run as an arbitrary
+        pattern. Asserted against the repository's own pipeline builder."""
         raw_query = "a.*(b|c)+[x]$"
         escaped = re.escape(raw_query)
         assert escaped != raw_query
 
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-        mock_blog_collection.aggregate.return_value = cursor
+        with patch.object(
+            blog_repository, "_aggregate", new_callable=AsyncMock, return_value=[]
+        ) as mock_aggregate:
+            await blog_repository.search(raw_query, skip=0, limit=10)
 
-        await BlogService.search_blogs(raw_query)
-
-        pipeline = mock_blog_collection.aggregate.call_args[0][0]
+        pipeline = mock_aggregate.await_args.args[0]
         regex_values = collect_regex_values(pipeline)
 
         assert regex_values, "expected the title/category $regex stages to be exercised"

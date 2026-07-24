@@ -49,12 +49,12 @@ async def _dev_base_configurable(
     agent thread, so multi-turn behavior is testable.
     """
     user_doc = await require_dev_user(email)
-    user_id = str(user_doc["_id"])
+    user_id = user_doc.id
     cid = conversation_id or str(uuid4())
     user = {
         "user_id": user_id,
-        "email": user_doc["email"],
-        "name": user_doc.get("name"),
+        "email": user_doc.email,
+        "name": user_doc.name,
     }
     config = build_agent_config(conversation_id=cid, user=user, agent_name=agent_name)
     return config["configurable"], user_id, cid

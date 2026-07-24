@@ -25,7 +25,7 @@ from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
 from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import hil_tool_risk_collection
+from app.db.repositories.hil import hil_tool_risk_repository
 from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.prompts import TOOL_CLASSIFY_PROMPT
 from app.services.mcp.langchain_adapter import MCP_ANNOTATIONS_METADATA_KEY
@@ -100,10 +100,8 @@ async def _classify_unknown_tool(registry: ToolRegistry, tool_name: str, descrip
 
 async def _cached_classification(tool_name: str, description_hash: str) -> bool | None:
     """A prior classification for this exact tool+description, or ``None``."""
-    record = await hil_tool_risk_collection.find_one(
-        {"tool_name": tool_name, "description_hash": description_hash}
-    )
-    return bool(record["is_destructive"]) if record else None
+    record = await hil_tool_risk_repository.find_classification(tool_name, description_hash)
+    return record.is_destructive if record else None
 
 
 async def _classify_with_llm(tool_name: str, description: str) -> _ClassifyResult:
@@ -127,11 +125,7 @@ async def _persist_classification(
         is_destructive=result.is_destructive,
         rationale=result.rationale,
     )
-    await hil_tool_risk_collection.update_one(
-        {"tool_name": tool_name, "description_hash": description_hash},
-        {"$set": record.model_dump()},
-        upsert=True,
-    )
+    await hil_tool_risk_repository.upsert_classification(record)
 
 
 def _description_hash(description: str) -> str:

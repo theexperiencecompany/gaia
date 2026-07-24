@@ -16,8 +16,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from bson import ObjectId
-
 from app.constants.memory import (
     MEMORY_BACKFILL_ACTIVE_DAYS,
     MEMORY_BACKFILL_ELIGIBLE_BEFORE,
@@ -25,7 +23,8 @@ from app.constants.memory import (
     MEMORY_BACKFILL_MAX_USERS_PER_RUN,
     MemorySourceType,
 )
-from app.db.mongodb.collections import conversations_collection, users_collection
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.users import user_repository
 from app.memory.consolidation import cancel_consolidation
 from app.memory.engine import memory_engine
 from app.models.notification.notification_models import (
@@ -47,19 +46,9 @@ _BACKFILL_TASK = "backfill_user_memories"
 _MEMORY_SETTINGS_URL = "/settings/memory"
 
 
-def _eligible_query() -> dict:
-    """Recently-active, pre-launch users that haven't been backfilled yet.
-
-    ``_id`` is a Mongo ObjectId whose generation time is the account's creation
-    instant, so the launch cutoff is expressed against it directly — no reliance
-    on a separate ``created_at`` field.
-    """
-    active_since = datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
-    return {
-        "last_active_at": {"$gte": active_since},
-        "_id": {"$lt": ObjectId.from_datetime(MEMORY_BACKFILL_ELIGIBLE_BEFORE)},
-        "memory_backfilled": {"$exists": False},
-    }
+def _active_since() -> datetime:
+    """Cutoff for 'recently active' — the backfill only touches live accounts."""
+    return datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
 
 
 async def backfill_active_users(ctx: dict) -> str:
@@ -70,19 +59,17 @@ async def backfill_active_users(ctx: dict) -> str:
     (plus anyone who became active in the meantime).
     """
     async with wide_task("backfill_active_users"):
-        query = _eligible_query()
-        remaining = await users_collection.count_documents(query)
-        candidates = (
-            await users_collection.find(query, {"_id": 1})
-            .sort("last_active_at", -1)
-            .limit(MEMORY_BACKFILL_MAX_USERS_PER_RUN)
-            .to_list(length=MEMORY_BACKFILL_MAX_USERS_PER_RUN)
+        active_since = _active_since()
+        remaining = await user_repository.count_backfill_candidates(
+            active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE
+        )
+        candidate_ids = await user_repository.find_backfill_candidate_ids(
+            active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
         )
 
         pool = await RedisPoolManager.get_pool()
         enqueued = 0
-        for user in candidates:
-            user_id = str(user["_id"])
+        for user_id in candidate_ids:
             # Deterministic job id: a user already queued/running is not
             # re-enqueued by an overlapping cron run.
             job = await pool.enqueue_job(_BACKFILL_TASK, user_id, _job_id=f"membackfill:{user_id}")
@@ -101,21 +88,20 @@ async def backfill_user_memories(ctx: dict, user_id: str) -> str:
     no-op so the cron won't keep re-selecting the user.
     """
     async with wide_task("backfill_user_memories", user=UserContext(id=user_id)):
-        oid = ObjectId(user_id)
-        user = await users_collection.find_one({"_id": oid})
-        if user is None or "memory_backfilled" in user:
+        user = await user_repository.get(user_id)
+        if user is None or user.memory_backfilled is not None:
             log.set(skipped=True)
             return f"skip {user_id}: missing or already backfilled"
 
-        user_name = user.get("name") or "the user"
+        user_name = user.name or "the user"
         # Most-recent conversations, replayed oldest-first so journal dates and
         # recency-based reconciliation land on the right days.
-        docs = (
-            await conversations_collection.find({"user_id": user_id})
-            .sort("createdAt", -1)
-            .limit(MEMORY_BACKFILL_MAX_CONVERSATIONS)
-            .to_list(length=MEMORY_BACKFILL_MAX_CONVERSATIONS)
-        )
+        docs = [
+            conversation.model_dump(mode="json")
+            for conversation in await conversation_repository.recent_for_user(
+                user_id, limit=MEMORY_BACKFILL_MAX_CONVERSATIONS
+            )
+        ]
         docs.reverse()
 
         facts = 0
@@ -145,9 +131,7 @@ async def backfill_user_memories(ctx: dict, user_id: str) -> str:
             await memory_engine.summarize_episode(user_id, last_day)
             await memory_engine.consolidate(user_id)
 
-        await users_collection.update_one(
-            {"_id": oid}, {"$set": {"memory_backfilled": datetime.now(UTC)}}
-        )
+        await user_repository.mark_memory_backfilled(user_id)
         log.set(
             memory=MemoryContext(operation="retain", facts_extracted=facts, result_count=facts),
             conversations=processed,

@@ -3,7 +3,9 @@
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import MongoDocument
 
 HILApprovalStatus = Literal[
     "pending", "approved", "denied", "timeout", "abandoned", "auto_approved"
@@ -27,7 +29,7 @@ class HILPreferences(BaseModel):
     tool_overrides: dict[str, bool] = Field(default_factory=dict)
 
 
-class HILToolRiskRecord(BaseModel):
+class HILToolRiskRecord(MongoDocument):
     """Cached LLM classification for one CUSTOM-integration tool (Mongo
     ``hil_tool_risk``), for durability across restarts/processes.
 
@@ -42,7 +44,7 @@ class HILToolRiskRecord(BaseModel):
     classified_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
-class HILApprovalRecord(BaseModel):
+class HILApprovalRecord(MongoDocument):
     """Durable record of one approval request (Mongo ``hil_approvals``).
 
     The decision source of truth and audit trail: who asked to run what, the
@@ -89,3 +91,30 @@ class HILApprovalRecord(BaseModel):
     # the *executor*): a batch decision wakes the executor once, then each parked
     # subagent is collected individually across join rounds.
     subagent_collected_at: datetime | None = None
+
+
+class HILApprovalUpdate(BaseModel):
+    """Partial ``$set`` update for an approval record (repository write model).
+
+    Covers the post-creation stamps only — the decision transition itself goes
+    through ``HilApprovalRepository.mark_decided`` because it is conditional on
+    ``status == "pending"``, which a plain ``$set`` model cannot express.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    resume_item: dict[str, Any] | None = None
+    resumed_at: datetime | None = None
+    subagent_thread_id: str | None = None
+    subagent_agent_name: str | None = None
+    subagent_collected_at: datetime | None = None
+
+
+class HILToolRiskUpdate(BaseModel):
+    """Partial update for a tool-risk record (repository write model)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_destructive: bool | None = None
+    rationale: str | None = None
+    classified_at: datetime | None = None

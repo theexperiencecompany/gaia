@@ -59,4 +59,14 @@ def create_error(
     )
 
 
-__all__ = ["AppError", "create_error"]
+@dataclass
+class EmptyUpdateError(AppError):
+    """An update model carried no set fields — a silent no-op write is a bug."""
+
+
+@dataclass
+class RepositoryMisconfigured(AppError):
+    """A repository subclass is missing required ClassVars (raised at import)."""
+
+
+__all__ = ["AppError", "EmptyUpdateError", "RepositoryMisconfigured", "create_error"]

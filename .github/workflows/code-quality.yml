@@ -351,12 +351,12 @@ jobs:
           fi
           echo "::endgroup::"
           echo "ruff: OK (strict rule set passes; every file is already formatted)"
-      - name: Custom Python AST lints (route contract, no service classes, wide events)
+      - name: Custom Python AST lints (route contract, no service classes, wide events, repository boundaries)
         run: |
           echo "::group::custom lints"
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
-          echo "Custom lints: OK (3 rules pass)"
+          echo "Custom lints: OK (4 rules pass)"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:

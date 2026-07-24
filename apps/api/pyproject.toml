@@ -54,6 +54,15 @@ pip_audit = "uvx pip-audit"
 detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 
+# NOTE: mypy config for the API lives in the ROOT /pyproject.toml, not here.
+# mypy discovers the nearest pyproject.toml with a [tool.mypy] table and does not
+# merge with a parent — an app-level [tool.mypy] here would shadow the root
+# baseline (strict_optional, follow_imports, the builtin-skill exclude, the tests
+# override). The strict-repository island lives as a [[tool.mypy.overrides]] block
+# in the root config so `nx type-check api` (which runs mypy from this directory)
+# picks up one merged config.
+
+
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",

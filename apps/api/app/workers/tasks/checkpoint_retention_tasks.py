@@ -55,7 +55,7 @@ from app.constants.general import (
     SPAWN_THREAD_PREFIX,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from shared.py.wide_events import log, wide_task
 
 # A conversation_id is normally a uuid; derived thread ids embed it verbatim
@@ -170,7 +170,7 @@ async def _prune_thread_versions(
 
 async def sweep_orphan_threads(pool: Any, checkpointer: Any) -> dict[str, int]:
     """Delete every checkpoint thread whose conversation is gone from Mongo."""
-    live_ids = await conversations_collection.distinct("conversation_id")
+    live_ids = await conversation_repository.all_conversation_ids()
     live_all = {str(c) for c in live_ids if c}
     live_uuid = {c for c in live_all if _UUID_RE.fullmatch(c)}
     live_non_uuid = [c for c in live_all if c not in live_uuid]

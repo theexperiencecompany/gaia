@@ -81,3 +81,39 @@ lines never join the wide event and are invisible to per-request queries.
 **Allowlist:** `app/config/sentry.py` alone — it installs the loguru → Sentry
 sink and must touch loguru directly. Relative imports (`from .logging import
 ...`, a local module) are not flagged.
+
+---
+
+## repository-boundaries
+
+**Rule:** the repository layer is the only path to MongoDB. Four checks:
+
+1. `app.db.mongodb.collections` is imported only inside `app/db/repositories/`
+   and `app/db/mongodb/`.
+2. `bson` / `ObjectId` is imported only inside `app/db/`.
+3. Public methods of classes in `app/db/repositories/` are fully annotated with
+   no `Any` / `dict[str, Any]`. Underscore-prefixed methods are exempt.
+4. The entity-cache helpers (`get_cache` / `set_cache` / `delete_cache` /
+   `delete_cache_by_pattern` / `get_and_delete_cache`) are imported only inside
+   `app/db/` (the repository `CachePolicy`) and `app/decorators/` (the
+   `@Cacheable` / `@CacheInvalidator` machinery). The raw `redis_cache` client
+   (locks / rate-limits) is not banned.
+
+**Why:** services reach Mongo through typed domain repositories
+(`app/db/repositories/CLAUDE.md`). Raw collection handles, `ObjectId`, Mongo
+filters, and dict-shaped documents must not cross that boundary — that is what
+keeps ids `str` above the layer, invalidation automatic, and every returned value
+a typed model. mypy strictness cannot catch all of this (a strict module can
+still hand a `dict[str, Any]` outward), so the boundary is held mechanically here.
+
+**Fix:** call the domain repository (`todo_repository.get(...)`) instead of the
+collection; keep `ObjectId` conversion inside the repository; annotate public
+repository methods with the domain's typed models.
+
+**Allowlist:** checks 1, 2 and 4 each carry a ratchet `ALLOWLIST` of the call
+sites that predate the repository layer (grouped by reason). Entries are removed
+as each remaining reader migrates — never added; a new violation must be fixed,
+not allowlisted. Check 4's allowlist is the legitimate NON-entity caches
+(aggregate rollups, tokens, external-data / derived-display caches) — the ban is
+only on hand-caching a repository-managed *entity* behind the repo's back. Check 3
+has no allowlist (the layer is new — it starts clean).

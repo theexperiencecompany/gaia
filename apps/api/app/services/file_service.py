@@ -16,10 +16,9 @@ from langchain_core.documents import Document
 
 from app.agents.workspace.paths import USER_UPLOADED_DIRNAME, safe_upload_filename
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import files_collection
-from app.db.utils import serialize_document
+from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
-from app.models.files_models import DocumentSummaryModel
+from app.models.files_models import DocumentSummaryModel, FileDocument, FileUpdate
 from app.services.artifact_events import publish_artifact_event, upload_event
 from app.services.storage import (
     FsOps,
@@ -113,26 +112,25 @@ async def upload_file_service(
                 )
 
         current_time = datetime.now(UTC)
-        file_metadata = {
-            "file_id": file_id,
-            "filename": filename,
-            "type": normalized_content_type,
-            "size": file_size,
-            "url": file_url,
-            "public_id": public_id,
-            "user_id": user_id,
-            "description": summary,
-            "page_wise_summary": formatted_file_content,
-            "sandbox_path": sandbox_path,
-            "created_at": current_time,
-            "updated_at": current_time,
-        }
-        if conversation_id:
-            file_metadata["conversation_id"] = conversation_id
+        file_document = FileDocument(
+            file_id=file_id,
+            filename=filename,
+            type=normalized_content_type,
+            size=file_size,
+            url=file_url,
+            public_id=public_id,
+            user_id=user_id,
+            description=summary,
+            page_wise_summary=formatted_file_content,
+            sandbox_path=sandbox_path,
+            conversation_id=conversation_id,
+            created_at=current_time,
+            updated_at=current_time,
+        )
 
         # Store in DB (Mongo + Chroma)
         await asyncio.gather(
-            _store_in_mongodb(file_metadata),
+            _store_in_mongodb(file_document),
             _store_in_chromadb(
                 file_id=file_id,
                 user_id=user_id,
@@ -229,11 +227,9 @@ def _process_file_summary(
     raise HTTPException(status_code=400, detail="Invalid file description format")
 
 
-async def _store_in_mongodb(file_metadata: dict) -> None:
+async def _store_in_mongodb(file_document: FileDocument) -> None:
     """Helper function to store file metadata in MongoDB."""
-    result = await files_collection.insert_one(document=file_metadata)
-    if not result.inserted_id:
-        raise HTTPException(status_code=500, detail="Failed to store file metadata")
+    await file_repository.create(file_document)
 
 
 async def _store_in_chromadb(
@@ -364,20 +360,19 @@ async def delete_file_service(file_id: str, user_id: str | None) -> dict:
         raise HTTPException(status_code=400, detail="User ID is required")
 
     # Retrieve file metadata before deletion
-    file_data = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
+    file_data = await file_repository.get_by_file_id(file_id, user_id)
     if not file_data:
         log.error(f"File with id {file_id} not found for user {user_id}")
         raise HTTPException(
             status_code=404, detail="File not found"
         )  # Get the conversation_id for cache invalidation
 
-    public_id = file_data.get("public_id")
+    public_id = file_data.public_id
     if not public_id:
         log.warning(f"File {file_id} has no public_id for Cloudinary deletion")
 
     # Delete from MongoDB
-    result = await files_collection.delete_one({"file_id": file_id, "user_id": user_id})
-    if result.deleted_count == 0:
+    if not await file_repository.delete_by_file_id(file_id, user_id):
         log.error("File not found for deletion in MongoDB")
         raise HTTPException(status_code=404, detail="File not found")
 
@@ -407,7 +402,7 @@ async def delete_file_service(file_id: str, user_id: str | None) -> dict:
     return {
         "message": "File deleted successfully",
         "file_id": file_id,
-        "filename": file_data.get("filename", "Unknown"),
+        "filename": file_data.filename,
     }
 
 
@@ -430,29 +425,28 @@ async def update_file_service(
     log.info(f"Updating file with id: {file_id} for user: {user_id}")
     log.set(service="file_service", operation="update", file_id=file_id, user_id=user_id)
 
-    file_data = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
+    file_data = await file_repository.get_by_file_id(file_id, user_id)
     if not file_data:
         log.error(f"File with id {file_id} not found for user {user_id}")
         raise HTTPException(status_code=404, detail="File not found")
 
     # Store original conversation ID if not provided in update
     if not conversation_id:
-        conversation_id = file_data.get("conversation_id")
+        conversation_id = file_data.conversation_id
 
-    # Build the $set from allowlisted fields only — never spread the raw payload.
+    # Build the update from allowlisted fields only — never spread the raw payload.
     set_fields: dict[str, Any] = {
         field: update_data[field]
         for field in ALLOWED_FILE_UPDATE_FIELDS
         if update_data.get(field) is not None
     }
-    set_fields["updated_at"] = datetime.now(UTC)
 
     # Generate new description if file content is provided
     if file_content:
         try:
             # Use the same file description generator as upload_file_service
-            content_type = file_data.get("type")
-            filename = set_fields.get("filename") or file_data.get("filename")
+            content_type = file_data.type
+            filename = set_fields.get("filename") or file_data.filename
 
             file_description = await generate_file_summary(
                 file_content=file_content,
@@ -472,15 +466,10 @@ async def update_file_service(
     # Check if description is being updated
     description_updated = "description" in set_fields
 
-    # Update in MongoDB
-    result = await files_collection.update_one(
-        {"file_id": file_id, "user_id": user_id}, {"$set": set_fields}
+    # Update in MongoDB (updated_at is stamped by the repository).
+    updated_file = await file_repository.apply_metadata_update(
+        file_id, user_id=user_id, update=FileUpdate(**set_fields)
     )
-
-    if result.modified_count == 0:
-        log.warning(f"No changes made to file {file_id}")
-
-    updated_file = await files_collection.find_one({"file_id": file_id, "user_id": user_id})
     if not updated_file:
         log.error(f"Updated file {file_id} not found")
         raise HTTPException(status_code=404, detail="File not found after update")
@@ -495,8 +484,8 @@ async def update_file_service(
             await update_file_in_chromadb(
                 file_id=file_id,
                 user_id=user_id,
-                filename=updated_file.get("filename", ""),
-                content_type=updated_file.get("type", ""),
+                filename=updated_file.filename,
+                content_type=updated_file.type,
                 file_description=new_description,
                 conversation_id=conversation_id,
             )
@@ -505,13 +494,17 @@ async def update_file_service(
             # Log but don't fail if ChromaDB update fails
             log.error(f"Failed to update file in ChromaDB: {err!s}", exc_info=True)
 
-    # Convert ObjectId to string for serialization
-    if "_id" in updated_file:
-        updated_file["_id"] = str(updated_file["_id"])
+    return _serialize_file_response(updated_file)
 
-    # Convert date fields to ISO format
-    for date_field in ["created_at", "updated_at"]:
-        if date_field in updated_file and hasattr(updated_file[date_field], "isoformat"):
-            updated_file[date_field] = updated_file[date_field].isoformat()
 
-    return serialize_document(updated_file)
+def _serialize_file_response(file: FileDocument) -> dict:
+    """Shape a file document for the update endpoint's JSON response.
+
+    Preserves the pre-repository contract: the Mongo ``_id`` surfaces as ``id``
+    and the timestamps are ISO-format strings.
+    """
+    data = file.model_dump()
+    data["created_at"] = file.created_at.isoformat()
+    if file.updated_at is not None:
+        data["updated_at"] = file.updated_at.isoformat()
+    return data

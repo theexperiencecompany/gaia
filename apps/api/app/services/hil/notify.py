@@ -15,7 +15,7 @@ import httpx
 
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import device_tokens_collection
+from app.services.device_token_service import get_device_token_service
 from shared.py.wide_events import log
 
 _EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
@@ -75,10 +75,7 @@ async def _push_to_devices(
 
 
 async def _active_device_tokens(user_id: str) -> list[str]:
-    # {"token": 1} is a MongoDB field projection (include the token field), not a secret.
-    projection = {"token": 1}  # nosec B105
-    cursor = device_tokens_collection.find({"user_id": user_id, "is_active": True}, projection)
-    return [doc["token"] async for doc in cursor if doc.get("token")]
+    return await get_device_token_service().get_active_tokens(user_id)
 
 
 async def _send_expo_push(
@@ -130,6 +127,4 @@ def _dead_tokens_from_receipts(batch: list[dict[str, Any]], response: httpx.Resp
 
 async def _deactivate_device_tokens(tokens: list[str]) -> None:
     """Mark dead tokens inactive so ``_active_device_tokens`` stops retrying them."""
-    await device_tokens_collection.update_many(
-        {"token": {"$in": tokens}}, {"$set": {"is_active": False}}
-    )
+    await get_device_token_service().deactivate_tokens(tokens)

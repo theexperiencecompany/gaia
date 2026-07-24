@@ -19,7 +19,7 @@ import app.patches  # noqa: F401
 from app.services.composio.custom_tools.registry import custom_tools_registry
 from app.services.composio.langchain_composio_service import LangchainProvider
 from app.services.composio.proxy_client import invalidate_connected_account_cache
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import store_mcp_tools
 from app.utils.composio_hooks.registry import (
     master_after_execute_hook,
     master_before_execute_hook,
@@ -157,8 +157,7 @@ class ComposioService:
                 {"name": t.name, "description": getattr(t, "description", "")} for t in tools
             ]
 
-            store = get_mcp_tools_store()
-            await store.store_tools(toolkit_name.lower(), tool_metadata)
+            await store_mcp_tools(toolkit_name.lower(), tool_metadata)
             log.debug(
                 f"{LogTag.COMPOSIO} Stored {len(tool_metadata)} Composio tool metadata for {toolkit_name}"
             )

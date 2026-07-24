@@ -1,15 +1,15 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 
-from bson import ObjectId
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
 from app.config.settings import settings
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserUpdate, user_to_legacy_dict
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -24,10 +24,7 @@ _TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
 async def _backfill_user_timezone(user_id: str, tz: str) -> None:
     """Fire-and-forget write-through of the browser-reported timezone."""
     try:
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"timezone": tz, "updated_at": datetime.now(UTC)}},
-        )
+        await user_repository.update(user_id, UserUpdate(timezone=tz))
         log.info(
             f"{LogTag.OAUTH} Backfilled user.timezone from x-timezone header",
             user_id=user_id,
@@ -116,8 +113,10 @@ async def get_current_user_ws(websocket: WebSocket):
     # hard-fails if this is set in production.
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
         target_email, user_data = await resolve_dev_bypass_user(websocket.headers)
-        if user_data:
-            return build_user_context(user_data, auth_provider="workos", dev_bypass=True)
+        if user_data is not None:
+            return build_user_context(
+                user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
+            )
         log.error(
             f"{LogTag.OAUTH} Dev bypass target {target_email!r} has no Mongo user — "
             f"{DEV_USER_MISSING_HINT}"

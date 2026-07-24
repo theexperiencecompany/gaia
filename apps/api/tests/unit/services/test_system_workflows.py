@@ -36,6 +36,20 @@ def _make_factory(request: MagicMock | None = None) -> MagicMock:
     return factory
 
 
+def _existing_wf(
+    key: str = "gmail_digest",
+    composio_trigger_ids: list[str] | None = None,
+    trigger_name: str | None = "gmail_new_email",
+) -> MagicMock:
+    """A stand-in WorkflowDocument as get_system_workflow_for_user returns it."""
+    wf = MagicMock()
+    wf.system_workflow_key = key
+    wf.trigger_config = MagicMock()
+    wf.trigger_config.composio_trigger_ids = composio_trigger_ids
+    wf.trigger_config.trigger_name = trigger_name
+    return wf
+
+
 @pytest.fixture(autouse=True)
 def _patch_log():
     with patch(f"{MODULE}.log"):
@@ -52,14 +66,14 @@ class TestProvisionSystemWorkflows:
         await provision_system_workflows("user-1", "slack", "Slack")
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.WorkflowService")
     async def test_idempotent_skip_existing(
         self,
         mock_workflow_svc: MagicMock,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(return_value={"_id": "existing"})
+        mock_repo.find_system_workflow = AsyncMock(return_value={"_id": "existing"})
         factory = _make_factory()
 
         with patch.dict(
@@ -78,14 +92,14 @@ class TestProvisionSystemWorkflows:
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     async def test_successful_provisioning(
         self,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
         mock_workflow_svc: MagicMock,
         mock_notify: AsyncMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_workflow_svc.create_workflow = AsyncMock()
         req = _make_workflow_request()
         factory = _make_factory(req)
@@ -106,14 +120,14 @@ class TestProvisionSystemWorkflows:
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     async def test_duplicate_key_error_skipped(
         self,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
         mock_workflow_svc: MagicMock,
         mock_notify: AsyncMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_workflow_svc.create_workflow = AsyncMock(side_effect=DuplicateKeyError("dup"))
         factory = _make_factory()
 
@@ -133,14 +147,14 @@ class TestProvisionSystemWorkflows:
     @pytest.mark.asyncio
     @patch(f"{MODULE}._notify_workflows_provisioned", new_callable=AsyncMock)
     @patch(f"{MODULE}.WorkflowService")
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     async def test_generic_error_continues(
         self,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
         mock_workflow_svc: MagicMock,
         mock_notify: AsyncMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.find_system_workflow = AsyncMock(return_value=None)
         mock_workflow_svc.create_workflow = AsyncMock(side_effect=RuntimeError("unexpected"))
         factory = _make_factory()
 
@@ -212,9 +226,9 @@ class TestNotifyWorkflowsProvisioned:
 
 class TestResetSystemWorkflowToDefault:
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
-    async def test_workflow_not_found(self, mock_collection: AsyncMock) -> None:
-        mock_collection.find_one = AsyncMock(return_value=None)
+    @patch(f"{MODULE}.workflow_repository")
+    async def test_workflow_not_found(self, mock_repo: MagicMock) -> None:
+        mock_repo.get_system_workflow_for_user = AsyncMock(return_value=None)
 
         from app.services.system_workflows.provisioner import (
             reset_system_workflow_to_default,
@@ -224,17 +238,13 @@ class TestResetSystemWorkflowToDefault:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.SYSTEM_WORKFLOW_REGISTRY", {})
-    async def test_no_registry_entry(self, mock_collection: AsyncMock) -> None:
-        mock_collection.find_one = AsyncMock(
-            return_value={
-                "_id": "wf-1",
-                "user_id": "user-1",
-                "is_system_workflow": True,
-                "system_workflow_key": "unknown_key",
-                "trigger_config": {},
-            }
+    async def test_no_registry_entry(self, mock_repo: MagicMock) -> None:
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(
+                key="unknown_key", composio_trigger_ids=None, trigger_name=None
+            )
         )
 
         from app.services.system_workflows.provisioner import (
@@ -245,29 +255,20 @@ class TestResetSystemWorkflowToDefault:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.TriggerService")
     @patch(f"{MODULE}.ensure_trigger_config_object")
     async def test_successful_reset_with_triggers(
         self,
         mock_ensure: MagicMock,
         mock_trigger_svc: MagicMock,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
     ) -> None:
         # Existing workflow doc
-        mock_collection.find_one = AsyncMock(
-            return_value={
-                "_id": "wf-1",
-                "user_id": "user-1",
-                "is_system_workflow": True,
-                "system_workflow_key": "gmail_digest",
-                "trigger_config": {
-                    "composio_trigger_ids": ["old-t1"],
-                    "trigger_name": "gmail_new_email",
-                },
-            }
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(composio_trigger_ids=["old-t1"])
         )
-        mock_collection.update_one = AsyncMock()
+        mock_repo.reset_system_workflow = AsyncMock()
 
         # Mock trigger config object
         trigger_config = MagicMock()
@@ -299,29 +300,20 @@ class TestResetSystemWorkflowToDefault:
         assert result is True
         mock_trigger_svc.register_triggers.assert_awaited_once()
         mock_trigger_svc.unregister_triggers.assert_awaited_once()
-        mock_collection.update_one.assert_awaited_once()
+        mock_repo.reset_system_workflow.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.TriggerService")
     @patch(f"{MODULE}.ensure_trigger_config_object")
     async def test_trigger_registration_failure_aborts(
         self,
         mock_ensure: MagicMock,
         mock_trigger_svc: MagicMock,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(
-            return_value={
-                "_id": "wf-1",
-                "user_id": "user-1",
-                "is_system_workflow": True,
-                "system_workflow_key": "gmail_digest",
-                "trigger_config": {
-                    "composio_trigger_ids": [],
-                    "trigger_name": "gmail_new_email",
-                },
-            }
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(composio_trigger_ids=[])
         )
 
         from app.models.workflow_models import TriggerType
@@ -345,29 +337,23 @@ class TestResetSystemWorkflowToDefault:
             result = await reset_system_workflow_to_default("wf-1", "user-1")
 
         assert result is False
-        mock_collection.update_one = AsyncMock()
+        mock_repo.reset_system_workflow = AsyncMock()
         # update_one should NOT have been called
         # (it wasn't set up as a call, so we just verify register was called)
         mock_trigger_svc.register_triggers.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.TriggerService")
     @patch(f"{MODULE}.ensure_trigger_config_object")
     async def test_empty_trigger_registration_aborts(
         self,
         mock_ensure: MagicMock,
         mock_trigger_svc: MagicMock,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(
-            return_value={
-                "_id": "wf-1",
-                "user_id": "user-1",
-                "is_system_workflow": True,
-                "system_workflow_key": "gmail_digest",
-                "trigger_config": {"composio_trigger_ids": [], "trigger_name": "t"},
-            }
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(composio_trigger_ids=[], trigger_name="t")
         )
 
         from app.models.workflow_models import TriggerType
@@ -393,28 +379,19 @@ class TestResetSystemWorkflowToDefault:
         assert result is False
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.TriggerService")
     @patch(f"{MODULE}.ensure_trigger_config_object")
     async def test_old_trigger_unregister_failure_nonfatal(
         self,
         mock_ensure: MagicMock,
         mock_trigger_svc: MagicMock,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
     ) -> None:
-        mock_collection.find_one = AsyncMock(
-            return_value={
-                "_id": "wf-1",
-                "user_id": "user-1",
-                "is_system_workflow": True,
-                "system_workflow_key": "gmail_digest",
-                "trigger_config": {
-                    "composio_trigger_ids": ["old-t1"],
-                    "trigger_name": "gmail_new_email",
-                },
-            }
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(composio_trigger_ids=["old-t1"])
         )
-        mock_collection.update_one = AsyncMock()
+        mock_repo.reset_system_workflow = AsyncMock()
 
         from app.models.workflow_models import TriggerType
 
@@ -442,27 +419,21 @@ class TestResetSystemWorkflowToDefault:
 
         # Unregister failure is non-fatal — reset should still succeed
         assert result is True
-        mock_collection.update_one.assert_awaited_once()
+        mock_repo.reset_system_workflow.assert_awaited_once()
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.workflows_collection")
+    @patch(f"{MODULE}.workflow_repository")
     @patch(f"{MODULE}.ensure_trigger_config_object")
     async def test_manual_trigger_no_registration(
         self,
         mock_ensure: MagicMock,
-        mock_collection: AsyncMock,
+        mock_repo: MagicMock,
     ) -> None:
         """Manual trigger workflows skip trigger registration entirely."""
-        mock_collection.find_one = AsyncMock(
-            return_value={
-                "_id": "wf-1",
-                "user_id": "user-1",
-                "is_system_workflow": True,
-                "system_workflow_key": "manual_wf",
-                "trigger_config": {},
-            }
+        mock_repo.get_system_workflow_for_user = AsyncMock(
+            return_value=_existing_wf(key="manual_wf", composio_trigger_ids=None, trigger_name=None)
         )
-        mock_collection.update_one = AsyncMock()
+        mock_repo.reset_system_workflow = AsyncMock()
 
         from app.models.workflow_models import TriggerType
 
@@ -484,4 +455,4 @@ class TestResetSystemWorkflowToDefault:
             result = await reset_system_workflow_to_default("wf-1", "user-1")
 
         assert result is True
-        mock_collection.update_one.assert_awaited_once()
+        mock_repo.reset_system_workflow.assert_awaited_once()

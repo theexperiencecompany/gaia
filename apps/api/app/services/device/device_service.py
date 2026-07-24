@@ -31,9 +31,9 @@ from app.constants.device_bridge import (
     USER_CODE_LENGTH,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import integrations_collection
 from app.db.postgresql import get_db_session
 from app.db.redis import get_and_delete_cache, get_cache, redis_cache, set_cache
+from app.db.repositories.integrations import integration_repository
 from app.helpers.mcp_helpers import get_frontend_url
 from app.models.device import (
     Device,
@@ -364,14 +364,14 @@ async def _create_server_integration(
         published_at=None,
         clone_count=0,
     )
-    await integrations_collection.insert_one(integration.model_dump())
+    await integration_repository.create(integration)
     await add_user_integration(user_id, integration_id, initial_status="connected")
     await invalidate_user_integration_caches(user_id)
 
 
 async def _ensure_server_integration(user_id: str, server: DeviceMCPServer) -> None:
     """Recreate the integration doc if it was deleted out from under a known server."""
-    doc = await integrations_collection.find_one({"integration_id": server.integration_id})
+    doc = await integration_repository.get(server.integration_id)
     if doc is None:
         await _create_server_integration(
             user_id,
@@ -422,7 +422,7 @@ async def _teardown_revoked_device(
     """Post-revocation cleanup: drop the device's server integrations and fan out a
     revoke so whichever pod owns the live socket closes it immediately."""
     for integration_id in integration_ids:
-        await integrations_collection.delete_one({"integration_id": integration_id})
+        await integration_repository.delete(integration_id)
         await remove_user_integration(user_id, integration_id)
     await request_revoke(device_id)
 

@@ -18,7 +18,8 @@ from pydantic import (
     model_validator,
 )
 
-from app.models.scheduler_models import BaseScheduledTask
+from app.db.repositories.base import MongoDocument
+from app.models.scheduler_models import BaseScheduledTask, ScheduledTaskStatus
 from app.models.trigger_configs import TriggerConfigData
 from app.utils.cron_utils import get_next_run_time, validate_cron_expression
 from app.utils.timezone import Timezone
@@ -143,7 +144,7 @@ class TriggerConfig(BaseModel):
 
     @field_validator("cron_expression")
     @classmethod
-    def validate_cron_expression(cls, v):
+    def validate_cron_expression(cls, v: str | None) -> str | None:
         """Validate cron expression if provided."""
         if v is not None:
             if not validate_cron_expression(v):
@@ -262,7 +263,7 @@ class Workflow(BaseScheduledTask):
         description="Creator info hydrated for public workflow lookups.",
     )
 
-    def __init__(self, **data):
+    def __init__(self, **data: Any) -> None:
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
         # Ensure user_id is provided (it's required by BaseScheduledTask)
         if "user_id" not in data:
@@ -307,7 +308,7 @@ class Workflow(BaseScheduledTask):
 
     @model_validator(mode="before")
     @classmethod
-    def hydrate_legacy_prompt_and_description(cls, data):
+    def hydrate_legacy_prompt_and_description(cls, data: Any) -> Any:
         """Ensure legacy records still expose prompt and non-null description."""
         if isinstance(data, dict):
             description = data.get("description") or ""
@@ -386,7 +387,7 @@ class CreateWorkflowRequest(BaseModel):
 
     @field_validator("title", "prompt")
     @classmethod
-    def validate_non_empty_strings(cls, v):
+    def validate_non_empty_strings(cls, v: str) -> str:
         """Require non-blank title/prompt and strip surrounding whitespace."""
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
@@ -394,7 +395,7 @@ class CreateWorkflowRequest(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_optional_description(cls, v):
+    def validate_optional_description(cls, v: str | None) -> str | None:
         """Normalize an optional description, coercing blank values to None/empty."""
         if v is not None and not v.strip():
             return ""
@@ -415,7 +416,7 @@ class UpdateWorkflowRequest(BaseModel):
 
     @field_validator("title", "prompt")
     @classmethod
-    def validate_optional_non_empty_strings(cls, v):
+    def validate_optional_non_empty_strings(cls, v: str | None) -> str | None:
         """Strip provided title/prompt updates and reject blank-only values."""
         if v is not None:
             if not v.strip():
@@ -425,7 +426,7 @@ class UpdateWorkflowRequest(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def validate_optional_update_description(cls, v):
+    def validate_optional_update_description(cls, v: str | None) -> str | None:
         """Normalize a description update, coercing blank values to None."""
         if v is None:
             return None
@@ -583,3 +584,81 @@ class GenerateWorkflowPromptResponse(BaseModel):
 
     prompt: str
     suggested_trigger: SuggestedTrigger | None = None
+
+
+# Repository persistence models (Wave E migration)
+
+
+class WorkflowDocument(Workflow, MongoDocument):
+    """A workflow as stored in MongoDB.
+
+    Identity is the string business key ``id`` (persisted as ``_id``; the two are
+    equal ``wf_…`` UUIDs). Extends ``Workflow`` so it doubles as the read model —
+    the service wraps it in ``WorkflowWithIntegrations`` only to attach computed
+    integration fields. ``extra="ignore"`` (from ``MongoDocument``) tolerates
+    legacy stray fields; the ISO-string ``created_at``/``scheduled_at`` values a
+    handful of legacy rows still carry are coerced to tz-aware datetimes by the
+    inherited ``BaseScheduledTask`` validators.
+    """
+
+    # Resolve the ``Workflow.id`` (``str | None``, alias ``_id``) vs
+    # ``MongoDocument.id`` (``str``) diamond: a persisted workflow always has its
+    # ``wf_…`` id, so the stored document is non-optional. The repository keys on
+    # ``_id`` directly, so no alias is needed here.
+    id: str = Field(default_factory=lambda: f"wf_{uuid.uuid4().hex[:12]}")
+
+
+class WorkflowCreatorInfo(BaseModel):
+    """One creator row hydrated by the ``creator_lookup_stage`` ``$lookup`` — the
+    projected ``{name, email, picture}`` subset of the joined user document. All
+    optional because the join yields no match for a non-user creator (the literal
+    ``"system"``) or a legacy row whose user was deleted."""
+
+    name: str | None = None
+    email: str | None = None
+    picture: str | None = None
+
+
+class PublicWorkflowRow(WorkflowDocument):
+    """A workflow read from a public-marketplace aggregation: the persisted
+    ``WorkflowDocument`` plus the joined ``creator_info`` array.
+
+    ``creator_info`` and ``use_case_categories`` are ``exclude``d from
+    serialization so a row handed straight back as a ``WorkflowResponse.workflow``
+    (the single ``get_public`` path) emits exactly the ``Workflow`` shape — the
+    join scaffolding never leaks into the response. The list paths
+    (community/explore/related) read these attributes to hand-build their dict
+    payloads and never serialize the row itself.
+    """
+
+    creator_info: list[WorkflowCreatorInfo] = Field(default_factory=list, exclude=True)
+    # Explore-only curation field; absent on community/related rows (defaults to
+    # ``["featured"]`` there, matching the legacy ``.get(..., ["featured"])`` read).
+    use_case_categories: list[str] = Field(default_factory=lambda: ["featured"], exclude=True)
+
+
+class WorkflowUpdate(BaseModel):
+    """Partial ``$set`` update for a workflow — the flat, top-level fields the
+    owned-CRUD paths mutate. Nested (``trigger_config.*``) and operator
+    (``$inc`` stats, atomic status claim) writes are named repository methods that
+    use the raw-update seam, not this model.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    prompt: str | None = None
+    steps: list[WorkflowStep] | None = None
+    trigger_config: TriggerConfig | None = None
+    activated: bool | None = None
+    notify_on_completion: bool | None = None
+    integration_ids: list[str] | None = None
+    status: ScheduledTaskStatus | None = None
+    scheduled_at: datetime | None = None
+    repeat: str | None = None
+    error_message: str | None = None
+    current_step_index: int | None = None
+    is_public: bool | None = None
+    slug: str | None = None
+    created_by: str | None = None

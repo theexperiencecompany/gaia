@@ -1,7 +1,6 @@
 from datetime import UTC, datetime
 from typing import Annotated
 
-from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -13,11 +12,9 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import (
-    todos_collection,
-    users_collection,
-    workflows_collection,
-)
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.user_models import (
     BioStatus,
     OnboardingIntegrationsRequest,
@@ -212,23 +209,13 @@ async def update_onboarding_phase(
 
         log.info(f"{LogTag.ONBOARDING} Updating phase to {phase} for user {user_id}")
 
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "onboarding.phase": request.phase.value,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+        matched = await user_repository.set_onboarding_phase(user_id, request.phase.value)
 
-        if result.matched_count == 0:
+        if not matched:
             log.warning(f"{LogTag.ONBOARDING} No document found for user {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
-        log.info(
-            f"{LogTag.ONBOARDING} Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
-        )
+        log.info(f"{LogTag.ONBOARDING} Successfully updated phase to {phase} for user {user_id}")
 
         try:
             await websocket_manager.broadcast_to_user(
@@ -297,13 +284,15 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
             user={"id": user_id},
             onboarding={"operation": "get_personalization"},
         )
+        if not user_id or not isinstance(user_id, str):
+            raise HTTPException(status_code=400, detail="Invalid user_id")
         log.info(f"{LogTag.ONBOARDING} Fetching personalization for user {user_id}")
-        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user_doc = await user_repository.get(user_id)
 
         if not user_doc:
             raise HTTPException(status_code=404, detail="User not found")
 
-        onboarding = user_doc.get("onboarding", {})
+        onboarding = user_doc.onboarding or {}
         user_bio = onboarding.get("user_bio", "")
         phase = onboarding.get("phase", "initial")
         log.info(
@@ -319,10 +308,9 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
         member_since = onboarding.get("member_since")
 
         if not account_number or not member_since:
-            created_at = user_doc.get("created_at")
+            created_at = user_doc.created_at
             if created_at:
-                count = await users_collection.count_documents({"created_at": {"$lt": created_at}})
-                account_number = count + 1
+                account_number = await user_repository.count_created_before(created_at) + 1
             else:
                 account_number = 1
 
@@ -336,20 +324,16 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
         workflows = []
         if workflow_ids:
             try:
-                query_ids = [
-                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id for wf_id in workflow_ids
-                ]
-                cursor = workflows_collection.find({"_id": {"$in": query_ids}})
-                wf_docs = {str(wf["_id"]): wf async for wf in cursor}
+                wf_docs = {wf.id: wf for wf in await workflow_repository.find_by_ids(workflow_ids)}
                 for wf_id in workflow_ids:
-                    wf = wf_docs.get(str(wf_id))
+                    wf = wf_docs.get(wf_id)
                     if wf:
                         workflows.append(
                             {
-                                "id": str(wf["_id"]),
-                                "title": wf.get("title", ""),
-                                "description": wf.get("description", ""),
-                                "steps": wf.get("steps", []),
+                                "id": wf.id,
+                                "title": wf.title,
+                                "description": wf.description,
+                                "steps": [step.model_dump() for step in wf.steps],
                             }
                         )
             except Exception as e:
@@ -391,22 +375,17 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
 
         onboarding_todos: list[dict] = []
         try:
-            todo_cursor = (
-                todos_collection.find(
-                    {"user_id": user_id, "labels": "onboarding"},
-                    {"_id": 1, "title": 1, "description": 1, "source_email": 1},
-                )
-                .sort("created_at", -1)
-                .limit(ONBOARDING_TODO_LIMIT)
+            todos = await todo_repository.list_onboarding_todos(
+                user_id, limit=ONBOARDING_TODO_LIMIT
             )
             onboarding_todos = [
                 {
-                    "id": str(t["_id"]),
-                    "title": t.get("title", ""),
-                    "description": t.get("description"),
-                    "source_email": t.get("source_email"),
+                    "id": t.id,
+                    "title": t.title or "",
+                    "description": t.description,
+                    "source_email": t.source_email,
                 }
-                async for t in todo_cursor
+                for t in todos
             ]
         except Exception as e:
             log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
@@ -422,8 +401,8 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
             "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
             "overlay_opacity": onboarding.get("overlay_opacity", 40),
             "suggested_workflows": workflows,
-            "name": user_doc.get("name", "User"),
-            "holo_card_id": str(user_doc["_id"]),
+            "name": user_doc.name or "User",
+            "holo_card_id": user_doc.id,
             "first_message_conversation_id": onboarding.get("first_message_conversation_id"),
             "first_message": onboarding.get("first_message"),
             "writing_style": writing_style_payload,

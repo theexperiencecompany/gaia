@@ -3,7 +3,9 @@ from enum import Enum
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class NotificationType(str, Enum):
@@ -92,7 +94,7 @@ class ActionConfig(BaseModel):
     modal: ModalConfig | None = None
 
     @model_validator(mode="after")
-    def validate_single_config(self):
+    def validate_single_config(self) -> "ActionConfig":
         """Ensure only one action config is set"""
         configs = [self.redirect, self.api_call, self.modal]
         non_none_configs = [c for c in configs if c is not None]
@@ -167,7 +169,7 @@ class NotificationRequest(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @field_validator("priority", mode="before")
-    def validate_priority(cls, v):
+    def validate_priority(cls, v: int) -> int:
         """Reject priorities outside the inclusive 1–5 range."""
         if not 1 <= v <= 5:
             raise ValueError("Priority must be between 1 and 5")
@@ -185,8 +187,12 @@ class ChannelDeliveryStatus(BaseModel):
     skipped: bool = False
 
 
-class NotificationRecord(BaseModel):
-    """Persisted notification with its original request and per-channel statuses."""
+class NotificationRecord(UserScopedDocument):
+    """Persisted notification with its original request and per-channel statuses.
+
+    Identity is the UUID ``id`` (not Mongo's ``_id``); the notification repository
+    sets ``identity_field = "id"``.
+    """
 
     id: str
     user_id: str
@@ -218,6 +224,21 @@ class NotificationRecord(BaseModel):
             if action.id == action_id:
                 return action
         return None
+
+
+class NotificationUpdate(BaseModel):
+    """Typed status/timestamp fields for a notification update.
+
+    Free-form patches (e.g. an action result's arbitrary field set) go through
+    the repository's ``update_fields`` instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: NotificationStatus | None = None
+    delivered_at: datetime | None = None
+    read_at: datetime | None = None
+    archived_at: datetime | None = None
 
 
 class ActionResult(BaseModel):

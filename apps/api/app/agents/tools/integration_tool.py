@@ -4,7 +4,6 @@ Integration Management Tools
 Tools for listing, connecting, and managing user integrations.
 """
 
-import re
 from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
@@ -18,10 +17,8 @@ from app.constants.integrations import (
     MAX_SUGGESTED_FOR_LLM,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-)
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns, generate_integration_slug
 from app.models.integration_models import (
@@ -95,30 +92,24 @@ async def list_integrations(
                 available_list.append(info)
 
         # Fetch user's custom integrations
-        user_integration_ids = set()
-        cursor = user_integrations_collection.find({"user_id": user_id})
-        async for doc in cursor:
-            user_integration_ids.add(doc.get("integration_id"))
+        user_integrations = await user_integration_repository.list_for_user(user_id)
+        user_integration_ids = {ui.integration_id for ui in user_integrations}
 
         if user_integration_ids:
-            custom_cursor = integrations_collection.find(
-                {
-                    "integration_id": {"$in": list(user_integration_ids)},
-                    "source": "custom",
-                }
+            custom_docs = await integration_repository.find_custom_by_ids(
+                list(user_integration_ids)
             )
-            async for doc in custom_cursor:
-                integration_id = doc.get("integration_id")
-                user_doc = await user_integrations_collection.find_one(
-                    {"user_id": user_id, "integration_id": integration_id}
+            for doc in custom_docs:
+                integration_id = doc.integration_id
+                is_connected = await user_integration_repository.is_connected(
+                    user_id, integration_id
                 )
-                is_connected = user_doc.get("status") == "connected" if user_doc else False
 
                 custom_info: IntegrationInfo = {
                     "id": integration_id,
-                    "name": doc.get("name", ""),
-                    "description": doc.get("description", ""),
-                    "category": doc.get("category", "custom"),
+                    "name": doc.name,
+                    "description": doc.description,
+                    "category": doc.category,
                     "connected": is_connected,
                 }
 
@@ -139,59 +130,32 @@ async def list_integrations(
                 existing_ids = {i["id"] for i in connected_list + available_list}
                 existing_ids.update(user_integration_ids)
 
-                # Build flexible word-based search
+                # Flexible word-based search (regex construction lives in the repo)
                 words = build_search_patterns(query)
 
-                # Create conditions that match any word in name/description/category
-                word_conditions = []
-                for word in words:
-                    escaped_word = re.escape(word)
-                    word_conditions.extend(
-                        [
-                            {"name": {"$regex": escaped_word, "$options": "i"}},
-                            {"description": {"$regex": escaped_word, "$options": "i"}},
-                            {"category": {"$regex": escaped_word, "$options": "i"}},
-                        ]
-                    )
-
-                # Also try the full query as a fallback
-                escaped_query = re.escape(query)
-                word_conditions.extend(
-                    [
-                        {"name": {"$regex": escaped_query, "$options": "i"}},
-                        {"description": {"$regex": escaped_query, "$options": "i"}},
-                    ]
+                docs = await integration_repository.search_public(
+                    words=words,
+                    query=query,
+                    exclude_ids=list(existing_ids),
+                    limit=MAX_SUGGESTED_FOR_LLM,
                 )
 
-                search_filter = {
-                    "is_public": True,
-                    "integration_id": {"$nin": list(existing_ids)},
-                    "$or": word_conditions
-                    if word_conditions
-                    else [{"name": {"$regex": escaped_query, "$options": "i"}}],
-                }
-
-                docs_cursor = integrations_collection.find(search_filter).limit(
-                    MAX_SUGGESTED_FOR_LLM
-                )
-
-                async for doc in docs_cursor:
-                    iid = doc.get("integration_id")
-                    mcp_config = doc.get("mcp_config", {})
-                    log.info(f"{LogTag.TOOL} Found public integration: {iid} - {doc.get('name')}")
+                for doc in docs:
+                    iid = doc.integration_id
+                    log.info(f"{LogTag.TOOL} Found public integration: {iid} - {doc.name}")
 
                     suggested_list.append(
                         {
                             "id": iid,
-                            "name": doc.get("name", ""),
-                            "description": doc.get("description", ""),
-                            "category": doc.get("category", "custom"),
-                            "icon_url": doc.get("icon_url"),
-                            "auth_type": mcp_config.get("auth_type"),
+                            "name": doc.name,
+                            "description": doc.description,
+                            "category": doc.category,
+                            "icon_url": doc.icon_url,
+                            "auth_type": doc.mcp_config.auth_type if doc.mcp_config else None,
                             "relevance_score": 1.0,  # All matches are equal with regex
                             "slug": generate_integration_slug(
-                                name=doc.get("name", ""),
-                                category=doc.get("category", "custom"),
+                                name=doc.name,
+                                category=doc.category,
                                 integration_id=iid,
                             ),
                         }

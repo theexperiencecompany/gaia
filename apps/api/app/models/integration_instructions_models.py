@@ -13,6 +13,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.db.repositories.base import UserScopedDocument
+
 # Guardrail: keep instructions short enough to live in every subagent turn's
 # context without blowing the token budget. ~8k chars ≈ a couple of pages.
 MAX_INSTRUCTIONS_CHARS = 8000
@@ -47,3 +49,24 @@ class IntegrationInstructions(BaseModel):
     @field_serializer("updated_at")
     def _serialize_updated_at(self, value: datetime) -> str:
         return value.isoformat()
+
+
+class IntegrationInstructionsDocument(UserScopedDocument):
+    """Storage model for one ``(user_id, integration_id)`` instructions record.
+
+    ``id`` is the stringified Mongo ``_id`` (the editor surfaces it). ``updated_at``
+    is stamped by the base on every write."""
+
+    integration_id: str
+    content: str = ""
+    updated_by: InstructionsEditor = InstructionsEditor.USER
+    updated_at: datetime | None = None
+
+
+class IntegrationInstructionsUpdate(BaseModel):
+    """Typed ``$set`` fields for an instructions record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    content: str | None = None
+    updated_by: InstructionsEditor | None = None

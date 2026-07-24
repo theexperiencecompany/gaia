@@ -10,6 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.user_models import UserDocument
+
 API = "/api/v1/integrations"
 
 
@@ -369,15 +371,17 @@ class TestConnectLinkEndpoint:
 
     async def test_valid_token_redirects_to_oauth(self, client: AsyncClient) -> None:
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
-        users = MagicMock()
-        users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
-            patch(f"{_MODULE}.users_collection", users),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,
@@ -402,15 +406,17 @@ class TestConnectLinkEndpoint:
         """The whole point: a logged-out user reaches it (not 401) and is sent
         into OAuth — identity comes from the single-use code, not a session."""
         result = MagicMock(status="redirect", redirect_url="https://oauth.example/go", error=None)
-        users = MagicMock()
-        users.find_one = AsyncMock(return_value={"email": "a@b.com"})
         with (
             patch(
                 f"{_MODULE}.resolve_and_consume_connect_code",
                 new_callable=AsyncMock,
                 return_value=(_VALID_UID, "notion"),
             ),
-            patch(f"{_MODULE}.users_collection", users),
+            patch(
+                f"{_MODULE}.user_repository.get",
+                new_callable=AsyncMock,
+                return_value=UserDocument(email="a@b.com"),
+            ),
             patch(
                 f"{_MODULE}.initiate_integration_connection",
                 new_callable=AsyncMock,

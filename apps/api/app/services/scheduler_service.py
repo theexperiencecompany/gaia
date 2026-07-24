@@ -3,7 +3,6 @@ Base scheduler service for managing scheduled tasks.
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -293,45 +292,11 @@ class BaseSchedulerService(ABC):
         log.debug(f"Enqueued task {task_id} with job ID {job.job_id}")
         return True
 
-    async def _query_pending_tasks(
-        self,
-        collection: Any,
-        current_time: datetime,
-        doc_to_task: Callable[[dict[str, Any]], BaseScheduledTask],
-        extra_filter: dict[str, Any] | None = None,
-    ) -> list[BaseScheduledTask]:
-        """Shared recovery-scan query for every scheduler subclass.
-
-        Selects tasks that are SCHEDULED and DUE (``scheduled_at <= now``). The
-        ``$lte`` due-semantics live here, in one place, so the reminder and
-        workflow scans can never diverge on the operator again (they once did:
-        reminders used ``$gte`` and silently dropped every overdue task).
-
-        Subclasses supply only their collection, a document->model mapper, and
-        any extra filter (e.g. workflows additionally require ``activated: True``).
-        """
-        query: dict[str, Any] = {
-            "status": ScheduledTaskStatus.SCHEDULED.value,
-            "scheduled_at": {"$lte": current_time},
-        }
-        if extra_filter:
-            query.update(extra_filter)
-
-        tasks: list[BaseScheduledTask] = []
-        try:
-            cursor = collection.find(query)
-            async for doc in cursor:
-                try:
-                    tasks.append(doc_to_task(doc))
-                except Exception as e:
-                    log.error(f"Error building pending task from document: {e}")
-                    continue
-        except Exception as e:
-            log.error(f"Error fetching pending tasks: {e}")
-            return []
-
-        log.info(f"Found {len(tasks)} pending tasks")
-        return tasks
+    # The pending-scan's ``$lte`` due-semantics now live on each domain's
+    # repository as ``find_pending_before`` (identical filter, so the reminder and
+    # workflow scans can't diverge on the operator again — they once did, reminders
+    # used ``$gte`` and dropped every overdue task). This base no longer touches a
+    # collection handle; ``get_pending_task`` is the seam each subclass fills.
 
     # Abstract methods that subclasses must implement
 

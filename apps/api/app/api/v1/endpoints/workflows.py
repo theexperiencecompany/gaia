@@ -3,8 +3,6 @@ Clean workflow API router for GAIA workflow system.
 Provides CRUD operations, execution, and status endpoints.
 """
 
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.errors import DuplicateKeyError
 
@@ -14,7 +12,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
@@ -27,7 +25,6 @@ from app.models.workflow_models import (
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
-    Workflow,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowListResponse,
@@ -45,9 +42,8 @@ from app.services.workflow.service import (
     ensure_public_workflow_slug,
     generate_unique_workflow_slug,
 )
-from app.utils.creator import creator_lookup_stage, format_creator
+from app.utils.creator import format_creator
 from app.utils.exceptions import TriggerRegistrationError
-from app.utils.workflow_utils import transform_workflow_document
 from shared.py.wide_events import WorkflowContext, log
 
 router = APIRouter()
@@ -441,9 +437,7 @@ async def publish_workflow(
     )
 
     try:
-        workflow = await workflows_collection.find_one(
-            {"_id": workflow_id, "user_id": user["user_id"]}
-        )
+        workflow = await workflow_repository.get_for_user(workflow_id, user["user_id"])
 
         if not workflow:
             raise HTTPException(
@@ -451,28 +445,18 @@ async def publish_workflow(
                 detail="Workflow not found or access denied",
             )
 
-        existing_slug = workflow.get("slug")
+        existing_slug = workflow.slug
         slug = existing_slug
 
         # Retry on DuplicateKeyError so a concurrent publish racing on the
-        # same suffix can't corrupt the unique index.
+        # same suffix can't corrupt the unique index. Only a freshly generated
+        # slug is retried; an existing slug that collides re-raises.
         for _ in range(5):
-            publish_set: dict = {
-                "is_public": True,
-                "created_by": user["user_id"],
-                "updated_at": datetime.now(UTC),
-            }
             if not existing_slug:
-                slug = await generate_unique_workflow_slug(
-                    workflow.get("title", ""),
-                    exclude_id=workflow_id,
-                )
-                publish_set["slug"] = slug
-
+                slug = await generate_unique_workflow_slug(workflow.title, exclude_id=workflow_id)
             try:
-                await workflows_collection.update_one(
-                    {"_id": workflow_id},
-                    {"$set": publish_set},
+                await workflow_repository.publish(
+                    workflow_id, created_by=user["user_id"], slug=slug or ""
                 )
                 break
             except DuplicateKeyError:
@@ -517,9 +501,7 @@ async def unpublish_workflow(
 
     try:
         # Check if workflow exists and belongs to user
-        workflow = await workflows_collection.find_one(
-            {"_id": workflow_id, "user_id": user["user_id"]}
-        )
+        workflow = await workflow_repository.get_for_user(workflow_id, user["user_id"])
 
         if not workflow:
             raise HTTPException(
@@ -527,13 +509,7 @@ async def unpublish_workflow(
                 detail="Workflow not found or access denied",
             )
 
-        # Update workflow to be private
-        await workflows_collection.update_one(
-            {"_id": workflow_id},
-            {
-                "$set": {"is_public": False, "updated_at": datetime.now(UTC)},
-            },
-        )
+        await workflow_repository.unpublish(workflow_id)
 
         log.set(outcome="success")
         log.info(f"{LogTag.WORKFLOW} Unpublished workflow {workflow_id} by user {user['user_id']}")
@@ -601,20 +577,11 @@ async def get_public_workflow(request: Request, workflow_ref: str):
         public_workflow={"ref": workflow_ref, "lookup_mode": lookup_mode},
     )
     try:
-        match: dict = (
-            {"_id": workflow_ref, "is_public": True}
-            if lookup_mode == "id"
-            else {"slug": workflow_ref, "is_public": True}
+        workflow = await workflow_repository.get_public_with_creator(
+            workflow_ref, by_slug=lookup_mode == "slug"
         )
 
-        workflow_doc = None
-        async for doc in workflows_collection.aggregate(
-            [{"$match": match}, creator_lookup_stage(), {"$limit": 1}]
-        ):
-            workflow_doc = doc
-            break
-
-        if not workflow_doc:
+        if not workflow:
             log.info(
                 f"{LogTag.WORKFLOW} get_public_workflow: no public workflow for ref={workflow_ref}"
             )
@@ -623,22 +590,19 @@ async def get_public_workflow(request: Request, workflow_ref: str):
                 detail="Public workflow not found",
             )
 
-        creator = format_creator(workflow_doc)
-        workflow_doc.pop("creator_info", None)
-
-        await ensure_public_workflow_slug(workflow_doc)
-
-        transformed_doc = transform_workflow_document(workflow_doc)
-        workflow = Workflow(**transformed_doc)
+        creator = format_creator(workflow)
+        await ensure_public_workflow_slug(workflow)
+        # The row IS-A Workflow; creator_info is excluded from serialization, so
+        # handing it straight back emits the plain Workflow shape plus `creator`.
         workflow.creator = creator
 
         log.set(
             public_workflow={
-                "id": workflow_doc.get("_id"),
-                "slug": workflow_doc.get("slug"),
-                "creator_id": workflow_doc.get("created_by"),
+                "id": workflow.id,
+                "slug": workflow.slug,
+                "creator_id": workflow.created_by,
                 "creator_name": creator.get("name") if isinstance(creator, dict) else None,
-                "step_count": len(workflow.steps) if getattr(workflow, "steps", None) else 0,
+                "step_count": len(workflow.steps) if workflow.steps else 0,
             }
         )
         return WorkflowResponse(workflow=workflow, message="Workflow retrieved successfully")

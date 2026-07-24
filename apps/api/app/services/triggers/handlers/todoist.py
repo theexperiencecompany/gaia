@@ -5,9 +5,9 @@ Todoist trigger handler.
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.trigger_configs import TodoistNewTaskCreatedConfig
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import log
@@ -77,27 +77,8 @@ class TodoistTriggerHandler(TriggerHandler):
         """Find workflows matching a Todoist trigger event."""
         log.set_ns("trigger", integration_id="todoist", trigger_type=event_type)
         try:
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
-                    continue
-
+            workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:

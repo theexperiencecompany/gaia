@@ -20,12 +20,10 @@ Holo card runs fully independently.
 import asyncio
 from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from enum import Enum
 import time
 from typing import Any, TypeVar
 
-from bson import ObjectId
 from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.llm.client import ainvoke_structured
@@ -48,11 +46,9 @@ from app.constants.onboarding import (
 )
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import (
-    todos_collection,
-    users_collection,
-    workflows_collection,
-)
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
@@ -248,15 +244,10 @@ async def _persist_completion(
 ) -> None:
     """Write the unconditional end-of-pipeline phase transition and keep any
     still-running provision task alive past pipeline return."""
-    completion_update: dict[str, object] = {
-        "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
-        "updated_at": datetime.now(UTC),
-    }
-    if conversation_id:
-        completion_update["onboarding.first_message_conversation_id"] = conversation_id
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": completion_update},
+    await user_repository.set_pipeline_completion(
+        user_id,
+        phase=OnboardingPhase.PERSONALIZATION_COMPLETE,
+        conversation_id=conversation_id or None,
     )
 
     if provision_future is not None and not provision_future.done():
@@ -313,10 +304,7 @@ async def _finalize_onboarding(
 
     # Persist first_message before COMPLETE / the holo gather: the event triggers
     # a frontend fetch of /onboarding/personalization, which must not see null.
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"onboarding.first_message": first_message}},
-    )
+    await user_repository.set_first_message(user_id, first_message)
 
     seed_result, *_ = await asyncio.gather(_seed_conversation(user_id), *concurrent_tasks)
     conversation_id: str | None = seed_result
@@ -340,15 +328,7 @@ async def _finish_early_phase(
     keep any still-running provision task alive past pipeline return.
     `updated_at` is refreshed so the stuck-personalization cron's cutoff
     doesn't treat a user who is merely picking integrations as stale."""
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {
-            "$set": {
-                "onboarding.early_intelligence_done_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
-            }
-        },
-    )
+    await user_repository.mark_early_intelligence_done(user_id)
     if provision_future is not None and not provision_future.done():
         _background_tasks.add(provision_future)
         provision_future.add_done_callback(_background_tasks.discard)
@@ -406,8 +386,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         ),
     )
 
-    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if not user_doc:
+    user = await user_repository.get(user_id)
+    if user is None:
         log.error(
             f"{LogTag.ONBOARDING} user not found",
             user_id=user_id,
@@ -416,10 +396,12 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         )
         return
 
-    onboarding = user_doc.get("onboarding", {})
-    name: str = user_doc.get("name", "there")
-    user_email: str | None = user_doc.get("email")
-    profession: str = onboarding.get("preferences", {}).get("profession", "") or ""
+    onboarding = user.onboarding or {}
+    name: str = user.name or "there"
+    user_email: str | None = user.email
+    # Raw-style dict for the downstream holo/metadata helpers that still read a dict.
+    user_doc = user.model_dump() | {"_id": user.id, "user_id": user.id}
+    profession: str = (onboarding.get("preferences") or {}).get("profession", "") or ""
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []
@@ -1032,10 +1014,7 @@ async def _run_workflows(
     try:
         workflow_ids = [w["id"] for w in workflows if w.get("id")]
         if workflow_ids:
-            await users_collection.update_one(
-                {"_id": ObjectId(user_id)},
-                {"$set": {"onboarding.suggested_workflows": workflow_ids}},
-            )
+            await user_repository.set_suggested_workflows(user_id, workflow_ids)
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} persist suggested_workflows failed",
@@ -1176,16 +1155,8 @@ async def _persist_social_profiles(user_id: str, social_profiles: list[SocialPro
     if not social_profiles:
         return
     try:
-        await users_collection.update_one(
-            {
-                "_id": ObjectId(user_id),
-                "$or": [
-                    {"onboarding.social_profiles": {"$exists": False}},
-                    {"onboarding.social_profiles": None},
-                    {"onboarding.social_profiles": []},
-                ],
-            },
-            {"$set": {"onboarding.social_profiles": [p.model_dump() for p in social_profiles]}},
+        await user_repository.set_social_profiles_if_unset(
+            user_id, [p.model_dump() for p in social_profiles]
         )
     except Exception as e:
         log.error(f"{LogTag.ONBOARDING} persist social_profiles failed: {e}", exc_info=True)
@@ -1199,12 +1170,9 @@ async def _persist_profiles(
     """Persist writing style and triage summary. Social profiles are persisted
     separately by the background task in _run_social_profiles_background."""
     t0 = time.monotonic()
-    update_fields: dict = {}
-    if writing_style:
-        update_fields["onboarding.writing_style.summary"] = writing_style.summary
-        update_fields["onboarding.writing_style.example"] = writing_style.example.model_dump()
+    triage_summary = None
     if triage:
-        update_fields["onboarding.triage_summary"] = {
+        triage_summary = {
             "total_scanned": triage.total_scanned,
             "total_unread": triage.total_unread,
             "summary": triage.summary,
@@ -1219,9 +1187,16 @@ async def _persist_profiles(
             ],
         }
 
-    if update_fields:
+    if writing_style or triage:
         try:
-            await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": update_fields})
+            await user_repository.set_writing_style_and_triage(
+                user_id,
+                writing_style_summary=writing_style.summary if writing_style else None,
+                writing_style_example=(
+                    writing_style.example.model_dump() if writing_style else None
+                ),
+                triage_summary=triage_summary,
+            )
         except Exception as e:
             log.error(f"{LogTag.ONBOARDING} persist update_fields failed: {e}", exc_info=True)
 
@@ -1274,15 +1249,8 @@ def _writing_style_from_doc(raw: object) -> WritingStyleProfile | None:
 
 
 async def _fetch_onboarding_todos(user_id: str) -> list[dict]:
-    cursor = (
-        todos_collection.find(
-            {"user_id": user_id, "labels": "onboarding"},
-            {"_id": 1, "title": 1},
-        )
-        .sort("created_at", -1)
-        .limit(ONBOARDING_TODO_LIMIT)
-    )
-    return [{"id": str(t["_id"]), "title": t.get("title", "")} async for t in cursor]
+    todos = await todo_repository.list_onboarding_todos(user_id, limit=ONBOARDING_TODO_LIMIT)
+    return [{"id": todo.id, "title": todo.title or ""} for todo in todos]
 
 
 async def _wait_for_early_phase(user_id: str) -> bool:
@@ -1291,11 +1259,8 @@ async def _wait_for_early_phase(user_id: str) -> bool:
     fail-soft semantics as the full pipeline's None triage/style)."""
     deadline = time.monotonic() + EARLY_PHASE_WAIT_TIMEOUT_S
     while time.monotonic() < deadline:
-        doc = await users_collection.find_one(
-            {"_id": ObjectId(user_id)},
-            {"onboarding.early_intelligence_done_at": 1},
-        )
-        if doc and (doc.get("onboarding") or {}).get("early_intelligence_done_at"):
+        user = await user_repository.get(user_id)
+        if user and (user.onboarding or {}).get("early_intelligence_done_at"):
             return True
         await asyncio.sleep(EARLY_PHASE_POLL_INTERVAL_S)
     log.warning(
@@ -1316,8 +1281,8 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
 
     await _wait_for_early_phase(user_id)
 
-    user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if not user_doc:
+    user = await user_repository.get(user_id)
+    if user is None:
         log.error(
             f"{LogTag.ONBOARDING} user not found",
             user_id=user_id,
@@ -1326,13 +1291,13 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
         )
         return
 
-    onboarding = user_doc.get("onboarding", {})
-    name: str = user_doc.get("name", "there")
-    profession: str = onboarding.get("preferences", {}).get("profession", "") or ""
+    onboarding = user.onboarding or {}
+    name: str = user.name or "there"
+    profession: str = (onboarding.get("preferences") or {}).get("profession", "") or ""
     focus: str = onboarding.get("focus", "") or ""
     clarify_answers: list[dict] = onboarding.get("clarify_answers") or []
     selected_integrations: list[str] = onboarding.get("selected_integrations") or []
-    user_timezone: str = (user_doc.get("timezone") or "UTC").strip() or "UTC"
+    user_timezone: str = (user.timezone or "UTC").strip() or "UTC"
 
     composio_service = get_composio_service()
     connection_status = await composio_service.check_connection_status(["gmail"], user_id)
@@ -1348,11 +1313,9 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     # no Composio triggers or scheduled jobs to unwind — so a direct delete is safe.
     prior_workflow_ids = onboarding.get("suggested_workflows") or []
     if prior_workflow_ids:
-        deleted = await workflows_collection.delete_many(
-            {"_id": {"$in": prior_workflow_ids}, "user_id": user_id}
-        )
+        deleted = await workflow_repository.delete_many_for_user(prior_workflow_ids, user_id)
         log.info(
-            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted.deleted_count} "
+            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted} "
             f"stale suggested workflows before regenerating",
             user_id=user_id,
         )

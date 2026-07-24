@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
@@ -239,25 +238,6 @@ class TriggerHandler(ABC):
             )
 
         return successful_ids
-
-    async def _load_workflows_from_query(
-        self, query: dict[str, Any], log_context: str
-    ) -> list[Workflow]:
-        """Load and validate workflows for a MongoDB query."""
-        workflows: list[Workflow] = []
-        cursor = workflows_collection.find(query)
-        async for workflow_doc in cursor:
-            try:
-                workflow_doc["id"] = workflow_doc.get("_id")
-                if "_id" in workflow_doc:
-                    del workflow_doc["_id"]
-                workflows.append(Workflow(**workflow_doc))
-            except Exception as e:
-                log.error(
-                    f"{LogTag.TRIGGER} Error processing workflow document ({log_context}): {e}"
-                )
-
-        return workflows
 
     @abstractmethod
     async def find_workflows(

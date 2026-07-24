@@ -18,8 +18,8 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
-from app.models.user_models import UserUpdateResponse
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserUpdate, UserUpdateResponse
 from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
@@ -160,17 +160,11 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user["user_id"])},
-            {
-                "$set": {
-                    "timezone": user_timezone.strip(),
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        updated = await user_repository.update(
+            user["user_id"], UserUpdate(timezone=user_timezone.strip())
         )
 
-        if result.matched_count == 0:
+        if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
 
         log.set(outcome="success")
@@ -199,12 +193,12 @@ async def get_public_holo_card(card_id: str):
         if not ObjectId.is_valid(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
-        user_doc = await users_collection.find_one({"_id": ObjectId(card_id)})
+        user_doc = await user_repository.get(card_id)
 
         if not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        onboarding = user_doc.get("onboarding", {})
+        onboarding = user_doc.onboarding or {}
 
         # Check if user has completed onboarding
         if not onboarding.get("house"):
@@ -215,10 +209,9 @@ async def get_public_holo_card(card_id: str):
         member_since = onboarding.get("member_since")
 
         if not account_number or not member_since:
-            created_at = user_doc.get("created_at")
+            created_at = user_doc.created_at
             if created_at:
-                count = await users_collection.count_documents({"created_at": {"$lt": created_at}})
-                account_number = count + 1
+                account_number = await user_repository.count_created_before(created_at) + 1
             else:
                 account_number = 1
 
@@ -235,7 +228,7 @@ async def get_public_holo_card(card_id: str):
             "user_bio": onboarding.get("user_bio"),
             "account_number": account_number,
             "member_since": member_since,
-            "name": user_doc.get("name"),
+            "name": user_doc.name,
             "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
             "overlay_opacity": onboarding.get("overlay_opacity", 40),
         }
@@ -272,18 +265,11 @@ async def update_holo_card_colors(
             raise HTTPException(status_code=400, detail="Opacity must be between 0 and 100")
 
         # Update user's onboarding data
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "onboarding.overlay_color": overlay_color,
-                    "onboarding.overlay_opacity": overlay_opacity,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        matched = await user_repository.set_holo_card_colors(
+            user_id, overlay_color, overlay_opacity
         )
 
-        if result.matched_count == 0:
+        if not matched:
             raise HTTPException(status_code=404, detail="User not found")
 
         log.set(outcome="success")

@@ -54,6 +54,26 @@ SUBAGENT_GRAPH_CACHE_MAX_SIZE = 100
 SUBAGENT_GRAPH_CACHE_TTL_SECONDS = TEN_MINUTES_TTL
 SUBAGENT_GRAPH_CLEANUP_INTERVAL_SECONDS = 60
 
+# Repository layer — semantic aliases over the shared TTLs (single source of
+# truth). Entity rows are hot and long-lived; query caches are shorter because
+# they fan out per argument set. The generation counter (not a TTL) is what
+# actually invalidates them, so these bounds only cap worst-case staleness.
+REPO_ENTITY_TTL = ONE_DAY_TTL
+REPO_QUERY_TTL = ONE_HOUR_TTL
+# Scope segment for non-user-scoped (global) repositories.
+REPO_GLOBAL_SCOPE = "global"
+# Debounce window for UserRepository.touch_last_active — one write per user per
+# minute (Redis SET NX EX gate), so per-request auth never storms Mongo.
+LAST_ACTIVE_DEBOUNCE_SECONDS = 60
+
+# Per-repository cache-key prefixes (one namespace per domain).
+NOTE_CACHE_PREFIX = "note"
+TODO_CACHE_PREFIX = "todo"
+PROJECT_CACHE_PREFIX = "project"
+USER_CACHE_PREFIX = "user"
+# Redis SET NX EX gate that debounces UserRepository.touch_last_active.
+LAST_ACTIVE_GATE_PREFIX = "last_active_gate"
+
 # Cache key prefixes
 TEAM_CACHE_PREFIX = "team"
 CUSTOM_INT_METADATA_CACHE_PREFIX = "custom_int_metadata"
@@ -121,8 +141,6 @@ DESKTOP_REQUEST_TTL_GRACE_SECONDS = 15
 # retrying agent is auto-denied instead of re-prompting the user for the same
 # action.
 HIL_DECLINED_PREFIX = "hil:declined:"
-HIL_PREFS_CACHE_PREFIX = "hil:prefs:"
-HIL_PREFS_CACHE_TTL = FIVE_MINUTES_TTL
 EXECUTOR_BUSY_PREFIX = "executor:busy:"
 EXECUTOR_BUSY_TTL = THIRTY_MINUTES_TTL
 EXECUTOR_QUEUE_PREFIX = "executor:queue:"

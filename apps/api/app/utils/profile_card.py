@@ -10,9 +10,9 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.log_tags import LogTag
 from app.constants.profession_bios import get_random_bio_for_profession
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.onboarding_models import HoloCardLLMOutput
-from app.models.user_models import BioStatus
+from app.models.user_models import BioStatus, user_to_legacy_dict
 from shared.py.wide_events import log
 
 # Available houses for user assignment
@@ -115,7 +115,8 @@ async def get_user_metadata(user_id: str, user: dict[str, Any] | None = None) ->
     """
     try:
         if user is None:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            doc = await user_repository.get(user_id)
+            user = user_to_legacy_dict(doc) if doc else None
         if not user:
             return {
                 "account_number": 1,
@@ -169,7 +170,8 @@ async def generate_holo_card_content(
     log.set(operation="generate_holo_card_content", user_id=user_id)
 
     if user is None:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        doc = await user_repository.get(user_id)
+        user = user_to_legacy_dict(doc) if doc else None
     name = (user or {}).get("name", "User")
     profession = (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
 

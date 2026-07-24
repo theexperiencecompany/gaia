@@ -6,8 +6,6 @@ Contains all workflow-related background tasks and execution logic.
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from bson import ObjectId
-
 from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
@@ -18,7 +16,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
     MessageRequestWithHistory,
@@ -35,6 +33,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.todo_models import TodoUpdate
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -42,7 +41,6 @@ from app.models.workflow_models import (
     Workflow,
 )
 from app.services.notification_service import notification_service
-from app.services.todos.todo_service import TodoService
 from app.services.user_service import get_user_by_id
 from app.services.workflow.conversation_service import (
     add_workflow_execution_messages,
@@ -104,17 +102,11 @@ async def process_workflow_generation_task(
                     reason = workflow.error_message or "unknown error"
                     raise ValueError(f"Workflow {workflow.id} created but has no steps — {reason}")
 
-                update_data = {
-                    "workflow_id": workflow.id,
-                    "updated_at": datetime.now(UTC),
-                }
-
-                result = await todos_collection.update_one(
-                    {"_id": ObjectId(todo_id), "user_id": user_id},
-                    {"$set": update_data},
+                linked = await todo_repository.update(
+                    todo_id, user_id=user_id, update=TodoUpdate(workflow_id=workflow.id)
                 )
 
-                if result.modified_count > 0:
+                if linked is not None:
                     log.info(
                         f"{LogTag.WORKER} Successfully generated and linked standalone workflow {workflow.id} for todo {todo_id} with {len(workflow.steps)} steps"
                     )
@@ -125,8 +117,6 @@ async def process_workflow_generation_task(
                             trigger_type=TriggerType.MANUAL.value,
                         )
                     )
-
-                    await TodoService._invalidate_cache(user_id, None, todo_id, "update")
 
                     try:
                         websocket_manager = get_websocket_manager()

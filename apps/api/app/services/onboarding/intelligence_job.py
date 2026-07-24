@@ -12,7 +12,6 @@ interleaved stage events corrupt the frontend's stage cursor.
 from arq.constants import abort_jobs_ss
 from arq.jobs import Job, JobStatus
 from arq.utils import timestamp_ms
-from bson import ObjectId
 
 from app.constants.log_tags import LogTag
 from app.constants.onboarding import (
@@ -21,7 +20,8 @@ from app.constants.onboarding import (
     WORKFLOWS_JOB_FIELD,
     WORKFLOWS_TASK,
 )
-from app.db.mongodb.collections import todos_collection, users_collection
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.utils.redis_utils import RedisPoolManager
 from shared.py.wide_events import log
 
@@ -31,36 +31,28 @@ from shared.py.wide_events import log
 
 
 async def _get_active_job_id(user_id: str, field: str) -> str | None:
-    # `field` is a dotted path ("onboarding.intelligence_job_id"); the projection
-    # returns the nested doc, so strip the prefix to index into it.
-    doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {field: 1})
-    if not doc:
+    # `field` is a dotted path ("onboarding.intelligence_job_id"); strip the
+    # prefix to index into the onboarding subdocument.
+    user = await user_repository.get(user_id)
+    if user is None:
         return None
-    return (doc.get("onboarding") or {}).get(field.removeprefix("onboarding."))
+    value = (user.onboarding or {}).get(field.removeprefix("onboarding."))
+    return value if isinstance(value, str) else None
 
 
 async def _clear_active_job_id(user_id: str, field: str) -> None:
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$unset": {field: ""}},
-    )
+    await user_repository.clear_active_job(user_id, field)
 
 
 async def _set_active_job_id(user_id: str, job_id: str, field: str) -> None:
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {field: job_id}},
-    )
+    await user_repository.set_active_job(user_id, field, job_id)
 
 
 async def _clear_active_job_id_if_matches(user_id: str, job_id: str, field: str) -> None:
-    # Compare-and-clear: the `field: job_id` filter means we only unset when the
-    # stored id is still OUR job. If a concurrent reset already wrote a newer id,
-    # the filter misses and we leave that newer job's id untouched.
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id), field: job_id},
-        {"$unset": {field: ""}},
-    )
+    # Compare-and-clear: only unset when the stored id is still OUR job. If a
+    # concurrent reset already wrote a newer id, the guard misses and we leave
+    # that newer job's id untouched.
+    await user_repository.clear_active_job_if_matches(user_id, field, job_id)
 
 
 async def clear_active_intelligence_job(user_id: str, job_id: str) -> None:
@@ -144,8 +136,7 @@ async def abort_active_workflows_job(user_id: str) -> bool:
 
 async def _purge_stale_onboarding_todos(user_id: str) -> int:
     try:
-        result = await todos_collection.delete_many({"user_id": user_id, "labels": "onboarding"})
-        return result.deleted_count
+        return await todo_repository.delete_onboarding_todos(user_id)
     except Exception as e:
         log.warning(
             f"{LogTag.ONBOARDING} intelligence_job failed to purge stale onboarding todos",

@@ -75,6 +75,29 @@ class FakeCollection:
             new["_id"] = f"oid-{len(self.docs)}"
             self.docs.append(new)
 
+    # async to match the awaited Motor collection interface the repository relies on.
+    async def find_one_and_update(  # NOSONAR python:S7503
+        self,
+        flt: dict,
+        update: dict,
+        *,
+        upsert: bool = False,
+        return_document: Any = None,
+        array_filters: Any = None,
+    ) -> dict | None:
+        for doc in self.docs:
+            if _matches(doc, flt):
+                doc.update(update.get("$set", {}))
+                return dict(doc)
+        if upsert:
+            new = {k: v for k, v in flt.items() if not isinstance(v, dict)}
+            new.update(update.get("$setOnInsert", {}))
+            new.update(update.get("$set", {}))
+            new["_id"] = f"oid-{len(self.docs)}"
+            self.docs.append(new)
+            return dict(new)
+        return None
+
     # async to match the awaited Motor collection interface the service relies on.
     async def find_one(  # NOSONAR python:S7503
         self, flt: dict, projection: Any = None
@@ -97,7 +120,9 @@ def fake_collection(monkeypatch: pytest.MonkeyPatch) -> FakeCollection:
 
     monkeypatch.setattr(redis_cache, "redis", None)
     fake = FakeCollection()
-    monkeypatch.setattr(svc, "integration_instructions_collection", fake)
+    # The service now reaches Mongo through the repository, whose base resolves
+    # the collection via get_async_collection — patch that one boundary.
+    monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda _name: fake)
     return fake
 
 

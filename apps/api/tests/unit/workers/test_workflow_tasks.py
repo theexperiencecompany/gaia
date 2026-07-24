@@ -369,8 +369,7 @@ class TestProcessWorkflowGenerationTask:
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
-            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
             patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
             patch(
                 "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
@@ -378,8 +377,7 @@ class TestProcessWorkflowGenerationTask:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
-            mock_todo_svc._invalidate_cache = AsyncMock()
+            mock_repo.update = AsyncMock(return_value=mock_todo_result)
 
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
@@ -420,12 +418,9 @@ class TestProcessWorkflowGenerationTask:
         user_id = "user_abc"
         workflow = _make_workflow(user_id=user_id)
 
-        mock_todo_result = MagicMock()
-        mock_todo_result.modified_count = 0
-
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
+            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
             patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
             patch(
                 "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
@@ -433,7 +428,7 @@ class TestProcessWorkflowGenerationTask:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
+            mock_repo.update = AsyncMock(return_value=None)
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
@@ -488,8 +483,7 @@ class TestProcessWorkflowGenerationTask:
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
-            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
             patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
             patch(
                 "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
@@ -497,8 +491,7 @@ class TestProcessWorkflowGenerationTask:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
-            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
-            mock_todo_svc._invalidate_cache = AsyncMock()
+            mock_repo.update = AsyncMock(return_value=mock_todo_result)
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws
@@ -1454,8 +1447,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
-            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -1466,8 +1458,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(return_value=workflow)
-            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
-            mock_todo_svc._invalidate_cache = AsyncMock()
+            mock_repo.update = AsyncMock(return_value=mock_todo_result)
 
             result = await process_workflow_generation_task(ctx, todo_id, user_id, "Test Todo")
 
@@ -1537,8 +1528,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
 
         with (
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
-            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
-            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.todo_repository") as mock_repo,
             patch("app.workers.tasks.workflow_tasks.get_websocket_manager") as mock_ws_mgr,
             patch(
                 "app.services.workflow.queue_service.WorkflowQueueService.clear_workflow_generating_flag",
@@ -1546,8 +1536,7 @@ class TestProcessWorkflowGenerationTaskAdditional:
             ),
         ):
             mock_wf_svc.create_workflow = AsyncMock(side_effect=capture_create)
-            mock_todos.update_one = AsyncMock(return_value=mock_todo_result)
-            mock_todo_svc._invalidate_cache = AsyncMock()
+            mock_repo.update = AsyncMock(return_value=mock_todo_result)
             mock_ws = AsyncMock()
             mock_ws.broadcast_to_user = AsyncMock()
             mock_ws_mgr.return_value = mock_ws

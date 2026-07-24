@@ -1,26 +1,11 @@
 import asyncio
 from datetime import UTC, datetime
 import math
-from typing import Any
 import uuid
 
-from bson import ObjectId
-from pymongo import ReturnDocument
-
-from app.constants.cache import STATS_CACHE_TTL
-from app.db.mongodb.collections import (
-    projects_collection,
-    todos_collection,
-    workflows_collection,
-)
-from app.db.redis import (
-    CACHE_TTL,
-    delete_cache,
-    delete_cache_by_pattern,
-    get_cache,
-    set_cache,
-)
-from app.db.utils import serialize_document
+from app.db.repositories.projects import project_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.todo_models import (
     BulkMoveRequest,
     BulkOperationResponse,
@@ -28,14 +13,18 @@ from app.models.todo_models import (
     PaginationMeta,
     Priority,
     ProjectCreate,
+    ProjectDocument,
     ProjectResponse,
+    ProjectUpdate,
     SearchMode,
     SubTask,
+    TodoDocument,
     TodoListResponse,
     TodoModel,
     TodoResponse,
     TodoSearchParams,
     TodoStats,
+    TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -52,46 +41,39 @@ from shared.py.wide_events import log
 
 
 async def _get_workflow_categories_for_todos(
-    todos: list[dict], user_id: str
+    todos: list[TodoDocument], user_id: str
 ) -> dict[str, list[str]]:
-    """
-    Fetch workflow step categories for todos that have linked workflows.
-    Returns a dict mapping todo_id -> list of unique tool categories.
-    """
-    # Skip DB call entirely when no todos have a workflow_id
-    if not any(todo.get("workflow_id") for todo in todos):
-        return {}
+    """Fetch workflow step categories for todos that have linked workflows.
 
-    # Collect workflow IDs from todos
-    workflow_ids = [todo.get("workflow_id") for todo in todos if todo.get("workflow_id")]
-
+    Returns a dict mapping todo_id -> list of unique tool categories (cross-domain
+    read via the workflow repository)."""
+    workflow_ids = [todo.workflow_id for todo in todos if todo.workflow_id]
     if not workflow_ids:
         return {}
 
-    # Batch fetch workflows
-    workflows = await workflows_collection.find(
-        {"_id": {"$in": workflow_ids}, "user_id": user_id}
-    ).to_list(length=None)
+    workflows = await workflow_repository.find_by_ids_for_user(workflow_ids, user_id)
 
-    # Build mapping: workflow_id -> categories
     workflow_categories: dict[str, list[str]] = {}
     for workflow in workflows:
-        workflow_id = workflow.get("_id")
-        steps = workflow.get("steps", [])
-        # Get unique categories from steps (max 3 for display)
-        categories = list(
-            dict.fromkeys(step.get("category") for step in steps if step.get("category"))
-        )[:3]
-        workflow_categories[workflow_id] = categories
+        categories = list(dict.fromkeys(step.category for step in workflow.steps if step.category))[
+            :3
+        ]
+        workflow_categories[workflow.id] = categories
 
-    # Build final mapping: todo_id -> categories
     result: dict[str, list[str]] = {}
     for todo in todos:
-        todo_id = str(todo.get("_id", todo.get("id", "")))
-        workflow_id = todo.get("workflow_id")
-        if workflow_id and workflow_id in workflow_categories:
-            result[todo_id] = workflow_categories[workflow_id]
+        if todo.workflow_id and todo.workflow_id in workflow_categories:
+            result[todo.id] = workflow_categories[todo.workflow_id]
+    return result
 
+
+def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
+    """Give every subtask a stable id, generating one where it is missing."""
+    result: list[SubTask] = []
+    for subtask in subtasks:
+        result.append(
+            subtask if subtask.id else subtask.model_copy(update={"id": str(uuid.uuid4())})
+        )
     return result
 
 
@@ -100,193 +82,30 @@ _background_tasks: set[asyncio.Task] = set()
 
 
 class TodoService:
-    """Service class for todo operations with consistent error handling and caching."""
+    """Service class for todo operations. Persistence + caching live in the
+    todos/projects repositories; this layer holds orchestration only."""
 
     @staticmethod
-    async def _invalidate_cache(
-        user_id: str,
-        project_id: str | None = None,
-        todo_id: str | None = None,
-        operation: str | None = None,
-    ):
-        """Invalidate relevant caches based on the operation context.
-
-        Operations:
-          - update_minor: title/description only — clear individual todo cache
-          - update/delete: visibility changes — clear individual todo + all list caches
-          - create/bulk_*: broad — clear all todo caches
-        """
-        try:
-            # Always invalidate stats and counts since any mutation can change them
-            await delete_cache(f"stats:{user_id}")
-            await delete_cache(f"counts:{user_id}")
-
-            if operation == "update_minor" and todo_id:
-                # Minor updates (title, description) only affect the individual todo,
-                # not list ordering or filter membership
-                await delete_cache(f"todo:{user_id}:{todo_id}")
-            elif operation in ["update", "delete"] and todo_id:
-                # Visibility-affecting updates and deletes: clear the individual todo
-                # and ALL list caches (filtered views use varying key suffixes like
-                # completed:, priority:, project: before page:)
-                await delete_cache(f"todo:{user_id}:{todo_id}")
-                await delete_cache_by_pattern(f"todos:{user_id}:*")
-            else:
-                # Create or bulk operations — invalidate everything
-                await delete_cache_by_pattern(f"todos:{user_id}:*")
-                await delete_cache_by_pattern(f"todo:{user_id}:*")
-
-            # Project cache invalidation (scoped to this user)
-            if project_id:
-                await delete_cache(f"projects:{user_id}")
-        except Exception as e:
-            log.warning("todo.cache_invalidation_failed", error=str(e))
+    async def _get_inbox_id(user_id: str) -> str:
+        """Resolve (creating on first use) the user's default Inbox project id."""
+        inbox = await project_repository.get_or_create_inbox(user_id)
+        return inbox.id
 
     @staticmethod
-    async def _get_or_create_inbox(user_id: str) -> str:
-        """Get or create the default inbox project for a user."""
-        existing = await projects_collection.find_one({"user_id": user_id, "is_default": True})
-
-        if existing:
-            return str(existing["_id"])
-
-        inbox = {
-            "user_id": user_id,
-            "name": "Inbox",
-            "description": "Default project for new todos",
-            "color": "#6B7280",
-            "is_default": True,
-            "created_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
-        }
-        result = await projects_collection.insert_one(inbox)
-        return str(result.inserted_id)
-
-    @staticmethod
-    async def _build_query(user_id: str, params: TodoSearchParams) -> dict[str, Any]:
-        """Build MongoDB query from search parameters."""
-        query: dict[str, Any] = {"user_id": user_id}
-
-        # Text search
-        if params.q and params.mode == SearchMode.TEXT:
-            query["$or"] = [
-                {"title": {"$regex": params.q, "$options": "i"}},
-                {"description": {"$regex": params.q, "$options": "i"}},
-                {"labels": {"$in": [params.q]}},
-            ]
-
-        # Filters
-        if params.project_id is not None:
-            query["project_id"] = params.project_id
-        elif (
-            not params.q and params.completed is None and not params.priority and not params.labels
-        ):
-            # Default to inbox when no filters are specified (main /todos page)
-            inbox_id = await TodoService._get_or_create_inbox(user_id)
-            query["project_id"] = inbox_id
-
-        if params.completed is not None:
-            query["completed"] = params.completed
-        if params.priority:
-            query["priority"] = params.priority.value
-        if params.labels:
-            query["labels"] = {"$in": params.labels}
-
-        # Date filters
-        if params.has_due_date is True:
-            query["due_date"] = {"$ne": None}
-        elif params.has_due_date is False:
-            query["due_date"] = None
-
-        if params.due_date_start or params.due_date_end:
-            date_query = {}
-            if params.due_date_start:
-                date_query["$gte"] = params.due_date_start
-            if params.due_date_end:
-                date_query["$lte"] = params.due_date_end
-            query["due_date"] = date_query
-
-        # Overdue filter
-        if params.overdue is True:
-            query["due_date"] = {"$lt": datetime.now(UTC)}
-            query["completed"] = False
-        elif params.overdue is False and params.has_due_date is not False:
-            query["$or"] = [
-                {"due_date": None},
-                {"due_date": {"$gte": datetime.now(UTC)}},
-            ]
-
-        return query
+    def _needs_inbox_default(params: TodoSearchParams) -> bool:
+        """The unfiltered main list scopes to Inbox; every filtered view does not."""
+        return not (
+            params.project_id
+            or params.q
+            or params.completed is not None
+            or params.priority
+            or params.labels
+        )
 
     @staticmethod
     async def _calculate_stats(user_id: str) -> TodoStats:
-        """Calculate todo statistics for a user."""
-        cache_key = f"stats:{user_id}"
-        cached = await get_cache(cache_key)
-        if cached:
-            return TodoStats(**cached)
-
-        # Use aggregation pipeline for efficient calculation
-        pipeline = [
-            {"$match": {"user_id": user_id}},
-            {
-                "$facet": {
-                    "total": [{"$count": "count"}],
-                    "completed": [{"$match": {"completed": True}}, {"$count": "count"}],
-                    "overdue": [
-                        {
-                            "$match": {
-                                "completed": False,
-                                "due_date": {"$lt": datetime.now(UTC)},
-                            }
-                        },
-                        {"$count": "count"},
-                    ],
-                    "by_priority": [{"$group": {"_id": "$priority", "count": {"$sum": 1}}}],
-                    "by_project": [{"$group": {"_id": "$project_id", "count": {"$sum": 1}}}],
-                    "labels": [
-                        {
-                            "$match": {"completed": False}
-                        },  # Only count labels from non-completed todos
-                        {"$unwind": "$labels"},
-                        {"$group": {"_id": "$labels", "count": {"$sum": 1}}},
-                        {"$sort": {"count": -1}},
-                        {"$limit": 50},  # Limit to top 50 labels
-                    ],
-                }
-            },
-        ]
-
-        result = await todos_collection.aggregate(pipeline).to_list(1)
-        if not result:
-            return TodoStats()
-
-        facets = result[0]
-        total = facets["total"][0]["count"] if facets["total"] else 0
-        completed = facets["completed"][0]["count"] if facets["completed"] else 0
-        overdue = facets["overdue"][0]["count"] if facets["overdue"] else 0
-
-        by_priority = {item["_id"]: item["count"] for item in facets["by_priority"]}
-        by_project = {item["_id"]: item["count"] for item in facets["by_project"]}
-
-        stats = TodoStats(
-            total=total,
-            completed=completed,
-            pending=total - completed,
-            overdue=overdue,
-            by_priority=by_priority,
-            by_project=by_project,
-            completion_rate=round((completed / total * 100) if total > 0 else 0, 2),
-        )
-
-        # Add labels if available
-        if "labels" in facets:
-            stats.labels = [
-                {"name": item["_id"], "count": item["count"]} for item in facets["labels"]
-            ]
-
-        await set_cache(cache_key, stats.model_dump(), STATS_CACHE_TTL)
-        return stats
+        """Todo statistics for a user (cached inside the repository)."""
+        return await todo_repository.compute_stats(user_id=user_id)
 
     # CRUD Operations
     @classmethod
@@ -305,51 +124,42 @@ class TodoService:
                 "user_id": user_id,
             },
         )
-        # Ensure project exists or use inbox
         if not todo.project_id:
-            todo.project_id = await cls._get_or_create_inbox(user_id)
+            todo.project_id = await cls._get_inbox_id(user_id)
         else:
-            project = await projects_collection.find_one(
-                {"_id": ObjectId(todo.project_id), "user_id": user_id}
-            )
+            project = await project_repository.get(todo.project_id, user_id=user_id)
             if not project:
                 raise ValueError(f"Project {todo.project_id} not found")
 
-        todo_dict = todo.model_dump()
-
-        # Handle subtasks: ensure they have IDs
-        if todo.subtasks:
-            todo_dict["subtasks"] = [
-                subtask.model_dump() if isinstance(subtask, SubTask) else subtask
-                for subtask in todo.subtasks
-            ]
-            for subtask in todo_dict["subtasks"]:
-                if not subtask.get("id"):
-                    subtask["id"] = str(uuid.uuid4())
-        else:
-            todo_dict["subtasks"] = []
-
-        todo_dict.update(
-            {
-                "user_id": user_id,
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
-                "completed": False,
-                "workflow_activated": True,  # Start activated by default
-            }
+        document = TodoDocument(
+            user_id=user_id,
+            title=todo.title,
+            description=todo.description,
+            labels=todo.labels,
+            due_date=todo.due_date,
+            due_date_timezone=todo.due_date_timezone,
+            priority=todo.priority,
+            project_id=todo.project_id,
+            completed=False,
+            subtasks=_ensure_subtask_ids(todo.subtasks),
+            workflow_id=todo.workflow_id,
+            workflow_activated=True,  # Start activated by default
+            vfs_path=todo.vfs_path,
+            scheduled_at=todo.scheduled_at,
+            recurrence=todo.recurrence,
+            gaia_retry_count=todo.gaia_retry_count,
+            expires_at=todo.expires_at,
+            references=todo.references,
         )
-
-        result = await todos_collection.insert_one(todo_dict)
-        created_todo = await todos_collection.find_one({"_id": result.inserted_id})
+        created = await todo_repository.create(document)
 
         # Queue workflow generation as fire-and-forget (does not block response)
-        todo_id_str = str(result.inserted_id)
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
             _task = asyncio.create_task(
                 WorkflowQueueService.queue_todo_workflow_generation(
-                    todo_id=todo_id_str,
+                    todo_id=created.id,
                     user_id=user_id,
                     title=todo.title,
                     description=todo.description or "",
@@ -357,147 +167,67 @@ class TodoService:
             )
             _background_tasks.add(_task)
             _task.add_done_callback(_background_tasks.discard)
-            log.info(
-                "todo.workflow_generation_queued",
-                todo_id=todo_id_str,
-                title=todo.title,
-            )
+            log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
         except Exception as e:
             log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))
 
         # Index for search
         try:
-            if created_todo:
-                await store_todo_embedding(str(result.inserted_id), created_todo, user_id)
+            await store_todo_embedding(created.id, created.model_dump(), user_id)
         except Exception as e:
             log.warning("todo.index_failed", error=str(e))
 
-        await cls._invalidate_cache(user_id, todo.project_id, str(result.inserted_id), "create")
         schedule_user_todos_sync(user_id)
-
-        # Return todo response without workflow (will be generated in background)
-        if not created_todo:
-            raise ValueError("Failed to create todo")
-        todo_response_data = serialize_document(created_todo)
-        return TodoResponse(**todo_response_data)
+        return TodoResponse.from_document(created)
 
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
         """Get a single todo by ID."""
-        log.set(
-            service="todo_service",
-            operation="get_todo",
-            user_id=user_id,
-            todo_id=todo_id,
-        )
-        # Try cache first
-        cache_key = f"todo:{user_id}:{todo_id}"
-        cached = await get_cache(cache_key)
-        if cached:
-            return TodoResponse(**cached)
-
-        todo = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
-
+        log.set(service="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
+        todo = await todo_repository.get(todo_id, user_id=user_id)
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Enrich with workflow categories
-        serialized = serialize_document(todo)
-        if todo.get("workflow_id"):
+        if todo.workflow_id:
             workflow_categories = await _get_workflow_categories_for_todos([todo], user_id)
-            serialized["workflow_categories"] = workflow_categories.get(serialized["id"], [])
-        else:
-            serialized["workflow_categories"] = []
-
-        response = TodoResponse(**serialized)
-
-        # Cache the response
-        await set_cache(cache_key, response.model_dump(), CACHE_TTL)
-
-        return response
+            return TodoResponse.from_document(
+                todo, workflow_categories=workflow_categories.get(todo.id, [])
+            )
+        return TodoResponse.from_document(todo)
 
     @classmethod
     async def list_todos(cls, user_id: str, params: TodoSearchParams) -> TodoListResponse:
         """List todos with filtering, pagination, and optional stats."""
-        # Handle search modes
+        # Semantic / hybrid search is a vector concern handled separately.
         if params.q and params.mode in [SearchMode.SEMANTIC, SearchMode.HYBRID]:
             return await cls._search_todos(user_id, params)
 
-        # Generate cache key for this specific query — must include ALL filter
-        # params to prevent cache collisions between different filtered views
-        cache_key_parts = [f"todos:{user_id}"]
-        if params.project_id:
-            cache_key_parts.append(f"project:{params.project_id}")
-        if params.completed is not None:
-            cache_key_parts.append(f"completed:{params.completed}")
-        if params.priority:
-            cache_key_parts.append(f"priority:{params.priority.value}")
-        if params.labels:
-            cache_key_parts.append(f"labels:{','.join(sorted(params.labels))}")
-        if params.has_due_date is not None:
-            cache_key_parts.append(f"has_due_date:{params.has_due_date}")
-        if params.overdue is not None:
-            cache_key_parts.append(f"overdue:{params.overdue}")
-        if params.due_date_start:
-            cache_key_parts.append(f"due_after:{params.due_date_start.isoformat()}")
-        if params.due_date_end:
-            cache_key_parts.append(f"due_before:{params.due_date_end.isoformat()}")
-        if params.q:
-            cache_key_parts.append(f"q:{params.q}")
-        if params.per_page != 50:
-            cache_key_parts.append(f"pp:{params.per_page}")
-        cache_key_parts.append(f"page:{params.page}")
-        cache_key = ":".join(cache_key_parts)
+        inbox_project_id = (
+            await cls._get_inbox_id(user_id) if cls._needs_inbox_default(params) else None
+        )
+        page = await todo_repository.list_page(
+            user_id=user_id, params=params, inbox_project_id=inbox_project_id
+        )
 
-        # Try to get from cache
-        cached_response = await get_cache(cache_key)
-        if cached_response and not params.include_stats:
-            return TodoListResponse(**cached_response)
-
-        # Build query
-        query = await cls._build_query(user_id, params)
-
-        # Count total
-        total = await todos_collection.count_documents(query)
-
-        # Calculate pagination
-        skip = (params.page - 1) * params.per_page
-        pages = math.ceil(total / params.per_page)
-
-        # Fetch todos
-        cursor = todos_collection.find(query).sort("created_at", -1)
-        cursor = cursor.skip(skip).limit(params.per_page)
-        todos = await cursor.to_list(params.per_page)
-
-        # Fetch workflow categories for todos with linked workflows
-        workflow_categories = await _get_workflow_categories_for_todos(todos, user_id)
-
-        # Build response with workflow categories
-        data = []
-        for todo in todos:
-            serialized = serialize_document(todo)
-            todo_id = serialized.get("id", "")
-            serialized["workflow_categories"] = workflow_categories.get(todo_id, [])
-            data.append(TodoResponse(**serialized))
+        workflow_categories = await _get_workflow_categories_for_todos(page.items, user_id)
+        data = [
+            TodoResponse.from_document(
+                todo, workflow_categories=workflow_categories.get(todo.id, [])
+            )
+            for todo in page.items
+        ]
+        pages = math.ceil(page.total / params.per_page) if params.per_page else 0
         meta = PaginationMeta(
-            total=total,
+            total=page.total,
             page=params.page,
             per_page=params.per_page,
             pages=pages,
             has_next=params.page < pages,
             has_prev=params.page > 1,
         )
-
         response = TodoListResponse(data=data, meta=meta)
-
-        # Cache the response (without stats)
-        if not params.include_stats:
-            await set_cache(cache_key, response.model_dump(), CACHE_TTL)
-
-        # Include stats if requested
         if params.include_stats:
             response.stats = await cls._calculate_stats(user_id)
-
         return response
 
     @classmethod
@@ -516,151 +246,89 @@ class TodoService:
                 "priority": str(updates.priority) if updates.priority is not None else None,
             },
         )
-        # Prepare updates
-        update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
+        update_fields = {k: v for k, v in updates.model_dump().items() if v is not None}
 
-        # Validate project if changing
-        if "project_id" in update_dict:
-            project = await projects_collection.find_one(
-                {"_id": ObjectId(update_dict["project_id"]), "user_id": user_id}
-            )
+        if "project_id" in update_fields:
+            project = await project_repository.get(update_fields["project_id"], user_id=user_id)
             if not project:
-                raise ValueError(f"Project {update_dict['project_id']} not found")
+                raise ValueError(f"Project {update_fields['project_id']} not found")
 
-        # Handle subtasks
-        if "subtasks" in update_dict:
-            update_dict["subtasks"] = [
-                subtask.model_dump() if isinstance(subtask, SubTask) else subtask
-                for subtask in update_dict["subtasks"]
+        if "subtasks" in update_fields:
+            update_fields["subtasks"] = [
+                s.model_dump() if isinstance(s, SubTask) else s for s in update_fields["subtasks"]
             ]
-            for subtask in update_dict["subtasks"]:
+            for subtask in update_fields["subtasks"]:
                 if not subtask.get("id"):
                     subtask["id"] = str(uuid.uuid4())
 
-        # Track completion timestamp
-        if "completed" in update_dict:
-            if update_dict["completed"]:
-                update_dict["completed_at"] = datetime.now(UTC)
-            else:
-                # Clear completed_at when unmarking as complete
-                update_dict["completed_at"] = None
-
-        update_dict["updated_at"] = datetime.now(UTC)
-
-        # Completing a tracked todo (one with a VFS canvas) must run the
-        # tracked-todo lifecycle FIRST. complete_tracked_todo sets completed,
-        # archives the canvas, and marks ChromaDB. If we set completed in the
-        # parent $set first, its internal guard (`if doc.get("completed")`)
-        # trips and skips the archive. So: route completion through the service
-        # before this update, and strip completed fields from the $set so we
-        # don't clobber the archived state.
-        completing_tracked = False
-        if update_dict.get("completed") is True:
-            tracked_doc = await todos_collection.find_one(
-                {
-                    "_id": ObjectId(todo_id),
-                    "user_id": user_id,
-                    "vfs_path": {"$exists": True, "$ne": None},
-                },
-                {"_id": 1},
+        # Track completion timestamp (explicit None clears it when un-completing).
+        if "completed" in update_fields:
+            update_fields["completed_at"] = (
+                datetime.now(UTC) if update_fields["completed"] else None
             )
-            if tracked_doc:
-                completing_tracked = True
+
+        # Completing a tracked todo (one with a VFS canvas) must run the tracked
+        # lifecycle FIRST — complete_tracked_todo archives the canvas and sets the
+        # completion fields itself. So route completion through the service, then
+        # strip the completion fields from this update so we don't re-trip the
+        # completion guard or clobber the archived vfs_path.
+        if update_fields.get("completed") is True:
+            existing = await todo_repository.get(todo_id, user_id=user_id)
+            if existing and existing.vfs_path:
                 try:
-                    # Deferred import to avoid circular dependency:
-                    # tracked_todo_service -> TodoService -> tracked_todo_service
-                    from app.services.tracked_todo_service import (
-                        tracked_todo_service,
-                    )
+                    from app.services.tracked_todo_service import tracked_todo_service
 
                     await tracked_todo_service.complete_tracked_todo(
                         todo_id, user_id, summary="Completed via UI"
                     )
                 except Exception as e:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
-                # The service already persisted completed/completed_at/vfs_path.
-                # Drop them from the $set so this update can't overwrite the
-                # archived path or re-trip the completion guard.
-                update_dict.pop("completed", None)
-                update_dict.pop("completed_at", None)
+                update_fields.pop("completed", None)
+                update_fields.pop("completed_at", None)
 
-        # Update and return - this also verifies ownership atomically
-        updated = await todos_collection.find_one_and_update(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {"$set": update_dict},
-            return_document=ReturnDocument.AFTER,
-        )
+        if update_fields:
+            updated = await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(**update_fields)
+            )
+        else:
+            # Only a tracked completion happened; it already persisted + invalidated.
+            updated = await todo_repository.get(todo_id, user_id=user_id)
 
-        # If todo not found, updated will be None
         if not updated:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Update search index
         try:
-            await update_todo_embedding(todo_id, updated, user_id)
+            await update_todo_embedding(todo_id, updated.model_dump(), user_id)
         except Exception as e:
             log.warning("todo.index_update_failed", todo_id=todo_id, error=str(e))
 
-        # Determine if this update affects list visibility. completing_tracked
-        # always does (completion was applied by the tracked-todo service and
-        # popped from update_dict above).
-        affects_visibility = completing_tracked or any(
-            [
-                "completed" in update_dict,
-                "project_id" in update_dict,
-                "priority" in update_dict,
-                "due_date" in update_dict,
-                "labels" in update_dict,
-            ]
-        )
-
-        await cls._invalidate_cache(
-            user_id,
-            updated.get("project_id"),
-            todo_id,
-            "update" if affects_visibility else "update_minor",
-        )
         schedule_user_todos_sync(user_id)
-
-        return TodoResponse(**serialize_document(updated))
+        return TodoResponse.from_document(updated)
 
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
         """Delete a todo."""
-        log.set(
-            service="todo_service",
-            operation="delete_todo",
-            user_id=user_id,
-            todo_id=todo_id,
-        )
-        # Fetch the document before deleting to check for tracked todo assets
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        log.set(service="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
+        doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Clean up tracked todo search index if present. Canvas/log content lives on
-        # the todo doc itself, so it disappears with the delete_one below — no
-        # separate filesystem cleanup needed.
-        if doc.get("vfs_path"):
+        # Tracked-todo canvas/log content lives on the doc, so it disappears with
+        # the delete below — only the ChromaDB canvas embedding needs cleanup.
+        if doc.vfs_path:
             try:
                 await delete_canvas_embedding(todo_id)
             except Exception as e:
                 log.warning("todo.canvas_embedding_delete_failed", todo_id=todo_id, error=str(e))
 
-        # Delete the document with ownership verification
-        result = await todos_collection.delete_one({"_id": ObjectId(todo_id), "user_id": user_id})
-
-        if result.deleted_count == 0:
+        if not await todo_repository.delete(todo_id, user_id=user_id):
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Remove from search index
         try:
             await delete_todo_embedding(todo_id)
         except Exception as e:
             log.warning("todo.index_remove_failed", todo_id=todo_id, error=str(e))
 
-        # Invalidate cache broadly since we don't know the project_id
-        await cls._invalidate_cache(user_id, None, todo_id, "delete")
         schedule_user_todos_sync(user_id)
 
     # Bulk Operations
@@ -669,156 +337,86 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
-        # Prepare updates - only include non-None fields
-        update_dict = {k: v for k, v in request.updates.model_dump().items() if v is not None}
-
-        if not update_dict:
+        update_fields = {k: v for k, v in request.updates.model_dump().items() if v is not None}
+        if not update_fields:
             return BulkOperationResponse(
-                success=[],
-                failed=[],
-                total=len(request.todo_ids),
-                message="No updates provided",
+                success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
             )
 
-        # Validate project if changing
-        if "project_id" in update_dict:
-            project = await projects_collection.find_one(
-                {"_id": ObjectId(update_dict["project_id"]), "user_id": user_id}
-            )
+        if "project_id" in update_fields:
+            project = await project_repository.get(update_fields["project_id"], user_id=user_id)
             if not project:
-                raise ValueError(f"Project {update_dict['project_id']} not found")
+                raise ValueError(f"Project {update_fields['project_id']} not found")
 
-        # Handle subtasks conversion
-        if "subtasks" in update_dict:
-            update_dict["subtasks"] = [
-                subtask.model_dump() if isinstance(subtask, SubTask) else subtask
-                for subtask in update_dict["subtasks"]
+        if "subtasks" in update_fields:
+            update_fields["subtasks"] = [
+                s.model_dump() if isinstance(s, SubTask) else s for s in update_fields["subtasks"]
             ]
-            for subtask in update_dict["subtasks"]:
+            for subtask in update_fields["subtasks"]:
                 if not subtask.get("id"):
                     subtask["id"] = str(uuid.uuid4())
 
-        update_dict["updated_at"] = datetime.now(UTC)
-
-        # Single atomic update operation for all todos
-        result = await todos_collection.update_many(
-            {
-                "_id": {"$in": [ObjectId(tid) for tid in request.todo_ids]},
-                "user_id": user_id,
-            },
-            {"$set": update_dict},
+        modified = await todo_repository.bulk_update(
+            user_id, request.todo_ids, TodoUpdate(**update_fields)
         )
 
-        # Update search index for modified todos
-        if result.modified_count > 0:
+        if modified > 0:
             try:
-                # Fetch updated todos to reindex
-                updated_todos = await todos_collection.find(
-                    {
-                        "_id": {"$in": [ObjectId(tid) for tid in request.todo_ids]},
-                        "user_id": user_id,
-                    }
-                ).to_list(None)
-
-                tasks = [
-                    update_todo_embedding(str(todo["_id"]), todo, user_id) for todo in updated_todos
-                ]
-                await asyncio.gather(*tasks, return_exceptions=True)
+                updated_todos = await todo_repository.find_by_ids(user_id, request.todo_ids)
+                await asyncio.gather(
+                    *(update_todo_embedding(t.id, t.model_dump(), user_id) for t in updated_todos),
+                    return_exceptions=True,
+                )
             except Exception as e:
                 log.warning("todo.bulk_index_update_failed", error=str(e))
-
-        await cls._invalidate_cache(user_id, operation="bulk_update")
-
-        if result.modified_count:
             schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
-            success=request.todo_ids[: result.modified_count],  # Approximation
+            success=request.todo_ids[:modified],
             failed=[],
             total=len(request.todo_ids),
-            message=f"Updated {result.modified_count} todos",
+            message=f"Updated {modified} todos",
         )
 
     @classmethod
     async def bulk_delete_todos(cls, todo_ids: list[str], user_id: str) -> BulkOperationResponse:
         """Bulk delete multiple todos."""
-        # Get todos before deletion for cleanup operations
-        todos_to_delete = await todos_collection.find(
-            {
-                "_id": {"$in": [ObjectId(tid) for tid in todo_ids]},
-                "user_id": user_id,
-            }
-        ).to_list(None)
+        todos_to_delete = await todo_repository.find_by_ids(user_id, todo_ids)
+        deleted = await todo_repository.bulk_delete(user_id, todo_ids)
 
-        # Single atomic delete operation for all todos
-        result = await todos_collection.delete_many(
-            {
-                "_id": {"$in": [ObjectId(tid) for tid in todo_ids]},
-                "user_id": user_id,
-            }
-        )
-
-        # Remove from search index
-        if result.deleted_count > 0:
-            try:
-                for todo in todos_to_delete:
-                    try:
-                        await delete_todo_embedding(str(todo["_id"]))
-                    except Exception as e:
-                        log.warning(
-                            "todo.index_remove_failed",
-                            todo_id=str(todo["_id"]),
-                            error=str(e),
-                        )
-            except Exception as e:
-                log.warning("todo.bulk_index_cleanup_failed", error=str(e))
-
-        await cls._invalidate_cache(user_id, operation="bulk_delete")
-
-        if result.deleted_count:
+        if deleted > 0:
+            for todo in todos_to_delete:
+                try:
+                    await delete_todo_embedding(todo.id)
+                except Exception as e:
+                    log.warning("todo.index_remove_failed", todo_id=todo.id, error=str(e))
             schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
-            success=todo_ids[: result.deleted_count],  # Approximation
+            success=todo_ids[:deleted],
             failed=[],
             total=len(todo_ids),
-            message=f"Deleted {result.deleted_count} todos",
+            message=f"Deleted {deleted} todos",
         )
 
     @classmethod
     async def bulk_move_todos(cls, request: BulkMoveRequest, user_id: str) -> BulkOperationResponse:
         """Bulk move todos to another project."""
-        # Verify project exists
-        project = await projects_collection.find_one(
-            {"_id": ObjectId(request.project_id), "user_id": user_id}
-        )
-
+        project = await project_repository.get(request.project_id, user_id=user_id)
         if not project:
             raise ValueError(f"Project {request.project_id} not found")
 
-        result = await todos_collection.update_many(
-            {
-                "_id": {"$in": [ObjectId(tid) for tid in request.todo_ids]},
-                "user_id": user_id,
-            },
-            {
-                "$set": {
-                    "project_id": request.project_id,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        modified = await todo_repository.bulk_update(
+            user_id, request.todo_ids, TodoUpdate(project_id=request.project_id)
         )
-
-        await cls._invalidate_cache(user_id, project_id=request.project_id, operation="bulk_move")
-
-        if result.modified_count:
+        if modified:
             schedule_user_todos_sync(user_id)
 
         return BulkOperationResponse(
-            success=request.todo_ids if result.modified_count > 0 else [],
+            success=request.todo_ids if modified > 0 else [],
             failed=[],
             total=len(request.todo_ids),
-            message=f"Moved {result.modified_count} todos",
+            message=f"Moved {modified} todos",
         )
 
     # Search Operations
@@ -826,7 +424,6 @@ class TodoService:
     async def _search_todos(cls, user_id: str, params: TodoSearchParams) -> TodoListResponse:
         """Perform semantic or hybrid search."""
         if not params.q:
-            # No query provided, return empty results
             return TodoListResponse(
                 data=[],
                 meta=PaginationMeta(
@@ -843,7 +440,7 @@ class TodoService:
             results = await vector_search(
                 query=params.q,
                 user_id=user_id,
-                top_k=params.per_page * params.page,  # Get enough for pagination
+                top_k=params.per_page * params.page,
                 completed=params.completed,
                 priority=params.priority.value if params.priority else None,
                 project_id=params.project_id,
@@ -860,12 +457,9 @@ class TodoService:
                 project_id=params.project_id,
             )
 
-        # Apply pagination to results
         total = len(results)
         start = (params.page - 1) * params.per_page
-        end = start + params.per_page
-        paginated_results = results[start:end]
-
+        paginated_results = results[start : start + params.per_page]
         pages = math.ceil(total / params.per_page)
         meta = PaginationMeta(
             total=total,
@@ -875,12 +469,9 @@ class TodoService:
             has_next=params.page < pages,
             has_prev=params.page > 1,
         )
-
         response = TodoListResponse(data=paginated_results, meta=meta)
-
         if params.include_stats:
             response.stats = await cls._calculate_stats(user_id)
-
         return response
 
 
@@ -897,82 +488,26 @@ class ProjectService:
             user_id=user_id,
             project_name=project.name,
         )
-        # Ensure user has inbox
-        await TodoService._get_or_create_inbox(user_id)
+        await project_repository.get_or_create_inbox(user_id)  # ensure inbox exists
 
-        project_dict = project.model_dump()
-        project_dict.update(
-            {
-                "user_id": user_id,
-                "is_default": False,
-                "created_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
-            }
+        created = await project_repository.create(
+            ProjectDocument(
+                user_id=user_id,
+                name=project.name,
+                description=project.description,
+                color=project.color,
+                is_default=False,
+            )
         )
-
-        result = await projects_collection.insert_one(project_dict)
-        created = await projects_collection.find_one({"_id": result.inserted_id})
-
-        if not created:
-            raise ValueError("Failed to create project")
-
-        # Get todo count
-        todo_count = await todos_collection.count_documents(
-            {"user_id": user_id, "project_id": str(result.inserted_id)}
-        )
-
-        await TodoService._invalidate_cache(
-            user_id, project_id=str(result.inserted_id), operation="project_create"
-        )
-
-        return ProjectResponse(**serialize_document(created), todo_count=todo_count)
+        todo_count = await todo_repository.count_in_project(user_id, created.id)
+        return ProjectResponse.from_document(created, todo_count=todo_count)
 
     @staticmethod
     async def list_projects(user_id: str) -> list[ProjectResponse]:
         """List all projects with todo counts."""
-        # Try cache first
-        cache_key = f"projects:{user_id}"
-        cached = await get_cache(cache_key)
-        if cached:
-            return [ProjectResponse(**project) for project in cached]
-
-        # Ensure inbox exists
-        await TodoService._get_or_create_inbox(user_id)
-
-        # Aggregation to get projects with counts
-        pipeline = [
-            {"$match": {"user_id": user_id}},
-            {"$sort": {"created_at": -1}},
-            {
-                "$lookup": {
-                    "from": "todos",
-                    "let": {"project_id": {"$toString": "$_id"}},
-                    "pipeline": [
-                        {
-                            "$match": {
-                                "$expr": {
-                                    "$and": [
-                                        {"$eq": ["$user_id", user_id]},
-                                        {"$eq": ["$project_id", "$$project_id"]},
-                                    ]
-                                }
-                            }
-                        },
-                        {"$count": "count"},
-                    ],
-                    "as": "todo_stats",
-                }
-            },
-            {"$addFields": {"todo_count": {"$ifNull": [{"$first": "$todo_stats.count"}, 0]}}},
-        ]
-
-        projects = await projects_collection.aggregate(pipeline).to_list(None)
-        response = [ProjectResponse(**serialize_document(project)) for project in projects]
-
-        # Cache the response
-        await set_cache(cache_key, [p.model_dump() for p in response], CACHE_TTL)
-
-        return response
+        await project_repository.get_or_create_inbox(user_id)  # ensure inbox exists
+        projects = await project_repository.list_with_counts(user_id=user_id)
+        return [ProjectResponse.from_document(project) for project in projects]
 
     @staticmethod
     async def update_project(
@@ -985,73 +520,40 @@ class ProjectService:
             user_id=user_id,
             project_id=project_id,
         )
-        existing = await projects_collection.find_one(
-            {"_id": ObjectId(project_id), "user_id": user_id}
-        )
-
+        existing = await project_repository.get(project_id, user_id=user_id)
         if not existing:
             raise ValueError(f"Project {project_id} not found")
-
-        if existing.get("is_default"):
+        if existing.is_default:
             raise ValueError("Cannot update default Inbox project")
 
-        update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
-        update_dict["updated_at"] = datetime.now(UTC)
-
-        updated = await projects_collection.find_one_and_update(
-            {"_id": ObjectId(project_id)},
-            {"$set": update_dict},
-            return_document=ReturnDocument.AFTER,
+        update_fields = {k: v for k, v in updates.model_dump().items() if v is not None}
+        updated = await project_repository.update(
+            project_id, user_id=user_id, update=ProjectUpdate(**update_fields)
         )
+        if not updated:
+            raise ValueError(f"Project {project_id} not found")
 
-        # Get todo count
-        todo_count = await todos_collection.count_documents(
-            {"user_id": user_id, "project_id": project_id}
-        )
-
-        await TodoService._invalidate_cache(
-            user_id, project_id=project_id, operation="project_update"
-        )
-
-        return ProjectResponse(**serialize_document(updated), todo_count=todo_count)
+        todo_count = await todo_repository.count_in_project(user_id, project_id)
+        return ProjectResponse.from_document(updated, todo_count=todo_count)
 
     @staticmethod
     async def delete_project(project_id: str, user_id: str) -> None:
-        """Delete a project and move todos to inbox."""
+        """Delete a project and move its todos to inbox."""
         log.set(
             service="todo_service",
             operation="delete_project",
             user_id=user_id,
             project_id=project_id,
         )
-        project = await projects_collection.find_one(
-            {"_id": ObjectId(project_id), "user_id": user_id}
-        )
-
+        project = await project_repository.get(project_id, user_id=user_id)
         if not project:
             raise ValueError(f"Project {project_id} not found")
-
-        if project.get("is_default"):
+        if project.is_default:
             raise ValueError("Cannot delete default Inbox project")
 
-        # Move todos to inbox
-        inbox_id = await TodoService._get_or_create_inbox(user_id)
-        await todos_collection.update_many(
-            {"user_id": user_id, "project_id": project_id},
-            {
-                "$set": {
-                    "project_id": inbox_id,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
-
-        # Delete project
-        await projects_collection.delete_one({"_id": ObjectId(project_id)})
-
-        await TodoService._invalidate_cache(
-            user_id, project_id=project_id, operation="project_delete"
-        )
+        inbox_id = await project_repository.get_or_create_inbox(user_id)
+        await todo_repository.move_todos_to_project(user_id, project_id, inbox_id.id)
+        await project_repository.delete(project_id, user_id=user_id)
 
 
 # Compatibility functions for old API
@@ -1177,13 +679,9 @@ async def get_todos_by_date_range(
 
 async def get_all_labels(user_id: str) -> list[dict]:
     """Get all unique labels used by the user with counts."""
-    # Get stats which includes label info
     stats = await TodoService._calculate_stats(user_id)
-
-    # Return labels from stats if available
-    if hasattr(stats, "labels") and stats.labels:
+    if stats.labels:
         return stats.labels
-
     return []
 
 

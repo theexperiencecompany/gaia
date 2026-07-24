@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.hil_models import HILToolRiskRecord
 from app.services.hil.classification import (
     _ClassifyResult,
     is_tool_destructive,
@@ -34,10 +35,10 @@ def registry_with(flag: bool | None) -> MagicMock:
 
 @pytest.fixture
 def mongo() -> MagicMock:
-    with patch(f"{MODULE}.hil_tool_risk_collection") as collection:
-        collection.find_one = AsyncMock(return_value=None)
-        collection.update_one = AsyncMock()
-        yield collection
+    with patch(f"{MODULE}.hil_tool_risk_repository") as repo:
+        repo.find_classification = AsyncMock(return_value=None)
+        repo.upsert_classification = AsyncMock()
+        yield repo
 
 
 @pytest.fixture(autouse=True)
@@ -63,9 +64,9 @@ class TestFailsClosed:
     async def test_mongo_failure_classifies_as_destructive(self) -> None:
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry_with(None))),
-            patch(f"{MODULE}.hil_tool_risk_collection") as collection,
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
         ):
-            collection.find_one = AsyncMock(side_effect=ConnectionError("mongo down"))
+            repo.find_classification = AsyncMock(side_effect=ConnectionError("mongo down"))
             assert await is_tool_destructive("custom_tool", "does something") is True
 
     async def test_an_unclassified_tool_the_llm_calls_safe_is_still_honoured_as_safe(
@@ -153,11 +154,15 @@ class TestRegistryAndCache:
         registry = registry_with(None)
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch(f"{MODULE}.hil_tool_risk_collection") as collection,
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
             patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm,
         ):
-            collection.find_one = AsyncMock(return_value={"is_destructive": True})
-            collection.update_one = AsyncMock()
+            repo.find_classification = AsyncMock(
+                return_value=HILToolRiskRecord(
+                    tool_name="custom_tool", description_hash="h", is_destructive=True
+                )
+            )
+            repo.upsert_classification = AsyncMock()
             result = await is_tool_destructive("custom_tool", "Deletes things.")
 
         assert result is True
@@ -172,20 +177,20 @@ class TestRegistryAndCache:
         registry = registry_with(None)
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch(f"{MODULE}.hil_tool_risk_collection") as collection,
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
             patch(
                 f"{MODULE}.ainvoke_structured",
                 new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="del")),
             ),
         ):
-            collection.find_one = AsyncMock(return_value=None)  # no row for the new hash
-            collection.update_one = AsyncMock()
+            repo.find_classification = AsyncMock(return_value=None)  # no row for the new hash
+            repo.upsert_classification = AsyncMock()
 
             await is_tool_destructive("custom_tool", "Lists files.")
-            first_hash = collection.find_one.await_args.args[0]["description_hash"]
+            first_hash = repo.find_classification.await_args.args[1]
 
             await is_tool_destructive("custom_tool", "Deletes files.")
-            second_hash = collection.find_one.await_args.args[0]["description_hash"]
+            second_hash = repo.find_classification.await_args.args[1]
 
         assert first_hash != second_hash
 
@@ -195,18 +200,18 @@ class TestRegistryAndCache:
         registry = registry_with(None)
         with (
             patch(f"{MODULE}.get_tool_registry", new=AsyncMock(return_value=registry)),
-            patch(f"{MODULE}.hil_tool_risk_collection") as collection,
+            patch(f"{MODULE}.hil_tool_risk_repository") as repo,
             patch(
                 f"{MODULE}.ainvoke_structured",
                 new=AsyncMock(return_value=_ClassifyResult(is_destructive=True, rationale="wipes")),
             ),
         ):
-            collection.find_one = AsyncMock(return_value=None)
-            collection.update_one = AsyncMock()
+            repo.find_classification = AsyncMock(return_value=None)
+            repo.upsert_classification = AsyncMock()
             result = await is_tool_destructive("wipe_db", "Wipes the database.")
-            persisted = collection.update_one.await_args.args[1]["$set"]
+            persisted = repo.upsert_classification.await_args.args[0]
 
         assert result is True
-        assert persisted["is_destructive"] is True
-        assert persisted["tool_name"] == "wipe_db"
+        assert persisted.is_destructive is True
+        assert persisted.tool_name == "wipe_db"
         registry.mark_tool_destructive.assert_called_once_with("wipe_db", True)

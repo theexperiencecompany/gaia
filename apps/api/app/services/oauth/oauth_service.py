@@ -1,7 +1,5 @@
-from datetime import UTC, datetime
 from typing import Any
 
-from bson import ObjectId
 from fastapi import HTTPException
 
 from app.config.oauth_config import (
@@ -21,9 +19,10 @@ from app.constants.integrations import (
 )
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import user_integrations_collection, users_collection
+from app.db.repositories.user_integrations import user_integration_repository
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable
-from app.models.user_models import BioStatus
+from app.models.user_models import BioStatus, UserDocument, UserUpdate
 from app.services.analytics_service import track_login, track_signup
 from app.services.composio.composio_service import get_composio_service
 from app.services.email import add_marketing_contact, send_welcome_email
@@ -46,7 +45,7 @@ async def store_user_info(
     picture_url: str | None,
     *,
     external_side_effects: bool = True,
-) -> tuple[ObjectId, bool]:
+) -> tuple[str, bool]:
     """
     Stores user info from Google callback.
 
@@ -63,7 +62,7 @@ async def store_user_info(
             dev/test minting, which must never email or pollute analytics.
 
     Returns:
-        tuple[ObjectId, bool]: (user_id, is_new_user)
+        tuple[str, bool]: (user_id, is_new_user)
 
     Raises:
         HTTPException: If any step in the process fails.
@@ -71,24 +70,19 @@ async def store_user_info(
     if not email:
         raise HTTPException(status_code=400, detail="Email is required")
 
-    current_time = datetime.now(UTC)
-
     # Check if user already exists
-    existing_user = await users_collection.find_one({"email": email})
+    existing_user = await user_repository.get_by_email(email)
 
     if existing_user:
-        update_data = {
-            "name": name,
-            "updated_at": current_time,
-        }
+        update_fields: dict[str, str] = {"name": name}
 
         # Update picture URL if provided, otherwise keep existing or set empty
         if picture_url:
-            update_data["picture"] = picture_url
-        elif not existing_user.get("picture"):
-            update_data["picture"] = ""
+            update_fields["picture"] = picture_url
+        elif not existing_user.picture:
+            update_fields["picture"] = ""
 
-        await users_collection.update_one({"email": email}, {"$set": update_data})
+        await user_repository.update(existing_user.id, UserUpdate(**update_fields))
         if external_side_effects:
             try:
                 track_login(
@@ -100,19 +94,14 @@ async def store_user_info(
             except Exception as e:
                 log.error(f"{LogTag.OAUTH} Failed to track login in PostHog for {email}: {e!s}")
 
-        return existing_user["_id"], False
-    user_data = {
-        "name": name,
-        "email": email,
-        "picture": picture_url or "",
-        "created_at": current_time,
-        "updated_at": current_time,
-    }
+        return existing_user.id, False
 
-    result = await users_collection.insert_one(user_data)
+    created = await user_repository.create(
+        UserDocument(name=name, email=email, picture=picture_url or "")
+    )
 
     if not external_side_effects:
-        return result.inserted_id, True
+        return created.id, True
 
     # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
     try:
@@ -144,9 +133,9 @@ async def store_user_info(
 
     # Provision the user's workspace (system files + skills catalog) now, instead
     # of lazily on the first chat turn. Fire-and-forget so signup isn't blocked.
-    schedule_user_provision(str(result.inserted_id))
+    schedule_user_provision(created.id)
 
-    return result.inserted_id, True
+    return created.id, True
 
 
 @Cacheable(ttl=86400, key_pattern=f"{OAUTH_STATUS_KEY}:{{user_id}}")
@@ -168,10 +157,9 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     result = {}
 
     # Step 1: Get all user_integrations from MongoDB (canonical source)
-    user_ints = await user_integrations_collection.find({"user_id": user_id}).to_list(100)
+    user_ints = await user_integration_repository.list_for_user(user_id, limit=100)
     mongo_status = {
-        doc["integration_id"]: doc.get("status") == INTEGRATION_STATUS_CONNECTED
-        for doc in user_ints
+        ui.integration_id: ui.status == INTEGRATION_STATUS_CONNECTED for ui in user_ints
     }
 
     # Track which platform integrations need external verification
@@ -338,27 +326,20 @@ async def handle_oauth_connection(
 
         user_doc = None
         try:
-            user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+            user_doc = await user_repository.get(user_id)
         except Exception as e:
             log.error(f"{LogTag.OAUTH} Failed to load user_doc for {user_id}: {e}", exc_info=True)
 
-        onboarding_completed = bool(user_doc and user_doc.get("onboarding", {}).get("completed"))
+        onboarding = (user_doc.onboarding if user_doc else None) or {}
+        onboarding_completed = bool(onboarding.get("completed"))
 
         # If bio was generated without Gmail (post-onboarding reconnect),
         # bump bio_status back to processing so the UI re-runs.
         if onboarding_completed and user_doc:
             try:
-                current_bio_status = user_doc.get("onboarding", {}).get("bio_status")
+                current_bio_status = onboarding.get("bio_status")
                 if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
-                    await users_collection.update_one(
-                        {"_id": ObjectId(user_id)},
-                        {
-                            "$set": {
-                                "onboarding.bio_status": BioStatus.PROCESSING,
-                                "updated_at": datetime.now(UTC),
-                            }
-                        },
-                    )
+                    await user_repository.set_bio_status(user_id, BioStatus.PROCESSING)
                     log.info(
                         f"{LogTag.OAUTH} Updated bio_status to processing for user {user_id} "
                         f"(was {current_bio_status})"
