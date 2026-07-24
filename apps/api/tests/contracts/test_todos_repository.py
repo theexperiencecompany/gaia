@@ -90,6 +90,94 @@ class TestTodosRepository(UserScopedRepositoryContract):
         )
         assert [t.title for t in page.items] == ["Buy milk"]
 
+    async def test_list_page_orders_newest_first(self, repo, make_doc):
+        """created_at descending — the order the todo list is rendered in."""
+        now = datetime.now(UTC)
+        # Inserted oldest-first so a stable-but-unsorted read would fail here.
+        for title, age in (("Oldest", 3), ("Middle", 1), ("Newest", 0)):
+            await repo.create(
+                make_doc(user_id="u", title=title, created_at=now - timedelta(hours=age))
+            )
+
+        page = await repo.list_page(user_id="u", params=_all_params(), inbox_project_id=None)
+
+        assert [t.title for t in page.items] == ["Newest", "Middle", "Oldest"]
+
+    async def test_list_page_filters_by_priority(self, repo, make_doc):
+        await repo.create(make_doc(user_id="u", title="High prio", priority=Priority.HIGH))
+        await repo.create(make_doc(user_id="u", title="Low prio", priority=Priority.LOW))
+        await repo.create(make_doc(user_id="u", title="Another high", priority=Priority.HIGH))
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(priority=Priority.HIGH), inbox_project_id=None
+        )
+
+        assert page.total == 2
+        assert all(t.priority is Priority.HIGH for t in page.items)
+
+    async def test_list_page_slices_pages_without_overlap(self, repo, make_doc):
+        """page/per_page walk disjoint windows, and every page reports the
+        unpaginated total for the same filter."""
+        now = datetime.now(UTC)
+        for i in range(5):
+            await repo.create(
+                make_doc(user_id="u", title=f"Todo {i}", created_at=now - timedelta(seconds=i))
+            )
+
+        pages = [
+            await repo.list_page(
+                user_id="u", params=_all_params(page=n, per_page=2), inbox_project_id=None
+            )
+            for n in (1, 2, 3)
+        ]
+
+        assert [len(p.items) for p in pages] == [2, 2, 1]
+        assert {p.total for p in pages} == {5}
+        seen = [t.id for page in pages for t in page.items]
+        assert len(set(seen)) == 5
+        # Pages are consecutive slices of the newest-first ordering.
+        assert [t.title for t in pages[0].items] == ["Todo 0", "Todo 1"]
+        assert [t.title for t in pages[2].items] == ["Todo 4"]
+
+    async def test_list_page_scopes_to_the_caller(self, repo, make_doc):
+        await repo.create(make_doc(user_id="user-A", title="A's todo"))
+        await repo.create(make_doc(user_id="user-A", title="A's other todo"))
+        await repo.create(make_doc(user_id="user-B", title="B's todo"))
+
+        page_a = await repo.list_page(user_id="user-A", params=_all_params(), inbox_project_id=None)
+        page_b = await repo.list_page(user_id="user-B", params=_all_params(), inbox_project_id=None)
+
+        assert page_a.total == 2 and page_b.total == 1
+        assert all(t.user_id == "user-A" for t in page_a.items)
+        assert all(t.user_id == "user-B" for t in page_b.items)
+
+    async def test_list_page_overdue_filter(self, repo, make_doc):
+        """Overdue is past-due AND incomplete — a completed past-due todo is not."""
+        now = datetime.now(UTC)
+        await repo.create(
+            make_doc(
+                user_id="u", title="Overdue", completed=False, due_date=now - timedelta(days=1)
+            )
+        )
+        await repo.create(
+            make_doc(user_id="u", title="Future", completed=False, due_date=now + timedelta(days=1))
+        )
+        await repo.create(
+            make_doc(
+                user_id="u",
+                title="Completed overdue",
+                completed=True,
+                due_date=now - timedelta(days=2),
+            )
+        )
+
+        page = await repo.list_page(
+            user_id="u", params=_all_params(overdue=True), inbox_project_id=None
+        )
+
+        assert page.total == 1
+        assert page.items[0].title == "Overdue"
+
     # ---- id finders --------------------------------------------------------
 
     async def test_get_by_id_is_unscoped(self, repo, make_doc):

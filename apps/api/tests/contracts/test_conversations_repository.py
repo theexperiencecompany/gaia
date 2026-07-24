@@ -139,6 +139,41 @@ class TestListSummaries:
         assert len(page) == 1
         assert await repo.count_active(user) == 3
 
+    async def test_both_summary_lists_are_newest_first(self, repo):
+        """createdAt descending, for the starred and active lists alike.
+
+        ``createdAt`` is an ISO string, so this is Mongo's lexicographic order —
+        chronological only because every writer emits the same UTC ISO-8601
+        shape. Seeded oldest-first so an unsorted read would fail here.
+        """
+        user = _uid()
+        base = datetime(2026, 1, 1, tzinfo=UTC)
+        ids: dict[str, str] = {}
+        for label, hours in (("old", 0), ("mid", 1), ("new", 2)):
+            for kind, starred in (("active", None), ("starred", True)):
+                doc = _doc(
+                    user_id=user,
+                    source=ConversationSource.WEB,
+                    starred=starred,
+                    createdAt=(base + timedelta(hours=hours)).isoformat(),
+                )
+                await repo.create(doc)
+                ids[f"{label}-{kind}"] = doc.conversation_id
+
+        active = await repo.list_active_summaries(user, skip=0, limit=10)
+        assert [s.conversation_id for s in active] == [
+            ids["new-active"],
+            ids["mid-active"],
+            ids["old-active"],
+        ]
+
+        starred_list = await repo.list_starred_summaries(user)
+        assert [s.conversation_id for s in starred_list] == [
+            ids["new-starred"],
+            ids["mid-starred"],
+            ids["old-starred"],
+        ]
+
 
 class TestMessages:
     async def test_append_returns_ids_and_persists(self, repo):

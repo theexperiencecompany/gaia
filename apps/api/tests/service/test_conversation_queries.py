@@ -1,13 +1,16 @@
 """
-Service tests: verify MongoDB query correctness for conversation operations.
+Service tests: verify get_conversations' composition against real MongoDB.
 
-Patches the production collection to point at real test MongoDB,
-then calls the real service functions to verify query behavior.
+The `mongo_db` fixture points the repository layer at the test database, so the
+real service function runs unmodified over real documents.
 
-Key behaviors under test:
-- get_conversations sorts non-starred conversations by createdAt descending
-- Pagination (page/limit) returns the correct slice of non-starred results
-- User isolation: user A's conversations never appear in user B's query results
+Scoped deliberately to what the service adds *above* the repository — the
+repository's own ordering, filtering and pagination are asserted in
+tests/contracts/test_conversations_repository.py:
+
+- starred results are concatenated ahead of active ones, regardless of age
+- total_pages is ceil(active_count / limit), and total spans both lists
+- neither list leaks another user's conversations through the service
 """
 
 from __future__ import annotations
@@ -20,39 +23,6 @@ import pytest
 @pytest.mark.service
 class TestConversationQueriesReal:
     """Verify that conversation queries return correct results from real MongoDB."""
-
-    async def test_conversations_sorted_by_created_at_desc(
-        self, conversations_collection, make_conversation
-    ):
-        """Non-starred conversations must be returned newest-first (createdAt descending).
-
-        get_conversations sorts by createdAt descending for non-starred results.
-        We seed three conversations with distinct createdAt values and verify
-        the direct collection query returns them in the expected order.
-        """
-        import app.services.conversation_service as conv_svc  # noqa: F401 — ensures patch is active
-
-        now = datetime.now(UTC)
-
-        c1 = await make_conversation(
-            "sort-user",
-            createdAt=now - timedelta(hours=2),
-        )
-        c2 = await make_conversation(
-            "sort-user",
-            createdAt=now - timedelta(hours=1),
-        )
-        c3 = await make_conversation(
-            "sort-user",
-            createdAt=now,
-        )
-
-        cursor = conversations_collection.find({"user_id": "sort-user"}).sort("createdAt", -1)
-        docs = await cursor.to_list(length=10)
-
-        assert docs[0]["conversation_id"] == c3
-        assert docs[1]["conversation_id"] == c2
-        assert docs[2]["conversation_id"] == c1
 
     async def test_get_conversations_service_returns_newest_first(
         self, conversations_collection, make_conversation
@@ -83,24 +53,6 @@ class TestConversationQueriesReal:
         assert conversation_ids.index(newest) < conversation_ids.index(middle)
         assert conversation_ids.index(middle) < conversation_ids.index(oldest)
 
-    async def test_user_isolation_in_queries(self, conversations_collection, make_conversation):
-        """User A's conversations must not appear in User B's results."""
-        await make_conversation("isolation-user-A")
-        await make_conversation("isolation-user-A")
-        await make_conversation("isolation-user-B")
-
-        docs_a = await conversations_collection.find({"user_id": "isolation-user-A"}).to_list(
-            length=100
-        )
-        docs_b = await conversations_collection.find({"user_id": "isolation-user-B"}).to_list(
-            length=100
-        )
-
-        assert len(docs_a) == 2
-        assert len(docs_b) == 1
-        assert all(d["user_id"] == "isolation-user-A" for d in docs_a)
-        assert all(d["user_id"] == "isolation-user-B" for d in docs_b)
-
     async def test_user_isolation_via_service(self, conversations_collection, make_conversation):
         """get_conversations must never return another user's conversations."""
         import app.services.conversation_service as conv_svc
@@ -123,47 +75,6 @@ class TestConversationQueriesReal:
         assert ids_a.isdisjoint(ids_b)
         assert result_a["total"] == 2
         assert result_b["total"] == 1
-
-    async def test_pagination_returns_correct_slice(
-        self, conversations_collection, make_conversation
-    ):
-        """Skip + limit must return the correct page of results."""
-        now = datetime.now(UTC)
-        for i in range(5):
-            await make_conversation("page-user", createdAt=now - timedelta(hours=i))
-
-        page1 = (
-            await conversations_collection.find({"user_id": "page-user"})
-            .sort("createdAt", -1)
-            .skip(0)
-            .limit(2)
-            .to_list(length=2)
-        )
-        page2 = (
-            await conversations_collection.find({"user_id": "page-user"})
-            .sort("createdAt", -1)
-            .skip(2)
-            .limit(2)
-            .to_list(length=2)
-        )
-        page3 = (
-            await conversations_collection.find({"user_id": "page-user"})
-            .sort("createdAt", -1)
-            .skip(4)
-            .limit(2)
-            .to_list(length=2)
-        )
-
-        assert len(page1) == 2
-        assert len(page2) == 2
-        assert len(page3) == 1
-
-        all_ids = (
-            [d["conversation_id"] for d in page1]
-            + [d["conversation_id"] for d in page2]
-            + [d["conversation_id"] for d in page3]
-        )
-        assert len(set(all_ids)) == 5
 
     async def test_service_pagination_total_pages(
         self, conversations_collection, make_conversation
