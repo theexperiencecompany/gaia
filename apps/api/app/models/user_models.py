@@ -1,11 +1,21 @@
 from datetime import datetime
 from enum import Enum
 import re
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from app.utils.timezone import is_valid_timezone
+
+# Lowercased, bounded slug for request-supplied integration ids.
+IntegrationSlug = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        to_lower=True,
+        pattern=r"^[a-z0-9][a-z0-9_-]{0,63}$",
+    ),
+]
 
 
 class OnboardingPhase(str, Enum):
@@ -113,6 +123,23 @@ class OnboardingRequest(BaseModel):
         None,
         description="No-Gmail follow-up answers (scope/blocker/constraint)",
     )
+    selected_integrations: list[IntegrationSlug] | None = Field(
+        None,
+        max_length=25,
+        description="Integration slugs the user selected during onboarding.",
+    )
+    defer_workflows: bool = Field(
+        default=False,
+        description=(
+            "Gmail-path split: run inbox intelligence immediately and defer "
+            "workflow creation until the user submits selected integrations."
+        ),
+    )
+
+    @field_validator("selected_integrations")
+    @classmethod
+    def dedupe_integrations(cls, v: list[str] | None) -> list[str] | None:
+        return _dedupe_slugs(v)
 
     @field_validator("name")
     @classmethod
@@ -156,6 +183,34 @@ class OnboardingResponse(BaseModel):
     user: dict[str, Any] | None = Field(None, description="Updated user data")
 
 
+class OnboardingIntegrationsRequest(BaseModel):
+    selected_integrations: list[IntegrationSlug] = Field(
+        default_factory=list,
+        max_length=25,
+        description="Integration slugs the user selected during onboarding.",
+    )
+
+    @field_validator("selected_integrations")
+    @classmethod
+    def dedupe_integrations(cls, v: list[str]) -> list[str]:
+        return _dedupe_slugs(v) or []
+
+
+class OnboardingIntegrationsStatus(str, Enum):
+    """Outcome of submitting onboarding integration selections."""
+
+    QUEUED = "queued"  # Selections saved; workflows-phase job enqueued.
+    ALREADY_COMPLETE = "already_complete"  # Onboarding already finished (replay).
+    ALREADY_RUNNING = "already_running"  # Workflows job already in flight (replay).
+
+
+class OnboardingIntegrationsResponse(BaseModel):
+    success: bool = Field(..., description="Whether the submission was accepted")
+    status: OnboardingIntegrationsStatus = Field(
+        ..., description="Outcome of persisting the selected integrations"
+    )
+
+
 class OnboardingPhaseUpdateRequest(BaseModel):
     phase: OnboardingPhase = Field(..., description="The onboarding phase to transition to")
 
@@ -166,3 +221,19 @@ class OnboardingPhaseUpdateRequest(BaseModel):
         # Phase validation is handled by the enum type
         # Additional business logic validation should be in the service layer
         return v
+
+
+def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
+    # Order-preserving dedupe: a user can select the same integration twice
+    # (e.g. via a chip and a mention). We keep the first occurrence so the
+    # selection order — which downstream workflow generation treats as priority
+    # — is stable, rather than using set() which would scramble it.
+    if not v:
+        return v
+    seen: set[str] = set()
+    out: list[str] = []
+    for slug in v:
+        if slug not in seen:
+            seen.add(slug)
+            out.append(slug)
+    return out

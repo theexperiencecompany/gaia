@@ -153,7 +153,6 @@ ignore = [
   "PLW2901", # redefined loop name
   "PLW0603", # global statement (used intentionally for caches)
   "PLW1641", # eq-without-hash
-  "PLC0415", # `import` should be at top — we have legitimate lazy imports
   "PLC2701", # private-name-import
   # Allow assert (we use beartype + pydantic for runtime checks).
   "S101",
@@ -342,7 +341,64 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# PLC0415 (no inline imports) ratchet: enforced everywhere; the files below are
+# grandfathered legacy offenders. SHRINK this list when you touch a file — never
+# add to it. Tests defer app imports by design (root conftest env-ordering).
+"apps/api/app/agents/core/background/result_delivery.py" = ["PLC0415"]
+"apps/api/app/agents/core/subagents/subagent_helpers.py" = ["PLC0415"]
+"apps/api/app/agents/skills/registry.py" = ["PLC0415"]
+"apps/api/app/agents/tools/core/registry.py" = ["PLC0415"]
+"apps/api/app/api/v1/endpoints/health.py" = ["PLC0415"]
+"apps/api/app/api/v1/endpoints/platform_auth.py" = ["PLC0415"]
+"apps/api/app/api/v1/endpoints/reminders.py" = ["PLC0415"]
+"apps/api/app/api/v1/endpoints/todos.py" = ["PLC0415"]
+"apps/api/app/db/mongodb/collections.py" = ["PLC0415"]
+"apps/api/app/db/mongodb/mongodb.py" = ["PLC0415"]
+"apps/api/app/helpers/lifespan_helpers.py" = ["PLC0415"]
+"apps/api/app/helpers/mcp_helpers.py" = ["PLC0415"]
+"apps/api/app/memory/management.py" = ["PLC0415"]
+"apps/api/app/models/reminder_models.py" = ["PLC0415"]
+"apps/api/app/models/scheduler_models.py" = ["PLC0415"]
+"apps/api/app/patches/composio_custom_tool_schema_patch.py" = ["PLC0415"]
+"apps/api/app/patches/composio_langchain_patch.py" = ["PLC0415"]
+"apps/api/app/services/composio/composio_service.py" = ["PLC0415"]
+"apps/api/app/services/composio/proxy_client.py" = ["PLC0415"]
+"apps/api/app/services/device_token_service.py" = ["PLC0415"]
+"apps/api/app/services/mcp/mcp_client_pool.py" = ["PLC0415"]
+"apps/api/app/services/mcp/mcp_client.py" = ["PLC0415"]
+"apps/api/app/services/mcp/mcp_token_store.py" = ["PLC0415"]
+"apps/api/app/services/reminder_service.py" = ["PLC0415"]
+"apps/api/app/services/storage/sessions/lifecycle.py" = ["PLC0415"]
+"apps/api/app/services/todos/todo_bulk_service.py" = ["PLC0415"]
+"apps/api/app/services/todos/todo_service.py" = ["PLC0415"]
+"apps/api/app/services/triggers/handlers/calendar.py" = ["PLC0415"]
+"apps/api/app/services/workflow/context_extractor.py" = ["PLC0415"]
+"apps/api/app/services/workflow/generation_service.py" = ["PLC0415"]
+"apps/api/app/services/workflow/integration_requirements.py" = ["PLC0415"]
+"apps/api/app/services/workflow/scheduler.py" = ["PLC0415"]
+"apps/api/app/services/workflow/service.py" = ["PLC0415"]
+"apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]
+"apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]
+"apps/api/app/utils/agent_utils.py" = ["PLC0415"]
+"apps/api/app/utils/context_utils.py" = ["PLC0415"]
+"apps/api/app/utils/general_utils.py" = ["PLC0415"]
+"apps/api/app/utils/google_docs_utils.py" = ["PLC0415"]
+"apps/api/app/utils/redis_utils.py" = ["PLC0415"]
+"apps/api/app/utils/todo_vector_utils.py" = ["PLC0415"]
+"apps/api/app/utils/weather_utils.py" = ["PLC0415"]
+"apps/api/app/utils/workflow_utils.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/onboarding_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/reminder_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/tracked_todo_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/user_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/workflow_tasks.py" = ["PLC0415"]
+# Lazy per-command CLI import (heavy agent module loaded only when needed).
+"apps/voice-agent/src/__main__.py" = ["PLC0415"]
+# Optional-dependency import inside try (infisical_sdk not always installed).
+"libs/shared/py/secrets.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
+  "PLC0415", # tests must defer app imports until conftest env setup ran
   "ANN",     # tests can skip annotations
   "ARG",     # fixtures often pass unused args
   "INP001",  # implicit namespace ok in tests
@@ -358,8 +414,8 @@ unfixable = [
   "PT011",
   "PT015",
 ]
-"**/conftest.py" = ["ANN", "INP001", "ARG", "S101"]
-"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607"]
+"**/conftest.py" = ["ANN", "INP001", "ARG", "S101", "PLC0415"]
+"**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607", "PLC0415"]
 "**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
 "**/__init__.py" = ["F401"]
 "**/patches.py" = ["F401", "PLC", "ANN", "ARG"]

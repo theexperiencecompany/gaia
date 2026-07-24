@@ -23,7 +23,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
 )
 from app.decorators import with_doc
-from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.integration_helpers import build_search_patterns, generate_integration_slug
 from app.models.integration_models import (
     IntegrationInfo,
     ListIntegrationsResult,
@@ -41,33 +41,6 @@ from app.templates.docstrings.integration_tool_docs import (
 )
 from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
-
-# Stopwords to filter out from search queries
-SEARCH_STOPWORDS = {
-    "a",
-    "an",
-    "the",
-    "to",
-    "for",
-    "with",
-    "and",
-    "or",
-    "in",
-    "on",
-    "my",
-}
-
-
-def build_search_patterns(query: str) -> list[str]:
-    """Extract individual words from query for flexible matching.
-
-    E.g., "Render deployment" -> ["render", "deployment"]
-    This allows matching "Render" when query is "Render deployment"
-    """
-    # Split on whitespace and common separators
-    words = re.split(r"[\s,;]+", query.lower())
-    # Filter out short/common words that don't help matching
-    return [w for w in words if len(w) >= 2 and w not in SEARCH_STOPWORDS]
 
 
 @tool

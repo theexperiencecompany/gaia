@@ -34,6 +34,7 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.services.oauth.oauth_service import get_all_integrations_status
 from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.services.workflow import WorkflowService
 from app.services.workflow.execution_service import (
@@ -74,6 +75,15 @@ async def create_workflow(
         request.is_system_workflow = False
         request.source_integration = None
         request.system_workflow_key = None
+        # Default integration_ids to the user's connected integrations so
+        # step generation is grounded in tools the user can actually use.
+        if request.integration_ids is None:
+            status_map = await get_all_integrations_status(user["user_id"])
+            request.integration_ids = [
+                integration_id
+                for integration_id, is_connected in status_map.items()
+                if is_connected
+            ] or None
         # Pass user timezone to the service for automatic population
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
@@ -118,7 +128,7 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
     )
 
     try:
-        workflows = await WorkflowService.list_workflows(user["user_id"])
+        workflows, _total = await WorkflowService.list_workflows(user["user_id"])
         log.set(
             workflow=WorkflowContext(result_count=len(workflows)),
             outcome="success",
@@ -270,6 +280,12 @@ async def activate_workflow(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
+    except ValueError as e:
+        # Missing step integrations or other validation failures
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -333,7 +349,7 @@ async def regenerate_workflow_steps(
             user["user_id"],
             regeneration_reason=request.reason,
             force_different_tools=request.force_different_tools,
-            selected_integrations=request.selected_integrations,
+            integration_ids=request.integration_ids,
         )
         if not workflow:
             raise HTTPException(
@@ -652,7 +668,7 @@ async def generate_workflow_prompt_endpoint(
             description=request.description,
             trigger_config=request.trigger_config,
             existing_prompt=request.existing_prompt,
-            selected_integrations=request.selected_integrations,
+            integration_ids=request.integration_ids,
         )
         log.set(outcome="success")
         return GenerateWorkflowPromptResponse(**result)

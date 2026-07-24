@@ -340,13 +340,13 @@ Refer to `.env.example` files in each directory for required variables.
 
 ## Agent-Driven E2E Testing
 
-To verify a change in the real running app (not just lint/type-check), drive the browser yourself and suggest this setup to the user when end-to-end testing comes up:
+To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout. Three skills cover the whole loop:
 
-- **Auth**: set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` (see `apps/api/CLAUDE.md` → Dev auth bypass). Every API request authenticates as that user — no login flow, no cookies. Development only; production refuses to boot with it set.
-- **Browser**: the two recommended tools, in order:
-  1. **agent-browser** (`npm i -g agent-browser && agent-browser install`) — Rust CDP daemon with an MCP server, accessibility-tree snapshots with stable element refs (`@e1`), annotated screenshots, and persistent encrypted profiles so a login survives across sessions.
-  2. **chrome-devtools MCP** — works against a running Chrome, good for console/network/performance introspection. Chrome ≥136 refuses `--remote-debugging-port` on the default profile: launch Chrome with a dedicated `--user-data-dir` and remote debugging enabled.
-- Run `nx dev web` (+ `nx dev api` with local infra for full-stack flows), open `localhost:3000`, and verify with snapshots/screenshots before claiming a UI change works.
+- **`driving-gaia`** — the cookbook: boot the right stack (`mise dev` / `dev:vm` / `dev:sim`), authenticate with zero login via the dev bypass, drive the REST/SSE API + browser + bots, invoke the executor or any subagent directly (`/api/v1/dev/executor`, `/api/v1/dev/subagents/{id}`), and verify outcomes in Mongo. Ends with the full testing map — every test/sim surface and where it's documented.
+- **`reading-gaia-logs`** — debug a failing run: wide events, per-mode log locations, Loki/LogQL, LangGraph/Langfuse, and a symptom→fix table.
+- **`parallel-worktrees`** — run several branches at once with their own ports.
+
+**agent-browser** is the recommended browser driver (`npm i -g agent-browser && agent-browser install`): a Rust CDP daemon + MCP server with accessibility-tree snapshots, stable element refs (`@e1`), and persistent encrypted profiles. The dev bypass means every page load is already authenticated. chrome-devtools MCP is the alternative when you need console/network introspection.
 
 ## Docker
 

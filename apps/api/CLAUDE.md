@@ -85,7 +85,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit.
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
@@ -129,7 +129,7 @@ One domain per file. Never let a file span multiple domains.
 
 One `APIRouter` per domain with `prefix` and `tags`. Every handler follows the same 3-step contract:
 
-1. `log.set()` with everything known at the start (user, operation, IDs).
+1. `log.set()` with everything known at the start (user, operation, IDs). Presence of this step is enforced by the `route-contract` lint (`tools/lints/README`).
 2. Delegate all work to a service function.
 3. `log.set()` again with result IDs, then return `JSONResponse`.
 
@@ -152,7 +152,7 @@ async def create_todo(
 
 Services are async module-level functions, not classes.
 
-- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`.
+- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`. Enforced for `*Service`-named classes by the `no-service-classes` lint (`tools/lints/README`).
 - Services access MongoDB collections directly via `app.db.mongodb.collections` — no repository layer.
 - Keep one-off query logic in the service function where it is used; return domain models, not raw DB documents.
 
@@ -267,9 +267,14 @@ See `apps/api/.env.example` or the `ProductionSettings` class in `app/config/set
 
 ### Dev auth bypass (`DEV_AUTH_BYPASS_EMAIL`)
 
-Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` and every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works.
+Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` and every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works. For the full operating cookbook (boot matrix, mint/seed/impersonate curls, driving the API/browser/bots, `mise dev:sim`), see the **`driving-gaia`** skill.
 
-- The user must already exist (log in once normally to create it); a missing user logs an error on every request.
+Related: `GAIA_SIM_MODE=1` (`mise dev:sim`) routes every LLM call to the local scripted stub — use it to verify *plumbing* (tool flow, streaming, persistence) deterministically; never to judge real model behavior (prompts, tool selection, tone). The skill has the full use/don't-use table. Production refuses to boot with it set.
+
+- The user must exist in Mongo. Mint one without a WorkOS login via the dev router: `POST /api/v1/dev/users {"email": ...}` (idempotent; reuses the real signup path). A bypass target that resolves to no user fails loud with a 401 whose message names the fix ("mint it via POST /api/v1/dev/users") instead of a generic auth error.
+- Per-request impersonation: with the bypass active, an `X-Dev-User: <email>` request header authenticates as that user instead of `DEV_AUTH_BYPASS_EMAIL`, so one server can act as many users without restarts. Applies to HTTP (middleware) and WebSocket paths.
+- The dev router (`/api/v1/dev/*` — mint, seed, delete, direct agent runs) is mounted only when `ENV=development` and `DEV_AUTH_BYPASS_EMAIL` is set; it 404s otherwise. It is excluded from the auth bypass so minting the first user is possible before any user exists.
+- Direct layer invocation for tests: `POST /api/v1/dev/executor` runs the executor without the comms front door; `POST /api/v1/dev/subagents/{id}` runs one subagent without comms or the executor (`GET /api/v1/dev/subagents` lists ids). Both reuse the production preparation paths (`prepare_executor_execution` / `prepare_subagent_execution`) — see the `driving-gaia` skill §5.
 - Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
 - WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
@@ -277,7 +282,7 @@ Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env` and every request is auth
 
 ## Pre-commit Hooks & Security Scanners
 
-The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, and **mypy**.
+The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, **mypy**, and **gaia-python-lints** (the custom AST rules in `tools/lints/` — route contract, no service classes, wide-events logging).
 
 ### Bandit
 

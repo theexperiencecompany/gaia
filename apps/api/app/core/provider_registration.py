@@ -34,6 +34,7 @@ from pydantic import PydanticDeprecatedSince20
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
 from app.agents.llm.client import register_llm_providers
+from app.agents.llm.model_catalog import init_openrouter_model_catalog
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
 from app.config.cloudinary import init_cloudinary
@@ -185,6 +186,7 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
         init_postgresql_engine,
         init_rabbitmq_publisher,
         register_llm_providers,
+        init_openrouter_model_catalog,
         build_graphs,
         init_chroma,
         init_checkpointer_manager,

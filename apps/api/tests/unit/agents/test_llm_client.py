@@ -371,6 +371,7 @@ class TestGetDefaultLlm:
     @patch("app.agents.llm.client.ChatGoogleGenerativeAI")
     @patch("app.agents.llm.client.settings")
     def test_returns_gemini(self, mock_settings: MagicMock, mock_chat_google: MagicMock) -> None:
+        mock_settings.GAIA_SIM_MODE = False
         mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
         mock_chat_google.return_value = MagicMock()
 
@@ -382,6 +383,7 @@ class TestGetDefaultLlm:
     def test_caches_per_temperature(
         self, mock_settings: MagicMock, mock_chat_google: MagicMock
     ) -> None:
+        mock_settings.GAIA_SIM_MODE = False
         mock_settings.GOOGLE_API_KEY = "google-key"  # pragma: allowlist secret
         mock_chat_google.side_effect = lambda **_: MagicMock()
 
@@ -391,10 +393,21 @@ class TestGetDefaultLlm:
 
     @patch("app.agents.llm.client.settings")
     def test_no_google_key_raises(self, mock_settings: MagicMock) -> None:
+        mock_settings.GAIA_SIM_MODE = False
         mock_settings.GOOGLE_API_KEY = None
 
         with pytest.raises(LLMNotConfiguredError, match="Default LLM not configured"):
             get_default_llm()
+
+    @patch("app.agents.llm.client._sim_llm")
+    @patch("app.agents.llm.client.settings")
+    def test_sim_mode_returns_stub_client(
+        self, mock_settings: MagicMock, mock_sim_llm: MagicMock
+    ) -> None:
+        mock_settings.GAIA_SIM_MODE = True
+        mock_settings.GOOGLE_API_KEY = None
+
+        assert get_default_llm() is mock_sim_llm.return_value
 
 
 # ---------------------------------------------------------------------------

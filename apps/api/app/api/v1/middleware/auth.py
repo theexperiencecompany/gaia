@@ -6,15 +6,22 @@ from typing import Any
 
 from bson import ObjectId
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
 from app.config.settings import settings
+from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
+from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.mongodb.collections import users_collection
-from app.utils.auth_utils import authenticate_workos_session, build_user_context
+from app.utils.auth_utils import (
+    authenticate_workos_session,
+    build_user_context,
+    resolve_dev_bypass_user,
+)
 from shared.py.wide_events import log
 
 
@@ -71,6 +78,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/device/pair/poll",
             "/api/v1/device/token",
             "/api/v1/device/servers",
+            # Dev identity router (mounted only in development). Excluded so the
+            # mint endpoint is reachable before any user exists — otherwise the
+            # bypass would 401 the very request that bootstraps the first user.
+            # Trailing slash keeps this from also matching "/api/v1/device".
+            "/api/v1/dev/",
         ]
         # Routes that also accept an "Authorization: Bearer <agent JWT>" in
         # addition to a WorkOS session cookie.
@@ -183,29 +195,40 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     async def _dispatch_dev_bypass(
         self, request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        """Authenticate the request as the configured dev user, skipping WorkOS.
+        """Authenticate the request as a dev user, skipping WorkOS.
 
         Only reachable when ``DEV_AUTH_BYPASS_EMAIL`` is set in development
-        (production refuses to boot with it — see ``get_settings``). A bypass
-        email that doesn't resolve to a Mongo user is a config error and is
-        logged on every request rather than silently degrading to 401s.
+        (production refuses to boot with it — see ``get_settings``). The target
+        user is the ``X-Dev-User`` header when present (per-request
+        impersonation, so one server can act as many users), otherwise
+        ``DEV_AUTH_BYPASS_EMAIL``. A target email that doesn't resolve to a Mongo
+        user fails loud with a 401 that names the fix — mint it via the dev
+        router — rather than silently degrading to a generic auth error.
         """
         request.state.user = None
         request.state.authenticated = False
         request.state.new_session = None
 
-        user_data = await users_collection.find_one({"email": self.dev_bypass_email})
-        if user_data:
-            request.state.user = build_user_context(
-                user_data, auth_provider="workos", dev_bypass=True
-            )
-            request.state.authenticated = True
-        else:
+        target_email, user_data = await resolve_dev_bypass_user(request.headers)
+        if not user_data:
             log.error(
-                f"{LogTag.API} DEV_AUTH_BYPASS_EMAIL is set to "
-                f"{self.dev_bypass_email!r} but no such user exists in Mongo — "
-                "create the user (log in once normally) or fix the email."
+                f"{LogTag.API} Dev bypass target {target_email!r} has no Mongo user",
+                dev_impersonated=bool(request.headers.get(DEV_USER_HEADER)),
             )
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": {
+                        "error_code": NOT_AUTHENTICATED,
+                        "message": (
+                            f"No GAIA user exists for {target_email!r} — {DEV_USER_MISSING_HINT}"
+                        ),
+                    }
+                },
+            )
+
+        request.state.user = build_user_context(user_data, auth_provider="workos", dev_bypass=True)
+        request.state.authenticated = True
         return await call_next(request)
 
     async def _authenticate_session(

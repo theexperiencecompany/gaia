@@ -32,6 +32,7 @@ from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
+from app.utils.multimodal import approx_content_chars, extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
 
@@ -42,7 +43,7 @@ def estimate_context_usage(messages: Sequence[Any], context_window: int) -> floa
     """
     if not messages:
         return 0.0
-    total_chars = sum(len(str(getattr(m, "content", ""))) for m in messages)
+    total_chars = sum(approx_content_chars(getattr(m, "content", "")) for m in messages)
     estimated_tokens = total_chars // 4
     return min(estimated_tokens / context_window, 1.0)
 
@@ -180,7 +181,15 @@ async def compact_tool_output(
     excluded, or the workspace was unavailable (degrades gracefully, matching
     the middleware's prior behavior).
     """
-    content_str = str(content)
+    # Inline media can't be spilled to a text file and re-read — the block IS
+    # the payload the model needs. Each block is bounded at its producer
+    # (ImageCodec), and how many reach a request is bounded at the request
+    # boundary (MediaAdapter), so there is nothing for compaction to do here.
+    if has_media_blocks(content):
+        return None
+    # Text-extract rather than str(): a media-free block list would otherwise be
+    # sized and previewed as its Python repr ("[{'type': 'text', ...}]").
+    content_str = extract_text_content(content)
     should, reason = should_compact_output(
         content_str,
         tool_name,

@@ -192,7 +192,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     # there's no implicit reliance on sandbox-wide identity for security.
     log.info(
         f"{LogTag.SANDBOX} creating fresh sandbox user={user_id} shard={shard_id} "
-        f"template={settings.E2B_TEMPLATE_ID}"
+        f"template={settings.E2B_TEMPLATE_ID} domain={settings.E2B_DOMAIN}"
     )
     async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(

@@ -106,28 +106,17 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
 
 
 async def image_to_text_endpoint(message: str, file: UploadFile) -> dict:
-    """
-    Convert an uploaded image to text.
-
-    Args:
-        message (str): A message accompanying the image.
-        file (UploadFile): The uploaded image file.
-
-    Returns:
-        dict: A dictionary containing the extracted text from the image.
-
-    Raises:
-        HTTPException: If an error occurs during the image-to-text conversion process.
-    """
+    """Describe an uploaded image, answering ``message`` about it."""
     log.set(service="image_service", operation="image_to_text")
     try:
-        log.info(f"Received image-to-text request with message: {message}")
-
         response = await convert_image_to_text(file, message)
-
-        log.info("Image-to-text conversion successful.")
+        log.set(outcome="success")
         return {"response": response}
 
+    except HTTPException:
+        # An unreadable upload is the caller's problem, not a 500 — let the
+        # status the conversion chose reach them.
+        raise
     except Exception as e:
         log.error(f"Error occurred while processing image-to-text: {e!s}")
         raise HTTPException(status_code=500, detail="Internal Server Error")

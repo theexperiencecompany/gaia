@@ -131,6 +131,9 @@ class ToolCategory:
     ):
         self.name = name
         self.space = space
+        # True for integration-specific categories (Composio toolkits) that need
+        # the user to have connected that integration; core built-in categories
+        # leave it False. `get_core_categories` filters on this flag.
         self.require_integration = require_integration
         self.integration_name = integration_name
         self.is_delegated = is_delegated
@@ -275,6 +278,7 @@ class ToolRegistry:
         from app.agents.tools import (
             context_tool,
             desktop_tools,
+            download_tool,
             file_tools,
             finish_task_tool,
             flowchart_tool,
@@ -301,6 +305,7 @@ class ToolRegistry:
                 webpage_tool.web_search_tool,
                 webpage_tool.fetch_webpages,
                 research_tool.deep_research,
+                *download_tool.tools,
             ],
             destructive_tools=set(),
         )

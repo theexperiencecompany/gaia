@@ -21,6 +21,7 @@ from app.constants.memory import (
 )
 from app.memory.engine import memory_engine
 from app.override.langgraph_bigtool.utils import State
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import UserContext, log, wide_task
 
 MAX_TOOL_OUTPUT_SIZE = 500
@@ -69,7 +70,7 @@ def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
     """
     for msg in messages:
         if isinstance(msg, HumanMessage):
-            if len(_extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
+            if len(extract_text_content(msg.content).strip()) >= MIN_USER_CONTENT_CHARS:
                 return True, "OK"
     return False, "No substantive user message"
 
@@ -92,7 +93,7 @@ def _format_messages_for_user_memory(
 
     for msg in messages:
         if isinstance(msg, HumanMessage):
-            content = _extract_text_content(msg.content)
+            content = extract_text_content(msg.content)
             if content:
                 formatted.append({"role": "user", "content": content})
 
@@ -102,36 +103,19 @@ def _format_messages_for_user_memory(
                     tool_content = f"[TOOL CALL: {call['name']}({call.get('args', {})})]"
                     formatted.append({"role": "assistant", "content": tool_content})
             elif msg.content:
-                formatted.append({"role": "assistant", "content": str(msg.content)})
+                formatted.append(
+                    {"role": "assistant", "content": extract_text_content(msg.content)}
+                )
 
         elif isinstance(msg, ToolMessage):
-            # Truncate tool OUTPUTS only - they're usually large API responses
-            content = str(msg.content)
+            # Truncate tool OUTPUTS only - they're usually large API responses.
+            # Text-extract first so inline media blocks never leak base64 here.
+            content = extract_text_content(msg.content)
             if len(content) > MAX_TOOL_OUTPUT_SIZE:
                 content = content[:MAX_TOOL_OUTPUT_SIZE] + "... [truncated]"
             formatted.append({"role": "assistant", "content": f"[TOOL RESULT: {content}]"})
 
     return formatted
-
-
-def _extract_text_content(content) -> str:
-    """Extract text from potentially multimodal message content.
-
-    Handles both simple strings and list-of-blocks format.
-    """
-    if isinstance(content, str):
-        return content
-
-    if isinstance(content, list):
-        text_parts = []
-        for item in content:
-            if isinstance(item, str):
-                text_parts.append(item)
-            elif isinstance(item, dict) and item.get("type") == "text":
-                text_parts.append(item.get("text", ""))
-        return " ".join(text_parts)
-
-    return str(content)
 
 
 async def _store_user_memory_background(

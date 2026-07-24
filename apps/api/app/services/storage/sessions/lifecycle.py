@@ -53,7 +53,7 @@ def _materialize_if_stale(
     instructions: dict[str, str],
     instructions_sig: str,
 ) -> None:
-    """Rewrite the SKILL.md catalog + instructions projection iff anything changed.
+    """Rewrite the SKILL.md catalog + instructions projection if anything changed.
 
     Gated on three signatures: the global skill-library hash, the connected-set,
     and the per-user instructions hash. A change in any one triggers a rewrite;

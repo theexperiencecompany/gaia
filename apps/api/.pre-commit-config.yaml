@@ -35,6 +35,14 @@ repos:
         pass_filenames: false
         priority: 0
 
+      - id: gaia-python-lints
+        name: GAIA custom Python lints (route contract, service classes, wide events)
+        language: system
+        entry: python3 tools/lints/run.py apps/api/app
+        files: ^(apps/api/app/.*\.py|tools/lints/.*\.py)$
+        pass_filenames: false
+        priority: 0
+
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:

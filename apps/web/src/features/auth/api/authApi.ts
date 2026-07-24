@@ -95,6 +95,8 @@ export const authApi = {
       question: string;
       value: string | null;
     }[];
+    selected_integrations?: string[];
+    defer_workflows?: boolean;
   }): Promise<{ success: boolean; message: string; user?: UserInfo }> => {
     return apiService.post("/onboarding", onboardingData, {
       silent: true,
