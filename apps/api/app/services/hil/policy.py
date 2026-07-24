@@ -58,20 +58,6 @@ async def is_gated(prefs: HILPreferences, tool_name: str, tool: BaseTool | None)
     )
 
 
-async def would_require_approval(user_id: str, tool_name: str, tool: BaseTool | None) -> bool:
-    """Whether this call would need approval — HIL on for the user AND the tool gated.
-
-    The request-free counterpart to ``resolve_policy``, for execution paths that hold no
-    ``ToolCallRequest`` and cannot pause to ask (the ``spawn_subagent`` loop). Such a path
-    must fail closed: a gated tool it cannot get approval for is denied, never run. Returns
-    ``False`` when HIL is off, so those paths are unchanged for the common HIL-off user.
-    """
-    prefs = await _preferences(user_id)
-    if prefs.mode == "always_allow":
-        return False
-    return await is_gated(prefs, tool_name, tool)
-
-
 async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_id: str) -> bool:
     """Whether another call in this same AI message can pause the run.
 

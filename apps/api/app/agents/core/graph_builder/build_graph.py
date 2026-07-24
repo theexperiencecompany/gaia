@@ -18,6 +18,7 @@ from app.agents.core.nodes.executor_status import executor_status_hook
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
+from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.llm.client import init_llm
 from app.agents.middleware import create_comms_middleware, create_executor_middleware
 from app.agents.middleware.subagent import SubagentMiddleware
@@ -83,6 +84,7 @@ async def build_executor_graph(
         subagent_mw.set_llm(chat_llm)
         subagent_mw.set_tools(registry=tool_dict)
         subagent_mw.set_store(store)
+        subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),

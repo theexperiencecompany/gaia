@@ -130,6 +130,17 @@ HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
 HIL_BG_RESULTS_KEY_PREFIX = "hil:bg_results:"
 HIL_BG_RESULTS_TTL_SECONDS = 7200
 
+# A finished spawned subagent's answer, keyed by conversation + tool call.
+#
+# A spawn deletes its own checkpoint thread the moment it finishes (it is a
+# one-shot agent; nothing should persist for it). But the tool node re-runs from
+# the top whenever a LATER sibling pauses, and a finished spawn with no thread
+# would run its whole task a second time. Remembering just the answer keeps that
+# replay safe without keeping the graph: same durability tier and lifetime as the
+# background results above, which cross the same pause.
+HIL_SPAWN_RESULT_KEY_PREFIX = "hil:spawn_result:"
+HIL_SPAWN_RESULT_TTL_SECONDS = HIL_BG_RESULTS_TTL_SECONDS
+
 # Interrupt payload type for the wait_for_subagents join pause. Carries the whole
 # batch of parked-subagent approvals, unlike the gate's single "hil_approval".
 HIL_BATCH_INTERRUPT_TYPE = "hil_approval_batch"
@@ -162,12 +173,14 @@ HIL_EXEMPT_TOOLS: frozenset[str] = frozenset(
     }
 )
 
-# The exempt tools that can nonetheless PAUSE the run: ``handoff`` bubbles up its
-# subagent's gate interrupt, ``wait_for_subagents`` interrupts for the parked-approval
-# batch. A gated sibling of one of these must never auto-run: the pause re-runs the
-# whole tool node, so anything that already executed would execute a second time (see
-# ``policy.has_pausing_sibling``).
-HIL_PAUSING_TOOLS: frozenset[str] = frozenset({"handoff", WAIT_FOR_SUBAGENTS_NAME})
+# The exempt tools that can nonetheless PAUSE the run: ``handoff`` and
+# ``spawn_subagent`` bubble up their child graph's gate interrupt,
+# ``wait_for_subagents`` interrupts for the parked-approval batch. A gated sibling of
+# one of these must never auto-run: the pause re-runs the whole tool node, so anything
+# that already executed would execute a second time (see ``policy.has_pausing_sibling``).
+HIL_PAUSING_TOOLS: frozenset[str] = frozenset(
+    {"handoff", "spawn_subagent", WAIT_FOR_SUBAGENTS_NAME}
+)
 
 # tool_data entry name for the approval card (mirrored in @gaia/shared/chat).
 APPROVAL_REQUEST_TOOL_NAME = "approval_request"

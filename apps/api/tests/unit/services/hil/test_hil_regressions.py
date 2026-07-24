@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import AIMessage, ToolMessage
 import pytest
 
-from app.agents.core.subagents.handoff_tools import _recover_from_checkpoint
+from app.agents.core.subagents.subagent_runner import recover_from_checkpoint
 from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
 from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS, HIL_STATUS_KWARG
 from app.services.hil.gate import gate_tool_call
@@ -60,7 +60,7 @@ class TestFinishedSubagentIsNotDrivenTwice:
     ) -> None:
         finished = snapshot(next_nodes=(), messages=[AIMessage(content="Bob is bob@example.com")])
 
-        outcome = await _recover_from_checkpoint(ctx_with(finished))
+        outcome = await recover_from_checkpoint(ctx_with(finished))
 
         assert outcome is not None, "a finished thread must be recovered, never re-run"
         assert outcome.paused is False
@@ -69,7 +69,7 @@ class TestFinishedSubagentIsNotDrivenTwice:
     async def test_a_thread_that_never_ran_is_still_started_normally(self) -> None:
         # The other half of the fix: recovering a never-run thread would mean the handoff
         # silently never happens.
-        assert await _recover_from_checkpoint(ctx_with(snapshot())) is None
+        assert await recover_from_checkpoint(ctx_with(snapshot())) is None
 
     async def test_a_parked_thread_is_still_recovered_as_a_pause(self) -> None:
         parked = ctx_with(snapshot(next_nodes=("tools",), messages=[AIMessage(content="")]))
@@ -77,7 +77,7 @@ class TestFinishedSubagentIsNotDrivenTwice:
             SimpleNamespace(value={"approval_id": "appr-1", "tool_name": "SEND"}),
         )
 
-        outcome = await _recover_from_checkpoint(parked)
+        outcome = await recover_from_checkpoint(parked)
 
         assert outcome is not None
         assert outcome.paused is True
@@ -89,7 +89,7 @@ class TestFinishedSubagentIsNotDrivenTwice:
         # An empty payload is treated downstream as a malformed approval and fails the run.
         # Reporting it as "finished" instead would let the executor carry on as if the
         # gated action had happened.
-        outcome = await _recover_from_checkpoint(ctx_with(snapshot(next_nodes=("tools",))))
+        outcome = await recover_from_checkpoint(ctx_with(snapshot(next_nodes=("tools",))))
 
         assert outcome is not None
         assert outcome.paused is True
@@ -98,7 +98,7 @@ class TestFinishedSubagentIsNotDrivenTwice:
     async def test_a_finished_thread_with_no_text_is_still_not_re_run(self) -> None:
         # Falsey final content must not be mistaken for "never ran" — that is exactly the
         # conflation this bug was.
-        outcome = await _recover_from_checkpoint(
+        outcome = await recover_from_checkpoint(
             ctx_with(snapshot(messages=[AIMessage(content="")]))
         )
 

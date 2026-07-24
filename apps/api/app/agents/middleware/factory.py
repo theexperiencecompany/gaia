@@ -164,6 +164,9 @@ def create_middleware_stack(
             excluded_tool_names=subagent_excluded_tools,
             tool_space=subagent_tool_space,
             tool_runtime_config=subagent_tool_runtime_config,
+            spawn_middleware_factory=lambda space: create_subagent_middleware(
+                enable_subagent=False, subagent_tool_space=space
+            ),
         )
         middleware.append(subagent)
         log.debug(f"{LogTag.AGENT} SubagentMiddleware enabled with spawn_subagent tool")

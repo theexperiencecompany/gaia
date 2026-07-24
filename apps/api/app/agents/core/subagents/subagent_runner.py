@@ -399,6 +399,45 @@ async def execute_subagent_stream(
     return SubagentOutcome(text=final_message)
 
 
+def _snapshot_messages(snapshot: Any) -> list[Any]:
+    """The messages a checkpoint holds. Empty means the thread has never run."""
+    values = getattr(snapshot, "values", None) or {}
+    messages = values.get("messages") if isinstance(values, dict) else None
+    return messages if isinstance(messages, list) else []
+
+
+def _final_text_from_snapshot(snapshot: Any) -> str:
+    messages = _snapshot_messages(snapshot)
+    if not messages:
+        return ""
+    content = getattr(messages[-1], "content", "")
+    return content if isinstance(content, str) else str(content or "")
+
+
+async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutcome | None:
+    """What this subagent's own thread already holds, or ``None`` if it never ran.
+
+    Three states, and conflating the last two is how a completed subagent gets driven a
+    second time:
+
+    * **Parked** (``snapshot.next``) — mid-run on a HIL interrupt. Returned as a paused
+      outcome so the caller bubbles the approval up. A paused outcome with an empty
+      payload means the interrupt is unreadable, which downstream treats as a malformed
+      approval and fails the run rather than act.
+    * **Finished** — no pending work but state on the thread. Returned as its
+      checkpointed final answer: re-running would repeat every action it took.
+    * **Never ran** — no state at all. ``None``, so the caller starts it normally.
+    """
+    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
+    if snapshot.next:
+        return SubagentOutcome(
+            text="", interrupt=interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
+        )
+    if not _snapshot_messages(snapshot):
+        return None
+    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+
+
 def interrupt_payload(raw: Any) -> dict[str, Any]:
     """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
     ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the

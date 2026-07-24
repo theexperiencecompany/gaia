@@ -20,6 +20,7 @@ from app.agents.core.nodes import (
 )
 from app.agents.core.nodes.adapt_media import adapt_media_node
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, read
 from app.agents.tools.core.registry import get_tool_registry
@@ -193,6 +194,7 @@ class SubAgentFactory:
 
         if subagent_mw is not None:
             subagent_mw.set_store(store)
+            subagent_mw.set_spawn_graph_provider(get_spawn_graph)
 
         common_kwargs = {
             "llm": llm,
