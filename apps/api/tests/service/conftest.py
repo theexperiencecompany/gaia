@@ -4,10 +4,10 @@ Fixtures for service integration tests with real databases.
 The approach: patch the app's singletons to point at real test containers,
 then call production functions directly. No rewriting production logic.
 
-Root conftest.py globally patches _get_mongodb_instance to MagicMock.
-We work around that by patching the actual collection module attributes
-to point at real Motor collections, and by giving redis_cache a real
-Redis connection.
+Mongo goes through one seam: ``app.db.repositories.base.get_async_collection``,
+which every repository resolves on each call. Patching it points the whole
+repository layer at a real per-test Motor client. Redis gets a real connection
+patched into redis_cache the same way.
 """
 
 from __future__ import annotations
@@ -17,7 +17,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 import os
-import sys
 from unittest.mock import patch
 
 from bson import ObjectId
@@ -155,48 +154,37 @@ async def real_redis(redis_url: str, monkeypatch):
 
 
 @pytest.fixture
-async def real_integration_collections(
-    mongodb_url: str, monkeypatch: pytest.MonkeyPatch
-) -> AsyncIterator[None]:
-    """Rebind the integration Mongo collections to a fresh per-test Motor client.
+async def real_mongo_repositories(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[None]:
+    """Bind the repository layer to a fresh Motor client on THIS test's loop.
 
-    ``integrations_collection`` / ``user_integrations_collection`` are process-
-    global Motor collections cached in ``app.db.mongodb.collections`` and pulled
-    into ~a dozen modules via ``from ... import`` (early binding). Under real-
-    services runs the global mongo mock is skipped, so those references stay
-    bound to whichever earlier test's now-closed function-scoped event loop first
-    created the client — and the device register path (insert_one, then
-    get_integration_details -> resolve -> find_one, then add_user_integration)
-    raises ``RuntimeError: Event loop is closed`` on the first Mongo call.
+    ``app.db.mongodb.collections`` caches one process-global Motor client, and a
+    Motor client pins itself to the event loop that runs its first operation and
+    caches that loop forever (``motor.core``'s ``io_loop``). Under real-services
+    runs the global mongo mock is skipped, so that client belongs to whichever
+    earlier test's now-closed function-scoped loop first touched Mongo — and the
+    device register path (create the server integration, resolve it, then
+    add_user_integration) dies with ``RuntimeError: Event loop is closed`` on its
+    first Mongo call.
 
-    Mirror the conversations_collection fixture, but repoint EVERY importer at
-    once: a fresh client on THIS test's loop (DB "GAIA", matching ``init_mongodb``
-    so it agrees with the sync client and any un-repointed reference), swapped
-    into every module that early-bound either name. Targeting a hand-picked
-    subset is fragile — the register path alone spans device_service,
-    integration_resolver and user_integrations.
+    Every repository resolves its handle through
+    ``app.db.repositories.base.get_async_collection`` on *every* call, so patching
+    that one symbol repoints the whole repository layer regardless of which
+    modules are already imported — the same seam ``mongo_db`` and the repository
+    contract suite use.
 
-    The sweep only reaches modules already in ``sys.modules``, which is why every
-    ``app.*`` import in this file is deliberately deferred into its function.
-    Hoisting them to module scope imports oauth_service / endpoints.integrations
-    (both early-bind ``integrations_collection``) before this fixture runs, so the
-    sweep repoints them at this test's client too and the device E2E test then
-    fails Mongo auth. Keep them function-local.
+    The client is built from the app's own ``settings.MONGO_DB`` (DB "GAIA",
+    matching ``init_mongodb``), not from the ``mongodb_url`` fixture: the server
+    under test is the real app, so it has to read and write the very database it
+    is configured for. The two agree in CI but not on a dev machine, where
+    borrowing ``mongodb_url`` would point the app at a database its credentials
+    do not open.
     """
-    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
-    db = client["GAIA"]
-    fresh = {
-        "integrations_collection": db["integrations"],
-        "user_integrations_collection": db["user_integrations"],
-    }
+    from app.config.settings import settings
 
-    for module in list(sys.modules.values()):
-        module_dict = getattr(module, "__dict__", None)
-        if not module_dict:
-            continue
-        for name, coll in fresh.items():
-            if name in module_dict:
-                monkeypatch.setattr(module, name, coll)
+    client: AsyncIOMotorClient = AsyncIOMotorClient(settings.MONGO_DB)
+    db = client["GAIA"]
+
+    monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda name: db[name])
 
     yield
 
@@ -226,7 +214,8 @@ async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
     this test's now-dead event loop (see ProviderRegistry.reset, "for testing
     only").
     """
-    # Deferred, not hoisted — see real_integration_collections.
+    # Function-local so importing this conftest never drags the app's device-bridge
+    # stack into every service test run — only the tests that build the live app.
     from app.core.lazy_loader import providers
     from app.core.provider_registration import register_lazy_providers
     from app.db.postgresql import close_postgresql_db
@@ -265,7 +254,8 @@ def _create_live_app() -> FastAPI:
         patch("app.core.app_factory.lifespan", _device_bridge_lifespan),
         patch("app.core.app_factory.configure_middleware", _cors_only_middleware),
     ):
-        # Deferred, not hoisted — see real_integration_collections.
+        # Function-local so importing this conftest never builds the app factory's
+        # import graph for service tests that never spin up a live server.
         from app.core.app_factory import create_app
 
         app = create_app()
@@ -303,14 +293,14 @@ class LiveApiServer:
 
 @pytest.fixture
 async def live_api_server(
-    real_redis: Redis, real_integration_collections: None
+    real_redis: Redis, real_mongo_repositories: None
 ) -> AsyncIterator[LiveApiServer]:
     """A live, real GAIA API bound to a real localhost port.
 
     Depends on real_redis so redis_cache.redis is already patched to the
-    per-worker test Redis, and on real_integration_collections so the device
-    path's Mongo collections are bound to this test's event loop — both before
-    the app (and its listeners) start.
+    per-worker test Redis, and on real_mongo_repositories so the repository layer
+    is bound to this test's event loop — both before the app (and its listeners)
+    start.
     """
     app = _create_live_app()
     server = LiveApiServer(pick_free_port(), app)
