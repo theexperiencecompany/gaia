@@ -64,24 +64,16 @@ def postgres_url() -> str:
 
 
 @pytest.fixture
-async def mongo_db(mongodb_url: str):
+async def mongo_db(mongodb_url: str, monkeypatch):
     """
-    Real MongoDB database handle for tests that need arbitrary collections.
+    Real MongoDB database handle, with the repository layer pointed at it.
 
-    Creates a fresh Motor client per test to avoid event-loop cross-
-    contamination. Use this when you need to work with collections other
-    than 'conversations' (e.g., 'todos', 'reminders').
-    """
-    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
-    db = client["gaia_test"]
-    yield db
-    client.close()
-
-
-@pytest.fixture
-async def conversations_collection(mongodb_url: str, monkeypatch):
-    """
-    Real MongoDB conversations collection, patched into the app singleton.
+    Services no longer hold Mongo collections — every read and write goes through
+    ``app/db/repositories``, which resolves its handle via ``get_async_collection``
+    on *every* call. Patching that one symbol therefore redirects the whole
+    repository layer at this database, so production code called from a test
+    reads and writes the very collections the test seeds. This is the same seam
+    the repository contract suite uses (see ``tests/contracts/conftest.py``).
 
     Creates a fresh Motor client per test to avoid event-loop cross-
     contamination (session-scoped Motor clients are bound to the session
@@ -89,17 +81,25 @@ async def conversations_collection(mongodb_url: str, monkeypatch):
     asyncio_default_fixture_loop_scope is "function").
     """
     client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
-    coll = client["gaia_test"]["conversations"]
+    db = client["gaia_test"]
+
+    monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda name: db[name])
+
+    yield db
+
+    client.close()
+
+
+@pytest.fixture
+async def conversations_collection(mongo_db):
+    """The real ``conversations`` collection production code will read, emptied
+    around each test so seeded documents can be asserted on exactly."""
+    coll = mongo_db["conversations"]
     await coll.delete_many({})
-
-    import app.services.conversation_service as conv_svc
-
-    monkeypatch.setattr(conv_svc, "conversations_collection", coll)
 
     yield coll
 
     await coll.delete_many({})
-    client.close()
 
 
 @pytest.fixture
@@ -321,16 +321,27 @@ async def clean_bridge_tables(live_api_server: LiveApiServer) -> AsyncIterator[N
 
 @pytest.fixture
 def make_conversation(conversations_collection):
-    """Factory to seed a conversation document in real MongoDB."""
+    """Factory to seed a conversation document in real MongoDB.
+
+    Writes the legacy camelCase timestamp pair exactly as production does —
+    ``createdAt`` an ISO string, ``updatedAt`` a BSON date (see
+    ``ConversationDocument``). Callers may pass a ``datetime`` for ``createdAt``
+    so they can do date arithmetic; it is normalized here. Seeding a raw
+    ``datetime`` would make the repository's read-boundary validation reject the
+    row, which is not a shape any production writer can produce.
+    """
 
     async def _make(user_id: str, conv_id: str | None = None, **overrides):
         conv_id = conv_id or f"conv_{ObjectId()}"
+        created_at = overrides.pop("createdAt", datetime.now(UTC))
+        if isinstance(created_at, datetime):
+            created_at = created_at.isoformat()
         doc = {
             "user_id": user_id,
             "conversation_id": conv_id,
             "messages": [],
             "description": "Test conversation",
-            "createdAt": datetime.now(UTC),
+            "createdAt": created_at,
             "updatedAt": datetime.now(UTC),
             **overrides,
         }
