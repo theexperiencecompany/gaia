@@ -347,15 +347,6 @@ async def create_blog_indexes():
             blog_collection.create_index("authors"),
             # Compound index for published blogs
             blog_collection.create_index([("date", -1), ("category", 1)]),
-            # Text search index
-            blog_collection.create_index(
-                [
-                    ("title", "text"),
-                    ("content", "text"),
-                    ("description", "text"),
-                    ("tags", "text"),
-                ]
-            ),
         )
 
     except Exception as e:

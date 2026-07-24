@@ -122,18 +122,31 @@ class BlogsRepository(MongoRepository[BlogDocument, BlogUpdate]):
     async def search(
         self, query: str, *, skip: int, limit: int, include_content: bool = True
     ) -> list[BlogPost]:
-        escaped_query = re.escape(query)
+        """Case-insensitive substring match over title, category and body.
+
+        Deliberately regex-only. MongoDB cannot plan a ``$text`` clause nested in
+        an ``$or`` beside other predicates unless every sibling branch is indexed,
+        and on 7.x it additionally refuses to attach ``textScore`` metadata to such
+        a query at all — so the previous ``$text``-in-``$or`` shape sorted by
+        ``{$meta: textScore}`` failed outright rather than degrading. Substring
+        matching covers what the text index was reached for (title and body) plus
+        the partial matches ``$text``'s whole-word stemming never caught.
+
+        Ordered newest-first like :meth:`list_page`, which also makes the
+        ``skip``/``limit`` window deterministic.
+        """
+        condition = {"$regex": re.escape(query), "$options": "i"}
         pipeline: list[Mapping[str, object]] = [
             {
                 "$match": {
                     "$or": [
-                        {"$text": {"$search": query}},
-                        {"title": {"$regex": escaped_query, "$options": "i"}},
-                        {"category": {"$regex": escaped_query, "$options": "i"}},
+                        {"title": condition},
+                        {"category": condition},
+                        {"content": condition},
                     ]
                 }
             },
-            {"$sort": {"score": {"$meta": "textScore"}}},
+            {"$sort": {"date": -1}},
             {"$skip": skip},
             {"$limit": limit},
             {"$project": _list_projection(include_content)},

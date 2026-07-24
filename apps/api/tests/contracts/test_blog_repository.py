@@ -102,16 +102,35 @@ class TestBlogsRepository:
         assert all(p.content == "" for p in posts)  # content omitted from list view
 
     async def test_search_matches_title(self, repo, raw_collection):
-        # The search ``$or`` mixes ``$text`` with title/category regex; Mongo
-        # requires every non-text branch of the OR to be indexed too, so mirror
-        # the text index plus btree indexes on the regex fields.
-        await raw_collection.create_index(
-            [("title", "text"), ("content", "text")], name="blog_text"
-        )
-        await raw_collection.create_index("title", name="title_1")
-        await raw_collection.create_index("category", name="category_1")
+        # No index setup: search must plan on a bare collection, exactly as it
+        # does in production (`create_blog_indexes` declares no `title` index).
         await raw_collection.insert_one(_blog(slug="a", title="Rust ownership model"))
         await raw_collection.insert_one(_blog(slug="b", title="Cooking pasta"))
 
         results = await repo.search("Rust", skip=0, limit=10)
         assert {p.slug for p in results} == {"a"}
+
+    async def test_search_matches_category_and_content(self, repo, raw_collection):
+        await raw_collection.insert_one(_blog(slug="by-category", category="rustaceans"))
+        await raw_collection.insert_one(
+            _blog(slug="by-content", category="eng", content="a deep dive into Rust internals")
+        )
+        await raw_collection.insert_one(_blog(slug="miss", category="food", content="Pasta"))
+
+        results = await repo.search("rust", skip=0, limit=10)
+        assert {p.slug for p in results} == {"by-category", "by-content"}
+
+    async def test_search_treats_the_query_as_a_literal(self, repo, raw_collection):
+        await raw_collection.insert_one(_blog(slug="literal", title="C++ (a.k.a. cpp)"))
+        await raw_collection.insert_one(_blog(slug="other", title="Plain title"))
+
+        results = await repo.search("C++ (a.k.a.", skip=0, limit=10)
+        assert {p.slug for p in results} == {"literal"}
+
+    async def test_search_orders_newest_first_and_paginates(self, repo, raw_collection):
+        await raw_collection.insert_one(_blog(slug="mid", title="Rust two", date="2026-02-01"))
+        await raw_collection.insert_one(_blog(slug="new", title="Rust three", date="2026-03-01"))
+        await raw_collection.insert_one(_blog(slug="old", title="Rust one", date="2026-01-01"))
+
+        assert [p.slug for p in await repo.search("Rust", skip=0, limit=2)] == ["new", "mid"]
+        assert [p.slug for p in await repo.search("Rust", skip=2, limit=2)] == ["old"]
