@@ -272,12 +272,20 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     startup_services: list[StartupService] = list(eager_services)
     startup_services.append(
         StartupService(
+            # strict=True honors each provider's declared strategy: only an
+            # ERROR-strategy provider that fails to initialize propagates (WARN/SILENT
+            # return None and degrade), so a provider declared ERROR to fail loud —
+            # e.g. tool_registry — aborts a blocking boot instead of coming up broken
+            # and 500ing the first request. required=True is what lets that abort
+            # reach _process_results; without it the failure would be logged and
+            # swallowed. The background warmup path (warmup_all below) stays lenient:
+            # the server is already serving, so a warmup failure must not crash it.
             lambda: providers.initialize_auto_providers(
                 concurrency=AUTO_PROVIDER_CONCURRENCY,
-                strict=False,
+                strict=True,
             ),
             "lazy_providers_auto_initializer",
-            required=False,
+            required=True,
         )
     )
     startup_services.append(

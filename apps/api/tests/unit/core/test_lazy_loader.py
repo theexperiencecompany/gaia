@@ -617,6 +617,61 @@ class TestInitializeAutoProviders:
         reg = ProviderRegistry()
         await reg.initialize_auto_providers()  # should not raise
 
+    async def test_strict_mode_does_not_raise_on_non_error_loader_failure(self):
+        # Honor strategy: strict aborts on ERROR providers only. A WARN/SILENT
+        # provider whose loader raises must degrade (return None), never abort a
+        # strict boot — this is what makes strict safe as the blocking-startup mode.
+        reg = ProviderRegistry()
+
+        async def bad():
+            raise RuntimeError("optional dependency down")
+
+        for strategy in (MissingKeyStrategy.WARN, MissingKeyStrategy.SILENT):
+            reg.register(_uid("degrade"), bad, strategy=strategy, auto_initialize=True)
+
+        await reg.initialize_auto_providers(strict=True)  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# LazyLoader — registration-time auto-init does not fake success
+# ---------------------------------------------------------------------------
+
+
+class TestAutoInitDoesNotFakeSuccess:
+    @staticmethod
+    def _info_messages(mock_log) -> list[str]:
+        return [call.args[0] for call in mock_log.info.call_args_list if call.args]
+
+    def test_a_swallowed_sync_failure_is_not_logged_as_initialized(self):
+        # The langfuse shape: a SILENT sync auto provider whose loader raises a real
+        # bug is swallowed to None. It must not also log "Auto-initialized ... at
+        # registration time" — that false success is how a broken provider reads as up.
+        def bad_sync():
+            raise RuntimeError("name 'threading' is not defined")
+
+        with patch("app.core.lazy_loader.log") as mock_log:
+            loader = LazyLoader(
+                bad_sync,
+                strategy=MissingKeyStrategy.SILENT,
+                auto_initialize=True,
+                provider_name=_uid("silent_bad"),
+            )
+
+        assert loader.is_initialized() is False
+        assert not any("Auto-initialized" in m for m in self._info_messages(mock_log))
+
+    def test_a_real_sync_success_still_logs_initialized(self):
+        with patch("app.core.lazy_loader.log") as mock_log:
+            loader = LazyLoader(
+                lambda: "value",
+                strategy=MissingKeyStrategy.SILENT,
+                auto_initialize=True,
+                provider_name=_uid("good"),
+            )
+
+        assert loader.is_initialized() is True
+        assert any("Auto-initialized" in m for m in self._info_messages(mock_log))
+
 
 # ---------------------------------------------------------------------------
 # ProviderRegistry — warmup_all
