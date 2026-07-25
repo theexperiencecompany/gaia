@@ -1,8 +1,14 @@
 """Tests for app/agents/middleware/subagent.py — SubagentMiddleware."""
 
-from unittest.mock import AsyncMock, MagicMock
+from contextlib import contextmanager
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from langchain_core.tools import BaseTool
+from langgraph.errors import GraphInterrupt
+import pytest
+
+MODULE = "app.agents.middleware.subagent"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -23,6 +29,13 @@ def _make_middleware(**kwargs):
     return SubagentMiddleware(**defaults)
 
 
+def _ready_middleware(**kwargs):
+    """Middleware wired far enough to actually run a spawn."""
+    mw = _make_middleware(llm=MagicMock(), spawn_middleware_factory=lambda space: [], **kwargs)
+    mw.set_spawn_graph_provider(AsyncMock(return_value=MagicMock()))
+    return mw
+
+
 def _make_tool(name: str) -> MagicMock:
     """Create a mock BaseTool."""
     tool = MagicMock(spec=BaseTool)
@@ -33,6 +46,59 @@ def _make_tool(name: str) -> MagicMock:
 
 def _make_config(user_id: str = "u1") -> dict:
     return {"configurable": {"user_id": user_id}}
+
+
+def _make_spawn_config(**configurable) -> dict:
+    return {
+        "configurable": {
+            "user_id": "u1",
+            "conversation_id": "conv-1",
+            "email": "u1@example.com",
+            "user_name": "Ada",
+            **configurable,
+        }
+    }
+
+
+def _paused(approval_id: str):
+    from app.agents.core.subagents.subagent_runner import SubagentOutcome
+
+    return SubagentOutcome(text="", interrupt={"approval_id": approval_id})
+
+
+def _done(text: str):
+    from app.agents.core.subagents.subagent_runner import SubagentOutcome
+
+    return SubagentOutcome(text=text)
+
+
+@contextmanager
+def _spawn_harness(outcomes, decisions=("approved",), recovered=None):
+    """Patch only the edges of a spawn: the LangGraph stream context, memory
+    retrieval, the graph runner, and the HIL interrupt. Everything the
+    middleware itself does (context building, the drive loop, event emission,
+    exception routing) stays real.
+    """
+    writer = MagicMock()
+    execute = AsyncMock(side_effect=outcomes)
+    resume = MagicMock(side_effect=decisions)
+    recover = AsyncMock(return_value=recovered)
+    with (
+        patch(f"{MODULE}.get_stream_writer", return_value=writer),
+        patch(f"{MODULE}.build_initial_messages", new=AsyncMock(return_value=[])),
+        patch(f"{MODULE}.execute_subagent_stream", new=execute),
+        patch(f"{MODULE}.resume_for_gate", new=resume),
+        patch(f"{MODULE}.recover_from_checkpoint", new=recover),
+    ):
+        yield SimpleNamespace(writer=writer, execute=execute, resume=resume, recover=recover)
+
+
+def _event_names(writer: MagicMock) -> list[str]:
+    return [next(iter(c.args[0])) for c in writer.call_args_list]
+
+
+def _tool_message(command):
+    return command.update["messages"][0]
 
 
 # ---------------------------------------------------------------------------
@@ -134,3 +200,132 @@ class TestSpawnSubagentTool:
         assert len(mw.tools) == 1
         tool = mw.tools[0]
         assert tool.name == "spawn_subagent"
+
+    async def test_missing_llm_returns_tool_error_without_spawning(self):
+        mw = _make_middleware()
+        provider = AsyncMock()
+        mw.set_spawn_graph_provider(provider)
+
+        result = await mw.tools[0].coroutine(
+            task="summarise the file",
+            tool_call_id="call_1",
+            selected_tool_ids=[],
+            config=_make_spawn_config(),
+        )
+
+        message = _tool_message(result)
+        assert message.content == "Error: Subagent LLM not configured"
+        assert message.status == "error"
+        assert message.tool_call_id == "call_1"
+        provider.assert_not_awaited()
+
+    async def test_hil_pause_propagates_out_of_the_tool(self):
+        """A GraphBubbleUp is the user's approval request in flight. Swallowing it
+        into a tool error would drop the approval and silently finish the turn.
+        """
+        mw = _ready_middleware()
+        with _spawn_harness(
+            outcomes=[_paused("approval-1")],
+            decisions=[GraphInterrupt()],
+        ) as h:
+            with pytest.raises(GraphInterrupt):
+                await mw.tools[0].coroutine(
+                    task="delete the repo",
+                    tool_call_id="call_1",
+                    selected_tool_ids=[],
+                    config=_make_spawn_config(),
+                )
+
+        assert h.resume.call_args_list == [call({"approval_id": "approval-1"})]
+        # The row stays live across the pause — ending it here would orphan the
+        # spinner and open a duplicate when the approval resumes the spawn.
+        assert _event_names(h.writer) == ["subagent_start"]
+
+    async def test_unexpected_failure_becomes_a_tool_error(self):
+        mw = _ready_middleware()
+        with _spawn_harness(outcomes=[RuntimeError("chroma down")]) as h:
+            result = await mw.tools[0].coroutine(
+                task="summarise the file",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(),
+            )
+
+        message = _tool_message(result)
+        assert message.content == "Subagent error: chroma down"
+        assert message.status == "error"
+        # A failed spawn must close its row, or the UI spins forever.
+        assert _event_names(h.writer) == ["subagent_start", "subagent_end"]
+
+    async def test_drive_resumes_every_gate_before_returning(self):
+        """Two gated calls in one task pause twice; each resume carries its own
+        gate's decision and only the final, unpaused outcome is the tool result.
+        """
+        mw = _ready_middleware()
+        with _spawn_harness(
+            outcomes=[_paused("approval-1"), _paused("approval-2"), _done("deleted 2 files")],
+            decisions=["approve-1", "approve-2"],
+        ) as h:
+            result = await mw.tools[0].coroutine(
+                task="clean up",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(),
+            )
+
+        assert _tool_message(result).content == "deleted 2 files"
+        assert h.execute.await_count == 3
+        assert h.resume.call_args_list == [
+            call({"approval_id": "approval-1"}),
+            call({"approval_id": "approval-2"}),
+        ]
+        resumed = [c.kwargs.get("resume") for c in h.execute.await_args_list]
+        assert resumed[0] is None
+        assert [r.resume for r in resumed[1:]] == ["approve-1", "approve-2"]
+        assert _event_names(h.writer) == ["subagent_start", "subagent_end"]
+
+    async def test_fresh_spawn_never_probes_the_checkpoint(self):
+        mw = _ready_middleware()
+        with _spawn_harness(outcomes=[_done("ok")]) as h:
+            await mw.tools[0].coroutine(
+                task="summarise",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(),
+            )
+
+        h.recover.assert_not_awaited()
+        assert h.execute.await_count == 1
+
+    async def test_replay_returns_the_checkpointed_result_without_rerunning(self):
+        """A sibling's pause replays this tool node. Re-running the spawn would
+        repeat every action it already took.
+        """
+        from app.constants.hil import HIL_RESUME_CONFIG_KEY
+
+        mw = _ready_middleware()
+        with _spawn_harness(outcomes=[_done("second run")], recovered=_done("first run")) as h:
+            result = await mw.tools[0].coroutine(
+                task="send the email",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(**{HIL_RESUME_CONFIG_KEY: True}),
+            )
+
+        assert _tool_message(result).content == "first run"
+        h.recover.assert_awaited_once()
+        h.execute.assert_not_awaited()
+
+    async def test_spawn_context_isolates_the_thread_and_drops_excluded_tools(self):
+        mw = _ready_middleware(excluded_tool_names={"handoff"})
+        with _spawn_harness(outcomes=[_done("ok")]) as h:
+            await mw.tools[0].coroutine(
+                task="summarise",
+                tool_call_id="call_abc",
+                selected_tool_ids=["read", "handoff", "spawn_subagent"],
+                config=_make_spawn_config(conversation_id="conv-9"),
+            )
+
+        ctx = h.execute.await_args.kwargs["ctx"]
+        assert ctx.config["configurable"]["thread_id"] == "spawn_conv-9_call_abc"
+        assert ctx.initial_state["selected_tool_ids"] == ["read"]
