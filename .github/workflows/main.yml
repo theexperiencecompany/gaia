@@ -235,6 +235,12 @@ jobs:
           exit 1
 
   # --- Trivy scan (non-blocking) ------------------------------------------
+  # Kept advisory: a scan of a clean checkout (matching what this job actually
+  # sees) currently reports 12 known HIGH-severity vulnerabilities in
+  # pnpm-lock.yaml (axios, brace-expansion, fast-uri, next x4 CVEs, postcss,
+  # sharp — 0 CRITICAL). Flipping this to blocking today would red every PR
+  # for pre-existing findings, not new ones the PR caused. Upgrade the
+  # flagged packages, re-scan, then remove continue-on-error.
   trivy-scan:
     needs: [detect]
     runs-on: ubuntu-latest
