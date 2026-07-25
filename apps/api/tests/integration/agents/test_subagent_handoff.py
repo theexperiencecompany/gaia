@@ -31,7 +31,7 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import InMemorySaver, MemorySaver
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.store.memory import InMemoryStore
 from langgraph.types import Command, interrupt
@@ -55,7 +55,6 @@ from app.agents.core.subagents.subagent_runner import (
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
 from app.models.hil_models import HILApprovalRecord
 from tests.helpers import create_fake_llm
-from tests.integration.conftest import SimpleState
 
 HANDOFF_MODULE = "app.agents.core.subagents.handoff_tools"
 BASE_SUBAGENT_MODULE = "app.agents.core.subagents.base_subagent"
@@ -98,19 +97,6 @@ def _make_mock_tool_registry():
     registry.get_category_by_space.return_value = None
     registry._categories = {}
     return registry
-
-
-def _make_minimal_subagent_graph() -> Any:
-    """Return a trivial compiled graph that mimics a subagent."""
-
-    def respond(state: SimpleState) -> dict[str, Any]:
-        return {"messages": [AIMessage(content="subagent completed task")]}
-
-    builder = StateGraph(SimpleState)
-    builder.add_node("respond", respond)
-    builder.set_entry_point("respond")
-    builder.add_edge("respond", END)
-    return builder.compile(checkpointer=MemorySaver())
 
 
 # ---------------------------------------------------------------------------
@@ -371,58 +357,119 @@ class TestSubagentExecutionContext:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+async def real_subagent_seams():
+    """Build ONE real compiled subagent graph via SubAgentFactory (production
+    code, not a graph built from scratch in the test), shared across both
+    handoff() calls — isolation must come from handoff()'s own thread_id
+    derivation and the real checkpointer, not from using separate graph
+    objects per thread."""
+    fake_llm = create_fake_llm(["ack"])
+    mock_store = _make_mock_store()
+    mock_registry = _make_mock_tool_registry()
+    saver = InMemorySaver()
+
+    with (
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tool_registry", AsyncMock(return_value=mock_registry)),
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tools_store", AsyncMock(return_value=mock_store)),
+        patch(
+            f"{BASE_SUBAGENT_MODULE}.get_checkpointer_manager",
+            AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: saver)),
+        ),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_subagent_middleware", return_value=[]),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_tools", return_value=[]),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_pre_model_hook", return_value=None),
+    ):
+        graph = await SubAgentFactory.create_provider_subagent(
+            provider="gmail",
+            name="gmail_agent",
+            llm=fake_llm,
+            tool_space="gmail_delegated",
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+        )
+
+    with (
+        patch(
+            f"{HANDOFF_MODULE}._resolve_subagent",
+            AsyncMock(return_value=(graph, "gmail_agent", "gmail", False)),
+        ),
+        patch(
+            f"{HANDOFF_MODULE}.create_subagent_system_message",
+            AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
+        ),
+        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(
+            f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
+            AsyncMock(return_value=[]),
+        ),
+        # handoff() is invoked directly here (no parent graph node), so there is
+        # no active LangGraph runnable context for get_stream_writer() to hook.
+        patch(f"{HANDOFF_MODULE}.get_stream_writer", return_value=MagicMock()),
+        patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            AsyncMock(return_value=SystemMessage(content="ctx")),
+        ),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
+        ),
+    ):
+        yield graph
+
+
 @pytest.mark.integration
 class TestSubagentThreadIsolation:
-    """Verify that two subagent graphs sharing the same MemorySaver instance
-    but using different thread IDs do not share state."""
+    """A handoff to the SAME subagent from two different parent conversations
+    must not leak state between them. Drives the real handoff() tool and a
+    real SubAgentFactory-built graph — proving GAIA's own thread-id derivation
+    and checkpointer isolate state, not just LangGraph's MemorySaver in a toy
+    graph built from scratch for the test."""
 
-    async def test_subagent_thread_isolation(self):
-        """Subagent invocations with different thread IDs must produce
-        independent checkpointed states."""
-        graph_a = _make_minimal_subagent_graph()
-        graph_b = _make_minimal_subagent_graph()
+    async def test_handoff_from_different_parent_threads_is_isolated(
+        self, real_subagent_seams
+    ) -> None:
+        graph = real_subagent_seams
+        parent_a = str(uuid4())
+        parent_b = str(uuid4())
 
-        thread_a = {"configurable": {"thread_id": f"subagent_gmail_{uuid4()}"}}
-        thread_b = {"configurable": {"thread_id": f"subagent_notion_{uuid4()}"}}
-
-        await graph_a.ainvoke(
-            {"messages": [HumanMessage(content="Task A")]},
-            config=thread_a,
+        result_a = await handoff.coroutine(
+            subagent_id="gmail",
+            task="Summarize thread Alpha",
+            config={"configurable": {"user_id": "user-iso-1", "thread_id": parent_a}},
         )
-        await graph_b.ainvoke(
-            {"messages": [HumanMessage(content="Task B")]},
-            config=thread_b,
+        result_b = await handoff.coroutine(
+            subagent_id="gmail",
+            task="Summarize thread Bravo",
+            config={"configurable": {"user_id": "user-iso-1", "thread_id": parent_b}},
         )
 
-        state_a = await graph_a.aget_state(thread_a)
-        state_b = await graph_b.aget_state(thread_b)
+        assert result_a
+        assert result_b
 
-        # Human messages should differ
-        human_a = [m for m in state_a.values["messages"] if isinstance(m, HumanMessage)]
-        human_b = [m for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
+        # Real format from handoff_tools.py: f"{integration_id}_{parent_thread_id}"
+        thread_id_a = f"gmail_{parent_a}"
+        thread_id_b = f"gmail_{parent_b}"
+        assert thread_id_a != thread_id_b
 
-        assert human_a[0].content == "Task A"
-        assert human_b[0].content == "Task B"
+        state_a = await graph.aget_state({"configurable": {"thread_id": thread_id_a}})
+        state_b = await graph.aget_state({"configurable": {"thread_id": thread_id_b}})
 
-    async def test_same_graph_different_threads_are_isolated(self):
-        """The same compiled graph object with different thread configs
-        must maintain independent state per thread."""
-        graph = _make_minimal_subagent_graph()
+        content_a = " ".join(
+            m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)
+        )
+        content_b = " ".join(
+            m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)
+        )
 
-        config_x = {"configurable": {"thread_id": f"thread-x-{uuid4()}"}}
-        config_y = {"configurable": {"thread_id": f"thread-y-{uuid4()}"}}
-
-        await graph.ainvoke({"messages": [HumanMessage(content="From X")]}, config=config_x)
-        await graph.ainvoke({"messages": [HumanMessage(content="From Y")]}, config=config_y)
-
-        state_x = await graph.aget_state(config_x)
-        state_y = await graph.aget_state(config_y)
-
-        human_x = [m for m in state_x.values["messages"] if isinstance(m, HumanMessage)]
-        human_y = [m for m in state_y.values["messages"] if isinstance(m, HumanMessage)]
-
-        assert human_x[0].content == "From X"
-        assert human_y[0].content == "From Y"
+        assert "Summarize thread Alpha" in content_a
+        assert "Summarize thread Bravo" not in content_a, (
+            "thread A's checkpointed state must not contain thread B's task"
+        )
+        assert "Summarize thread Bravo" in content_b
+        assert "Summarize thread Alpha" not in content_b, (
+            "thread B's checkpointed state must not contain thread A's task"
+        )
 
 
 # ---------------------------------------------------------------------------
