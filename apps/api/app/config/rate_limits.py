@@ -251,6 +251,24 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Edit files in the persistent coding workspace",
         ),
     ),
+    # Read-only miners over offloaded workspace files (mirror workspace_read's
+    # generous limits — a large-inbox triage fans these out across chunks).
+    "workspace_query_json": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Query",
+            description="Filter/aggregate offloaded JSON/JSONL files in the coding workspace",
+        ),
+    ),
+    "workspace_grep": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Grep",
+            description="Search files in the persistent coding workspace",
+        ),
+    ),
     # CREATIVE TOOLS
     "flowchart_creation": TieredRateLimits(
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
