@@ -26,7 +26,14 @@ export async function openServerSession(
 ): Promise<ServerSession> {
   if (config.type === "url") {
     const transport = new StreamableHTTPClientTransport(new URL(config.url));
-    return { transport, close: () => transport.close() };
+    // StreamableHTTPClientTransport declares `get sessionId(): string | undefined`
+    // where the SDK's own Transport interface types it as the optional `sessionId?:
+    // string` — a mismatch that only surfaces under exactOptionalPropertyTypes, not
+    // a real behavioral difference (both mean "may be absent").
+    return {
+      transport: transport as unknown as Transport,
+      close: () => transport.close(),
+    };
   }
 
   if (config.type === "stdio") {
