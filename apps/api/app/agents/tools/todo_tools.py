@@ -91,6 +91,24 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
         log.warning(f"{LogTag.TOOL} Stream writer not available for todo_progress: {e}")
 
 
+def _validation_errors(updates: list[TaskUpdate], known_ids: set[str]) -> list[str]:
+    """Reasons a batch of task updates cannot be applied, one per offending entry."""
+    if not updates:
+        return ["`updates` was empty — pass at least one status change or new task"]
+
+    errors: list[str] = []
+    for entry in updates:
+        task_id = entry.get("task_id")
+        if not task_id:
+            if not entry.get("content"):
+                errors.append("entry has neither task_id (to update) nor content (to add)")
+        elif task_id not in known_ids:
+            errors.append(f"unknown task_id {task_id!r}")
+        elif not entry.get("status"):
+            errors.append(f"task_id {task_id!r} has no status")
+    return errors
+
+
 def _format_todos(todos: list[Todo]) -> str:
     """Format todos for context injection."""
     if not todos:
@@ -172,10 +190,35 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         tool_call_id: Annotated[str, InjectedToolCallId],
         todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
-        """Update task statuses and/or add new tasks in a single call."""
+        """Update task statuses and/or add new tasks in a single call.
+
+        An invalid entry rejects the whole batch rather than being skipped: applying a
+        batch partially would make the model's retry non-idempotent, since a `content`
+        addition that already landed would be added a second time.
+        """
         now = datetime.now(UTC).isoformat()
         updated_todos: list[Todo] = [dict(t) for t in todos]  # type: ignore[misc]
         todo_map = {t["id"]: t for t in updated_todos}
+
+        errors = _validation_errors(updates, set(todo_map))
+        if errors:
+            log.warning(f"{LogTag.TOOL} update_tasks rejected: {'; '.join(errors)}")
+            return Command(
+                update={
+                    "messages": [
+                        ToolMessage(
+                            content=(
+                                f"No tasks were updated. Rejected: {'; '.join(errors)}. "
+                                f"Known task ids: {', '.join(todo_map) or 'none'}."
+                            ),
+                            tool_call_id=tool_call_id,
+                            name="update_tasks",
+                            status="error",
+                            additional_kwargs={"todo_tool": True, "todo_source": source},
+                        )
+                    ]
+                }
+            )
 
         summary_parts: list[str] = []
         added: list[str] = []
@@ -185,11 +228,10 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
             content = entry.get("content")
             status = entry.get("status")
 
-            if task_id:
+            if task_id and status:
                 # Update existing task
-                if task_id in todo_map and status:
-                    todo_map[task_id]["status"] = status
-                    summary_parts.append(f"{task_id}→{status}")
+                todo_map[task_id]["status"] = status
+                summary_parts.append(f"{task_id}→{status}")
             elif content:
                 # Add new task
                 new_todo = Todo(
@@ -205,7 +247,7 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
         if added:
             summary_parts.append(f"added: {', '.join(added)}")
 
-        summary = "; ".join(summary_parts) if summary_parts else "no changes"
+        summary = "; ".join(summary_parts)
         _emit_todo_progress(updated_todos, source, source_label)
 
         return Command(
