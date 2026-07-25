@@ -1,3 +1,4 @@
+import { upsertApprovalToolData } from "./approvals";
 import type {
   ChatStreamEvent,
   StreamToolDataEntry,
@@ -156,7 +157,9 @@ const applyToolData = (
       ),
     };
   }
-  return { ...acc, toolData: [...acc.toolData, entry] };
+  // A HIL approval frame replaces the prior frame for its approval_id in place;
+  // every other entry is appended. Keeps replay + live streams to one card.
+  return { ...acc, toolData: upsertApprovalToolData(acc.toolData, entry) };
 };
 
 const applyReasoning = (

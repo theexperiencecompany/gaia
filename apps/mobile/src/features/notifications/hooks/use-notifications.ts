@@ -5,6 +5,7 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
+import { chatApi } from "@/features/chat/api/chat-api";
 import { notificationsApi } from "@/features/notifications/api/notifications-api";
 
 // Check if running in Expo Go
@@ -57,10 +58,13 @@ function resolveNotificationRoute(
   }
 
   if (
+    key.includes("approval") ||
     key.includes("chat") ||
     key.includes("conversation") ||
     key.includes("message")
   ) {
+    // Land in chat where the approval card is actionable — the fully-killed-app
+    // case only delivers a plain tap, so tap-through must always be actionable.
     return "/(app)/(tabs)";
   }
 
@@ -107,6 +111,17 @@ export function useNotifications(): UseNotificationsReturn {
             enableLights: true,
           });
         }
+
+        // Interactive HIL approval actions — approve/deny straight from the
+        // notification (iOS action buttons; Android shows them where supported).
+        await Notifications.setNotificationCategoryAsync("hil_approval", [
+          { identifier: "approve", buttonTitle: "Approve" },
+          {
+            identifier: "deny",
+            buttonTitle: "Deny",
+            options: { isDestructive: true },
+          },
+        ]);
 
         // Check if physical device
         if (!Device.isDevice) {
@@ -215,6 +230,35 @@ export function useNotifications(): UseNotificationsReturn {
             string,
             unknown
           >;
+          const action = response.actionIdentifier;
+          const approvalId =
+            typeof data.approval_id === "string" ? data.approval_id : null;
+
+          // Approve/Deny action button: relay the decision without opening the
+          // app. A 410 (already resolved) is swallowed by postApprovalDecision;
+          // false means the submit genuinely failed — tell the user, or they'll
+          // believe they approved an action that never ran.
+          if (
+            data.type === "hil_approval" &&
+            approvalId &&
+            (action === "approve" || action === "deny")
+          ) {
+            void chatApi
+              .postApprovalDecision(approvalId, { decision: action })
+              .then((ok) => {
+                if (!ok) {
+                  void Notifications.scheduleNotificationAsync({
+                    content: {
+                      title: "Approval not sent",
+                      body: "Your decision didn't go through — open GAIA to retry.",
+                    },
+                    trigger: null,
+                  });
+                }
+              });
+            return;
+          }
+
           const route = resolveNotificationRoute(data);
           if (route) {
             router.push(route as never);

@@ -1,0 +1,287 @@
+"""Surface an approval request to the user's clients, and remember declines.
+
+The gate pauses its run with LangGraph's ``interrupt()``; nothing here waits. This
+module only *publishes*: it records the pending approval durably, pushes the
+``approval_request`` tool_data card onto the turn's SSE stream, and wakes clients
+that aren't watching it. The decision arrives out-of-band and is applied by
+``app/services/hil/resolution.py``, which resumes the paused thread.
+
+Frame delivery mirrors ``make_redis_stream_writer``: every frame is both published
+to the replayable stream event log (live + reload) AND appended to the stream
+session's tool-event collector so the executor drain path persists it. The gate
+only fires inside the detached executor/subagent (comms holds no gated tools),
+where ``get_stream_writer`` is unavailable — so this dual write, keyed purely by
+``stream_id``, is what makes the card work at every nesting depth.
+"""
+
+import asyncio
+from dataclasses import dataclass
+from datetime import UTC, datetime
+import hashlib
+import json
+from typing import Any
+
+from app.agents.core.background.session import get_session
+from app.constants.cache import HIL_DECLINED_PREFIX
+from app.constants.hil import (
+    APPROVAL_REQUEST_TOOL_NAME,
+    APPROVAL_TOOL_CATEGORY,
+    HIL_APPROVAL_TIMEOUT_SECONDS,
+    HIL_CLASSIFIER_MAX_ARG_CHARS,
+    HIL_CLASSIFIER_MAX_ARGS,
+    HIL_CLASSIFIER_MAX_DETAIL_CHARS,
+    HIL_DECLINE_MEMORY_TTL_SECONDS,
+    HIL_SUMMARY_MAX_ARG_CHARS,
+    HIL_SUMMARY_MAX_ARGS,
+)
+from app.core.stream_manager import stream_manager
+from app.db.redis import redis_cache
+from app.models.hil_models import HILApprovalStatus
+from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
+from app.services.hil.notify import notify_approval_pending
+from app.utils.general_utils import clip_text
+from shared.py.wide_events import log
+
+# Keep-alive set so fire-and-forget notify tasks aren't GC'd mid-flight
+# (asyncio.create_task holds only a weak reference).
+_notify_tasks: set[asyncio.Task[None]] = set()
+
+
+@dataclass
+class ApprovalOutcome:
+    """The resolved result of an approval request: status, optional feedback, and scope."""
+
+    status: HILApprovalStatus
+    feedback: str | None = None
+    scope: str = "once"
+
+
+async def publish_approval_request(
+    *,
+    approval_id: str,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: dict[str, Any],
+    summary: str,
+    integration_name: str | None,
+) -> None:
+    """Record the pending approval and surface its card — exactly once.
+
+    The gate re-enters this on every resume replay (the node re-runs from the
+    top), so the card and the notification are gated on whether the upsert
+    actually created the record. A replay is a no-op.
+    """
+    created = await upsert_pending_approval(
+        approval_id=approval_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        tool_name=tool_call.get("name", ""),
+        tool_call_id=tool_call.get("id", ""),
+        args=tool_call.get("args", {}) or {},
+        summary=summary,
+        integration_name=integration_name,
+    )
+    if not created:
+        return
+
+    log.set(hil={"approval_id": approval_id, "tool": tool_call.get("name"), "stream_id": stream_id})
+    await _publish_entry(
+        stream_id,
+        _approval_entry(approval_id, tool_call, "pending", summary, integration_name),
+    )
+    _schedule_pending_notification(user_id, conversation_id, approval_id, summary)
+
+
+async def publish_approval_outcome(
+    *,
+    stream_id: str,
+    approval_id: str,
+    tool_call: dict[str, Any],
+    summary: str,
+    integration_name: str | None,
+    outcome: ApprovalOutcome,
+) -> None:
+    """Update the card to its resolved state on the stream that resumed the run."""
+    await _publish_entry(
+        stream_id,
+        _approval_entry(
+            approval_id, tool_call, outcome.status, summary, integration_name, outcome.feedback
+        ),
+    )
+
+
+async def publish_auto_approval(
+    *,
+    approval_id: str,
+    stream_id: str,
+    user_id: str,
+    conversation_id: str,
+    tool_call: dict[str, Any],
+    summary: str,
+    integration_name: str | None,
+    reason: str,
+) -> None:
+    """Record and surface an action auto mode ran without asking.
+
+    The card is published already settled, so it needs no decision and wakes nobody — it
+    is a receipt, not a request. Auto mode should never mean the user cannot see what was
+    done in their name.
+    """
+    await record_auto_approval(
+        approval_id=approval_id,
+        user_id=user_id,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        tool_name=tool_call.get("name", ""),
+        tool_call_id=tool_call.get("id", ""),
+        args=tool_call.get("args", {}) or {},
+        summary=summary,
+        integration_name=integration_name,
+        reason=reason,
+    )
+    await _publish_entry(
+        stream_id,
+        _approval_entry(
+            approval_id,
+            tool_call,
+            "auto_approved",
+            summary,
+            integration_name,
+            auto_reason=reason,
+        ),
+    )
+
+
+async def remember_declined_call(
+    stream_id: str, tool_name: str, args: dict[str, Any], feedback: str | None
+) -> None:
+    """Record that the user declined this exact call for the rest of the turn."""
+    if not redis_cache.redis:
+        return
+    await redis_cache.set(
+        _declined_key(stream_id, tool_name, args),
+        {"feedback": feedback},
+        ttl=HIL_DECLINE_MEMORY_TTL_SECONDS,
+    )
+
+
+async def recall_declined_call(
+    stream_id: str, tool_name: str, args: dict[str, Any]
+) -> ApprovalOutcome | None:
+    """The prior decline for this exact call in this turn, if any — so the gate
+    can auto-deny a retry with the user's original feedback and never re-prompt."""
+    if not redis_cache.redis:
+        return None
+    record = await redis_cache.get(_declined_key(stream_id, tool_name, args))
+    if not record:
+        return None
+    return ApprovalOutcome(status="denied", feedback=record.get("feedback"))
+
+
+def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:
+    """Deterministic one-line summary of a gated call (no LLM in the hot path)."""
+    label = tool_name.replace("_", " ").strip().capitalize()
+    if integration_name:
+        label = f"{label} ({integration_name})"
+    parts = _summary_arg_parts(args)
+    return f"{label} — {', '.join(parts)}" if parts else label
+
+
+def build_action_detail(summary: str, args: dict[str, Any]) -> str:
+    """Richer rendering of a gated call for the conversational classifier.
+
+    The card's one-line ``summary`` (tool + integration identity, truncated args)
+    as the label, plus every argument up to a bound with non-scalar values as
+    compact JSON — so the classifier sees the full content (recipient, subject,
+    body, ...) the summary omits. The total is capped by
+    ``HIL_CLASSIFIER_MAX_DETAIL_CHARS``; the per-value clip only stops one
+    pathological arg from eating the whole budget. No LLM here."""
+    lines = [summary]
+    arg_lines = []
+    for key, value in list((args or {}).items())[:HIL_CLASSIFIER_MAX_ARGS]:
+        rendered = (
+            value if isinstance(value, (str, int, float, bool)) else json.dumps(value, default=str)
+        )
+        arg_lines.append(f"  {key}: {clip_text(str(rendered), HIL_CLASSIFIER_MAX_ARG_CHARS)}")
+    if arg_lines:
+        lines.append("Arguments:")
+        lines.extend(arg_lines)
+    return clip_text("\n".join(lines), HIL_CLASSIFIER_MAX_DETAIL_CHARS)
+
+
+# --- internals -----------------------------------------------------------------
+
+
+def _schedule_pending_notification(
+    user_id: str, conversation_id: str, approval_id: str, summary: str
+) -> None:
+    """Wake clients not watching the stream. Detached — a notify failure must
+    never block the gate."""
+    task = asyncio.create_task(
+        notify_approval_pending(user_id, conversation_id, approval_id, summary)
+    )
+    _notify_tasks.add(task)
+    task.add_done_callback(_notify_tasks.discard)
+
+
+async def _publish_entry(stream_id: str, entry: dict[str, Any]) -> None:
+    """Deliver a frame live (replayable event log) AND record it for persistence.
+
+    The session append mirrors ``make_redis_stream_writer`` so the executor
+    drain path persists the card; the SSE publish reaches live/reloaded clients.
+    """
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'tool_data': entry})}\n\n")
+    session = get_session(stream_id)
+    if session is not None:
+        session.tool_events.append({"tool_data": entry})
+
+
+def _approval_entry(
+    approval_id: str,
+    tool_call: dict[str, Any],
+    status: HILApprovalStatus,
+    summary: str,
+    integration_name: str | None,
+    feedback: str | None = None,
+    auto_reason: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
+        "tool_category": APPROVAL_TOOL_CATEGORY,
+        "data": {
+            "approval_id": approval_id,
+            "tool_call_id": tool_call.get("id", ""),
+            "gated_tool_name": tool_call.get("name", ""),
+            "integration_name": integration_name,
+            "summary": summary,
+            "args_preview": tool_call.get("args", {}),
+            "status": status,
+            "feedback": feedback,
+            "auto_reason": auto_reason,
+            "timeout_seconds": int(HIL_APPROVAL_TIMEOUT_SECONDS),
+        },
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+
+
+def _summary_arg_parts(args: dict[str, Any]) -> list[str]:
+    """A few short ``key: value`` scalars for the card's one-line summary."""
+    parts: list[str] = []
+    for key, value in (args or {}).items():
+        if len(parts) >= HIL_SUMMARY_MAX_ARGS:
+            break
+        if isinstance(value, (str, int, float, bool)):
+            parts.append(f"{key}: {clip_text(str(value), HIL_SUMMARY_MAX_ARG_CHARS)}")
+    return parts
+
+
+def _declined_key(stream_id: str, tool_name: str, args: dict[str, Any]) -> str:
+    return f"{HIL_DECLINED_PREFIX}{stream_id}:{tool_name}:{_args_hash(args)}"
+
+
+def _args_hash(args: dict[str, Any]) -> str:
+    # md5 over the canonical args — a cache key, not a security boundary.
+    payload = json.dumps(args or {}, sort_keys=True, default=str)
+    return hashlib.md5(payload.encode(), usedforsecurity=False).hexdigest()  # nosec B324

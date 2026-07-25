@@ -295,6 +295,65 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    # ---------------------------------------------------------- HIL preferences
+
+    async def set_hil_preference_fields(
+        self,
+        user_id: str,
+        *,
+        mode: str | None = None,
+        tool_overrides: dict[str, bool] | None = None,
+    ) -> None:
+        """``$set`` the provided ``hil_preferences`` fields, leaving the rest alone."""
+        set_fields: dict[str, object] = {}
+        if mode is not None:
+            set_fields["hil_preferences.mode"] = mode
+        if tool_overrides is not None:
+            set_fields["hil_preferences.tool_overrides"] = tool_overrides
+        if not set_fields:
+            return
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": set_fields},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def set_hil_tool_override(self, user_id: str, tool_name: str, ask: bool | None) -> None:
+        """Set (``ask`` = True/False) or clear (``ask`` = None) one HIL tool override.
+
+        Touches only this tool's key, so toggling several tools at once (each switch
+        on the integration panel fires its own request) cannot lose an override: a
+        read-modify-write of the whole map would have each request overwrite the
+        others' keys with the snapshot it read before they landed.
+
+        ``$setField`` in an aggregation-pipeline update rather than a dotted ``$set``
+        path because MCP tool names can contain dots (e.g. ``server.action``), which
+        Mongo would split into a nested subdocument, diverging from the flat map the
+        read path expects. A pipeline update cannot travel through
+        ``_apply_raw_update`` (it takes an update *document*), so the cache steps it
+        would have done — evict the entity, bump the generation — are applied here.
+        """
+        overrides_path = "hil_preferences.tool_overrides"
+        await self._raw_collection().update_one(
+            {"_id": self._id_value(user_id)},
+            [
+                {
+                    "$set": {
+                        overrides_path: {
+                            "$setField": {
+                                "field": {"$literal": tool_name},
+                                "input": {"$ifNull": [f"${overrides_path}", {}]},
+                                "value": "$$REMOVE" if ask is None else ask,
+                            }
+                        }
+                    }
+                }
+            ],
+        )
+        await self._cache_evict(REPO_GLOBAL_SCOPE, user_id)
+        await self._invalidate(REPO_GLOBAL_SCOPE)
+
     async def set_suggested_workflows(self, user_id: str, workflow_ids: list[str]) -> None:
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},

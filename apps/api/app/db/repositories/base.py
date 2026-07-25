@@ -15,6 +15,7 @@ import inspect
 from typing import Any, ClassVar, Generic, TypeVar, cast
 
 from bson import ObjectId
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pydantic import BaseModel, ConfigDict, ValidationError
 from pymongo import ReturnDocument, UpdateOne
 
@@ -329,6 +330,15 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
         return [str(value) for value in values]
 
     # ---- subclass-only primitives (never called outside a repository) ----
+
+    def _raw_collection(self) -> AsyncIOMotorCollection[dict[str, Any]]:
+        """The repository's own Motor handle, for the rare operator no base
+        primitive expresses (e.g. an aggregation-pipeline update or a filter
+        upsert). Resolves through this module's ``get_async_collection`` binding —
+        the seam the contract and service fixtures patch — so a subclass's raw
+        call can never drift off the test wiring the way a direct import would.
+        The caller owns any cache eviction the write implies."""
+        return get_async_collection(self.collection_name)
 
     async def _find_one(self, filter_: Mapping[str, object]) -> TDoc | None:
         raw = await get_async_collection(self.collection_name).find_one(dict(filter_))

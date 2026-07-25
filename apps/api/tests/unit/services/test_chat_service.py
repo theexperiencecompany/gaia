@@ -591,6 +591,21 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
 
 @pytest.mark.unit
 class TestRunChatStreamBackground:
+    @pytest.fixture(autouse=True)
+    def _no_pending_approval(self) -> Iterator[None]:
+        """Stub conversational HIL resolution to "nothing pending".
+
+        ``run_chat_stream_background`` now checks Mongo for a pending approval at
+        the top of each turn. These tests exercise the normal turn and don't stub
+        Redis, so without this the real ``redis_cache`` singleton is reached and
+        raises "Event loop is closed" under xdist's per-test event loops.
+        """
+        with patch(
+            "app.services.chat.stream.resolve_pending_from_message",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 

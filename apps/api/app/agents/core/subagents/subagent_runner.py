@@ -5,12 +5,17 @@ Lives here (rather than in handoff_tools.py) so those modules import from it,
 avoiding a cyclic dependency.
 """
 
+from dataclasses import dataclass
+from typing import Any
+from uuid import NAMESPACE_URL, uuid4, uuid5
+
 from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
+from langgraph.types import Command, interrupt
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -23,6 +28,7 @@ from app.agents.prompts.workflow_prompts import (
     WORKFLOW_SILENT_NOTIFY_SECTION,
 )
 from app.constants.general import FINISH_TASK_NAME
+from app.constants.hil import LANGGRAPH_INTERRUPT_KEY
 from app.constants.llm import EXECUTOR_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
@@ -79,6 +85,65 @@ def _extract_reasoning_delta(chunk: AIMessageChunk) -> str:
         if fallback:
             parts.append(fallback if isinstance(fallback, str) else str(fallback))
     return "".join(parts)
+
+
+@dataclass(frozen=True)
+class SubagentOutcome:
+    """One graph run's result: its text, or the HIL approval it paused on.
+
+    ``interrupt`` carries the payload the gate passed to ``interrupt()``. When it
+    is set the graph is checkpointed mid-run and ``text`` is meaningless — the
+    caller must bubble the pause up rather than treat it as an answer.
+    """
+
+    text: str
+    interrupt: dict[str, Any] | None = None
+
+    @property
+    def paused(self) -> bool:
+        return self.interrupt is not None
+
+
+def subagent_row_id(tool_call_id: str) -> str:
+    """A UI subagent-row id that is STABLE across replays of the same call.
+
+    Derived from the tool_call_id (unique per LLM generation, stable in the
+    checkpoint) so a subagent that pauses for approval and resumes reuses its row
+    instead of minting a new uuid each replay — which would orphan the paused row
+    (left spinning forever) and emit a duplicate for the resumed run. A blank id
+    (only defensive — real calls always carry one) falls back to a fresh uuid.
+    """
+    if not tool_call_id:
+        return str(uuid4())
+    return str(uuid5(NAMESPACE_URL, f"subagent_row:{tool_call_id}"))
+
+
+def resume_for_gate(interrupt_payload: dict[str, Any]) -> Any:
+    """The decision belonging to the subagent gate now paused.
+
+    A synchronous spawn/handoff drives its subagent imperatively, bubbling each HIL
+    pause up with ``interrupt()``. When the executor resumes, ``recover_from_checkpoint``
+    fast-forwards the subagent to its LATEST parked gate, but the executor replays its
+    ``interrupt()`` resume list positionally from zero — so for a task that gated several
+    calls in sequence, the first values replayed belong to gates the subagent already ran.
+    Feeding one of those to the current gate would apply an earlier decision to a later
+    action. Each resume payload carries its own ``approval_id`` (see
+    ``resolution._dispatch_resume``); skip any that is not this gate's.
+
+    Only skips a payload whose ``approval_id`` is present and differs from the paused
+    gate's — a payload without one (or a matching one) is delivered as-is, so this can
+    never over-consume the list and strand the decision.
+    """
+    target = interrupt_payload.get("approval_id") if isinstance(interrupt_payload, dict) else None
+    decision = interrupt(interrupt_payload)
+    while (
+        target is not None
+        and isinstance(decision, dict)
+        and decision.get("approval_id") is not None
+        and decision.get("approval_id") != target
+    ):
+        decision = interrupt(interrupt_payload)
+    return decision
 
 
 class SubagentExecutionContext:
@@ -182,6 +247,26 @@ async def build_initial_messages(
     ]
 
 
+def _with_current_time(resume: Command, configurable: dict[str, Any]) -> Command:
+    """Re-clock a resumed run.
+
+    A resume replaces ``initial_state``, so the fresh time message
+    ``build_initial_messages`` would have added never reaches the graph and the
+    thread keeps the clock from when it STARTED. A HIL approval pause can leave
+    that hours stale — long enough for the model to act on the wrong day.
+
+    Appending it is safe even mid tool-call: ``manage_system_prompts_node`` lifts
+    the latest time message to the tail of the conversation (so the
+    AIMessage/ToolMessage pairing is untouched) and drops the older copy.
+    """
+    update = {**resume.update} if isinstance(resume.update, dict) else {}
+    update["messages"] = [
+        *update.get("messages", []),
+        build_current_time_message(user_timezone=configurable.get("user_timezone")),
+    ]
+    return Command(resume=resume.resume, update=update, goto=resume.goto, graph=resume.graph)
+
+
 def _process_messages_payload(
     payload: tuple,
     complete_message: str,
@@ -236,19 +321,24 @@ async def execute_subagent_stream(
     stream_writer: StreamWriterCallable | None = None,
     integration_metadata: IntegrationMetadata | None = None,
     subagent_id: str | None = None,
-) -> str:
-    """Execute a subagent with streaming and tool tracking, returning the
-    complete message.
+    resume: Command | None = None,
+) -> SubagentOutcome:
+    """Execute (or resume) a subagent with streaming and tool tracking.
 
     Stream event flow:
         - "updates": emit tool_data with complete args when a tool is called
         - "messages": stream content, emit tool_output when a ToolMessage arrives
         - "custom": forward custom events (progress, etc.) to the parent
+
+    ``resume`` continues a thread already paused on a HIL ``interrupt()`` instead
+    of starting from ``ctx.initial_state``. When the run pauses, the returned
+    outcome carries the approval payload and the caller must bubble it up.
     """
     log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
     emitted_tool_calls: set[str] = set()
     tool_ran = False
+    pending_interrupt: dict[str, Any] | None = None
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -262,7 +352,7 @@ async def execute_subagent_stream(
         }
 
     async for event in ctx.subagent_graph.astream(
-        ctx.initial_state,
+        _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
         config=run_config,
         # Persist checkpoints only when this executor/subagent run exits, not
@@ -286,6 +376,12 @@ async def execute_subagent_stream(
         stream_mode, payload = event
 
         if stream_mode == "updates":
+            # The HIL gate paused this run. LangGraph has already checkpointed
+            # it; capture the approval payload and stop consuming the stream.
+            if LANGGRAPH_INTERRUPT_KEY in payload:
+                pending_interrupt = interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
+                log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
+                break
             for node_name, state_update in payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
@@ -320,6 +416,11 @@ async def execute_subagent_stream(
             if stream_writer:
                 stream_writer(normalize_custom_event(payload))
 
+    # A pause is not a result: the narration-only heuristic below would misread a
+    # half-finished run as "planning text" and tell the parent to re-issue it.
+    if pending_interrupt is not None:
+        return SubagentOutcome(text=complete_message, interrupt=pending_interrupt)
+
     # A subagent that only narrated and never ran a tool didn't do the work — return
     # an actionable signal so the parent re-issues the handoff instead of treating the
     # planning text as the result.
@@ -340,7 +441,58 @@ async def execute_subagent_stream(
             "messages_count": len(ctx.initial_state.get("messages", [])),
         }
     )
-    return final_message
+    return SubagentOutcome(text=final_message)
+
+
+def _snapshot_messages(snapshot: Any) -> list[Any]:
+    """The messages a checkpoint holds. Empty means the thread has never run."""
+    values = getattr(snapshot, "values", None) or {}
+    messages = values.get("messages") if isinstance(values, dict) else None
+    return messages if isinstance(messages, list) else []
+
+
+def _final_text_from_snapshot(snapshot: Any) -> str:
+    messages = _snapshot_messages(snapshot)
+    if not messages:
+        return ""
+    content = getattr(messages[-1], "content", "")
+    return content if isinstance(content, str) else str(content or "")
+
+
+async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutcome | None:
+    """What this subagent's own thread already holds, or ``None`` if it never ran.
+
+    Three states, and conflating the last two is how a completed subagent gets driven a
+    second time:
+
+    * **Parked** (``snapshot.next``) — mid-run on a HIL interrupt. Returned as a paused
+      outcome so the caller bubbles the approval up. A paused outcome with an empty
+      payload means the interrupt is unreadable, which downstream treats as a malformed
+      approval and fails the run rather than act.
+    * **Finished** — no pending work but state on the thread. Returned as its
+      checkpointed final answer: re-running would repeat every action it took.
+    * **Never ran** — no state at all. ``None``, so the caller starts it normally.
+    """
+    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
+    if snapshot.next:
+        return SubagentOutcome(
+            text="", interrupt=interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
+        )
+    if not _snapshot_messages(snapshot):
+        return None
+    return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
+
+
+def interrupt_payload(raw: Any) -> dict[str, Any]:
+    """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
+    ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the
+    objects carry no dict value (downstream treats that as malformed → deny)."""
+    items = raw if isinstance(raw, (list, tuple)) else (raw,)
+    for item in items:
+        value = getattr(item, "value", item)
+        if isinstance(value, dict):
+            return value
+    return {}
 
 
 async def prepare_executor_execution(

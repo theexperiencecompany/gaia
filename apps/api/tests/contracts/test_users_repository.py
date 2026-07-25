@@ -395,3 +395,102 @@ class TestPlatformLinking:
 
     async def test_link_missing_user_returns_none(self, repo):
         assert await repo.link_platform("0" * 24, "telegram", {"id": "x"}, "t") is None
+
+
+class TestHilPreferenceWrites:
+    """The concurrency-safe HIL preference writes. Each assertion maps to a way a
+    read-modify-write (or a dotted ``$set`` path) could silently drop or bury a
+    user's setting — verified against real Mongo, where the burying happens."""
+
+    async def test_setting_an_override_touches_only_that_tools_key(self, repo, make_user):
+        user = await repo.create(
+            make_user(hil_preferences={"mode": "always_ask", "tool_overrides": {"other": False}})
+        )
+
+        await repo.set_hil_tool_override(user.id, "GMAIL_SEND_EMAIL", True)
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert got.hil_preferences == {
+            "mode": "always_ask",
+            "tool_overrides": {"other": False, "GMAIL_SEND_EMAIL": True},
+        }
+
+    async def test_a_dotted_mcp_tool_name_stays_a_flat_key(self, repo, make_user):
+        # A dotted `$set` path would make Mongo nest {"server": {"action": true}},
+        # which the flat-map read path never finds — the toggle would appear to do
+        # nothing.
+        user = await repo.create(make_user())
+
+        await repo.set_hil_tool_override(user.id, "server.action", True)
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert (got.hil_preferences or {})["tool_overrides"] == {"server.action": True}
+
+    async def test_a_dollar_prefixed_tool_name_is_a_literal_not_an_expression(
+        self, repo, make_user
+    ):
+        user = await repo.create(make_user())
+
+        await repo.set_hil_tool_override(user.id, "$weird_tool", True)
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert (got.hil_preferences or {})["tool_overrides"] == {"$weird_tool": True}
+
+    async def test_false_is_a_real_setting_and_none_clears(self, repo, make_user):
+        # False means "always allow this tool" — coercing it to a clear would
+        # silently re-gate a tool the user disarmed.
+        user = await repo.create(make_user())
+
+        await repo.set_hil_tool_override(user.id, "t1", False)
+        await repo.set_hil_tool_override(user.id, "t2", True)
+        await repo.set_hil_tool_override(user.id, "t2", None)
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert (got.hil_preferences or {})["tool_overrides"] == {"t1": False}
+
+    async def test_partial_field_updates_leave_the_other_field_alone(self, repo, make_user):
+        user = await repo.create(
+            make_user(hil_preferences={"mode": "always_ask", "tool_overrides": {"send": True}})
+        )
+
+        await repo.set_hil_preference_fields(user.id, mode="auto")
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert got.hil_preferences == {"mode": "auto", "tool_overrides": {"send": True}}
+
+    async def test_an_empty_override_map_clears_rather_than_being_ignored(self, repo, make_user):
+        user = await repo.create(
+            make_user(hil_preferences={"mode": "auto", "tool_overrides": {"send": True}})
+        )
+
+        await repo.set_hil_preference_fields(user.id, tool_overrides={})
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert got.hil_preferences == {"mode": "auto", "tool_overrides": {}}
+
+    async def test_supplying_nothing_writes_nothing(self, repo, make_user):
+        user = await repo.create(make_user(hil_preferences={"mode": "auto"}))
+
+        await repo.set_hil_preference_fields(user.id)
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert got.hil_preferences == {"mode": "auto"}
+
+    async def test_the_entity_cache_never_serves_a_pre_write_read(self, repo, make_user):
+        # set_hil_tool_override bypasses _apply_raw_update (pipeline update), so its
+        # manual evict+bump is what upholds the repository's freshness guarantee.
+        user = await repo.create(make_user())
+        assert await repo.get(user.id) is not None  # seed the entity cache
+
+        await repo.set_hil_tool_override(user.id, "send", True)
+
+        got = await repo.get(user.id)
+        assert got is not None
+        assert (got.hil_preferences or {})["tool_overrides"] == {"send": True}

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable, Mapping
 from functools import cache
 from typing import Any, TypeVar
@@ -26,6 +27,7 @@ from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
+    LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
@@ -363,17 +365,32 @@ async def ainvoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
-    given) on a provider failure. Bugs and CancelledError propagate."""
-    try:
-        return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-            messages, config=config
-        )
-    except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        return _stamp_fallback(
-            await _resolve_fallback(fallback, label, primary_error).ainvoke(messages, config=config)
-        )
+    given) on a provider failure. Bugs and CancelledError propagate.
+
+    ``timeout`` is a total wall-clock ceiling over the retries, their backoff sleeps
+    and the fallback attempt — the guarantee being that this call cannot outlive it.
+    Retry alone cannot cover a provider that accepts the connection and then never
+    answers, because nothing is ever raised to retry on. ``None`` disables it.
+
+    The ceiling deliberately wraps the fallback too. Expiring mid-fallback raising
+    ``TimeoutError`` is the point: the alternative is catching it as a fallback trigger
+    (``TimeoutError`` is in ``LLM_FALLBACK_EXCEPTIONS``) and starting a second,
+    unbounded attempt — which is exactly the stall this exists to prevent.
+    """
+    async with asyncio.timeout(timeout):
+        try:
+            return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                messages, config=config
+            )
+        except LLM_FALLBACK_EXCEPTIONS as primary_error:
+            return _stamp_fallback(
+                await _resolve_fallback(fallback, label, primary_error).ainvoke(
+                    messages, config=config
+                )
+            )
 
 
 def invoke_llm(
@@ -394,6 +411,20 @@ def invoke_llm(
         )
 
 
+# Marks an internal one-shot LLM call so the chat token stream drops its output instead
+# of rendering it as assistant text. Any structured/internal call made while a graph is
+# streaming (HIL tool classification, the intent judge, the conversational resolver) must
+# carry this, or its structured-output tokens leak into the conversation as a bot message.
+# ``silent`` is the flag the messages-stream consumers read (helpers/agent_helpers.py);
+# ``metadata.silent`` is the canonical location, the top-level key mirrors it for the
+# other consumers. Pass as ``config=SILENT_LLM_CONFIG``; it merges with the ambient run
+# config, so tracing and thread context are preserved.
+SILENT_LLM_CONFIG: RunnableConfig = {
+    "silent": True,
+    "metadata": {"silent": True},
+}  # type: ignore[typeddict-unknown-key]
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -401,6 +432,7 @@ async def ainvoke_structured(
     label: str,
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> _StructuredT:
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
@@ -409,4 +441,4 @@ async def ainvoke_structured(
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
-    return await ainvoke_llm(structured, prompt, config=config, label=label)
+    return await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout)

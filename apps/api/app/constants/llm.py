@@ -54,6 +54,16 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
+# Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
+# fallback attempt included. A backstop against a provider that accepts the connection
+# and then never answers, which no retry can rescue because nothing ever raises.
+#
+# Sized for the slowest legitimate caller (onboarding intelligence, workflow generation,
+# document analysis), NOT as a per-caller latency budget: a call on a user-blocking path
+# should pass its own tighter value, the way the HIL gate passes
+# HIL_LLM_TIMEOUT_SECONDS. Pass timeout=None to opt out entirely.
+LLM_INVOKE_TIMEOUT_SECONDS = 120
+
 # Near-deterministic default for every LLM call; creative tasks opt into more
 # variation via get_default_llm(temperature=...).
 DEFAULT_LLM_TEMPERATURE = 0.1

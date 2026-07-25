@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
+from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
@@ -75,6 +76,21 @@ def _bot_rate_limit_notice(chunk: dict) -> str | None:
         pricing_url = f"{settings.FRONTEND_URL}/pricing"
         notice += f" [Upgrade to Pro]({pricing_url}) for higher limits."
     return notice
+
+
+def _bot_approval_payload(chunk: dict) -> dict | None:
+    """Extract a HIL ``approval_request`` card as a bot ``approval`` payload.
+
+    Bots drop ``tool_data``, but the approval prompt MUST reach the user — a bot
+    has no buttons, so the user answers yes/no in chat and the conversational
+    resolver relays it. The bot client renders this as an out-of-band message.
+    Returns the approval data, or ``None`` if ``chunk`` isn't such a card.
+    """
+    tool_data = chunk.get("tool_data")
+    if not isinstance(tool_data, dict) or tool_data.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
+        return None
+    data = tool_data.get("data")
+    return data if isinstance(data, dict) else None
 
 
 @router.post(
@@ -296,6 +312,14 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                     if rate_limit_notice is not None:
                         payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
                         yield f"data: {payload}\n\n"
+                        continue
+
+                    # Surface HIL approval cards to bots as a dedicated frame the
+                    # client renders as an out-of-band prompt (before tool_data
+                    # is dropped below).
+                    approval_payload = _bot_approval_payload(data)
+                    if approval_payload is not None:
+                        yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
                         continue
 
                     # Skip web-only fields

@@ -26,6 +26,7 @@ from app.workers.tasks import (
     regenerate_workflow_steps,
     sweep_idle_sandboxes,
 )
+from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.tracked_todo_tasks import (
@@ -38,6 +39,7 @@ from app.workers.tasks.tracked_todo_tasks import (
 # wrapped functions so scheduled runs are also instrumented.
 _process_reminder = instrument_task(process_reminder)
 _cleanup_expired_reminders = instrument_task(cleanup_expired_reminders)
+_sweep_hil_approvals = instrument_task(sweep_hil_approvals)
 _check_inactive_users = instrument_task(check_inactive_users)
 _process_workflow_generation_task = instrument_task(process_workflow_generation_task)
 _execute_workflow_by_id = instrument_task(execute_workflow_by_id)
@@ -57,6 +59,7 @@ _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_tod
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
 WorkerSettings.functions = [
+    _sweep_hil_approvals,
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
@@ -77,6 +80,13 @@ WorkerSettings.functions = [
 ]
 
 WorkerSettings.cron_jobs = [
+    cron(
+        # Every minute: HIL approvals must expire promptly — a stale pending
+        # approval hijacks the conversation's next messages and holds the
+        # executor's claim on the thread.
+        _sweep_hil_approvals,
+        second=0,
+    ),
     cron(
         _cleanup_expired_reminders,
         hour=0,  # At midnight

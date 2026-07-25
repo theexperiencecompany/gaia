@@ -115,6 +115,31 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.constants.hil_destructive_tools import (
+    AIRTABLE_DESTRUCTIVE_TOOLS,
+    ASANA_DESTRUCTIVE_TOOLS,
+    CLICKUP_DESTRUCTIVE_TOOLS,
+    GITHUB_DESTRUCTIVE_TOOLS,
+    GMAIL_DESTRUCTIVE_TOOLS,
+    GOOGLE_MAPS_DESTRUCTIVE_TOOLS,
+    GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
+    GOOGLEDOCS_DESTRUCTIVE_TOOLS,
+    GOOGLEMEET_DESTRUCTIVE_TOOLS,
+    GOOGLESHEETS_DESTRUCTIVE_TOOLS,
+    GOOGLETASKS_DESTRUCTIVE_TOOLS,
+    HUBSPOT_DESTRUCTIVE_TOOLS,
+    INSTAGRAM_DESTRUCTIVE_TOOLS,
+    LINEAR_DESTRUCTIVE_TOOLS,
+    LINKEDIN_DESTRUCTIVE_TOOLS,
+    MICROSOFT_TEAMS_DESTRUCTIVE_TOOLS,
+    NOTION_DESTRUCTIVE_TOOLS,
+    REDDIT_DESTRUCTIVE_TOOLS,
+    SLACK_DESTRUCTIVE_TOOLS,
+    TODOIST_DESTRUCTIVE_TOOLS,
+    TRELLO_DESTRUCTIVE_TOOLS,
+    TWITTER_DESTRUCTIVE_TOOLS,
+    ZOOM_DESTRUCTIVE_TOOLS,
+)
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
@@ -161,6 +186,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLECALENDAR",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
@@ -253,6 +279,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLEDOCS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLEDOCS_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLEDOCS_PAGE_ADDED_TRIGGER",
@@ -421,6 +448,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GMAIL",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GMAIL_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GMAIL_NEW_GMAIL_MESSAGE",
@@ -519,6 +547,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="NOTION",
             toolkit_version="20260225_01",
         ),
+        destructive_tools=NOTION_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="NOTION_PAGE_ADDED_TO_DATABASE",
@@ -622,6 +651,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="TWITTER",
             toolkit_version="20260130_00",
         ),
+        destructive_tools=TWITTER_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="twitter_agent",
@@ -671,6 +701,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLESHEETS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLESHEETS_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLESHEETS_NEW_ROWS_TRIGGER",
@@ -754,6 +785,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="LINKEDIN",
             toolkit_version="20260225_00",
         ),
+        destructive_tools=LINKEDIN_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="linkedin_agent",
@@ -793,6 +825,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GITHUB",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GITHUB_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GITHUB_COMMIT_EVENT",
@@ -940,6 +973,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="REDDIT",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=REDDIT_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="reddit_agent",
@@ -978,6 +1012,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="AIRTABLE",
             toolkit_version="20260130_00",
         ),
+        destructive_tools=AIRTABLE_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="airtable_agent",
@@ -1016,6 +1051,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="LINEAR",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=LINEAR_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="LINEAR_ISSUE_CREATED_TRIGGER",
@@ -1126,6 +1162,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="SLACK",
             toolkit_version="20260204_00",
         ),
+        destructive_tools=SLACK_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="SLACK_RECEIVE_MESSAGE",
@@ -1237,6 +1274,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="HUBSPOT",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=HUBSPOT_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="hubspot_agent",
@@ -1275,6 +1313,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLETASKS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLETASKS_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_tasks_agent",
@@ -1313,6 +1352,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="TODOIST",
             toolkit_version="20260227_00",
         ),
+        destructive_tools=TODOIST_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="TODOIST_NEW_TASK_CREATED",
@@ -1366,6 +1406,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="MICROSOFT_TEAMS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=MICROSOFT_TEAMS_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="microsoft_teams_agent",
@@ -1404,6 +1445,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="ZOOM",
             toolkit_version="20260130_00",
         ),
+        destructive_tools=ZOOM_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="zoom_agent",
@@ -1432,6 +1474,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLEMEET",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLEMEET_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_meet_agent",
@@ -1465,6 +1508,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLE_MAPS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLE_MAPS_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_maps_agent",
@@ -1503,6 +1547,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="ASANA",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=ASANA_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="ASANA_TASK_TRIGGER",
@@ -1567,6 +1612,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="TRELLO",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=TRELLO_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="trello_agent",
@@ -1605,6 +1651,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="INSTAGRAM",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=INSTAGRAM_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="instagram_agent",
@@ -1643,6 +1690,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="CLICKUP",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=CLICKUP_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="clickup_agent",

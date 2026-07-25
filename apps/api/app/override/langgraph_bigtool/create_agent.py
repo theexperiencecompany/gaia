@@ -56,7 +56,7 @@ from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
     format_tool_error,
-    timeout_guarded_tool_call,
+    hil_and_timeout_guarded_tool_call,
 )
 from app.override.langgraph_bigtool.hooks import (
     HookType,
@@ -561,7 +561,7 @@ def create_agent(
         # middleware dispatch path. The per-call timeout wrapper bounds hung
         # tools (orchestration tools exempt).
         handle_tool_errors=format_tool_error,
-        awrap_tool_call=timeout_guarded_tool_call,
+        awrap_tool_call=hil_and_timeout_guarded_tool_call,
     )
 
     builder.set_entry_point("agent")

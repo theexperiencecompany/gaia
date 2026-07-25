@@ -11,7 +11,11 @@ under `tools:user:{user_id}:*`, which the integration mutators bust via
 
 from typing import Any
 
-from app.agents.tools.core.registry import DESKTOP_TOOL_CATEGORY, get_tool_registry
+from app.agents.tools.core.registry import (
+    DESKTOP_TOOL_CATEGORY,
+    get_tool_registry,
+    integration_destructive_tools,
+)
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.cache import ONE_DAY_TTL
 from app.constants.log_tags import LogTag
@@ -213,19 +217,33 @@ async def get_integration_tool_list(integration_id: str) -> list[IntegrationTool
     catalog for Composio/platform toolkits, the MCP store for MCP/custom servers.
 
     Registry category ids may be upper/mixed case, so the match is case-insensitive.
+    ``destructive`` marks each tool's HIL default from the curated set (empty for
+    uncurated/MCP toolkits, so those tools report ``False``).
     """
+    destructive = integration_destructive_tools(integration_id) or set()
     tool_registry = await get_tool_registry()
     for name, category_obj in tool_registry.get_all_category_objects().items():
         if category_obj.internal or name.lower() != integration_id.lower():
             continue
         return [
-            IntegrationTool(name=tool.name, description=tool.tool.description)
+            IntegrationTool(
+                name=tool.name,
+                description=tool.tool.description,
+                # The registry stamped this from the same curated set at add time
+                # and is the single source of truth — it also carries LLM
+                # classifications written back via mark_tool_destructive.
+                destructive=bool(tool.destructive),
+            )
             for tool in category_obj.tools
         ]
 
     stored = await get_integration_tools(integration_id)
     return [
-        IntegrationTool(name=tool["name"], description=tool.get("description"))
+        IntegrationTool(
+            name=tool["name"],
+            description=tool.get("description"),
+            destructive=tool["name"] in destructive,
+        )
         for tool in stored
         if tool.get("name")
     ]

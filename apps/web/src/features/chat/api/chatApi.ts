@@ -2,6 +2,11 @@ import {
   type EventSourceMessage,
   fetchEventSource,
 } from "@microsoft/fetch-event-source";
+import type {
+  ApprovalDecisionPayload,
+  BatchApprovalDecisionPayload,
+  BatchApprovalDecisionResponse,
+} from "@shared/chat";
 
 import type { DesktopToolResult } from "@shared/desktop-tools";
 import { apiService } from "@/lib/api/service";
@@ -25,6 +30,7 @@ export class DuplicateTurnError extends Error {
 }
 
 const HTTP_CONFLICT = 409;
+const HTTP_GONE = 410;
 
 export interface ChatStreamRequest {
   inputText: string;
@@ -481,5 +487,41 @@ export const chatApi = {
     await apiService.post("/desktop/tool-result", result, {
       silent: true,
     });
+  },
+
+  /**
+   * Relay a HIL approval decision to the awaiting agent gate. Silent — the
+   * caller surfaces real failures; a 410 (already resolved elsewhere) resolves
+   * over the stream regardless, so it's swallowed here rather than surfaced.
+   */
+  postApprovalDecision: async (
+    approvalId: string,
+    decision: ApprovalDecisionPayload,
+  ): Promise<void> => {
+    try {
+      await apiService.post(`/approvals/${approvalId}/decision`, decision, {
+        silent: true,
+      });
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+      if (status === HTTP_GONE) return;
+      throw error;
+    }
+  },
+
+  /**
+   * Decide several pending approvals in one submission (the batch review's
+   * "Approve all"/"Decline all"). Per-approval outcomes come back in the
+   * response — an already-resolved item never fails the rest.
+   */
+  postApprovalBatchDecision: async (
+    payload: BatchApprovalDecisionPayload,
+  ): Promise<BatchApprovalDecisionResponse> => {
+    return apiService.post<BatchApprovalDecisionResponse>(
+      "/approvals/batch-decision",
+      payload,
+      { silent: true },
+    );
   },
 };

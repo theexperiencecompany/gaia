@@ -63,6 +63,18 @@ def worker_redis_url(base_url: str) -> str:
     return base_url.rstrip("/") + f"/{db}"
 
 
+def worker_mongo_db_name(base_name: str = "gaia_test") -> str:
+    """Return a per-xdist-worker MongoDB database name.
+
+    The same reason ``worker_redis_url`` exists: the service fixtures wipe collections
+    with ``delete_many({})`` on setup and teardown, so on a shared database one worker
+    clears another worker's in-flight documents and its conversation vanishes mid-test.
+    Giving each worker its own database makes that impossible rather than unlikely.
+    """
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "gw0")
+    return f"{base_name}_{worker}"
+
+
 class BindableToolsFakeModel(FakeMessagesListChatModel):
     """FakeMessagesListChatModel with bind_tools() support.
 

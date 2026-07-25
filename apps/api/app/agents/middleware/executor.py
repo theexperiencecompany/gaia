@@ -26,6 +26,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
+from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore
 
 from app.agents.middleware.runtime_adapter import (
@@ -373,6 +374,12 @@ class MiddlewareExecutor:
         # Execute the chain
         try:
             return await current_handler(request)
+        except GraphBubbleUp:
+            # A GraphInterrupt (from the HIL gate's interrupt()) is control flow, not
+            # a failure. It MUST propagate so LangGraph can checkpoint and pause —
+            # the generic handler below would swallow it and then run the tool via
+            # the direct-invocation fallback, executing a gated action unapproved.
+            raise
         except asyncio.CancelledError:
             raise
         except Exception as e:

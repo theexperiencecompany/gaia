@@ -1,4 +1,5 @@
 import type {
+  ApprovalRequestData,
   ArtifactData,
   CodeData,
   RateLimitData,
@@ -17,6 +18,7 @@ import { View } from "react-native";
 import { Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
+import { ApprovalRequestCard } from "../components/chat/approval-request-card";
 import { EmailComposeCard } from "../components/chat/email-compose-card";
 import {
   type ToolCallEntry,
@@ -344,6 +346,12 @@ const TOOL_RENDERERS: Record<
     const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
     return <ToolCallsSection key={baseKey} tool_calls_data={calls} />;
   },
+
+  // HIL approval — pending→resolved updates replace it in place via
+  // upsertApprovalToolData (shared turn accumulator / use-chat onToolData).
+  approval_request: (data, baseKey) => (
+    <ApprovalRequestCard key={baseKey} data={data as ApprovalRequestData} />
+  ),
 };
 
 interface ToolDataRendererProps {

@@ -173,6 +173,8 @@ class TestFeatureLimits:
         "workspace_read",
         "workspace_write",
         "workspace_edit",
+        "workspace_query_json",
+        "workspace_grep",
         "flowchart_creation",
         "weather_checks",
         "notification_operations",

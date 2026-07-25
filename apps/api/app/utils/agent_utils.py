@@ -133,28 +133,6 @@ def format_subagent_end_event(
     ).model_dump()
 
 
-async def emit_subagent_tool_calls(
-    stream_writer: StreamWriterCallable,
-    subagent_id: str,
-    tool_calls: list[ToolCall],
-    user_id: str | None = None,
-) -> None:
-    """Emit tool_data events for each tool call made inside a spawned subagent.
-
-    Reuses ``format_tool_call_entry`` so categories, icons, and special-tool
-    display names match the post-execution path; otherwise e.g. ``vfs_read``
-    renders with its raw name as the category instead of ``filesystem``.
-
-    With ``user_id``, MCP tool calls resolve their integration metadata via
-    the user's MCPClient (MCP tools no longer live in the global registry).
-    """
-    for tc in tool_calls:
-        entry = await format_tool_call_entry(tc, user_id=user_id)
-        if entry is None:
-            continue
-        stream_writer({"tool_data": {**entry, "subagent_id": subagent_id}})
-
-
 async def format_tool_call_entry(
     tool_call: ToolCall,
     icon_url: str | None = None,

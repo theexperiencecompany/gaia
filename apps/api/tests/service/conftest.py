@@ -4,10 +4,11 @@ Fixtures for service integration tests with real databases.
 The approach: patch the app's singletons to point at real test containers,
 then call production functions directly. No rewriting production logic.
 
-Root conftest.py globally patches _get_mongodb_instance to MagicMock.
-We work around that by pointing the repository layer's collection accessor at a
-real per-test Motor client (see ``mongo_db``), and by giving redis_cache a real
-Redis connection.
+Root conftest.py globally patches _get_mongodb_instance to MagicMock. We work
+around that through one seam: ``app.db.repositories.base.get_async_collection``,
+which every repository resolves on each call — patching it (see ``mongo_db``)
+points the whole repository layer at a real per-test Motor client. Redis gets a
+real connection patched into redis_cache the same way.
 """
 
 from __future__ import annotations
@@ -29,7 +30,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
-from tests.helpers import HeaderDrivenAuthMiddleware, pick_free_port, worker_redis_url
+from tests.helpers import (
+    HeaderDrivenAuthMiddleware,
+    pick_free_port,
+    worker_mongo_db_name,
+    worker_redis_url,
+)
 
 # ---------------------------------------------------------------------------
 # Session-scoped connections (one per test run)
@@ -38,10 +44,10 @@ from tests.helpers import HeaderDrivenAuthMiddleware, pick_free_port, worker_red
 
 @pytest.fixture(scope="session")
 def mongodb_url() -> str:
-    return os.environ.get(
-        "MONGODB_URL",
-        "mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
-    )
+    # The URL the app itself connects with, so service tests hit the same Mongo
+    # (mirrors tests/contracts/conftest.py). Falls back to a no-auth localhost
+    # dev Mongo; CI exports MONGO_DB with its containerized credentials.
+    return os.environ.get("MONGO_DB", "mongodb://localhost:27017/gaia_test")
 
 
 @pytest.fixture(scope="session")
@@ -77,10 +83,15 @@ async def mongo_db(mongodb_url: str, monkeypatch):
     Creates a fresh Motor client per test to avoid event-loop cross-
     contamination (session-scoped Motor clients are bound to the session
     loop and cannot be reused by function-scoped async fixtures whose
-    asyncio_default_fixture_loop_scope is "function").
+    asyncio_default_fixture_loop_scope is "function"). The database is
+    per-xdist-worker (``worker_mongo_db_name``) so parallel workers cannot
+    wipe each other's seeded documents, mirroring ``worker_redis_url``.
     """
-    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
-    db = client["gaia_test"]
+    # Pin server selection to 5s (mirrors tests/contracts/conftest.py) so the
+    # root conftest's 100ms MONGO_DB default — meant for the mocked unit tests —
+    # cannot make a real connection here flake against a cold local Mongo.
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url, serverSelectionTimeoutMS=5000)
+    db = client[worker_mongo_db_name()]
 
     monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda name: db[name])
 
@@ -94,6 +105,24 @@ async def conversations_collection(mongo_db):
     """The real ``conversations`` collection production code will read, emptied
     around each test so seeded documents can be asserted on exactly."""
     coll = mongo_db["conversations"]
+    await coll.delete_many({})
+
+    yield coll
+
+    await coll.delete_many({})
+
+
+@pytest.fixture(autouse=True)
+async def hil_approvals_collection(mongo_db):
+    """Real ``hil_approvals`` collection, emptied around each test.
+
+    Autouse because the chat stream reads it on *every* turn — it checks whether
+    the user's message answers a pending approval before running the agent. Any
+    service test that streams a message touches it, so every test needs the
+    repository seam bound to this test's loop (pulled in via ``mongo_db``) and a
+    clean slate to assert approval records on exactly.
+    """
+    coll = mongo_db["hil_approvals"]
     await coll.delete_many({})
 
     yield coll
@@ -148,6 +177,8 @@ async def _device_bridge_lifespan(app: FastAPI) -> AsyncIterator[None]:
     this test's now-dead event loop (see ProviderRegistry.reset, "for testing
     only").
     """
+    # Function-local so importing this conftest never drags the app's device-bridge
+    # stack into every service test run — only the tests that build the live app.
     from app.core.lazy_loader import providers
     from app.core.provider_registration import register_lazy_providers
     from app.db.postgresql import close_postgresql_db
@@ -186,6 +217,8 @@ def _create_live_app() -> FastAPI:
         patch("app.core.app_factory.lifespan", _device_bridge_lifespan),
         patch("app.core.app_factory.configure_middleware", _cors_only_middleware),
     ):
+        # Function-local so importing this conftest never builds the app factory's
+        # import graph for service tests that never spin up a live server.
         from app.core.app_factory import create_app
 
         app = create_app()

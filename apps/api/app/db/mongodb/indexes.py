@@ -52,6 +52,7 @@ async def create_all_indexes():
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
             create_e2b_sandbox_indexes(),
+            create_hil_approvals_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -82,6 +83,7 @@ async def create_all_indexes():
             "workflow_executions",
             "bot_sessions",
             "e2b_sandboxes",
+            "hil_approvals",
         ]
 
         index_results = {}
@@ -922,6 +924,33 @@ async def create_installed_skills_indexes() -> None:
 
     except Exception as e:
         log.error(f"{LogTag.MONGO} Error creating installed_skills indexes: {e!s}")
+        raise
+
+
+async def create_hil_approvals_indexes() -> None:
+    """Create indexes for the hil_approvals collection.
+
+    (conversation_id, status) serves the pending-approval lookup that runs on
+    every chat message while an approval is open; (status, expires_at) serves
+    the timeout sweep's expiry pass. (status, resumed_at, decided_at) serves the
+    sweep's crashed-resume pass (list_decided_unresumed): its resumed_at=null
+    equality bound keeps the scan off the successfully-resumed records, which are
+    the overwhelming majority and accumulate forever on this permanent audit
+    trail. Without it that pass — running every minute — would scan the whole
+    decided history. The collection is a permanent audit trail, so these queries
+    must never fall back to a collection scan.
+    """
+    hil_approvals_collection = get_async_collection("hil_approvals")
+    try:
+        await asyncio.gather(
+            hil_approvals_collection.create_index([("conversation_id", 1), ("status", 1)]),
+            hil_approvals_collection.create_index([("status", 1), ("expires_at", 1)]),
+            hil_approvals_collection.create_index(
+                [("status", 1), ("resumed_at", 1), ("decided_at", 1)]
+            ),
+        )
+    except Exception as e:
+        log.error(f"{LogTag.MONGO} Error creating hil_approvals indexes: {e!s}")
         raise
 
 

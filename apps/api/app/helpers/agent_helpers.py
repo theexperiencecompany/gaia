@@ -18,6 +18,7 @@ from app.constants.cache import (
     CUSTOM_INT_METADATA_TTL,
     HANDOFF_METADATA_CACHE_PREFIX,
 )
+from app.constants.hil import HIL_JUDGE_MAX_TURN_CHARS, HIL_JUDGE_MAX_USER_TURNS
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_LLM_PROVIDER,
@@ -30,6 +31,7 @@ from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.chat_models import ConversationSource, SourceCategory
+from app.models.message_models import MessageDict
 from app.models.models_models import ModelConfig
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
@@ -40,6 +42,7 @@ from app.utils.agent_utils import (
     parse_subagent_id,
     process_custom_event_for_tools,
 )
+from app.utils.general_utils import clip_text
 from app.utils.multimodal import extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
@@ -178,6 +181,18 @@ def _inherit_from_parent_configurable(
     merged["provider_name"] = base_configurable.get("provider", merged["provider_name"])
     merged["max_tokens"] = base_configurable.get("max_tokens", merged["max_tokens"])
     merged["model_name"] = base_configurable.get("model_name", merged["model_name"])
+    # Parent overrides: the TRUE conversation id is established once by comms and
+    # must survive child agents passing their own wrapped thread ids down as the
+    # ``conversation_id`` argument (``executor_<conv>`` → ``<integ>_executor_<conv>``).
+    merged["conversation_id"] = (
+        base_configurable.get("conversation_id") or merged["conversation_id"]
+    )
+    # Parent overrides, same reason: the user's VERBATIM turns, established once by
+    # comms. Every child agent's own "task" is an agent-authored paraphrase (comms →
+    # call_executor → handoff), so a child must never overwrite these — the HIL intent
+    # judge checks the tool call against what the *user* actually asked, not against the
+    # agent's restatement of it.
+    merged["user_messages"] = base_configurable.get("user_messages") or merged["user_messages"]
     # Inherit the OpenRouter provider-routing pin (model_kwargs) from the parent.
     # Without it a subagent drops the first-party provider pin and falls back to the
     # client default, so the request load-balances onto throttled resellers (e.g.
@@ -196,6 +211,27 @@ def _inherit_from_parent_configurable(
     merged["pinned_memories"] = base_configurable.get("__pinned_memories__")
     merged["pinned_skills"] = base_configurable.get("__pinned_skills__")
     return merged
+
+
+def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
+    """The user's own recent turns, verbatim and oldest first, ending with ``current``.
+
+    Intent routinely spans turns — "draft an email to Bob" … "looks good, send it" — so
+    the latest message alone cannot be grounded against. Only ``role == "user"`` turns
+    are kept: the HIL intent judge must never see assistant text, or the agent can talk
+    it into approving (see services/hil/intent.py).
+    """
+    turns = [
+        text
+        for message in history
+        if message.get("role") == "user" and (text := (message.get("content") or "").strip())
+    ]
+    current = current.strip()
+    # The client usually already appends this turn to `messages`; don't duplicate it, and
+    # guarantee it ends the list either way — the judge treats the last as the live request.
+    if current and (not turns or turns[-1] != current):
+        turns.append(current)
+    return [clip_text(text, HIL_JUDGE_MAX_TURN_CHARS) for text in turns[-HIL_JUDGE_MAX_USER_TURNS:]]
 
 
 # NOSONAR python:S107 — these parameters form one cohesive LangGraph execution
@@ -217,6 +253,7 @@ def build_agent_config(  # NOSONAR python:S107
     active_todo_id: str | None = None,
     execution_mode: str | None = None,
     source: str | None = None,
+    user_messages: list[str] | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
     recursion_limit: int = AGENT_RECURSION_LIMIT,
@@ -227,6 +264,11 @@ def build_agent_config(  # NOSONAR python:S107
         vfs_session_id: Shared VFS session ID held constant across the executor and the
             handoff subagents it spawns, so all resolve VFS paths against the executor
             workspace. Inherited automatically via base_configurable.
+        user_messages: The user's own recent turns, verbatim, oldest first (see
+            :func:`recent_user_messages`). Set once by comms and inherited
+            (parent-overrides) by the executor and every subagent, whose own tasks are
+            agent-authored paraphrases. The HIL intent judge checks gated tool calls
+            against these, so they must be the user's words — not a restatement.
         langfuse_trace_id / langfuse_tags: Bind spans to a Langfuse trace; inherit from
             base_configurable when omitted so the executor lands on the comms trace.
         recursion_limit: Max LangGraph steps before GraphRecursionError. Defaults to the
@@ -242,6 +284,7 @@ def build_agent_config(  # NOSONAR python:S107
             "provider_name": provider_name,
             "max_tokens": max_tokens,
             "model_name": model_name,
+            "conversation_id": conversation_id,
             "selected_tool": selected_tool,
             "tool_category": tool_category,
             "subagent_id": subagent_id,
@@ -249,6 +292,7 @@ def build_agent_config(  # NOSONAR python:S107
             "active_todo_id": active_todo_id,
             "execution_mode": execution_mode,
             "source": source,
+            "user_messages": user_messages,
         },
     )
 
@@ -280,6 +324,14 @@ def build_agent_config(  # NOSONAR python:S107
 
     configurable = {
         "thread_id": thread_id or conversation_id,
+        # The TRUE conversation id (parent-overrides inheritance; see
+        # _inherit_from_parent_configurable). NOT recoverable from ``thread_id`` —
+        # that is the wrapped graph thread. HIL approvals, notifications, and the
+        # executor queue read this key, never ``thread_id``.
+        "conversation_id": resolved["conversation_id"],
+        # The user's own verbatim turns (see build_agent_config). The HIL intent judge
+        # reads these; child agents inherit them unchanged.
+        "user_messages": resolved["user_messages"],
         "user_id": user.get("user_id"),
         "email": user.get("email"),
         "user_name": user.get("name", ""),

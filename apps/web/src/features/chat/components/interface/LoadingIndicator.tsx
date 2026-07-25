@@ -1,5 +1,6 @@
 "use client";
 
+import { ShieldIcon } from "@icons";
 import { AnimatePresence } from "motion/react";
 import * as m from "motion/react-m";
 import type { ReactNode } from "react";
@@ -20,6 +21,9 @@ interface LoadingIndicatorProps {
   noPadding?: boolean;
   /** Replaces the default wave spinner (e.g. the orb in the popup). */
   spinner?: ReactNode;
+  /** The turn is blocked on a pending HIL approval — show a distinct amber
+   *  "waiting for your approval" state instead of the streaming spinner. */
+  awaitingApproval?: boolean;
 }
 
 const slideUp = {
@@ -43,11 +47,37 @@ export function LoadingIndicator({
   toolInfo,
   noPadding = false,
   spinner,
+  awaitingApproval = false,
 }: LoadingIndicatorProps) {
   const prefix =
     toolInfo?.showCategory !== false && toolInfo?.toolCategory
       ? `${toolInfo.integrationName || formatCategoryName(toolInfo.toolCategory)}: `
       : "";
+
+  if (awaitingApproval) {
+    return (
+      <m.div
+        className={`flex items-center gap-3 text-sm font-medium pt-2 ${noPadding ? "" : "mt-3 pl-11.5"}`}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={transition}
+      >
+        <m.span
+          className="flex shrink-0 items-center justify-center"
+          animate={{ opacity: [1, 0.4, 1] }}
+          transition={{
+            duration: 1.6,
+            ease: "easeInOut",
+            repeat: Number.POSITIVE_INFINITY,
+          }}
+        >
+          <ShieldIcon width={18} height={18} className="text-amber-400" />
+        </m.span>
+        <span className="text-amber-400">Waiting for your approval</span>
+      </m.div>
+    );
+  }
 
   return (
     <m.div
