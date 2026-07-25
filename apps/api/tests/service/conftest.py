@@ -44,10 +44,10 @@ from tests.helpers import (
 
 @pytest.fixture(scope="session")
 def mongodb_url() -> str:
-    return os.environ.get(
-        "MONGODB_URL",
-        "mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin",  # pragma: allowlist secret
-    )
+    # The URL the app itself connects with, so service tests hit the same Mongo
+    # (mirrors tests/contracts/conftest.py). Falls back to a no-auth localhost
+    # dev Mongo; CI exports MONGO_DB with its containerized credentials.
+    return os.environ.get("MONGO_DB", "mongodb://localhost:27017/gaia_test")
 
 
 @pytest.fixture(scope="session")
@@ -87,7 +87,10 @@ async def mongo_db(mongodb_url: str, monkeypatch):
     per-xdist-worker (``worker_mongo_db_name``) so parallel workers cannot
     wipe each other's seeded documents, mirroring ``worker_redis_url``.
     """
-    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url)
+    # Pin server selection to 5s (mirrors tests/contracts/conftest.py) so the
+    # root conftest's 100ms MONGO_DB default — meant for the mocked unit tests —
+    # cannot make a real connection here flake against a cold local Mongo.
+    client: AsyncIOMotorClient = AsyncIOMotorClient(mongodb_url, serverSelectionTimeoutMS=5000)
     db = client[worker_mongo_db_name()]
 
     monkeypatch.setattr("app.db.repositories.base.get_async_collection", lambda name: db[name])
