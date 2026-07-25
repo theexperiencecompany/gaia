@@ -261,7 +261,11 @@ def _history_block(history: list[MessageDict] | None) -> str:
 def _prompt(message: str, action_details: list[str], history: list[MessageDict] | None) -> str:
     action = "\n\n".join(action_details)
     history_block = _history_block(history)
-    context = f"RECENT CONVERSATION (oldest to newest, context only):\n{history_block}\n\n" if history_block else ""
+    context = (
+        f"RECENT CONVERSATION (oldest to newest, context only):\n{history_block}\n\n"
+        if history_block
+        else ""
+    )
     return (
         "The user has a pending action awaiting their approval. They did NOT click "
         "approve or decline — they replied in chat. Classify what the reply means.\n\n"
@@ -304,7 +308,11 @@ def _batch_prompt(
         f"{index}. {detail}" for index, detail in enumerate(action_details, start=1)
     )
     history_block = _history_block(history)
-    context = f"RECENT CONVERSATION (oldest to newest, context only):\n{history_block}\n\n" if history_block else ""
+    context = (
+        f"RECENT CONVERSATION (oldest to newest, context only):\n{history_block}\n\n"
+        if history_block
+        else ""
+    )
     return (
         "The assistant is waiting for the user to approve or decline these "
         "numbered pending actions:\n"

@@ -289,20 +289,24 @@ class TestInventedIndexes:
 
 
 class TestClassifierFailure:
-    """A broken LLM must never resolve as approve. Single and batch fail DIFFERENTLY and
-    both directions are deliberate, so both are pinned here."""
+    """A broken LLM must never resolve as approve — and never as a genuine ``unrelated``
+    either. Single and batch both fail toward leaving everything pending: an error is not
+    the same signal as the user moving on, so a transient hiccup must not abandon a
+    legitimate pending action. The buttons or the timeout sweep still resolve it."""
 
-    async def test_a_single_pending_approval_falls_back_to_treating_it_as_normal_chat(
+    async def test_a_single_pending_approval_is_left_pending_rather_than_abandoned(
         self, resolver: dict
     ) -> None:
-        # Falling back to `unrelated` abandons the paused run: the user's message runs as a
-        # normal turn instead of being swallowed. Nothing is approved.
+        # An LLM error leaves the single approval pending: nothing is resolved and the run
+        # is NOT abandoned (that would silently decline a legitimate pending action on a
+        # transient hiccup). Matches the batch path.
         resolver["llm"].side_effect = ConnectionError("provider down")
         with pending("Send email — to: bob@example.com"):
             action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
 
-        assert action == "unrelated"
+        assert action is None
         resolver["resolve"].assert_not_awaited()
+        resolver["abandon"].assert_not_awaited()
 
     async def test_a_batch_is_left_pending_rather_than_abandoned(self, resolver: dict) -> None:
         # A batch is a burst of parallel work the user is mid-review on. Abandoning it on a

@@ -201,7 +201,9 @@ def build_action_detail(summary: str, args: dict[str, Any]) -> str:
     lines = [summary]
     arg_lines = []
     for key, value in list((args or {}).items())[:HIL_CLASSIFIER_MAX_ARGS]:
-        rendered = value if isinstance(value, (str, int, float, bool)) else json.dumps(value, default=str)
+        rendered = (
+            value if isinstance(value, (str, int, float, bool)) else json.dumps(value, default=str)
+        )
         arg_lines.append(f"  {key}: {clip_text(str(rendered), HIL_CLASSIFIER_MAX_ARG_CHARS)}")
     if arg_lines:
         lines.append("Arguments:")
