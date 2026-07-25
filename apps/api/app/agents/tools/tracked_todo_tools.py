@@ -78,6 +78,8 @@ def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime 
         parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
+    if parsed.tzinfo is None:
+        return None, f"Error: {field_name} '{iso_str}' must include a timezone offset."
     if parsed <= datetime.now(UTC):
         return None, f"Error: {field_name} must be in the future."
     return parsed, None
@@ -258,6 +260,8 @@ def _build_scheduled_at_update(
         parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
+    if parsed_at.tzinfo is None:
+        return f"Error: scheduled_at '{scheduled_at}' must include a timezone offset."
     if parsed_at <= datetime.now(UTC):
         return "Error: scheduled_at must be in the future."
     update_fields["scheduled_at"] = parsed_at
@@ -365,11 +369,29 @@ def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
 def _patch_canvas_section(current: str, section: str, content: str) -> str:
     """Replace (or append) a `## {section}` block within a canvas markdown string."""
     heading = f"## {section}"
-    heading_pos = current.find(f"\n{heading}")
-    if heading_pos == -1:
+    head_end: int | None = None
+    search_start = 0
+    while True:
+        pos = current.find(heading, search_start)
+        if pos == -1:
+            break
+        # A real heading match must (a) start a line — position 0 or right
+        # after a "\n" — and (b) end the heading exactly — end-of-string or
+        # right before a "\n". Without both checks a plain substring search
+        # either misses the section when it's the canvas's first line (no
+        # leading "\n" to match against), or false-positives on a DIFFERENT
+        # section whose name happens to start with this one (e.g. searching
+        # for "Current" would otherwise match inside "## Current State").
+        at_line_start = pos == 0 or current[pos - 1] == "\n"
+        end_pos = pos + len(heading)
+        is_exact_heading = end_pos == len(current) or current[end_pos] == "\n"
+        if at_line_start and is_exact_heading:
+            head_end = end_pos
+            break
+        search_start = pos + 1
+    if head_end is None:
         # Section does not exist — append it as a fresh trailing block.
         return current.rstrip() + f"\n\n{heading}\n{content}"
-    head_end = heading_pos + len(f"\n{heading}")
     next_section = current.find("\n## ", head_end + 1)
     if next_section == -1:
         return current[:head_end] + "\n" + content
