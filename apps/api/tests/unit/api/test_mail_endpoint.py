@@ -231,7 +231,7 @@ class TestSendEmailJson:
         new_callable=AsyncMock,
     )
     async def test_send_email_json_returns_200(self, mock_send: AsyncMock, client: AsyncClient):
-        mock_send.return_value = {"id": "sent-001"}
+        mock_send.return_value = {"data": {"id": "sent-001"}, "error": None, "successful": True}
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
             json={
@@ -250,7 +250,7 @@ class TestSendEmailJson:
         new_callable=AsyncMock,
     )
     async def test_send_email_json_with_cc_bcc(self, mock_send: AsyncMock, client: AsyncClient):
-        mock_send.return_value = {"id": "sent-002"}
+        mock_send.return_value = {"data": {"id": "sent-002"}, "error": None, "successful": True}
         response = await client.post(
             f"{MAIL_BASE}/gmail/send-json",
             json={

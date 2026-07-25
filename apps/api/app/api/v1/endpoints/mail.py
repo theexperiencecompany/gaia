@@ -326,6 +326,12 @@ async def send_email_route(
             thread_id=thread_id,
         )
 
+        if not sent_message.get("successful", True):
+            raise HTTPException(
+                status_code=500,
+                detail=sent_message.get("error", "Failed to send email"),
+            )
+
         log.set(
             operation="send_email",
             thread_id=thread_id,
@@ -334,10 +340,12 @@ async def send_email_route(
             outcome="success",
         )
         return {
-            "message_id": sent_message.get("id"),
+            "message_id": sent_message.get("data", {}).get("id"),
             "status": "Email sent successfully",
             "attachments_count": len(attachments) if attachments else 0,
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
 
@@ -374,15 +382,23 @@ async def send_email_json(
             attachments=None,
         )
 
+        if not sent_message.get("successful", True):
+            raise HTTPException(
+                status_code=500,
+                detail=sent_message.get("error", "Failed to send email"),
+            )
+
         log.set(
             operation="send_email",
             has_attachment=False,
             outcome="success",
         )
         return {
-            "message_id": sent_message.get("id"),
+            "message_id": sent_message.get("data", {}).get("id"),
             "status": "Email sent successfully",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
 

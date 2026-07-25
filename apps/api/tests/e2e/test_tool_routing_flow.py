@@ -1,4 +1,10 @@
-"""E2E test: filter_messages_node cleans dangling tool calls in a live GAIA graph.
+"""E2E test: tool-call routing and filter_messages_node in a live GAIA graph.
+
+This file does NOT test email sending — the ``send_email`` tool below is a local
+stub standing in for "any tool". Real send-email coverage lives in
+``tests/e2e/test_send_email_flow.py``, which drives the Gmail send path through
+the real HTTP route and ``app.services.mail.mail_service``.
+
 
 WHAT THIS TESTS (REAL GAIA CODE):
 - ``filter_messages_node`` from ``app.agents.core.nodes.filter_messages``
@@ -18,7 +24,7 @@ Mock surfaces:
 - LLM: FakeMessagesListChatModel
 - Store: InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
-- email sending: a @tool stub is used, but the graph infrastructure is real
+- the routed tool itself: a @tool stub, but the graph infrastructure is real
 
 DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
@@ -45,7 +51,7 @@ def send_email(to: str, subject: str, body: str) -> str:
 
 
 @pytest.mark.e2e
-class TestSendEmailFlow:
+class TestToolRoutingFlow:
     """E2E tests verifying filter_messages_node is active in the GAIA graph.
 
     The real value here is that filter_messages_node (production code) is
