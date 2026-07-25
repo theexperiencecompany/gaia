@@ -14,7 +14,7 @@ const WEB_PORT = process.env.WEB_PORT ?? "3000";
 const API_PORT = process.env.API_PORT ?? "8000";
 
 /**
- * The seeded dev user. Matches the `mise seed` / `mise dev:sim` default.
+ * The seeded dev user. Matches the `mise seed` / `mise dev --sim` default.
  *
  * Ports are per-worktree but the Docker infra (Mongo) is shared across all
  * worktrees, and `global-setup` resets → mints → seeds this user. So two
@@ -52,7 +52,7 @@ export const FIRST_SEEDED_TODO = "Sample todo 1";
 
 /**
  * The scripted chat test only runs against the deterministic sim stack
- * (`mise dev:sim`), where the LLM is replaced by a directive-parsing stub.
+ * (`mise dev --sim`), where the LLM is replaced by a directive-parsing stub.
  * Set `E2E_SIM=1` to enable it; otherwise it is skipped with a clear reason.
  */
 export const SIM_ENABLED = ["1", "true", "yes"].includes(
@@ -65,7 +65,7 @@ export const SCRIPTED_REPLY = "Done!";
 export const SCRIPTED_CHAT_MESSAGE = `[[say:${SCRIPTED_REPLY}]]`;
 
 const NOT_CONFIGURED_HINT =
-  "Start the dev stack (`mise dev:sim` or `mise dev`) with " +
+  "Start the dev stack (`mise dev --sim` or `mise dev`) with " +
   "DEV_AUTH_BYPASS_EMAIL set in apps/api/.env — the dev router only mounts " +
   "when ENV=development and the bypass is configured.";
 

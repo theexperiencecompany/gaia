@@ -40,7 +40,7 @@ test.describe("smoke", () => {
   test("renders the scripted chat reply", async ({ page }) => {
     test.skip(
       !SIM_ENABLED,
-      "Requires the deterministic sim stack. Run `mise dev:sim` and set E2E_SIM=1.",
+      "Requires the deterministic sim stack. Run `mise dev --sim` and set E2E_SIM=1.",
     );
 
     await page.goto("/c");

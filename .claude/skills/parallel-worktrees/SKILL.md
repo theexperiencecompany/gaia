@@ -52,7 +52,7 @@ today's defaults. Delete `.env.worktree` to fall back to defaults.
 | Web (Next.js) | `WEB_PORT` | `3000 + offset` | 3000 |
 | Web → API URL | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:$API_PORT/api/v1/` | …8000/api/v1/ |
 | Bots/`gaia-sim` → API URL | `GAIA_API_URL` | `http://localhost:$API_PORT` | …:8000 |
-| Scripted LLM stub (`dev:sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |
+| Scripted LLM stub (`dev --sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |
 | Discord bot | `BOT_DISCORD_PORT` | `3200 + offset` | 3200 |
 | Slack bot | `BOT_SLACK_PORT` | `3201 + offset` | 3201 |
 | Telegram bot | `BOT_TELEGRAM_PORT` | `3202 + offset` | 3202 |
@@ -93,10 +93,12 @@ The web e2e suite is the sharp edge: its `global-setup` resets → mints → see
 at once wipe each other's data mid-run.
 
 Rule: run e2e in **one worktree at a time**, or give a worktree its own identity
-by setting `DEV_USER` (the e2e seed target) **and** the matching
-`DEV_AUTH_BYPASS_EMAIL` on its API to the same address — browser page loads carry
-no `X-Dev-User` header, so the seeded user must equal the server's bypass email.
-Full per-worktree DB isolation is deferred; until then this is the constraint.
+by setting `DEV_USER=<email>` — the `--agent` / `--sim` flags on `mise dev` /
+`dev:vm` derive the API's `DEV_AUTH_BYPASS_EMAIL` from `DEV_USER`, so a single
+value sets both the e2e seed target and the server's bypass identity. They must
+match because browser page loads carry no `X-Dev-User` header, so the seeded user
+has to equal the server's bypass email. Full per-worktree DB isolation is
+deferred; until then this is the constraint.
 
 ## Merge back
 
@@ -119,7 +121,7 @@ wt remove         # remove the current worktree; deletes the branch if merged
 
 ## Troubleshooting
 
-- **`port NNNN is already in use by PID …` on `mise dev` / `dev:sim`** — the
+- **`port NNNN is already in use by PID …` on `mise dev` (incl. `--sim`)** — the
   preflight (`scripts/dev/check-ports.sh`) refused to start because another
   worktree or a stale server holds the port; the message names the process. Kill
   it, or confirm `.env.worktree` exists here (`cat .env.worktree`) and re-run
