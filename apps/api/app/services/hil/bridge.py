@@ -27,6 +27,9 @@ from app.constants.hil import (
     APPROVAL_REQUEST_TOOL_NAME,
     APPROVAL_TOOL_CATEGORY,
     HIL_APPROVAL_TIMEOUT_SECONDS,
+    HIL_CLASSIFIER_MAX_ARG_CHARS,
+    HIL_CLASSIFIER_MAX_ARGS,
+    HIL_CLASSIFIER_MAX_DETAIL_CHARS,
     HIL_DECLINE_MEMORY_TTL_SECONDS,
     HIL_SUMMARY_MAX_ARG_CHARS,
     HIL_SUMMARY_MAX_ARGS,
@@ -184,6 +187,26 @@ def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | 
         label = f"{label} ({integration_name})"
     parts = _summary_arg_parts(args)
     return f"{label} — {', '.join(parts)}" if parts else label
+
+
+def build_action_detail(summary: str, args: dict[str, Any]) -> str:
+    """Richer rendering of a gated call for the conversational classifier.
+
+    The card's one-line ``summary`` (tool + integration identity, truncated args)
+    as the label, plus every argument up to a bound with non-scalar values as
+    compact JSON — so the classifier sees the full content (recipient, subject,
+    body, ...) the summary omits. The total is capped by
+    ``HIL_CLASSIFIER_MAX_DETAIL_CHARS``; the per-value clip only stops one
+    pathological arg from eating the whole budget. No LLM here."""
+    lines = [summary]
+    arg_lines = []
+    for key, value in list((args or {}).items())[:HIL_CLASSIFIER_MAX_ARGS]:
+        rendered = value if isinstance(value, (str, int, float, bool)) else json.dumps(value, default=str)
+        arg_lines.append(f"  {key}: {clip_text(str(rendered), HIL_CLASSIFIER_MAX_ARG_CHARS)}")
+    if arg_lines:
+        lines.append("Arguments:")
+        lines.extend(arg_lines)
+    return clip_text("\n".join(lines), HIL_CLASSIFIER_MAX_DETAIL_CHARS)
 
 
 # --- internals -----------------------------------------------------------------

@@ -74,6 +74,18 @@ HIL_UNRESUMED_SWEEP_STATUSES: tuple[str, ...] = ("approved", "denied", "timeout"
 HIL_SUMMARY_MAX_ARGS = 2
 HIL_SUMMARY_MAX_ARG_CHARS = 60
 
+# --- conversational classifier context -------------------------------------------------
+#
+# The classifier that reads a chat reply to a pending approval gets richer context than
+# the card summary: recent turns + the full (bounded) args. The TOTAL budget per action
+# is the real ceiling; the per-value clip only stops one pathological arg (base64 blob,
+# pasted file) from eating the whole budget. This runs on every chat message's critical
+# path for HIL-on users, so the total budget is the governing knob.
+HIL_CLASSIFIER_MAX_ARG_CHARS = 4000  # per-value clip — a full typical email/message body fits
+HIL_CLASSIFIER_MAX_DETAIL_CHARS = 8000  # total budget for one action's rendered detail
+HIL_CLASSIFIER_MAX_ARGS = 8  # include non-scalar args too, as compact JSON
+HIL_CLASSIFIER_HISTORY_TURNS = 4  # recent {role, content} turns of context
+
 # Marks a synthetic ToolMessage the gate produced (rather than a real tool result).
 HIL_STATUS_KWARG = "hil_status"
 HILToolMessageStatus = Literal["denied", "timeout", "error", "already_ran"]

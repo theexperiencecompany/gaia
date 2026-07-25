@@ -173,8 +173,10 @@ class TestBatch:
     async def test_a_selective_answer_leaves_everything_it_did_not_name_pending(
         self, resolver: dict
     ) -> None:
-        # THE attack on a batch: "just the email" must not carry the Slack post along with
-        # it. An unmentioned action stays pending for the buttons or the sweep.
+        # A non-exclusive partial answer ("approve the email one") resolves only what it
+        # names; an unmentioned action stays pending for the buttons or the sweep. (An
+        # EXCLUSIVE answer like "just the email" instead denies the rest — that is the
+        # classifier's job, mocked here; this pins the code path for a 'leave' verdict.)
         resolver["llm"].return_value = BatchDecisionResult(
             unrelated=False,
             decisions=[
@@ -184,7 +186,9 @@ class TestBatch:
             ],
         )
         with pending("Send email", "Post to Slack", "Create calendar event"):
-            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "just the email")
+            action = await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "approve the email one"
+            )
 
         assert action == "approve"
         assert resolved_ids(resolver["resolve"]) == ["appr-1"]

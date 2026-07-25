@@ -28,11 +28,11 @@ from app.agents.core.background.executor_capture import (
     teardown_executor_capture,
 )
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
-from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED
+from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.repositories.conversations import conversation_repository
-from app.models.message_models import MessageRequestWithHistory
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
@@ -56,6 +56,7 @@ from app.services.chat.workspace import (
     schedule_last_active_touch,
 )
 from app.services.hil.conversational import resolve_pending_from_message
+from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
@@ -172,12 +173,16 @@ async def _run_chat_stream(
             is_new_conversation,
         )
 
-        # If this conversation has a HIL approval waiting and the user answered
-        # it in chat (yes/no) rather than via a button, resolve it here and end
-        # the turn without running the agent — the paused run continues on its
-        # original stream. An unrelated message abandons the parked run and falls
-        # through to a normal turn (see ``resolve_pending_from_message``).
-        if await _resolve_pending_approval_turn(body, user, conversation_id, stream_id, state):
+        # A HIL approval waiting on this conversation can be answered from a chat
+        # reply (yes/no/"do X instead") — but ONLY for button-less bot channels
+        # (WhatsApp/Telegram/Slack/Discord). Web/mobile/desktop render real
+        # Approve/Deny buttons, so they never take this LLM-classifier path; see
+        # ``_resolve_pending_approval_turn`` for the full rationale. When a bot
+        # reply resolves the approval, the turn ends here and the paused run
+        # continues on its original stream.
+        if await _resolve_pending_approval_turn(
+            body, user, conversation_id, stream_id, state, source
+        ):
             return
 
         # Start description generation only after the conversation row exists
@@ -232,27 +237,68 @@ async def _run_chat_stream(
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
 
+def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
+    """Recent prior turns for the approval classifier's context.
+
+    The client includes the current turn as the trailing entry when its role is
+    ``user`` (see ``user_message_content_from``); drop it so the window is only
+    prior context, then keep the last ``HIL_CLASSIFIER_HISTORY_TURNS``.
+    """
+    prior = messages[:-1] if messages and messages[-1].get("role") == "user" else messages
+    return prior[-HIL_CLASSIFIER_HISTORY_TURNS:]
+
+
 async def _resolve_pending_approval_turn(
     body: MessageRequestWithHistory,
     user: dict,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
+    source: str | None,
 ) -> bool:
-    """Resolve a pending approval from the user's chat reply.
+    """Resolve a pending HIL approval from the user's chat reply — BOT CHANNELS ONLY.
 
-    Returns ``True`` when the reply approved/declined the pending action — the
-    turn is fully handled here (ack streamed + persisted) and the caller must
-    return without running the agent. Returns ``False`` when nothing was pending
-    or the message was unrelated (already auto-denied), so the normal turn runs.
+    The fast LLM classifier behind this (``resolve_pending_from_message``) reads
+    "yes" / "no" / "do X instead" out of a free-text chat reply and turns it into
+    an approve/deny on the pending approval. It exists SOLELY for button-less
+    messaging platforms — WhatsApp, Telegram, Slack, Discord — where a typed
+    reply is the only approval surface the user has.
+
+    First-party UI clients (web / mobile / desktop) render the approval card with
+    real Approve/Deny buttons, and a click is resolved deterministically through
+    ``POST /approvals/{id}/decision``. On those clients we deliberately DO NOT run
+    the classifier: asking an LLM to *guess* intent when an unambiguous button
+    already exists is pure downside — a misread could approve or decline a
+    destructive action the user never chose. The button is the source of truth on
+    any client that has one; the classifier is a fallback for the clients that
+    don't.
+
+    So this returns early for every non-bot source (``is_bot_platform`` is False
+    for web/mobile/desktop, and for the ``None``/background/workflow sources):
+    the message just runs as a normal turn and the approval stays pending for a
+    button click or the timeout sweep. Only the button-less bot channels reach
+    the classifier.
+
+    Returns ``True`` only when a bot reply approved/declined the pending action
+    (the turn is fully handled here — ack streamed + persisted — and the caller
+    must return without running the agent). Returns ``False`` otherwise: a non-bot
+    source, nothing pending, an unrelated message (already auto-denied), or no
+    user/message.
     """
+    if not is_bot_platform(source):
+        # UI clients (web/mobile/desktop) and background/workflow runs never
+        # LLM-classify an approval — the UI has deterministic Approve/Deny
+        # buttons, so the pending approval waits for a click or the sweep.
+        return False
+
     user_id = user.get("user_id")
     message = user_message_content_from(body)
     if not user_id or not message:
         return False
 
     try:
-        action = await resolve_pending_from_message(conversation_id, user_id, message)
+        history = _recent_history(body.messages)
+        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
     except Exception as e:  # noqa: BLE001 — see below: chat must survive this
         # This lookup sits on the critical path of EVERY chat message, for a feature most
         # users have switched off. If it fails, the only safe degradation is to run the
