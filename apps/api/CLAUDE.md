@@ -162,7 +162,9 @@ Services are async module-level functions, not classes.
 class TodoService:
     def __init__(self, db):
         self.db = db
+
     async def get_todo(self, todo_id: str): ...
+
 
 # correct
 async def get_todo(todo_id: str, user_id: str) -> TodoDocument | None:

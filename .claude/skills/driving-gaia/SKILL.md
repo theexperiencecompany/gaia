@@ -166,7 +166,7 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents/gmail
 
 Every page load is already authenticated (§2), so there is no login step — just navigate and act.
 
-**Interactive / exploratory → agent-browser.** Snapshot → act on the stable element ref → assert. Install and usage are documented in the root `CLAUDE.md` "Agent-Driven E2E Testing" section. Run `mise dev` (or `dev:sim`), open `http://localhost:${WEB_PORT:-3000}` (your worktree's `WEB_PORT`), and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
+**Interactive / exploratory → agent-browser.** Install with `npm i -g agent-browser && agent-browser install` — a Rust CDP daemon + MCP server with accessibility-tree snapshots, stable element refs (`@e1`), and persistent encrypted profiles. Snapshot → act on the stable element ref → assert. Run `mise dev` (or `dev:sim`), open `http://localhost:${WEB_PORT:-3000}` (your worktree's `WEB_PORT`), and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
 
 **Repeatable / scripted → Playwright.** Minimal setup lives in `apps/web/e2e/` (`playwright.config.ts`, `global-setup.ts`, `smoke.spec.ts`, `harness.ts`). One command:
 
