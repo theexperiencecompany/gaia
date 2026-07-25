@@ -45,7 +45,7 @@ router = APIRouter()
 
 def _require_user_id(user: dict) -> str:
     """Extract the authenticated user's ID or fail the request."""
-    user_id = user.get("user_id")
+    user_id: str | None = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
     return user_id

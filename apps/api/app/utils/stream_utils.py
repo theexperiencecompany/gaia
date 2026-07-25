@@ -141,7 +141,10 @@ def _approval_id_of(entry: dict[str, Any]) -> str | None:
     if entry.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
         return None
     data = entry.get("data")
-    return data.get("approval_id") if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    approval_id: str | None = data.get("approval_id")
+    return approval_id
 
 
 def _append_or_upsert_tool_data(entries: list[dict[str, Any]], entry: dict[str, Any]) -> None:

@@ -50,6 +50,7 @@ async def coalesce_request(key: str, factory: Callable[[], Coroutine[Any, Any, T
         tools = await coalesce_request("tools", _build_tools)
     """
     log.set(operation="coalesce_request", coalesce_key=key)
+    task: asyncio.Task[T]
     async with _lock:
         if key in _pending_requests:
             # Another request is already running, wait for it

@@ -1,7 +1,6 @@
 """Provider-agnostic sending and Jinja2 template rendering for platform email."""
 
 from pathlib import Path
-from typing import Any
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -16,7 +15,7 @@ jinja_env = Environment(
 )
 
 
-def render_email_template(template_name: str, **context: Any) -> str:
+def render_email_template(template_name: str, **context: object) -> str:
     return jinja_env.get_template(template_name).render(**context)
 
 

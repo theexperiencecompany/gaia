@@ -12,9 +12,10 @@ Usage:
 """
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from functools import wraps
+from typing import Any, ParamSpec, TypeVar
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -41,6 +42,14 @@ from app.models.usage_models import (
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
+
+# UsageInfo is imported (not defined here) but re-exported for
+# `app.api.v1.middleware.__init__` — explicit re-export required under
+# no_implicit_reexport.
+__all__ = ["UsageInfo"]
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class RateLimitExceededException(HTTPException):
@@ -71,7 +80,7 @@ class RateLimitExceededException(HTTPException):
 class TieredRateLimiter:
     """Redis-backed per-user, per-feature counters across daily/monthly windows."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis = redis_cache
 
     def _get_redis_key(self, user_id: str, feature: str, period: RateLimitPeriod) -> str:
@@ -287,22 +296,26 @@ class TieredRateLimiter:
 tiered_limiter = TieredRateLimiter()
 
 
-def tiered_rate_limit(feature_key: str):
+def tiered_rate_limit(
+    feature_key: str,
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             """Resolve the user, enforce the feature's limits, then run the endpoint."""
             # Extract request and user from dependencies
-            user = None
+            user: dict[str, Any] | None = None
 
             for arg in args:
                 if isinstance(arg, dict) and "user_id" in arg:
                     user = arg
 
             if not user:
-                user = kwargs.get("user")
+                kwarg_user = kwargs.get("user")
+                if isinstance(kwarg_user, dict):
+                    user = kwarg_user
                 if not user:
                     # If no user found, skip rate limiting (for public endpoints)
                     return await func(*args, **kwargs)

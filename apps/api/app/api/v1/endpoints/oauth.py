@@ -35,7 +35,7 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 
 
 @router.get("/client-metadata.json")
-async def get_client_metadata():
+async def get_client_metadata() -> JSONResponse:
     """
     OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
 
@@ -66,7 +66,7 @@ async def get_client_metadata():
 
 
 @router.get("/login/workos")
-async def login_workos(return_url: str | None = None):
+async def login_workos(return_url: str | None = None) -> RedirectResponse:
     """
     Start the WorkOS SSO authentication flow.
 
@@ -106,7 +106,7 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
 
 
 @router.get("/login/workos/mobile")
-async def login_workos_mobile(redirect_uri: str | None = None):
+async def login_workos_mobile(redirect_uri: str | None = None) -> dict[str, str]:
     """
     Start WorkOS SSO flow for mobile apps (Expo).
 
@@ -138,7 +138,7 @@ async def login_workos_mobile(redirect_uri: str | None = None):
 
 
 @router.get("/login/google/mobile")
-async def login_google_mobile(redirect_uri: str | None = None):
+async def login_google_mobile(redirect_uri: str | None = None) -> dict[str, str]:
     """
     Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
     Users go straight to Google's sign-in page instead of the WorkOS selection screen.
@@ -240,7 +240,7 @@ async def workos_mobile_callback(
 
 
 @router.get("/login/workos/desktop")
-async def login_workos_desktop():
+async def login_workos_desktop() -> RedirectResponse:
     """
     Start the WorkOS SSO authentication flow for desktop app.
     Uses gaia:// protocol for callback redirect.
@@ -421,7 +421,7 @@ async def composio_callback(
     background_tasks: BackgroundTasks,
     connectedAccountId: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """
     Handle Composio OAuth callback after successful/failed connection.
 

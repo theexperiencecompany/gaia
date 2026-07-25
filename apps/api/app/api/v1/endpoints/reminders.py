@@ -2,7 +2,7 @@
 FastAPI endpoints for reminder management.
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
@@ -31,7 +31,7 @@ async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
     user_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
     user: dict = Depends(get_current_user),
-):
+) -> ReminderResponse:
     """
     Create a new reminder.
 
@@ -100,7 +100,9 @@ async def create_reminder_endpoint(
 
 
 @router.get("/{reminder_id}", response_model=ReminderResponse)
-async def get_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
+async def get_reminder_endpoint(
+    reminder_id: str, user: dict = Depends(get_current_user)
+) -> ReminderResponse:
     """
     Get a reminder by ID.
 
@@ -160,7 +162,7 @@ async def update_reminder_endpoint(
     reminder_id: str,
     request: UpdateReminderRequest,
     user: dict = Depends(get_current_user),
-):
+) -> ReminderResponse:
     """
     Update an existing reminder.
 
@@ -233,7 +235,9 @@ async def update_reminder_endpoint(
 
 
 @router.delete("/{reminder_id}", status_code=http_status.HTTP_204_NO_CONTENT)
-async def cancel_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
+async def cancel_reminder_endpoint(
+    reminder_id: str, user: dict = Depends(get_current_user)
+) -> None:
     """
     Cancel a reminder.
 
@@ -282,7 +286,7 @@ async def list_reminders_endpoint(
     status: ReminderStatus | None = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     skip: int = Query(0, ge=0, description="Number of results to skip"),
-):
+) -> list[ReminderResponse]:
     """
     List reminders for a user.
 
@@ -336,7 +340,9 @@ async def list_reminders_endpoint(
 
 
 @router.post("/{reminder_id}/pause", response_model=ReminderResponse)
-async def pause_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
+async def pause_reminder_endpoint(
+    reminder_id: str, user: dict = Depends(get_current_user)
+) -> ReminderResponse:
     """
     Pause a reminder.
 
@@ -391,7 +397,9 @@ async def pause_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cur
 
 
 @router.post("/{reminder_id}/resume", response_model=ReminderResponse)
-async def resume_reminder_endpoint(reminder_id: str, user: dict = Depends(get_current_user)):
+async def resume_reminder_endpoint(
+    reminder_id: str, user: dict = Depends(get_current_user)
+) -> ReminderResponse:
     """
     Resume a paused reminder.
 
@@ -469,7 +477,7 @@ async def resume_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cu
 @router.get("/cron/validate")
 async def validate_cron_endpoint(
     expression: str = Query(..., description="Cron expression to validate"),
-):
+) -> dict[str, Any]:
     """
     Validate a cron expression.
 

@@ -224,12 +224,17 @@ async def semantic_search_todos(
 
 
 async def hybrid_search_todos(
-    query: str, user_id: str, top_k: int = 10, semantic_weight: float = 0.7, **filters
+    query: str,
+    user_id: str,
+    top_k: int = 10,
+    semantic_weight: float = 0.7,
+    completed: bool | None = None,
+    priority: str | None = None,
+    project_id: str | None = None,
 ) -> list[TodoResponse]:
     """Hybrid search combining semantic and traditional results.
 
-    ``semantic_weight`` (0.0-1.0) weights the semantic ranking; ``**filters``
-    accepts completed/priority/project_id.
+    ``semantic_weight`` (0.0-1.0) weights the semantic ranking.
     """
     try:
         # Get semantic results
@@ -237,8 +242,10 @@ async def hybrid_search_todos(
             query=query,
             user_id=user_id,
             top_k=top_k,
+            completed=completed,
+            priority=priority,
+            project_id=project_id,
             include_traditional_search=False,
-            **filters,
         )
 
         # Get traditional search results
@@ -247,18 +254,12 @@ async def hybrid_search_todos(
         traditional_results = await search_todos(query, user_id)
 
         # Apply filters to traditional results
-        if filters.get("completed") is not None:
-            traditional_results = [
-                t for t in traditional_results if t.completed == filters["completed"]
-            ]
-        if filters.get("priority"):
-            traditional_results = [
-                t for t in traditional_results if t.priority == filters["priority"]
-            ]
-        if filters.get("project_id"):
-            traditional_results = [
-                t for t in traditional_results if t.project_id == filters["project_id"]
-            ]
+        if completed is not None:
+            traditional_results = [t for t in traditional_results if t.completed == completed]
+        if priority:
+            traditional_results = [t for t in traditional_results if t.priority == priority]
+        if project_id:
+            traditional_results = [t for t in traditional_results if t.project_id == project_id]
 
         # Combine results with scoring
         combined_scores: dict[str, float] = {}
@@ -291,4 +292,11 @@ async def hybrid_search_todos(
     except Exception as e:
         log.error(f"{LogTag.CHROMA} Error in hybrid search: {e!s}")
         # Fallback to semantic search only
-        return await semantic_search_todos(query, user_id, top_k, **filters)
+        return await semantic_search_todos(
+            query,
+            user_id,
+            top_k,
+            completed=completed,
+            priority=priority,
+            project_id=project_id,
+        )

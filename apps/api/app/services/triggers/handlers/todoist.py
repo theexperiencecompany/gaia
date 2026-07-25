@@ -2,7 +2,7 @@
 Todoist trigger handler.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -16,11 +16,11 @@ from shared.py.wide_events import log
 class TodoistTriggerHandler(TriggerHandler):
     """Handler for Todoist triggers."""
 
-    SUPPORTED_TRIGGERS = ["todoist_new_task_created"]
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["todoist_new_task_created"]
 
-    SUPPORTED_EVENTS = {"TODOIST_NEW_TASK_CREATED"}
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {"TODOIST_NEW_TASK_CREATED"}
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "todoist_new_task_created": "TODOIST_NEW_TASK_CREATED",
     }
 

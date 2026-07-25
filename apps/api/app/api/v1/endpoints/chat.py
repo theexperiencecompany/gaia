@@ -10,7 +10,7 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
@@ -101,7 +101,6 @@ async def _stream_from_redis(
 async def chat_stream_endpoint(
     request: Request,
     body: MessageRequestWithHistory,
-    background_tasks: BackgroundTasks,
     user: Annotated[dict, Depends(get_current_user)],
     home_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
 ) -> StreamingResponse:

@@ -1,3 +1,4 @@
+import contextlib
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -28,7 +29,7 @@ router = APIRouter()
 @router.get("/calendar/list", summary="Get Calendar List")
 async def get_calendar_list(
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> list[dict[str, Any]] | dict[str, Any]:
     """
     Retrieve the list of calendars for the authenticated user.
 
@@ -63,7 +64,7 @@ async def get_calendar_list(
 async def query_events(
     request: CalendarEventsQueryRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, Any]:
     """
     Query events from selected calendars using POST to avoid URL length limits.
     """
@@ -95,12 +96,10 @@ async def query_events(
 
         time_range_days = None
         if time_min and time_max:
-            try:
+            with contextlib.suppress(Exception):
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
-            except Exception:  # nosec B110
-                pass
 
         log.set(
             user={"id": user_id},
@@ -143,7 +142,7 @@ async def get_events(
     max_results: int = Query(100, ge=1, le=250),
     fetch_all: bool = Query(False, description="Fetch ALL events in date range"),
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, Any]:
     """Get calendar events using GET — ideal for simple queries with few parameters."""
     try:
         user_id = current_user.get("user_id")
@@ -174,12 +173,10 @@ async def get_events(
 
         time_range_days = None
         if time_min and time_max:
-            try:
+            with contextlib.suppress(Exception):
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
-            except Exception:  # nosec B110
-                pass
 
         log.set(
             user={"id": user_id},
@@ -220,7 +217,7 @@ async def get_events_by_calendar(
     end_date: str | None = None,
     page_token: str | None = None,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, Any]:
     """Fetch events for a specific calendar identified by its ID."""
     try:
         user_id = current_user.get("user_id")
@@ -251,12 +248,10 @@ async def get_events_by_calendar(
 
         time_range_days = None
         if time_min and time_max:
-            try:
+            with contextlib.suppress(Exception):
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
-            except Exception:  # nosec B110
-                pass
 
         log.set(
             user={"id": user_id},
@@ -293,7 +288,7 @@ async def get_events_by_calendar(
 async def create_event(
     event: EventCreateRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, Any]:
     """Create a new calendar event."""
     try:
         user_id = current_user.get("user_id")
@@ -318,7 +313,7 @@ async def create_event(
 @router.get("/calendar/preferences", summary="Get User Calendar Preferences")
 async def get_calendar_preferences(
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, list[str]]:
     """Retrieve the user's selected calendar preferences from the database."""
     try:
         user_id = current_user.get("user_id")
@@ -335,7 +330,7 @@ async def get_calendar_preferences(
 async def update_calendar_preferences(
     preferences: CalendarPreferencesUpdateRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, str]:
     """Update the user's selected calendar preferences in the database."""
     try:
         user_id = current_user.get("user_id")
@@ -352,7 +347,7 @@ async def update_calendar_preferences(
 async def delete_event(
     event: EventDeleteRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, Any]:
     """Delete a calendar event."""
     try:
         user_id = current_user.get("user_id")
@@ -373,7 +368,7 @@ async def delete_event(
 async def update_event(
     event: EventUpdateRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, Any]:
     """Update a calendar event."""
     try:
         user_id = current_user.get("user_id")
@@ -394,7 +389,7 @@ async def update_event(
 async def create_events_batch(
     batch_request: BatchEventCreateRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, list[Any]]:
     """Create multiple calendar events in a batch operation."""
     try:
         user_id = current_user.get("user_id")
@@ -429,7 +424,7 @@ async def create_events_batch(
 async def update_events_batch(
     batch_request: BatchEventUpdateRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, list[Any]]:
     """Update multiple calendar events in a batch operation."""
     try:
         user_id = current_user.get("user_id")
@@ -464,7 +459,7 @@ async def update_events_batch(
 async def delete_events_batch(
     batch_request: BatchEventDeleteRequest,
     current_user: dict = Depends(require_integration("calendar")),
-):
+) -> dict[str, list[Any]]:
     """Delete multiple calendar events in a batch operation."""
     try:
         user_id = current_user.get("user_id")

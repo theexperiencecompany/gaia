@@ -17,6 +17,7 @@ custom ``REGISTRY`` so the same ``fs_op_*`` metric families show up at
 from __future__ import annotations
 
 from collections.abc import Callable, Coroutine
+import contextlib
 import functools
 import time
 from typing import Any, TypeVar
@@ -67,11 +68,9 @@ for _collector in (
     _FS_OP_IN_FLIGHT,
     _SANDBOX_POOL_SIZE,
 ):
-    try:
+    # Already registered on this registry (re-import under reload).
+    with contextlib.suppress(ValueError):
         REGISTRY.register(_collector)
-    except ValueError:
-        # Already registered on this registry (re-import under reload).
-        pass
 
 
 def instrument_task(

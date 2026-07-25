@@ -8,9 +8,10 @@ Profiling is completely optional and must be explicitly enabled via environment 
 import random
 
 from fastapi.responses import HTMLResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -48,11 +49,11 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
         Add ?profile=1 to any request URL to get a profiling report (when enabled).
     """
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
         self._log_startup_info()
 
-    def _log_startup_info(self):
+    def _log_startup_info(self) -> None:
         """Log profiling configuration at startup."""
         if not PYINSTRUMENT_AVAILABLE:
             log.warning(
@@ -67,7 +68,7 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
         else:
             log.info(f"{LogTag.API} PyInstrument profiling disabled (ENABLE_PROFILING=false)")
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Check if profiling is available and enabled
         if not settings.ENABLE_PROFILING or not PYINSTRUMENT_AVAILABLE or Profiler is None:
             return await call_next(request)

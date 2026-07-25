@@ -3,7 +3,7 @@ GitHub trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -33,21 +33,21 @@ from shared.py.wide_events import log
 class GitHubTriggerHandler(TriggerHandler):
     """Handler for GitHub triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "github_commit_event",
         "github_pr_event",
         "github_star_added",
         "github_issue_added",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GITHUB_COMMIT_EVENT",
         "GITHUB_PULL_REQUEST_EVENT",
         "GITHUB_STAR_ADDED_EVENT",
         "GITHUB_ISSUE_ADDED_EVENT",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "github_commit_event": "GITHUB_COMMIT_EVENT",
         "github_pr_event": "GITHUB_PULL_REQUEST_EVENT",
         "github_star_added": "GITHUB_STAR_ADDED_EVENT",

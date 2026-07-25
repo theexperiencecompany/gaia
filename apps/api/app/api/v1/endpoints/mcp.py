@@ -28,7 +28,7 @@ router = APIRouter()
 async def test_mcp_connection(
     integration_id: str,
     user: dict = Depends(get_current_user),
-):
+) -> JSONResponse:
     """
     Test connection to an MCP server.
 
@@ -142,7 +142,7 @@ async def mcp_oauth_callback(
     error: str | None = Query(None),  # OAuth error code
     error_description: str | None = Query(None),  # OAuth error description
     user: dict = Depends(get_current_user),
-):
+) -> RedirectResponse:
     """Handle OAuth callback from MCP server.
 
     Handles both success (with code) and error responses from OAuth server.

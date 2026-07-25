@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any, cast
 import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
@@ -44,7 +44,9 @@ router = APIRouter()
 
 # Counts endpoint for efficient dashboard data
 @router.get("/todos/counts")
-async def get_todo_counts(response: Response, user: Annotated[dict, Depends(get_current_user)]):
+async def get_todo_counts(
+    response: Response, user: Annotated[dict, Depends(get_current_user)]
+) -> dict[str, Any]:
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
@@ -104,7 +106,7 @@ async def list_todos(
     # Options
     include_stats: bool = Query(False, description="Include statistics in response"),
     user: dict = Depends(get_current_user),
-):
+) -> TodoListResponse:
     """
     List todos with comprehensive filtering and search options.
 
@@ -192,7 +194,7 @@ async def list_todos(
 
 @router.post("/todos", response_model=TodoResponse, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("todo_operations")
-async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
+async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)) -> TodoResponse:
     """Create a new todo. If no project is specified, it will be added to Inbox."""
     log.set(
         user={"id": user["user_id"]},
@@ -225,7 +227,9 @@ async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)):
 # with todo_id="bulk" and 500 instead of running the bulk operation.
 @router.put("/todos/bulk", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
-async def bulk_update_todos(request: BulkUpdateRequest, user: dict = Depends(get_current_user)):
+async def bulk_update_todos(
+    request: BulkUpdateRequest, user: dict = Depends(get_current_user)
+) -> BulkOperationResponse:
     """
     Bulk update multiple todos with the same changes.
 
@@ -258,7 +262,9 @@ async def bulk_update_todos(request: BulkUpdateRequest, user: dict = Depends(get
 
 @router.post("/todos/bulk/move", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
-async def bulk_move_todos(request: BulkMoveRequest, user: dict = Depends(get_current_user)):
+async def bulk_move_todos(
+    request: BulkMoveRequest, user: dict = Depends(get_current_user)
+) -> BulkOperationResponse:
     """Move multiple todos to a different project."""
     log.set(
         user={"id": user["user_id"]},
@@ -283,7 +289,7 @@ async def bulk_move_todos(request: BulkMoveRequest, user: dict = Depends(get_cur
 async def bulk_delete_todos(
     todo_ids: list[str] = Body(..., min_length=1, max_length=100),
     user: dict = Depends(get_current_user),
-):
+) -> BulkOperationResponse:
     """Delete multiple todos."""
     log.set(
         user={"id": user["user_id"]},
@@ -304,7 +310,7 @@ async def bulk_delete_todos(
 async def bulk_complete_todos(
     todo_ids: list[str] = Body(..., min_length=1, max_length=100),
     user: dict = Depends(get_current_user),
-):
+) -> BulkOperationResponse:
     """Mark multiple todos as completed (convenience endpoint)."""
     log.set(
         user={"id": user["user_id"]},
@@ -324,7 +330,7 @@ async def bulk_complete_todos(
 
 
 @router.get("/todos/{todo_id}", response_model=TodoResponse)
-async def get_todo(todo_id: str, user: dict = Depends(get_current_user)):
+async def get_todo(todo_id: str, user: dict = Depends(get_current_user)) -> TodoResponse:
     """Get a specific todo by ID."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "get", "id": todo_id})
     try:
@@ -354,7 +360,7 @@ async def get_todo_canvas(
 @tiered_rate_limit("todo_operations")
 async def update_todo(
     todo_id: str, updates: TodoUpdateRequest, user: dict = Depends(get_current_user)
-):
+) -> TodoResponse:
     """Update a todo."""
     log.set(
         user={"id": user["user_id"]},
@@ -388,7 +394,7 @@ async def update_todo(
 
 @router.delete("/todos/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
 @tiered_rate_limit("todo_operations")
-async def delete_todo(todo_id: str, user: dict = Depends(get_current_user)):
+async def delete_todo(todo_id: str, user: dict = Depends(get_current_user)) -> None:
     """Delete a todo."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "delete", "id": todo_id})
     try:
@@ -409,7 +415,7 @@ async def generate_workflow(
     todo_id: str,
     user: dict = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-):
+) -> dict[str, Any]:
     """Generate a workflow for a todo (background generation + WebSocket notification).
 
     This endpoint returns immediately with 'generating' status. The frontend should
@@ -477,7 +483,7 @@ async def generate_workflow(
 @router.get("/todos/{todo_id}/workflow-status")
 async def get_workflow_status(
     todo_id: str, response: Response, user: Annotated[dict, Depends(get_current_user)]
-):
+) -> dict[str, Any]:
     """
     Get the standalone workflow for a todo.
     Returns the workflow if it exists, otherwise returns None.
@@ -497,7 +503,7 @@ async def get_workflow_status(
         wf_cache_key = f"workflow_status:{user['user_id']}:{todo_id}"
         cached_wf = await get_cache(wf_cache_key)
         if cached_wf:
-            return cached_wf
+            return cast(dict[str, Any], cached_wf)
 
         # Parallelize independent fetch + generating check
         todo, is_generating = await asyncio.gather(
@@ -550,7 +556,7 @@ async def get_workflow_status(
 
 # Project Endpoints
 @router.get("/projects", response_model=list[ProjectResponse])
-async def list_projects(user: dict = Depends(get_current_user)):
+async def list_projects(user: dict = Depends(get_current_user)) -> list[ProjectResponse]:
     """List all projects with todo counts."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "list_projects"})
     try:
@@ -564,7 +570,9 @@ async def list_projects(user: dict = Depends(get_current_user)):
 
 @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("todo_operations")
-async def create_project(project: ProjectCreate, user: dict = Depends(get_current_user)):
+async def create_project(
+    project: ProjectCreate, user: dict = Depends(get_current_user)
+) -> ProjectResponse:
     """Create a new project."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "create_project"})
     try:
@@ -582,7 +590,7 @@ async def update_project(
     project_id: str,
     updates: UpdateProjectRequest,
     user: dict = Depends(get_current_user),
-):
+) -> ProjectResponse:
     """Update a project. Cannot update the default Inbox project."""
     log.set(
         user={"id": user["user_id"]},
@@ -608,7 +616,7 @@ async def update_project(
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 @tiered_rate_limit("todo_operations")
-async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
+async def delete_project(project_id: str, user: dict = Depends(get_current_user)) -> None:
     """Delete a project. All todos will be moved to Inbox. Cannot delete Inbox."""
     log.set(
         user={"id": user["user_id"]},
@@ -641,7 +649,7 @@ async def delete_project(project_id: str, user: dict = Depends(get_current_user)
 @tiered_rate_limit("todo_operations")
 async def create_subtask(
     todo_id: str, subtask: SubtaskCreateRequest, user: dict = Depends(get_current_user)
-):
+) -> TodoResponse:
     """Add a new subtask to a todo."""
     log.set(
         user={"id": user["user_id"]},
@@ -671,7 +679,7 @@ async def update_subtask(
     subtask_id: str,
     updates: SubtaskUpdateRequest,
     user: dict = Depends(get_current_user),
-):
+) -> TodoResponse:
     """Update a specific subtask."""
     log.set(
         user={"id": user["user_id"]},
@@ -704,7 +712,9 @@ async def update_subtask(
 
 @router.delete("/todos/{todo_id}/subtasks/{subtask_id}", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
-async def delete_subtask(todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)):
+async def delete_subtask(
+    todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
+) -> TodoResponse:
     """Delete a specific subtask."""
     log.set(
         user={"id": user["user_id"]},
@@ -735,7 +745,7 @@ async def delete_subtask(todo_id: str, subtask_id: str, user: dict = Depends(get
 @tiered_rate_limit("todo_operations")
 async def toggle_subtask_completion(
     todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
-):
+) -> TodoResponse:
     """Toggle the completion status of a subtask (convenience endpoint)."""
     log.set(
         user={"id": user["user_id"]},

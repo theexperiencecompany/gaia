@@ -52,7 +52,7 @@ _GRAVATAR_TIMEOUT = httpx.Timeout(
 
 def _first_value(entries: list[dict], key: str) -> str | None:
     """First non-empty ``key`` across a People API field's entries."""
-    return next((entry[key] for entry in entries if entry.get(key)), None)
+    return next((str(entry[key]) for entry in entries if entry.get(key)), None)
 
 
 def _pick_photo(photos: list[dict]) -> str | None:
@@ -64,8 +64,8 @@ def _pick_photo(photos: list[dict]) -> str | None:
     real = [photo for photo in photos if photo.get("url") and not photo.get("default")]
     for photo in real:
         if photo.get("metadata", {}).get("source", {}).get("type") == "PROFILE":
-            return photo["url"]
-    return real[0]["url"] if real else None
+            return str(photo["url"])
+    return str(real[0]["url"]) if real else None
 
 
 def _person_to_profile(person: dict, email: str) -> dict | None:
@@ -92,13 +92,14 @@ async def _people_search(user_id: str, endpoint: str, query: str, read_mask: str
     silently to the next source — previews must never surface errors.
     """
     try:
-        return await proxy_request(
+        result: dict | None = await proxy_request(
             user_id=user_id,
             toolkit=_GMAIL_TOOLKIT,
             method="GET",
             endpoint=endpoint,
             query={"query": query, "readMask": read_mask},
         )
+        return result
     except Exception as exc:
         log.debug(f"email_profile people search failed ({endpoint}): {exc}")
         return None

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import random
-from typing import Any
 from uuid import uuid4
+
+from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
 from app.db.repositories.todos import todo_repository
@@ -101,7 +102,7 @@ async def maintenance_sweep_tracked_todos(_ctx: dict) -> str:
 
 
 async def _classify_tracked_todos(
-    pool: Any, now: datetime
+    pool: ArqRedis, now: datetime
 ) -> tuple[list[dict], list[dict], list[dict]]:
     """Scan active tracked todos and bucket them into expired/overdue/dormant tiers.
 
@@ -140,7 +141,7 @@ async def _classify_tracked_todos(
 
 async def _process_expired(
     expired: list[dict],
-    pool: Any,
+    pool: ArqRedis,
     now: datetime,
     health_checks_used: dict[str, int],
     daytime_cache: dict[str, bool],
@@ -169,7 +170,7 @@ async def _process_expired(
 
 async def _process_overdue(
     overdue: list[dict],
-    pool: Any,
+    pool: ArqRedis,
     now: datetime,
     daytime_cache: dict[str, bool],
 ) -> int:
@@ -186,7 +187,7 @@ async def _process_overdue(
 
 async def _process_dormant(
     dormant: list[dict],
-    pool: Any,
+    pool: ArqRedis,
     now: datetime,
     health_checks_used: dict[str, int],
     daytime_cache: dict[str, bool],
@@ -280,7 +281,7 @@ def _is_dormant(doc: dict, now: datetime) -> bool:
     return False
 
 
-async def _health_check_expired(doc: dict, pool: Any) -> str:
+async def _health_check_expired(doc: dict, pool: ArqRedis) -> str:
     """
     Run a health-check agent call for an expired todo.
 
@@ -331,7 +332,7 @@ async def _health_check_expired(doc: dict, pool: Any) -> str:
     return "notified"
 
 
-async def _health_check_dormant(doc: dict, pool: Any) -> str:
+async def _health_check_dormant(doc: dict, pool: ArqRedis) -> str:
     """
     Run a health-check agent call for a dormant todo.
 
@@ -387,7 +388,7 @@ async def _health_check_dormant(doc: dict, pool: Any) -> str:
     return "needs_attention"
 
 
-async def _notify_overdue(doc: dict, pool: Any) -> bool:
+async def _notify_overdue(doc: dict, pool: ArqRedis) -> bool:
     """Notify about an overdue todo and label it needs-follow-up.
 
     Returns True if a notification was sent, False when the escalating backoff
@@ -632,12 +633,12 @@ def _strike_key(todo_id: str) -> str:
     return f"gaia_maintenance_strikes:{todo_id}"
 
 
-async def _set_cooldown(pool: Any, todo_id: str, days: int) -> None:
+async def _set_cooldown(pool: ArqRedis, todo_id: str, days: int) -> None:
     """Throttle re-processing of a todo for ``days`` days."""
     await pool.set(_cooldown_key(todo_id), "1", ex=days * SECONDS_PER_DAY)
 
 
-async def _register_notification(pool: Any, todo_id: str) -> bool:
+async def _register_notification(pool: ArqRedis, todo_id: str) -> bool:
     """Advance a todo's escalating notification backoff.
 
     Returns True if a notification should be sent now and sets the next cooldown

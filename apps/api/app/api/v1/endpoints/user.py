@@ -1,9 +1,9 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from bson import ObjectId
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -33,9 +33,8 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 
 @router.get("/me", response_model=dict)
 async def get_me(
-    background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
@@ -65,7 +64,7 @@ async def update_me(
     name: str | None = Form(None),
     picture: UploadFile | None = File(None),
     user: dict = Depends(get_current_user),
-):
+) -> UserUpdateResponse:
     """
     Update the current user's profile information.
     Supports updating name and profile picture.
@@ -114,7 +113,7 @@ async def update_me(
 async def update_user_name(
     name: str = Form(...),
     user: dict = Depends(get_current_user),
-):
+) -> UserUpdateResponse:
     """
     Update the user's name. This is the consolidated endpoint for name updates.
     """
@@ -143,7 +142,7 @@ async def update_user_timezone(
         alias="timezone",
     ),
     user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Update user's timezone setting.
     This updates the root-level timezone field for the user.
@@ -181,7 +180,7 @@ async def update_user_timezone(
 
 
 @router.get("/holo-card/{card_id}")
-async def get_public_holo_card(card_id: str):
+async def get_public_holo_card(card_id: str) -> dict[str, Any]:
     """
     Get public holo card data by card ID (user ID).
     This endpoint is public and doesn't require authentication.
@@ -245,7 +244,7 @@ async def update_holo_card_colors(
     overlay_color: str = Form(..., description="Overlay color or gradient"),
     overlay_opacity: int = Form(..., description="Overlay opacity (0-100)"),
     user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Update holo card overlay color and opacity.
     """
@@ -291,7 +290,7 @@ async def update_holo_card_colors(
 async def logout(
     request: Request,
     user: dict = Depends(get_current_user),
-):
+) -> JSONResponse:
     """
     Logout user and return logout URL for frontend redirection.
     """

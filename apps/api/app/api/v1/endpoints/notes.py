@@ -27,7 +27,7 @@ router = APIRouter()
 async def create_note_endpoint(
     note: NoteModel,
     user: dict = Depends(get_current_user),
-):
+) -> NoteResponse:
     """
     Create a new note for the authenticated user.
 
@@ -54,7 +54,7 @@ async def create_note_endpoint(
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
-async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)):
+async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)) -> NoteResponse:
     """
     Retrieve a single note by its ID.
 
@@ -82,7 +82,9 @@ async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)
 
 
 @router.get("/notes", response_model=list[NoteResponse])
-async def get_all_notes_endpoint(user: dict = Depends(get_current_user)):
+async def get_all_notes_endpoint(
+    user: dict = Depends(get_current_user),
+) -> list[NoteResponse]:
     """
     Retrieve all notes for the authenticated user.
 
@@ -114,7 +116,7 @@ async def update_note_endpoint(
     note_id: str,
     note: NoteModel,
     user: dict = Depends(get_current_user),
-):
+) -> NoteResponse:
     """
     Update an existing note by its ID.
 
@@ -147,7 +149,7 @@ async def update_note_endpoint(
 async def delete_note_endpoint(
     note_id: str,
     user: dict = Depends(get_current_user),
-):
+) -> None:
     """
     Delete a note by its ID.
 

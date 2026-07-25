@@ -36,24 +36,30 @@ def _task_done_callback(task: asyncio.Task) -> None:
     _background_tasks.discard(task)
 
 
+def _get_configurable_str(config: RunnableConfig, key: str) -> str | None:
+    """Extract a string field from ``config["configurable"]``, if present."""
+    value = config.get("configurable", {}).get(key)
+    return value if isinstance(value, str) else None
+
+
 def _get_user_id(config: RunnableConfig) -> str | None:
     """Extract user_id from config for user memory namespace."""
-    return config.get("configurable", {}).get("user_id")
+    return _get_configurable_str(config, "user_id")
 
 
 def _get_user_name(config: RunnableConfig) -> str | None:
     """Extract the user's display name from config for fact attribution."""
-    return config.get("configurable", {}).get("user_name")
+    return _get_configurable_str(config, "user_name")
 
 
 def _get_subagent_id(config: RunnableConfig) -> str | None:
     """Extract subagent ID from config for memory namespace."""
-    return config.get("configurable", {}).get("subagent_id")
+    return _get_configurable_str(config, "subagent_id")
 
 
 def _get_session_id(config: RunnableConfig) -> str | None:
     """Extract session/thread ID for memory correlation."""
-    return config.get("configurable", {}).get("thread_id")
+    return _get_configurable_str(config, "thread_id")
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:

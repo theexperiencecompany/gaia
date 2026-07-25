@@ -20,7 +20,7 @@ async def get_blogs(
         False,
         description="Include blog content in response (for list views, set to false for better performance)",
     ),
-):
+) -> list[BlogPost]:
     """Get all blog posts with pagination and populated author details."""
     log.set(operation="list_blogs")
     if search:
@@ -40,7 +40,7 @@ async def get_blogs(
 
 @router.get("/blogs/{slug}", response_model=BlogPost)
 @Cacheable(key_pattern="blog:{slug}", ttl=21600, model=BlogPost)  # 6 hours
-async def get_blog(slug: str):
+async def get_blog(slug: str) -> BlogPost:
     """Get a specific blog post with populated author details."""
     log.set(operation="get_blog", slug=slug)
     result = await BlogService.get_blog_by_slug(slug)
@@ -50,7 +50,7 @@ async def get_blog(slug: str):
 
 @router.get("/blogs/count", response_model=dict)
 @Cacheable(smart_hash=True, ttl=21600)  # 6 hours
-async def get_blog_count():
+async def get_blog_count() -> dict[str, int]:
     """Get total count of blog posts."""
     log.set(operation="get_blog_count")
     count = await BlogService.get_blog_count()
@@ -65,10 +65,10 @@ async def create_blog_deprecated() -> None:
 
 
 @router.put("/blogs/{slug}", status_code=status.HTTP_410_GONE, include_in_schema=False)
-async def update_blog_deprecated(slug: str) -> None:
+async def update_blog_deprecated() -> None:
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)
 
 
 @router.delete("/blogs/{slug}", status_code=status.HTTP_410_GONE, include_in_schema=False)
-async def delete_blog_deprecated(slug: str) -> None:
+async def delete_blog_deprecated() -> None:
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)

@@ -35,7 +35,7 @@ class DownloadedFile:
 
 
 def _content_type(response: httpx.Response) -> str | None:
-    raw = response.headers.get("content-type")
+    raw: str | None = response.headers.get("content-type")
     return raw.split(";", 1)[0].strip().lower() if raw else None
 
 

@@ -11,8 +11,9 @@ Handles:
 
 from datetime import UTC, datetime, timedelta
 import random
-from typing import Any
 from uuid import uuid4
+
+from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
 from app.constants.todos import FAILED_LABEL
@@ -83,7 +84,7 @@ async def execute_tracked_todo(_ctx: dict, todo_id: str) -> str:
             await pool.delete(lock_key)
 
 
-async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
+async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
     """
     Fetch the todo document, run the appropriate execution path, and
     handle retry / recurrence logic on the result.

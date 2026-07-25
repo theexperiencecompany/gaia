@@ -46,7 +46,8 @@ async def get_all_instructions(user_id: str) -> dict[str, str]:
 
 async def get_instructions(user_id: str, integration_id: str) -> str | None:
     """Return the markdown for one integration, or ``None`` if unset/empty."""
-    return (await get_all_instructions(user_id)).get(integration_id)
+    instructions: dict[str, str] = await get_all_instructions(user_id)
+    return instructions.get(integration_id)
 
 
 async def get_instructions_record(

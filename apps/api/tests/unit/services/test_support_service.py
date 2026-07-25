@@ -166,21 +166,21 @@ class TestDeleteUploadedFiles:
         mock_cloudinary.destroy.return_value = {"result": "ok"}
 
         urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
-        await _delete_uploaded_files(urls, "TICKET")
+        await _delete_uploaded_files(urls)
 
         mock_cloudinary.destroy.assert_called_once_with("support/TICKET_file")
 
     async def test_malformed_url_without_support_segment_is_skipped(self, mock_cloudinary):
         """URLs that do not contain 'support/' are silently skipped."""
         urls = ["https://example.com/other/path/file.png"]
-        await _delete_uploaded_files(urls, "TICKET")
+        await _delete_uploaded_files(urls)
 
         mock_cloudinary.destroy.assert_not_called()
 
     async def test_support_segment_at_end_without_filename_is_skipped(self, mock_cloudinary):
         """URL where 'support' is the last segment (no filename after it) is skipped."""
         urls = ["https://res.cloudinary.com/demo/image/upload/support"]
-        await _delete_uploaded_files(urls, "TICKET")
+        await _delete_uploaded_files(urls)
 
         mock_cloudinary.destroy.assert_not_called()
 
@@ -190,7 +190,7 @@ class TestDeleteUploadedFiles:
 
         urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
         with patch("app.services.support_service.log") as mock_log:
-            await _delete_uploaded_files(urls, "TICKET")
+            await _delete_uploaded_files(urls)
 
             mock_log.warning.assert_called_once()
             assert "Failed to delete" in mock_log.warning.call_args[0][0]
@@ -201,7 +201,7 @@ class TestDeleteUploadedFiles:
 
         urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
         with patch("app.services.support_service.log") as mock_log:
-            await _delete_uploaded_files(urls, "TICKET")
+            await _delete_uploaded_files(urls)
 
             mock_log.error.assert_called_once()
             assert "network error" in mock_log.error.call_args[0][0]
@@ -220,13 +220,13 @@ class TestDeleteUploadedFiles:
             "https://res.cloudinary.com/demo/image/upload/support/TICKET_c.png",
         ]
         with patch("app.services.support_service.log"):
-            await _delete_uploaded_files(urls, "TICKET")
+            await _delete_uploaded_files(urls)
 
         assert mock_cloudinary.destroy.call_count == 3
 
     async def test_empty_url_list_does_nothing(self, mock_cloudinary):
         """An empty URL list results in no Cloudinary calls."""
-        await _delete_uploaded_files([], "TICKET")
+        await _delete_uploaded_files([])
         mock_cloudinary.destroy.assert_not_called()
 
 

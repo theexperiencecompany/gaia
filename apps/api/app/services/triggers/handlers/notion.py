@@ -5,7 +5,7 @@ Handles Notion-specific trigger logic.
 """
 
 import asyncio
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -31,19 +31,19 @@ from shared.py.wide_events import log
 class NotionTriggerHandler(TriggerHandler):
     """Handler for Notion triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "notion_new_page_in_db",
         "notion_page_updated",
         "notion_all_page_events",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "NOTION_PAGE_ADDED_TO_DATABASE",
         "NOTION_PAGE_UPDATED_TRIGGER",
         "NOTION_ALL_PAGE_EVENTS_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "notion_new_page_in_db": "NOTION_PAGE_ADDED_TO_DATABASE",
         "notion_page_updated": "NOTION_PAGE_UPDATED_TRIGGER",
         "notion_all_page_events": "NOTION_ALL_PAGE_EVENTS_TRIGGER",

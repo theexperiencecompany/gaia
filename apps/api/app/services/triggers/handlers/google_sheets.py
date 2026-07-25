@@ -3,7 +3,7 @@ Google Sheets trigger handler with cascading dropdown support.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -31,18 +31,18 @@ from shared.py.wide_events import log
 class GoogleSheetsTriggerHandler(TriggerHandler):
     """Handler for Google Sheets triggers with multi-select support."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "google_sheets_new_row",
         "google_sheets_new_sheet",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLEDOCS_NEW_ROWS_TRIGGER",
         "GOOGLESHEETS_NEW_ROWS_TRIGGER",
         "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "google_sheets_new_row": "GOOGLESHEETS_NEW_ROWS_TRIGGER",
         "google_sheets_new_sheet": "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
     }

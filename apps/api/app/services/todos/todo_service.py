@@ -569,13 +569,13 @@ async def get_todo(todo_id: str, user_id: str) -> TodoResponse:
 
 async def get_all_todos(
     user_id: str,
-    project_id=None,
-    completed=None,
-    priority=None,
-    has_due_date=None,
-    overdue=None,
-    skip=0,
-    limit=50,
+    project_id: str | None = None,
+    completed: bool | None = None,
+    priority: str | None = None,
+    has_due_date: bool | None = None,
+    overdue: bool | None = None,
+    skip: int = 0,
+    limit: int = 50,
 ) -> list[TodoResponse]:
     """Compatibility wrapper for old get_all_todos function."""
 
@@ -712,31 +712,6 @@ async def semantic_search_todos(
     params = TodoSearchParams(
         q=query,
         mode=SearchMode.SEMANTIC,
-        project_id=project_id,
-        completed=completed,
-        priority=Priority(priority) if priority else None,
-        page=1,
-        per_page=limit,
-        include_stats=False,
-    )
-
-    response = await TodoService.list_todos(user_id, params)
-    return response.data
-
-
-async def hybrid_search_todos(
-    query: str,
-    user_id: str,
-    limit: int = 20,
-    project_id: str | None = None,
-    completed: bool | None = None,
-    priority: str | None = None,
-    semantic_weight: float = 0.7,
-) -> list[TodoResponse]:
-    """Perform hybrid search on todos."""
-    params = TodoSearchParams(
-        q=query,
-        mode=SearchMode.HYBRID,
         project_id=project_id,
         completed=completed,
         priority=Priority(priority) if priority else None,

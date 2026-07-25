@@ -37,7 +37,8 @@ async def _resolve_destination(platform: ConversationSource, user_id: str) -> st
     """Resolve a GAIA ``user_id`` to its platform-native destination id, or None."""
     linked = await PlatformLinkService.get_linked_platforms(user_id)
     info = linked.get(platform.value)
-    return info.get("platformUserId") if info else None
+    destination: str | None = info.get("platformUserId") if info else None
+    return destination
 
 
 async def _prepare(

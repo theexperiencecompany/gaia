@@ -1,5 +1,7 @@
 """File upload, update, and delete endpoints."""
 
+from typing import Any
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -30,7 +32,7 @@ async def upload_file_endpoint(
     conversation_id: str | None = Form(default=None, pattern=SAFE_PATH_ID_PATTERN),
     content_length: int | None = Header(default=None, alias="content-length"),
     user: dict = Depends(get_current_user),
-):
+) -> FileData:
     """Upload a file, persist metadata, and generate embeddings for images."""
     user_id = user.get("user_id")
     if not user_id:
@@ -88,7 +90,7 @@ async def update_file_endpoint(
     file_id: str,
     payload: UpdateFileRequest,
     user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Update file metadata; regenerates the embedding when the description changes."""
     user_id = user.get("user_id")
     if not user_id:
@@ -115,7 +117,7 @@ async def update_file_endpoint(
 async def delete_file_endpoint(
     file_id: str,
     user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Delete a file from Cloudinary, MongoDB, and ChromaDB."""
     try:
         result = await FileService.delete(

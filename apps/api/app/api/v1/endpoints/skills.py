@@ -5,7 +5,7 @@ Provides REST API for installing, creating, listing, and managing
 installable agent skills (Agent Skills open standard).
 """
 
-from typing import Annotated
+from typing import Annotated, Any, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
@@ -55,7 +55,7 @@ def _get_user_id(user: dict = Depends(get_current_user)) -> str:
             status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail="User not authenticated",
         )
-    return user_id
+    return cast(str, user_id)
 
 
 async def _validate_target(user_id: str, target: str) -> None:
@@ -132,7 +132,7 @@ async def list_builtin_skills_endpoint(
 async def discover_skills_from_github(
     repo: str = Query(..., description="GitHub repo (owner/repo or full URL)"),
     branch: str = Query("main", description="Branch to search"),
-):
+) -> dict[str, Any]:
     """Discover available skills in a GitHub repository.
 
     Lists all skills found in standard locations without installing.
@@ -179,7 +179,7 @@ async def install_skill_with_auto_discover(
         None, description="Override target (executor or subagent agent_name)"
     ),
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Install a skill from a GitHub repository.
 
     Can work in two modes:
@@ -250,7 +250,7 @@ async def install_skill_with_auto_discover(
 async def create_inline_skill_endpoint(
     request: SkillInlineCreateRequest,
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Create a skill from inline components."""
     log.set(user={"id": user_id}, skill={"name": request.name, "target": request.target})
     try:
@@ -333,7 +333,7 @@ async def list_skills_endpoint(
         None, description="Filter by target (executor or subagent agent_name)"
     ),
     enabled_only: bool = Query(False, description="Only return enabled skills"),
-):
+) -> SkillListResponse:
     """List all installed skills for the current user."""
     log.set(operation="list_skills")
     try:
@@ -357,7 +357,7 @@ async def list_skills_endpoint(
 async def get_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> Skill:
     """Get a specific installed skill by ID."""
     log.set(operation="get_skill", skill_id=skill_id)
     try:
@@ -384,7 +384,7 @@ async def get_skill_endpoint(
 async def enable_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> dict[str, Any]:
     """Enable a disabled skill."""
     log.set(operation="enable_skill", skill_id=skill_id)
     try:
@@ -403,7 +403,7 @@ async def enable_skill_endpoint(
 async def disable_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> dict[str, Any]:
     """Disable a skill without uninstalling it."""
     log.set(operation="disable_skill", skill_id=skill_id)
     try:
@@ -422,7 +422,7 @@ async def disable_skill_endpoint(
 async def uninstall_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-):
+) -> None:
     """Uninstall a skill and remove its files from VFS."""
     log.set(operation="uninstall_skill", skill_id=skill_id)
     try:

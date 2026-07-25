@@ -91,7 +91,7 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             public_id=public_id,
             overwrite=True,
         )
-        image_url = upload_result.get("secure_url")
+        image_url: str | None = upload_result.get("secure_url")
         if not image_url:
             log.error(f"{LogTag.OAUTH} Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from image service")

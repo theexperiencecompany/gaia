@@ -7,7 +7,7 @@ Handles all calendar-specific trigger logic including:
 - Event-to-workflow matching
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -29,19 +29,19 @@ class CalendarTriggerHandler(TriggerHandler):
     """Handler for Google Calendar triggers."""
 
     # Trigger names this handler supports
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "calendar_event_created",
         "calendar_event_starting_soon",
     ]
 
     # Composio event types this handler processes
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
         "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
     }
 
     # Mapping from trigger_name to Composio slug
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "calendar_event_created": "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
         "calendar_event_starting_soon": "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
     }

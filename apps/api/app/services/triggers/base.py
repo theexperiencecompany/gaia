@@ -363,7 +363,7 @@ class TriggerHandler(ABC):
 
     async def _queue_one_workflow(
         self,
-        workflow: Any,
+        workflow: Workflow,
         data: dict[str, Any],
         signal_context_by_user: dict[str, str],
         event_type: str,

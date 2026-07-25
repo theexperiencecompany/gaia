@@ -4,6 +4,7 @@ Contains all workflow-related background tasks and execution logic.
 """
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from app.agents.prompts.workflow_prompts import (
@@ -336,7 +337,12 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 try:
                     if isinstance(e, RateLimitExceededException):
                         title = f"Workflow Failed: {workflow.title}"
-                        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
+                        # HTTPException.detail is typed str | None upstream, but
+                        # RateLimitExceededException always assigns a dict at
+                        # runtime — read it via getattr to avoid narrowing against
+                        # the (incorrect for this subclass) inherited annotation.
+                        raw_detail = getattr(e, "detail", None)
+                        detail: dict[str, str] = raw_detail if isinstance(raw_detail, dict) else {}
                         plan_required = detail.get("plan_required", "pro").upper()
                         reset_time_str = detail.get("reset_time", "")
 
@@ -429,7 +435,9 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
 
 
 @tiered_rate_limit("trigger_workflow_executions")
-async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
+async def execute_workflow_as_chat(
+    workflow: Workflow, user: dict[str, Any], context: dict[str, Any]
+) -> str:
     """Run a workflow as a silent chat turn and return its conversation id.
 
     The workflow is fed to the agent exactly like an interactive chat turn (same
@@ -485,7 +493,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
             user_id=user_id,
             workflow_title=workflow.title,
         )
-        conversation_id = conversation["conversation_id"]
+        conversation_id: str = conversation["conversation_id"]
         log.set(conversation_context_found=bool(conversation_id))
 
         selected_workflow_data = SelectedWorkflowData(

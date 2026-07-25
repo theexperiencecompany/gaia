@@ -33,7 +33,7 @@ SUPPORT_EMAILS = [
 ]
 
 
-async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> None:
+async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
     """Delete uploaded files from Cloudinary."""
     for url in attachment_urls:
         try:
@@ -297,7 +297,7 @@ async def create_support_request_with_attachments(
                     log.info(
                         f"Cleaning up {len(attachment_urls)} partially uploaded files for ticket {ticket_id}"
                     )
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
 
                 # Re-raise the original exception (could be HTTPException from validation or upload error)
                 raise
@@ -350,7 +350,7 @@ async def create_support_request_with_attachments(
             # Rollback: Delete uploaded files
             if attachment_urls:
                 try:
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
                     log.info(
                         f"Successfully cleaned up {len(attachment_urls)} uploaded files for ticket {ticket_id}"
                     )
@@ -400,7 +400,7 @@ async def create_support_request_with_attachments(
         # Clean up uploaded files
         if attachment_urls and ticket_id:
             try:
-                await _delete_uploaded_files(attachment_urls, ticket_id)
+                await _delete_uploaded_files(attachment_urls)
                 log.info(
                     f"Cleaned up {len(attachment_urls)} uploaded files due to unexpected error"
                 )

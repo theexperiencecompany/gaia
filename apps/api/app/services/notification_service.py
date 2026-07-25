@@ -22,7 +22,7 @@ from app.utils.notification.orchestrator import NotificationOrchestrator
 class NotificationService:
     """Main notification service - facade for the entire system"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.orchestrator = NotificationOrchestrator()
 
     # Expose orchestrator methods

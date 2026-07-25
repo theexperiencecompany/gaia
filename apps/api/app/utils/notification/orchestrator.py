@@ -46,7 +46,7 @@ class NotificationOrchestrator:
     """Core notification engine: creation, multi-channel delivery, actions,
     bulk operations, and status management."""
 
-    def __init__(self, storage=None) -> None:
+    def __init__(self, storage: MongoDBNotificationStorage | None = None) -> None:
         self.storage = storage or MongoDBNotificationStorage()
         self.channel_adapters: dict[str, ChannelAdapter] = {}
         self.action_handlers: dict[str, ActionHandler] = {}
@@ -395,8 +395,6 @@ class NotificationOrchestrator:
                     success = result is not None
                 elif action == BulkActions.ARCHIVE:
                     success = await self.archive_notification(notification_id, user_id)
-                else:
-                    success = False
 
                 results[notification_id] = success
             except Exception as e:

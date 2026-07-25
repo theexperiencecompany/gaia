@@ -20,7 +20,7 @@ router = APIRouter()
 
 @router.post("/image/generate")
 @tiered_rate_limit("generate_image")
-async def image(request: MessageRequest, _user: dict = Depends(get_current_user)):
+async def image(request: MessageRequest, _user: dict = Depends(get_current_user)) -> JSONResponse:
     """Generate an image based on the text prompt."""
     log.set(operation="generate", prompt_length=len(request.message))
     response = await api_generate_image(request.message)
@@ -34,7 +34,7 @@ async def image_to_text(
     message: str = Form(...),
     file: UploadFile = File(...),
     _user: dict = Depends(get_current_user),
-):
+) -> JSONResponse:
     """Extract text from an image using OCR."""
     log.set(
         operation="image_to_text",
@@ -49,7 +49,9 @@ async def image_to_text(
 
 @router.post("/image/generate/stream")
 @tiered_rate_limit("generate_image")
-async def image_stream(request: MessageRequest, _user: dict = Depends(get_current_user)):
+async def image_stream(
+    request: MessageRequest, _user: dict = Depends(get_current_user)
+) -> StreamingResponse:
     """Generate an image with streaming response."""
     log.set(
         operation="generate_stream",

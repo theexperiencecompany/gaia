@@ -4,6 +4,7 @@ Single service approach - simple and maintainable.
 """
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
@@ -25,7 +26,7 @@ router = APIRouter()
 
 @router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
-async def get_plans_endpoint(request: Request, active_only: bool = True):
+async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
     try:
@@ -41,7 +42,7 @@ async def create_subscription_endpoint(
     request: Request,
     subscription_data: CreateSubscriptionRequest,
     current_user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """Create a new subscription and return payment link."""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -70,7 +71,7 @@ async def create_subscription_endpoint(
 async def verify_payment_endpoint(
     request: Request,
     current_user: dict = Depends(get_current_user),
-):
+) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -93,7 +94,7 @@ async def verify_payment_endpoint(
 async def get_subscription_status_endpoint(
     request: Request,
     current_user: dict = Depends(get_current_user),
-):
+) -> UserSubscriptionStatus:
     """Get user's current subscription status."""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -116,7 +117,7 @@ async def handle_dodo_webhook(
     webhook_id: str = Header(..., alias="webhook-id"),
     webhook_timestamp: str = Header(..., alias="webhook-timestamp"),
     webhook_signature: str = Header(..., alias="webhook-signature"),
-):
+) -> dict[str, Any]:
     """Handle incoming webhooks from Dodo Payments with signature verification."""
     try:
         # Get raw body for signature verification

@@ -62,7 +62,7 @@ def upload_file_to_cloudinary(
             overwrite=True,
         )
 
-        file_url = upload_result.get("secure_url")
+        file_url: str | None = upload_result.get("secure_url")
         if not file_url:
             log.error("Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from file upload service")

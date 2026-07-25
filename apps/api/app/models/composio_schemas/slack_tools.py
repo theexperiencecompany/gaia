@@ -56,5 +56,6 @@ class SlackListAllChannelsData(BaseModel):
     def next_cursor(self) -> str | None:
         """Get next cursor for pagination."""
         if self.response_metadata:
-            return self.response_metadata.get("next_cursor")
+            cursor = self.response_metadata.get("next_cursor")
+            return cursor if isinstance(cursor, str) else None
         return None

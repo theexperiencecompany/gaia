@@ -3,7 +3,7 @@ Linear trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -29,19 +29,19 @@ from shared.py.wide_events import log
 class LinearTriggerHandler(TriggerHandler):
     """Handler for Linear triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "linear_issue_created",
         "linear_issue_updated",
         "linear_comment_added",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "LINEAR_ISSUE_CREATED_TRIGGER",
         "LINEAR_ISSUE_UPDATED_TRIGGER",
         "LINEAR_COMMENT_EVENT_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "linear_issue_created": "LINEAR_ISSUE_CREATED_TRIGGER",
         "linear_issue_updated": "LINEAR_ISSUE_UPDATED_TRIGGER",
         "linear_comment_added": "LINEAR_COMMENT_EVENT_TRIGGER",

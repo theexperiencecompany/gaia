@@ -1,5 +1,7 @@
 """Support API router for handling support requests."""
 
+from typing import Any
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -173,7 +175,7 @@ async def get_my_support_requests(
     per_page: int = Query(10, ge=1, le=50, description="Items per page"),
     status: SupportRequestStatus | None = Query(None, description="Filter by status"),
     current_user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Get support requests for the current user.
 
@@ -212,7 +214,7 @@ async def get_my_support_requests(
 async def get_support_rate_limit_status(
     request: Request,
     current_user: dict = Depends(get_current_user),
-):
+) -> dict[str, Any]:
     """
     Get the current rate limit status for support requests.
 

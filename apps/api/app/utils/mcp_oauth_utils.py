@@ -501,7 +501,7 @@ async def introspect_token(
             )
 
             if response.status_code == 200:
-                result = response.json()
+                result: dict[str, Any] = response.json()
                 log.debug(f"{LogTag.MCP} Token introspection result: active={result.get('active')}")
                 return result
 
@@ -518,7 +518,7 @@ async def introspect_token(
         return None
 
 
-def parse_oauth_error_response(response: Any) -> dict:
+def parse_oauth_error_response(response: httpx.Response) -> dict:
     """Parse an OAuth error response per RFC 6749 Section 5.2."""
     result = {
         "error": "unknown_error",

@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncGenerator
 import json
 import secrets
 from typing import Annotated
@@ -198,7 +199,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     if not user:
 
-        async def auth_required():
+        async def auth_required() -> AsyncGenerator[str, None]:
             """Emit a single `not_authenticated` SSE event for unlinked users."""
             yield f"data: {json.dumps({'error': 'not_authenticated'})}\n\n"
 
@@ -249,7 +250,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         )
     )
 
-    def task_done_callback(t: asyncio.Task):
+    def task_done_callback(t: asyncio.Task) -> None:
         """Drop the finished background task from the registry and log failures."""
         _background_tasks.discard(t)
         if t.exception():
@@ -258,7 +259,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     task.add_done_callback(task_done_callback)
     _background_tasks.add(task)
 
-    async def stream_from_redis():
+    async def stream_from_redis() -> AsyncGenerator[str, None]:
         """Subscribe to Redis stream and translate chunks for bot clients."""
         # Send session token as first event
         yield f"data: {json.dumps({'session_token': session_token})}\n\n"

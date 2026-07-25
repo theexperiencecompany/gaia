@@ -3,7 +3,7 @@ ARQ worker settings configuration.
 """
 
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, ClassVar
 
 from arq.connections import RedisSettings
 
@@ -20,10 +20,10 @@ class WorkerSettings:
     redis_settings = RedisSettings.from_dsn(settings.REDIS_URL)
 
     # Task functions will be populated from the main worker file
-    functions: list[Callable[..., Coroutine[Any, Any, str]]] = []
+    functions: ClassVar[list[Callable[..., Coroutine[Any, Any, str]]]] = []
 
     # Cron jobs will be populated from the main worker file
-    cron_jobs: list[Any] = []
+    cron_jobs: ClassVar[list[Any]] = []
 
     # Lifecycle functions will be set from the main worker file
     on_startup: Callable[[dict], Coroutine[Any, Any, None]] | None = None

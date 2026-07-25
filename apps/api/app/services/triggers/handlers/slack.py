@@ -3,7 +3,7 @@ Slack trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -26,12 +26,12 @@ from shared.py.wide_events import log
 class SlackTriggerHandler(TriggerHandler):
     """Handler for Slack triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "slack_new_message",
         "slack_channel_created",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "SLACK_RECEIVE_MESSAGE",
         "SLACK_RECEIVE_BOT_MESSAGE",
         "SLACK_RECEIVE_DIRECT_MESSAGE",
@@ -41,7 +41,7 @@ class SlackTriggerHandler(TriggerHandler):
         "SLACK_CHANNEL_CREATED",
     }
 
-    EXCLUSION_TO_TRIGGER = {
+    EXCLUSION_TO_TRIGGER: ClassVar[dict[str, str]] = {
         "exclude_bot_messages": "SLACK_RECEIVE_BOT_MESSAGE",
         "exclude_direct_messages": "SLACK_RECEIVE_DIRECT_MESSAGE",
         "exclude_group_messages": "SLACK_RECEIVE_GROUP_MESSAGE",

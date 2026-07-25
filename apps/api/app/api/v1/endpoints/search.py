@@ -6,6 +6,7 @@ This module contains routes related to search functionality and URL metadata fet
 
 import asyncio
 import re
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -24,7 +25,9 @@ router = APIRouter()
 
 
 @router.get("/search")
-async def search_messages_endpoint(query: str, user: dict = Depends(get_current_user)):
+async def search_messages_endpoint(
+    query: str, user: dict = Depends(get_current_user)
+) -> dict[str, Any]:
     """
     Search for messages, conversations, and notes by their description or content.
 
@@ -77,7 +80,7 @@ def extract_emails(text: str) -> list:
 
 @router.get("/search/email")
 @tiered_rate_limit("web_search")
-async def search_email_endpoint(query: str):
+async def search_email_endpoint(query: str) -> dict[str, Any]:
     """
     Search for official contact email addresses related to the given query.
 
@@ -125,7 +128,7 @@ async def search_email_endpoint(query: str):
 @limiter.limit("500/hour")
 async def fetch_url_metadata_endpoint(
     request: Request, data: URLRequest, user: dict = Depends(get_current_user)
-):
+) -> MultiURLResponse:
     """
     Fetch metadata for multiple URLs in parallel.
 

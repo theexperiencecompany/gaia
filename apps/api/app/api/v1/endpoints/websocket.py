@@ -1,3 +1,5 @@
+import contextlib
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
@@ -10,7 +12,7 @@ router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
 
 @router.websocket("/connect")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     Endpoint to establish WebSocket connection for authenticated users.
     Each user can have multiple connections (e.g., from different devices).
@@ -56,9 +58,7 @@ async def websocket_endpoint(websocket: WebSocket):
         log.set(disconnect_reason="server_error")
         log.error(f"WebSocket error for user {user_id}: {e!s}")
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
-        try:
+        # Ignore if WebSocket is already closed
+        with contextlib.suppress(Exception):
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-        except Exception:
-            # Ignore if WebSocket is already closed
-            pass  # nosec B110
         raise e

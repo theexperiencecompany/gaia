@@ -49,7 +49,7 @@ async def handle_workflow_error(
         )
 
 
-def ensure_trigger_config_object(trigger_config: Any) -> TriggerConfig:
+def ensure_trigger_config_object(trigger_config: TriggerConfig | dict[str, Any]) -> TriggerConfig:
     """Convert dict to TriggerConfig object if needed."""
     if isinstance(trigger_config, dict):
         return TriggerConfig(**trigger_config)
@@ -61,7 +61,7 @@ def error_response(error_code: str, message: str) -> dict:
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: Any, message: str | None = None) -> dict:
+def success_response(data: object, message: str | None = None) -> dict:
     """Return a standardized success response."""
     response: dict[str, Any] = {"success": True, "data": data}
     if message:
@@ -113,7 +113,7 @@ async def filter_existing_integration_ids(integration_ids: list[str] | None) -> 
 
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config. Raises error if missing."""
-    user_id = config.get("configurable", {}).get("user_id")
+    user_id: str | None = config.get("configurable", {}).get("user_id")
     if not user_id:
         raise WorkflowConfigError("User authentication required")
     return user_id
@@ -121,7 +121,8 @@ def get_user_id(config: RunnableConfig) -> str:
 
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
-    return config.get("configurable", {}).get("thread_id")
+    thread_id: str | None = config.get("configurable", {}).get("thread_id")
+    return thread_id
 
 
 def can_create_directly(draft: FinalizedOutput) -> bool:

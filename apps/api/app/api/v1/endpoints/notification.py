@@ -43,7 +43,7 @@ async def get_notifications(
     offset: int = Query(default=0, ge=0, description="Number of notifications to skip"),
     channel_type: str | None = Query(None, description="Filter by channel type (e.g., email, sms)"),
     current_user: dict = Depends(get_current_user),
-):
+) -> PaginatedNotificationsResponse:
     """Get user's notifications with pagination"""
     user_id = current_user.get("user_id")
 
@@ -148,7 +148,7 @@ async def execute_action(
     notification_id: str = Path(..., description="Notification ID"),
     action_id: str = Path(..., description="Action ID"),
     current_user: dict = Depends(get_current_user),
-):
+) -> NotificationResponse:
     """Execute a notification action"""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -187,7 +187,7 @@ async def execute_action(
 async def mark_as_read(
     notification_id: str = Path(..., description="Notification ID"),
     current_user: dict = Depends(get_current_user),
-):
+) -> NotificationResponse:
     """Mark notification as read"""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -223,7 +223,7 @@ async def mark_as_read(
 async def bulk_actions(
     request: BulkActionRequest = Body(...),
     current_user: dict = Depends(get_current_user),
-):
+) -> NotificationResponse:
     """Perform bulk actions on multiple notifications"""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -268,7 +268,7 @@ async def bulk_actions(
 async def register_device_token(
     request: DeviceTokenRequest = Body(...),
     current_user: dict = Depends(get_current_user),
-):
+) -> DeviceTokenResponse:
     """
     Register a device token for push notifications
     """
@@ -325,7 +325,7 @@ async def register_device_token(
 async def unregister_device_token(
     token: str = Body(..., embed=True),
     current_user: dict = Depends(get_current_user),
-):
+) -> DeviceTokenResponse:
     """
     Unregister a device token
     """
@@ -358,7 +358,7 @@ async def unregister_device_token(
 async def get_notification(
     notification_id: str = Path(..., description="Notification ID"),
     current_user: dict = Depends(get_current_user),
-):
+) -> NotificationResponse:
     """Get a specific notification."""
     user_id = current_user.get("user_id")
     if not user_id:

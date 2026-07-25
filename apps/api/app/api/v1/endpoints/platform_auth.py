@@ -248,7 +248,7 @@ async def discord_oauth_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """Handle Discord OAuth callback."""
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
@@ -258,6 +258,6 @@ async def slack_oauth_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """Handle Slack OAuth callback."""
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["slack"])

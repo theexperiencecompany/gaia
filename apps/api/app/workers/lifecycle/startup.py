@@ -30,7 +30,7 @@ from shared.py.wide_events import log  # noqa: E402
 setup_warnings()
 
 
-async def startup(ctx: dict):
+async def startup(ctx: dict) -> None:
     """ARQ worker startup function with eager initialization."""
 
     log.info(f"{LogTag.WORKER} ARQ worker starting up...")

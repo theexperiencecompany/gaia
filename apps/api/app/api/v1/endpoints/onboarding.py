@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -69,7 +69,7 @@ async def complete_user_onboarding(
     background_tasks: BackgroundTasks,
     user: Annotated[dict, Depends(get_current_user)],
     tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
-):
+) -> OnboardingResponse:
     """Complete user onboarding by storing preferences and queuing the intelligence pipeline."""
     log.set(
         user={"id": user["user_id"]},
@@ -132,7 +132,7 @@ class ClarifyQuestionsRequest(BaseModel):
 async def get_clarify_questions(
     payload: ClarifyQuestionsRequest,
     user: Annotated[dict, Depends(get_current_user)],
-):
+) -> dict[str, Any]:
     """Generate the LLM 3-question follow-up for the no-Gmail path."""
     log.set(
         user={"id": user["user_id"]},
@@ -153,7 +153,9 @@ async def get_clarify_questions(
     response_model=dict,
     responses={500: {"description": "Failed to reset onboarding"}},
 )
-async def reset_user_onboarding(user: Annotated[dict, Depends(get_current_user)]):
+async def reset_user_onboarding(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> dict[str, Any]:
     """Fully reset onboarding so the user can run the flow again from scratch."""
     log.set(user={"id": user["user_id"]}, onboarding={"operation": "reset"})
     try:
@@ -167,7 +169,9 @@ async def reset_user_onboarding(user: Annotated[dict, Depends(get_current_user)]
 
 
 @router.get("/status", response_model=dict)
-async def get_onboarding_status(user: Annotated[dict, Depends(get_current_user)]):
+async def get_onboarding_status(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> dict[str, Any]:
     """
     Get the current user's onboarding status and preferences.
     """
@@ -189,7 +193,7 @@ async def get_onboarding_status(user: Annotated[dict, Depends(get_current_user)]
 async def update_onboarding_phase(
     request: OnboardingPhaseUpdateRequest,
     user: Annotated[dict, Depends(get_current_user)],
-):
+) -> dict[str, Any]:
     """
     Update the user's onboarding phase.
     Used to track progress through onboarding stages.
@@ -246,7 +250,7 @@ async def update_onboarding_phase(
 async def update_user_preferences(
     preferences: OnboardingPreferences,
     user: Annotated[dict, Depends(get_current_user)],
-):
+) -> dict[str, Any]:
     """
     Update user's onboarding preferences.
     This can be used from the settings page to update preferences after onboarding.
@@ -272,7 +276,9 @@ async def update_user_preferences(
 
 
 @router.get("/personalization")
-async def get_onboarding_personalization(user: Annotated[dict, Depends(get_current_user)]):
+async def get_onboarding_personalization(
+    user: Annotated[dict, Depends(get_current_user)],
+) -> dict[str, Any]:
     """
     Get personalization data (house, phrase, bio, workflows) for current authenticated user.
     Used as fallback if WebSocket fails or to refetch data.

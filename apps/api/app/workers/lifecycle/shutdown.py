@@ -10,7 +10,7 @@ from app.utils.browser_reaper import stop_browser_reaper
 from shared.py.wide_events import log
 
 
-async def shutdown(ctx: dict):
+async def shutdown(ctx: dict) -> None:
     """ARQ worker shutdown function with proper cleanup."""
     log.info(f"{LogTag.WORKER} ARQ worker shutting down...")
 

@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.rate_limits import (
     FEATURE_LIMITS,
     RateLimitPeriod,
@@ -15,7 +16,6 @@ from app.config.rate_limits import (
     get_limits_for_plan,
     get_reset_time,
 )
-from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
