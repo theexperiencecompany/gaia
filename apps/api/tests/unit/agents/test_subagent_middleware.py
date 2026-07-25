@@ -107,12 +107,35 @@ def _tool_message(command):
 
 
 class TestSubagentMiddlewareInit:
-    def test_default_init(self):
+    def test_default_init_builds_the_model_facing_spawn_tool(self):
+        from app.agents.prompts.spawn_subagent_prompts import SPAWN_SUBAGENT_DESCRIPTION
+
         mw = _make_middleware()
-        assert mw._llm is None
-        assert mw._available_tools == []
+
+        assert [t.name for t in mw.tools] == ["spawn_subagent"]
+        spawn = mw.tools[0]
+        assert spawn.description == SPAWN_SUBAGENT_DESCRIPTION
+        # tool_call_id, selected_tool_ids and config are injected at runtime. If
+        # they leak into the model-facing schema the LLM invents a tool_call_id
+        # (breaking the row id and the resume checkpoint) and its own tool allowlist.
+        assert set(spawn.tool_call_schema.model_json_schema()["properties"]) == {"task", "context"}
         assert "spawn_subagent" in mw._excluded_tools
-        assert len(mw.tools) == 1  # spawn_subagent tool
+
+    async def test_default_available_tools_yield_an_empty_spawn_registry(self):
+        """``available_tools or []`` — dropping the fallback survives construction
+        and only explodes mid-spawn, inside ``_build_context``'s comprehension.
+        """
+        mw = _ready_middleware(available_tools=None)
+
+        with _spawn_harness(outcomes=[_done("ok")]):
+            await mw.tools[0].coroutine(
+                task="summarise",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(),
+            )
+
+        assert mw._spawn_graph_provider.await_args.kwargs["registry"] == {}
 
     def test_excluded_tools_include_spawn_subagent(self):
         mw = _make_middleware(excluded_tool_names={"some_tool"})
