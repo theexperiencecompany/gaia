@@ -23,6 +23,7 @@ from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
+from langgraph.config import StreamWriter
 from langgraph.types import interrupt
 
 from app.agents.core.background.bg_results import (
@@ -170,7 +171,7 @@ async def _resolve_parked_batch(
 async def _collect_subagent(
     record: HILApprovalRecord,
     configurable: dict[str, Any],
-    writer: Any,
+    writer: StreamWriter,
     conversation_id: str,
 ) -> None:
     """Resume one decided subagent and store its outcome.

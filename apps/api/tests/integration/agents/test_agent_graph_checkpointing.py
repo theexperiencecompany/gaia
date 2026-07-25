@@ -31,6 +31,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.base import BaseStore
 from psycopg_pool import AsyncConnectionPool
 import pytest
 
@@ -92,7 +93,7 @@ def _thread_config(extra: dict[str, Any] | None = None) -> dict:
 
 def _make_store_mock() -> MagicMock:
     """Return a mock that satisfies langgraph.store.base.BaseStore."""
-    store = MagicMock()
+    store = MagicMock(spec=BaseStore)
     store.aget = AsyncMock(return_value=None)
     store.aput = AsyncMock(return_value=None)
     store.asearch = AsyncMock(return_value=[])
