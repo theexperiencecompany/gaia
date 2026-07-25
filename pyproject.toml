@@ -130,6 +130,7 @@ select = [
   "LOG",   # logging
   "G",     # logging-format
   "INP",   # implicit-namespace-package
+  "ANN401", # disallow explicit `Any` in type annotations
 ]
 ignore = [
   # Conflicts with formatter (ruff format) or actively unhelpful.
@@ -140,7 +141,6 @@ ignore = [
   "TRY003",  # long messages in exceptions
   "TRY300",  # consider moving statement to else (too pedantic)
   "TRY301",  # raise inside try (too pedantic)
-  "TRY400",  # use logging.exception (style preference)
   "TRY002",  # custom-exception-only (we use generic Exception in many places)
   "PLR0911", # too many return statements
   "PLR0912", # too many branches
@@ -171,9 +171,9 @@ ignore = [
   "N818",    # exception name should end with "Error"
   # vulture_whitelist.py intentionally lists bare identifiers.
   "B018",    # useless expression
-  # FastAPI dependency-injection often has unused args.
-  "ARG001",  # unused function argument
-  "ARG002",  # unused method argument
+  # FastAPI dependency-injection often has unused args. ARG001/ARG002 are enforced
+  # globally (see per-file-ignores for route-handler modules where DI legitimately
+  # injects unused params); the remaining categories are pragmatically left off.
   "ARG003",  # unused class-method argument
   "ARG004",  # unused static-method argument
   "ARG005",  # unused lambda argument
@@ -187,8 +187,6 @@ ignore = [
   "G201",    # logging-exc-info
   # RUF059: unused tuple unpack — common in test helpers.
   "RUF059",
-  # Mutable default class attributes — Pydantic models legitimately use these.
-  "RUF012",
   # Blanket type:ignore / noqa — sometimes the only practical option.
   "PGH003",
   "PGH004",
@@ -275,7 +273,6 @@ ignore = [
   "TRY203",  # use-error-message
   # SIM rules — readability differs from style preference.
   "SIM103",  # needless-bool
-  "SIM105",  # contextlib.suppress
   "SIM108",  # ternary
   "SIM118",  # use `in` instead of `keys()`
   # Unicode in strings/docs (intentional in many places).
@@ -319,8 +316,6 @@ ignore = [
   "C403",    # list comprehension instead of set
   "C414",    # list() in sorted()
   "C416",    # unnecessary comprehension
-  # Mutable default args — pydantic Field(default_factory=...) handles this.
-  "B006",
   # Function in loop captures variable.
   "B023",
   # Module-level import not at top — guarded conditional imports.
@@ -341,6 +336,14 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
+# positionally as modifier(tool, toolkit, data) — every @register_*_hook function
+# must keep that exact 3-arg shape regardless of whether a given hook branches on
+# tool/toolkit, so unused params here are a framework contract, not dead code.
+"apps/api/app/utils/composio_hooks/gmail_hooks.py" = ["ARG001"]
+"apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]
+"apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]
+"apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]
 # PLC0415 (no inline imports) ratchet: enforced everywhere; the files below are
 # grandfathered legacy offenders. SHRINK this list when you touch a file — never
 # add to it. Tests defer app imports by design (root conftest env-ordering).
@@ -461,15 +464,15 @@ show_column_numbers = true
 pretty = true
 # The legacy app code is untyped at many seams; tightening these is staged work.
 strict_optional = false
-no_implicit_reexport = false
-check_untyped_defs = false
-disallow_untyped_defs = false
+no_implicit_reexport = true
+check_untyped_defs = true
+disallow_untyped_defs = true
 disallow_incomplete_defs = false
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
 disallow_any_generics = false
-warn_return_any = false
-warn_unreachable = false
+warn_return_any = true
+warn_unreachable = true
 warn_unused_ignores = false
 # Builtin-skill resource files (templates/, scripts/) are sandbox-executed assets,
 # not importable API modules — they run in the docgen sandbox toolchain (Typst,
