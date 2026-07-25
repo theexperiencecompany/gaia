@@ -16,6 +16,8 @@ Real production classes and functions are imported so tests fail if code moves.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -26,13 +28,20 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import InMemorySaver, MemorySaver
+from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.store.memory import InMemoryStore
+from langgraph.types import Command, interrupt
 import pytest
 
-from app.agents.core.subagents.handoff_tools import _resolve_subagent
+from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.handoff_tools import (
+    _resolve_subagent,
+    handoff,
+    resume_parked_subagent,
+)
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
@@ -40,9 +49,15 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentOutcome,
     build_initial_messages,
     execute_subagent_stream,
+    interrupt_payload,
 )
+from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
+from app.models.hil_models import HILApprovalRecord
 from tests.helpers import create_fake_llm
 from tests.integration.conftest import SimpleState
+
+HANDOFF_MODULE = "app.agents.core.subagents.handoff_tools"
+BASE_SUBAGENT_MODULE = "app.agents.core.subagents.base_subagent"
 
 # ---------------------------------------------------------------------------
 # Stub LangChain tools (DynamicToolNode requires real tool objects, not MagicMock)
@@ -109,13 +124,11 @@ class TestSubAgentCanBeInstantiated:
 
     def test_subagent_factory_class_is_importable(self):
         """Importing SubAgentFactory must not raise; the class must exist."""
-        from app.agents.core.subagents.base_subagent import SubAgentFactory  # noqa: F401
 
         assert SubAgentFactory is not None
 
     def test_create_provider_subagent_method_exists(self):
         """SubAgentFactory.create_provider_subagent must be a static async method."""
-        from app.agents.core.subagents.base_subagent import SubAgentFactory
 
         method = getattr(SubAgentFactory, "create_provider_subagent", None)
         assert method is not None, "create_provider_subagent not found on SubAgentFactory"
@@ -124,7 +137,6 @@ class TestSubAgentCanBeInstantiated:
     async def test_create_provider_subagent_compiles_graph(self):
         """SubAgentFactory.create_provider_subagent must yield a compiled graph
         when all external calls are mocked."""
-        from app.agents.core.subagents.base_subagent import SubAgentFactory
 
         fake_llm = create_fake_llm(["subagent answer"])
         mock_store = _make_mock_store()
@@ -198,19 +210,16 @@ class TestHandoffToolStructure:
 
     def test_handoff_tool_is_importable(self):
         """handoff must be importable from handoff_tools."""
-        from app.agents.core.subagents.handoff_tools import handoff  # noqa: F401
 
         assert handoff is not None
 
     def test_handoff_tool_name(self):
         """handoff.name must be 'handoff'."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         assert handoff.name == "handoff"
 
     def test_handoff_tool_schema_contains_required_params(self):
         """handoff schema must expose subagent_id and task as required inputs."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         schema = handoff.args_schema.schema() if handoff.args_schema else {}
         # args_schema may not be set; fall back to tool.schema()
@@ -237,8 +246,6 @@ class TestHandoffToolStructure:
         """handoff must be an async function (coroutine function)."""
         import inspect
 
-        from app.agents.core.subagents.handoff_tools import handoff
-
         # For async @tool-decorated functions LangChain stores the original coroutine
         # in `.coroutine`; `.func` is used for sync tools.
         underlying = (
@@ -248,7 +255,6 @@ class TestHandoffToolStructure:
 
     def test_handoff_tool_has_docstring(self):
         """handoff must have a non-empty description for the LLM."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         description = handoff.description
         assert description and len(description) > 10, "handoff tool description must be informative"
@@ -813,9 +819,6 @@ class TestHandoffFunctionDirectly:
     async def test_handoff_function_directly(self):
         """Calling handoff() directly must return the subagent's response
         string and must route state through execute_subagent_stream."""
-        from app.agents.core.subagents.handoff_tools import (
-            handoff,
-        )
 
         user_id = str(uuid4())
         thread_id = str(uuid4())
@@ -889,7 +892,6 @@ class TestHandoffFunctionDirectly:
     async def test_handoff_passes_task_in_state(self):
         """The task argument supplied to handoff() must appear in the initial
         messages forwarded to execute_subagent_stream."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1021,7 +1023,6 @@ class TestCustomMCPPath:
         will fall through to the platform-integration branch which raises
         AttributeError (dict has no .subagent_config attribute).
         """
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1189,7 +1190,6 @@ class TestHandoffThreadIsolation:
         inside the handoff() coroutine itself; we capture it by intercepting
         build_agent_config to record the thread_id argument it receives.
         """
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1273,7 +1273,6 @@ class TestHandoffThreadIsolation:
         The thread_id is assembled as '{int_id}_{thread_id}' in handoff() before
         being passed to build_agent_config(); we capture it there.
         """
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1354,7 +1353,6 @@ class TestHandoffWithToolCallArgs:
     async def test_handoff_with_tool_call_args(self):
         """subagent_id and task arguments must reach _resolve_subagent and
         build_initial_messages unchanged."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1430,7 +1428,6 @@ class TestHandoffWithToolCallArgs:
     async def test_handoff_user_id_passed_to_resolve_subagent(self):
         """user_id from configurable must be forwarded to _resolve_subagent
         so auth checks inside the custom MCP / MCP-auth paths receive it."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1491,3 +1488,294 @@ class TestHandoffWithToolCallArgs:
         assert captured[0] == user_id, (
             f"Expected user_id='{user_id}' passed to _resolve_subagent, got '{captured[0]}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# Test: HIL approval pause / resume through a real handoff
+# ---------------------------------------------------------------------------
+
+HANDOFF_APPROVAL_ID = "approval-handoff-1"
+GATED_TASK = "post the release note to #eng"
+GATED_ANSWER = "release note posted to #eng"
+
+
+class _GatedSubagentLLM:
+    """Posts the note, then finishes with the result. Message-driven, never counted.
+
+    A HIL resume replays the executor's tool node and shows the model the same
+    messages, so it must produce the same output — a call-sequence-driven fake
+    would desync on the replay.
+    """
+
+    def __init__(self) -> None:
+        self.invocations = 0
+
+    def with_config(self, **_kwargs: Any) -> _GatedSubagentLLM:
+        return self
+
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> _GatedSubagentLLM:
+        return self
+
+    def with_retry(self, **_kwargs: Any) -> _GatedSubagentLLM:
+        return self
+
+    async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
+        self.invocations += 1
+        if any(getattr(m, "type", "") == "tool" for m in messages):
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {"id": "tc-finish-1", "name": "finish_task", "args": {"result": GATED_ANSWER}}
+                ],
+            )
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "tc-post-1", "name": "post_release_note", "args": {"channel": "#eng"}}
+            ],
+        )
+
+
+@pytest.fixture
+def gated_effects() -> dict[str, int]:
+    return {"post": 0}
+
+
+@pytest.fixture
+def gated_tool(gated_effects: dict[str, int]):
+    @tool
+    async def post_release_note(channel: str) -> str:
+        """Post the release note to a channel, pausing for approval first."""
+        decision = interrupt(
+            {
+                "type": "hil_approval",
+                "approval_id": HANDOFF_APPROVAL_ID,
+                "tool_name": "post_release_note",
+            }
+        )
+        gated_effects["post"] += 1
+        return f"posted to {channel} after {decision['status']}"
+
+    return post_release_note
+
+
+@pytest.fixture
+async def gated_subagent(gated_tool):
+    """A real provider subagent graph whose only integration tool gates on approval.
+
+    Built through the production factory so the real middleware stack is in
+    play — it is that stack's tool-invocation wrap chain that re-raises the
+    GraphInterrupt as control flow; a bare tool node converts the pause into an
+    error ToolMessage and no approval ever happens.
+    """
+    llm = _GatedSubagentLLM()
+    saver = InMemorySaver()
+    registry = SimpleNamespace(
+        get_category_by_space=lambda _space: SimpleNamespace(
+            tools=[SimpleNamespace(name=gated_tool.name, tool=gated_tool)]
+        ),
+        get_tool_dict=lambda: {gated_tool.name: gated_tool},
+        get_category_of_tool=lambda _name: "general",
+    )
+    with (
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tool_registry", AsyncMock(return_value=registry)),
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tools_store", AsyncMock(return_value=InMemoryStore())),
+        patch(
+            f"{BASE_SUBAGENT_MODULE}.get_checkpointer_manager",
+            AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: saver)),
+        ),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_tools", return_value=[]),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_pre_model_hook", return_value=None),
+        patch("app.agents.core.nodes.memory_node.memory_engine", MagicMock()),
+    ):
+        graph = await SubAgentFactory.create_provider_subagent(
+            provider="gmail",
+            name="gmail_agent",
+            llm=llm,
+            tool_space="gmail_delegated",
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+        )
+    yield SimpleNamespace(graph=graph, llm=llm)
+
+
+@pytest.fixture
+def handoff_seams(gated_subagent):
+    """External I/O only: provider lookup, prompt/context retrieval, Mongo reads."""
+    with (
+        patch(
+            f"{HANDOFF_MODULE}._resolve_subagent",
+            AsyncMock(return_value=(gated_subagent.graph, "gmail_agent", "gmail", False)),
+        ),
+        patch(
+            f"{HANDOFF_MODULE}.create_subagent_system_message",
+            AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
+        ),
+        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(
+            f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            AsyncMock(return_value=SystemMessage(content="ctx")),
+        ),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
+        ),
+    ):
+        yield
+
+
+def _interrupt_payloads(events: list) -> list[dict[str, Any]]:
+    """The HIL payloads the parent graph paused on during ``events``."""
+    return [
+        interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
+        for mode, payload in events
+        if mode == "updates" and isinstance(payload, dict) and LANGGRAPH_INTERRUPT_KEY in payload
+    ]
+
+
+class _ExecutorDriver:
+    """Calls the real handoff tool from inside a parent node, as the executor does.
+
+    A handoff drives its subagent imperatively, so the subagent's GraphInterrupt
+    only becomes a pause if ``_run_blocking_handoff`` re-raises it into a parent
+    runtime — which needs a real checkpointed parent graph around the call.
+    """
+
+    def __init__(self) -> None:
+        self.results: list[str] = []
+        underlying = handoff.coroutine
+
+        async def tool_node(_state: MessagesState, config: RunnableConfig) -> dict:
+            text = await underlying(
+                subagent_id="gmail",
+                task=GATED_TASK,
+                config=config,
+                tool_call_id="parent-tc-1",
+            )
+            self.results.append(text)
+            return {"messages": [AIMessage(content=text)]}
+
+        builder = StateGraph(MessagesState)
+        builder.add_node("tools", tool_node)
+        builder.add_edge(START, "tools")
+        builder.add_edge("tools", END)
+        self.graph = builder.compile(checkpointer=InMemorySaver())
+        self.conversation_id = f"handoff-hil-{uuid4()}"
+
+    @property
+    def subagent_thread_id(self) -> str:
+        return f"gmail_executor_{self.conversation_id}"
+
+    async def run(self, resume: Any | None = None) -> list:
+        configurable: dict[str, Any] = {
+            "thread_id": f"executor_{self.conversation_id}",
+            "conversation_id": self.conversation_id,
+            "user_id": "user-hil-1",
+        }
+        if resume is not None:
+            # The production contract: the executor's resume re-dispatch sets this,
+            # and it is what arms the parked-checkpoint probe inside handoff().
+            configurable[HIL_RESUME_CONFIG_KEY] = True
+        payload = (
+            Command(resume=resume)
+            if resume is not None
+            else {"messages": [HumanMessage(content="go")]}
+        )
+        return [
+            event
+            async for event in self.graph.astream(
+                payload,
+                config={"configurable": configurable},
+                stream_mode=["updates", "custom"],
+            )
+        ]
+
+
+def _approval_record(conversation_id: str, thread_id: str) -> HILApprovalRecord:
+    return HILApprovalRecord(
+        approval_id=HANDOFF_APPROVAL_ID,
+        user_id="user-hil-1",
+        conversation_id=conversation_id,
+        stream_id="stream-hil-1",
+        tool_name="post_release_note",
+        status="approved",
+        subagent_thread_id=thread_id,
+        subagent_agent_name="gmail",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+
+
+@pytest.mark.integration
+class TestHandoffHILPauseResume:
+    """A gated tool inside a handed-off subagent must pause the executor and,
+    once decided, resume from the subagent's checkpoint instead of re-running it."""
+
+    async def test_a_gated_subagent_tool_parks_the_handoff_instead_of_answering(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        driver = _ExecutorDriver()
+
+        events = await driver.run()
+
+        paused = _interrupt_payloads(events)
+        assert paused, "a gated tool inside a handoff must pause the executor, not answer"
+        assert paused[0]["tool_name"] == "post_release_note"
+        assert paused[0]["approval_id"] == HANDOFF_APPROVAL_ID
+        assert gated_effects["post"] == 0, "nothing may run before the approval"
+        assert driver.results == [], "handoff must not return a result while parked"
+        snapshot = await gated_subagent.graph.aget_state(
+            {"configurable": {"thread_id": driver.subagent_thread_id}}
+        )
+        assert snapshot.next, "the parked subagent is checkpointed so a decision can resume it"
+
+    async def test_an_approved_handoff_resumes_the_checkpoint_and_acts_exactly_once(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        driver = _ExecutorDriver()
+        await driver.run()
+        calls_at_park = gated_subagent.llm.invocations
+
+        events = await driver.run(resume={"status": "approved", "approval_id": HANDOFF_APPROVAL_ID})
+
+        assert not _interrupt_payloads(events), "the executor finishes without re-pausing"
+        assert gated_effects["post"] == 1, "the approved action runs exactly once"
+        assert driver.results == [GATED_ANSWER], "the handoff returns the subagent's answer"
+        assert gated_subagent.llm.invocations == calls_at_park + 1, (
+            "the replay resumes the parked thread — it must not re-drive the model "
+            "from the first turn"
+        )
+
+    async def test_resume_parked_subagent_continues_the_parked_thread(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        """The background-park collection path: everything is rebuilt from the
+        approval record, and the subagent picks up at its interrupt."""
+        driver = _ExecutorDriver()
+        await driver.run()
+        calls_at_park = gated_subagent.llm.invocations
+        record = _approval_record(driver.conversation_id, driver.subagent_thread_id)
+
+        outcome = await resume_parked_subagent(record, {"user_id": "user-hil-1"}, None)
+
+        assert not outcome.paused
+        assert outcome.text == GATED_ANSWER
+        assert gated_effects["post"] == 1, "the approved action runs exactly once"
+        assert gated_subagent.llm.invocations == calls_at_park + 1, (
+            "resumed from the checkpoint, not restarted from an empty initial state"
+        )
+
+    async def test_resume_parked_subagent_refuses_when_the_checkpoint_is_gone(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        """Starting fresh would re-run the whole task from an empty state, so a
+        record pointing at a thread with no checkpoint must fail loudly instead."""
+        record = _approval_record("handoff-hil-missing", "gmail_executor_handoff-hil-missing")
+
+        outcome = await resume_parked_subagent(record, {"user_id": "user-hil-1"}, None)
+
+        assert "checkpoint is missing" in outcome.text
+        assert gated_effects["post"] == 0, "nothing may run when there is nothing to resume"
