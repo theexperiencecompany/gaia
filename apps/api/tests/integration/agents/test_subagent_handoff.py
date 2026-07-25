@@ -16,6 +16,7 @@ Real production classes and functions are imported so tests fail if code moves.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -1779,3 +1780,145 @@ class TestHandoffHILPauseResume:
 
         assert "checkpoint is missing" in outcome.text
         assert gated_effects["post"] == 0, "nothing may run when there is nothing to resume"
+
+
+# ---------------------------------------------------------------------------
+# Test: background=True dispatch and dedup
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def background_dispatch_seams():
+    """External I/O only: subagent resolution, prompt/context retrieval, and the
+    actual background execution (asyncio.create_task'd, never awaited by the
+    caller — mocked so the test verifies dispatch/dedup mechanics, not a real
+    subagent run). try_claim_bg_dispatch's real Redis call is intentionally NOT
+    mocked — the durable dedup guard is the point of this test — but the shared
+    redis_cache singleton is a client bound to whichever event loop first
+    touched it, which is a DIFFERENT (closed) loop once other tests in this
+    file have run. Force a fresh client on this test's own loop instead."""
+    from app.db.redis import redis_cache
+
+    redis_cache.redis = None  # next `.client` access lazily reconnects on THIS loop
+    fresh_client = redis_cache.client
+    await fresh_client.ping()
+
+    mock_graph = MagicMock()
+    run_bg = AsyncMock(return_value=None)
+    spawned: list[asyncio.Task] = []
+    real_create_task = asyncio.create_task
+
+    def _tracking_create_task(coro, **kwargs):
+        task = real_create_task(coro, **kwargs)
+        spawned.append(task)
+        return task
+
+    with (
+        patch(
+            f"{HANDOFF_MODULE}._resolve_subagent",
+            AsyncMock(return_value=(mock_graph, "gmail_agent", "gmail", False)),
+        ),
+        patch(
+            f"{HANDOFF_MODULE}.create_subagent_system_message",
+            AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
+        ),
+        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(
+            f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            AsyncMock(return_value=SystemMessage(content="ctx")),
+        ),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
+        ),
+        patch(f"{HANDOFF_MODULE}.run_subagent_background", run_bg),
+        patch(f"{HANDOFF_MODULE}.asyncio.create_task", side_effect=_tracking_create_task),
+    ):
+        yield run_bg
+        # handoff(background=True) fire-and-forgets its subagent task via
+        # asyncio.create_task — drain exactly the task(s) THIS test spawned
+        # (captured via the wrapper above) so none outlive this test's event
+        # loop and raise "Event loop is closed" as an orphaned-task warning.
+        pending = [t for t in spawned if not t.done()]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        await fresh_client.aclose()
+        redis_cache.redis = None
+
+
+@pytest.mark.integration
+class TestBackgroundSubagentDispatch:
+    """A background=True handoff must spawn exactly once per distinct tool call
+    and reject a second dispatch for the same (conversation, tool_call_id) pair —
+    the node re-runs on a HIL-join replay, and re-spawning would double the
+    subagent's real-world side effects."""
+
+    async def test_background_dispatch_returns_started_message_and_spawns_once(
+        self, background_dispatch_seams
+    ) -> None:
+        stream_id = f"stream-bg-{uuid4()}"
+        conversation_id = f"conv-bg-{uuid4()}"
+        config = {
+            "configurable": {
+                "user_id": "user-bg-1",
+                "thread_id": conversation_id,
+                "conversation_id": conversation_id,
+                "stream_id": stream_id,
+            }
+        }
+
+        result = await handoff.coroutine(
+            subagent_id="gmail",
+            task="triage overnight email",
+            config=config,
+            background=True,
+            tool_call_id="tc-bg-1",
+        )
+
+        assert "started in background" in result
+        assert "gmail_agent" in result
+        background_dispatch_seams.assert_called_once()
+
+    async def test_duplicate_dispatch_same_tool_call_id_is_deduplicated(
+        self, background_dispatch_seams
+    ) -> None:
+        """Simulates a HIL-join replay: the node re-runs with a fresh stream_id
+        (a new SSE connection on resume), but conversation_id and tool_call_id
+        are checkpointed and stable — the durable Redis guard, not the in-memory
+        per-stream integration claim, is what must catch this duplicate."""
+        conversation_id = f"conv-bg-{uuid4()}"
+
+        def _config(stream_id: str) -> dict:
+            return {
+                "configurable": {
+                    "user_id": "user-bg-1",
+                    "thread_id": conversation_id,
+                    "conversation_id": conversation_id,
+                    "stream_id": stream_id,
+                }
+            }
+
+        first = await handoff.coroutine(
+            subagent_id="gmail",
+            task="triage overnight email",
+            config=_config(f"stream-bg-{uuid4()}"),
+            background=True,
+            tool_call_id="tc-bg-dup-1",
+        )
+        second = await handoff.coroutine(
+            subagent_id="gmail",
+            task="triage overnight email",
+            config=_config(f"stream-bg-{uuid4()}"),
+            background=True,
+            tool_call_id="tc-bg-dup-1",
+        )
+
+        assert "started in background" in first
+        assert "started in background" in second
+        assert background_dispatch_seams.call_count == 1, (
+            "the second dispatch with the same tool_call_id must not re-spawn the subagent"
+        )
