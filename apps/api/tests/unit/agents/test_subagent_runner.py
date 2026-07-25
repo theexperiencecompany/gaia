@@ -790,14 +790,27 @@ class TestBuildSubagentSystemPrompt:
 
     @pytest.mark.asyncio
     async def test_integration_not_found_uses_custom_prompt(self):
+        from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
+
         with patch(
-            "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
             return_value=None,
         ):
             result = await build_subagent_system_prompt("custom_tool_123")
 
-        # Should return the CUSTOM_MCP_SUBAGENT_PROMPT or the base_system_prompt
-        assert isinstance(result, str)
+        assert result == CUSTOM_MCP_SUBAGENT_PROMPT
+
+    @pytest.mark.asyncio
+    async def test_integration_not_found_prefers_base_system_prompt(self):
+        with patch(
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
+            return_value=None,
+        ):
+            result = await build_subagent_system_prompt(
+                "custom_tool_123", base_system_prompt="Explicit override"
+            )
+
+        assert result == "Explicit override"
 
     @pytest.mark.asyncio
     async def test_base_system_prompt_override(self):
