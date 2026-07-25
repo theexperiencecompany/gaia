@@ -153,7 +153,10 @@ async def _down_relay(websocket: WebSocket, device_id: str) -> None:
     finally:
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(down_channel(device_id))
-            await pubsub.aclose()
+            # redis-py's installed type stubs haven't caught up to the runtime
+            # library: aclose() exists and is the documented non-deprecated
+            # replacement for close() (which is @deprecated_function since 5.0.1).
+            await pubsub.aclose()  # type: ignore[attr-defined]
 
 
 async def _heartbeat(websocket: WebSocket, device_id: str, state: dict[str, float]) -> None:

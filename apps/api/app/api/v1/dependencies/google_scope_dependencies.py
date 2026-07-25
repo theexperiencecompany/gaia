@@ -17,6 +17,9 @@ Usage:
     require_integration("gmail")  # Still works but function name is misleading
 """
 
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from fastapi import Depends, HTTPException, status
 import httpx
 
@@ -30,7 +33,9 @@ from shared.py.wide_events import log
 http_async_client = httpx.AsyncClient(timeout=10.0)
 
 
-def require_integration(integration_short_name: str):
+def require_integration(
+    integration_short_name: str,
+) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
     """
     Unified dependency factory that creates a dependency to check for any integration.
 
@@ -61,7 +66,7 @@ def require_integration(integration_short_name: str):
     if not integration_config:
         raise ValueError(f"Integration config not found for: {integration_id}")
 
-    async def wrapper(user: dict = Depends(get_current_user)):
+    async def wrapper(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
         user_id = user.get("user_id")
         if not user_id:
             raise HTTPException(

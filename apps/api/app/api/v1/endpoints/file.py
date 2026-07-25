@@ -1,6 +1,6 @@
 """File upload, update, and delete endpoints."""
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import (
     APIRouter,
@@ -104,7 +104,9 @@ async def update_file_endpoint(
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
-        return result
+        # CacheInvalidator erases the wrapped function's return type; FileService.update
+        # is declared -> dict, so this is correct by construction.
+        return cast(dict[str, Any], result)
     except Exception as e:
         log.error(f"Error updating file {file_id}: {e!s}")
         raise HTTPException(
@@ -131,7 +133,9 @@ async def delete_file_endpoint(
             file_id=file_id,
             outcome="success",
         )
-        return result
+        # CacheInvalidator erases the wrapped function's return type; FileService.delete
+        # is declared -> dict, so this is correct by construction.
+        return cast(dict[str, Any], result)
     except Exception as e:
         log.error(f"Error deleting file {file_id}: {e!s}")
         raise HTTPException(

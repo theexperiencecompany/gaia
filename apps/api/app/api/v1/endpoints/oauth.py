@@ -1,4 +1,5 @@
 import secrets
+from typing import cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
@@ -102,7 +103,10 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
     uri = await redis_cache.client.get(key)
     if uri:
         await redis_cache.client.delete(key)
-    return uri
+    # RedisCache.client is an untyped property (app/db/redis.py), so .get() resolves
+    # to Any; the client is constructed with decode_responses=True, so this is a
+    # str (or None) by construction.
+    return cast(str | None, uri)
 
 
 @router.get("/login/workos/mobile")

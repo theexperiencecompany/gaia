@@ -350,6 +350,15 @@ unfixable = [
 "apps/api/app/agents/tools/flowchart_tool.py" = ["ARG001"]
 "apps/api/app/agents/tools/image_tool.py" = ["ARG001"]
 "apps/api/app/agents/tools/todo_tools.py" = ["ARG001"]
+# ARG001: slowapi's @limiter.limit(...) introspects the handler signature and
+# requires a `request: Request` param even when the body doesn't use it; other
+# FastAPI route params here are Depends()-injected for auth/side-effects only.
+"apps/api/app/api/v1/endpoints/payments.py" = ["ARG001"]
+"apps/api/app/api/v1/endpoints/search.py" = ["ARG001"]
+"apps/api/app/api/v1/endpoints/support.py" = ["ARG001"]
+"apps/api/app/api/v1/endpoints/tools.py" = ["ARG001"]
+"apps/api/app/api/v1/endpoints/workflows.py" = ["ARG001"]
+"apps/api/app/api/v1/endpoints/integrations/config.py" = ["ARG001"]
 "apps/api/app/agents/tools/weather_tool.py" = ["ARG001"]
 "apps/api/app/agents/tools/webpage_tool.py" = ["ARG001"]
 # PLC0415 (no inline imports) ratchet: enforced everywhere; the files below are
@@ -362,7 +371,7 @@ unfixable = [
 "apps/api/app/api/v1/endpoints/health.py" = ["PLC0415"]
 "apps/api/app/api/v1/endpoints/platform_auth.py" = ["PLC0415"]
 "apps/api/app/api/v1/endpoints/reminders.py" = ["PLC0415"]
-"apps/api/app/api/v1/endpoints/todos.py" = ["PLC0415"]
+"apps/api/app/api/v1/endpoints/todos.py" = ["PLC0415", "ARG001"]
 "apps/api/app/db/mongodb/collections.py" = ["PLC0415"]
 "apps/api/app/db/mongodb/mongodb.py" = ["PLC0415"]
 "apps/api/app/helpers/lifespan_helpers.py" = ["PLC0415"]

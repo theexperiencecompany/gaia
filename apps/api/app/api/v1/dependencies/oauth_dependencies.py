@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
@@ -34,7 +34,7 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
         log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
 
 
-async def get_current_user(request: Request):
+async def get_current_user(request: Request) -> dict[str, Any]:
     """
     Retrieves the current user from request state.
     Authentication is handled by the WorkOSAuthMiddleware.
@@ -67,7 +67,9 @@ async def get_current_user(request: Request):
             },
         )
 
-    user = request.state.user
+    # request.state is Starlette's untyped bag (Any); WorkOSAuthMiddleware always
+    # sets .user to the dict built by build_user_context() when authenticated=True.
+    user = cast(dict[str, Any], request.state.user)
     log.set(
         auth={
             "user_id": user.get("user_id"),
@@ -87,7 +89,7 @@ async def get_user_id(user: dict = Depends(get_current_user)) -> str:
     return str(user_id)
 
 
-async def get_current_user_ws(websocket: WebSocket):
+async def get_current_user_ws(websocket: WebSocket) -> dict[str, Any]:
     """
     Authenticate a user from a WebSocket connection using cookies.
     This is a special version of get_current_user for WebSocket connections.

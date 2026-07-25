@@ -1,5 +1,7 @@
 """Integration config, catalog, and connection routes."""
 
+from typing import cast
+
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -55,7 +57,9 @@ async def get_my_integrations_endpoint(
     log.set(operation="get_my_integrations", user={"id": user_id})
     result = await get_my_integrations(user_id)
     log.set(result_count=result.total, outcome="success")
-    return result
+    # Cacheable erases the wrapped function's return type; get_my_integrations is
+    # declared -> MyIntegrationsResponse, so this is correct by construction.
+    return cast(MyIntegrationsResponse, result)
 
 
 @router.get("/{integration_id}/tools")
