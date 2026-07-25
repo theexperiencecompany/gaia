@@ -23,8 +23,7 @@ from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.config import StreamWriter
-from langgraph.types import interrupt
+from langgraph.types import StreamWriter, interrupt
 
 from app.agents.core.background.bg_results import (
     append_bg_subagent_result,

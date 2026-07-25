@@ -6,8 +6,9 @@ and search across canvas context via ChromaDB.
 """
 
 import asyncio
+from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
@@ -40,7 +41,7 @@ async def _get_user_tz(user_id: str) -> str:
         user = await get_user_by_id(user_id)
         if user and user.get("timezone"):
             tz_name = user["timezone"]
-            if is_valid_timezone(tz_name):
+            if isinstance(tz_name, str) and is_valid_timezone(tz_name):
                 return tz_name
             log.debug("tracked_todo.invalid_user_tz", user_id=user_id, tz_name=tz_name)
     except Exception as e:
@@ -65,7 +66,7 @@ def _is_cron_expression(recurrence: str) -> bool:
 _background_tasks: set[asyncio.Task] = set()
 
 
-def _fire_and_forget(coro) -> None:
+def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

@@ -26,6 +26,7 @@ from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     DESKTOP_TOOL_SPACE,
+    ToolRegistry,
     get_tool_registry,
 )
 from app.agents.tools.research_tool import deep_research
@@ -371,7 +372,7 @@ def _process_public_integration_result(
 def _process_chroma_search_result(
     result: list[SearchItem],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
 ) -> list[dict[str, str | float | None]]:
@@ -435,7 +436,7 @@ def _process_chroma_search_result(
 async def _process_search_results(
     results: list[Any],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
 ) -> list[dict[str, str | float | None]]:

@@ -4,7 +4,7 @@ Integration Management Tools
 Tools for listing, connecting, and managing user integrations.
 """
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -220,7 +220,12 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    return await list_integrations.ainvoke({"search_public_query": query}, config=config)
+    # list_integrations itself declares this exact return type; .ainvoke() is the
+    # BaseTool framework boundary and always types its result `Any`.
+    return cast(
+        "ListIntegrationsResult | str",
+        await list_integrations.ainvoke({"search_public_query": query}, config=config),
+    )
 
 
 @tool
@@ -239,8 +244,11 @@ async def connect_integration(
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        if isinstance(integration_ids, str):
-            integration_ids = [integration_ids]
+        # The Pydantic args_schema declares list[str], but a direct/programmatic
+        # invocation can still hand this a bare string — widen before narrowing.
+        raw_integration_ids = cast("list[str] | str", integration_ids)
+        if isinstance(raw_integration_ids, str):
+            integration_ids = [raw_integration_ids]
         integration_ids = list(
             dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
         )

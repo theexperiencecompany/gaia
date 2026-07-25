@@ -6,9 +6,10 @@ Drive API is used for sharing; Sheets API for spreadsheet operations.
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
@@ -44,7 +45,7 @@ SHEETS_TOOLKIT = "GOOGLESHEETS"
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -56,14 +57,19 @@ def _sheets_proxy(
     method: str,
     body: dict[str, Any] | None = None,
     query: dict[str, Any] | None = None,
-) -> Any:
-    return proxy_request_sync(
-        user_id=user_id,
-        toolkit=SHEETS_TOOLKIT,
-        endpoint=endpoint,
-        method=method,  # type: ignore[arg-type]
-        body=body,
-        query=query,
+) -> dict[str, Any]:
+    # proxy_request_sync declares -> Any (its own return type varies by caller);
+    # every call site here treats the Sheets/Drive proxy response as a JSON object.
+    return cast(
+        "dict[str, Any]",
+        proxy_request_sync(
+            user_id=user_id,
+            toolkit=SHEETS_TOOLKIT,
+            endpoint=endpoint,
+            method=method,  # type: ignore[arg-type]
+            body=body,
+            query=query,
+        ),
     )
 
 
@@ -74,10 +80,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     @with_doc(SHARE_DOC)
     def CUSTOM_SHARE_SPREADSHEET(
         request: ShareSpreadsheetInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Share a Google Spreadsheet with one or more recipients."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_sheets", "action": "share_spreadsheet"})
         user_id = _user_id(auth_credentials)
 
@@ -143,10 +150,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CREATE_PIVOT_DOC)
     def CUSTOM_CREATE_PIVOT_TABLE(
         request: CreatePivotTableInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create a pivot table from spreadsheet data."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_sheets", "action": "create_pivot_table"})
         user_id = _user_id(auth_credentials)
 
@@ -269,10 +277,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     @with_doc(DATA_VALIDATION_DOC)
     def CUSTOM_SET_DATA_VALIDATION(
         request: DataValidationInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Set data validation rules on a range."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_sheets", "action": "set_data_validation"})
         user_id = _user_id(auth_credentials)
 
@@ -393,10 +402,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CONDITIONAL_FORMAT_DOC)
     def CUSTOM_ADD_CONDITIONAL_FORMAT(
         request: ConditionalFormatInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Add conditional formatting rules to a range."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_sheets", "action": "add_conditional_format"})
         user_id = _user_id(auth_credentials)
 
@@ -521,10 +531,11 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CREATE_CHART_DOC)
     def CUSTOM_CREATE_CHART(
         request: ChartInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create a chart from spreadsheet data."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_sheets", "action": "create_chart"})
         user_id = _user_id(auth_credentials)
 
@@ -683,13 +694,14 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Google Sheets context snapshot: recently viewed/modified spreadsheets.
 
         Zero required parameters. Returns user's recently accessed spreadsheets.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_sheets", "action": "gather_context"})
         user_id = _user_id(auth_credentials)
 

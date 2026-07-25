@@ -8,7 +8,7 @@ run_executor_background.
 
 import asyncio
 import json
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -160,7 +160,11 @@ def _rate_limit_message(e: LangChainRateLimitException | RateLimitExceededExcept
     if isinstance(e, LangChainRateLimitException):
         feature = e.feature
     else:
-        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
+        # RateLimitExceededException passes a dict as HTTPException's `detail`,
+        # even though the base class types it `str | None` — widen the static
+        # type here to match the real runtime shape before narrowing.
+        raw_detail = cast(object, e.detail)
+        detail: dict[str, str] = raw_detail if isinstance(raw_detail, dict) else {}
         feature = detail.get("feature", "")
     log.warning(f"{LogTag.TOOL} Rate limit exceeded for executor task", feature=feature)
     return (

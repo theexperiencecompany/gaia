@@ -38,15 +38,20 @@ _OPS = frozenset(
     {"contains", "equals", "not_equals", "is_true", "is_false", "exists", "gt", "lt", "in"}
 )
 
+# A parsed JSON value: bare `dict`/`list` (not parameterized) match this file's
+# existing style for JSON record types (e.g. `_match_condition`'s `record: dict`).
+JSONScalar = str | int | float | bool | None
+JSONValue = JSONScalar | dict | list
 
-def _hashable(value: Any) -> Any:
+
+def _hashable(value: JSONValue) -> JSONScalar:
     """A stable hashable key for grouping/dedup — list/dict fields become a JSON string."""
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return json.dumps(value, sort_keys=True, default=str)
 
 
-def _sort_key(value: Any) -> tuple[int, Any]:
+def _sort_key(value: JSONValue) -> tuple[int, int | float | bool | str]:
     """Type-ranked key so heterogeneous field values never compare across types."""
     if value is None:
         return (0, 0)
@@ -182,9 +187,9 @@ def _match_condition(record: dict, cond: dict) -> bool:
     if op == "is_false":
         return present and not bool(actual)
     if op == "equals":
-        return actual == value
+        return bool(actual == value)
     if op == "not_equals":
-        return actual != value
+        return bool(actual != value)
     if op == "contains":  # value=None must not become the literal "none"
         return (
             value is not None and isinstance(actual, str) and str(value).lower() in actual.lower()
@@ -193,7 +198,8 @@ def _match_condition(record: dict, cond: dict) -> bool:
         return isinstance(actual, list) and value in actual
     if op in ("gt", "lt"):
         try:
-            return actual > value if op == "gt" else actual < value  # type: ignore[operator]
+            result = actual > value if op == "gt" else actual < value  # type: ignore[operator]
+            return bool(result)
         except TypeError:
             return False
     return False
@@ -218,7 +224,7 @@ def _apply_query(
     count_only: bool,
     unique_by: str | None,
     group_count_by: str | None,
-) -> Any:
+) -> dict[str, int] | list[dict]:
     matched = [r for r in records if _match_record(r, where, match)]
 
     if count_only:
@@ -256,7 +262,7 @@ def _apply_query(
     return matched
 
 
-def _format_result(result: Any, *, dropped: int, truncated: bool) -> str:
+def _format_result(result: dict[str, int] | list[dict], *, dropped: int, truncated: bool) -> str:
     if isinstance(result, dict):  # count_only
         body = json.dumps(result)
     elif not result:

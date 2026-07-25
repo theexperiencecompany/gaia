@@ -15,6 +15,7 @@ import posixpath
 import time
 from typing import Any
 
+from e2b import AsyncSandbox
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 
@@ -37,7 +38,7 @@ def get_user_id(config: RunnableConfig) -> str:
     configurable = config.get("configurable", {}) if config else {}
     metadata = config.get("metadata", {}) if config else {}
     user_id = configurable.get("user_id") or metadata.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("user_id not found in RunnableConfig")
     return user_id
 
@@ -54,12 +55,13 @@ def get_session_id(config: RunnableConfig) -> str | None:
     (workflows, background tasks)."""
     configurable = config.get("configurable", {}) if config else {}
     metadata = config.get("metadata", {}) if config else {}
-    return (
+    session_id = (
         configurable.get("vfs_session_id")
         or configurable.get("conversation_id")
         or metadata.get("conversation_id")
         or configurable.get("thread_id")
     )
+    return session_id if isinstance(session_id, str) else None
 
 
 def canonical_path(path: str, *, session_id: str | None) -> tuple[str, MountRole, str | None]:
@@ -106,7 +108,7 @@ def sh_quote(s: str) -> str:
     return "'" + s.replace("'", "'\"'\"'") + "'"
 
 
-async def atomic_write(sbx: Any, abs_path: str, data: bytes) -> float:
+async def atomic_write(sbx: AsyncSandbox, abs_path: str, data: bytes) -> float:
     """Write bytes into the sandbox atomically; return the file's mtime (epoch s).
 
     Writes to a temp path then `rename`s into place — atomic on the same FS, so a

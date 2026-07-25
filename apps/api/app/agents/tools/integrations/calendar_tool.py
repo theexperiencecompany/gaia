@@ -15,6 +15,7 @@ from datetime import UTC, date, datetime, timedelta, tzinfo
 from typing import Any, TypeVar
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 from langgraph.config import get_config, get_stream_writer
 
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
@@ -72,15 +73,14 @@ def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) ->
         return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
 
 
-def _extract_datetime(dt: Any) -> str:
+def _extract_datetime(dt: dict[str, Any] | str | None) -> str:
     """Extract a datetime string from a Google Calendar date/dateTime dict or string."""
     if not dt:
         return ""
     if isinstance(dt, str):
         return dt
-    if isinstance(dt, dict):
-        return dt.get("dateTime") or dt.get("date", "")
-    return ""
+    value = dt.get("dateTime") or dt.get("date", "")
+    return value if isinstance(value, str) else ""
 
 
 def _format_calendar_option_for_stream(opt: dict[str, Any]) -> dict[str, Any]:
@@ -117,7 +117,7 @@ def _format_calendar_for_stream(cal: dict[str, Any]) -> dict[str, Any]:
 def _get_user_id(auth_credentials: dict[str, Any]) -> str:
     """Extract user_id from auth_credentials."""
     user_id = auth_credentials.get("user_id", "")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -144,9 +144,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_LIST_CALENDARS_DOC)
     def CUSTOM_LIST_CALENDARS(
         request: ListCalendarsInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
         user_id = _get_user_id(auth_credentials)
         calendars = _run_sync(calendar_service.list_calendars(user_id, short=request.short))
@@ -169,9 +170,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_DAY_SUMMARY_DOC)
     def CUSTOM_GET_DAY_SUMMARY(
         request: GetDaySummaryInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "get_day_summary"})
         user_id = _get_user_id(auth_credentials)
 
@@ -266,9 +268,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_FETCH_EVENTS_DOC)
     def CUSTOM_FETCH_EVENTS(
         request: FetchEventsInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "fetch_events"})
         user_id = _get_user_id(auth_credentials)
 
@@ -308,9 +311,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_FIND_EVENT_DOC)
     def CUSTOM_FIND_EVENT(
         request: FindEventInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "find_event"})
         user_id = _get_user_id(auth_credentials)
 
@@ -349,9 +353,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_EVENT_DOC)
     def CUSTOM_GET_EVENT(
         request: GetEventInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "get_event"})
         user_id = _get_user_id(auth_credentials)
 
@@ -395,9 +400,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_DELETE_EVENT_DOC)
     def CUSTOM_DELETE_EVENT(
         request: DeleteEventInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "delete_event"})
         user_id = _get_user_id(auth_credentials)
 
@@ -440,9 +446,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_PATCH_EVENT_DOC)
     def CUSTOM_PATCH_EVENT(
         request: PatchEventInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "patch_event"})
         user_id = _get_user_id(auth_credentials)
 
@@ -477,9 +484,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_ADD_RECURRENCE_DOC)
     def CUSTOM_ADD_RECURRENCE(
         request: AddRecurrenceInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "add_recurrence"})
         user_id = _get_user_id(auth_credentials)
         endpoint = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
@@ -522,9 +530,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_EVENT_DOC)
     def CUSTOM_CREATE_EVENT(
         request: CreateEventInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "create_event"})
         user_id = _get_user_id(auth_credentials)
 
@@ -679,13 +688,14 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Google Calendar context snapshot: today's events, busy hours, free slots.
 
         Zero required parameters. Returns today's schedule for situational awareness.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "gather_context"})
         user_id = _get_user_id(auth_credentials)
         date_str = date.today().strftime("%Y-%m-%d")

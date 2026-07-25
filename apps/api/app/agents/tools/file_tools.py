@@ -173,12 +173,6 @@ def _construct_content(
         elif isinstance(document_content, dict):
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
-        else:
-            log.error(
-                f"{LogTag.TOOL} Unexpected document description type: {type(document.description)}"
-            )
-            content += f"Document ID: {document_id}\n"
-            content += "Description: Invalid format\n\n"
 
     log.info(f"{LogTag.TOOL} Constructed content: {content}")
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from e2b import NotFoundException
+from e2b import AsyncSandbox, NotFoundException
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 
@@ -236,7 +236,7 @@ def _format_read(
     return numbered + footer
 
 
-async def _read_sandbox_bytes(sbx: Any, abs_path: str, max_bytes: int) -> bytes:
+async def _read_sandbox_bytes(sbx: AsyncSandbox, abs_path: str, max_bytes: int) -> bytes:
     # Native-dev fallback (host JuiceFS absent): read through the sandbox with
     # the native filesystem API. There's no server-side range read, so we slurp
     # the whole file — fine for this dev-only path, but cap the size first via
@@ -258,7 +258,7 @@ async def _read_sandbox_bytes(sbx: Any, abs_path: str, max_bytes: int) -> bytes:
 
 
 async def _read_file_sandbox(
-    sbx: Any,
+    sbx: AsyncSandbox,
     abs_path: str,
     offset: int,
     limit: int,

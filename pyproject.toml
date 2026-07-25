@@ -344,6 +344,14 @@ unfixable = [
 "apps/api/app/utils/composio_hooks/reddit_hooks.py" = ["ARG001"]
 "apps/api/app/utils/composio_hooks/slack_hooks.py" = ["ARG001"]
 "apps/api/app/utils/composio_hooks/twitter_hooks.py" = ["ARG001"]
+# ARG001: LangChain injects `config: RunnableConfig` / `store: BaseStore` into
+# @tool-decorated functions via the tool call signature regardless of whether a
+# given tool implementation reads them — framework contract, not dead code.
+"apps/api/app/agents/tools/flowchart_tool.py" = ["ARG001"]
+"apps/api/app/agents/tools/image_tool.py" = ["ARG001"]
+"apps/api/app/agents/tools/todo_tools.py" = ["ARG001"]
+"apps/api/app/agents/tools/weather_tool.py" = ["ARG001"]
+"apps/api/app/agents/tools/webpage_tool.py" = ["ARG001"]
 # PLC0415 (no inline imports) ratchet: enforced everywhere; the files below are
 # grandfathered legacy offenders. SHRINK this list when you touch a file — never
 # add to it. Tests defer app imports by design (root conftest env-ordering).

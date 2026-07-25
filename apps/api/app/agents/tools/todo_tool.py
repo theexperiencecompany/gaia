@@ -12,8 +12,10 @@ from app.decorators import with_doc, with_rate_limiting
 from app.models.todo_models import (
     Priority,
     ProjectCreate,
+    ProjectResponse,
     SubTask,
     TodoModel,
+    TodoResponse,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -1014,7 +1016,7 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
             return {"error": "User authentication required", "summary": None}
 
         # --- Helper functions ---
-        def get_date_ranges():
+        def get_date_ranges() -> tuple[datetime, datetime, datetime, datetime, datetime]:
             """Calculate all needed date ranges."""
             now = datetime.now(UTC)
             today_start = datetime.combine(datetime.today(), time.min)
@@ -1023,7 +1025,9 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
             yesterday = now - timedelta(days=1)
             return now, today_start, today_end, week_end, yesterday
 
-        def filter_todos(all_todos, now, yesterday):
+        def filter_todos(
+            all_todos: list[TodoResponse], now: datetime, yesterday: datetime
+        ) -> tuple[list[TodoResponse], list[TodoResponse], list[TodoResponse], TodoResponse | None]:
             """Filter todos into categories."""
             overdue = [t for t in all_todos if t.due_date and not t.completed and t.due_date < now]
             high_priority = [
@@ -1043,7 +1047,11 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
 
             return overdue, high_priority, recently_completed, next_deadline
 
-        def calculate_stats(all_todos, recently_completed, overdue):
+        def calculate_stats(
+            all_todos: list[TodoResponse],
+            recently_completed: list[TodoResponse],
+            overdue: list[TodoResponse],
+        ) -> dict[str, int | float]:
             """Calculate productivity statistics."""
             total = len(all_todos)
             completed = len([t for t in all_todos if t.completed])
@@ -1057,9 +1065,11 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
                 "completion_rate": rate,
             }
 
-        def build_project_breakdown(all_todos, projects):
+        def build_project_breakdown(
+            all_todos: list[TodoResponse], projects: list[ProjectResponse]
+        ) -> dict[str, dict[str, int]]:
             """Build per-project task counts."""
-            breakdown = {}
+            breakdown: dict[str, dict[str, int]] = {}
             for project in projects:
                 project_todos = [t for t in all_todos if t.project_id == project.id]
                 breakdown[project.name] = {
@@ -1069,7 +1079,7 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
                 }
             return breakdown
 
-        def serialize_todos(todos, limit=5):
+        def serialize_todos(todos: list[TodoResponse], limit: int = 5) -> dict[str, Any]:
             """Serialize todos with optional limit."""
             return {
                 "count": len(todos),

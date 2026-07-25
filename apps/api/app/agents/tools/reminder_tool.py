@@ -70,7 +70,7 @@ async def create_reminder_tool(
         str | None,
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
-) -> Any:
+) -> dict[str, str] | str:
     """Create a new reminder tool function."""
     try:
         log.set(tool={"name": "create_reminder_tool", "action": "create"})
@@ -120,7 +120,7 @@ async def list_user_reminders_tool(
         ReminderStatus | None,
         "Filter by reminder status (scheduled, completed, cancelled, paused)",
     ] = None,
-) -> Any:
+) -> dict[str, str] | list[dict[str, Any]]:
     """List user reminders tool function."""
     try:
         log.set(tool={"name": "list_user_reminders_tool", "action": "list"})
@@ -144,7 +144,7 @@ async def list_user_reminders_tool(
 async def get_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder"],
-) -> Any:
+) -> dict[str, Any]:
     """Get full details of a specific reminder by ID"""
     try:
         log.set(tool={"name": "get_reminder_tool", "action": "get"})
@@ -168,7 +168,7 @@ async def get_reminder_tool(
 async def delete_reminder_tool(
     config: RunnableConfig,
     reminder_id: Annotated[str, "The unique identifier of the reminder to cancel"],
-) -> Any:
+) -> dict[str, str]:
     """Cancel a scheduled reminder by ID"""
     try:
         log.set(tool={"name": "delete_reminder_tool", "action": "delete"})
@@ -206,7 +206,7 @@ async def update_reminder_tool(
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
     payload: Annotated[dict | None, "Additional data for the reminder task (optional)"] = None,
-) -> Any:
+) -> dict[str, str]:
     """Update attributes of an existing reminder"""
     try:
         log.set(tool={"name": "update_reminder_tool", "action": "update"})
@@ -260,7 +260,7 @@ async def update_reminder_tool(
 async def search_reminders_tool(
     config: RunnableConfig,
     query: Annotated[str, "Search keyword(s) to match against reminders"],
-) -> Any:
+) -> dict[str, str] | list[dict[str, Any]]:
     """Search reminders by keyword or content"""
     try:
         log.set(tool={"name": "search_reminders_tool", "action": "search"})
@@ -271,7 +271,7 @@ async def search_reminders_tool(
 
         reminders = await reminder_scheduler.list_user_reminders(user_id=user_id, limit=100, skip=0)
 
-        results = []
+        results: list[dict[str, Any]] = []
         for r in reminders:
             rd = r.model_dump()
             if query.lower() in json.dumps(rd).lower():

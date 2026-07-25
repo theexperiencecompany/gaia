@@ -16,6 +16,7 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 from langgraph.config import get_stream_writer
 
 from app.decorators.documentation import with_doc
@@ -49,7 +50,7 @@ from app.utils.twitter_utils import (
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -61,10 +62,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_BATCH_FOLLOW_DOC)
     def CUSTOM_BATCH_FOLLOW(
         request: BatchFollowInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Follow multiple Twitter users at once."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -149,10 +151,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_BATCH_UNFOLLOW_DOC)
     def CUSTOM_BATCH_UNFOLLOW(
         request: BatchUnfollowInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Unfollow multiple Twitter users at once. DESTRUCTIVE - requires user consent."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -236,10 +239,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_THREAD_DOC)
     def CUSTOM_CREATE_THREAD(
         request: CreateThreadInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create a Twitter thread (multiple connected tweets)."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -321,10 +325,11 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_SEARCH_USERS_DOC)
     def CUSTOM_SEARCH_USERS(
         request: SearchUsersInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Search for Twitter users by name, bio, or keywords."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         user_id = _user_id(auth_credentials)
 
@@ -381,7 +386,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_SCHEDULE_TWEET_DOC)
     def CUSTOM_SCHEDULE_TWEET(
         request: ScheduleTweetInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Schedule a tweet for later posting (creates a draft with scheduled time).
@@ -389,6 +394,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         Note: Twitter API doesn't support scheduled tweets directly for free tier.
         This creates a draft that can be stored and posted later by a scheduler.
         """
+        del execute_request  # unused: framework-mandated custom-tool signature
         writer = get_stream_writer()
         _user_id(auth_credentials)
 
@@ -413,13 +419,14 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="TWITTER")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Twitter/X context snapshot: profile info and recent tweets.
 
         Zero required parameters. Returns authenticated user's profile and recent activity.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         me_data = (
