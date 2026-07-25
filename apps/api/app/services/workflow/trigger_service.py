@@ -13,7 +13,6 @@ from app.db.repositories.workflows import workflow_repository
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
-from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
 

@@ -277,6 +277,8 @@ async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
     (e.g. to run ``grep`` over it) rather than paged lines.
     """
     return await asyncio.to_thread(_resolve_user_file_sync, user_id, workspace_rel_path)
+
+
 async def read_user_file_bytes(
     user_id: str,
     workspace_rel_path: str,

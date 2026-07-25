@@ -1093,15 +1093,6 @@ class TestUpdateCustomIntegration:
         mock_repo.update = AsyncMock(return_value=_make_custom_integration(name="New Name"))
         mock_user_int_repo.user_ids_with_integration = AsyncMock(return_value=[])
 
-        # update_custom_integration iterates user_integrations_collection.find to bust caches
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — makes this an async generator
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_empty
-        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
-
         request = UpdateCustomIntegrationRequest(name="New Name")
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
 
@@ -1184,15 +1175,6 @@ class TestUpdateCustomIntegration:
             return_value=_make_custom_integration(is_public=True, name="Custom MCP")
         )
         mock_user_int_repo.user_ids_with_integration = AsyncMock(return_value=[])
-
-        # update_custom_integration iterates user_integrations_collection.find to bust caches
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — makes this an async generator
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_empty
-        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
 
         request = UpdateCustomIntegrationRequest(description="new desc", is_public=True)
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)

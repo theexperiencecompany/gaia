@@ -186,9 +186,6 @@ async def delete_all_conversations(user: dict) -> dict:
     for conversation_id in conversation_ids:
         await _cleanup_checkpoint_threads(conversation_id)
 
-    for conversation_id in conversation_ids:
-        await _cleanup_checkpoint_threads(conversation_id)
-
     return {"message": "All conversations deleted successfully"}
 
 
@@ -394,10 +391,5 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
             user_id, document.conversation_id
         )
         conversations.append(row)
-
-        conv["active_stream_id"] = await stream_manager.get_resumable_stream_id(
-            user_id, conv["conversation_id"]
-        )
-        conversations[index] = conv
 
     return {"conversations": conversations}

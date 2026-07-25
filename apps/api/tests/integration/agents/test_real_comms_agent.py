@@ -808,7 +808,7 @@ class TestRealCommsAgent:
             f"Expected ToolMessage for malformed_call_001; got IDs: {ids_seen}"
         )
 
-    async def test_comms_agent_timeout_handling(self):
+    async def test_comms_agent_timeout_handling(self, no_model_fallback):
         """
         When the LLM call raises asyncio.TimeoutError, the exception must
         propagate to the caller with the original TimeoutError type intact —

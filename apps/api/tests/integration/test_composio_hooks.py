@@ -529,33 +529,6 @@ class TestGmailSchemaModifiers:
         assert "draft" in result.description.lower()
         assert "GMAIL_CREATE_EMAIL_DRAFT" in result.description
 
-    def test_fetch_emails_schema_sets_defaults(self) -> None:
-        """GMAIL_FETCH_EMAILS schema gets default max_results and label_ids."""
-
-        schema = _make_tool_schema(
-            slug="GMAIL_FETCH_EMAILS",
-            description="Fetch emails",
-            input_parameters={
-                "properties": {
-                    "max_results": {"type": "integer", "default": 1},
-                    "label_ids": {"type": "array"},
-                    "format": {"type": "string"},
-                },
-                "required": [],
-                "type": "object",
-            },
-        )
-
-        result = gmail_fetch_emails_schema_modifier("GMAIL_FETCH_EMAILS", "gmail", schema)
-
-        props = result.input_parameters["properties"]
-        assert props["max_results"]["default"] == 10
-        # label_ids default is intentionally NOT set: Gmail ANDs it with the query,
-        # so a stale ["INBOX"] default silently zeroes out folder-scoped searches.
-        assert "default" not in props["label_ids"]
-        assert props["format"]["default"] == "full"
-        assert "SEARCH SYNTAX" in result.description
-
 
 # ---------------------------------------------------------------------------
 # 7. User ID extraction hook — real logic

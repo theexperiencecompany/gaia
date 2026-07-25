@@ -50,7 +50,6 @@ os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
 # instantiates settings at import time. Without ENV set first, that resolves to
 # ProductionSettings and fails validation (CI has no production keys).
-from app.models.payment_models import PlanType  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy

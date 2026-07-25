@@ -198,6 +198,54 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         )
         return matched > 0
 
+    async def update_artifact(
+        self, conversation_id: str, *, user_id: str, path: str, fields: Mapping[str, object]
+    ) -> bool:
+        """Patch the registry entry at ``path``; False when no entry exists yet."""
+        matched = await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "artifacts.path": path},
+            {
+                "$set": {f"artifacts.$.{key}": value for key, value in fields.items()},
+                "$currentDate": {"updatedAt": True},
+            },
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+        return matched > 0
+
+    async def push_artifact(
+        self, conversation_id: str, *, user_id: str, path: str, element: Mapping[str, object]
+    ) -> None:
+        """Append a registry entry, but only when ``path`` is not already present.
+
+        The ``$ne`` guard is what makes concurrent inserts idempotent: of two
+        racing pushes for the same path, only one can match the filter.
+        """
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id, "artifacts.path": {"$ne": path}},
+            {"$push": {"artifacts": element}, "$currentDate": {"updatedAt": True}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+
+    async def remove_artifact(self, conversation_id: str, *, user_id: str, path: str) -> None:
+        await self._apply_raw_update_unfetched(
+            {"conversation_id": conversation_id},
+            {"$pull": {"artifacts": {"path": path}}, "$currentDate": {"updatedAt": True}},
+            scope=user_id,
+            doc_id=conversation_id,
+            extra_filter={"user_id": user_id},
+        )
+
+    async def list_artifacts(
+        self, conversation_id: str, *, user_id: str
+    ) -> list[dict[str, object]]:
+        """The conversation's artifact registry, or an empty list when it has none."""
+        document = await self._find_one({"conversation_id": conversation_id, "user_id": user_id})
+        return list(document.artifacts) if document else []
+
     async def append_message_tool_data(
         self,
         conversation_id: str,

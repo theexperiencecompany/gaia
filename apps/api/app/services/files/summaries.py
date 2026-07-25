@@ -6,18 +6,13 @@ normalize that into the `(description, page_wise_summary)` pair stored in Mongo
 and render the human-readable `<file>.summary.md` sidecar.
 """
 
-from typing import Any
-
 from fastapi import HTTPException
 
-from app.models.files_models import DocumentSummaryModel
+from app.models.files_models import DocumentSummaryModel, PageWiseSummary
 from shared.py.wide_events import log
 
 # Raw output of `generate_file_summary`.
 GeneratedSummary = str | list[DocumentSummaryModel] | DocumentSummaryModel
-
-# Normalized page-wise summary as persisted in Mongo.
-PageWiseSummary = list[dict[str, Any]] | dict[str, Any] | None
 
 
 def process_summary(summary: GeneratedSummary) -> tuple[str, PageWiseSummary]:
