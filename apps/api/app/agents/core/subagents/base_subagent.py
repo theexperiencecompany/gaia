@@ -116,6 +116,7 @@ class SubAgentFactory:
         use_direct_tools: bool = False,
         disable_retrieve_tools: bool = False,
         auto_bind_tools: list[str] | None = None,
+        extra_initial_tools: list[str] | None = None,
         include_finish_task: bool = True,
         mcp_tools: list[BaseTool] | None = None,
         source_label: str | None = None,
@@ -219,19 +220,15 @@ class SubAgentFactory:
             else None
         )
 
-        # Gmail offloads large inboxes to a JSONL file, then mines it. Bind the
-        # sandbox-free miners (query_json/grep) up front — for the agent AND the
-        # chunk-reader subagents it spawns — so triage mines the offload directly
-        # instead of falling back to read-whole-file + bash (the E2B sandbox).
-        # Scoped to gmail on purpose: other subagents keep query_json/grep
-        # retrieve-on-demand to stay under the bigtool initial-binding budget.
-        offload_miner_tools = (
-            [name for name in (query_json.name, grep.name) if name in scoped_tool_dict]
-            if provider == "gmail"
-            else []
-        )
-        if offload_miner_tools:
-            valid_auto_bind = [*(valid_auto_bind or []), *offload_miner_tools]
+        # Config-declared extra initial tools (SubAgentConfig.extra_initial_tools):
+        # local/general tools this subagent always needs bound up front — for the
+        # agent AND the chunk-reader children it spawns. E.g. gmail declares
+        # query_json/grep so triage mines an offloaded inbox directly instead of
+        # falling back to read-whole-file + bash. Kept per-integration in config
+        # (not branched on provider) so it scales to any subagent that offloads.
+        extra_initial = [name for name in (extra_initial_tools or []) if name in scoped_tool_dict]
+        if extra_initial:
+            valid_auto_bind = [*(valid_auto_bind or []), *extra_initial]
 
         if valid_auto_bind:
             log.info(
@@ -259,7 +256,7 @@ class SubAgentFactory:
             parent_tool_runtime,
             use_direct_tools=use_direct_tools,
             disable_retrieve_tools=disable_retrieve_tools,
-            extra_initial_tool_names=offload_miner_tools,
+            extra_initial_tool_names=extra_initial,
         )
         spawn_seed_tools = [
             scoped_tool_dict[name]

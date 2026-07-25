@@ -476,6 +476,10 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
+            # A large inbox scan offloads to a JSONL file; bind the sandbox-free
+            # miners into the agent AND its spawned chunk-readers so triage mines
+            # the offload with query_json/grep instead of read-whole-file + bash.
+            extra_initial_tools=["query_json", "grep"],
             # Custom read tools supersede the stock ones and are the agent's
             # single canonical path: GMAIL_FETCH_MESSAGES (paginating, renders
             # the card) replaces GMAIL_FETCH_EMAILS, whose fixed page size

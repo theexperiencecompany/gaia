@@ -125,6 +125,7 @@ async def create_subagent(subagent: Subagent) -> CompiledStateGraph:
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
         auto_bind_tools=config.auto_bind_tools,
+        extra_initial_tools=config.extra_initial_tools,
         include_finish_task=config.include_finish_task,
         source_label=subagent.name,
     )
@@ -208,6 +209,7 @@ async def _build_user_subagent(integration_id: str, user_id: str) -> CompiledSta
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
         auto_bind_tools=config.auto_bind_tools,
+        extra_initial_tools=config.extra_initial_tools,
         include_finish_task=config.include_finish_task,
         mcp_tools=tools,
         source_label=subagent.name,
