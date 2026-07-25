@@ -84,9 +84,9 @@ def _build_scoped_tool_dict(
         scoped_tool_dict[search_memory.name] = search_memory
         scoped_tool_dict[read.name] = read
         scoped_tool_dict[bash.name] = bash
-        # Resolvable but NOT in initial_tool_ids: the compaction middleware binds
-        # query_json/grep on demand (appends to selected_tool_ids) the moment a tool
-        # output is offloaded to a file, so they cost no default context.
+        # Resolvable for every subagent (retrieve-on-demand); gmail additionally
+        # binds these two into its initial set below, since it always offloads
+        # large inboxes and must mine them sandbox-free.
         scoped_tool_dict[query_json.name] = query_json
         scoped_tool_dict[grep.name] = grep
         scoped_tool_dict[web_search_tool.name] = web_search_tool
@@ -218,6 +218,21 @@ class SubAgentFactory:
             if auto_bind_tools
             else None
         )
+
+        # Gmail offloads large inboxes to a JSONL file, then mines it. Bind the
+        # sandbox-free miners (query_json/grep) up front — for the agent AND the
+        # chunk-reader subagents it spawns — so triage mines the offload directly
+        # instead of falling back to read-whole-file + bash (the E2B sandbox).
+        # Scoped to gmail on purpose: other subagents keep query_json/grep
+        # retrieve-on-demand to stay under the bigtool initial-binding budget.
+        offload_miner_tools = (
+            [name for name in (query_json.name, grep.name) if name in scoped_tool_dict]
+            if provider == "gmail"
+            else []
+        )
+        if offload_miner_tools:
+            valid_auto_bind = [*(valid_auto_bind or []), *offload_miner_tools]
+
         if valid_auto_bind:
             log.info(
                 f"{LogTag.AGENT} Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
@@ -244,6 +259,7 @@ class SubAgentFactory:
             parent_tool_runtime,
             use_direct_tools=use_direct_tools,
             disable_retrieve_tools=disable_retrieve_tools,
+            extra_initial_tool_names=offload_miner_tools,
         )
         spawn_seed_tools = [
             scoped_tool_dict[name]
