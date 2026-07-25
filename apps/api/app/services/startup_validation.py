@@ -2,7 +2,7 @@
 Startup validation for GAIA.
 """
 
-from app.core.lazy_loader import lazy_provider
+from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.db.repositories.ai_models import ai_model_repository
 from app.db.repositories.plans import plan_repository
 from shared.py.wide_events import log
@@ -23,6 +23,7 @@ async def is_payment_setup() -> bool:
 @lazy_provider(
     "startup_validation",
     required_keys=[],
+    strategy=MissingKeyStrategy.ERROR,
     is_global_context=False,
     auto_initialize=True,
 )

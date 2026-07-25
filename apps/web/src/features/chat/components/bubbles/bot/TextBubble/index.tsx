@@ -21,8 +21,13 @@ import {
 } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
+import { db } from "@/lib/db/chatDb";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import MarkdownRenderer from "../../../interface/MarkdownRenderer";
+import {
+  ApprovalResolveProvider,
+  type ApprovalResolver,
+} from "../ApprovalResolveContext";
 import TodoProgressSection from "../TodoProgressSection";
 import UnifiedToolThread from "../UnifiedToolThread";
 import { getTypedData, renderTool, type ToolDataUnion } from "./ToolRenderers";
@@ -98,6 +103,7 @@ function FailedResponse({ error }: Readonly<{ error: string }>) {
 }
 
 export default function TextBubble({
+  message_id,
   text,
   disclaimer,
   tool_data,
@@ -108,6 +114,24 @@ export default function TextBubble({
   error,
 }: Readonly<ChatBubbleBotProps>) {
   const baseId = useId();
+
+  // Persist a HIL approval decision into THIS message's tool_data, so the pending
+  // card becomes a settled receipt (clearing the derived "Waiting for approval"
+  // pill) and survives reload. The resolved frame is published on the resumed
+  // run's stream — a different message — so it never reaches this card otherwise.
+  const resolveApproval = React.useCallback<ApprovalResolver>(
+    (approvalId, resolved) => {
+      if (!message_id || !tool_data) return;
+      const next = tool_data.map((entry) =>
+        entry.tool_name === APPROVAL_REQUEST_TOOL_NAME &&
+        (entry.data as ApprovalRequestData | null)?.approval_id === approvalId
+          ? { ...entry, data: resolved }
+          : entry,
+      );
+      void db.updateMessage(message_id, { tool_data: next });
+    },
+    [message_id, tool_data],
+  );
 
   // Parse thinking content from text
   const parsedContent = React.useMemo(() => {
@@ -134,7 +158,7 @@ export default function TextBubble({
   }, [tool_data]);
 
   return (
-    <>
+    <ApprovalResolveProvider value={resolveApproval}>
       {parsedContent.thinking && (
         <ThinkingBubble thinkingContent={parsedContent.thinking} />
       )}
@@ -351,6 +375,6 @@ export default function TextBubble({
       {!!error &&
         !shouldShowTextBubble(text, isConvoSystemGenerated, systemPurpose) &&
         !parsedContent.cleanText.trim() && <FailedResponse error={error} />}
-    </>
+    </ApprovalResolveProvider>
   );
 }

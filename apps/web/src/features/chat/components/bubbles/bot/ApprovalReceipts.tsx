@@ -49,8 +49,8 @@ export const ApprovalReceipts = ({ items }: ApprovalReceiptsProps) => {
               {items.length === 1 ? "1 action" : `${items.length} actions`}
               {autoRan > 0 && (
                 <span className="text-zinc-500">
-                  {" "}
-                  · {autoRan} ran automatically
+                  <span className="mx-1.5 inline-block size-1 rounded-full bg-zinc-600 align-middle" />
+                  {autoRan} ran automatically
                 </span>
               )}
             </span>

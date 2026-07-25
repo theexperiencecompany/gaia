@@ -7,6 +7,7 @@ avoiding a cyclic dependency.
 
 from dataclasses import dataclass
 from typing import Any
+from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langchain_core.messages import (
     AIMessageChunk,
@@ -14,7 +15,7 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langgraph.types import Command
+from langgraph.types import Command, interrupt
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -99,6 +100,48 @@ class SubagentOutcome:
     @property
     def paused(self) -> bool:
         return self.interrupt is not None
+
+
+def subagent_row_id(tool_call_id: str) -> str:
+    """A UI subagent-row id that is STABLE across replays of the same call.
+
+    Derived from the tool_call_id (unique per LLM generation, stable in the
+    checkpoint) so a subagent that pauses for approval and resumes reuses its row
+    instead of minting a new uuid each replay — which would orphan the paused row
+    (left spinning forever) and emit a duplicate for the resumed run. A blank id
+    (only defensive — real calls always carry one) falls back to a fresh uuid.
+    """
+    if not tool_call_id:
+        return str(uuid4())
+    return str(uuid5(NAMESPACE_URL, f"subagent_row:{tool_call_id}"))
+
+
+def resume_for_gate(interrupt_payload: dict[str, Any]) -> Any:
+    """The decision belonging to the subagent gate now paused.
+
+    A synchronous spawn/handoff drives its subagent imperatively, bubbling each HIL
+    pause up with ``interrupt()``. When the executor resumes, ``recover_from_checkpoint``
+    fast-forwards the subagent to its LATEST parked gate, but the executor replays its
+    ``interrupt()`` resume list positionally from zero — so for a task that gated several
+    calls in sequence, the first values replayed belong to gates the subagent already ran.
+    Feeding one of those to the current gate would apply an earlier decision to a later
+    action. Each resume payload carries its own ``approval_id`` (see
+    ``resolution._dispatch_resume``); skip any that is not this gate's.
+
+    Only skips a payload whose ``approval_id`` is present and differs from the paused
+    gate's — a payload without one (or a matching one) is delivered as-is, so this can
+    never over-consume the list and strand the decision.
+    """
+    target = interrupt_payload.get("approval_id") if isinstance(interrupt_payload, dict) else None
+    decision = interrupt(interrupt_payload)
+    while (
+        target is not None
+        and isinstance(decision, dict)
+        and decision.get("approval_id") is not None
+        and decision.get("approval_id") != target
+    ):
+        decision = interrupt(interrupt_payload)
+    return decision
 
 
 class SubagentExecutionContext:

@@ -43,6 +43,10 @@ from app.models.hil_models import HILPreferences
 
 SLACK_TASK = "post the release note to #eng"
 NOTE_TASK = "ALPHA: record the meeting note"
+# A SECOND gated task: also send_slack, but the spawn emits a DISTINCT inner
+# tool_call_id, so its approval_id differs from SLACK_TASK's. Two gated siblings
+# with distinct approval_ids is what the decision-routing test needs.
+SLACK_TASK_2 = "BETA: post the incident note to #eng"
 
 
 class TaskDrivenStubLLM:
@@ -78,6 +82,13 @@ class TaskDrivenStubLLM:
             return AIMessage(
                 content="",
                 tool_calls=[{"id": "tc-note-1", "name": "record_note", "args": {"text": "m"}}],
+            )
+        if "BETA" in text:
+            if answered:
+                return AIMessage(content="Done with the incident request.")
+            return AIMessage(
+                content="",
+                tool_calls=[{"id": "tc-slack-2", "name": "send_slack", "args": {"to": "#eng"}}],
             )
         if answered:
             return AIMessage(content="Done with the slack request.")
@@ -148,6 +159,14 @@ def interrupts(events: list) -> list:
         for mode, payload in events
         if mode == "updates" and isinstance(payload, dict) and LANGGRAPH_INTERRUPT_KEY in payload
     ]
+
+
+def approval_id_of(events: list) -> str:
+    """The approval_id carried by the single interrupt in ``events``."""
+    raw = interrupts(events)[0]
+    items = raw if isinstance(raw, list | tuple) else (raw,)
+    value = getattr(items[0], "value", items[0])
+    return str(value["approval_id"])
 
 
 class SpawnDriver:
@@ -358,3 +377,43 @@ class TestSiblingReplay:
         )
         assert side_effects["send_slack"] == 1, "sibling B ran exactly once after approval"
         assert not interrupts(events), "the parent finishes without re-pausing"
+
+
+class TestConcurrentGatedSiblings:
+    async def test_each_sibling_gets_its_own_decision_not_the_first(
+        self, driver, side_effects: dict[str, int]
+    ) -> None:
+        """Two GATED siblings in one parent turn, decided DIFFERENTLY.
+
+        The node serializes them, so each bubbles up to the parent's ``_drive`` as its
+        own pause — but on recovery the executor replays its interrupt() resume list
+        positionally from zero, so the second gate would otherwise be handed the FIRST
+        gate's decision. Approve A, deny B: the fix routes each decision to its own gate
+        by ``approval_id``, so send_slack runs exactly once (A), never for the denied B.
+        Without the fix B replays A's approval and send_slack runs twice.
+        """
+        spawn_driver, _saver = driver
+        conv = f"spawn-hil-{ObjectId()}"
+        tasks = [(SLACK_TASK, "tc-sib-a"), (SLACK_TASK_2, "tc-sib-b")]
+
+        # Pass 1: sibling A's gate parks the parent (B not reached yet).
+        events = await spawn_driver.run(conv, tasks)
+        approval_a = approval_id_of(events)
+        assert side_effects["send_slack"] == 0, "nothing runs before a decision"
+
+        # Approve A: A runs, then B's gate parks.
+        events = await spawn_driver.run(
+            conv, tasks, resume={"status": "approved", "scope": "once", "approval_id": approval_a}
+        )
+        assert side_effects["send_slack"] == 1, "the approved sibling A ran exactly once"
+        approval_b = approval_id_of(events)
+        assert approval_b != approval_a, "the two siblings are distinct approvals"
+
+        # Deny B: the replayed approval-A decision must NOT reach B's gate.
+        events = await spawn_driver.run(
+            conv, tasks, resume={"status": "denied", "scope": "once", "approval_id": approval_b}
+        )
+        assert side_effects["send_slack"] == 1, (
+            "the denied sibling B never ran — its gate got B's denial, not A's approval"
+        )
+        assert not interrupts(events), "both siblings are resolved; the parent finishes"

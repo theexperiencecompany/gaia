@@ -21,7 +21,7 @@ from langchain_core.tools import BaseTool, InjectedToolCallId, tool
 from langgraph.config import get_stream_writer
 from langgraph.errors import GraphBubbleUp
 from langgraph.store.base import BaseStore, PutOp
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 
 from app.agents.core.background.bg_results import try_claim_bg_dispatch
 from app.agents.core.background.session import (
@@ -45,6 +45,8 @@ from app.agents.core.subagents.subagent_runner import (
     build_initial_messages,
     execute_subagent_stream,
     recover_from_checkpoint,
+    resume_for_gate,
+    subagent_row_id,
 )
 from app.constants.cache import SUBAGENT_CACHE_PREFIX, SUBAGENT_CACHE_TTL
 from app.constants.hil import HIL_RESUME_CONFIG_KEY
@@ -542,11 +544,14 @@ async def _run_blocking_handoff(
     metadata: IntegrationMetadata | None,
     agent_name: str,
     integration_id: str,
+    tool_call_id: str,
     probe_parked: bool = False,
 ) -> str:
     """Run a handoff subagent synchronously, emitting lifecycle SSE events."""
     writer = get_stream_writer()
-    sa_id = str(uuid4())
+    # Stable across replays so an approval pause reuses the same UI row instead of
+    # orphaning the paused one and opening a duplicate on resume.
+    sa_id = subagent_row_id(tool_call_id)
     display, icon_url, tool_category = _resolve_display_metadata(
         metadata, agent_name, integration_id
     )
@@ -589,11 +594,12 @@ async def _run_blocking_handoff(
     # The subagent was invoked imperatively, so its GraphInterrupt never reaches
     # the executor's runtime — bubble each pause up explicitly. A LOOP, not an if:
     # one task can gate several destructive calls in sequence ("send both emails"),
-    # and each pause must suspend the executor again. interrupt() raises on the
-    # first pass (pausing the executor) and returns that pause's decision on the
-    # replay; earlier iterations replay instantly from LangGraph's resume list.
+    # and each pause must suspend the executor again. resume_for_gate() raises on the
+    # first pass (pausing the executor) and returns THIS gate's own decision on the
+    # replay — recovery fast-forwards to the latest park, so an earlier gate's already
+    # -applied decision must not be replayed onto it (matched out by approval_id).
     while outcome.paused:
-        decision = interrupt(outcome.interrupt)
+        decision = resume_for_gate(outcome.interrupt)
         outcome = await execute_subagent_stream(
             ctx=ctx,
             stream_writer=writer,
@@ -799,7 +805,12 @@ async def handoff(
                     "falling back to blocking execution"
                 )
                 blocking_result = await _run_blocking_handoff(
-                    ctx, integration_metadata, agent_name, integration_id, probe_parked
+                    ctx,
+                    integration_metadata,
+                    agent_name,
+                    integration_id,
+                    tool_call_id,
+                    probe_parked,
                 )
                 return (
                     "[WARNING: background handoff fell back to blocking — "
@@ -866,7 +877,7 @@ async def handoff(
 
         # Blocking (default): execute synchronously and return result.
         return await _run_blocking_handoff(
-            ctx, integration_metadata, agent_name, integration_id, probe_parked
+            ctx, integration_metadata, agent_name, integration_id, tool_call_id, probe_parked
         )
 
     except GraphBubbleUp:

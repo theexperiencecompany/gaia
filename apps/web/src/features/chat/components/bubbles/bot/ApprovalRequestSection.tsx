@@ -20,6 +20,9 @@ import { toast } from "@/lib/toast";
 interface ApprovalRequestSectionProps {
   data: ApprovalRequestData;
   onDecided: (status: ApprovalStatus, feedback: string | null) => void;
+  /** A batch decision ("Approve all"/"Decline all") is in flight — lock this card
+   * so a per-card click can't send a second, conflicting decision for the same id. */
+  disabled?: boolean;
 }
 
 function ArgsPreview({ args }: { args: Record<string, unknown> }) {
@@ -47,9 +50,11 @@ function ArgsPreview({ args }: { args: Record<string, unknown> }) {
 export default function ApprovalRequestSection({
   data,
   onDecided,
+  disabled = false,
 }: ApprovalRequestSectionProps) {
   const [submitting, setSubmitting] = useState<ApprovalDecision | null>(null);
   const [feedback, setFeedback] = useState("");
+  const locked = submitting !== null || disabled;
 
   const decide = async (
     decision: ApprovalDecision,
@@ -98,14 +103,14 @@ export default function ApprovalRequestSection({
         placeholder="Optional: tell GAIA why (or what to do instead)"
         value={feedback}
         onValueChange={setFeedback}
-        isDisabled={submitting !== null}
+        isDisabled={locked}
       />
       <div className="mt-3 flex items-center gap-2">
         <Button
           color="primary"
           size="sm"
           isLoading={submitting === "approve"}
-          isDisabled={submitting !== null}
+          isDisabled={locked}
           onPress={() => decide("approve")}
         >
           Approve
@@ -114,7 +119,7 @@ export default function ApprovalRequestSection({
           variant="flat"
           size="sm"
           isLoading={submitting === "deny"}
-          isDisabled={submitting !== null}
+          isDisabled={locked}
           onPress={() => decide("deny")}
         >
           Deny
@@ -125,7 +130,7 @@ export default function ApprovalRequestSection({
               isIconOnly
               size="sm"
               variant="light"
-              isDisabled={submitting !== null}
+              isDisabled={locked}
               aria-label="More approval options"
             >
               <MoreHorizontalIcon width={18} />

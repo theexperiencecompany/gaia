@@ -33,6 +33,14 @@ import { isViewingConversation, markConversationUnread } from "./unread";
 // result message — clears the "awaiting executor result" UI so it can't stick.
 const EXECUTOR_RESULT_TIMEOUT_MS = 120_000;
 
+// Last-resort self-heal for a run paused on an approval whose resumed result
+// message never arrives (denied path with no notification, dropped bg websocket,
+// backend error). It waits on a HUMAN for up to the ~6h server approval window,
+// so this must fire well AFTER that window — long enough that the decision (or the
+// server-side expiry) and its resumed result should already have landed. Only
+// then, if the session is still stranded, tear it down. 8h leaves a safe margin.
+const APPROVAL_STRANDED_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+
 // Cadence for caching the in-flight turn to IndexedDB during streaming, so a
 // reload's first paint shows the partial turn instead of an empty bubble. A
 // cache of tape-derived state only: the event-log replay overwrites it on
@@ -741,18 +749,22 @@ export class TurnSession {
     // The session's transport work is over — release it so new sends in this
     // conversation start immediately. The awaiting UI state is ended by the
     // result message (useBgMessageWebSocket), executor cancel, or this timeout.
+    //
+    // A run paused on an approval waits on a HUMAN, not a late executor: its window
+    // is hours, so it gets a much longer horizon than a normal executor tail — the
+    // short timeout must never drop the "Waiting for your approval" indicator mid
+    // -wait. But it still gets ONE: if the resumed result never arrives (dropped bg
+    // message, backend error), the session would otherwise stick forever.
+    const timeoutMs = wasAwaitingApproval
+      ? APPROVAL_STRANDED_TIMEOUT_MS
+      : EXECUTOR_RESULT_TIMEOUT_MS;
     setTimeout(() => {
       const state = useStreamStore.getState();
       const session = state.sessions[key];
-      // A run paused on an approval is waiting on a HUMAN, not on a late executor:
-      // its window is hours, so this timeout must not tear the state down and drop
-      // the "Waiting for your approval" indicator. Whatever the user decides (or the
-      // server-side expiry), the resumed run delivers a result message and that ends
-      // the session through the same path a normal executor tail does.
-      if (session?.phase === "awaiting_executor" && !session.awaitingApproval) {
+      if (session?.phase === "awaiting_executor") {
         state.endSession(key);
       }
-    }, EXECUTOR_RESULT_TIMEOUT_MS);
+    }, timeoutMs);
     this.callbacks.onEnd(this);
   }
 

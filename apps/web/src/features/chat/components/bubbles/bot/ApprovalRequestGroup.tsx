@@ -13,14 +13,10 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { toast } from "@/lib/toast";
 import { ApprovalReceipts } from "./ApprovalReceipts";
 import ApprovalRequestSection from "./ApprovalRequestSection";
+import { useApprovalResolver } from "./ApprovalResolveContext";
 
 interface ApprovalRequestGroupProps {
   items: ApprovalRequestData[];
-}
-
-interface LocalDecision {
-  status: ApprovalStatus;
-  feedback: string | null;
 }
 
 /**
@@ -32,26 +28,29 @@ interface LocalDecision {
  * decision for the whole set — the "review the cart" moment — while the per-card
  * buttons stay available for partial answers.
  *
- * A decision is settled locally because the resolved frame is published on the RESUMED
- * run's stream (a different message), so it never arrives to replace this card.
+ * A decision is written back into this message's tool_data (via the resolver from
+ * TextBubble): the resolved frame is published on the RESUMED run's stream, a different
+ * message, so it never arrives to replace this card. Persisting it here clears the
+ * derived "Waiting for approval" pill and survives reload.
  */
 export default function ApprovalRequestGroup({
   items,
 }: ApprovalRequestGroupProps) {
-  const [decided, setDecided] = useState<Record<string, LocalDecision>>({});
+  const resolveApproval = useApprovalResolver();
   const [batchSubmitting, setBatchSubmitting] =
     useState<ApprovalDecision | null>(null);
 
-  const resolved = items.map((item) => {
-    const local = decided[item.approval_id];
-    return local ? { ...item, ...local } : item;
-  });
+  const pending = items.filter((item) => item.status === "pending");
+  const settled = items.filter((item) => isSettled(item.status));
 
-  const pending = resolved.filter((item) => item.status === "pending");
-  const settled = resolved.filter((item) => isSettled(item.status));
-
-  const settleLocally = (approvalId: string, decision: LocalDecision) =>
-    setDecided((prev) => ({ ...prev, [approvalId]: decision }));
+  const settle = (
+    approvalId: string,
+    status: ApprovalStatus,
+    feedback: string | null,
+  ) => {
+    const item = items.find((i) => i.approval_id === approvalId);
+    if (item) resolveApproval?.(approvalId, { ...item, status, feedback });
+  };
 
   const decideAll = async (decision: ApprovalDecision) => {
     setBatchSubmitting(decision);
@@ -68,7 +67,7 @@ export default function ApprovalRequestGroup({
         // "not_found" means it was already resolved elsewhere — settle it here
         // too so the card doesn't linger; a genuinely failed item stays pending.
         if (outcome.resolved || outcome.reason === "not_found") {
-          settleLocally(outcome.approval_id, { status, feedback: null });
+          settle(outcome.approval_id, status, null);
         }
       }
       if (
@@ -121,8 +120,9 @@ export default function ApprovalRequestGroup({
             <ApprovalRequestSection
               key={item.approval_id}
               data={item}
+              disabled={batchSubmitting !== null}
               onDecided={(status, feedback) =>
-                settleLocally(item.approval_id, { status, feedback })
+                settle(item.approval_id, status, feedback)
               }
             />
           ))}

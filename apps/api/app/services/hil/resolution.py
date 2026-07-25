@@ -130,6 +130,11 @@ async def resolve_approvals_batch(
             outcomes.append(
                 {"approval_id": approval_id, "resolved": False, "reason": "not_resumable"}
             )
+        except Exception as e:  # noqa: BLE001 — one item's infra failure must not strand the rest
+            # The item stays pending (nothing transitioned), so the sweep retries it; the
+            # rest of the batch still processes. Reported, not swallowed.
+            log.error(f"{LogTag.HIL} Batch decision failed for {approval_id}: {e}")
+            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "error"})
     return outcomes
 
 
@@ -281,7 +286,16 @@ async def _dispatch_resume(
         return
 
     resume: Command[Any] = Command(
-        resume={"status": resume_status, "feedback": feedback, "scope": scope}
+        resume={
+            "status": resume_status,
+            "feedback": feedback,
+            "scope": scope,
+            # Identifies which gate this decision is for. A synchronous spawn/handoff
+            # that gated several calls in sequence replays the executor's resume list
+            # positionally on recovery; the driver matches on this to hand each gate
+            # its own decision instead of the first one (see subagent_runner.resume_for_gate).
+            "approval_id": record.approval_id,
+        }
     )
     task = asyncio.create_task(
         run_executor_background(
@@ -314,14 +328,19 @@ async def sweep_approvals() -> dict[str, int]:
             expired += 1
         except ApprovalRequestNotFound:
             continue
+        except Exception as e:  # noqa: BLE001 — one bad record must not strand the rest of the pass
+            log.error(f"{LogTag.HIL} Sweep could not expire {record.approval_id}: {e}")
 
     redispatched = 0
     for record in await list_decided_unresumed(HIL_DECIDED_UNRESUMED_GRACE_SECONDS):
-        resume_status = "denied" if record.status == "abandoned" else record.status
-        await _dispatch_resume(
-            record, resume_status=resume_status, feedback=record.feedback, scope=record.scope
-        )
-        redispatched += 1
+        try:
+            resume_status = "denied" if record.status == "abandoned" else record.status
+            await _dispatch_resume(
+                record, resume_status=resume_status, feedback=record.feedback, scope=record.scope
+            )
+            redispatched += 1
+        except Exception as e:  # noqa: BLE001 — a failed redispatch is retried next sweep; don't abort
+            log.error(f"{LogTag.HIL} Sweep could not redispatch {record.approval_id}: {e}")
 
     if expired or redispatched:
         log.info(f"{LogTag.HIL} Approval sweep", expired=expired, redispatched=redispatched)

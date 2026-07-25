@@ -10,7 +10,6 @@ bubbles that pause up to the parent, exactly as ``handoff`` does.
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 import time
 from typing import Annotated, Any
-from uuid import uuid4
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -27,7 +26,7 @@ from langgraph.errors import GraphBubbleUp
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
-from langgraph.types import Command, interrupt
+from langgraph.types import Command
 
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
@@ -35,6 +34,8 @@ from app.agents.core.subagents.subagent_runner import (
     build_initial_messages,
     execute_subagent_stream,
     recover_from_checkpoint,
+    resume_for_gate,
+    subagent_row_id,
 )
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
@@ -187,7 +188,9 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         ctx = await self._build_context(task, context, config, tool_call_id, inherited_tool_names)
 
-        sa_id = str(uuid4())
+        # Stable across replays so an approval pause reuses the same UI row instead of
+        # orphaning the paused one and opening a duplicate on resume.
+        sa_id = subagent_row_id(tool_call_id)
         # Surface the task as the subagent's name so the UI shows what's running,
         # not three identical "Subagent" rows.
         spawn_name = (task[:40].rstrip() + "…") if len(task) > 40 else (task or "Subagent")
@@ -243,15 +246,16 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         The spawn is invoked imperatively, so its GraphInterrupt never reaches the
         parent's runtime — each pause is re-raised here with ``interrupt()``. A LOOP,
         not an if: one task can gate several destructive calls in sequence, and each
-        must suspend the parent again. ``interrupt()`` raises on the first pass and
-        returns that pause's decision on the replay.
+        must suspend the parent again. ``resume_for_gate`` raises on the first pass and
+        returns that gate's own decision on the replay (matching the recovered park, not
+        an earlier gate's already-applied decision).
         """
         recovered = await recover_from_checkpoint(ctx) if probe_parked else None
         outcome = recovered or await execute_subagent_stream(
             ctx=ctx, stream_writer=writer, subagent_id=sa_id
         )
         while outcome.paused:
-            decision = interrupt(outcome.interrupt)
+            decision = resume_for_gate(outcome.interrupt)
             outcome = await execute_subagent_stream(
                 ctx=ctx,
                 stream_writer=writer,

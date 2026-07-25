@@ -46,17 +46,14 @@ function formatExpiry(seconds: number): string {
   return hours === 1 ? "1 hour" : `${hours} hours`;
 }
 
-/** Render a HIL approval frame as a text prompt/status for a bot message. */
+/** Render a PENDING HIL approval as a yes/no prompt for a bot message. Only
+ * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
+ * ones are narrated by the agent's streamed reply. */
 function formatApprovalPrompt(data: ApprovalRequestData): string {
-  if (data.status === "pending") {
-    return (
-      `**Approval needed:** ${data.summary}\n` +
-      `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
-    );
-  }
-  if (data.status === "approved") return "Approved — continuing.";
-  if (data.status === "denied") return "Declined.";
-  return "Approval timed out.";
+  return (
+    `**Approval needed:** ${data.summary}\n` +
+    `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
+  );
 }
 
 export interface StreamingOptions {
@@ -423,6 +420,13 @@ export async function handleStreamingChat(
   // stream ends) still surfaces the question while the agent is paused waiting.
   const render = PLATFORM_MARKDOWN[options.platform];
   const handleApprovalUpdate = async (data: ApprovalRequestData) => {
+    // Only the PENDING question needs an out-of-band message — a bot has no
+    // buttons, so the user answers in chat. Settled frames (an auto_approved
+    // receipt in auto mode, or a resumed decision) arrive MID-STREAM and are
+    // already narrated by the agent's streamed reply; posting them here fires
+    // sendNewMessage, which on editing platforms (Telegram/Slack) rebinds the
+    // live edit cursor and fragments/overwrites that reply.
+    if (data.status !== "pending") return;
     const text = render(formatApprovalPrompt(data));
     if (sendNewMessage) {
       await sendNewMessage(text);

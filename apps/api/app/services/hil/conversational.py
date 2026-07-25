@@ -82,6 +82,11 @@ async def _resolve_single(
     record: HILApprovalRecord, conversation_id: str, user_id: str, message: str
 ) -> DecisionAction | None:
     result = await interpret_decision_message(message, [record.summary])
+    if result is None:
+        # The classifier errored. Leave the approval pending rather than abandon it —
+        # a transient hiccup must not silently decline a legitimate pending action
+        # (matches the batch path's fail-toward-pending behavior).
+        return None
     if result.action == "unrelated":
         # The user moved on. Abandon the paused run so it resumes, sees a refusal,
         # wraps up, and frees the conversation's executor lock for the new turn.
@@ -145,9 +150,14 @@ async def interpret_batch_decision_message(
         return BatchDecisionResult(unrelated=False)
 
 
-async def interpret_decision_message(message: str, pending_summaries: list[str]) -> DecisionResult:
-    """Classify a chat reply against pending approvals. Fails toward ``unrelated``
-    (normal chat), never toward silently executing an action."""
+async def interpret_decision_message(
+    message: str, pending_summaries: list[str]
+) -> DecisionResult | None:
+    """Classify a chat reply against pending approvals.
+
+    ``None`` on an LLM error, so the caller leaves the approval pending — never toward
+    silently executing an action, and never toward abandoning a legitimate one on a
+    transient hiccup (an error is not the same signal as a genuine ``unrelated``)."""
     try:
         return await ainvoke_structured(
             DecisionResult,
@@ -157,8 +167,8 @@ async def interpret_decision_message(message: str, pending_summaries: list[str])
             config=SILENT_LLM_CONFIG,
         )
     except Exception as e:
-        log.warning(f"{LogTag.HIL} Conversational resolve failed, treating as unrelated: {e}")
-        return DecisionResult(action="unrelated")
+        log.warning(f"{LogTag.HIL} Conversational resolve failed, leaving pending: {e}")
+        return None
 
 
 # --- internals -----------------------------------------------------------------
