@@ -571,7 +571,7 @@ class GetDaySummaryInput(BaseModel):
     """Input for getting a day's schedule summary."""
 
     date: str | None = Field(
-        default_factory=lambda: datetime.now().strftime("%Y-%m-%d"),
+        default=None,
         description="Date to get summary for (YYYY-MM-DD format). Defaults to today.",
     )
 
