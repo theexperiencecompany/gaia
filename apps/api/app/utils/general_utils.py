@@ -49,7 +49,7 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
     return context
 
 
-def transform_gmail_message(msg) -> dict:
+def transform_gmail_message(msg: dict) -> dict:
     """Transform Gmail API message to frontend-friendly format while keeping all raw data for debugging."""
     """
     Transform a Gmail/Composio message to a frontend-friendly format.
@@ -57,19 +57,19 @@ def transform_gmail_message(msg) -> dict:
     """
     from dateutil.parser import parse as parse_date  # type: ignore[import-untyped]
 
-    def get_sender(m):
+    def get_sender(m: dict) -> str:
         return m.get("from") or m.get("sender") or ""
 
-    def get_time(m):
+    def get_time(m: dict) -> str:
         # Prefer 'date', then 'messageTimestamp', then fallback
         if m.get("date"):
-            return m["date"]
+            return str(m["date"])
         ts = m.get("messageTimestamp")
         if ts:
             try:
                 return parse_date(ts).strftime("%Y-%m-%d %H:%M")
             except Exception:
-                return ts
+                return str(ts)
         # Gmail API fallback
         if m.get("internalDate"):
             try:
@@ -79,7 +79,7 @@ def transform_gmail_message(msg) -> dict:
                 return str(m["internalDate"])
         return ""
 
-    def transform_composio(m):
+    def transform_composio(m: dict) -> dict:
         labels = m.get("labelIds", [])
         return {
             **m,
@@ -97,7 +97,7 @@ def transform_gmail_message(msg) -> dict:
             "is_unread": "UNREAD" in labels,
         }
 
-    def transform_gmail_api(m):
+    def transform_gmail_api(m: dict) -> dict:
         headers = {h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])}
         labels = m.get("labelIds", [])
         return {
@@ -122,7 +122,7 @@ def transform_gmail_message(msg) -> dict:
     return transform_gmail_api(msg)
 
 
-def decode_message_body(msg):
+def decode_message_body(msg: dict) -> str | None:
     """Decode the message body from a Gmail API message."""
     payload = msg.get("payload", {})
     parts = payload.get("parts", [])
@@ -175,7 +175,7 @@ def get_project_info() -> dict:
         return {"name": "GAIA API", "version": "dev", "description": "Backend for GAIA"}
 
 
-def describe_structure(obj, parent=""):
+def describe_structure(obj: object, parent: str = "") -> list[str]:
     lines = []
 
     if isinstance(obj, dict):

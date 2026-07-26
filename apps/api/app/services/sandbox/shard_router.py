@@ -14,7 +14,9 @@ from app.config.settings import settings
 
 def shard_for(user_id: str) -> int:
     """Return the shard index for a user. Stable for the user's lifetime."""
-    n = max(1, settings.JUICEFS_NUM_SHARDS)
+    # settings is Any (app.config.settings.get_settings() is untyped upstream);
+    # JUICEFS_NUM_SHARDS is genuinely int on both Settings subclasses.
+    n: int = max(1, settings.JUICEFS_NUM_SHARDS)
     if n == 1:
         return 0
     digest = hashlib.sha256(user_id.encode("utf-8")).digest()

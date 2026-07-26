@@ -19,7 +19,7 @@ from app.constants.cache import FILES_CACHE_PATTERN
 from app.constants.files import FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS
 from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
-from app.models.files_models import FileDocument, FileUpdate
+from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
 from app.services.files.sandbox import mirror_upload, write_summary_sidecar
 from app.services.files.store import (
@@ -31,7 +31,6 @@ from app.services.files.store import (
     upload_to_cloudinary,
 )
 from app.services.files.summaries import (
-    PageWiseSummary,
     process_summary,
     render_summary_markdown,
 )

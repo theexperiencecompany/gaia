@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Any, Union
+from typing import Any, Union, cast
 
 from fastapi import HTTPException
 
@@ -64,7 +64,9 @@ async def _proxy(
         raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 
-async def fetch_calendar_list(user_id: str, short: bool = False) -> Any:
+async def fetch_calendar_list(
+    user_id: str, short: bool = False
+) -> Union[list[dict[str, Any]], dict[str, Any]]:
     """Fetch the list of calendars for the authenticated user."""
     data = await _proxy(
         user_id,
@@ -83,7 +85,9 @@ async def fetch_calendar_list(user_id: str, short: bool = False) -> Any:
             for c in (data or {}).get("items", [])
         ]
 
-    return data
+    # _proxy is typed Any (raw external API passthrough); the calendarList
+    # endpoint's non-short response is a dict.
+    return cast(dict[str, Any], data)
 
 
 def filter_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -118,11 +122,16 @@ async def fetch_calendar_events(
     if page_token:
         query["pageToken"] = page_token
 
-    return await _proxy(
-        user_id,
-        endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
-        method="GET",
-        query=query,
+    # _proxy is typed Any (raw external API passthrough); the events.list
+    # endpoint's response is a dict.
+    return cast(
+        dict[str, Any],
+        await _proxy(
+            user_id,
+            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+            method="GET",
+            query=query,
+        ),
     )
 
 
@@ -245,7 +254,9 @@ async def get_calendar_events(
     fetch_all: bool = False,
 ) -> dict[str, Any]:
     """Get events from the user's selected calendars with date-based pagination."""
-    calendar_data = await fetch_calendar_list(user_id)
+    # short=False (default) always returns the dict branch of fetch_calendar_list's
+    # Union return type.
+    calendar_data = cast(dict[str, Any], await fetch_calendar_list(user_id))
     calendars = calendar_data.get("items", [])
 
     user_selected_calendars: list[str] = []
@@ -454,7 +465,9 @@ async def create_calendar_event(
             "event_id": response_data.get("id") if isinstance(response_data, dict) else None,
         }
     )
-    return response_data
+    # _proxy is typed Any (raw external API passthrough); the events.insert
+    # endpoint's response is a dict.
+    return cast(dict[str, Any], response_data)
 
 
 async def get_user_calendar_preferences(user_id: str) -> dict[str, list[str]]:
@@ -482,7 +495,9 @@ async def search_calendar_events_native(
     time_max: str | None = None,
 ) -> dict[str, Any]:
     """Search calendar events using Google Calendar API's native search."""
-    calendar_list_data = await fetch_calendar_list(user_id)
+    # short=False (default) always returns the dict branch of fetch_calendar_list's
+    # Union return type.
+    calendar_list_data = cast(dict[str, Any], await fetch_calendar_list(user_id))
     calendars = calendar_list_data.get("items", [])
 
     user_selected_calendars: list[str] = []
@@ -593,7 +608,9 @@ async def search_events_in_calendar(
     )
     event_count = len(result.get("items", []))
     log.info(f"Calendar {calendar_id} search returned {event_count} events")
-    return result
+    # _proxy is typed Any (raw external API passthrough); the events.list
+    # endpoint's response is a dict.
+    return cast(dict[str, Any], result)
 
 
 async def delete_calendar_event(
@@ -731,4 +748,6 @@ async def update_calendar_event(
 
     if isinstance(updated_event, dict):
         updated_event["calendarId"] = calendar_id
-    return updated_event
+    # _proxy is typed Any (raw external API passthrough); the events.update
+    # endpoint's response is a dict.
+    return cast(dict[str, Any], updated_event)

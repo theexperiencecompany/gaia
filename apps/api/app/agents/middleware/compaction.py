@@ -39,7 +39,12 @@ from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.storage import JuiceFSUnavailable, write_session_file
-from app.utils.multimodal import approx_content_chars, extract_text_content, has_media_blocks
+from app.utils.multimodal import (
+    MessageContent,
+    approx_content_chars,
+    extract_text_content,
+    has_media_blocks,
+)
 from shared.py.wide_events import log
 
 
@@ -67,8 +72,13 @@ def should_compact_output(
 ) -> tuple[bool, str]:
     """Decide whether a tool output should be spilled to the workspace.
 
+    ``tool_name`` is intentionally unused here — callers already resolve it into
+    ``always_persist``/``excluded`` before calling in; kept as a parameter for
+    call-site readability (and mirrored by the test suite).
+
     Returns ``(should_compact, reason)``. ``reason`` is empty when not compacting.
     """
+    del tool_name
     if excluded:
         return False, ""
     size = len(content_str)
@@ -181,10 +191,9 @@ async def _spill_to_workspace(
 
 async def compact_tool_output(
     *,
-    content: Any,
+    content: MessageContent,
     tool_name: str,
     tool_call_id: str,
-    tool_args: dict[str, Any],
     user_id: str | None,
     conversation_id: str | None,
     context_usage: float,
@@ -281,15 +290,15 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         if not isinstance(result, ToolMessage):
             return result
 
-        tool_call = request.tool_call
+        # `ToolCall` is a TypedDict, but tool calls also reach middleware in
+        # attribute form; Any keeps the else-branch from being narrowed away.
+        tool_call: Any = request.tool_call
         if isinstance(tool_call, dict):
             tool_name = tool_call.get("name", "")
             tool_call_id = tool_call.get("id", "")
-            tool_args = tool_call.get("args", {})
         else:
             tool_name = tool_call.name
             tool_call_id = tool_call.id
-            tool_args = tool_call.args
 
         config = getattr(request.runtime, "config", {}) or {}
         configurable = config.get("configurable", {})
@@ -299,7 +308,6 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             content=result.content if hasattr(result, "content") else str(result),
             tool_name=tool_name,
             tool_call_id=tool_call_id,
-            tool_args=tool_args,
             user_id=configurable.get("user_id"),
             conversation_id=configurable.get("vfs_session_id") or thread_id,
             context_usage=self._get_context_usage(request),

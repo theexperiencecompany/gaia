@@ -450,14 +450,18 @@ async def init_juicefs_mount() -> str:
     """
     global _bootstrap_thread
 
+    # settings is Any (app.config.settings.get_settings() is untyped upstream);
+    # JUICEFS_HOST_MOUNT_PATH is genuinely str on both Settings subclasses.
+    mount_path_str: str = settings.JUICEFS_HOST_MOUNT_PATH
+
     if shutil.which("juicefs") is None:
         log.warning(f"{LogTag.STORAGE} CLI not found on PATH — skipping bootstrap")
-        return settings.JUICEFS_HOST_MOUNT_PATH
+        return mount_path_str
 
     missing = _missing_settings()
     if missing:
         log.info(f"{LogTag.STORAGE} skipping bootstrap; missing settings: " + ", ".join(missing))
-        return settings.JUICEFS_HOST_MOUNT_PATH
+        return mount_path_str
 
     # Probe off the event loop with a timeout — a wedged FUSE mount blocks forever
     # and running this inline previously froze the worker before it consumed jobs.
@@ -476,11 +480,11 @@ async def init_juicefs_mount() -> str:
 
     if already_mounted:
         log.info(f"{LogTag.STORAGE} mount already healthy")
-        return settings.JUICEFS_HOST_MOUNT_PATH
+        return mount_path_str
 
     with _bootstrap_lock:
         if _bootstrap_thread is not None and _bootstrap_thread.is_alive():
-            return settings.JUICEFS_HOST_MOUNT_PATH
+            return mount_path_str
         _bootstrap_thread = threading.Thread(
             target=_bootstrap_loop,
             name="juicefs-bootstrap",
@@ -490,4 +494,4 @@ async def init_juicefs_mount() -> str:
 
     # Yield control so the provider returns promptly without blocking startup.
     await asyncio.sleep(0)
-    return settings.JUICEFS_HOST_MOUNT_PATH
+    return mount_path_str

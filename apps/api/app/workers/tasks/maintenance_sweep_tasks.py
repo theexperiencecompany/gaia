@@ -649,7 +649,9 @@ async def _register_notification(pool: ArqRedis, todo_id: str) -> bool:
     of silence.
     """
     strike_key = _strike_key(todo_id)
-    raw = await pool.get(strike_key)
+    # pool.get() is typed Any (redis-py stub); it returns str | bytes | None
+    # depending on the client's decode_responses setting.
+    raw: str | bytes | None = await pool.get(strike_key)
     if isinstance(raw, bytes):
         raw = raw.decode()
     strike = (int(raw) + 1) if raw else 1

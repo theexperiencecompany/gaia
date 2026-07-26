@@ -1,8 +1,9 @@
 import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 
 from fastapi import UploadFile
+from langchain_core.tools import StructuredTool
 
 from app.constants.log_tags import LogTag
 from app.services.composio.composio_service import (
@@ -12,7 +13,7 @@ from app.utils.general_utils import transform_gmail_message
 from shared.py.wide_events import MailContext, log
 
 
-def get_gmail_tool(tool_name: str, user_id: str):
+def get_gmail_tool(tool_name: str, user_id: str) -> StructuredTool | None:
     """Get a specific Gmail tool by name via ComposioService, or None if not found."""
     log.set(user={"id": user_id}, mail=MailContext(provider="gmail"))
     composio_service = get_composio_service()
@@ -37,7 +38,9 @@ async def invoke_gmail_tool(
             return {"error": f"Tool {tool_name} not found", "successful": False}
 
         result = await tool.ainvoke(parameters)
-        return result
+        # BaseTool.ainvoke is typed Any (arbitrary tool output); Composio
+        # Gmail tools return a dict.
+        return cast(dict[str, Any], result)
     except Exception as e:
         log.error(f"{LogTag.MAIL} Error invoking Gmail tool {tool_name} for user {user_id}: {e}")
         return {"error": str(e), "successful": False}
@@ -410,7 +413,7 @@ async def delete_label(user_id: str, label_id: str) -> bool:
     try:
         parameters = {"label_id": label_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_DELETE_LABEL", parameters)
-        return result.get("successful", True)
+        return bool(result.get("successful", True))
     except Exception as error:
         log.error(f"{LogTag.MAIL} Error deleting label {label_id}: {error}")
         return False
@@ -567,7 +570,7 @@ async def delete_draft(user_id: str, draft_id: str) -> bool:
     try:
         parameters = {"draft_id": draft_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_DELETE_DRAFT", parameters)
-        return result.get("successful", True)
+        return bool(result.get("successful", True))
     except Exception as error:
         log.error(f"{LogTag.MAIL} Error deleting draft {draft_id}: {error}")
         return False

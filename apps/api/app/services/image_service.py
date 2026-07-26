@@ -22,7 +22,7 @@ def generate_public_id(refined_text: str, max_length: int = 50) -> str:
     return f"generated_image_{slug}_{unique_suffix}"
 
 
-async def api_generate_image(message: str, improve_prompt=True) -> dict:
+async def api_generate_image(message: str, improve_prompt: bool = True) -> dict:
     """
     Generate an image based on the provided message prompt and upload it to Cloudinary.
 
@@ -68,14 +68,14 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         # Handle the case when generate_image returns a dict or bytes
         image_data = await generate_image(message)
 
-        # Ensure we're working with bytes for the upload
+        # Ensure we're working with bytes for the upload. generate_image only
+        # ever returns a dict on the httpx failure path ({"error": str(e)});
+        # bytes is the sole success shape.
         if isinstance(image_data, dict):
-            # Handle the case when it returns a dict
-            if "image" in image_data and isinstance(image_data["image"], bytes):
-                image_bytes = image_data["image"]
-            else:
-                raise ValueError("Invalid image data returned from generate_image")
-        elif isinstance(image_data, bytes):
+            raise ValueError(
+                f"Failed to generate image: {image_data.get('error', 'unknown error')}"
+            )
+        if isinstance(image_data, bytes):
             # Already bytes, use as is
             image_bytes = image_data
         else:

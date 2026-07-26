@@ -171,7 +171,7 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
     return False
 
 
-def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages=True) -> str:
+def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages: bool = True) -> str:
     pretty = ""
     for message in messages:
         if ignore_system_messages and isinstance(message, SystemMessage):

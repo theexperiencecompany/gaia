@@ -20,12 +20,14 @@ Features:
 
 import asyncio
 import base64
+from collections.abc import Awaitable, Callable
+import contextlib
 import json as _json
 import re
 import secrets
 import time
 import traceback
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 import urllib.parse
 
 import httpx
@@ -91,6 +93,7 @@ from app.utils.mcp_utils import (
     wrap_tools_with_null_filter,
 )
 from app.utils.url_safety import assert_public_http_url
+from mcp import ClientSession
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
     create_client_registration_request,
@@ -694,8 +697,8 @@ class MCPClient:
 
             # Build a callback to evict stale sessions on connection errors.
             # Pops from dicts AND schedules async session close via fire-and-forget task.
-            def _make_evict_callback(iid: str):
-                def _evict():
+            def _make_evict_callback(iid: str) -> Callable[[], None]:
+                def _evict() -> None:
                     # Evict in-memory client/tool cache so the next call
                     # forces a fresh _do_connect. Do NOT flip MongoDB status
                     # here — a tool-call hiccup is usually transient (server
@@ -713,7 +716,9 @@ class MCPClient:
 
                 return _evict
 
-            def _make_reconnect_callback(iid: str):
+            def _make_reconnect_callback(
+                iid: str,
+            ) -> Callable[[str, dict], Awaitable[Any]]:
                 async def _reconnect_and_retry(tool_name: str, kwargs: dict) -> Any:
                     return await self.reconnect_and_call(iid, tool_name, kwargs)
 
@@ -883,10 +888,8 @@ class MCPClient:
                         f"{LogTag.MCP} [{integration_id}] Token refresh failed, user may need to re-authorize"
                     )
                 finally:
-                    try:
+                    with contextlib.suppress(AttributeError):
                         delattr(self, retry_flag)
-                    except AttributeError:
-                        pass
 
             log.error(f"{LogTag.MCP} Failed to connect to MCP {integration_id}: {e}")
 
@@ -1803,7 +1806,7 @@ class MCPClient:
 
         return raw
 
-    async def _get_session_for_server(self, server_url: str) -> Any:
+    async def _get_session_for_server(self, server_url: str) -> ClientSession:
         """Resolve the underlying official MCP ``ClientSession`` for ``server_url``.
 
         Returns the SDK session beneath mcp_use's wrapper so resource/prompt calls
@@ -1825,7 +1828,10 @@ class MCPClient:
         client_session = client.get_session(matching_integration_id).connector.client_session
         if client_session is None:
             raise ValueError(f"MCP integration {matching_integration_id} has no active session")
-        return client_session
+        # mcp_use ships no py.typed marker, so mypy treats its whole surface as
+        # Any; BaseConnector.client_session is genuinely typed ClientSession | None
+        # in its source (verified), narrowed to non-None by the check above.
+        return cast(ClientSession, client_session)
 
     async def list_resources_on_server(
         self,

@@ -13,6 +13,7 @@ import json
 from typing import Any
 
 from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware.summarization import ContextSize, TriggerClause
 from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
@@ -36,11 +37,14 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         self,
         model: str | BaseChatModel,
         *,
-        trigger=("fraction", 0.85),
-        keep=("messages", 15),
+        trigger: ContextSize | TriggerClause | list[ContextSize | TriggerClause] | None = (
+            "fraction",
+            0.85,
+        ),
+        keep: ContextSize = ("messages", 15),
         enable_archive: bool = True,
         excluded_tools: set[str] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         super().__init__(model=model, trigger=trigger, keep=keep, **kwargs)
         self.enable_archive = enable_archive

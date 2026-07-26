@@ -6,7 +6,7 @@ even when the upstream call fails.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -76,7 +76,10 @@ async def get_elevenlabs_voices() -> list[dict[str, Any]]:
     if not settings.ELEVENLABS_API_KEY:
         return []
     try:
-        return await _fetch_elevenlabs_voices()
+        # _fetch_elevenlabs_voices is wrapped in @Cacheable, whose __call__
+        # erases the return type to Awaitable[Any]; the function itself is
+        # annotated -> list[dict[str, Any]].
+        return cast(list[dict[str, Any]], await _fetch_elevenlabs_voices())
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs voices", error=str(e))
         return []
@@ -121,7 +124,10 @@ async def get_shared_voices() -> list[dict[str, Any]]:
     if not settings.ELEVENLABS_API_KEY:
         return []
     try:
-        return await _fetch_shared_voices()
+        # _fetch_shared_voices is wrapped in @Cacheable, whose __call__ erases
+        # the return type to Awaitable[Any]; the function itself is annotated
+        # -> list[dict[str, Any]].
+        return cast(list[dict[str, Any]], await _fetch_shared_voices())
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs shared voices", error=str(e))
         return []
@@ -211,7 +217,11 @@ async def list_voices(user_id: str) -> VoiceListResponse:
 async def get_starred_voice_ids(user_id: str) -> list[str]:
     """The user's starred voice ids, defaulting to the product starter set."""
     user = await user_repository.get(user_id)
-    stored = user.starred_voice_ids if user else None
+    # user_repository.get() returns UserDocument | None at runtime (missing
+    # user_id -> None); mypy's narrowing in this strict-repository-island
+    # interaction believes `user` is always present here, which is not the
+    # real contract, so this stays a genuine defensive fallback.
+    stored: list[str] | None = user.starred_voice_ids if user else None
     if isinstance(stored, list):
         return [v for v in stored if isinstance(v, str)]
     return list(DEFAULT_STARRED_VOICE_IDS)

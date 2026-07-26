@@ -20,6 +20,7 @@ from typing import Any, cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
@@ -131,7 +132,7 @@ async def _build_spawn_graph(
 
     try:
         checkpointer_manager = await get_checkpointer_manager()
-        checkpointer = checkpointer_manager.get_checkpointer()
+        checkpointer: BaseCheckpointSaver = checkpointer_manager.get_checkpointer()
     except Exception as e:
         # A spawn's thread must be durable while it is parked on an approval —
         # the decision can arrive hours later in another process. In-memory means

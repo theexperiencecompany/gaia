@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from arq import create_pool
+from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
 
 from app.config.settings import settings
@@ -37,14 +37,14 @@ class BaseSchedulerService(ABC):
     def __init__(self, redis_settings: RedisSettings | None = None):
         """Initialize the scheduler service."""
         self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
-        self.arq_pool = None
+        self.arq_pool: ArqRedis | None = None
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize ARQ pool connection."""
         self.arq_pool = await create_pool(self.redis_settings)
         log.info(f"{self.__class__.__name__} initialized")
 
-    async def close(self):
+    async def close(self) -> None:
         """Close ARQ pool connection."""
         if self.arq_pool:
             await self.arq_pool.aclose()
@@ -141,7 +141,7 @@ class BaseSchedulerService(ABC):
 
         return success
 
-    async def scan_and_schedule_pending_tasks(self):
+    async def scan_and_schedule_pending_tasks(self) -> None:
         """Scan for due scheduled tasks and enqueue them in ARQ (called at startup)."""
         now = datetime.now(UTC)
         tasks = await self.get_pending_task(now)
@@ -154,7 +154,7 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Scheduled {scheduled_count} pending tasks")
 
-    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
+    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int) -> None:
         """
         Reschedule the next occurrence of a recurring task, or mark it completed
         once max_occurrences / stop_after is reached.

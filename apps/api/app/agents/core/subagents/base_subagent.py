@@ -6,10 +6,11 @@ end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
 """
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
@@ -23,7 +24,7 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, grep, query_json, read
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_child_tool_runtime_config,
@@ -44,7 +45,7 @@ from shared.py.wide_events import log
 
 
 def _build_scoped_tool_dict(
-    tool_registry: Any,
+    tool_registry: ToolRegistry,
     tool_space: str,
     mcp_tools: list[BaseTool] | None,
     include_finish_task: bool,
@@ -277,7 +278,7 @@ class SubAgentFactory:
 
         try:
             checkpointer_manager = await get_checkpointer_manager()
-            checkpointer = checkpointer_manager.get_checkpointer()
+            checkpointer: BaseCheckpointSaver = checkpointer_manager.get_checkpointer()
             log.debug(f"{LogTag.AGENT} Using PostgreSQL checkpointer for {provider} sub-agent")
         except Exception as e:
             log.warning(

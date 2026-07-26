@@ -6,7 +6,7 @@ avoiding a cyclic dependency.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langchain_core.messages import (
@@ -15,9 +15,14 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-from langgraph.types import Command, interrupt
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import Command, StateSnapshot, interrupt
 
-from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.core.graph_manager import (
+    CompiledAgentGraph,
+    GraphManager,
+    GraphUnavailableError,
+)
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
@@ -118,7 +123,7 @@ def subagent_row_id(tool_call_id: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"subagent_row:{tool_call_id}"))
 
 
-def resume_for_gate(interrupt_payload: dict[str, Any]) -> Any:
+def resume_for_gate(interrupt_payload: dict[str, Any]) -> object:
     """The decision belonging to the subagent gate now paused.
 
     A synchronous spawn/handoff drives its subagent imperatively, bubbling each HIL
@@ -151,7 +156,7 @@ class SubagentExecutionContext:
 
     def __init__(
         self,
-        subagent_graph,
+        subagent_graph: CompiledAgentGraph,
         agent_name: str,
         config: dict,
         configurable: dict,
@@ -159,7 +164,7 @@ class SubagentExecutionContext:
         initial_state: dict,
         user_id: str | None = None,
         stream_id: str | None = None,
-    ):
+    ) -> None:
         self.subagent_graph = subagent_graph
         self.agent_name = agent_name
         self.config = config
@@ -354,7 +359,8 @@ async def execute_subagent_stream(
     async for event in ctx.subagent_graph.astream(
         _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
-        config=run_config,
+        # build_agent_config returns a plain dict; it is RunnableConfig-shaped.
+        config=cast(RunnableConfig, run_config),
         # Persist checkpoints only when this executor/subagent run exits, not
         # after every step (langgraph's default durability="async"). The
         # executor/subagent path is a single logical unit of work whose
@@ -373,7 +379,9 @@ async def execute_subagent_stream(
         # Handle 2-tuple format only (no subgraphs)
         if len(event) != 2:
             continue
-        stream_mode, payload = event
+        # A list `stream_mode` makes astream yield (mode, payload) tuples, which
+        # langgraph's own overload return type does not express.
+        stream_mode, payload = cast(tuple[str, Any], event)
 
         if stream_mode == "updates":
             # The HIL gate paused this run. LangGraph has already checkpointed
@@ -444,14 +452,14 @@ async def execute_subagent_stream(
     return SubagentOutcome(text=final_message)
 
 
-def _snapshot_messages(snapshot: Any) -> list[Any]:
+def _snapshot_messages(snapshot: StateSnapshot) -> list[Any]:
     """The messages a checkpoint holds. Empty means the thread has never run."""
     values = getattr(snapshot, "values", None) or {}
     messages = values.get("messages") if isinstance(values, dict) else None
     return messages if isinstance(messages, list) else []
 
 
-def _final_text_from_snapshot(snapshot: Any) -> str:
+def _final_text_from_snapshot(snapshot: StateSnapshot) -> str:
     messages = _snapshot_messages(snapshot)
     if not messages:
         return ""
@@ -473,7 +481,7 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
       checkpointed final answer: re-running would repeat every action it took.
     * **Never ran** — no state at all. ``None``, so the caller starts it normally.
     """
-    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
+    snapshot = await ctx.subagent_graph.aget_state(cast(RunnableConfig, ctx.config))
     if snapshot.next:
         return SubagentOutcome(
             text="", interrupt=interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
@@ -483,7 +491,7 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
     return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
 
 
-def interrupt_payload(raw: Any) -> dict[str, Any]:
+def interrupt_payload(raw: object) -> dict[str, Any]:
     """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
     ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the
     objects carry no dict value (downstream treats that as malformed → deny)."""

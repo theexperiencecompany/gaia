@@ -31,6 +31,7 @@ from app.agents.core.background.session import (
     release_bg_integration,
 )
 from app.agents.core.background.subagent_runner import run_subagent_background
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
     create_subagent_for_user,
@@ -57,6 +58,7 @@ from app.db.repositories.integrations import integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.hil_models import HILApprovalRecord
+from app.models.subagent_models import Subagent
 from app.services.connect_link_service import build_connect_link_url
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -67,6 +69,7 @@ from app.services.oauth.oauth_service import (
 from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.agent_utils import (
     IntegrationMetadata,
+    StreamWriterCallable,
     format_subagent_end_event,
     format_subagent_start_event,
     parse_subagent_id,
@@ -146,7 +149,7 @@ async def check_integration_connection(
         return None
 
 
-async def _get_subagent_by_id(subagent_id: str):
+async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
     """
     Get subagent by ID or short_name.
 
@@ -167,7 +170,7 @@ async def _get_subagent_by_id(subagent_id: str):
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
-    cached = await get_cache(cache_key)
+    cached: dict[str, Any] | None = await get_cache(cache_key)
     if cached is not None:
         # Return cached result (could be empty dict for negative cache)
         return cached if cached else None
@@ -271,7 +274,7 @@ async def index_custom_mcp_as_subagent(
 async def _resolve_subagent(
     subagent_id: str,
     user_id: str | None,
-) -> tuple[object | None, str | None, str | None, bool]:
+) -> tuple[CompiledAgentGraph | None, str | None, str | None, bool]:
     """
     Resolve subagent from ID and get the graph.
 
@@ -636,7 +639,7 @@ async def _has_parked_subagent(ctx: SubagentExecutionContext) -> bool:
 async def resume_parked_subagent(
     record: "HILApprovalRecord",
     configurable: dict[str, Any],
-    stream_writer: Any,
+    stream_writer: StreamWriterCallable,
 ) -> SubagentOutcome:
     """Resume a HIL-parked background subagent with its decided approval.
 

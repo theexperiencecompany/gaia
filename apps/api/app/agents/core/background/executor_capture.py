@@ -11,7 +11,7 @@ implementation so chat and workflow runs render identically.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 from app.agents.core.background.session import (
     RunKind,
@@ -94,7 +94,9 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
         absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
-    return accumulated.get("tool_data", [])
+    # accumulated is dict[str, Any] so .get() is typed Any; "tool_data" is always
+    # a list[dict[str, Any]] by construction (seeded above, mutated in place).
+    return cast(list[dict[str, Any]], accumulated.get("tool_data", []))
 
 
 def build_returned_to_frontend_note(stream_id: str) -> str:

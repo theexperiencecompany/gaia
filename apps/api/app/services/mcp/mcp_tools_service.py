@@ -6,6 +6,7 @@ the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
 import asyncio
+from typing import cast
 
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
@@ -90,7 +91,9 @@ async def get_all_mcp_tools() -> dict[str, dict]:
     """All MCP tools with metadata, keyed by integration_id. Redis-cached 24h."""
     cached = await get_cache(MCP_TOOLS_CACHE_KEY)
     if cached:
-        return cached
+        # get_cache is typed Any; this key is only ever written below as
+        # dict[str, dict].
+        return cast(dict, cached)
 
     try:
         grouped: dict[str, dict] = {

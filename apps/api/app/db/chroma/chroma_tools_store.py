@@ -1,13 +1,16 @@
 """Modularized helper functions for ChromaStore initialization."""
 
+from collections.abc import Callable
 import hashlib
 import inspect
-from typing import Any
+from typing import Any, cast
 
+from chromadb.api.models.AsyncCollection import AsyncCollection
+from langchain_core.tools import BaseTool
 from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
@@ -17,10 +20,14 @@ from shared.py.wide_events import VectorContext, log
 from .chroma_store import ChromaStore
 
 
-async def _compute_tool_hash(tool: Any) -> str:
+async def _compute_tool_hash(tool: BaseTool) -> str:
     """Compute hash for a tool based on description and source code."""
     try:
-        code_source = inspect.getsource(tool)
+        # inspect.getsource's stub only accepts module/class/function/etc, not an
+        # arbitrary BaseTool instance; at runtime this virtually always raises
+        # TypeError (caught below) since tool objects aren't source-inspectable,
+        # so this call falls through to the name/description hash in practice.
+        code_source = inspect.getsource(cast(Callable[..., Any], tool))
         code_source = code_source.strip()
         code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
         content = f"{tool.description}::{code_source}"
@@ -33,7 +40,7 @@ async def _compute_tool_hash(tool: Any) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-async def _get_current_tools_with_hashes(tool_registry) -> dict[str, dict]:
+async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[str, dict]:
     """Get all current tools with their hashes and namespaces.
 
     Args:
@@ -102,7 +109,7 @@ async def _get_subagent_tools() -> dict[str, dict]:
 
 
 async def _get_existing_tools_from_chroma(
-    collection, namespaces: set[str] | None = None
+    collection: AsyncCollection, namespaces: set[str] | None = None
 ) -> dict[str, dict]:
     """Fetch existing tools from ChromaDB collection.
 
@@ -236,7 +243,9 @@ def _build_put_operations(
     return put_ops
 
 
-async def _execute_batch_operations(store, put_ops: list[PutOp], batch_size: int = 50):
+async def _execute_batch_operations(
+    store: ChromaStore, put_ops: list[PutOp], batch_size: int = 50
+) -> None:
     """Execute put operations in batches.
 
     Args:
@@ -259,7 +268,7 @@ async def _execute_batch_operations(store, put_ops: list[PutOp], batch_size: int
     log.info(f"{LogTag.CHROMA} Successfully updated {total_ops} tools in ChromaDB")
 
 
-async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
+async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]) -> None:
     """Index tools into ChromaDB store on-demand with full diff logic.
 
     This function manages tools for a specific namespace:
@@ -429,7 +438,7 @@ async def delete_tools_by_namespace(namespace: str) -> int:
     strategy=MissingKeyStrategy.ERROR,
     auto_initialize=False,  # Lazy-load only when first accessed (avoids duplicate indexing)
 )
-async def initialize_chroma_tools_store():
+async def initialize_chroma_tools_store() -> ChromaStore:
     """Initialize and return the ChromaDB-backed tools store with incremental updates.
 
     This function:

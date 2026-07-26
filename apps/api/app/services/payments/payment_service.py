@@ -3,7 +3,7 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from dodopayments import DodoPayments
 from fastapi import HTTPException
@@ -31,9 +31,11 @@ from shared.py.wide_events import log
 class DodoPaymentService:
     """Streamlined Dodo Payments service."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         try:
-            environment = "live_mode" if settings.ENV == "production" else "test_mode"
+            environment: Literal["live_mode", "test_mode"] = (
+                "live_mode" if settings.ENV == "production" else "test_mode"
+            )
 
             self.client = DodoPayments(
                 bearer_token=settings.DODO_PAYMENTS_API_KEY,

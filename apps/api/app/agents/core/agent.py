@@ -20,7 +20,7 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
-from app.agents.core.graph_manager import GraphManager
+from app.agents.core.graph_manager import CompiledAgentGraph, GraphManager
 from app.agents.core.messages import construct_langchain_messages
 from app.agents.llm.plan_model import apply_dev_model_override, apply_plan_model
 from app.config.langfuse import trace_id_for_message
@@ -48,7 +48,7 @@ async def _core_agent_logic(
     source: str | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
-):
+) -> tuple[CompiledAgentGraph, dict, dict]:
     """Shared setup for streaming and silent execution.
 
     Constructs messages, initializes the graph, builds state, and kicks off
@@ -218,7 +218,7 @@ async def call_agent(
         log.error(f"{LogTag.AGENT} Error when calling agent: {exc}")
         error_message = f"Error when calling agent: {exc!s}"
 
-        async def error_generator():
+        async def error_generator() -> AsyncGenerator[str, None]:
             """Yield the agent error as one SSE frame followed by [DONE]."""
             error_dict = {"error": error_message}
             yield f"data: {json.dumps(error_dict)}\n\n"

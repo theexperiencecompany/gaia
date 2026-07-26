@@ -48,6 +48,7 @@ from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
 from app.utils.agent_utils import (
+    StreamWriterCallable,
     format_subagent_end_event,
     format_subagent_start_event,
 )
@@ -107,7 +108,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         self.tools = [self._create_spawn_subagent_tool()]
 
-    def _create_spawn_subagent_tool(self):
+    def _create_spawn_subagent_tool(self) -> BaseTool:
         middleware = self
 
         @tool(description=SPAWN_SUBAGENT_DESCRIPTION)
@@ -237,7 +238,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
     async def _drive(
         self,
         ctx: SubagentExecutionContext,
-        writer: Any,
+        writer: StreamWriterCallable,
         sa_id: str,
         probe_parked: bool,
     ) -> SubagentOutcome:

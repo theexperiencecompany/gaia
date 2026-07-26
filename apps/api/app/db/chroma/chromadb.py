@@ -1,8 +1,11 @@
+from typing import cast
+
 import chromadb
-from chromadb.api import AsyncClientAPI
+from chromadb.api import AsyncClientAPI, ClientAPI
 from chromadb.config import Settings
 from fastapi import Request
 from langchain_chroma import Chroma
+from langchain_core.embeddings import Embeddings
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -39,7 +42,9 @@ class ChromaClient:
             client = await providers.aget("chromadb_client")
             if client is None:
                 raise RuntimeError("ChromaDB client could not be initialized")
-            return client
+            # aget() is typed Any | None; "chromadb_client" is always registered
+            # via init_chromadb_client(), which returns AsyncClientAPI.
+            return cast(AsyncClientAPI, client)
         except Exception as e:
             log.error(f"{LogTag.CHROMA} Failed to get ChromaDB client: {e}")
             raise RuntimeError("ChromaDB client not initialized") from e
@@ -48,7 +53,7 @@ class ChromaClient:
     async def get_langchain_client(
         cls,
         collection_name: str | None = None,
-        embedding_function=None,
+        embedding_function: Embeddings | None = None,
         create_if_not_exists: bool = True,
     ) -> Chroma:
         """
@@ -75,7 +80,9 @@ class ChromaClient:
             default_client = await providers.aget("langchain_chroma")
             if default_client is None:
                 raise RuntimeError("Default Langchain Chroma client not initialized")
-            return default_client
+            # aget() is typed Any | None; "langchain_chroma" is always registered
+            # as a Chroma instance.
+            return cast(Chroma, default_client)
 
         # Build a unique provider name for this collection
         provider_name = f"langchain_chroma_{collection_name}"
@@ -146,7 +153,7 @@ class ChromaClient:
     auto_initialize=False,
     strategy=MissingKeyStrategy.WARN,
 )
-async def init_chromadb_client():
+async def init_chromadb_client() -> AsyncClientAPI:
     """
     Initialize ChromaDB async client.
 
@@ -203,7 +210,7 @@ async def init_chromadb_client():
     auto_initialize=False,
     strategy=MissingKeyStrategy.WARN,
 )
-def init_chromadb_constructor():
+def init_chromadb_constructor() -> ClientAPI:
     """
     Initialize ChromaDB constructor client for langchain.
     This is a workaround to avoid the `coroutine` error in langchain
@@ -238,7 +245,7 @@ def init_chromadb_constructor():
     auto_initialize=False,
     strategy=MissingKeyStrategy.WARN,
 )
-def init_langchain_chroma():
+def init_langchain_chroma() -> Chroma:
     """
     Initialize default Langchain Chroma client.
 
@@ -261,18 +268,12 @@ def init_langchain_chroma():
     return langchain_chroma_client
 
 
-def init_chroma():
+def init_chroma() -> None:
     """
     Backward compatibility function to initialize ChromaDB client and store in app state.
     This is mainly for compatibility with existing code that calls init_chroma explicitly.
 
     In new code, prefer using ChromaClient.get_client() directly which lazily initializes.
-
-    Args:
-        app: FastAPI application instance
-
-    Returns:
-        The ChromaDB client
     """
     try:
         init_chromadb_client()

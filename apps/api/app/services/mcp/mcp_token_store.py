@@ -8,6 +8,7 @@ Follows same patterns as Composio for parity.
 from datetime import UTC, datetime
 import json
 import secrets
+from typing import cast
 
 from cryptography.fernet import Fernet
 from sqlalchemy import select
@@ -334,7 +335,7 @@ class MCPTokenStore:
         cred = await self.get_credential(integration_id)
         if cred and cred.client_registration:
             try:
-                return json.loads(cred.client_registration)
+                return cast(dict, json.loads(cred.client_registration))
             except json.JSONDecodeError:
                 return None
         return None

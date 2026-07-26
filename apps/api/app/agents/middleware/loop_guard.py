@@ -193,7 +193,9 @@ class LoopGuardMiddleware(AgentMiddleware):
         (content-block) form is handled defensively so the guard never drops a
         model's error text.
         """
-        content = result.content
+        # Typed as `str | list[...]`, but kept as Any so the non-string, non-list
+        # fallback below stays reachable rather than being narrowed away.
+        content: Any = result.content
         if isinstance(content, str):
             result.content = content + note
         elif isinstance(content, list):
@@ -225,7 +227,7 @@ class LoopGuardMiddleware(AgentMiddleware):
         return configurable.get("thread_id") or _UNKNOWN_RUN
 
     @staticmethod
-    def _args_key(args: Any) -> str:
+    def _args_key(args: object) -> str:
         try:
             serialized = json.dumps(args, sort_keys=True, default=str)
         except (TypeError, ValueError):

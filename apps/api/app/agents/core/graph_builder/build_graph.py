@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import cast
 
@@ -8,6 +9,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
 )
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.nodes import (
     follow_up_actions_node,
     manage_system_prompts_node,
@@ -44,7 +46,7 @@ from shared.py.wide_events import log
 async def build_executor_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
-):
+) -> AsyncIterator[CompiledAgentGraph]:
     """Construct and compile the executor agent graph with handoff tools."""
     if chat_llm is None:
         chat_llm = init_llm()
@@ -152,7 +154,7 @@ async def build_executor_graph(
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
 )
-async def build_executor_agent():
+async def build_executor_agent() -> CompiledAgentGraph:
     """Build and return the executor agent with full tool access."""
     log.debug(f"{LogTag.AGENT} Building executor agent with lazy providers")
 
@@ -165,7 +167,7 @@ async def build_executor_agent():
 async def build_comms_graph(
     chat_llm: LanguageModelLike | None = None,
     in_memory_checkpointer: bool = False,
-):
+) -> AsyncIterator[CompiledAgentGraph]:
     """Build the comms agent graph with only the executor tool."""
     if chat_llm is None:
         chat_llm = init_llm()
@@ -233,7 +235,7 @@ async def build_comms_graph(
     strategy=MissingKeyStrategy.WARN,
     auto_initialize=False,
 )
-async def build_comms_agent():
+async def build_comms_agent() -> CompiledAgentGraph:
     """Build and return the comms agent using lazy providers."""
     log.debug(f"{LogTag.AGENT} Building comms agent with lazy providers")
 
@@ -242,7 +244,7 @@ async def build_comms_agent():
     return graph
 
 
-def build_graphs():
+def build_graphs() -> None:
     """Build comms and executor agents and register subagent providers."""
     log.info(f"{LogTag.AGENT} Building core agent graphs...")
 

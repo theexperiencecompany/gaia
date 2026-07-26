@@ -103,7 +103,7 @@ def create_agent(
     retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]] | None = None,
     initial_tool_ids: list[str] | None = None,
     disable_retrieve_tools: bool = False,
-    context_schema=None,
+    context_schema: type[Any] | None = None,
     agent_name: str = "main_agent",
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
@@ -472,7 +472,7 @@ def create_agent(
     async def areject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
         return reject_unbound_tools(tool_calls, store=store)
 
-    def should_continue(state: State, *, store: BaseStore):
+    def should_continue(state: State, *, store: BaseStore) -> str | Send | list[Send]:
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:

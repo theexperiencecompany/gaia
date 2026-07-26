@@ -70,9 +70,11 @@ async def create_subagent_system_message(
 ) -> SystemMessage:
     """Return the static subagent prompt as a SystemMessage.
 
-    ``user_id`` is intentionally unused here; provider metadata for this user
-    is carried on the dynamic-context SystemMessage emitted beside this one.
+    ``agent_name`` and ``user_id`` are intentionally unused here — the prompt is
+    keyed only by ``integration_id``; provider metadata for this user is carried
+    on the dynamic-context SystemMessage emitted beside this one.
     """
+    del agent_name  # retained for call-site symmetry with build_agent_config()
     system_prompt = await build_subagent_system_prompt(
         integration_id=integration_id,
         user_id=user_id,

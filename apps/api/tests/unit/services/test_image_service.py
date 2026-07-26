@@ -108,23 +108,6 @@ class TestApiGenerateImage:
         assert result["prompt"] == "a cat"
         assert result["improved_prompt"] is None
 
-    async def test_handles_dict_return_with_image_key(self):
-        image_dict = {"image": b"raw_bytes_data"}
-        with (
-            patch(
-                "app.services.image_service.generate_image",
-                new_callable=AsyncMock,
-                return_value=image_dict,
-            ),
-            patch(
-                "app.services.image_service.cloudinary.uploader.upload",
-                return_value={"secure_url": "https://cdn.example.com/dict.png"},
-            ),
-        ):
-            result = await api_generate_image("test", improve_prompt=False)
-
-        assert result["url"] == "https://cdn.example.com/dict.png"
-
     async def test_raises_500_on_invalid_dict_return(self):
         with (
             patch(

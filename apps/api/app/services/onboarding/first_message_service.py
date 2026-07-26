@@ -1,8 +1,9 @@
 """Generate GAIA's first message to a new user after onboarding intelligence."""
 
 import time
+from typing import cast
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.prompts.onboarding_prompts import (
@@ -90,7 +91,7 @@ async def generate_first_message(
             llm, [HumanMessage(content=prompt)], label="onboarding_first_message"
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
-        message = response.text.strip()
+        message = cast(BaseMessage, response).text.strip()
 
         log.info(
             f"{LogTag.ONBOARDING} first_message generated",

@@ -20,7 +20,8 @@ from typing import Any
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.runtime import Runtime, get_config
+from langgraph.config import get_config
+from langgraph.runtime import Runtime
 
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
