@@ -16,24 +16,34 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.agents.tools.tracked_todo_tools import (
+    _apply_cron_first_fire,
     _build_clearable_datetime_update,
     _build_labels_update,
     _build_list_detail_parts,
     _build_priority_update,
     _build_recurrence_update,
     _build_scheduled_at_update,
+    _fire_and_forget,
+    _format_first_fire_note,
+    _format_tracked_todo_full,
+    _get_user_tz,
     _is_cron_expression,
     _parse_iso_future_datetime,
     _patch_canvas_section,
+    _persist_scheduling_fields,
+    _resolve_cron_first_fire,
     _resolve_first_fire,
+    _schedule_execution_after_create,
     _validate_recurrence_format,
     complete_tracked_todo,
     create_tracked_todo,
+    list_tracked_todos,
+    search_todo_context,
     update_tracked_todo,
     update_tracked_todo_canvas,
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
-from app.models.todo_models import TodoDocument
+from app.models.todo_models import Priority, TodoDocument, TodoResponse
 
 pytestmark = pytest.mark.unit
 
@@ -166,6 +176,13 @@ class TestBuildScheduledAtUpdate:
         assert error is None
         assert fields["scheduled_at"] == _FUTURE
 
+    def test_invalid_format_rejected(self):
+        fields: dict[str, object] = {}
+        error = _build_scheduled_at_update("garbage", fields)
+        assert error is not None
+        assert "invalid scheduled_at format" in error
+        assert fields == {}
+
 
 # ---------------------------------------------------------------------------
 # _build_clearable_datetime_update / _build_priority_update / _build_labels_update
@@ -264,9 +281,14 @@ class TestRecurrenceValidation:
     def test_valid_shortcut_passes_format_validation(self):
         assert _validate_recurrence_format("daily") is None
 
-    def test_unknown_shortcut_word_is_rejected(self):
+    def test_unknown_shortcut_word_is_rejected_with_shortcut_guidance(self):
+        """A typo'd shortcut ('monthly', 'dailyy', ...) is not a known shortcut
+        and not a valid cron either — the error must still point the caller at
+        the valid shortcut options, not just say "invalid" with no guidance."""
         error = _validate_recurrence_format("monthly")
         assert error is not None
+        assert "Use one of:" in error
+        assert "daily" in error
 
 
 class TestResolveFirstFire:
@@ -464,6 +486,41 @@ class TestUpdateTrackedTodoValidation:
             )
         assert "not found" in result
 
+    async def test_invalid_due_date_error_short_circuits_before_any_db_read(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.get",
+            new_callable=AsyncMock,
+        ) as mock_get:
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", due_date="garbage"
+            )
+        assert "invalid due_date format" in result
+        mock_get.assert_not_awaited()
+
+    async def test_invalid_priority_error_propagates_through_the_tool(self):
+        result = await update_tracked_todo.coroutine(
+            config=_config(), todo_id="t1", priority="urgent"
+        )
+        assert "invalid priority" in result
+
+    async def test_invalid_scheduled_at_error_propagates_through_the_tool(self):
+        result = await update_tracked_todo.coroutine(
+            config=_config(), todo_id="t1", scheduled_at="garbage"
+        )
+        assert "invalid scheduled_at format" in result
+
+    async def test_invalid_recurrence_error_propagates_through_the_tool(self):
+        result = await update_tracked_todo.coroutine(
+            config=_config(), todo_id="t1", recurrence="not a cron"
+        )
+        assert "invalid recurrence" in result
+
+    async def test_invalid_expires_at_error_propagates_through_the_tool(self):
+        result = await update_tracked_todo.coroutine(
+            config=_config(), todo_id="t1", expires_at="garbage"
+        )
+        assert "invalid expires_at format" in result
+
 
 # ---------------------------------------------------------------------------
 # Tool-level: create_tracked_todo — validation short-circuits
@@ -503,3 +560,752 @@ class TestCompleteTrackedTodo:
                 config=_config(), todo_id="t1", summary="done"
             )
         assert "could not complete" in result
+
+    async def test_success_returns_confirmation(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.complete_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            result = await complete_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", summary="done"
+            )
+        assert "completed and archived" in result
+
+
+# ---------------------------------------------------------------------------
+# _get_user_tz
+# ---------------------------------------------------------------------------
+
+
+class TestGetUserTz:
+    async def test_valid_timezone_is_returned(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value={"timezone": "America/New_York"},
+        ):
+            tz = await _get_user_tz("u1")
+        assert tz == "America/New_York"
+
+    async def test_invalid_timezone_name_falls_back_to_utc(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value={"timezone": "Not/A_Real_Zone"},
+        ):
+            tz = await _get_user_tz("u1")
+        assert tz == "UTC"
+
+    async def test_no_user_found_falls_back_to_utc(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            tz = await _get_user_tz("u1")
+        assert tz == "UTC"
+
+    async def test_lookup_failure_falls_back_to_utc_not_a_crash(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.get_user_by_id",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("mongo down"),
+        ):
+            tz = await _get_user_tz("u1")
+        assert tz == "UTC"
+
+
+# ---------------------------------------------------------------------------
+# _fire_and_forget
+# ---------------------------------------------------------------------------
+
+
+class TestFireAndForget:
+    async def test_schedules_the_coroutine_as_a_background_task(self):
+        ran = {"done": False}
+
+        async def _mark_done():
+            ran["done"] = True
+
+        _fire_and_forget(_mark_done())
+        # The task is scheduled, not awaited inline — give the loop one tick.
+        import asyncio
+
+        await asyncio.sleep(0)
+        assert ran["done"] is True
+
+
+# ---------------------------------------------------------------------------
+# _resolve_cron_first_fire — exception path
+# ---------------------------------------------------------------------------
+
+
+class TestResolveCronFirstFire:
+    def test_compute_failure_returns_clean_error_not_a_crash(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools._compute_first_fire_from_cron",
+            side_effect=RuntimeError("bad timezone data"),
+        ):
+            parsed, notes, error = _resolve_cron_first_fire("0 9 * * *", None, "UTC")
+        assert parsed is None
+        assert "could not compute first fire" in error
+
+    def test_scheduled_at_ignored_note_added_when_provided_alongside_cron(self):
+        parsed, notes, error = _resolve_cron_first_fire("0 9 * * *", _FUTURE_ISO, "UTC")
+        assert error is None
+        assert any("ignored" in n for n in notes)
+
+    def test_no_note_when_scheduled_at_not_provided(self):
+        parsed, notes, error = _resolve_cron_first_fire("0 9 * * *", None, "UTC")
+        assert error is None
+        assert notes == []
+
+
+# ---------------------------------------------------------------------------
+# _persist_scheduling_fields
+# ---------------------------------------------------------------------------
+
+
+class TestPersistSchedulingFields:
+    async def test_nothing_to_persist_is_a_no_op(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.update",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            error = await _persist_scheduling_fields("t1", "u1", None, None, None)
+        assert error is None
+        mock_update.assert_not_awaited()
+
+    async def test_persists_scheduled_at_and_recurrence(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.update",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            error = await _persist_scheduling_fields("t1", "u1", _FUTURE, "daily", None)
+        assert error is None
+        mock_update.assert_awaited_once()
+        update_arg = mock_update.await_args.kwargs["update"]
+        assert update_arg.scheduled_at == _FUTURE
+        assert update_arg.recurrence == "daily"
+
+    async def test_invalid_expires_at_format_returns_error_without_persisting(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.update",
+            new_callable=AsyncMock,
+        ) as mock_update:
+            error = await _persist_scheduling_fields("t1", "u1", None, None, "garbage")
+        assert error is not None
+        assert "invalid expires_at format" in error
+        mock_update.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# _schedule_execution_after_create
+# ---------------------------------------------------------------------------
+
+
+class TestScheduleExecutionAfterCreate:
+    async def test_success_returns_none(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            error = await _schedule_execution_after_create("t1", _FUTURE)
+        assert error is None
+
+    async def test_scheduler_returns_false_yields_user_facing_warning(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+            new_callable=AsyncMock,
+            return_value=False,
+        ):
+            error = await _schedule_execution_after_create("t1", _FUTURE)
+        assert "scheduling failed" in error
+        assert "will NOT execute automatically" in error
+
+    async def test_scheduler_exception_yields_user_facing_warning_not_a_crash(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("arq connection lost"),
+        ):
+            error = await _schedule_execution_after_create("t1", _FUTURE)
+        assert "scheduling failed" in error
+        assert "arq connection lost" in error
+
+
+# ---------------------------------------------------------------------------
+# _format_first_fire_note
+# ---------------------------------------------------------------------------
+
+
+class TestFormatFirstFireNote:
+    def test_with_valid_user_timezone(self):
+        note = _format_first_fire_note(_FUTURE, "America/New_York")
+        assert "your timezone (America/New_York)" in note
+        assert "update_tracked_todo" in note
+
+    def test_without_user_timezone_shows_utc(self):
+        note = _format_first_fire_note(_FUTURE, None)
+        assert "UTC" in note
+
+    def test_invalid_timezone_falls_back_to_utc_note_not_a_crash(self):
+        """Timezone.parse itself never raises (falls back to UTC with a
+        warning log) — this exercises that graceful path, not the astimezone
+        except-branch below, which needs Timezone.parse mocked to actually
+        raise since nothing in real usage can trigger it otherwise."""
+        note = _format_first_fire_note(_FUTURE, "Not/A_Real_Zone")
+        assert "UTC" in note
+
+    def test_astimezone_failure_falls_back_to_plain_utc_note(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.Timezone.parse",
+            side_effect=RuntimeError("unexpected tz failure"),
+        ):
+            note = _format_first_fire_note(_FUTURE, "America/New_York")
+        assert note == f"\nFirst fire (UTC): {_FUTURE.isoformat()}"
+
+
+# ---------------------------------------------------------------------------
+# _apply_cron_first_fire — exception path
+# ---------------------------------------------------------------------------
+
+
+class TestApplyCronFirstFire:
+    async def test_compute_failure_returns_clean_error(self):
+        fields: dict[str, object] = {}
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools._get_user_tz",
+                new_callable=AsyncMock,
+                return_value="UTC",
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools._compute_first_fire_from_cron",
+                side_effect=RuntimeError("bad cron math"),
+            ),
+        ):
+            error = await _apply_cron_first_fire("0 9 * * *", None, "u1", fields, [])
+        assert error is not None
+        assert "could not compute first fire" in error
+        assert "scheduled_at" not in fields
+
+    async def test_scheduled_at_alongside_cron_is_noted_as_ignored(self):
+        fields: dict[str, object] = {}
+        notes: list[str] = []
+        with patch(
+            "app.agents.tools.tracked_todo_tools._get_user_tz",
+            new_callable=AsyncMock,
+            return_value="UTC",
+        ):
+            error = await _apply_cron_first_fire("0 9 * * *", _FUTURE_ISO, "u1", fields, notes)
+        assert error is None
+        assert any("ignored" in n for n in notes)
+        assert isinstance(fields["scheduled_at"], datetime)
+
+
+# ---------------------------------------------------------------------------
+# _build_list_detail_parts — scheduled_at / recurrence display lines
+# ---------------------------------------------------------------------------
+
+
+class TestBuildListDetailPartsScheduling:
+    def _doc(self, **overrides) -> TodoDocument:
+        base = {"user_id": "u1", "title": "t"}
+        base.update(overrides)
+        return TodoDocument(**base)
+
+    def test_scheduled_at_is_shown(self):
+        now = datetime.now(UTC)
+        doc = self._doc(scheduled_at=_FUTURE)
+        parts = _build_list_detail_parts(doc, now)
+        assert any("Scheduled:" in p for p in parts)
+
+    def test_recurrence_is_shown(self):
+        now = datetime.now(UTC)
+        doc = self._doc(recurrence="daily")
+        parts = _build_list_detail_parts(doc, now)
+        assert any("Recurrence: daily" in p for p in parts)
+
+
+# ---------------------------------------------------------------------------
+# _format_tracked_todo_full
+# ---------------------------------------------------------------------------
+
+
+class TestFormatTrackedTodoFull:
+    def test_formats_title_labels_and_priority(self):
+        now = datetime.now(UTC)
+        doc = TodoDocument(
+            id="t1",
+            user_id="u1",
+            title="My todo",
+            labels=["work", GAIA_TRACKED_LABEL],
+            priority=Priority.HIGH,
+            created_at=now,
+            updated_at=now,
+        )
+        result = _format_tracked_todo_full(doc, now)
+        assert '"My todo"' in result
+        assert "[work]" in result
+        # The internal tracking label must never leak into the display text.
+        assert GAIA_TRACKED_LABEL not in result.split("\n")[0]
+        assert "Priority: high" in result
+        assert "(ID: t1)" in result
+
+    def test_includes_detail_line_when_scheduling_fields_present(self):
+        now = datetime.now(UTC)
+        doc = TodoDocument(
+            id="t1",
+            user_id="u1",
+            title="Scheduled todo",
+            recurrence="daily",
+            created_at=now,
+            updated_at=now,
+        )
+        result = _format_tracked_todo_full(doc, now)
+        assert "Recurrence: daily" in result
+
+
+# ---------------------------------------------------------------------------
+# search_todo_context
+# ---------------------------------------------------------------------------
+
+
+class TestSearchTodoContext:
+    async def test_missing_user_id_returns_error(self):
+        result = await search_todo_context.coroutine(config=_config(None), query="q")
+        assert "user_id not found" in result
+
+    async def test_no_matches_returns_friendly_message(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.search_canvas_context",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await search_todo_context.coroutine(config=_config(), query="q")
+        assert result == "No matching tracked todo context found."
+
+    async def test_matches_are_formatted_with_score_and_snippet(self):
+        matches = [
+            {
+                "title": "My todo",
+                "todo_id": "t1",
+                "score": 0.9,
+                "snippet": "some context",
+                "completed": False,
+            }
+        ]
+        with patch(
+            "app.agents.tools.tracked_todo_tools.search_canvas_context",
+            new_callable=AsyncMock,
+            return_value=matches,
+        ):
+            result = await search_todo_context.coroutine(config=_config(), query="q")
+        assert "My todo" in result
+        assert "t1" in result
+        assert "some context" in result
+        assert "[completed]" not in result
+
+    async def test_completed_match_is_flagged(self):
+        matches = [
+            {
+                "title": "Old todo",
+                "todo_id": "t2",
+                "score": 0.5,
+                "snippet": "done work",
+                "completed": True,
+            }
+        ]
+        with patch(
+            "app.agents.tools.tracked_todo_tools.search_canvas_context",
+            new_callable=AsyncMock,
+            return_value=matches,
+        ):
+            result = await search_todo_context.coroutine(config=_config(), query="q")
+        assert "[completed]" in result
+
+
+# ---------------------------------------------------------------------------
+# update_tracked_todo_canvas — success paths
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateTrackedTodoCanvasSuccess:
+    def _existing_doc(self) -> TodoDocument:
+        return TodoDocument(id="t1", user_id="user-1", title="t")
+
+    async def test_append_mode_calls_append_canvas(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.append_canvas", new_callable=AsyncMock
+            ) as mock_append,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reindex_canvas",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.system_log",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await update_tracked_todo_canvas.coroutine(
+                config=_config(), todo_id="t1", content="new note", mode="append"
+            )
+        mock_append.assert_awaited_once_with("t1", "user-1", "new note")
+        assert "Canvas updated (mode=append)" in result
+
+    async def test_replace_mode_calls_write_canvas(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.write_canvas", new_callable=AsyncMock
+            ) as mock_write,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reindex_canvas",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.system_log",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await update_tracked_todo_canvas.coroutine(
+                config=_config(), todo_id="t1", content="full rewrite", mode="replace"
+            )
+        mock_write.assert_awaited_once_with("t1", "user-1", "full rewrite")
+        assert "Canvas updated (mode=replace)" in result
+
+    async def test_section_mode_reads_current_canvas_and_patches_it(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.read_canvas",
+                new_callable=AsyncMock,
+                return_value="## Notes\nold",
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.write_canvas", new_callable=AsyncMock
+            ) as mock_write,
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reindex_canvas",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.system_log",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await update_tracked_todo_canvas.coroutine(
+                config=_config(),
+                todo_id="t1",
+                content="new",
+                mode="section",
+                section="Notes",
+            )
+        written_canvas = mock_write.await_args.args[2]
+        assert "new" in written_canvas
+        assert "old" not in written_canvas
+        assert "section=Notes" in result
+
+
+# ---------------------------------------------------------------------------
+# update_tracked_todo — success path
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateTrackedTodoSuccess:
+    def _existing_doc(self, **overrides) -> TodoDocument:
+        base = {"id": "t1", "user_id": "user-1", "title": "t"}
+        base.update(overrides)
+        return TodoDocument(**base)
+
+    async def test_priority_update_persists_and_reports_updated_keys(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(priority=Priority.HIGH),
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", priority="high"
+            )
+        assert "Updated tracked todo t1: priority" in result
+
+    async def test_scheduled_at_update_reschedules_execution(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(scheduled_at=_FUTURE),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reschedule_execution",
+                new_callable=AsyncMock,
+            ) as mock_reschedule,
+        ):
+            await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", scheduled_at=_FUTURE_ISO
+            )
+        mock_reschedule.assert_awaited_once_with("t1", _FUTURE)
+
+    async def test_cron_recurrence_update_surfaces_ignored_scheduled_at_note(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(recurrence="0 9 * * *"),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.reschedule_execution",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools._get_user_tz",
+                new_callable=AsyncMock,
+                return_value="UTC",
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(),
+                todo_id="t1",
+                recurrence="0 9 * * *",
+                scheduled_at=_FUTURE_ISO,
+            )
+        assert "Notes:" in result
+        assert "ignored" in result
+
+    async def test_references_are_appended_and_reported(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(priority=Priority.HIGH),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.add_references",
+                new_callable=AsyncMock,
+            ) as mock_add_refs,
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(),
+                todo_id="t1",
+                priority="high",
+                references=["t2", "t3"],
+            )
+        mock_add_refs.assert_awaited_once_with("t1", user_id="user-1", references=["t2", "t3"])
+        assert "references" in result
+
+    async def test_update_returns_none_when_todo_disappears_mid_call(self):
+        """The doc existed at the pre-check but the update call itself found
+        nothing (raced delete) — must report not-found, not a silent no-op."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.get",
+                new_callable=AsyncMock,
+                return_value=self._existing_doc(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+        ):
+            result = await update_tracked_todo.coroutine(
+                config=_config(), todo_id="t1", priority="high"
+            )
+        assert "not found" in result
+
+
+# ---------------------------------------------------------------------------
+# create_tracked_todo — success path
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTrackedTodoSuccess:
+    def _response(self, **overrides) -> TodoResponse:
+        now = datetime.now(UTC)
+        base = {
+            "id": "t1",
+            "user_id": "user-1",
+            "title": "t",
+            "created_at": now,
+            "updated_at": now,
+        }
+        base.update(overrides)
+        return TodoResponse(**base)
+
+    async def test_create_without_scheduling_returns_confirmation(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+            new_callable=AsyncMock,
+            return_value=self._response(),
+        ):
+            result = await create_tracked_todo.coroutine(config=_config(), title="t")
+        assert "Tracked todo created: t1" in result
+        assert "update_tracked_todo_canvas(todo_id='t1'" in result
+
+    async def test_create_with_scheduled_at_persists_and_schedules(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=self._response(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_schedule,
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", scheduled_at=_FUTURE_ISO
+            )
+        mock_schedule.assert_awaited_once()
+        assert "First fire" in result or "first fire" in result
+
+    async def test_schedule_failure_surfaces_warning_but_todo_still_created(self):
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=self._response(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", scheduled_at=_FUTURE_ISO
+            )
+        assert "scheduling failed" in result
+
+    async def test_cron_recurrence_with_scheduled_at_surfaces_the_ignored_note(self):
+        """Passing both a cron recurrence and scheduled_at is allowed but the
+        cron wins — the output must tell the caller scheduled_at was ignored,
+        not silently drop it."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=self._response(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.schedule_execution",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(),
+                title="t",
+                recurrence="0 9 * * *",
+                scheduled_at=_FUTURE_ISO,
+            )
+        assert "Details:" in result
+        assert "ignored" in result
+
+    async def test_persist_scheduling_failure_is_surfaced_after_todo_is_already_created(self):
+        """The todo row already exists by the time scheduling fields are
+        persisted — a persist failure must still be reported to the caller,
+        not swallowed just because create_tracked_todo itself succeeded."""
+        with (
+            patch(
+                "app.agents.tools.tracked_todo_tools.tracked_todo_service.create_tracked_todo",
+                new_callable=AsyncMock,
+                return_value=self._response(),
+            ),
+            patch(
+                "app.agents.tools.tracked_todo_tools.todo_repository.update",
+                new_callable=AsyncMock,
+            ),
+        ):
+            result = await create_tracked_todo.coroutine(
+                config=_config(), title="t", expires_at="garbage"
+            )
+        assert "invalid expires_at format" in result
+
+
+# ---------------------------------------------------------------------------
+# list_tracked_todos
+# ---------------------------------------------------------------------------
+
+
+class TestListTrackedTodos:
+    async def test_missing_user_id_returns_error(self):
+        result = await list_tracked_todos.coroutine(config=_config(None))
+        assert "user_id not found" in result
+
+    async def test_no_active_todos_returns_friendly_message(self):
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.list_active_tracked",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await list_tracked_todos.coroutine(config=_config())
+        assert result == "No active tracked todos."
+
+    async def test_active_todos_are_listed_with_count(self):
+        docs = [
+            TodoDocument(id="t1", user_id="user-1", title="First"),
+            TodoDocument(id="t2", user_id="user-1", title="Second"),
+        ]
+        with patch(
+            "app.agents.tools.tracked_todo_tools.todo_repository.list_active_tracked",
+            new_callable=AsyncMock,
+            return_value=docs,
+        ):
+            result = await list_tracked_todos.coroutine(config=_config())
+        assert "Active tracked todos (2):" in result
+        assert "First" in result
+        assert "Second" in result

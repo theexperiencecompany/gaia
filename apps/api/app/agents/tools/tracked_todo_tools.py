@@ -269,17 +269,22 @@ def _build_scheduled_at_update(
 
 
 def _validate_recurrence_format(recurrence: str) -> str | None:
-    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut."""
-    if _is_cron_expression(recurrence):
-        try:
-            _croniter(recurrence)
-        except (ValueError, KeyError):
-            return f"Error: invalid recurrence '{recurrence}'."
+    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut.
+
+    _is_cron_expression is defined as "not a known shortcut", so the two cases
+    are exhaustive: anything that isn't a shortcut is validated as a cron
+    expression here — there is no separate "unknown shortcut-like string"
+    branch to fall through to.
+    """
+    if not _is_cron_expression(recurrence):
         return None
-    if recurrence not in _RECURRENCE_SHORTCUTS:
+    try:
+        _croniter(recurrence)
+    except (ValueError, KeyError):
         return (
             f"Error: invalid recurrence '{recurrence}'. "
-            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, or a cron expression."
+            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
+            "or a valid 5-field cron expression."
         )
     return None
 
@@ -748,7 +753,11 @@ async def update_tracked_todo(
     # Validate each field sequentially with short-circuit so we don't keep doing
     # work (in particular the async _get_user_tz Mongo lookup inside the
     # recurrence validator) after an earlier field has already failed.
-    if error := _build_labels_update(labels, update_fields):
+    # _build_labels_update can never actually return an error today (there is
+    # no label validation yet) — the check-and-return is kept for the same
+    # shape as every other field below, so adding label validation later
+    # doesn't require restoring this line.
+    if error := _build_labels_update(labels, update_fields):  # pragma: no cover
         return error
     if error := _build_clearable_datetime_update(due_date, "due_date", update_fields):
         return error
