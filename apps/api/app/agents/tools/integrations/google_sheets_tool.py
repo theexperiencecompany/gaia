@@ -36,11 +36,17 @@ from app.utils.google_sheets_utils import (
     get_column_index_by_header,
     get_sheet_id_by_name,
     hex_to_rgb,
+    parse_a1_anchor,
     parse_a1_range,
 )
 from shared.py.wide_events import log
 
 SHEETS_TOOLKIT = "GOOGLESHEETS"
+
+# New conditional-format rules go to the front so they win over existing rules.
+NEW_FORMAT_RULE_INDEX = 0
+
+RECENT_SPREADSHEETS_PAGE_SIZE = 20
 
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
@@ -142,6 +148,9 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
             "spreadsheet_id": request.spreadsheet_id,
             "url": url,
             "shared": shared,
+            # Without this a partial failure reports only `total_failed`, leaving
+            # no way to tell the user which recipient failed or why.
+            "errors": errors,
             "total_shared": len(shared),
             "total_failed": len(errors),
         }
@@ -229,7 +238,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
             range_spec = parse_a1_range(request.source_range)
             source_range.update(range_spec)
 
-        dest_range = parse_a1_range(request.destination_cell)
+        dest_row, dest_col = parse_a1_anchor(request.destination_cell)
 
         pivot_table: dict[str, Any] = {
             "source": source_range,
@@ -246,8 +255,8 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                         "rows": [{"values": [{"pivotTable": pivot_table}]}],
                         "start": {
                             "sheetId": dest_sheet_id,
-                            "rowIndex": dest_range["startRowIndex"],
-                            "columnIndex": dest_range["startColumnIndex"],
+                            "rowIndex": dest_row,
+                            "columnIndex": dest_col,
                         },
                         "fields": "pivotTable",
                     }
@@ -420,31 +429,22 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
         rule: dict[str, Any] = {"ranges": [range_spec]}
 
         if request.format_type == "color_scale":
-            color_scale: dict[str, Any] = {}
+            # Google requires both endpoints on a gradient rule; sending nulls
+            # for a missing colour gets the whole batch rejected.
+            if not request.min_color or not request.max_color:
+                raise ValueError("min_color and max_color are required for color_scale")
 
-            if request.min_color:
-                color_scale["minpoint"] = {
-                    "type": "MIN",
-                    "color": hex_to_rgb(request.min_color),
-                }
+            gradient_rule: dict[str, Any] = {
+                "minpoint": {"type": "MIN", "color": hex_to_rgb(request.min_color)},
+                "maxpoint": {"type": "MAX", "color": hex_to_rgb(request.max_color)},
+            }
             if request.mid_color:
-                color_scale["midpoint"] = {
+                gradient_rule["midpoint"] = {
                     "type": "PERCENTILE",
                     "value": "50",
                     "color": hex_to_rgb(request.mid_color),
                 }
-            if request.max_color:
-                color_scale["maxpoint"] = {
-                    "type": "MAX",
-                    "color": hex_to_rgb(request.max_color),
-                }
-
-            rule["gradientRule"] = {
-                "minpoint": color_scale.get("minpoint"),
-                "maxpoint": color_scale.get("maxpoint"),
-            }
-            if "midpoint" in color_scale:
-                rule["gradientRule"]["midpoint"] = color_scale["midpoint"]
+            rule["gradientRule"] = gradient_rule
 
         else:
             bool_condition: dict[str, Any] = {}
@@ -472,18 +472,17 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                 if not request.condition:
                     raise ValueError("condition required for value_based")
 
-                api_condition = condition_map.get(request.condition)
-                if not api_condition:
-                    raise ValueError(f"Unknown condition: {request.condition}")
-
-                bool_condition = {"type": api_condition}
+                bool_condition = {"type": condition_map[request.condition]}
 
                 if request.condition not in ["is_empty", "is_not_empty"]:
-                    if not request.condition_values:
-                        raise ValueError("condition_values required")
-                    bool_condition["values"] = [
-                        {"userEnteredValue": v} for v in request.condition_values
-                    ]
+                    expected = 2 if request.condition == "between" else 1
+                    values = request.condition_values or []
+                    if len(values) != expected:
+                        raise ValueError(
+                            f"'{request.condition}' requires exactly {expected} "
+                            f"condition_values, got {len(values)}"
+                        )
+                    bool_condition["values"] = [{"userEnteredValue": v} for v in values]
 
             format_spec: dict[str, Any] = {}
             if request.background_color:
@@ -495,6 +494,14 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
             if request.italic is not None:
                 format_spec.setdefault("textFormat", {})["italic"] = request.italic
 
+            # A rule with no format is a no-op Google accepts silently, so the
+            # user is told the formatting was applied and then sees nothing.
+            if not format_spec:
+                raise ValueError(
+                    "At least one of background_color, text_color, bold or italic "
+                    "is required to format matching cells"
+                )
+
             rule["booleanRule"] = {
                 "condition": bool_condition,
                 "format": format_spec,
@@ -505,7 +512,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                 {
                     "addConditionalFormatRule": {
                         "rule": rule,
-                        "index": 0,
+                        "index": NEW_FORMAT_RULE_INDEX,
                     }
                 }
             ]
@@ -525,6 +532,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
             "url": url,
             "range_applied": f"{request.sheet_name}!{request.range}",
             "format_type": request.format_type,
+            "rule_index": NEW_FORMAT_RULE_INDEX,
         }
 
     @composio.tools.custom_tool(toolkit="GOOGLESHEETS")
@@ -572,19 +580,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
             domain_range = r_spec
             series_ranges = [r_spec]
 
-        anchor = parse_a1_range(request.anchor_cell)
-
-        chart_type_map = {
-            "BAR": "BAR",
-            "COLUMN": "COLUMN",
-            "LINE": "LINE",
-            "AREA": "AREA",
-            "SCATTER": "SCATTER",
-            "COMBO": "COMBO",
-            "PIE": "PIE",
-        }
-
-        api_chart_type = chart_type_map.get(request.chart_type, "BAR")
+        anchor_row, anchor_col = parse_a1_anchor(request.anchor_cell)
 
         if request.chart_type == "PIE":
             chart_spec: dict[str, Any] = {
@@ -612,7 +608,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
 
             chart_spec = {
                 "basicChart": {
-                    "chartType": api_chart_type,
+                    "chartType": request.chart_type,
                     "legendPosition": request.legend_position,
                     "domains": [
                         {
@@ -653,8 +649,8 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                     "overlayPosition": {
                         "anchorCell": {
                             "sheetId": dest_sheet_id,
-                            "rowIndex": anchor["startRowIndex"],
-                            "columnIndex": anchor["startColumnIndex"],
+                            "rowIndex": anchor_row,
+                            "columnIndex": anchor_col,
                         },
                         "widthPixels": request.width,
                         "heightPixels": request.height,
@@ -715,7 +711,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> list[str]:
                 query={
                     "q": f"mimeType='{mime}'",
                     "orderBy": "viewedByMeTime desc",
-                    "pageSize": 20,
+                    "pageSize": RECENT_SPREADSHEETS_PAGE_SIZE,
                     "fields": "files(id,name,modifiedTime,webViewLink)",
                 },
             )
