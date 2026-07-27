@@ -18,22 +18,20 @@ Collections are created on demand and cached, so the MongoDB connection is
 deferred until a collection is actually used rather than paid at import time.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.constants.log_tags import LogTag
+from app.db.mongodb.mongodb import MongoDB
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from app.db.mongodb.mongodb import MongoDB
 
 # Cache for async (Motor) collections
 _collections_cache: dict[str, AsyncIOMotorCollection[dict[str, Any]]] = {}
-_mongodb_instance: "MongoDB | None" = None
+_mongodb_instance: MongoDB | None = None
 
 
-def _get_mongodb_instance() -> "MongoDB":
+def _get_mongodb_instance() -> MongoDB:
     """Get or create async MongoDB instance (Motor)."""
     global _mongodb_instance
     if _mongodb_instance is None:

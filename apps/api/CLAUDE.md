@@ -314,21 +314,63 @@ def log_calls(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     return wrapper
 ```
 
-If the wrapper's own call pattern (e.g. a two-step decorator factory) genuinely defeats `ParamSpec` inference and a real fix would require reworking the decorator's calling convention, that crosses the risk bar in §11 — leave it, and document why.
+If the wrapper's own call pattern (e.g. a two-step decorator factory) genuinely defeats `ParamSpec` inference and a real fix would require reworking the decorator's calling convention, that crosses the risk bar in §13 — leave it, and document why.
 
-### 9. Framework-injected / structurally-required parameters are kept exactly as the framework calls them
+### 9. Never use a `TYPE_CHECKING`-guarded import to route around a circular import
+
+A circular import is a real architectural problem — two modules that need each other. Hiding it behind `if TYPE_CHECKING:` (plus a string forward-reference) makes mypy happy without fixing anything: the cycle still exists, it's just invisible to anyone not specifically checking import order, and it signals "this dependency direction is wrong" to nobody. Fix the actual dependency instead.
+
+```python
+# wrong — TYPE_CHECKING import hides a real circular dependency; the cycle is
+# still there, just invisible at runtime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.config.settings import CommonSettings
+
+
+def validate_settings(settings_obj: "CommonSettings") -> list[MissingGroup]:
+    for key in group.keys:
+        if not hasattr(settings_obj, key):
+            ...
+```
+
+```python
+# correct — the function only ever does hasattr()/getattr() with dynamic
+# keys; it never needed the concrete CommonSettings type at all. `object`
+# is the honest, real type here, and the cycle disappears entirely.
+def validate_settings(settings_obj: object) -> list[MissingGroup]:
+    for key in group.keys:
+        if not hasattr(settings_obj, key):
+            ...
+```
+
+When the concrete type genuinely is needed (not just a couple of dynamically-accessed fields), fix the cycle for real:
+
+- **Narrow to a `Protocol`** naming only the attributes actually used, defined locally — no import from the other module needed at all.
+- **Extract the shared type** into a lower-level module both sides can import without a cycle (e.g. a `types.py` neither original module needs to import from the other for).
+- **Invert the dependency** — restructure so the relationship only flows one direction; the thing being imported shouldn't need to import back.
+
+`TYPE_CHECKING` has exactly two legitimate uses in this codebase, and nothing else:
+
+1. **A stub-only module that doesn't exist at runtime** — e.g. `from _typeshed import ExcInfo`. `_typeshed` is a type-checker-only package; importing it unconditionally is a real `ImportError` at runtime, not caution. This is always fine, no comment needed.
+2. **An import cycle that is provably real and unfixable without a large, out-of-scope restructure** — verify the cycle actually exists (import the target module directly and see if it errors) before reaching for `TYPE_CHECKING`; two of the four `TYPE_CHECKING` guards found in this codebase during this pass turned out to have no real cycle at all — unwarranted caution, not a fix, and were removed in favor of a normal top-level import. When the cycle is real, this is a last resort, with a comment naming which module imports back and why.
+
+It is never the first thing to reach for, and it is never a substitute for actually checking whether the cycle exists.
+
+### 10. Framework-injected / structurally-required parameters are kept exactly as the framework calls them
 
 If a parameter is unused by one implementation but required by a framework's call signature — a LangGraph node/tool injecting `config`/`store`, FastAPI `Depends()`, an ARQ task's `ctx`, a Pydantic validator's `cls`/`info`, an abstract method's full interface — keep it. Verify the real call site or framework source first: "looks unused in this body" is not the same as "is unused." Add a `pyproject.toml` `per-file-ignores` entry naming the framework contract; never rename or delete the parameter to silence a linter.
 
-### 10. Narrowing `Any`/unknown values: `cast()` over `isinstance()` when already correct by construction
+### 11. Narrowing `Any`/unknown values: `cast()` over `isinstance()` when already correct by construction
 
 Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when you already know the value is correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result, a value a framework's own contract guarantees). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object — a mock, a duck-typed wrapper, a different concrete implementation of a `Protocol` — that was working fine before.
 
-### 11. Never change behavior to satisfy a type checker
+### 12. Never change behavior to satisfy a type checker
 
 Confirmed real regressions from exactly this mistake: deleting an `isinstance(x, dict)` guard because a checker called the branch "unreachable" (it wasn't — real callers passed non-dict values); deleting a framework-injected parameter because it "looked unused" (the framework called it positionally); changing a function's actual return *values*, not just its annotation, to satisfy a stricter type (broke a downstream consumer needing the original shape). Fixing a type error changes how something is *described*; it must never change what the code *does*.
 
-### 12. High acceptance bar — when to leave a type loose, deliberately, with a comment
+### 13. High acceptance bar — when to leave a type loose, deliberately, with a comment
 
 Stop before forcing full type safety through:
 

@@ -19,6 +19,8 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
+    # Import under TYPE_CHECKING only: mcp_client.py imports this module for
+    # get_mcp_client_pool, so a runtime import back would be circular.
     from app.services.mcp.mcp_client import MCPClient
 
 

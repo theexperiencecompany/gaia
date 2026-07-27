@@ -1,13 +1,12 @@
 """Redis utilities for GAIA system."""
 
 import asyncio
-from typing import TYPE_CHECKING, ClassVar
+from typing import ClassVar
+
+from arq.connections import ArqRedis
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from arq.connections import ArqRedis
 
 
 class RedisPoolManager:
@@ -15,7 +14,7 @@ class RedisPoolManager:
 
     _instance: ClassVar["RedisPoolManager | None"] = None
     _lock: ClassVar[asyncio.Lock] = asyncio.Lock()
-    _pool: ClassVar["ArqRedis | None"] = None
+    _pool: ClassVar[ArqRedis | None] = None
 
     def __new__(cls) -> "RedisPoolManager":
         if cls._instance is None:
@@ -23,7 +22,7 @@ class RedisPoolManager:
         return cls._instance
 
     @classmethod
-    async def get_pool(cls) -> "ArqRedis":
+    async def get_pool(cls) -> ArqRedis:
         """Get or create Redis pool."""
         log.set(operation="redis_get_pool", component="RedisPoolManager")
         if cls._pool is not None:
