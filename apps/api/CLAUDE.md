@@ -171,6 +171,63 @@ async def get_todo(todo_id: str, user_id: str) -> TodoDocument | None:
     return await todo_repository.get(todo_id, user_id=user_id)
 ```
 
+## Type Safety — No Loose `dict[str, Any]` Returns
+
+Every function that returns structured data returns a real type — `dict[str, Any]` is the single most common way a real bug hides from mypy (a `"- ".join(notes)` crash on `list[dict]` was found only once the real return type was checked). This applies at every layer of a flow: endpoint → service → repository, however deep it goes.
+
+**Endpoints**: never `-> dict[str, Any]`. Return a Pydantic model, or `JSONResponse` with `response_model=` set (see FastAPI — Route Handlers above). If the service layer already returns a real model, return it (or its data) directly — don't call `.model_dump()` just to downgrade it back to a dict for the response.
+
+**Services**: return a real model, not a hand-assembled dict.
+
+```python
+# wrong — every caller has to know the keys by convention, nothing is checked
+async def get_todo_summary(todo_id: str) -> dict[str, Any]:
+    doc = await todo_repository.get(todo_id)
+    return {"id": doc.id, "title": doc.title, "status": doc.status}
+
+
+# correct — a real return type, checked at every call site
+class TodoSummary(BaseModel):
+    id: str
+    title: str
+    status: TodoStatus
+
+
+async def get_todo_summary(todo_id: str) -> TodoSummary:
+    doc = await todo_repository.get(todo_id)
+    return TodoSummary(id=doc.id, title=doc.title, status=doc.status)
+```
+
+**Repositories**: already the strict-typed pattern for the 33-collection repository layer (`app.db.repositories`) — extend that pattern in new code, never introduce a rival one.
+
+**TypedDict vs Pydantic** — pick by whether the boundary needs validation:
+
+- `BaseModel`: crosses a validation/serialization boundary (API request/response, DB document, anything built from untrusted or external input).
+- `TypedDict`: pure in-process shape contract, no runtime validation needed — cheaper, still fully checked by mypy.
+
+**The one legitimate `dict[str, Any]`: a true external boundary.** Raw third-party payloads (webhook bodies, provider SDK responses before parsing) may enter as `dict[str, Any]` — but validate into a real model immediately, in the same function that receives it. Never let a raw dict travel more than one hop past where it entered.
+
+```python
+# acceptable — this IS the boundary; validated immediately, never returned raw
+async def handle_webhook(payload: dict[str, Any]) -> WebhookEvent:
+    return WebhookEvent.model_validate(payload)
+```
+
+**Framework-injected / structurally-unused parameters.** If a parameter is unused by one implementation but required by a framework's call signature (a LangGraph node/tool injecting `config`/`store`, FastAPI `Depends()`, an ARQ task's `ctx`, a Pydantic validator's `cls`/`info`), keep it exactly as the framework calls it. Verify the real call site or framework source first — "looks unused" is not the same as "is unused." Add a `pyproject.toml` `per-file-ignores` entry naming the framework contract; never rename or delete the parameter to silence the linter.
+
+**Narrowing `Any` without changing behavior.** Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when the value is already correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object (a mock, a duck-typed wrapper, a different concrete implementation) that was working fine before.
+
+**Never change behavior to satisfy a type checker.** Confirmed real regressions from exactly this mistake: deleting an `isinstance(x, dict)` guard because a checker called the branch "unreachable" (it wasn't — real callers passed non-dict values); deleting a framework-injected parameter because it "looked unused" (the framework called it positionally); changing a function's actual return *values*, not just its annotation, to match a stricter type (broke a downstream consumer needing the original shape). Fixing a type error changes how something is *described*; it must never change what the code *does*.
+
+**High acceptance bar — when to leave a type loose, deliberately, with a comment.** Stop before forcing full type safety through:
+
+- A change to data actually returned to an external consumer (frontend contract, external API caller) — that's a product decision, not a typing fix.
+- Rewriting a third-party library's call signature or a framework's calling convention.
+- A change that ripples across more files than can be reviewed and verified in one pass.
+- Anything whose correctness can't be confirmed by running the real test suite — "mypy is happy" is not proof; "the tests still pass and I can explain why" is.
+
+A narrower type that's provably correct beats a "complete" one that required guessing.
+
 ## Anti-Patterns
 
 - No sync DB/HTTP calls in async endpoints — all I/O must be `async`.
