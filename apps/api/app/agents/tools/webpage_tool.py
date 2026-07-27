@@ -135,7 +135,7 @@ async def web_search_tool(
 
         # Return the raw search results for the LLM to use
         # Include explicit URL list so the LLM has a ground-truth set and cannot hallucinate
-        real_urls = [r.get("url", "") for r in web_results if r.get("url")]
+        real_urls = [item.url for item in search_result.web if item.url]
         return {
             **search_result.model_dump(),
             "real_urls_from_search": real_urls,
