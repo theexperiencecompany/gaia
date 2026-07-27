@@ -100,7 +100,7 @@ import contextlib
 import contextvars
 from dataclasses import dataclass, field
 import time
-from typing import Any, Final
+from typing import Any, Final, TypeVar, cast
 
 from prometheus_client import (  # noqa: F401  # Gauge used via lambda factories below
     REGISTRY,
@@ -142,7 +142,10 @@ _FS_OP_BUCKETS: Final[tuple[float, ...]] = (
 )
 
 
-def _register_once(name: str, factory: Callable[[], Any]) -> Any:
+_CollectorT = TypeVar("_CollectorT")
+
+
+def _register_once(name: str, factory: Callable[[], _CollectorT]) -> _CollectorT:
     """Register a Prometheus collector at module load, tolerating re-imports.
 
     `uvicorn --reload` and some test fixtures import this module twice in the
@@ -156,7 +159,7 @@ def _register_once(name: str, factory: Callable[[], Any]) -> Any:
         existing = REGISTRY._names_to_collectors.get(name)  # noqa: SLF001
         if existing is None:
             raise
-        return existing
+        return cast(_CollectorT, existing)
 
 
 _FS_OP_DURATION_SECONDS = _register_once(
@@ -348,7 +351,7 @@ def record_fs_op(
     duration_ms: float,
     error: BaseException | None = None,
     bytes: int = 0,
-    **labels: Any,
+    **labels: str,
 ) -> None:
     """Record one completed FS op.
 
@@ -415,7 +418,7 @@ def add_fs_bytes(op: str, n: int) -> None:
 
 
 @contextlib.asynccontextmanager
-async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
+async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
     """Async context manager that records the wall-clock duration of ``op``.
 
     On exception, the op is still recorded (with ``error=<exception>``) so we
@@ -453,7 +456,10 @@ async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
                 op=op,
                 error_type=type(e).__name__,
             )
-        record_fs_op(op, duration_ms=elapsed_ms, error=err, **labels)
+        # cast: **labels is homogeneously str, but record_fs_op also has a
+        # same-spelled `bytes: int` keyword — mypy can't rule out a collision
+        # from the splat alone, even though no caller ever passes that label.
+        record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))
 
 
 def flush_fs_metrics() -> dict[str, dict[str, Any]]:

@@ -26,6 +26,7 @@ from app.models.todo_models import (
     SubTask,
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
+    TodoCounts,
     TodoListResponse,
     TodoModel,
     TodoResponse,
@@ -46,7 +47,7 @@ router = APIRouter()
 @router.get("/todos/counts")
 async def get_todo_counts(
     response: Response, user: Annotated[dict, Depends(get_current_user)]
-) -> dict[str, Any]:
+) -> TodoCounts:
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
@@ -59,7 +60,7 @@ async def get_todo_counts(
         counts = await todo_repository.compute_counts(
             user_id=user["user_id"], inbox_project_id=inbox_project_id
         )
-        return counts.model_dump()
+        return counts
 
     except Exception as e:
         raise HTTPException(

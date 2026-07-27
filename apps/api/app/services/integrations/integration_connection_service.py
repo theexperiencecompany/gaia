@@ -1,7 +1,7 @@
 """Integration connection service - handles connect/disconnect logic."""
 
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Literal
 
 from mcp_use.exceptions import OAuthAuthenticationError
 import pymongo.errors
@@ -33,7 +33,7 @@ from app.services.integrations.user_integrations import (
     remove_user_integration,
 )
 from app.services.integrations_fs import schedule_user_integrations_sync
-from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_client import MCPClient, get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
@@ -80,7 +80,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
 
 
 async def _redirect_to_oauth(
-    mcp_client: Any,
+    mcp_client: MCPClient,
     integration_id: str,
     integration_name: str,
     redirect_path: str,
@@ -119,7 +119,7 @@ async def _handle_auth_required(
     is_platform: bool,
     detected_auth_type: str | None,
     probe_result: dict | None,
-    mcp_client: Any,
+    mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Bearer servers return bearer_required (frontend collects a key); everything
     else gets the OAuth redirect."""
@@ -252,7 +252,7 @@ async def _connect_with_bearer_token(
     integration_id: str,
     integration_name: str,
     bearer_token: str,
-    mcp_client: Any,
+    mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)

@@ -1,5 +1,6 @@
 from typing import Any
 
+from starlette.datastructures import Headers
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
@@ -10,7 +11,7 @@ from app.models.user_models import UserDocument, user_to_legacy_dict
 from shared.py.wide_events import log
 
 
-async def resolve_dev_bypass_user(headers: Any) -> tuple[str, UserDocument | None]:
+async def resolve_dev_bypass_user(headers: Headers) -> tuple[str, UserDocument | None]:
     """Resolve the dev-bypass target to its Mongo user.
 
     The single definition of bypass semantics for BOTH the HTTP middleware and
@@ -25,7 +26,7 @@ async def resolve_dev_bypass_user(headers: Any) -> tuple[str, UserDocument | Non
 
 
 def build_user_context(
-    user_data: dict[str, Any], *, auth_provider: str, **extra: Any
+    user_data: dict[str, Any], *, auth_provider: str, **extra: bool
 ) -> dict[str, Any]:
     """Build the canonical ``request.state.user`` dict from a Mongo user doc.
 

@@ -408,6 +408,52 @@ unfixable = [
 # ANN401: Pydantic "before" validators receive unvalidated raw input by
 # definition -- the whole point is to normalize whatever was given.
 "apps/api/app/models/webhook_models.py" = ["ANN401"]
+"apps/api/app/models/workflow_models.py" = ["ANN401"]
+# ANN401: overrides/mirrors third-party base-class methods typed Any upstream
+# (LangChain Runnable, LangGraph Runtime/ToolNode/hooks, MCP adapters) --
+# verified against each library's real signature, not assumed.
+"apps/api/app/agents/llm/client.py" = ["ANN401"]
+"apps/api/app/agents/middleware/runtime_adapter.py" = ["ANN401"]
+"apps/api/app/agents/middleware/summarization.py" = ["ANN401"]
+"apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["ANN401"]
+"apps/api/app/services/mcp/langchain_adapter.py" = ["ANN401"]
+"apps/api/app/services/hil/gate.py" = ["ANN401"]
+# ANN401: generic decorated-function key/cache helpers forwarding *args/**kwargs
+# to an arbitrary wrapped callable (Cacheable decorator contract).
+"apps/api/app/memory/retrieval.py" = ["ANN401"]
+# ANN401: relays raw, per-endpoint-shaped third-party API JSON (Google Calendar
+# proxy passthrough) -- shape genuinely varies per call, not app-controlled.
+"apps/api/app/services/calendar_service.py" = ["ANN401"]
+# ANN401: mirrors the identical, already-documented tradeoff in sibling file
+# app/services/sandbox/pool.py (typed Any to avoid an import at module load).
+"apps/api/app/services/sandbox/artifact_watcher.py" = ["ANN401"]
+# ANN401: general-purpose error constructor called from dozens of files with
+# heterogeneous metadata; stored as dict[str, Any] by design.
+"apps/api/app/utils/errors.py" = ["ANN401"]
+# ARG002: overrides abstract ActionHandler.execute / ChannelAdapter.can_handle,
+# dispatched polymorphically from one call site -- every implementation keeps
+# the full interface signature even where it only needs a subset.
+"apps/api/app/utils/notification/actions.py" = ["ARG002"]
+"apps/api/app/utils/notification/channels/external.py" = ["ARG002"]
+"apps/api/app/utils/notification/channels/inapp.py" = ["ARG002"]
+# ARG001: every pre/post-model hook is called positionally as
+# (state, config, store) by execute_hooks() (app/override/langgraph_bigtool/hooks.py),
+# regardless of whether a given node reads config/store.
+"apps/api/app/agents/core/nodes/adapt_media.py" = ["ARG001"]
+"apps/api/app/agents/core/nodes/executor_status.py" = ["ARG001"]
+"apps/api/app/agents/core/nodes/filter_messages.py" = ["ARG001"]
+"apps/api/app/agents/core/nodes/follow_up_actions_node.py" = ["ARG001"]
+"apps/api/app/agents/core/nodes/manage_system_prompts.py" = ["ARG001"]
+"apps/api/app/agents/core/nodes/memory_node.py" = ["ARG001"]
+# ARG001: Starlette calls exception handlers positionally as handler(conn, exc)
+# regardless of body usage (verified against starlette/_exception_handler.py).
+"apps/api/app/core/app_factory.py" = ["ARG001"]
+# ARG001: ARQ's mandated first positional param on every registered task
+# (app/worker.py's WorkerSettings.functions/cron_jobs).
+"apps/api/app/workers/tasks/cleanup_tasks.py" = ["ARG001"]
+"apps/api/app/workers/tasks/hil_sweep_tasks.py" = ["ARG001"]
+"apps/api/app/workers/tasks/memory_backfill_tasks.py" = ["ARG001"]
+"apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]
@@ -439,7 +485,7 @@ unfixable = [
 "apps/api/app/services/composio/proxy_client.py" = ["PLC0415", "ANN401"]
 "apps/api/app/services/device_token_service.py" = ["PLC0415"]
 "apps/api/app/services/mcp/mcp_client_pool.py" = ["PLC0415"]
-"apps/api/app/services/mcp/mcp_client.py" = ["PLC0415"]
+"apps/api/app/services/mcp/mcp_client.py" = ["PLC0415", "ANN401"]
 "apps/api/app/services/mcp/mcp_token_store.py" = ["PLC0415"]
 "apps/api/app/services/reminder_service.py" = ["PLC0415"]
 "apps/api/app/services/storage/sessions/lifecycle.py" = ["PLC0415"]
@@ -463,10 +509,10 @@ unfixable = [
 "apps/api/app/utils/workflow_utils.py" = ["PLC0415"]
 "apps/api/app/workers/tasks/maintenance_sweep_tasks.py" = ["PLC0415"]
 "apps/api/app/workers/tasks/onboarding_tasks.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/reminder_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/reminder_tasks.py" = ["PLC0415", "ARG001"]
 "apps/api/app/workers/tasks/tracked_todo_tasks.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/user_tasks.py" = ["PLC0415"]
-"apps/api/app/workers/tasks/workflow_tasks.py" = ["PLC0415"]
+"apps/api/app/workers/tasks/user_tasks.py" = ["PLC0415", "ARG001"]
+"apps/api/app/workers/tasks/workflow_tasks.py" = ["PLC0415", "ARG001"]
 # Lazy per-command CLI import (heavy agent module loaded only when needed).
 "apps/voice-agent/src/__main__.py" = ["PLC0415"]
 # Optional-dependency import inside try (infisical_sdk not always installed).

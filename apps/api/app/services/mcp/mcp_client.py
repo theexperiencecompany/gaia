@@ -20,7 +20,7 @@ Features:
 
 import asyncio
 import base64
-from collections.abc import Awaitable, Callable, Coroutine
+from collections.abc import Awaitable, Callable
 import contextlib
 import json as _json
 import re
@@ -197,7 +197,7 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
 _BG_TASKS: set[asyncio.Task] = set()
 
 
-async def _with_wide_event(coro: Coroutine[Any, Any, Any], label: str) -> None:
+async def _with_wide_event(coro: Awaitable[Any], label: str) -> None:
     """Run a background coroutine inside its own wide event boundary.
 
     Detached tasks escape the request's logging middleware, so without this
@@ -209,7 +209,7 @@ async def _with_wide_event(coro: Coroutine[Any, Any, Any], label: str) -> None:
         await coro
 
 
-def _spawn_background(coro: Coroutine[Any, Any, Any], label: str) -> asyncio.Task | None:
+def _spawn_background(coro: Awaitable[Any], label: str) -> asyncio.Task | None:
     """Spawn a fire-and-forget task that survives until completion.
 
     The coroutine runs inside a wide event boundary so its ``log.set()`` fields
@@ -571,7 +571,7 @@ class MCPClient:
         Each step is swallowed so one failure doesn't block the rest.
         """
 
-        async def _swallow(coro: Coroutine[Any, Any, Any], what: str) -> None:
+        async def _swallow(coro: Awaitable[Any], what: str) -> None:
             try:
                 await coro
             except Exception as e:
