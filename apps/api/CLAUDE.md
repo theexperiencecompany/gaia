@@ -171,22 +171,61 @@ async def get_todo(todo_id: str, user_id: str) -> TodoDocument | None:
     return await todo_repository.get(todo_id, user_id=user_id)
 ```
 
-## Type Safety — No Loose `dict[str, Any]` Returns
+## Type Safety
 
-Every function that returns structured data returns a real type — `dict[str, Any]` is the single most common way a real bug hides from mypy (a `"- ".join(notes)` crash on `list[dict]` was found only once the real return type was checked). This applies at every layer of a flow: endpoint → service → repository, however deep it goes.
+Every value has a real, precise type — parameters, return types, class attributes, local variables, collection elements. `Any` and unparametrized generics (`dict`, `list`, `Callable` with no type arguments) are exactly as unsafe as no annotation at all: they satisfy mypy without adding any real protection. This is not just an endpoint/service concern — it applies everywhere in the codebase.
 
-**Endpoints**: never `-> dict[str, Any]`. Return a Pydantic model, or `JSONResponse` with `response_model=` set (see FastAPI — Route Handlers above). If the service layer already returns a real model, return it (or its data) directly — don't call `.model_dump()` just to downgrade it back to a dict for the response.
+### 1. Every parameter and return type is real and specific, not just the return
 
-**Services**: return a real model, not a hand-assembled dict.
+Untyped or `Any`-typed *parameters* hide the same bugs as untyped returns — a function that accepts a loose bag and does `.get("key")` on it is exactly as unchecked as one that returns a loose bag.
 
 ```python
-# wrong — every caller has to know the keys by convention, nothing is checked
+# wrong — nothing stops a caller from passing the wrong shape; typos in .get() keys are invisible
+def apply_discount(order: dict[str, Any]) -> float:
+    return order["subtotal"] * (1 - order.get("discount_pct", 0))
+
+
+# correct — mypy catches a missing field or a typo'd key at every call site
+class Order(BaseModel):
+    subtotal: float
+    discount_pct: float = 0.0
+
+
+def apply_discount(order: Order) -> float:
+    return order.subtotal * (1 - order.discount_pct)
+```
+
+### 2. Parametrize every generic container
+
+`dict`, `list`, `set`, `tuple`, `Callable` without type arguments are implicitly `dict[Any, Any]`, `list[Any]`, etc. Always give the real element/argument/return types.
+
+```python
+# wrong
+def group_by_status(todos: list) -> dict:
+    ...
+
+callback: Callable
+
+
+# correct
+def group_by_status(todos: list[TodoDocument]) -> dict[TodoStatus, list[TodoDocument]]:
+    ...
+
+callback: Callable[[TodoDocument], None]
+```
+
+### 3. Name a shape the moment it recurs — don't pass bags of dict/tuple around
+
+If the same set of keys, or the same tuple positions, shows up in more than one signature, it is a type, not a convention. This applies to function returns, function parameters, and data threaded through several functions alike.
+
+```python
+# wrong — every caller has to know the keys/order by convention, nothing is checked
 async def get_todo_summary(todo_id: str) -> dict[str, Any]:
     doc = await todo_repository.get(todo_id)
     return {"id": doc.id, "title": doc.title, "status": doc.status}
 
 
-# correct — a real return type, checked at every call site
+# correct — a real, named type, checked at every call site
 class TodoSummary(BaseModel):
     id: str
     title: str
@@ -198,14 +237,52 @@ async def get_todo_summary(todo_id: str) -> TodoSummary:
     return TodoSummary(id=doc.id, title=doc.title, status=doc.status)
 ```
 
-**Repositories**: already the strict-typed pattern for the 33-collection repository layer (`app.db.repositories`) — extend that pattern in new code, never introduce a rival one.
+Endpoints follow the same rule: never `-> dict[str, Any]`. Return a Pydantic model, or `JSONResponse` with `response_model=` set (see FastAPI — Route Handlers above). If a lower layer already returns a real model, return it (or build the response from it) directly — don't call `.model_dump()` just to downgrade it back to a dict.
 
-**TypedDict vs Pydantic** — pick by whether the boundary needs validation:
+### 4. A fixed set of valid values is an `Enum`/`Literal`, not a bare `str`/`int`
+
+```python
+# wrong — any string compiles; a typo ("Compelted") is only caught at runtime, if ever
+def set_status(todo: TodoDocument, status: str) -> None:
+    todo.status = status
+
+
+# correct — mypy rejects a typo or an invalid value at the call site
+class TodoStatus(str, Enum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+
+
+def set_status(todo: TodoDocument, status: TodoStatus) -> None:
+    todo.status = status
+```
+
+### 5. TypedDict vs Pydantic — pick by whether the boundary needs validation
 
 - `BaseModel`: crosses a validation/serialization boundary (API request/response, DB document, anything built from untrusted or external input).
-- `TypedDict`: pure in-process shape contract, no runtime validation needed — cheaper, still fully checked by mypy.
+- `TypedDict`: a pure in-process shape contract with no need for runtime validation/coercion — cheaper, still fully checked by mypy.
 
-**The one legitimate `dict[str, Any]`: a true external boundary.** Raw third-party payloads (webhook bodies, provider SDK responses before parsing) may enter as `dict[str, Any]` — but validate into a real model immediately, in the same function that receives it. Never let a raw dict travel more than one hop past where it entered.
+### 6. Class attributes and instance state are typed too, not just function signatures
+
+```python
+# wrong — self.cache's real shape is discoverable only by reading every usage
+class ToolRegistry:
+    def __init__(self) -> None:
+        self.cache = {}
+        self.last_error = None
+
+
+# correct
+class ToolRegistry:
+    def __init__(self) -> None:
+        self.cache: dict[str, Tool] = {}
+        self.last_error: Exception | None = None
+```
+
+### 7. External boundaries: validate immediately, don't propagate raw/`Any` data inward
+
+Raw third-party payloads — webhook bodies, provider SDK responses, DB documents before repository parsing, subprocess/file/env output — may enter as `dict[str, Any]` or `Any`, because the boundary genuinely can't be typed until it's parsed. But validate into a real model in the same function that receives it, and never let the raw value travel more than one hop past where it entered.
 
 ```python
 # acceptable — this IS the boundary; validated immediately, never returned raw
@@ -213,15 +290,49 @@ async def handle_webhook(payload: dict[str, Any]) -> WebhookEvent:
     return WebhookEvent.model_validate(payload)
 ```
 
-**Framework-injected / structurally-unused parameters.** If a parameter is unused by one implementation but required by a framework's call signature (a LangGraph node/tool injecting `config`/`store`, FastAPI `Depends()`, an ARQ task's `ctx`, a Pydantic validator's `cls`/`info`), keep it exactly as the framework calls it. Verify the real call site or framework source first — "looks unused" is not the same as "is unused." Add a `pyproject.toml` `per-file-ignores` entry naming the framework contract; never rename or delete the parameter to silence the linter.
+### 8. Generic decorators/wrappers preserve the wrapped signature — they don't erase it to `Any`
 
-**Narrowing `Any` without changing behavior.** Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when the value is already correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object (a mock, a duck-typed wrapper, a different concrete implementation) that was working fine before.
+A decorator typed `Callable[..., Any] -> Callable[..., Any]` destroys the return type of everything it wraps, which then leaks out as "Returning Any" errors at every call site, arbitrarily far from the actual decorator. Use `ParamSpec`/`TypeVar` to preserve the original signature through the wrapper.
 
-**Never change behavior to satisfy a type checker.** Confirmed real regressions from exactly this mistake: deleting an `isinstance(x, dict)` guard because a checker called the branch "unreachable" (it wasn't — real callers passed non-dict values); deleting a framework-injected parameter because it "looked unused" (the framework called it positionally); changing a function's actual return *values*, not just its annotation, to match a stricter type (broke a downstream consumer needing the original shape). Fixing a type error changes how something is *described*; it must never change what the code *does*.
+```python
+# wrong — every decorated function's real return type is lost
+def log_calls(func: Callable[..., Any]) -> Callable[..., Any]:
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        log.info(f"calling {func.__name__}")
+        return await func(*args, **kwargs)
+    return wrapper
 
-**High acceptance bar — when to leave a type loose, deliberately, with a comment.** Stop before forcing full type safety through:
 
-- A change to data actually returned to an external consumer (frontend contract, external API caller) — that's a product decision, not a typing fix.
+# correct — callers of a decorated function still get its real return type
+P = ParamSpec("P")
+R = TypeVar("R")
+
+def log_calls(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        log.info(f"calling {func.__name__}")
+        return await func(*args, **kwargs)
+    return wrapper
+```
+
+If the wrapper's own call pattern (e.g. a two-step decorator factory) genuinely defeats `ParamSpec` inference and a real fix would require reworking the decorator's calling convention, that crosses the risk bar in §11 — leave it, and document why.
+
+### 9. Framework-injected / structurally-required parameters are kept exactly as the framework calls them
+
+If a parameter is unused by one implementation but required by a framework's call signature — a LangGraph node/tool injecting `config`/`store`, FastAPI `Depends()`, an ARQ task's `ctx`, a Pydantic validator's `cls`/`info`, an abstract method's full interface — keep it. Verify the real call site or framework source first: "looks unused in this body" is not the same as "is unused." Add a `pyproject.toml` `per-file-ignores` entry naming the framework contract; never rename or delete the parameter to silence a linter.
+
+### 10. Narrowing `Any`/unknown values: `cast()` over `isinstance()` when already correct by construction
+
+Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when you already know the value is correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result, a value a framework's own contract guarantees). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object — a mock, a duck-typed wrapper, a different concrete implementation of a `Protocol` — that was working fine before.
+
+### 11. Never change behavior to satisfy a type checker
+
+Confirmed real regressions from exactly this mistake: deleting an `isinstance(x, dict)` guard because a checker called the branch "unreachable" (it wasn't — real callers passed non-dict values); deleting a framework-injected parameter because it "looked unused" (the framework called it positionally); changing a function's actual return *values*, not just its annotation, to satisfy a stricter type (broke a downstream consumer needing the original shape). Fixing a type error changes how something is *described*; it must never change what the code *does*.
+
+### 12. High acceptance bar — when to leave a type loose, deliberately, with a comment
+
+Stop before forcing full type safety through:
+
+- A change to data actually returned to an external consumer (frontend contract, external API caller, another service) — that's a product decision, not a typing fix.
 - Rewriting a third-party library's call signature or a framework's calling convention.
 - A change that ripples across more files than can be reviewed and verified in one pass.
 - Anything whose correctness can't be confirmed by running the real test suite — "mypy is happy" is not proof; "the tests still pass and I can explain why" is.
