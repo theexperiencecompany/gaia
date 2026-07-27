@@ -4,7 +4,7 @@ Flow:
 1. Two independent parallel tracks start simultaneously:
 
    TRACK A - Email Scanning & Storage:
-   - Fetch recent emails from Gmail API (in:inbox, up to 700 emails in batches of 50)
+   - Fetch recent emails from Gmail API (in:inbox, up to 200 emails in batches of 100)
    - Clean email content: HTML → plain text, remove invisible chars
    - Queue emails for memory storage (background ARQ job)
 
