@@ -863,7 +863,11 @@ async def _run_social_profiles_background(
                 fmt="full",
                 include_sent=True,
             )
-            await inbox_scan_cache.put(user_id, "full", emails)
+            # Only cache a non-empty fetch. A cached [] is not None, so every later
+            # run — including the stuck-onboarding retry — would skip both the fetch
+            # and the extraction and leave the user with no social profiles forever.
+            if emails:
+                await inbox_scan_cache.put(user_id, "full", emails)
 
         if emails:
             raw = await extract_social_profiles_from_emails(emails, user_name, user_email)
