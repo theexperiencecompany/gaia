@@ -17,6 +17,7 @@ from app.config.rate_limits import (
     get_reset_time,
 )
 from app.models.payment_models import PlanType
+from app.models.usage_models import RealtimeFeatureUsage, RealtimeUsagePeriod, UsageSummaryResponse
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
@@ -26,7 +27,7 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
-async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str, Any]:
+async def get_usage_summary(user: dict = Depends(get_current_user)) -> UsageSummaryResponse:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
     user_id = user.get("user_id")
@@ -43,12 +44,12 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
 
         log.set(period="realtime", result_count=len(features_formatted))
         log.set(outcome="success")
-        return {
-            "user_id": user_id,
-            "plan_type": user_plan.value if hasattr(user_plan, "value") else str(user_plan),
-            "features": features_formatted,
-            "last_updated": datetime.now(UTC).isoformat(),
-        }
+        return UsageSummaryResponse(
+            user_id=user_id,
+            plan_type=user_plan,
+            features=features_formatted,
+            last_updated=datetime.now(UTC),
+        )
     except Exception as e:
         log.error(f"Error getting usage summary: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to get usage summary")
@@ -109,18 +110,13 @@ async def get_usage_history(
         raise HTTPException(status_code=500, detail="Failed to get usage history")
 
 
-async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Any]:
+async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, RealtimeFeatureUsage]:
     """Get real-time usage data directly from Redis for all features."""
-    features_formatted: dict[str, dict[str, Any]] = {}
+    features_formatted: dict[str, RealtimeFeatureUsage] = {}
 
     for feature_key in FEATURE_LIMITS:
         feature_info = get_feature_info(feature_key)
-        features_formatted[feature_key] = {
-            "title": feature_info["title"],
-            "description": feature_info["description"],
-            "periods": {},
-        }
-
+        periods: dict[str, RealtimeUsagePeriod] = {}
         current_limits = get_limits_for_plan(feature_key, user_plan)
 
         for period in ["day", "month"]:
@@ -137,12 +133,18 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, An
                 percentage = (current_usage / limit * 100) if limit > 0 else 0
                 remaining = max(0, limit - current_usage)
 
-                features_formatted[feature_key]["periods"][period] = {
-                    "used": current_usage,
-                    "limit": limit,
-                    "percentage": percentage,
-                    "reset_time": reset_time.isoformat(),
-                    "remaining": remaining,
-                }
+                periods[period] = RealtimeUsagePeriod(
+                    used=current_usage,
+                    limit=limit,
+                    percentage=percentage,
+                    reset_time=reset_time,
+                    remaining=remaining,
+                )
+
+        features_formatted[feature_key] = RealtimeFeatureUsage(
+            title=feature_info["title"],
+            description=feature_info["description"],
+            periods=periods,
+        )
 
     return features_formatted
