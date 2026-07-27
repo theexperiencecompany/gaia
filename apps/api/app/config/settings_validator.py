@@ -17,13 +17,8 @@ Add env vars
 2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
 """
 
-from typing import TYPE_CHECKING
-
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
-
-if TYPE_CHECKING:
-    from app.config.settings import CommonSettings
 
 
 class SettingsGroup:
@@ -326,7 +321,16 @@ class SettingsValidator:
         self.missing_groups = []
 
     def validate_settings(
-        self, settings_obj: "CommonSettings"
+        # Deliberately `object`, not `CommonSettings`: the body below only ever
+        # does hasattr()/getattr() with dynamic string keys, so it works on any
+        # object and never needs the concrete settings type. Importing
+        # CommonSettings here would also require a TYPE_CHECKING-guarded import
+        # to avoid a circular dependency with app.config.settings -- see
+        # apps/api/CLAUDE.md's Type Safety section, item 9, for why that's
+        # avoided rather than reached for. Do not "fix" this back to
+        # CommonSettings; it is not an imprecision.
+        self,
+        settings_obj: object,
     ) -> list[tuple[SettingsGroup, list[str]]]:
         """
         Validate settings against registered groups.
