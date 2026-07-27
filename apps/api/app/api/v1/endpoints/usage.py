@@ -7,7 +7,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.rate_limits import (
     FEATURE_LIMITS,
@@ -27,12 +27,9 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
-async def get_usage_summary(user: dict = Depends(get_current_user)) -> UsageSummaryResponse:
+async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummaryResponse:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
 
     try:
         # Get user subscription
