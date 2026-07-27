@@ -847,6 +847,7 @@ async def _run_social_profiles_background(
                 months=1,
                 max_total=ONBOARDING_EMAIL_SCAN_LIMIT,
                 fmt="full",
+                include_sent=True,
             )
             await inbox_scan_cache.put(user_id, "full", emails)
 

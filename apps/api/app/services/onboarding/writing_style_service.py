@@ -8,6 +8,7 @@ from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
 )
+from app.constants.email import SENT_EMAIL_QUERY
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.onboarding_models import (
@@ -36,7 +37,7 @@ async def learn_writing_style(
             await on_status("Reading your sent folder")
         result = await search_messages(
             user_id=user_id,
-            query="in:sent",
+            query=SENT_EMAIL_QUERY,
             max_results=50,
         )
 

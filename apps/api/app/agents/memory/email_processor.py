@@ -42,6 +42,7 @@ from app.agents.memory.profile_extractor import (
 from app.constants.email import (
     BATCH_SIZE,
     EMAIL_QUERY,
+    INBOX_OR_SENT_EMAIL_QUERY,
     MAX_RESULTS,
     ONBOARDING_EMAIL_SCAN_LIMIT,
 )
@@ -189,16 +190,22 @@ async def fetch_emails_for_onboarding(
     on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
     fmt: str = "metadata",
     into: list[dict] | None = None,
+    include_sent: bool = False,
 ) -> list[dict]:
-    """Fetch the last `months` months of received emails for onboarding.
+    """Fetch the last `months` months of emails for onboarding.
 
     Uses Gmail metadata format by default (no body) so batches can be 100 wide.
-    Callers that need bodies (writing style, social profile regex) pass fmt="full".
+    Callers that need bodies (social profile regex) pass fmt="full".
+    `include_sent` widens the scan to the sent mailbox as well, which is what
+    makes each message's SENT label — and any ownership signal derived from it —
+    observable at all. Inbox triage leaves it off so the user's own outgoing
+    mail is not scored as something needing their attention.
     on_batch receives (running_count, latest_sender_display_name_or_None).
     If `into` is provided, batches are appended to it live so concurrent
     consumers can observe partial progress.
     """
-    query = f"in:inbox newer_than:{months * 30}d"
+    scope = INBOX_OR_SENT_EMAIL_QUERY if include_sent else EMAIL_QUERY
+    query = f"{scope} newer_than:{months * 30}d"
     all_emails: list[dict] = into if into is not None else []
     page_token: str | None = None
     metadata_mode = fmt == "metadata"
