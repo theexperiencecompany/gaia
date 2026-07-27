@@ -13,7 +13,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
 from app.decorators import tiered_rate_limit
-from app.models.search_models import MultiURLResponse, URLRequest, URLResponse
+from app.models.search_models import (
+    EmailSearchResponse,
+    MultiURLResponse,
+    URLRequest,
+    URLResponse,
+)
 from app.services.email_profile_service import fetch_email_profiles
 from app.services.search_service import search_messages
 from app.utils.email_utils import is_email_target
@@ -78,9 +83,9 @@ def extract_emails(text: str) -> list:
     return re.findall(email_pattern, text)
 
 
-@router.get("/search/email")
+@router.get("/search/email", response_model=EmailSearchResponse)
 @tiered_rate_limit("web_search")
-async def search_email_endpoint(query: str) -> dict[str, Any]:
+async def search_email_endpoint(query: str) -> EmailSearchResponse:
     """
     Search for official contact email addresses related to the given query.
 
@@ -88,7 +93,7 @@ async def search_email_endpoint(query: str) -> dict[str, Any]:
         query (str): The search query.
 
     Returns:
-        dict: A dictionary containing the extracted email addresses, combined text, and search data.
+        EmailSearchResponse: The extracted email addresses, combined text, and search data.
     """
     log.set(
         search={
@@ -102,21 +107,19 @@ async def search_email_endpoint(query: str) -> dict[str, Any]:
         count=50,
     )
 
-    if not search_data or "web" not in search_data:
+    if not search_data:
         raise HTTPException(status_code=500, detail="Search failed or returned no results")
 
-    combined_text = " ".join(
-        f"{item.get('title', '')} {item.get('content', '')}" for item in search_data["web"]
-    )
+    combined_text = " ".join(f"{item.title} {item.content}" for item in search_data.web)
 
     emails = list(set(extract_emails(combined_text)))
     log.set(search={"result_count": len(emails)})
 
-    return {
-        "emails": emails,
-        "combined_text": combined_text,
-        "search_data": search_data,
-    }
+    return EmailSearchResponse(
+        emails=emails,
+        combined_text=combined_text,
+        search_data=search_data,
+    )
 
 
 @router.post(

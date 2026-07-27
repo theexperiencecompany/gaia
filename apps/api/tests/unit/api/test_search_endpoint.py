@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.utils.search.models import SearchResultItem, WebSearchResult
+
 SEARCH_BASE = "/api/v1"
 
 
@@ -84,14 +86,16 @@ class TestSearchEmail:
         new_callable=AsyncMock,
     )
     async def test_search_email_returns_200(self, mock_perform: AsyncMock, client: AsyncClient):
-        mock_perform.return_value = {
-            "web": [
-                {
-                    "title": "Contact Us",
-                    "content": "Email us at support@example.com",
-                }
-            ]
-        }
+        mock_perform.return_value = WebSearchResult(
+            web=[
+                SearchResultItem(
+                    url="https://example.com/contact",
+                    title="Contact Us",
+                    content="Email us at support@example.com",
+                )
+            ],
+            query="Example Corp",
+        )
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "Example Corp"})
         assert response.status_code == 200
         data = response.json()
@@ -115,12 +119,15 @@ class TestSearchEmail:
         "app.api.v1.endpoints.search.perform_search",
         new_callable=AsyncMock,
     )
-    async def test_search_email_no_web_key_returns_500(
+    async def test_search_email_no_web_results_returns_200_with_no_emails(
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
-        mock_perform.return_value = {"images": []}
+        mock_perform.return_value = WebSearchResult(web=[], query="test")
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})
-        assert response.status_code == 500
+        assert response.status_code == 200
+        data = response.json()
+        assert data["emails"] == []
+        assert data["combined_text"] == ""
 
     @patch(
         "app.api.v1.endpoints.search.perform_search",
@@ -129,12 +136,21 @@ class TestSearchEmail:
     async def test_search_email_deduplicates_emails(
         self, mock_perform: AsyncMock, client: AsyncClient
     ):
-        mock_perform.return_value = {
-            "web": [
-                {"title": "Page1", "content": "info@test.com hello info@test.com"},
-                {"title": "Page2", "content": "info@test.com again"},
-            ]
-        }
+        mock_perform.return_value = WebSearchResult(
+            web=[
+                SearchResultItem(
+                    url="https://example.com/1",
+                    title="Page1",
+                    content="info@test.com hello info@test.com",
+                ),
+                SearchResultItem(
+                    url="https://example.com/2",
+                    title="Page2",
+                    content="info@test.com again",
+                ),
+            ],
+            query="test",
+        )
         response = await client.get(f"{SEARCH_BASE}/search/email", params={"query": "test"})
         assert response.status_code == 200
         data = response.json()

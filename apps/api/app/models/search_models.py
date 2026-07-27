@@ -3,10 +3,19 @@ from typing import Union
 from pydantic import BaseModel, ConfigDict
 
 from app.db.repositories.base import MongoDocument
+from app.utils.search.models import WebSearchResult
 
 
 class URLRequest(BaseModel):
     urls: list[str]  # Always accept array of URLs
+
+
+class EmailSearchResponse(BaseModel):
+    """Contact-email addresses extracted from a web search, plus the raw search data."""
+
+    emails: list[str]
+    combined_text: str
+    search_data: WebSearchResult
 
 
 class URLResponse(BaseModel):
