@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import re
 import time
-from typing import Any
+from typing import Any, cast
 
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
@@ -165,7 +165,7 @@ async def _search_platform_emails(
         )
 
         emails = result.get("messages", [])
-        return emails
+        return cast("list[dict]", emails)
 
     except Exception as e:
         log.error(f"{LogTag.MEMORY} Error searching {platform} emails: {e}")

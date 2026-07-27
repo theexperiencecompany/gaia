@@ -1,7 +1,7 @@
 """Custom integration CRUD operations."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 import uuid
 
 from mcp_use.client.exceptions import OAuthAuthenticationError
@@ -149,7 +149,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
     if not doc:
         # No catalog row — just drop this user's link. The mutator deletes the
         # row and invalidates atomically, returning False if there was nothing.
-        return await remove_user_integration(user_id, integration_id)
+        # @CacheInvalidator erases the wrapped function's return type to Any
+        # (see app/decorators/caching.py); cast back to the real contract.
+        return cast(bool, await remove_user_integration(user_id, integration_id))
 
     is_creator = doc.created_by == user_id
 
@@ -272,7 +274,7 @@ async def _fetch_icon_safely(server_url: str) -> str | None:
 async def _probe_connection_safely(mcp_client: Any, server_url: str) -> dict[str, Any]:
     """Probe connection with error handling."""
     try:
-        return await mcp_client.probe_connection(server_url)
+        return cast(dict[str, Any], await mcp_client.probe_connection(server_url))
     except Exception as e:
         return {"error": str(e)}
 

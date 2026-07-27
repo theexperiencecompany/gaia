@@ -47,7 +47,10 @@ class BaseSchedulerService(ABC):
     async def close(self) -> None:
         """Close ARQ pool connection."""
         if self.arq_pool:
-            await self.arq_pool.aclose()
+            # redis-py's installed type stubs haven't caught up to the runtime
+            # library: aclose() exists and is the non-deprecated replacement
+            # for the stubbed close().
+            await self.arq_pool.aclose()  # type: ignore[attr-defined]
         log.info(f"{self.__class__.__name__} closed")
 
     async def schedule_task(self, task_id: str, schedule_config: ScheduleConfig) -> bool:

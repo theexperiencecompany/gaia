@@ -1,7 +1,7 @@
 import typing as t
 
 
-def apply():
+def apply() -> None:
     try:
         from composio.utils import shared
         from langchain_core.tools import base as lc_base
@@ -11,9 +11,12 @@ def apply():
         original_json_schema_to_pydantic_type = shared.json_schema_to_pydantic_type
 
         def patched_json_schema_to_pydantic_type(
-            json_schema: dict[str, t.Any],
+            json_schema: dict[str, t.Any] | bool,
         ) -> t.Union[type, t.Any | None]:
-            if "anyOf" in json_schema:
+            # Boolean JSON Schemas (draft-06+, e.g. bare `true`/`false` sub-schemas)
+            # have no "anyOf" to flatten — delegate straight to the original,
+            # which already handles them (isinstance(json_schema, bool) branch).
+            if isinstance(json_schema, dict) and "anyOf" in json_schema:
                 options = json_schema["anyOf"]
                 pydantic_types = [patched_json_schema_to_pydantic_type(o) for o in options]
                 valid_types = [pt for pt in pydantic_types if pt is not None and pt is not dict]

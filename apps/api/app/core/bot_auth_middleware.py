@@ -12,7 +12,7 @@ allowing bot requests to use the same endpoints as normal web auth.
 
 from collections.abc import Awaitable, Callable
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Request, Response
 from jose import JWTError
@@ -115,7 +115,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         cached_user_info = await get_cache(cache_key)
 
         if cached_user_info and cached_user_info.get("user_id"):
-            return cached_user_info
+            return cast(dict[str, Any], cached_user_info)
 
         user_data = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
 
@@ -145,7 +145,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             cached_user_info = await get_cache(cache_key)
 
             if cached_user_info and cached_user_info.get("user_id") == user_id:
-                return cached_user_info
+                return cast(dict[str, Any], cached_user_info)
 
             user_data = await PlatformLinkService.get_user_by_platform_id(
                 platform, platform_user_id

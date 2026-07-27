@@ -5,6 +5,8 @@ This module provides utilities to check if a user has the required integration
 permissions and stream connection prompts to the frontend when needed.
 """
 
+from typing import cast
+
 import httpx
 from langgraph.config import get_config, get_stream_writer
 
@@ -37,7 +39,7 @@ def _current_source_category() -> str | None:
         config = get_config()
     except RuntimeError:
         return None
-    return config.get("configurable", {}).get("source_category")
+    return cast(str | None, config.get("configurable", {}).get("source_category"))
 
 
 def build_integration_connection_message(

@@ -33,7 +33,7 @@ class TokenRepository:
     It does NOT handle WorkOS authentication tokens, which are managed by WorkOSAuthMiddleware.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the token repository."""
 
         self.oauth = OAuth()
@@ -45,7 +45,7 @@ class TokenRepository:
             f"{LogTag.STARTUP} Token repository initialized for managing API tokens (Google, etc.)"
         )
 
-    def _init_oauth_clients(self):
+    def _init_oauth_clients(self) -> None:
         """Initialize OAuth clients for all supported providers."""
         # Google OAuth client
         if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:

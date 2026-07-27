@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import ItemsView, Iterator, KeysView, Mapping, ValuesView
+from collections.abc import ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
 from typing import cast
 
 from langchain_core.tools import BaseTool
@@ -156,7 +156,7 @@ class ToolCategory:
 
     def add_tools(
         self,
-        tools: list[BaseTool],
+        tools: Sequence[BaseTool],
         is_core: bool = False,
         destructive_tools: set[str] | None = None,
     ) -> None:
@@ -208,8 +208,8 @@ class ToolRegistry:
     def _add_category(
         self,
         name: str,
-        tools: list[BaseTool] | None = None,
-        core_tools: list[BaseTool] | None = None,
+        tools: Sequence[BaseTool] | None = None,
+        core_tools: Sequence[BaseTool] | None = None,
         space: str = "general",
         require_integration: bool = False,
         integration_name: str | None = None,

@@ -10,6 +10,8 @@ Each override is HEAD-validated to be a live image before use, so a server never
 loses its working icon to a broken or missing one.
 """
 
+import contextlib
+from typing import cast
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -123,10 +125,8 @@ def _parse_favicon_size(sizes_attr: str) -> int:
         if "x" in size.lower():
             parts = size.lower().split("x")
             if len(parts) == 2:
-                try:
+                with contextlib.suppress(ValueError):
                     max_size = max(max_size, int(parts[0]), int(parts[1]))
-                except ValueError:
-                    pass
     return max_size
 
 
@@ -170,7 +170,7 @@ def _select_best_icon(icons: list[dict]) -> str | None:
 
     format_priority = {"png": 0, "ico": 1, "other": 2, "svg": 3}
     icons.sort(key=lambda x: (format_priority.get(x["format"], 2), -x["size"]))
-    return icons[0]["href"]
+    return cast(str, icons[0]["href"])
 
 
 async def _validate_favicon_url(url: str) -> bool:
@@ -250,7 +250,7 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
         # Check Redis cache first
         cached = await get_cache(cache_key)
         if cached:
-            return cached
+            return cast(str, cached)
 
         # Cache miss - fetch from external sources
         result = await _fetch_favicon_impl(server_url)

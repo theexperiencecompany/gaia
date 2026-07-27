@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
 import inspect
-from typing import Any
+from typing import Any, cast
 
 from fastapi import HTTPException
 from langgraph.config import get_stream_writer
@@ -31,7 +31,7 @@ def with_rate_limiting(
     feature_key: str | None = None,
     count_tokens: bool = False,
     bypass_for_system: bool = False,
-):
+) -> Callable[[Callable], Callable]:
     """Rate limiting decorator stackable with LangChain's @tool.
 
     Args:
@@ -42,7 +42,7 @@ def with_rate_limiting(
     Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
     """
 
-    def rate_limit_decorator(func):
+    def rate_limit_decorator(func: Callable) -> Callable:
         # 🚨 VALIDATE AT DECORATION TIME - Error happens when decorator is applied!
         sig = inspect.signature(func)
         if "config" not in sig.parameters:
@@ -52,7 +52,7 @@ def with_rate_limiting(
             )
 
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Enforce the feature's rate limit before running the wrapped call."""
             # Auto-derive feature key from function name if not provided
             actual_feature_key = feature_key or func.__name__
@@ -113,12 +113,17 @@ def with_rate_limiting(
                         detail_dict = {}
                         reset_time = None
 
-                        if hasattr(e, "detail"):
-                            if isinstance(e.detail, dict):
-                                detail_dict = e.detail
-                                reset_time = e.detail.get("reset_time")
-                            elif isinstance(e.detail, str):
-                                detail_dict = {"message": e.detail}
+                        # HTTPException.detail is typed `str` by Starlette, but
+                        # RateLimitExceededException always sets it to a dict at
+                        # runtime — cast to Any so the isinstance checks below
+                        # aren't (incorrectly) treated as statically unreachable.
+                        detail_value = cast(Any, e.detail) if hasattr(e, "detail") else None
+                        if detail_value is not None:
+                            if isinstance(detail_value, dict):
+                                detail_dict = detail_value
+                                reset_time = detail_value.get("reset_time")
+                            elif isinstance(detail_value, str):
+                                detail_dict = {"message": detail_value}
 
                         # Emit inline rate limit card via LangGraph stream writer
                         # (only available when executing inside a LangGraph graph)
@@ -203,12 +208,14 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
-def tiered_rate_limit(feature_key: str, count_tokens: bool = False):
+def tiered_rate_limit(
+    feature_key: str, count_tokens: bool = False
+) -> Callable[[Callable], Callable]:
     """Rate limiting decorator for API endpoints."""
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Enforce the tiered rate limit before running the wrapped endpoint."""
             # Extract request and user from dependencies
             user = None
@@ -304,7 +311,7 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
-def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
+def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: Any) -> dict[str, Any]:
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
@@ -312,7 +319,7 @@ def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
     return context
 
 
-def clear_user_context():
+def clear_user_context() -> None:
     """Clear user context."""
     user_context.set(None)
     rate_limit_context.set(None)

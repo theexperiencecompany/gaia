@@ -57,6 +57,7 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.models.todo_models import Priority, TodoModel
+from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.user_models import OnboardingPhase
 from app.models.workflow_models import CreateWorkflowRequest, TriggerConfig, TriggerType
 from app.services.composio.composio_service import get_composio_service
@@ -1564,7 +1565,7 @@ def _build_trigger_config_from_suggestion(
     return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
 
 
-def _find_workflow_trigger_schema(slug: str):
+def _find_workflow_trigger_schema(slug: str) -> WorkflowTriggerSchema | None:
     for integration in OAUTH_INTEGRATIONS:
         for tc in integration.associated_triggers or []:
             if tc.workflow_trigger_schema and tc.workflow_trigger_schema.slug == slug:

@@ -26,7 +26,7 @@ import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 import time
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
@@ -163,7 +163,11 @@ async def _enforce_creation_limit(user_id: str) -> None:
     try:
         await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
     except RateLimitExceededException as e:
-        detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
+        # HTTPException.detail is typed `str` by Starlette, but
+        # RateLimitExceededException always sets it to a dict at runtime — cast
+        # to Any so the isinstance check isn't (incorrectly) statically unreachable.
+        raw_detail = cast(Any, e.detail)
+        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
         _record(
             rate_limited=True,
             rate_limit_reset=detail.get("reset_time"),
@@ -327,7 +331,7 @@ async def _write_canary(sbx: Any) -> str:
 async def _read_canary(sbx: Any) -> str | None:
     """Return the canary contents, or None if the file is missing/unreadable."""
     try:
-        content = await sbx.files.read(CANARY_PATH)
+        content = cast(str, await sbx.files.read(CANARY_PATH))
     except Exception:
         # Missing (NotFoundException) or any read failure → treat as stale.
         return None

@@ -42,7 +42,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Any, cast
 
 from app.constants.cache import (
     STREAM_ACTIVE_PREFIX,
@@ -374,7 +374,7 @@ class StreamManager:
         Call this periodically in the streaming loop.
         """
         signal = await redis_cache.get(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
-        return signal == "cancelled"
+        return bool(signal == "cancelled")
 
     # -------------------------------------------------------------------------
     # Progress Tracking
@@ -429,7 +429,9 @@ class StreamManager:
         Returns:
             Progress data dict or None if not found
         """
-        return await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        return cast(
+            "dict[str, Any] | None", await redis_cache.get(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
+        )
 
     @classmethod
     async def set_error(cls, stream_id: str, error: str) -> None:

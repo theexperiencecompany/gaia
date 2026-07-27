@@ -101,10 +101,10 @@ class RedisCache:
     When Redis is unavailable, read/write helpers no-op instead of raising.
     """
 
-    def __init__(self, redis_url="redis://localhost:6379", default_ttl=3600):
+    def __init__(self, redis_url: str = "redis://localhost:6379", default_ttl: int = 3600) -> None:
         self.redis_url = settings.REDIS_URL or redis_url
         self.default_ttl = default_ttl
-        self.redis = None
+        self.redis: redis.Redis | None = None
 
         if self.redis_url:
             try:
@@ -149,7 +149,7 @@ class RedisCache:
             if settings.ENV == "production":
                 raise ConnectionError(message) from e
 
-    async def get(self, key: str, model: type | None = None):
+    async def get(self, key: str, model: type | None = None) -> Any:
         """
         Retrieve cached value by key with optional type validation.
 
@@ -231,7 +231,7 @@ class RedisCache:
             )
             return False
 
-    async def delete(self, key: str):
+    async def delete(self, key: str) -> None:
         """
         Delete a cached key.
         """
@@ -252,7 +252,7 @@ class RedisCache:
             )
 
     @property
-    def client(self):
+    def client(self) -> redis.Redis:
         """
         Get the Redis client instance.
         """
@@ -306,7 +306,7 @@ async def set_cache(
     return await redis_cache.set(key, value, ttl, model)
 
 
-async def delete_cache(key: str):
+async def delete_cache(key: str) -> None:
     """
     Delete a cached key.
     """
@@ -347,7 +347,7 @@ async def get_and_delete_cache(key: str) -> Any | None:
         return None
 
 
-async def delete_cache_by_pattern(pattern: str):
+async def delete_cache_by_pattern(pattern: str) -> None:
     """
     Delete multiple cache keys matching a pattern.
 

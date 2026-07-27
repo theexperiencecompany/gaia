@@ -1,3 +1,5 @@
+from typing import cast
+
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
@@ -6,9 +8,9 @@ from uuid_extensions import uuid7str
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
+from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
 from app.services.conversation_service import (
-    ConversationModel,
     create_conversation_service,
     update_conversation_description,
 )
@@ -165,4 +167,4 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
     if not user_id:
         log.error(f"{LogTag.CHAT} No user_id found in config metadata")
 
-    return user_id
+    return cast(str, user_id)

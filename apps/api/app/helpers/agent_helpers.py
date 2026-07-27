@@ -6,7 +6,7 @@ import json
 from typing import Any, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
@@ -31,7 +31,7 @@ from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.chat_models import ConversationSource, SourceCategory
-from app.models.message_models import MessageDict
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from app.models.stream_events import ModelFallbackFrame, ToolOutputPayload
 from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
@@ -391,10 +391,10 @@ def build_agent_config(  # NOSONAR python:S107
 
 
 def build_initial_state(
-    request,
+    request: MessageRequestWithHistory,
     user_id: str,
     conversation_id: str,
-    history,
+    history: list[AnyMessage],
     trigger_context: dict | None = None,
 ) -> dict:
     """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
@@ -428,7 +428,7 @@ def build_initial_state(
 
 @traceable(run_type="llm", name="Call Agent Silent")
 async def execute_graph_silent(
-    graph,
+    graph: Any,
     initial_state: dict,
     config: dict,
 ) -> tuple[str, dict]:
@@ -567,7 +567,7 @@ def _json_safe_tool_result(content: Any) -> Any:
 
 @traceable(run_type="llm", name="Call Agent")
 async def execute_graph_streaming(
-    graph,
+    graph: Any,
     initial_state: dict,
     config: dict,
 ) -> AsyncGenerator[str, None]:

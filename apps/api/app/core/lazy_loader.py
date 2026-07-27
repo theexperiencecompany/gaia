@@ -124,7 +124,7 @@ class LazyLoader(Generic[T]):
                     f"{LogTag.STARTUP} Auto-initialization failed for '{self.provider_name}': {e}"
                 )
 
-    def _check_availability_and_warn(self):
+    def _check_availability_and_warn(self) -> None:
         """Check availability at registration time and log warnings if needed."""
         missing_indices = self._check_required_keys()
 
@@ -355,7 +355,7 @@ class LazyLoader(Generic[T]):
         # For non-error strategies, just return None (warning already logged at registration)
         return None
 
-    def _log_warning(self, message: str):
+    def _log_warning(self, message: str) -> None:
         """Log warning message."""
         log.warning(f"{LogTag.STARTUP} [LazyLoader] {message}")
 
@@ -377,11 +377,11 @@ class LazyLoader(Generic[T]):
             return self._is_configured
         return self._instance is not None
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the loader (useful for testing)."""
         if self.is_async:
             # For async loaders, we need to handle the async lock
-            async def _async_reset():
+            async def _async_reset() -> None:
                 if self._async_lock is None:
                     raise RuntimeError(
                         f"Async lock not initialized for provider '{self.provider_name}'"
@@ -412,7 +412,7 @@ class LazyLoader(Generic[T]):
 
 
 class ProviderRegistry:
-    def _check_cyclic_dependency(self, name: str, visited: list | None = None):
+    def _check_cyclic_dependency(self, name: str, visited: list | None = None) -> None:
         """Check for cyclic dependencies starting from provider 'name'. Raises ConfigurationError if a cycle is found."""
         if visited is None:
             visited = []

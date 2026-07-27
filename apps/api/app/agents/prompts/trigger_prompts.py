@@ -23,7 +23,7 @@ TRIGGER_CONTEXT_TEMPLATE = """## TRIGGER CONTEXT:
 """
 
 
-def generate_trigger_specific_guidance(trigger_config) -> str:
+def generate_trigger_specific_guidance(trigger_config: Any | None) -> str:
     """Generate specific guidance based on trigger type."""
     if not trigger_config:
         return "No specific trigger guidance - this is a manual workflow."

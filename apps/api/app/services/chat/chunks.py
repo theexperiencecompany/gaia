@@ -11,7 +11,7 @@ LangGraph stream processor in ``stream_utils``, and the legacy
 
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Any, cast
 
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
@@ -122,7 +122,7 @@ async def _forward_subagent_lifecycle(
 def _parse_chunk_json(chunk_payload: str) -> dict[str, Any] | None:
     """Parse a chunk payload as JSON, returning ``None`` on malformed input."""
     try:
-        return json.loads(chunk_payload)
+        return cast(dict[str, Any], json.loads(chunk_payload))
     except json.JSONDecodeError:
         return None
 
@@ -132,7 +132,7 @@ def extract_response_text(chunk: str) -> str:
     try:
         chunk = chunk.removeprefix("data: ")
         data = json.loads(chunk)
-        return data.get("response", "")
+        return cast(str, data.get("response", ""))
     except (json.JSONDecodeError, KeyError):
         pass
     return ""

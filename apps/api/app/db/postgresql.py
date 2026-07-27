@@ -6,7 +6,7 @@ This module provides SQLAlchemy setup for PostgreSQL database connection.
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, cast
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Connection, text
@@ -145,7 +145,7 @@ async def get_postgresql_engine() -> AsyncEngine:
     engine = await providers.aget("postgresql_engine")
     if engine is None:
         raise RuntimeError("PostgreSQL engine not available")
-    return engine
+    return cast(AsyncEngine, engine)
 
 
 @asynccontextmanager

@@ -8,7 +8,7 @@ shape: Composio fetches the source URL and forwards the bytes to LinkedIn's
 upload endpoint with the authenticated headers.
 """
 
-from typing import Any
+from typing import Any, cast
 
 from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
@@ -102,7 +102,7 @@ def upload_image_from_url(
             method="PUT",
             binary_body={"url": image_url},
         )
-        return image_urn
+        return cast(str, image_urn)
 
     except Exception as e:
         log.error(f"{LogTag.INTEGRATION} Error uploading image: {e}")
@@ -142,7 +142,7 @@ def upload_document_from_url(
             method="PUT",
             binary_body={"url": document_url},
         )
-        return document_urn
+        return cast(str, document_urn)
 
     except Exception as e:
         log.error(f"{LogTag.INTEGRATION} Error uploading document: {e}")

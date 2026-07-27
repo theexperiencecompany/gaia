@@ -32,7 +32,7 @@ from shared.py.wide_events import log
 class PaymentWebhookService:
     """Clean service for handling Dodo payment webhooks."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.webhook_secret = settings.DODO_WEBHOOK_PAYMENTS_SECRET
         # Initialize Standard Webhooks verifier
         if self.webhook_secret:

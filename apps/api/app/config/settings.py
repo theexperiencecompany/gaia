@@ -16,7 +16,7 @@ Add env vars
 from functools import lru_cache
 import os
 import time
-from typing import Literal
+from typing import Any, Literal, Self
 
 from dotenv import load_dotenv
 from pydantic import computed_field, field_validator
@@ -49,7 +49,7 @@ class BaseAppSettings(BaseSettings):
 
     # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs):
+    def from_env(cls, **kwargs: Any) -> Self:
         """Create settings from environment variables."""
         try:
             return cls(**kwargs)
@@ -58,7 +58,7 @@ class BaseAppSettings(BaseSettings):
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
-            defaults = {}
+            defaults: dict[str, Any] = {}
             for field_name, field_info in fields.items():
                 if field_name in kwargs:
                     continue
@@ -641,7 +641,7 @@ class DevelopmentSettings(CommonSettings):
 _infisical_secrets_loaded = False
 
 
-def _ensure_infisical_loaded():
+def _ensure_infisical_loaded() -> None:
     """Ensure Infisical secrets are loaded exactly once."""
     global _infisical_secrets_loaded
     if not _infisical_secrets_loaded:
@@ -654,7 +654,7 @@ def _ensure_infisical_loaded():
 
 
 @lru_cache(maxsize=1)
-def get_settings():
+def get_settings() -> Any:
     """
     Get cached settings instance based on environment.
 
@@ -670,6 +670,7 @@ def get_settings():
 
     try:
         # Initialize settings based on environment
+        settings_obj: ProductionSettings | DevelopmentSettings
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
         else:

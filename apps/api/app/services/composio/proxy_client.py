@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 from threading import Lock
 import time
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from app.config.oauth_config import get_composio_social_configs
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
@@ -151,7 +151,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             active.id,
             now + _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS,
         )
-    return active.id
+    return cast(str, active.id)
 
 
 def _build_parameters(

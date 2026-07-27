@@ -22,7 +22,7 @@ _python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
 _obj_marker = "-_object_-"
 
 
-def _clean_reserved_keyword(keyword: str):
+def _clean_reserved_keyword(keyword: str) -> str:
     return f"{keyword}_rs"
 
 
@@ -71,7 +71,7 @@ def _reinstate_reserved_python_keywords(request: dict, keywords: dict) -> dict:
 class StructuredTool(BaseStructuredTool):
     """StructuredTool that returns a structured failure instead of raising on invalid args."""
 
-    def run(self, *args, **kwargs):
+    def run(self, *args: t.Any, **kwargs: t.Any) -> t.Any:
         """Run the tool, converting argument validation errors into a failure result."""
         try:
             return super().run(*args, **kwargs)
@@ -97,7 +97,7 @@ class LangchainProvider(
         execute_tool: AgenticProviderExecuteFn,
         keywords: dict,
         toolkit: str | None = None,
-    ):
+    ) -> types.FunctionType:
         def function(**kwargs: t.Any) -> dict:
             """Wrapper function for composio action."""
 

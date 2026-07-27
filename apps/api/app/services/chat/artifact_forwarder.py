@@ -19,7 +19,9 @@ import contextlib
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
+
+from redis.asyncio.client import PubSub
 
 from app.constants.artifacts import (
     ARTIFACT_LOG_PREFIX,
@@ -156,7 +158,7 @@ class ArtifactForwarder:
             for artifact in await get_conversation_artifacts(self.user_id, self.conversation_id)
         }
 
-    async def _consume(self, pubsub: Any) -> None:
+    async def _consume(self, pubsub: PubSub) -> None:
         """Forward each artifact event; one bad event is logged, never fatal."""
         async for message in pubsub.listen():
             payload = _parse_artifact_message(message, self.conversation_id)
@@ -341,15 +343,18 @@ def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> di
         return None
     if payload.get("session_id") != conversation_id:
         return None
-    return payload
+    return cast(dict[str, Any], payload)
 
 
-async def _close_pubsub(pubsub: Any, channel: str) -> None:
+async def _close_pubsub(pubsub: PubSub, channel: str) -> None:
     """Unsubscribe and close, swallowing teardown errors (the turn is over)."""
     with contextlib.suppress(Exception):
         await pubsub.unsubscribe(channel)
     with contextlib.suppress(Exception):
-        await pubsub.aclose()
+        # redis-py's installed type stubs haven't caught up to the runtime
+        # library: aclose() exists and is the non-deprecated replacement for
+        # the stubbed close().
+        await pubsub.aclose()  # type: ignore[attr-defined]
 
 
 def _warm_artifact_blocks(host_path: Path) -> None:

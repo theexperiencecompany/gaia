@@ -1,6 +1,7 @@
 """Workflow generation service for LLM-based step creation."""
 
 import re
+from typing import Any
 
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -147,7 +148,7 @@ class WorkflowGenerationService:
     async def generate_steps_with_llm(
         prompt: str,
         title: str,
-        trigger_config=None,
+        trigger_config: Any | None = None,
         description: str | None = None,
         integration_ids: list[str] | None = None,
         user_id: str | None = None,

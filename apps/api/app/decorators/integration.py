@@ -14,7 +14,9 @@ from app.utils.oauth_utils import get_tokens_by_user_id
 from shared.py.wide_events import log
 
 
-def require_integration(tool_category: str, tool_name: str | None = None):
+def require_integration(
+    tool_category: str, tool_name: str | None = None
+) -> Callable[[Callable], Callable]:
     """
     Decorator to check if user has required integration before executing a tool.
 
@@ -31,7 +33,7 @@ def require_integration(tool_category: str, tool_name: str | None = None):
 
     def decorator(func: Callable) -> Callable:
         @wraps(func)
-        async def wrapper(*args, **kwargs) -> Any:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Extract config from args or kwargs
             config = None
 

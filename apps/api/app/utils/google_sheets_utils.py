@@ -8,6 +8,7 @@ This module provides helpers for Google Sheets and Drive API interactions:
 """
 
 import re
+from typing import cast
 
 from app.constants.log_tags import LogTag
 from app.services.composio.proxy_client import proxy_request_sync
@@ -67,7 +68,7 @@ def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> 
         )
         for sheet in (data or {}).get("sheets", []):
             if sheet.get("properties", {}).get("title") == sheet_name:
-                return sheet["properties"]["sheetId"]
+                return cast(int, sheet["properties"]["sheetId"])
         return None
     except Exception as e:
         log.error(f"{LogTag.INTEGRATION} Error getting sheet ID: {e}")

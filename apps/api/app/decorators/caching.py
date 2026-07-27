@@ -28,17 +28,16 @@ import asyncio
 from collections.abc import Awaitable, Callable
 import functools
 import inspect
-from typing import Any, Generic, TypeVar
+from typing import Any
 
+from app.constants.cache import ONE_YEAR_TTL
 from app.constants.log_tags import LogTag
-from app.db.redis import ONE_YEAR_TTL, delete_cache, get_cache, set_cache
+from app.db.redis import delete_cache, get_cache, set_cache
 from app.utils.cache_utils import create_cache_key_hash
 from shared.py.wide_events import log
 
-T = TypeVar("T")
 
-
-class Cacheable(Generic[T]):
+class Cacheable:
     """
     Advanced caching decorator with full control over key generation and data handling.
 
@@ -106,8 +105,8 @@ class Cacheable(Generic[T]):
         key_generator: Callable | None = None,
         key: str | None = None,
         ttl: int = ONE_YEAR_TTL,
-        serializer: Callable[[T], Any] | None = None,
-        deserializer: Callable[[Any], T] | None = None,
+        serializer: Callable[[Any], Any] | None = None,
+        deserializer: Callable[[Any], Any] | None = None,
         model: type | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
@@ -171,7 +170,7 @@ class Cacheable(Generic[T]):
         """
 
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Generate the cache key
             if self.key:
                 cache_key = self.key
@@ -303,7 +302,7 @@ class CacheInvalidator:
         """
 
         @functools.wraps(func)
-        async def wrapper(*args, **kwargs) -> Any:
+        async def wrapper(*args: Any, **kwargs: Any) -> Any:
             # Generate the cache key
             cache_keys: list[str] = []
             if self.key:

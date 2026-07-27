@@ -2,7 +2,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 import json
 import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langchain_core.messages import ToolCall
 
@@ -93,7 +93,9 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     if platform_subagent:
         return platform_subagent.name
 
-    cached_name = await _lookup_custom_integration_name(clean_id)
+    # @Cacheable erases the wrapped function's return type to Any (see
+    # app/decorators/caching.py); cast back to the real annotated contract.
+    cached_name = cast("str | None", await _lookup_custom_integration_name(clean_id))
     if cached_name:
         return cached_name
 
@@ -348,7 +350,7 @@ def format_sse_data(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload) -> dict:
+def process_custom_event_for_tools(payload: Any) -> dict:
     """Extract tool execution data from a custom LangGraph event payload.
 
     Returns the extracted tool data, or an empty dict on failure / no data.

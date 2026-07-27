@@ -15,7 +15,7 @@ async def search_by_similarity(
     top_k: int = 5,
     additional_filters: dict | None = None,
     fetch_mongo_details: bool | None = False,
-):
+) -> list[dict[str, Any]]:
     """Search a ChromaDB collection for items similar to ``input_text``.
 
     Scoped to ``user_id``; optionally enriches results with MongoDB details.
@@ -102,7 +102,7 @@ async def search_by_similarity(
         return []
 
 
-async def search_notes_by_similarity(input_text: str, user_id: str):
+async def search_notes_by_similarity(input_text: str, user_id: str) -> list[dict[str, Any]]:
     return await search_by_similarity(
         input_text=input_text,
         user_id=user_id,

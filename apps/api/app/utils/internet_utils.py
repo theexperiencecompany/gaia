@@ -3,7 +3,7 @@ import ipaddress
 import socket
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
 from fastapi import HTTPException, status
 import httpx
 
@@ -208,7 +208,7 @@ async def scrape_url_metadata(url: str) -> dict:
                 return relative_url
             return urljoin(url, relative_url)
 
-        def get_attr_value(tag, attr_name: str) -> str | None:
+        def get_attr_value(tag: Tag | NavigableString | None, attr_name: str) -> str | None:
             """Safely get attribute value from a BeautifulSoup tag."""
             if not tag or not hasattr(tag, "attrs"):
                 return None

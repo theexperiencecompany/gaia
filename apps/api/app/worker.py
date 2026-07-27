@@ -1,4 +1,7 @@
+from typing import cast
+
 from arq import cron
+from arq.typing import WorkerCoroutine
 
 # The worker runs the executor agent + Composio custom tools, so it needs the
 # same monkey-patches as the API process (main.py). Without this, custom tools
@@ -105,32 +108,32 @@ WorkerSettings.cron_jobs = [
         second=0,
     ),
     cron(
-        _sweep_idle_sandboxes,
+        cast(WorkerCoroutine, _sweep_idle_sandboxes),
         minute=0,  # Hourly
         second=0,
     ),
     cron(
-        _prune_inactive_sessions,
+        cast(WorkerCoroutine, _prune_inactive_sessions),
         hour=3,  # Daily at 03:00 UTC
         minute=0,
         second=0,
     ),
     cron(
-        _prune_checkpoint_versions,
+        cast(WorkerCoroutine, _prune_checkpoint_versions),
         hour=4,  # Daily at 04:30 UTC (low traffic, after session prune)
         minute=30,
         second=0,
     ),
-    cron(_safety_net_check_orphaned_todos, minute={0, 30}, second=0),
+    cron(cast(WorkerCoroutine, _safety_net_check_orphaned_todos), minute={0, 30}, second=0),
     cron(
-        _maintenance_sweep_tracked_todos,
+        cast(WorkerCoroutine, _maintenance_sweep_tracked_todos),
         hour={0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22},
         minute=15,
         second=0,
     ),
     # Recovery safety net: re-enqueue due scheduled tasks whose ARQ job was lost
     # (Redis eviction/flush). Idempotent via the deterministic _job_id.
-    cron(_rescan_pending_scheduled_tasks, minute={0, 30}, second=0),
+    cron(cast(WorkerCoroutine, _rescan_pending_scheduled_tasks), minute={0, 30}, second=0),
     # Seed long-term memory for recently-active pre-launch users (capped per
     # run; the marker makes it resume and pick up returning users).
     cron(

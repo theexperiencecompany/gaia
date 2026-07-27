@@ -10,7 +10,7 @@ import datetime
 import json
 import math
 import re
-from typing import Any
+from typing import Any, cast
 import uuid
 
 from composio import Composio
@@ -63,7 +63,7 @@ def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
     if not user_id:
         raise ValueError("Missing user_id in auth_credentials")
-    return user_id
+    return cast(str, user_id)
 
 
 def _gmail_proxy(
@@ -108,7 +108,7 @@ def _conversation_id(config: RunnableConfig) -> str | None:
     summarization middleware.
     """
     configurable = config.get("configurable") or {}
-    return configurable.get("vfs_session_id") or configurable.get("thread_id")
+    return cast("str | None", configurable.get("vfs_session_id") or configurable.get("thread_id"))
 
 
 # =============================================================================
@@ -1001,7 +1001,7 @@ def _recent_inbox_ids(user_id: str, *, since: str | None, max_results: int) -> l
     return [mid for m in messages_data.get("messages", []) if (mid := m.get("id"))]
 
 
-def register_gmail_custom_tools(composio: Composio):
+def register_gmail_custom_tools(composio: Composio) -> list[str]:
     """Register custom Gmail tools with the Composio client. Returns the registered tool names."""
 
     @composio.tools.custom_tool(toolkit="gmail")
