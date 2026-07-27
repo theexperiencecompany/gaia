@@ -239,7 +239,29 @@ async def get_todo_summary(todo_id: str) -> TodoSummary:
 
 Endpoints follow the same rule: never `-> dict[str, Any]`. Return a Pydantic model, or `JSONResponse` with `response_model=` set (see FastAPI — Route Handlers above). If a lower layer already returns a real model, return it (or build the response from it) directly — don't call `.model_dump()` just to downgrade it back to a dict.
 
-### 4. A fixed set of valid values is an `Enum`/`Literal`, not a bare `str`/`int`
+### 4. Once something is a real model, use attribute access — `.get("key")` on it is the same guessing game as `dict[str, Any]`
+
+`some_dict.get("key")` (or `dict["key"]`) only ever gets checked at runtime, if at all: a typo'd key silently returns `None` (or raises `KeyError` far from the mistake), there is no autocomplete, and nothing tells a reader what keys actually exist. This is true whether the dict came from `dict[str, Any]` or from calling `.model_dump()` on a perfectly good model just to consume it with `.get()` — both throw away the exact type information the model exists to provide. Once a shape is a named model (per item 3) or the underlying data source already returns one, consume it with real attribute access everywhere downstream, not just at the boundary where it was created.
+
+```python
+# wrong — doc is already a typed TodoDocument; .get() throws that away and
+# guesses at runtime whether "assignee_id" is even a real field
+async def get_assignee(todo_id: str) -> str | None:
+    doc = await todo_repository.get(todo_id)
+    data = doc.model_dump()
+    return data.get("assignee_id")
+
+
+# correct — real attribute access; a typo'd field name is a mypy error, not
+# a silent None at runtime
+async def get_assignee(todo_id: str) -> str | None:
+    doc = await todo_repository.get(todo_id)
+    return doc.assignee_id
+```
+
+This includes request payloads, cached/deserialized values, and anything already validated into a model earlier in the same flow — if it's a model, use its fields. The one case `.get()`/`dict[...]` access is still correct is genuinely dynamic data with no fixed schema (see item 7) — a raw webhook payload before validation, a mapping keyed by user-supplied strings, an `**kwargs`-style pass-through. Reaching for `.get()` out of habit on something that already has a real shape is the pattern to eliminate.
+
+### 5. A fixed set of valid values is an `Enum`/`Literal`, not a bare `str`/`int`
 
 ```python
 # wrong — any string compiles; a typo ("Compelted") is only caught at runtime, if ever
@@ -258,12 +280,12 @@ def set_status(todo: TodoDocument, status: TodoStatus) -> None:
     todo.status = status
 ```
 
-### 5. TypedDict vs Pydantic — pick by whether the boundary needs validation
+### 6. TypedDict vs Pydantic — pick by whether the boundary needs validation
 
 - `BaseModel`: crosses a validation/serialization boundary (API request/response, DB document, anything built from untrusted or external input).
 - `TypedDict`: a pure in-process shape contract with no need for runtime validation/coercion — cheaper, still fully checked by mypy.
 
-### 6. Class attributes and instance state are typed too, not just function signatures
+### 7. Class attributes and instance state are typed too, not just function signatures
 
 ```python
 # wrong — self.cache's real shape is discoverable only by reading every usage
@@ -280,7 +302,7 @@ class ToolRegistry:
         self.last_error: Exception | None = None
 ```
 
-### 7. External boundaries: validate immediately, don't propagate raw/`Any` data inward
+### 8. External boundaries: validate immediately, don't propagate raw/`Any` data inward
 
 Raw third-party payloads — webhook bodies, provider SDK responses, DB documents before repository parsing, subprocess/file/env output — may enter as `dict[str, Any]` or `Any`, because the boundary genuinely can't be typed until it's parsed. But validate into a real model in the same function that receives it, and never let the raw value travel more than one hop past where it entered.
 
@@ -290,7 +312,7 @@ async def handle_webhook(payload: dict[str, Any]) -> WebhookEvent:
     return WebhookEvent.model_validate(payload)
 ```
 
-### 8. Generic decorators/wrappers preserve the wrapped signature — they don't erase it to `Any`
+### 9. Generic decorators/wrappers preserve the wrapped signature — they don't erase it to `Any`
 
 A decorator typed `Callable[..., Any] -> Callable[..., Any]` destroys the return type of everything it wraps, which then leaks out as "Returning Any" errors at every call site, arbitrarily far from the actual decorator. Use `ParamSpec`/`TypeVar` to preserve the original signature through the wrapper.
 
@@ -314,9 +336,9 @@ def log_calls(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
     return wrapper
 ```
 
-If the wrapper's own call pattern (e.g. a two-step decorator factory) genuinely defeats `ParamSpec` inference and a real fix would require reworking the decorator's calling convention, that crosses the risk bar in §13 — leave it, and document why.
+If the wrapper's own call pattern (e.g. a two-step decorator factory) genuinely defeats `ParamSpec` inference and a real fix would require reworking the decorator's calling convention, that crosses the risk bar in §14 — leave it, and document why.
 
-### 9. Never use a `TYPE_CHECKING`-guarded import to route around a circular import
+### 10. Never use a `TYPE_CHECKING`-guarded import to route around a circular import
 
 A circular import is a real architectural problem — two modules that need each other. Hiding it behind `if TYPE_CHECKING:` (plus a string forward-reference) makes mypy happy without fixing anything: the cycle still exists, it's just invisible to anyone not specifically checking import order, and it signals "this dependency direction is wrong" to nobody. Fix the actual dependency instead.
 
@@ -358,19 +380,19 @@ When the concrete type genuinely is needed (not just a couple of dynamically-acc
 
 It is never the first thing to reach for, and it is never a substitute for actually checking whether the cycle exists.
 
-### 10. Framework-injected / structurally-required parameters are kept exactly as the framework calls them
+### 11. Framework-injected / structurally-required parameters are kept exactly as the framework calls them
 
 If a parameter is unused by one implementation but required by a framework's call signature — a LangGraph node/tool injecting `config`/`store`, FastAPI `Depends()`, an ARQ task's `ctx`, a Pydantic validator's `cls`/`info`, an abstract method's full interface — keep it. Verify the real call site or framework source first: "looks unused in this body" is not the same as "is unused." Add a `pyproject.toml` `per-file-ignores` entry naming the framework contract; never rename or delete the parameter to silence a linter.
 
-### 11. Narrowing `Any`/unknown values: `cast()` over `isinstance()` when already correct by construction
+### 12. Narrowing `Any`/unknown values: `cast()` over `isinstance()` when already correct by construction
 
 Prefer `cast(RealType, value)` over `isinstance(value, RealType)` when you already know the value is correct by construction (a lazy-provider registry lookup, a well-known dict's `.get()` result, a value a framework's own contract guarantees). `cast()` only changes what the type checker believes; `isinstance()` changes what the code actually *does* at runtime, and can reject a structurally-compatible object — a mock, a duck-typed wrapper, a different concrete implementation of a `Protocol` — that was working fine before.
 
-### 12. Never change behavior to satisfy a type checker
+### 13. Never change behavior to satisfy a type checker
 
 Confirmed real regressions from exactly this mistake: deleting an `isinstance(x, dict)` guard because a checker called the branch "unreachable" (it wasn't — real callers passed non-dict values); deleting a framework-injected parameter because it "looked unused" (the framework called it positionally); changing a function's actual return *values*, not just its annotation, to satisfy a stricter type (broke a downstream consumer needing the original shape). Fixing a type error changes how something is *described*; it must never change what the code *does*.
 
-### 13. High acceptance bar — when to leave a type loose, deliberately, with a comment
+### 14. High acceptance bar — when to leave a type loose, deliberately, with a comment
 
 Stop before forcing full type safety through:
 
