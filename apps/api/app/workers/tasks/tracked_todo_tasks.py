@@ -128,40 +128,44 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
     try:
         await _run_execution(doc, user_id, user_data=user_data)
 
-        # Reset retry counter on success
+        # scheduled_at must always name the NEXT planned execution — it is the
+        # field find_due_tracked_all_users selects on, so a value left pointing
+        # at the run that just happened makes the safety net re-enqueue this
+        # todo on every scan. Recurrence is evaluated in the user's stored
+        # timezone (looked up once at the top of this run).
+        next_run = (
+            _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
+            if doc.recurrence
+            else None
+        )
         await todo_repository.update(
-            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
         )
 
-        # Re-enqueue if recurring. Recurrence is always evaluated in the
-        # user's stored timezone (looked up once at the top of this run).
-        if doc.recurrence:
-            next_run = _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
-            if next_run:
-                await todo_repository.update(
-                    todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=next_run)
-                )
-                await pool.enqueue_job(
-                    "execute_tracked_todo",
-                    todo_id,
-                    _defer_until=next_run,
-                )
-                log.info(
-                    "tracked_todo.re_enqueued",
-                    todo_id=todo_id,
-                    next_run=next_run.isoformat(),
-                )
+        if next_run:
+            await pool.enqueue_job(
+                "execute_tracked_todo",
+                todo_id,
+                _defer_until=next_run,
+            )
+            log.info(
+                "tracked_todo.re_enqueued",
+                todo_id=todo_id,
+                next_run=next_run.isoformat(),
+            )
 
         return f"success:{todo_id}"
 
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
-        await todo_repository.update(
-            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
-        )
 
         if new_retry_count >= MAX_RETRY_ATTEMPTS:
+            await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
+            )
             await _mark_todo_failed(todo_id, user_id, doc)
             return f"failed:{todo_id} (max retries reached)"
 
@@ -169,6 +173,14 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         backoff_index = min(new_retry_count - 1, len(RETRY_BACKOFF) - 1)
         backoff = RETRY_BACKOFF[backoff_index]
         next_attempt = datetime.now(UTC) + backoff
+        # Park scheduled_at on the backoff target as well: left in the past it
+        # keeps matching the safety net's due-query, which would fire the retry
+        # on the next 30-minute scan and flatten the 1h/4h ladder.
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(gaia_retry_count=new_retry_count, scheduled_at=next_attempt),
+        )
         await pool.enqueue_job(
             "execute_tracked_todo",
             todo_id,
