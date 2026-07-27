@@ -19,7 +19,12 @@ from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import PublicHoloCardResponse, UserUpdate, UserUpdateResponse
+from app.models.user_models import (
+    HoloCardOnboardingFields,
+    PublicHoloCardResponse,
+    UserUpdate,
+    UserUpdateResponse,
+)
 from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
@@ -197,15 +202,15 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
         if not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        onboarding = user_doc.onboarding or {}
+        onboarding = HoloCardOnboardingFields.model_validate(user_doc.onboarding or {})
 
         # Check if user has completed onboarding
-        if not onboarding.get("house"):
+        if not onboarding.house:
             raise HTTPException(status_code=404, detail="Card not found")
 
         # Get stored metadata or calculate if not stored (for older users)
-        account_number = onboarding.get("account_number")
-        member_since = onboarding.get("member_since")
+        account_number = onboarding.account_number
+        member_since = onboarding.member_since
 
         if not account_number or not member_since:
             created_at = user_doc.created_at
@@ -222,14 +227,14 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
 
         log.set(outcome="success")
         return PublicHoloCardResponse(
-            house=onboarding.get("house"),
-            personality_phrase=onboarding.get("personality_phrase"),
-            user_bio=onboarding.get("user_bio"),
+            house=onboarding.house,
+            personality_phrase=onboarding.personality_phrase,
+            user_bio=onboarding.user_bio,
             account_number=account_number,
             member_since=member_since,
             name=user_doc.name,
-            overlay_color=onboarding.get("overlay_color", "rgba(0,0,0,0)"),
-            overlay_opacity=onboarding.get("overlay_opacity", 40),
+            overlay_color=onboarding.overlay_color,
+            overlay_opacity=onboarding.overlay_opacity,
         )
 
     except HTTPException:

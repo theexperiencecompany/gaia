@@ -292,6 +292,27 @@ class UserDocument(MongoDocument):
     inactive_email_count: int | None = None
 
 
+class HoloCardOnboardingFields(BaseModel):
+    """The subset of ``UserDocument.onboarding`` the holo-card endpoint reads.
+
+    ``UserDocument.onboarding`` stays ``dict[str, Any]`` (see its field comment
+    in ``UserDocument``) because it's read via chained ``.get()`` across many
+    other callers with different shape needs, several of which are under
+    active, unrelated development right now -- widening that shared field is
+    real scope, not this endpoint's. This model validates only the fields
+    this one endpoint actually consumes, at the point of use, so the endpoint
+    itself never guesses through ``.get()``.
+    """
+
+    house: str | None = None
+    personality_phrase: str | None = None
+    user_bio: str | None = None
+    account_number: int | None = None
+    member_since: str | None = None
+    overlay_color: str = "rgba(0,0,0,0)"
+    overlay_opacity: int = 40
+
+
 class PublicHoloCardResponse(BaseModel):
     """Public-facing subset of a user's profile, keyed by user id (``card_id``).
 
