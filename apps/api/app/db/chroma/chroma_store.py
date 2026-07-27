@@ -176,13 +176,15 @@ class ChromaStore(BaseStore):
 
     def batch(self, ops: Iterable[Op]) -> list[Result]:
         """Execute a batch of operations (sync wrapper)."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If we're already in an async context, create a new task
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
             raise RuntimeError(
                 "ChromaStore.batch() cannot be called from async context. Use abatch() instead."
             )
-        return loop.run_until_complete(self.abatch(ops))
+        return asyncio.run(self.abatch(ops))
 
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
         """Execute a batch of operations (async version)."""
