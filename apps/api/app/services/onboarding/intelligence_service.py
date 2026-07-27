@@ -144,6 +144,20 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
 # Module-level set prevents GC of fire-and-forget tasks
 _background_tasks: set[asyncio.Task] = set()
 
+# Fallback cadence whenever a workflow has no usable suggested trigger.
+_DEFAULT_WORKFLOW_CRON = "0 9 * * *"
+
+_TODO_TITLE_MAX_CHARS = 80
+
+
+def _truncate_title(title: str) -> str:
+    """Trim a generated todo title to the display limit on a word boundary,
+    falling back to a hard cut when the head has no usable break."""
+    if len(title) <= _TODO_TITLE_MAX_CHARS:
+        return title
+    head = title[:_TODO_TITLE_MAX_CHARS]
+    return head.rsplit(" ", 1)[0] or head
+
 
 @dataclass
 class InboxScanContext:
@@ -650,7 +664,7 @@ async def _run_inbox_scanning(user_id: str, ctx: InboxScanContext) -> None:
         f"{LogTag.ONBOARDING} inbox_scanning done",
         user_id=user_id,
         step="inbox_scanning",
-        outcome="ok",
+        outcome="ok" if fetch_ok else "failed",
         emails_fetched=len(ctx.emails),
         duration_s=round(time.monotonic() - t0, 2),
     )
@@ -1389,7 +1403,7 @@ async def _create_focus_todos(
 
         async def _create_one(title: str) -> dict | None:
             try:
-                safe_title = title[:80].rsplit(" ", 1)[0] if len(title) > 80 else title
+                safe_title = _truncate_title(title)
                 todo = TodoModel(
                     title=safe_title,
                     description=f"Created from your focus: {focus[:200]}",
@@ -1472,9 +1486,7 @@ async def _create_todos_from_triage(
 
         async def _create_one(spec: _TodoSpec) -> dict | None:
             try:
-                safe_title = (
-                    spec.title[:80].rsplit(" ", 1)[0] if len(spec.title) > 80 else spec.title
-                )
+                safe_title = _truncate_title(spec.title)
                 todo = TodoModel(
                     title=safe_title,
                     description=spec.description[:500],
@@ -1537,33 +1549,36 @@ def _build_trigger_config_from_suggestion(
 ) -> TriggerConfig:
     """Map a SuggestedTrigger-like dict into a real TriggerConfig."""
     if not suggestion:
-        return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+        return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON)
 
     s_type = (suggestion.get("type") or "").lower()
     if s_type == "manual":
         return TriggerConfig(type=TriggerType.MANUAL)
 
     if s_type == "schedule":
-        cron = (suggestion.get("cron_expression") or "0 9 * * *").strip()
+        # Strip before the fallback: a whitespace-only cron is truthy, so testing it
+        # first left an empty expression that fails TriggerConfig validation and
+        # loses the whole workflow in the caller's except.
+        cron = (suggestion.get("cron_expression") or "").strip() or _DEFAULT_WORKFLOW_CRON
         return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=cron)
 
     if s_type == "integration":
         slug = suggestion.get("trigger_name")
         schema = _find_workflow_trigger_schema(slug) if slug else None
         if not schema:
-            return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+            return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON)
 
         # Triggers with config fields need typed trigger_data we can't build
         # generically — fall back to a schedule for those.
         if schema.config_schema:
-            return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+            return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON)
 
         return TriggerConfig(
             type=TriggerType.INTEGRATION,
             trigger_name=slug,
         )
 
-    return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+    return TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON)
 
 
 def _find_workflow_trigger_schema(slug: str) -> WorkflowTriggerSchema | None:
@@ -1575,7 +1590,10 @@ def _find_workflow_trigger_schema(slug: str) -> WorkflowTriggerSchema | None:
 
 
 def _serialize_trigger_for_payload(trigger_config: TriggerConfig) -> dict:
-    payload: dict = {"type": str(trigger_config.type)}
+    # `.value`, not `str(...)`: TriggerType subclasses str via Enum, so str() renders
+    # "TriggerType.SCHEDULE". The frontend types this field the same as the one the
+    # workflow API returns, which serializes to "schedule".
+    payload: dict = {"type": trigger_config.type.value}
     if trigger_config.cron_expression:
         payload["cron_expression"] = trigger_config.cron_expression
     if trigger_config.timezone:
@@ -1636,22 +1654,18 @@ _WORKFLOW_SPEC_MAX_ATTEMPTS = 3
 
 
 async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
-    """Invoke the LLM up to ``_WORKFLOW_SPEC_MAX_ATTEMPTS`` times until it returns
-    exactly 4 workflow specs. Raises if no valid result is produced after the retries."""
+    """Invoke the LLM up to ``_WORKFLOW_SPEC_MAX_ATTEMPTS`` times, raising if every
+    attempt fails.
+
+    `_WorkflowList` pins the list to exactly 4 specs, so a wrong count arrives here
+    as a ValidationError and is retried like any other failure — there is no
+    separate count check to make.
+    """
     last_error: Exception | None = None
     for attempt in range(_WORKFLOW_SPEC_MAX_ATTEMPTS):
         try:
-            candidate: _WorkflowList = await ainvoke_structured(
+            return await ainvoke_structured(
                 _WorkflowList, prompt, label="onboarding_workflow_suggestions"
-            )
-            if len(candidate.workflows) == 4:
-                return candidate
-            log.warning(
-                f"{LogTag.ONBOARDING} workflow specs wrong count, retrying",
-                user_id=user_id,
-                step="workflows_specs_llm",
-                attempt=attempt,
-                specs_count=len(candidate.workflows),
             )
         except Exception as e:
             last_error = e
@@ -1663,11 +1677,9 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
                 error=str(e)[:200],
             )
 
-    if last_error is not None:
-        raise last_error
     raise RuntimeError(
-        f"LLM did not return exactly 4 workflow specs after {_WORKFLOW_SPEC_MAX_ATTEMPTS} attempts"
-    )
+        f"Workflow spec generation failed after {_WORKFLOW_SPEC_MAX_ATTEMPTS} attempts"
+    ) from last_error
 
 
 def _workflow_integration_ids(
@@ -1727,7 +1739,7 @@ async def _build_one_workflow(
             step="workflows_spec",
             spec_index=idx,
             spec_title=spec.title[:60],
-            trigger_type=str(trigger_config.type),
+            trigger_type=trigger_config.type.value,
             workflow_id=str(workflow.id),
             prompt_duration_s=prompt_duration_s,
             create_duration_s=create_duration_s,
@@ -1853,7 +1865,9 @@ async def _create_fallback_workflow(
         else "Every morning at 9am, summarize unread emails by priority, today's meetings, and open todos."
     )
     try:
-        trigger_config = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *")
+        trigger_config = TriggerConfig(
+            type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON
+        )
         request = CreateWorkflowRequest(
             title=title,
             description=description,
