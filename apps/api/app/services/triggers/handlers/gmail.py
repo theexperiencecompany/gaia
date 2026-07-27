@@ -37,7 +37,7 @@ class GmailTriggerHandler(TriggerHandler):
 
     async def register(
         self,
-        user_id: str,
+        _user_id: str,
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,

@@ -361,6 +361,22 @@ unfixable = [
 "apps/api/app/api/v1/endpoints/integrations/config.py" = ["ARG001"]
 "apps/api/app/agents/tools/weather_tool.py" = ["ARG001"]
 "apps/api/app/agents/tools/webpage_tool.py" = ["ARG001"]
+# ARG002: TriggerHandler.get_config_options is a polymorphic interface called
+# generically (app/api/v1/endpoints/triggers.py) and exercised in tests via
+# keyword arguments (tests/unit/services/test_trigger_service.py), so every
+# concrete handler must keep the full parameter list even when it only
+# branches on a subset -- verified per-file against body + test call sites.
+"apps/api/app/services/triggers/base.py" = ["ARG002"]
+"apps/api/app/services/triggers/handlers/github.py" = ["ARG002"]
+"apps/api/app/services/triggers/handlers/linear.py" = ["ARG002"]
+"apps/api/app/services/triggers/handlers/notion.py" = ["ARG002"]
+"apps/api/app/services/triggers/handlers/google_sheets.py" = ["ARG002"]
+"apps/api/app/services/triggers/handlers/slack.py" = ["ARG002"]
+# ANN401: passes through unchanged to pymongo.Collection.create_index(**kwargs),
+# whose own upstream signature is Any (heterogeneous index options: unique,
+# name, expireAfterSeconds, partialFilterExpression, ...). Verified against
+# the installed pymongo source.
+"apps/api/app/db/mongodb/indexes.py" = ["ANN401"]
 # ARG001: LangGraph injects `store: BaseStore` positionally into these
 # functions at graph-execution time (verified against LangGraph's call
 # convention) -- confirmed unused-but-required, not dead code.

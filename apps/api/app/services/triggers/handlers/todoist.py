@@ -35,7 +35,7 @@ class TodoistTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -72,7 +72,7 @@ class TodoistTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching a Todoist trigger event."""
         log.set_ns("trigger", integration_id="todoist", trigger_type=event_type)

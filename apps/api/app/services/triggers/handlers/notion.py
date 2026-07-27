@@ -64,7 +64,7 @@ class NotionTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
+        **kwargs: str,
     ) -> list[dict[str, Any]]:
         """Get dynamic options for Notion trigger config fields."""
         try:
@@ -123,7 +123,7 @@ class NotionTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

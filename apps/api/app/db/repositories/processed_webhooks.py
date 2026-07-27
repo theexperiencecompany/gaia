@@ -5,6 +5,7 @@ is the real once-only guarantee; ``mark_processed`` treats a duplicate as a no-o
 (the guarantee working). A 30-day TTL on ``processed_at`` reaps old records.
 """
 
+import contextlib
 from datetime import UTC, datetime
 
 from pymongo.errors import DuplicateKeyError
@@ -47,10 +48,8 @@ class ProcessedWebhooksRepository(
             subscription_id=subscription_id,
             processed_at=datetime.now(UTC),
         )
-        try:
+        with contextlib.suppress(DuplicateKeyError):
             await self.create(document)
-        except DuplicateKeyError:
-            pass
 
 
 processed_webhook_repository = ProcessedWebhooksRepository()

@@ -60,7 +60,7 @@ class SlackTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -265,7 +265,7 @@ class SlackTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
+        **_kwargs: str,
     ) -> list[dict[str, str]]:
         """Get dynamic options for Slack trigger config fields."""
         if trigger_name == "slack_new_message" and field_name == "channel_ids":

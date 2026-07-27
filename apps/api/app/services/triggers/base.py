@@ -262,7 +262,7 @@ class TriggerHandler(ABC):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
+        **_kwargs: str,
     ) -> list[dict[str, str]]:
         """Get dynamic options for a trigger configuration field.
 
