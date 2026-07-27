@@ -136,9 +136,13 @@ jobs:
       - name: Run Python tests
         working-directory: apps/api
         # No ::group:: — failure tracebacks must be visible without un-collapsing.
+        # Coverage is measured in this same run (not a separate job) so the
+        # full suite isn't paid for twice per PR; --cov-fail-under makes the
+        # coverage floor a real gate, not an informational number.
         run: |
           uv run --frozen pytest -n auto -m 'not composio' \
-            --tb=short -q --override-ini=addopts=--strict-markers
+            --tb=short -q --override-ini=addopts=--strict-markers \
+            --cov=app --cov-report=term-missing --cov-fail-under=80
           echo "Python tests: OK (full suite vs live services)"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
@@ -257,26 +261,6 @@ jobs:
           format: "table"
           scan-ref: "."
 
-  # --- Coverage (master only, non-blocking) -------------------------------
-  coverage:
-    needs: [detect]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
-      - uses: ./.github/actions/setup-python-test-env
-      - name: Run coverage
-        working-directory: apps/api
-        run: >-
-          uv run --frozen pytest -n auto -m 'not composio' --tb=short -q
-          --cov=app --cov-report=term-missing --cov-fail-under=80
-          --override-ini=addopts=--strict-markers
-
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     if: always()
@@ -288,8 +272,9 @@ jobs:
       - test-harness-tools
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
-      # trivy-scan deliberately excluded (non-blocking)
-      # coverage deliberately excluded (master-only, non-blocking)
+      # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
+      # coverage is measured inside test-python itself (--cov-fail-under=80),
+      # not a separate job -- a second job would re-run the whole suite
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

@@ -101,7 +101,7 @@ flowchart TD
 ### `.github/workflows/main.yml`
 1. Enter from PRs targeting `develop`/`master` and pushes to `master`.
 2. `detect`: run master promotion policy guard (`develop` or `release-please--*` to `master`), validate the release manifest, and compute Nx-affected Python/TypeScript project lists (fail-loud — an nx error fails the job rather than silently skipping every lane).
-3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — pytest run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness). Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
+3. Correctness lanes, each gated on the affected lists: `build` (TS builds), `test-typescript` (vitest via Nx), and `test-python` — pytest run directly on the runner against live PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers started by `scripts/ci/start-test-services.sh` (same images/credentials as the local `dagger call test-python` harness), with coverage measured in the same run and gated at `--cov-fail-under=80` (a separate coverage job would re-run the whole suite a second time per PR, so it lives here instead). Static checks (ruff, mypy, Biome, tsc, custom AST lints, dead code) intentionally do NOT run here — they are enforced lanes in `code-quality.yml`.
 4. `quality-gate` (branch protection target) fails on any failed/cancelled lane; skipped lanes pass.
 5. If run is a successful push on `master`, call `build.yml`.
 

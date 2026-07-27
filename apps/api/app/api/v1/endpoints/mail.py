@@ -269,7 +269,11 @@ async def process_email(
             writing_style=request.writingStyle or "Professional",
             content_length=request.contentLength or "None",
             clarity_option=request.clarityOption or "None",
-            notes="- ".join(notes) if notes else "No relevant notes found.",
+            notes=(
+                "- ".join(note.get("content", "") for note in notes)
+                if notes
+                else "No relevant notes found."
+            ),
             prompt=request.prompt,
             learned_writing_style=learned_style_block,
         )
