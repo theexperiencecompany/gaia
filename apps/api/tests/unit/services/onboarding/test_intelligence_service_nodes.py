@@ -147,6 +147,30 @@ class TestEmitStage:
         with patch(f"{MODULE}.websocket_manager", manager):
             await _emit_stage(USER, OnboardingStage.COMPLETE)
 
+    async def test_status_text_is_logged_with_the_stage(self) -> None:
+        # These lines are how a stalled onboarding is diagnosed from the logs, so
+        # the status the user saw has to appear next to the stage.
+        manager = MagicMock()
+        manager.broadcast_to_user = AsyncMock()
+        with patch(f"{MODULE}.websocket_manager", manager), patch(f"{MODULE}.log") as log:
+            await _emit_stage(
+                USER, OnboardingStage.INBOX_SCANNING, {"status_text": "Connecting to Gmail"}
+            )
+
+        line = log.info.call_args.args[0]
+        assert "inbox_scanning" in line
+        assert "Connecting to Gmail" in line
+
+    async def test_a_payload_without_status_text_logs_only_the_stage(self) -> None:
+        manager = MagicMock()
+        manager.broadcast_to_user = AsyncMock()
+        with patch(f"{MODULE}.websocket_manager", manager), patch(f"{MODULE}.log") as log:
+            await _emit_stage(USER, OnboardingStage.COMPLETE, {"conversation_id": "c1"})
+
+        line = log.info.call_args.args[0]
+        assert "complete" in line
+        assert "—" not in line
+
 
 # ---------------------------------------------------------------------------
 # _safe_run
