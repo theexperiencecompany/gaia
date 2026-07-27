@@ -17,8 +17,13 @@ Add env vars
 2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
 """
 
+from typing import TYPE_CHECKING
+
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+if TYPE_CHECKING:
+    from app.config.settings import CommonSettings
 
 
 class SettingsGroup:
@@ -320,7 +325,9 @@ class SettingsValidator:
         self.is_production = is_production
         self.missing_groups = []
 
-    def validate_settings(self, settings_obj: object) -> list[tuple[SettingsGroup, list[str]]]:
+    def validate_settings(
+        self, settings_obj: "CommonSettings"
+    ) -> list[tuple[SettingsGroup, list[str]]]:
         """
         Validate settings against registered groups.
 
