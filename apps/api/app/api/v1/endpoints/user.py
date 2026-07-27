@@ -19,7 +19,7 @@ from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, UserUpdateResponse
+from app.models.user_models import PublicHoloCardResponse, UserUpdate, UserUpdateResponse
 from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
@@ -180,7 +180,7 @@ async def update_user_timezone(
 
 
 @router.get("/holo-card/{card_id}")
-async def get_public_holo_card(card_id: str) -> dict[str, Any]:
+async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     """
     Get public holo card data by card ID (user ID).
     This endpoint is public and doesn't require authentication.
@@ -221,16 +221,16 @@ async def get_public_holo_card(card_id: str) -> dict[str, Any]:
             )
 
         log.set(outcome="success")
-        return {
-            "house": onboarding.get("house"),
-            "personality_phrase": onboarding.get("personality_phrase"),
-            "user_bio": onboarding.get("user_bio"),
-            "account_number": account_number,
-            "member_since": member_since,
-            "name": user_doc.name,
-            "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
-            "overlay_opacity": onboarding.get("overlay_opacity", 40),
-        }
+        return PublicHoloCardResponse(
+            house=onboarding.get("house"),
+            personality_phrase=onboarding.get("personality_phrase"),
+            user_bio=onboarding.get("user_bio"),
+            account_number=account_number,
+            member_since=member_since,
+            name=user_doc.name,
+            overlay_color=onboarding.get("overlay_color", "rgba(0,0,0,0)"),
+            overlay_opacity=onboarding.get("overlay_opacity", 40),
+        )
 
     except HTTPException:
         raise

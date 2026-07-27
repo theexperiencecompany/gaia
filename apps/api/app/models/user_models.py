@@ -292,6 +292,25 @@ class UserDocument(MongoDocument):
     inactive_email_count: int | None = None
 
 
+class PublicHoloCardResponse(BaseModel):
+    """Public-facing subset of a user's profile, keyed by user id (``card_id``).
+
+    Deliberately excludes everything else on ``UserDocument`` (email, workflows,
+    integration state, etc.) — this endpoint is unauthenticated.
+    """
+
+    house: str | None = Field(None, description="User's chosen onboarding house")
+    personality_phrase: str | None = Field(
+        None, description="Personality phrase generated during onboarding"
+    )
+    user_bio: str | None = Field(None, description="User's onboarding bio")
+    account_number: int = Field(..., description="Sequential account number")
+    member_since: str = Field(..., description="Formatted account creation date")
+    name: str | None = Field(None, description="User's display name")
+    overlay_color: str = Field("rgba(0,0,0,0)", description="Holo card overlay color")
+    overlay_opacity: int = Field(40, description="Holo card overlay opacity (0-100)")
+
+
 class UserUpdate(BaseModel):
     """Flat top-level user fields updatable through the generic ``update`` path.
 
