@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
+    get_user_id,
     get_user_timezone_from_preferences,
 )
 from app.constants.log_tags import LogTag
@@ -46,19 +47,19 @@ router = APIRouter()
 # Counts endpoint for efficient dashboard data
 @router.get("/todos/counts")
 async def get_todo_counts(
-    response: Response, user: Annotated[dict, Depends(get_current_user)]
+    response: Response, user_id: Annotated[str, Depends(get_user_id)]
 ) -> TodoCounts:
     """
     Get all todo counts for dashboard/sidebar in a single efficient call.
     Returns inbox count, today count, upcoming count, and completed count.
     """
     response.headers["Cache-Control"] = "private, max-age=10"
-    log.set(user={"id": user["user_id"]}, todo={"operation": "counts"})
+    log.set(user={"id": user_id}, todo={"operation": "counts"})
     try:
-        inbox = await project_repository.get_default_inbox(user["user_id"])
+        inbox = await project_repository.get_default_inbox(user_id)
         inbox_project_id = inbox.id if inbox else "no_inbox_found"
         counts = await todo_repository.compute_counts(
-            user_id=user["user_id"], inbox_project_id=inbox_project_id
+            user_id=user_id, inbox_project_id=inbox_project_id
         )
         return counts
 
