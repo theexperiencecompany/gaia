@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -100,3 +101,42 @@ class MailUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     is_important: bool | None = None
+
+
+class EmailImportanceSummariesResponse(BaseModel):
+    """Response for ``GET /gmail/importance-summaries``.
+
+    ``emails`` entries stay ``dict[str, Any]`` because they are JSON dumps of
+    ``MailDocument``, which allows analyzer-supplied extra fields that vary per email.
+    """
+
+    status: Literal["success"]
+    emails: list[dict[str, Any]]
+    count: int
+    filtered_by_importance: bool
+
+
+class EmailImportanceSummaryResponse(BaseModel):
+    """Response for ``GET /gmail/importance-summary/{message_id}``.
+
+    ``email`` stays ``dict[str, Any]`` for the same reason as
+    ``EmailImportanceSummariesResponse.emails``.
+    """
+
+    status: Literal["success"]
+    email: dict[str, Any]
+
+
+class BulkEmailImportanceSummariesResponse(BaseModel):
+    """Response for ``POST /gmail/importance-summaries/bulk``.
+
+    ``emails`` values stay ``dict[str, Any]`` for the same reason as
+    ``EmailImportanceSummariesResponse.emails``.
+    """
+
+    status: Literal["success"]
+    emails: dict[str, dict[str, Any]]
+    found_count: int
+    missing_count: int
+    found_message_ids: list[str]
+    missing_message_ids: list[str]

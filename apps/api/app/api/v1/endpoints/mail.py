@@ -8,9 +8,12 @@ from app.api.v1.dependencies.google_scope_dependencies import require_integratio
 from app.decorators import tiered_rate_limit
 from app.models.mail_models import (
     ApplyLabelRequest,
+    BulkEmailImportanceSummariesResponse,
     ComposedEmailOutput,
     DraftRequest,
     EmailActionRequest,
+    EmailImportanceSummariesResponse,
+    EmailImportanceSummaryResponse,
     EmailReadStatusRequest,
     EmailRequest,
     LabelRequest,
@@ -1169,7 +1172,7 @@ async def get_email_importance_summaries(
     limit: int = 50,
     important_only: bool = False,
     current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+) -> EmailImportanceSummariesResponse:
     """
     Get email importance summaries for the current user.
 
@@ -1190,7 +1193,7 @@ async def get_email_importance_summaries(
             important_only=important_only,
             outcome="success",
         )
-        return result
+        return EmailImportanceSummariesResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving email summaries: {e!s}")
 
@@ -1201,7 +1204,7 @@ async def get_email_importance_summaries(
 )
 async def get_single_email_importance_summary(
     message_id: str, current_user: dict = Depends(require_integration("gmail"))
-) -> dict:
+) -> EmailImportanceSummaryResponse:
     """
     Get importance summary for a specific email.
 
@@ -1225,7 +1228,7 @@ async def get_single_email_importance_summary(
             email_id=message_id,
             outcome="success",
         )
-        return result
+        return EmailImportanceSummaryResponse(**result)
     except HTTPException:
         raise
     except Exception as e:
@@ -1236,7 +1239,7 @@ async def get_single_email_importance_summary(
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+) -> BulkEmailImportanceSummariesResponse:
     """
     Get importance summaries for multiple emails in bulk.
 
@@ -1256,6 +1259,6 @@ async def get_bulk_email_importance_summaries(
             result_count=len(request.message_ids),
             outcome="success",
         )
-        return result
+        return BulkEmailImportanceSummariesResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}")
