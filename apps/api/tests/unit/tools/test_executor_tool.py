@@ -20,7 +20,6 @@ import pytest
 from app.agents.core.background.session import teardown_session, was_executor_spawned
 from app.agents.tools import executor_tool
 from app.agents.tools.executor_tool import call_executor, cancel_executor, tools
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_BUSY_TTL,
@@ -31,7 +30,6 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
-from app.decorators.rate_limiting import LangChainRateLimitException
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -428,59 +426,6 @@ class TestCallExecutorFailures:
 
         assert response == "Error starting task: redis write failed"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:live-task"
-
-    async def test_langchain_rate_limit_is_reported_with_its_feature(
-        self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
-        spawned_runs: list[dict[str, Any]],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        def explode(stream_id: str) -> None:
-            raise LangChainRateLimitException(feature="deep_research")
-
-        monkeypatch.setattr(executor_tool, "mark_executor_spawned", explode)
-
-        response = await run_call_executor(config=config_for(), task="x")
-
-        assert response == (
-            "Rate limit exceeded for deep_research. "
-            "The user has already been notified of this limit; "
-            "acknowledge briefly without repeating the limit details."
-        )
-
-    async def test_http_rate_limit_feature_is_read_out_of_the_detail_payload(
-        self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
-        spawned_runs: list[dict[str, Any]],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        def explode(stream_id: str) -> None:
-            raise RateLimitExceededException(feature="chat_messages", plan_required="pro")
-
-        monkeypatch.setattr(executor_tool, "mark_executor_spawned", explode)
-
-        response = await run_call_executor(config=config_for(), task="x")
-
-        assert response.startswith("Rate limit exceeded for chat_messages.")
-
-    async def test_rate_limit_without_a_usable_feature_falls_back(
-        self,
-        fake_redis: fakeredis.aioredis.FakeRedis,
-        spawned_runs: list[dict[str, Any]],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """HTTPException types `detail` as `str | None`; only the runtime shape is a dict."""
-
-        def explode(stream_id: str) -> None:
-            error = RateLimitExceededException(feature="chat_messages")
-            error.detail = "plain string detail"
-            raise error
-
-        monkeypatch.setattr(executor_tool, "mark_executor_spawned", explode)
-
-        response = await run_call_executor(config=config_for(), task="x")
-
-        assert response.startswith("Rate limit exceeded for this feature.")
 
 
 # ── cancel_executor ──────────────────────────────────────────────────

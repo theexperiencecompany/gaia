@@ -8,7 +8,7 @@ run_executor_background.
 
 import asyncio
 import json
-from typing import Annotated, cast
+from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -28,7 +28,6 @@ from app.agents.core.background.session import (
     RunKind,
     mark_executor_spawned,
 )
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_QUEUE_PREFIX,
@@ -40,7 +39,6 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
-from app.decorators.rate_limiting import LangChainRateLimitException
 from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
 
@@ -144,8 +142,6 @@ async def call_executor(
             configurable=configurable,
             conversation_id=conversation_id,
         )
-    except (LangChainRateLimitException, RateLimitExceededException) as e:
-        return _rate_limit_message(e)
     except Exception as e:  # noqa: BLE001
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
         # Release only if THIS dispatch's acquire is what holds the lock. An
@@ -154,25 +150,6 @@ async def call_executor(
         # second concurrent executor in the same conversation.
         await release_lock_if_owned(conversation_id, configurable.get("stream_id"), task_id)
         return f"Error starting task: {e!s}"
-
-
-def _rate_limit_message(e: LangChainRateLimitException | RateLimitExceededException) -> str:
-    """Build the comms-facing message for an executor rate-limit hit."""
-    if isinstance(e, LangChainRateLimitException):
-        feature = e.feature
-    else:
-        # RateLimitExceededException passes a dict as HTTPException's `detail`,
-        # even though the base class types it `str | None` — widen the static
-        # type here to match the real runtime shape before narrowing.
-        raw_detail = cast(object, e.detail)
-        detail: dict[str, str] = raw_detail if isinstance(raw_detail, dict) else {}
-        feature = detail.get("feature", "")
-    log.warning(f"{LogTag.TOOL} Rate limit exceeded for executor task", feature=feature)
-    return (
-        f"Rate limit exceeded for {feature or 'this feature'}. "
-        "The user has already been notified of this limit; "
-        "acknowledge briefly without repeating the limit details."
-    )
 
 
 async def _dispatch_executor(
