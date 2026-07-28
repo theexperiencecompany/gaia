@@ -203,7 +203,7 @@ async def _dispatch_executor(
         #     Reject it — the first dispatch already covers this turn.
         #   - DIFFERENT stream_id → a genuinely new request arrived while the
         #     executor is busy; queue it to run next.
-        held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
+        held_value = await redis_cache.client.get(lock_key)
         held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
         if stream_id and held_stream_id == stream_id:
             log.warning(
@@ -322,9 +322,9 @@ async def cancel_executor(
 
     # Use raw client.get() — lock value is a plain string ("stream_id:task_id"),
     # not JSON. redis_cache.get() would fail to deserialize it.
-    raw_lock = await redis_cache.client.get(lock_key) if redis_cache.client else None
-    lock_value: str | None = str(raw_lock) if raw_lock is not None else None
-    has_queue = redis_cache.client and await redis_cache.client.llen(queue_key) > 0
+    raw_lock = await redis_cache.client.get(lock_key)
+    lock_value: str | None = decode_raw_item(raw_lock) if raw_lock is not None else None
+    has_queue = await redis_cache.client.llen(queue_key) > 0
 
     if not lock_value and not has_queue:
         return "No executor tasks are running or queued for this conversation."
@@ -364,8 +364,12 @@ async def cancel_executor(
         return result
 
     except Exception as e:  # noqa: BLE001
+        # Deliberately no lock cleanup here: this handler used to delete the busy
+        # key unconditionally, which freed the lock of a run it had NOT managed to
+        # cancel (no cancel_stream reached it), so the old executor kept going
+        # while a new call_executor could acquire the lock — two concurrent
+        # executors on one conversation. The lock's TTL is the safe recovery.
         log.error(f"{LogTag.TOOL} cancel_executor failed", error=str(e))
-        await redis_cache.delete(lock_key)
         return f"Cancellation attempted but hit an error: {e}"
 
 
@@ -429,9 +433,6 @@ async def _cancel_queued_tasks(
     conversation_id: str,
 ) -> list[str]:
     """Cancel queued tasks — all or selectively by task_id."""
-    if not redis_cache.client:
-        return []
-
     queue_len = await redis_cache.client.llen(queue_key)
     if queue_len == 0:
         return []
@@ -458,9 +459,6 @@ async def _remove_queued_by_ids(
     conversation_id: str,
 ) -> list[str]:
     """Selectively remove specific task_ids from the queue."""
-    if redis_cache.client is None:
-        raise RuntimeError("redis_cache.client is not initialized")
-
     all_items = await redis_cache.client.lrange(queue_key, 0, -1)
     keep: list[str] = []
     cancelled: list[str] = []
@@ -469,11 +467,14 @@ async def _remove_queued_by_ids(
     for raw_item in all_items:
         try:
             item = json.loads(raw_item)
-            if item.get("task_id") in target_ids:
-                cancelled.append(item.get("task_id", "queued"))
-            else:
-                keep.append(decode_raw_item(raw_item))
         except ValueError:
+            item = None
+        # Anything that isn't a JSON object is unreadable to us — keep it rather
+        # than letting it abort the whole cancellation. A bare `item.get(...)`
+        # raised AttributeError on a JSON scalar, which escaped this handler.
+        if isinstance(item, dict) and item.get("task_id") in target_ids:
+            cancelled.append(item["task_id"])
+        else:
             keep.append(decode_raw_item(raw_item))
 
     if cancelled:
