@@ -15,6 +15,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_limiter,
 )
 from app.constants.log_tags import LogTag
+from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.services.payments.payment_service import payment_service
@@ -217,17 +218,22 @@ def tiered_rate_limit(
         @wraps(func)
         async def wrapper(*args: Any, **kwargs: Any) -> Any:
             """Enforce the tiered rate limit before running the wrapped endpoint."""
-            # Extract request and user from dependencies
-            user = None
-
-            for arg in args:
-                if isinstance(arg, dict) and "user_id" in arg:
-                    user = arg
+            # The authenticated user comes from `request.state.user` (mirrored into
+            # a ContextVar by WorkOSAuthMiddleware), NOT from the handler's
+            # parameters. Matching on a kwarg named `user` — as this used to do —
+            # meant an endpoint that named it `current_user`/`user_id`/`_user`
+            # silently skipped rate limiting entirely.
+            user = get_authenticated_user()
 
             if not user:
+                # Direct invocation outside the HTTP middleware stack (tests,
+                # internal callers) can still pass the auth dict explicitly.
                 user = kwargs.get("user")
+                for arg in args:
+                    if isinstance(arg, dict) and "user_id" in arg:
+                        user = arg
                 if not user:
-                    # If no user found, skip rate limiting (for public endpoints)
+                    # Genuinely unauthenticated — a public route has nobody to bill.
                     return await func(*args, **kwargs)
 
             user_id = user.get("user_id")

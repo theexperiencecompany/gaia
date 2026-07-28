@@ -12,10 +12,8 @@ Usage:
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from functools import wraps
-from typing import Any, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -39,7 +37,6 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
 
@@ -296,52 +293,7 @@ class TieredRateLimiter:
 tiered_limiter = TieredRateLimiter()
 
 
-def tiered_rate_limit(
-    feature_key: str,
-) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-    """Rate limiting decorator for API endpoints."""
-
-    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-        @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            """Resolve the user, enforce the feature's limits, then run the endpoint."""
-            # Extract request and user from dependencies
-            user: dict[str, Any] | None = None
-
-            for arg in args:
-                if isinstance(arg, dict) and "user_id" in arg:
-                    user = arg
-
-            if not user:
-                kwarg_user = kwargs.get("user")
-                if isinstance(kwarg_user, dict):
-                    user = kwarg_user
-                if not user:
-                    # If no user found, skip rate limiting (for public endpoints)
-                    return await func(*args, **kwargs)
-
-            user_id = user.get("user_id")
-            if not user_id:
-                raise HTTPException(status_code=401, detail="User ID not found")
-
-            # Get user subscription
-            subscription = await payment_service.get_user_subscription_status(user_id)
-            user_plan = subscription.plan_type or PlanType.FREE
-
-            # Check rate limits before executing function
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key=feature_key,
-                user_plan=user_plan,
-            )
-
-            # Execute the original function
-            result = await func(*args, **kwargs)
-            return result
-
-        # Store metadata for usage tracking
-        wrapper._rate_limit_metadata = {"feature_key": feature_key}  # type: ignore[attr-defined]
-
-        return wrapper
-
-    return decorator
+# The `tiered_rate_limit` decorator lives in app/decorators/rate_limiting.py.
+# A second copy used to live here and drifted: it resolved the caller by looking
+# for a kwarg named `user`, so endpoints importing this copy silently skipped
+# rate limiting. One canonical implementation, imported from `app.decorators`.

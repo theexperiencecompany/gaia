@@ -14,6 +14,7 @@ from app.config.settings import settings
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
+from app.core.request_context import set_authenticated_user
 from app.db.repositories.users import user_repository
 from app.models.user_models import user_to_legacy_dict
 from app.utils.auth_utils import (
@@ -102,6 +103,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """Authenticate, then invoke the next handler. Refresh cookies on the way out."""
         if any(request.url.path.startswith(path) for path in self.exclude_paths):
+            self._publish_user(request)
             return await call_next(request)
 
         if self.dev_bypass_email:
@@ -171,6 +173,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     )
                     request.state.authenticated = True
 
+        self._publish_user(request)
         response = await call_next(request)
 
         if hasattr(request.state, "new_session") and request.state.new_session:
@@ -224,7 +227,19 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
         )
         request.state.authenticated = True
+        self._publish_user(request)
         return await call_next(request)
+
+    @staticmethod
+    def _publish_user(request: Request) -> None:
+        """Mirror ``request.state.user`` into the request ContextVar.
+
+        Read back from ``request.state`` rather than taking the value as an
+        argument, so this can never drift from what the handler sees. Must run
+        before ``call_next`` — that is where the downstream task is created, and
+        the task inherits the context as it stands at that moment.
+        """
+        set_authenticated_user(getattr(request.state, "user", None))
 
     async def _authenticate_session(
         self, wos_session: str

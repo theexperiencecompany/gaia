@@ -11,13 +11,11 @@ from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
 )
-from app.api.v1.middleware.tiered_rate_limiter import (
-    RateLimitExceededException,
-    tiered_rate_limit,
-)
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.todos import todo_repository
+from app.decorators import tiered_rate_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
     MessageRequestWithHistory,
