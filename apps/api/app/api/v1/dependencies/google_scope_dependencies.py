@@ -102,3 +102,20 @@ def require_integration(
             )
 
     return wrapper
+
+
+def require_integration_user_id(
+    integration_short_name: str,
+) -> Callable[..., Coroutine[Any, Any, str]]:
+    """``require_integration`` for handlers that need only the authenticated user id.
+
+    Same checks, same failure modes — it just unwraps the one field instead of
+    handing back the whole auth-context dict for each handler to dig into.
+    """
+    integration_dependency = require_integration(integration_short_name)
+
+    async def wrapper(user: dict[str, Any] = Depends(integration_dependency)) -> str:
+        # require_integration has already rejected a missing/empty user_id with a 401.
+        return str(user["user_id"])
+
+    return wrapper

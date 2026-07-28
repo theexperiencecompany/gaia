@@ -1,6 +1,6 @@
 from datetime import datetime
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -16,6 +16,116 @@ from app.db.repositories.base import MongoDocument
 
 class CalendarPreferencesUpdateRequest(BaseModel):
     selected_calendars: list[str]
+
+
+class GoogleCalendarEventResource(BaseModel):
+    """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
+
+    No field is declared on purpose: Google owns this schema and varies it by event
+    type, so ``extra="allow"`` passes the payload through untouched rather than
+    guessing at a structure that would silently drop fields the web client reads.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+
+class CalendarListResponse(BaseModel):
+    """Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
+
+    ``items`` entries stay ``dict[str, Any]`` for the same reason as
+    ``GoogleCalendarEventResource``; ``extra="allow"`` keeps the envelope keys Google
+    sends alongside them (``kind``, ``etag``, ``nextSyncToken``).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    items: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CalendarEventsResponse(BaseModel):
+    """Response for the multi-calendar reads (``POST /calendar/events/query`` and
+    ``GET /calendar/events``).
+
+    ``events`` entries stay ``dict[str, Any]``: they are Google event resources with
+    ``calendarId``/``calendarTitle`` merged in, and a full-range fetch returns
+    thousands of them, so per-event model validation would cost more than it proves.
+    """
+
+    events: list[dict[str, Any]]
+    # Built by validating get_calendar_events' payload, so the camelCase key the web
+    # client already reads is both the validation and the serialization alias.
+    selected_calendars: list[str] = Field(alias="selectedCalendars")
+    has_more: bool
+    calendars_truncated: list[str]
+
+
+class CalendarEventPageResponse(BaseModel):
+    """Response for ``GET /calendar/{calendar_id}/events``."""
+
+    events: list[dict[str, Any]]
+    next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
+
+
+class CalendarPreferencesResponse(BaseModel):
+    """Response for ``GET /calendar/preferences``."""
+
+    selected_calendars: list[str] = Field(serialization_alias="selectedCalendars")
+
+
+class CalendarPreferencesUpdateResponse(BaseModel):
+    """Response for ``PUT /calendar/preferences``."""
+
+    message: str
+
+
+class EventDeleteResponse(BaseModel):
+    """Response for ``DELETE /calendar/event``."""
+
+    success: bool
+    message: str
+
+
+class BatchEventCreateFailure(BaseModel):
+    """One failed entry of a batch create — identified by summary, since a failed
+    create never produced an event id."""
+
+    event: str
+    error: str
+
+
+class BatchEventFailure(BaseModel):
+    """One failed entry of a batch update or delete."""
+
+    event_id: str
+    error: str
+
+
+class BatchEventDeleteSuccess(BaseModel):
+    """One successfully deleted entry of a batch delete."""
+
+    event_id: str
+    calendar_id: str
+
+
+class BatchEventCreateResponse(BaseModel):
+    """Response for ``POST /calendar/events/batch``."""
+
+    successful: list[GoogleCalendarEventResource]
+    failed: list[BatchEventCreateFailure]
+
+
+class BatchEventUpdateResponse(BaseModel):
+    """Response for ``PUT /calendar/events/batch``."""
+
+    successful: list[GoogleCalendarEventResource]
+    failed: list[BatchEventFailure]
+
+
+class BatchEventDeleteResponse(BaseModel):
+    """Response for ``DELETE /calendar/events/batch``."""
+
+    successful: list[BatchEventDeleteSuccess]
+    failed: list[BatchEventFailure]
 
 
 class CalendarEventsQueryRequest(BaseModel):

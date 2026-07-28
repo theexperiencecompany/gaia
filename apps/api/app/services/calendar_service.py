@@ -7,8 +7,12 @@ from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
+    CalendarEventPageResponse,
+    CalendarPreferencesResponse,
+    CalendarPreferencesUpdateResponse,
     EventCreateRequest,
     EventDeleteRequest,
+    EventDeleteResponse,
     EventUpdateRequest,
 )
 from app.services.composio.proxy_client import proxy_request
@@ -349,15 +353,14 @@ async def get_calendar_events_by_id(
     page_token: str | None = None,
     time_min: str | None = None,
     time_max: str | None = None,
-) -> dict[str, Any]:
+) -> CalendarEventPageResponse:
     """Fetch events for a specific calendar by its ID."""
     events_data = await fetch_calendar_events(calendar_id, user_id, page_token, time_min, time_max)
 
-    events = filter_events(events_data.get("items", []))
-    return {
-        "events": events,
-        "nextPageToken": events_data.get("nextPageToken"),
-    }
+    return CalendarEventPageResponse(
+        events=filter_events(events_data.get("items", [])),
+        next_page_token=events_data.get("nextPageToken"),
+    )
 
 
 async def create_calendar_event(
@@ -395,7 +398,7 @@ async def create_calendar_event(
                     detail="Start and end times are required for time-specific events",
                 )
 
-            timezone = getattr(event, "timezone", None) or "UTC"
+            timezone = event.timezone or "UTC"
             start_time = event.start
             end_time = event.end
 
@@ -427,7 +430,7 @@ async def create_calendar_event(
             event_payload["recurrence"] = recurrence_rules
 
             if not event.is_all_day:
-                timezone = getattr(event, "timezone", None) or "UTC"
+                timezone = event.timezone or "UTC"
                 if "timeZone" in event_payload.get("start", {}):
                     event_payload["start"]["timeZone"] = timezone
                 if "timeZone" in event_payload.get("end", {}):
@@ -470,22 +473,24 @@ async def create_calendar_event(
     return cast(dict[str, Any], response_data)
 
 
-async def get_user_calendar_preferences(user_id: str) -> dict[str, list[str]]:
+async def get_user_calendar_preferences(user_id: str) -> CalendarPreferencesResponse:
     """Retrieve the user's selected calendar preferences from the database."""
     preferences = await calendar_repository.get_for_user(user_id)
     if preferences is not None:
-        return {"selectedCalendars": preferences.selected_calendars}
+        return CalendarPreferencesResponse(selected_calendars=preferences.selected_calendars)
     raise HTTPException(status_code=404, detail="Calendar preferences not found")
 
 
 async def update_user_calendar_preferences(
     user_id: str, selected_calendars: list[str]
-) -> dict[str, str]:
+) -> CalendarPreferencesUpdateResponse:
     """Update the user's selected calendar preferences in the database."""
     changed = await calendar_repository.set_selected_calendars(user_id, selected_calendars)
     if changed:
-        return {"message": "Calendar preferences updated successfully"}
-    return {"message": "No changes made to calendar preferences"}
+        return CalendarPreferencesUpdateResponse(
+            message="Calendar preferences updated successfully"
+        )
+    return CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")
 
 
 async def search_calendar_events_native(
@@ -616,7 +621,7 @@ async def search_events_in_calendar(
 async def delete_calendar_event(
     event: EventDeleteRequest,
     user_id: str,
-) -> dict[str, Any]:
+) -> EventDeleteResponse:
     """Delete a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
 
@@ -626,7 +631,7 @@ async def delete_calendar_event(
             endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}",
             method="DELETE",
         )
-        return {"success": True, "message": "Event deleted successfully"}
+        return EventDeleteResponse(success=True, message="Event deleted successfully")
     except HTTPException as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Event not found or already deleted")
@@ -704,7 +709,7 @@ async def update_calendar_event(
                 timezone: str | None = None
                 if event.timezone:
                     timezone = event.timezone
-                elif hasattr(event, "timezone_offset") and event.timezone_offset:
+                elif event.timezone_offset:
                     timezone = event.timezone_offset
                 elif existing_event.get("start", {}).get("timeZone"):
                     timezone = existing_event.get("start", {}).get("timeZone")

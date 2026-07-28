@@ -15,8 +15,11 @@ import pytest
 
 from app.models.calendar_models import (
     CalendarPreferencesDocument,
+    CalendarPreferencesResponse,
+    CalendarPreferencesUpdateResponse,
     EventCreateRequest,
     EventDeleteRequest,
+    EventDeleteResponse,
     EventUpdateRequest,
 )
 from app.services.calendar_service import (
@@ -280,7 +283,7 @@ class TestDeleteCalendarEvent:
         result = await delete_calendar_event(
             EventDeleteRequest(event_id="evt-1", calendar_id="primary"), USER_ID
         )
-        assert result == {"success": True, "message": "Event deleted successfully"}
+        assert result == EventDeleteResponse(success=True, message="Event deleted successfully")
         kwargs = mock_proxy.call_args.kwargs
         assert kwargs["method"] == "DELETE"
         assert kwargs["endpoint"].endswith("/calendars/primary/events/evt-1")
@@ -349,9 +352,9 @@ class TestGetCalendarEventsById:
             "nextPageToken": "tk",
         }
         result = await get_calendar_events_by_id("primary", USER_ID)
-        assert len(result["events"]) == 1
-        assert result["events"][0]["id"] == "e1"
-        assert result["nextPageToken"] == "tk"
+        assert len(result.events) == 1
+        assert result.events[0]["id"] == "e1"
+        assert result.next_page_token == "tk"
 
 
 class TestSearchCalendarEventsNative:
@@ -376,7 +379,9 @@ class TestSearchCalendarEventsNative:
 class TestPreferences:
     async def test_get_returns_selected_calendars(self, mock_calendar_repo):
         mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
-        assert await get_user_calendar_preferences(USER_ID) == {"selectedCalendars": ["c1"]}
+        assert await get_user_calendar_preferences(USER_ID) == CalendarPreferencesResponse(
+            selected_calendars=["c1"]
+        )
 
     async def test_get_raises_when_missing(self, mock_calendar_repo):
         mock_calendar_repo.get_for_user.return_value = None
@@ -386,12 +391,12 @@ class TestPreferences:
 
     async def test_update_returns_success_message(self, mock_calendar_repo):
         mock_calendar_repo.set_selected_calendars.return_value = True
-        assert await update_user_calendar_preferences(USER_ID, ["c1"]) == {
-            "message": "Calendar preferences updated successfully"
-        }
+        assert await update_user_calendar_preferences(
+            USER_ID, ["c1"]
+        ) == CalendarPreferencesUpdateResponse(message="Calendar preferences updated successfully")
 
     async def test_update_no_change_message(self, mock_calendar_repo):
         mock_calendar_repo.set_selected_calendars.return_value = False
-        assert await update_user_calendar_preferences(USER_ID, ["c1"]) == {
-            "message": "No changes made to calendar preferences"
-        }
+        assert await update_user_calendar_preferences(
+            USER_ID, ["c1"]
+        ) == CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")

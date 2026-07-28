@@ -14,6 +14,11 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.calendar_models import (
+    CalendarEventPageResponse,
+    CalendarPreferencesResponse,
+    EventDeleteResponse,
+)
 from tests.conftest import FAKE_USER
 
 API = "/api/v1"
@@ -43,12 +48,13 @@ class TestGetCalendarList:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.list_calendars.return_value = [{"id": "primary", "summary": "Main Calendar"}]
+            mock_svc.list_calendars.return_value = {
+                "items": [{"id": "primary", "summary": "Main Calendar"}]
+            }
             resp = await client.get(f"{API}/calendar/list")
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data, list)
-        assert data[0]["id"] == "primary"
+        assert data["items"][0]["id"] == "primary"
 
     async def test_service_error_returns_500(self, client: AsyncClient) -> None:
         with (
@@ -81,6 +87,7 @@ class TestQueryEvents:
         ):
             mock_svc.get_calendar_events.return_value = {
                 "events": [{"id": "ev1", "summary": "Meeting"}],
+                "selectedCalendars": ["primary"],
                 "has_more": False,
                 "calendars_truncated": [],
             }
@@ -104,6 +111,7 @@ class TestQueryEvents:
         ):
             mock_svc.get_calendar_events.return_value = {
                 "events": [],
+                "selectedCalendars": ["primary"],
                 "has_more": False,
                 "calendars_truncated": [],
             }
@@ -151,7 +159,9 @@ class TestGetEvents:
         ):
             mock_svc.get_calendar_events.return_value = {
                 "events": [],
+                "selectedCalendars": [],
                 "has_more": False,
+                "calendars_truncated": [],
             }
             resp = await client.get(f"{API}/calendar/events")
         assert resp.status_code == 200
@@ -162,7 +172,12 @@ class TestGetEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {"events": []}
+            mock_svc.get_calendar_events.return_value = {
+                "events": [],
+                "selectedCalendars": [],
+                "has_more": False,
+                "calendars_truncated": [],
+            }
             resp = await client.get(
                 f"{API}/calendar/events",
                 params={"start_date": "2026-03-01", "end_date": "2026-03-31"},
@@ -175,7 +190,12 @@ class TestGetEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {"events": []}
+            mock_svc.get_calendar_events.return_value = {
+                "events": [],
+                "selectedCalendars": [],
+                "has_more": False,
+                "calendars_truncated": [],
+            }
             resp = await client.get(
                 f"{API}/calendar/events",
                 params={"selected_calendars": ["primary", "work"]},
@@ -212,9 +232,9 @@ class TestGetEventsByCalendar:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events_by_id.return_value = {
-                "events": [{"id": "ev2"}],
-            }
+            mock_svc.get_calendar_events_by_id.return_value = CalendarEventPageResponse(
+                events=[{"id": "ev2"}]
+            )
             resp = await client.get(f"{API}/calendar/my-cal-id/events")
         assert resp.status_code == 200
         data = resp.json()
@@ -226,7 +246,7 @@ class TestGetEventsByCalendar:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events_by_id.return_value = {"events": []}
+            mock_svc.get_calendar_events_by_id.return_value = CalendarEventPageResponse(events=[])
             resp = await client.get(
                 f"{API}/calendar/primary/events",
                 params={"start_date": "2026-01-01", "end_date": "2026-12-31"},
@@ -320,7 +340,13 @@ class TestDeleteEvent:
         with (
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             # token patch removed (composio proxy migration)
-            patch(DELETE_PATCH, new_callable=AsyncMock, return_value={"status": "deleted"}),
+            patch(
+                DELETE_PATCH,
+                new_callable=AsyncMock,
+                return_value=EventDeleteResponse(
+                    success=True, message="Event deleted successfully"
+                ),
+            ),
         ):
             resp = await client.request(
                 "DELETE",
@@ -411,12 +437,13 @@ class TestGetCalendarPreferences:
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_user_calendar_preferences.return_value = {
-                "selected_calendars": ["primary"]
-            }
+            mock_svc.get_user_calendar_preferences.return_value = CalendarPreferencesResponse(
+                selected_calendars=["primary"]
+            )
             resp = await client.get(f"{API}/calendar/preferences")
         assert resp.status_code == 200
-        assert resp.json()["selected_calendars"] == ["primary"]
+        # Serialized under the camelCase alias the web client reads.
+        assert resp.json() == {"selectedCalendars": ["primary"]}
 
     async def test_get_preferences_service_error_returns_500(self, client: AsyncClient) -> None:
         with (

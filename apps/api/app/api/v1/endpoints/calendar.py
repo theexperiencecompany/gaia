@@ -1,20 +1,32 @@
 import contextlib
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.v1.dependencies.google_scope_dependencies import require_integration
+from app.api.v1.dependencies.google_scope_dependencies import require_integration_user_id
 from app.decorators import tiered_rate_limit
 from app.models.calendar_models import (
+    BatchEventCreateFailure,
     BatchEventCreateRequest,
+    BatchEventCreateResponse,
     BatchEventDeleteRequest,
+    BatchEventDeleteResponse,
+    BatchEventDeleteSuccess,
+    BatchEventFailure,
     BatchEventUpdateRequest,
+    BatchEventUpdateResponse,
+    CalendarEventPageResponse,
     CalendarEventsQueryRequest,
+    CalendarEventsResponse,
+    CalendarListResponse,
+    CalendarPreferencesResponse,
     CalendarPreferencesUpdateRequest,
+    CalendarPreferencesUpdateResponse,
     EventCreateRequest,
     EventDeleteRequest,
+    EventDeleteResponse,
     EventUpdateRequest,
+    GoogleCalendarEventResource,
 )
 from app.services import calendar_service
 from app.services.calendar_service import (
@@ -28,29 +40,21 @@ router = APIRouter()
 
 @router.get("/calendar/list", summary="Get Calendar List")
 async def get_calendar_list(
-    current_user: dict = Depends(require_integration("calendar")),
-) -> list[dict[str, Any]] | dict[str, Any]:
-    """
-    Retrieve the list of calendars for the authenticated user.
-
-    Returns:
-        A list of calendars for the user.
-
-    Raises:
-        HTTPException: If an error occurs during calendar retrieval.
-    """
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> CalendarListResponse:
+    """Retrieve the list of calendars for the authenticated user."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(user={"id": user_id}, calendar={"operation": "list_calendars"})
 
-        calendars = await calendar_service.list_calendars(str(user_id))
+        # short=False (the default) always returns the calendarList envelope, not
+        # the trimmed list branch of list_calendars' union return type.
+        calendars = CalendarListResponse.model_validate(
+            await calendar_service.list_calendars(user_id)
+        )
         log.set(
             calendar={
                 "operation": "list_calendars",
-                "event_count": len(calendars) if isinstance(calendars, list) else None,
+                "event_count": len(calendars.items),
             }
         )
         return calendars
@@ -63,16 +67,12 @@ async def get_calendar_list(
 @router.post("/calendar/events/query", summary="Query Events from Selected Calendars")
 async def query_events(
     request: CalendarEventsQueryRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, Any]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> CalendarEventsResponse:
     """
     Query events from selected calendars using POST to avoid URL length limits.
     """
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         time_min = None
         time_max = None
         if request.start_date:
@@ -110,20 +110,21 @@ async def query_events(
             },
         )
 
-        result = await calendar_service.get_calendar_events(
-            user_id=str(user_id),
-            page_token=None,
-            selected_calendars=request.selected_calendars,
-            time_min=time_min,
-            time_max=time_max,
-            max_results=request.max_results,
-            fetch_all=request.fetch_all,
+        result = CalendarEventsResponse.model_validate(
+            await calendar_service.get_calendar_events(
+                user_id=user_id,
+                page_token=None,
+                selected_calendars=request.selected_calendars,
+                time_min=time_min,
+                time_max=time_max,
+                max_results=request.max_results,
+                fetch_all=request.fetch_all,
+            )
         )
-        events = result.get("events", []) if isinstance(result, dict) else result
         log.set(
             calendar={
                 "operation": "get_events",
-                "event_count": len(events) if isinstance(events, list) else None,
+                "event_count": len(result.events),
             }
         )
         return result
@@ -141,14 +142,10 @@ async def get_events(
     end_date: str | None = None,
     max_results: int = Query(100, ge=1, le=250),
     fetch_all: bool = Query(False, description="Fetch ALL events in date range"),
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, Any]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> CalendarEventsResponse:
     """Get calendar events using GET — ideal for simple queries with few parameters."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         time_min = None
         time_max = None
 
@@ -187,20 +184,21 @@ async def get_events(
             },
         )
 
-        result = await calendar_service.get_calendar_events(
-            user_id=str(user_id),
-            page_token=page_token,
-            selected_calendars=selected_calendars,
-            time_min=time_min,
-            time_max=time_max,
-            max_results=max_results,
-            fetch_all=fetch_all,
+        result = CalendarEventsResponse.model_validate(
+            await calendar_service.get_calendar_events(
+                user_id=user_id,
+                page_token=page_token,
+                selected_calendars=selected_calendars,
+                time_min=time_min,
+                time_max=time_max,
+                max_results=max_results,
+                fetch_all=fetch_all,
+            )
         )
-        events = result.get("events", []) if isinstance(result, dict) else result
         log.set(
             calendar={
                 "operation": "get_events",
-                "event_count": len(events) if isinstance(events, list) else None,
+                "event_count": len(result.events),
             }
         )
         return result
@@ -216,14 +214,10 @@ async def get_events_by_calendar(
     start_date: str | None = None,
     end_date: str | None = None,
     page_token: str | None = None,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, Any]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> CalendarEventPageResponse:
     """Fetch events for a specific calendar identified by its ID."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         time_min = None
         time_max = None
 
@@ -264,16 +258,15 @@ async def get_events_by_calendar(
 
         result = await calendar_service.get_calendar_events_by_id(
             calendar_id=calendar_id,
-            user_id=str(user_id),
+            user_id=user_id,
             page_token=page_token,
             time_min=time_min,
             time_max=time_max,
         )
-        events = result.get("events", []) if isinstance(result, dict) else result
         log.set(
             calendar={
                 "operation": "get_events",
-                "event_count": len(events) if isinstance(events, list) else None,
+                "event_count": len(result.events),
             }
         )
         return result
@@ -287,23 +280,21 @@ async def get_events_by_calendar(
 @tiered_rate_limit("calendar_management")
 async def create_event(
     event: EventCreateRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, Any]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> GoogleCalendarEventResource:
     """Create a new calendar event."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(
             user={"id": user_id},
             calendar={
                 "operation": "create_event",
-                "calendar_id": getattr(event, "calendar_id", None),
+                "calendar_id": event.calendar_id,
             },
         )
 
-        return await calendar_service.create_calendar_event(event, str(user_id))
+        return GoogleCalendarEventResource.model_validate(
+            await calendar_service.create_calendar_event(event, user_id)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -312,13 +303,12 @@ async def create_event(
 
 @router.get("/calendar/preferences", summary="Get User Calendar Preferences")
 async def get_calendar_preferences(
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, list[str]]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> CalendarPreferencesResponse:
     """Retrieve the user's selected calendar preferences from the database."""
     try:
-        user_id = current_user.get("user_id")
         log.set(user={"id": user_id}, calendar={"operation": "get_preferences"})
-        return await calendar_service.get_user_calendar_preferences(str(user_id or ""))
+        return await calendar_service.get_user_calendar_preferences(user_id)
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -329,14 +319,13 @@ async def get_calendar_preferences(
 @tiered_rate_limit("calendar_management")
 async def update_calendar_preferences(
     preferences: CalendarPreferencesUpdateRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, str]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> CalendarPreferencesUpdateResponse:
     """Update the user's selected calendar preferences in the database."""
     try:
-        user_id = current_user.get("user_id")
         log.set(user={"id": user_id}, calendar={"operation": "update_preferences"})
         return await calendar_service.update_user_calendar_preferences(
-            str(user_id), preferences.selected_calendars
+            user_id, preferences.selected_calendars
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -346,17 +335,13 @@ async def update_calendar_preferences(
 @tiered_rate_limit("calendar_management")
 async def delete_event(
     event: EventDeleteRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, Any]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> EventDeleteResponse:
     """Delete a calendar event."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(user={"id": user_id}, calendar={"operation": "delete_event"})
 
-        return await delete_calendar_event(event, str(user_id))
+        return await delete_calendar_event(event, user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -367,17 +352,15 @@ async def delete_event(
 @tiered_rate_limit("calendar_management")
 async def update_event(
     event: EventUpdateRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, Any]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> GoogleCalendarEventResource:
     """Update a calendar event."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(user={"id": user_id}, calendar={"operation": "update_event"})
 
-        return await update_calendar_event(event, str(user_id))
+        return GoogleCalendarEventResource.model_validate(
+            await update_calendar_event(event, user_id)
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -388,31 +371,23 @@ async def update_event(
 @tiered_rate_limit("calendar_management")
 async def create_events_batch(
     batch_request: BatchEventCreateRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, list[Any]]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> BatchEventCreateResponse:
     """Create multiple calendar events in a batch operation."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(user={"id": user_id}, calendar={"operation": "batch_create"})
 
-        results: dict[str, list[Any]] = {"successful": [], "failed": []}
+        successful: list[GoogleCalendarEventResource] = []
+        failed: list[BatchEventCreateFailure] = []
 
         for event in batch_request.events:
             try:
-                created_event = await calendar_service.create_calendar_event(event, str(user_id))
-                results["successful"].append(created_event)
+                created_event = await calendar_service.create_calendar_event(event, user_id)
+                successful.append(GoogleCalendarEventResource.model_validate(created_event))
             except Exception as e:
-                results["failed"].append(
-                    {
-                        "event": event.summary,
-                        "error": str(e),
-                    }
-                )
+                failed.append(BatchEventCreateFailure(event=event.summary, error=str(e)))
 
-        return results
+        return BatchEventCreateResponse(successful=successful, failed=failed)
     except HTTPException:
         raise
     except Exception as e:
@@ -423,31 +398,23 @@ async def create_events_batch(
 @tiered_rate_limit("calendar_management")
 async def update_events_batch(
     batch_request: BatchEventUpdateRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, list[Any]]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> BatchEventUpdateResponse:
     """Update multiple calendar events in a batch operation."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(user={"id": user_id}, calendar={"operation": "batch_update"})
 
-        results: dict[str, list] = {"successful": [], "failed": []}
+        successful: list[GoogleCalendarEventResource] = []
+        failed: list[BatchEventFailure] = []
 
         for event in batch_request.events:
             try:
-                updated_event = await update_calendar_event(event, str(user_id))
-                results["successful"].append(updated_event)
+                updated_event = await update_calendar_event(event, user_id)
+                successful.append(GoogleCalendarEventResource.model_validate(updated_event))
             except Exception as e:
-                results["failed"].append(
-                    {
-                        "event_id": event.event_id,
-                        "error": str(e),
-                    }
-                )
+                failed.append(BatchEventFailure(event_id=event.event_id, error=str(e)))
 
-        return results
+        return BatchEventUpdateResponse(successful=successful, failed=failed)
     except HTTPException:
         raise
     except Exception as e:
@@ -458,36 +425,25 @@ async def update_events_batch(
 @tiered_rate_limit("calendar_management")
 async def delete_events_batch(
     batch_request: BatchEventDeleteRequest,
-    current_user: dict = Depends(require_integration("calendar")),
-) -> dict[str, list[Any]]:
+    user_id: str = Depends(require_integration_user_id("calendar")),
+) -> BatchEventDeleteResponse:
     """Delete multiple calendar events in a batch operation."""
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
-
         log.set(user={"id": user_id}, calendar={"operation": "batch_delete"})
 
-        results: dict[str, list] = {"successful": [], "failed": []}
+        successful: list[BatchEventDeleteSuccess] = []
+        failed: list[BatchEventFailure] = []
 
         for event in batch_request.events:
             try:
-                await delete_calendar_event(event, str(user_id))
-                results["successful"].append(
-                    {
-                        "event_id": event.event_id,
-                        "calendar_id": event.calendar_id,
-                    }
+                await delete_calendar_event(event, user_id)
+                successful.append(
+                    BatchEventDeleteSuccess(event_id=event.event_id, calendar_id=event.calendar_id)
                 )
             except Exception as e:
-                results["failed"].append(
-                    {
-                        "event_id": event.event_id,
-                        "error": str(e),
-                    }
-                )
+                failed.append(BatchEventFailure(event_id=event.event_id, error=str(e)))
 
-        return results
+        return BatchEventDeleteResponse(successful=successful, failed=failed)
     except HTTPException:
         raise
     except Exception as e:
