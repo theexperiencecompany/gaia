@@ -175,7 +175,7 @@ class TestUpdateFile:
         assert data["description"] == "Updated description"
         assert data["filename"] == "doc.pdf"
         assert data["url"] == "https://cdn.example.com/doc.pdf"
-        assert data["created_at"].startswith("2025-01-01T00:00:00")
+        assert data["created_at"] == "2025-01-01T00:00:00Z"
 
     @patch(
         "app.api.v1.endpoints.file.FileService.update",
