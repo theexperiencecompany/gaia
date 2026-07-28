@@ -28,6 +28,7 @@ from app.models.todo_models import (
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
     TodoCounts,
+    TodoLabelCount,
     TodoListResponse,
     TodoModel,
     TodoResponse,
@@ -79,10 +80,9 @@ async def get_todo_counts(
 async def get_todo_labels(
     user: Annotated[dict, Depends(get_current_user)],
     limit: int = 10,
-) -> list[dict]:
+) -> list[TodoLabelCount]:
     """Get most-used labels for the current user's todos."""
-    labels = await todo_repository.top_labels(user_id=user["user_id"], limit=limit)
-    return [label.model_dump() for label in labels]
+    return await todo_repository.top_labels(user_id=user["user_id"], limit=limit)
 
 
 # Main Todo CRUD Endpoints

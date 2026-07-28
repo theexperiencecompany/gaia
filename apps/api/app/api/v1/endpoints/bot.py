@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 import json
 import secrets
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
@@ -84,7 +84,7 @@ def _bot_rate_limit_notice(chunk: dict) -> str | None:
     return notice
 
 
-def _bot_approval_payload(chunk: dict) -> dict | None:
+def _bot_approval_payload(chunk: dict[str, Any]) -> dict[str, Any] | None:
     """Extract a HIL ``approval_request`` card as a bot ``approval`` payload.
 
     Bots drop ``tool_data``, but the approval prompt MUST reach the user — a bot
