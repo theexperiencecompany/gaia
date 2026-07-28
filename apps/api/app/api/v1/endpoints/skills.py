@@ -27,6 +27,7 @@ from app.agents.skills.models import (
     SkillInlineCreateRequest,
     SkillListResponse,
     SkillTargetsResponse,
+    SkillToggleResponse,
     SkillUpdateRequest,
 )
 from app.agents.skills.registry import (
@@ -380,17 +381,17 @@ async def get_skill_endpoint(
         ) from e
 
 
-@router.patch("/{skill_id}/enable", response_model=dict)
+@router.patch("/{skill_id}/enable", response_model=SkillToggleResponse)
 async def enable_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-) -> dict[str, Any]:
+) -> SkillToggleResponse:
     """Enable a disabled skill."""
     log.set(operation="enable_skill", skill_id=skill_id)
     try:
         success = await enable_skill(user_id, skill_id)
         log.set(outcome="success")
-        return {"success": success, "skill_id": skill_id, "enabled": True}
+        return SkillToggleResponse(success=success, skill_id=skill_id, enabled=True)
     except Exception as e:
         log.error(f"{LogTag.SKILLS} Error enabling skill {skill_id}: {e}")
         raise HTTPException(
@@ -399,17 +400,17 @@ async def enable_skill_endpoint(
         ) from e
 
 
-@router.patch("/{skill_id}/disable", response_model=dict)
+@router.patch("/{skill_id}/disable", response_model=SkillToggleResponse)
 async def disable_skill_endpoint(
     skill_id: str,
     user_id: str = Depends(_get_user_id),
-) -> dict[str, Any]:
+) -> SkillToggleResponse:
     """Disable a skill without uninstalling it."""
     log.set(operation="disable_skill", skill_id=skill_id)
     try:
         success = await disable_skill(user_id, skill_id)
         log.set(outcome="success")
-        return {"success": success, "skill_id": skill_id, "enabled": False}
+        return SkillToggleResponse(success=success, skill_id=skill_id, enabled=False)
     except Exception as e:
         log.error(f"{LogTag.SKILLS} Error disabling skill {skill_id}: {e}")
         raise HTTPException(

@@ -252,6 +252,14 @@ class SkillListResponse(BaseModel):
     total: int = Field(default=0)
 
 
+class SkillToggleResponse(BaseModel):
+    """Response for enabling or disabling a skill."""
+
+    success: bool
+    skill_id: str
+    enabled: bool
+
+
 class SkillTarget(BaseModel):
     """A place a skill can run: the executor, or a connected integration subagent.
 

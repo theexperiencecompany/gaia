@@ -3,7 +3,7 @@ from typing import cast
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.decorators.caching import Cacheable
-from app.models.blog_models import BlogPost
+from app.models.blog_models import BlogCountResponse, BlogPost
 from app.services.blog_service import BlogService
 from shared.py.wide_events import log
 
@@ -55,15 +55,15 @@ async def get_blog(slug: str) -> BlogPost:
     return cast(BlogPost, result)
 
 
-@router.get("/blogs/count", response_model=dict)
-@Cacheable(smart_hash=True, ttl=21600)  # 6 hours
-async def get_blog_count() -> dict[str, int]:
+@router.get("/blogs/count", response_model=BlogCountResponse)
+@Cacheable(smart_hash=True, ttl=21600, model=BlogCountResponse)  # 6 hours
+async def get_blog_count() -> BlogCountResponse:
     """Get total count of blog posts."""
     log.set(operation="get_blog_count")
     count = await BlogService.get_blog_count()
     log.set(result_count=count)
     log.set(outcome="success")
-    return {"count": count}
+    return BlogCountResponse(count=count)
 
 
 @router.post("/blogs", status_code=status.HTTP_410_GONE, include_in_schema=False)
