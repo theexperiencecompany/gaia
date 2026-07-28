@@ -2,7 +2,7 @@
 # directive makes the sim stub emit a tool call the real agent executes; the
 # `[[say:...]]` directive is the final assistant text once the tool is done.
 #
-#   mise dev:sim
+#   mise dev --sim
 #   nx run bot-harness:sim -- run apps/bots/harness/scenarios/tool-call.yaml
 name: scripted tool call
 emulate: whatsapp

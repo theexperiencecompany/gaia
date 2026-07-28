@@ -26,7 +26,7 @@ Flags: `--emulate <discord|slack|telegram|whatsapp>`, `--user <email>`,
 `http://localhost:$API_PORT` → `:8000`), `--channel <id>` (optional). Both env
 vars come from `.env.worktree`, so a worktree targets its own API unattended.
 
-Requires a running API (real LLM or the `dev:sim` scripted stub) and the same
+Requires a running API (real LLM or the `dev --sim` scripted stub) and the same
 `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`,
 `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`). Set `RABBITMQ_URL` to record
 proactive `outbound-delivery` events through the real outbound consumer.

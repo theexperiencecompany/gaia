@@ -4,8 +4,9 @@ import { WEB_BASE_URL } from "./e2e/harness";
 /**
  * Playwright config for GAIA web e2e.
  *
- * Runs against an already-running dev stack (`mise dev:sim` or `mise dev` with
- * `DEV_AUTH_BYPASS_EMAIL` set) — there is no auth fixture because the dev bypass
+ * Runs against an already-running dev stack (`mise dev --sim`, or `mise dev --agent`
+ * for a real LLM — both boot with the dev auth bypass on). There is no auth
+ * fixture because the dev bypass
  * authenticates every page load. `global-setup` mints + seeds the dev user, so
  * specs start from deterministic data. Ports come from `WEB_PORT` / `API_PORT`
  * so per-worktree ports work unchanged.

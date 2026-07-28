@@ -20,7 +20,7 @@ Run (no repo venv coupling — uv resolves the inline deps into an ephemeral env
 
 Wire it into GAIA (development only) with the one canonical switch:
 
-    GAIA_SIM_MODE=1        # `mise dev:sim` sets this; every LLM factory
+    GAIA_SIM_MODE=1        # `mise dev --sim` sets this; every LLM factory
                            # resolves to this stub (see app/agents/llm/client.py)
     OPENROUTER_BASE_URL=…  # optional: only to point sim mode at a non-default
                            # stub address (defaults to http://localhost:9797/api/v1)

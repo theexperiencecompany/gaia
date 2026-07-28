@@ -190,7 +190,7 @@ NEXT_PUBLIC_API_BASE_URL=http://localhost:$api_port/api/v1/
 # Every backend client resolves the API from this, so \`gaia-sim\` and the bots
 # target THIS worktree's API instead of whatever owns port 8000.
 GAIA_API_URL=http://localhost:$api_port
-# Scripted LLM stub (\`mise dev:sim\`). dev:sim derives OPENROUTER_BASE_URL from it.
+# Scripted LLM stub (\`mise dev --sim\`). --sim derives OPENROUTER_BASE_URL from it.
 LLM_STUB_PORT=$(( 9797 + offset ))
 BOT_DISCORD_PORT=$(( 3200 + offset ))
 BOT_SLACK_PORT=$(( 3201 + offset ))
@@ -214,32 +214,11 @@ curl -sfS -X POST "$base/users" -H 'content-type: application/json' \
 curl -sfS -X POST "$base/seed" -H 'content-type: application/json' \
   -d "{\"email\": \"$DEV_USER\", \"todos\": $SEED_TODOS, \"conversations\": $SEED_CONVERSATIONS}"
 echo ""
-echo "seeded $DEV_USER (set DEV_AUTH_BYPASS_EMAIL=$DEV_USER in apps/api/.env if not already)"
-'''
-
-[tasks."dev:sim"]
-description = "Deterministic sim stack: infra + scripted LLM stub (tools/llm-stub, port 9797 unless LLM_STUB_PORT overrides) + API + web. Refuses to start if any of those ports is already taken. No OpenRouter credentials or cost — model replies come from [[tool:...]]/[[say:...]] directives in the chat message. Run `mise seed` once the API is up."
-run = '''
-set -eu
-# A taken port would make uvicorn exit while nx keeps web running, leaving the
-# stack pointed at whatever already owns 8000. Refuse to start instead.
-bash scripts/dev/check-ports.sh \
-  API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}" LLM_STUB="${LLM_STUB_PORT:-9797}"
-pnpm nx run docker:docker:up
-# The stub port is the single source of truth; the client URL is derived from it
-# so a per-worktree LLM_STUB_PORT needs no second variable.
-export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
-export OPENROUTER_BASE_URL="${OPENROUTER_BASE_URL:-http://localhost:$LLM_STUB_PORT/api/v1}"
-uv run tools/llm-stub/server.py &
-stub_pid=$!
-trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
-# One switch: settings + app/agents/llm/client.py derive everything else.
-# Real keys in apps/api/.env stay untouched and unused in sim mode.
-GAIA_SIM_MODE=1 pnpm nx run-many -t dev --projects=api,web --parallel=2
+echo "seeded $DEV_USER (boot with \`mise dev --agent\` or \`mise dev --sim\` — pass DEV_USER=$DEV_USER to bypass-auth as this user)"
 '''
 
 [tasks."e2e:web"]
-description = "Run web Playwright e2e against a running dev stack. Start `mise dev:sim` (or `mise dev` with DEV_AUTH_BYPASS_EMAIL set) in another terminal first. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
+description = "Run web Playwright e2e against a running dev stack. Start `mise dev --sim` (or `mise dev --agent` for a real LLM) in another terminal first — both boot with the dev auth bypass on. Set E2E_SIM=1 to include the scripted-chat spec. Honors WEB_PORT/API_PORT from .env.worktree."
 run = "pnpm nx run web:e2e"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -247,11 +226,50 @@ run = "pnpm nx run web:e2e"
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.dev]
-description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this path — use `mise dev:vm` for those."
+description = "Run API + web natively + infra in Docker. API runs on host (hot reload, port 8000). Default is the REAL WorkOS login flow. Add --agent for zero-login agent driving (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub, no OpenRouter cost). Both fail loudly under ENV=production. JuiceFS-dependent paths (workspace v2, sandbox file ops, artifact streaming) raise JuiceFSUnavailable on this native path — use `mise dev:vm` for those."
+usage = '''
+flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
+flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) — deterministic, no OpenRouter credentials or cost. Replies come from [[tool:...]]/[[say:...]] directives."
+'''
 run = '''
 set -eu
-bash scripts/dev/check-ports.sh API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}"
+
+# --agent and --sim both enable the dev auth bypass; --sim additionally swaps the
+# real model for the local scripted stub. Neither may run in production — guard
+# with an explicit `if` so set -e reliably aborts (an `&&` one-liner does not).
+bypass=""
+[ "${usage_agent:-}" = "true" ] && bypass=1
+[ "${usage_sim:-}" = "true" ] && bypass=1
+if [ -n "$bypass" ]; then
+  bash scripts/dev/assert-not-prod.sh "the dev auth bypass / sim mode"
+fi
+
+# A taken port half-boots the stack (uvicorn exits, nx keeps web pointed at a
+# stale server); refuse instead. Add the stub port only when running sim.
+if [ "${usage_sim:-}" = "true" ]; then
+  bash scripts/dev/check-ports.sh \
+    API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}" LLM_STUB="${LLM_STUB_PORT:-9797}"
+else
+  bash scripts/dev/check-ports.sh API="${API_PORT:-8000}" WEB="${WEB_PORT:-3000}"
+fi
+
 nx run docker:docker:up
+
+# Auth: bypass as DEV_USER, or the real WorkOS login when no flag is set.
+if [ -n "$bypass" ]; then
+  export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
+fi
+
+# LLM: scripted stub for --sim (native API reaches it on localhost), else real.
+if [ "${usage_sim:-}" = "true" ]; then
+  export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
+  export OPENROUTER_BASE_URL="${OPENROUTER_BASE_URL:-http://localhost:$LLM_STUB_PORT/api/v1}"
+  uv run tools/llm-stub/server.py &
+  stub_pid=$!
+  trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
+  export GAIA_SIM_MODE=1
+fi
+
 nx run-many -t dev --projects=api,web --parallel=2
 '''
 
@@ -260,9 +278,44 @@ description = "Run ONLY API server natively + infra in Docker. Same JuiceFS cave
 run = "nx run docker:docker:up && nx dev api"
 
 [tasks."dev:vm"]
-description = "Run the API in a container (hot reload via the mounted apps/api/app dir + JuiceFS FUSE mount) + web natively. Use this when working on workspace v2, file uploads, artifact streaming, or sandbox file ops. The container is required because JuiceFS mounts via FUSE, which a native macOS/Windows process cannot provide. Also starts voice-agent-worker as a side effect of the `backend` profile."
+description = "Run the API in a container (hot reload via the mounted apps/api/app dir + JuiceFS FUSE mount) + web natively. Use this when working on workspace v2, file uploads, artifact streaming, or sandbox file ops. The container is required because JuiceFS mounts via FUSE, which a native macOS/Windows process cannot provide. Default is the REAL WorkOS login flow; add --agent (dev auth bypass, real LLM) or --sim (bypass + scripted LLM stub) for zero-login agent driving. Both fail loudly under ENV=production. Also starts voice-agent-worker as a side effect of the `backend` profile."
 env = { COMPOSE_PROFILES = "backend" }
-run = "nx run docker:docker:up && nx dev web"
+usage = '''
+flag "--agent" help="Dev auth bypass ON — every request authenticates as DEV_USER (default dev@gaia.local), no WorkOS login. Real LLM."
+flag "--sim" help="Dev auth bypass ON + scripted LLM stub (tools/llm-stub) reached from the container via host.docker.internal. Deterministic, no OpenRouter cost."
+'''
+run = '''
+set -eu
+
+# --agent and --sim both enable the dev auth bypass; --sim additionally routes the
+# dockered API at the host stub. Neither may run in production — guard with an
+# explicit `if` so set -e reliably aborts (an `&&` one-liner does not).
+bypass=""
+[ "${usage_agent:-}" = "true" ] && bypass=1
+[ "${usage_sim:-}" = "true" ] && bypass=1
+if [ -n "$bypass" ]; then
+  bash scripts/dev/assert-not-prod.sh "the dev auth bypass / sim mode"
+  # Bypass reaches the dockered API via compose interpolation of this var (see
+  # infra/docker/docker-compose.yml gaia-backend env) — apps/api/.env has it off.
+  export DEV_AUTH_BYPASS_EMAIL="${DEV_USER:-dev@gaia.local}"
+fi
+
+if [ "${usage_sim:-}" = "true" ]; then
+  # The stub runs on the host; the container reaches it via host.docker.internal,
+  # so the stub must bind 0.0.0.0 (loopback is unreachable from the container).
+  # The sim override injects GAIA_SIM_MODE + the host.docker.internal base URL.
+  export LLM_STUB_PORT="${LLM_STUB_PORT:-9797}"
+  LLM_STUB_HOST=0.0.0.0 uv run tools/llm-stub/server.py &
+  stub_pid=$!
+  trap 'kill "$stub_pid" 2>/dev/null || true' EXIT INT TERM
+  ( cd infra/docker && docker compose $(test -f .env && echo '--env-file .env') \
+      -f docker-compose.yml -f docker-compose.sim.yml --profile backend up -d )
+else
+  nx run docker:docker:up
+fi
+
+nx dev web
+'''
 
 [tasks."dev:web"]
 description = "Run ONLY web (starts Docker automatically)"

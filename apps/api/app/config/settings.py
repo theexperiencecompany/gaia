@@ -81,7 +81,7 @@ class CommonSettings(BaseAppSettings):
     # get_settings() refuses to start in production when either is enabled.
     # ----------------------------------------------
     # Sim mode: every LLM factory resolves to the local scripted stub
-    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev:sim`.
+    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev --sim`.
     GAIA_SIM_MODE: bool = False
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).

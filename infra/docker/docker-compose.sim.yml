@@ -1,0 +1,18 @@
+# Sim-mode override for the dockered API — merged only by `mise dev:vm --sim`
+# (`-f docker-compose.yml -f docker-compose.sim.yml`). Points the model client at
+# the host-run scripted LLM stub (tools/llm-stub) instead of OpenRouter.
+#
+# Kept as an override (not baked into docker-compose.yml) so plain `mise dev:vm`
+# reads the real OPENROUTER_BASE_URL from apps/api/.env — a base-file entry would
+# clobber it with an empty value on every non-sim run.
+services:
+  gaia-backend:
+    environment:
+      GAIA_SIM_MODE: "1"
+      # The stub runs on the host; the container reaches it via host.docker.internal.
+      # The stub must bind 0.0.0.0 for this to work (see `mise dev:vm` — loopback is
+      # unreachable from inside the container).
+      OPENROUTER_BASE_URL: "http://host.docker.internal:${LLM_STUB_PORT:-9797}/api/v1"
+    extra_hosts:
+      # Docker Desktop provides this automatically; host-gateway makes it work on Linux too.
+      - "host.docker.internal:host-gateway"

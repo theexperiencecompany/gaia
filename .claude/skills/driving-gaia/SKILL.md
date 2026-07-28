@@ -15,15 +15,20 @@ Every command, port, path, and payload below is verified against source. When a 
 
 One command per intent. Each starts infra in Docker (`nx run docker:docker:up`, idempotent) and the app natively unless noted.
 
+**Everything in this skill needs the dev auth bypass (zero login, §2), enabled by the `--agent` / `--sim` flags.** Plain `mise dev` (no flag) is the *human* path — real WorkOS login, no bypass — so don't use it bare for agent driving. `--agent` and `--sim` compose onto both the native (`dev`) and dockered (`dev:vm`) runtimes; both fail loudly under `ENV=production` (§2).
+
 | You need… | Command | Why |
 |---|---|---|
-| **Default dev** (API + web natively) | `mise dev` | Hot reload, API on host `:8000`. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — that's expected, not a bug. |
-| **JuiceFS paths** — workspace v2, file uploads, artifact streaming, sandbox file ops | `mise dev:vm` | Runs the API in a container with the FUSE mount; web stays native. Use this the moment you hit `JuiceFSUnavailable`. |
-| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev:sim` | Adds the scripted LLM stub (`tools/llm-stub`, `:9797`) and points the API at it. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
+| **Agent driving, real LLM** (API + web natively, zero login) | `mise dev --agent` | Dev auth bypass ON — every request is `DEV_USER` (default `dev@gaia.local`), no WorkOS. Hot reload, API on host `:8000`. The default for this skill. JuiceFS-dependent paths raise `JuiceFSUnavailable` here — expected, not a bug. |
+| **Deterministic, credential-free** — scripted LLM, no OpenRouter cost | `mise dev --sim` | `--agent` + the scripted LLM stub (`tools/llm-stub`, `:9797`). Bypass also ON. Model replies come from directives in the chat message (§3). Run `mise seed` once the API is up. |
+| **JuiceFS paths** — workspace v2, file uploads, artifact streaming, sandbox file ops | `mise dev:vm --agent` | Runs the API in a container with the FUSE mount; web stays native. `--agent` (or `--sim`, reaching the host stub via `host.docker.internal`) turns on the bypass; plain `mise dev:vm` is real login. Use the moment you hit `JuiceFSUnavailable`. |
+| **Real login flow** (human testing, no bypass) | `mise dev` | Same native stack, no flag — the real WorkOS login, for testing signup/auth as an actual user. Not for agent driving. |
+
+Every bypass command authenticates as `DEV_USER` (default `dev@gaia.local`); set `DEV_USER=<email>` to be someone else (it also becomes the `mise seed` target — §2).
 
 Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for the full list.)
 
-**Ports.** `API_PORT` / `WEB_PORT` are honored everywhere (default 8000 / 3000). For several branches at once, `mise run wt:env` writes a per-worktree `.env.worktree` with collision-free ports (API 8000+offset, web 3000+offset, stub 9797+offset, bots 3200-3203+offset) that mise auto-loads. `mise dev` / `dev:sim` preflight those ports and refuse to start when one is taken, naming the process that holds it — a stale server from another worktree used to silently absorb the whole session's traffic. Full workflow: **`parallel-worktrees` skill** — don't reinvent it here.
+**Ports.** `API_PORT` / `WEB_PORT` are honored everywhere (default 8000 / 3000). For several branches at once, `mise run wt:env` writes a per-worktree `.env.worktree` with collision-free ports (API 8000+offset, web 3000+offset, stub 9797+offset, bots 3200-3203+offset) that mise auto-loads. `mise dev` preflights those ports and refuses to start when one is taken (adding the stub port under `--sim`), naming the process that holds it — a stale server from another worktree used to silently absorb the whole session's traffic. Full workflow: **`parallel-worktrees` skill** — don't reinvent it here.
 
 **WorkOS keys.** `DevelopmentSettings` still requires `WORKOS_API_KEY` / `WORKOS_CLIENT_ID` / `WORKOS_COOKIE_PASSWORD` even under the bypass (WorkOS is never called). Dummy values are fine locally; missing ones fail startup.
 
@@ -31,9 +36,11 @@ Single API only: `mise dev:api`. Web only: `mise dev:web`. (See `mise tasks` for
 
 ## 2. Become a user — the dev auth bypass (zero login)
 
-Set `DEV_AUTH_BYPASS_EMAIL=<email>` in `apps/api/.env`. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only; production refuses to boot with it set.
+The bypass is enabled by the `--agent` / `--sim` flag, not by editing `.env`. `mise dev --agent`, `mise dev --sim`, and `mise dev:vm --agent` (or `--sim`) each export `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for the API process. Every API request then authenticates as that Mongo user — no WorkOS, no cookies, no login flow (`apps/api/app/api/v1/middleware/auth.py`, `_dispatch_dev_bypass`). Point `apps/web/.env.local` at your API base — `http://localhost:${API_PORT:-8000}/api/v1/` (worktrees get their own port via `.env.worktree`) — and the web app is authenticated on page load. Development only: the flags run `scripts/dev/assert-not-prod.sh` and abort if `ENV=production`, and `get_settings()` refuses to boot with the var set in prod regardless.
 
-The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and seeds them — it is mounted **only** when `ENV=development` **and** `DEV_AUTH_BYPASS_EMAIL` is set (`app/core/app_factory.py:139`), and 404s otherwise. It is itself exempt from the bypass, so you can mint the first user before any user exists.
+`apps/api/.env` keeps `DEV_AUTH_BYPASS_EMAIL` **commented out** on purpose so plain `mise dev` is a real login flow — enable the bypass through the `--agent`/`--sim` flag (pass `DEV_USER=<email>` to change the identity), don't hardcode it back into `.env`.
+
+The user must already exist in Mongo. The dev router (`/api/v1/dev/*`) mints and seeds them — it is mounted **only** when `ENV=development` **and** `DEV_AUTH_BYPASS_EMAIL` is set (`app/core/app_factory.py:139`), and 404s otherwise. Because the bypass is on under `--agent`/`--sim`, the router is mounted there; it is itself exempt from the bypass, so you can mint the first user before any user exists. (Under a bare `mise dev` the bypass is off, so `/dev/*` 404s — add `--agent` or `--sim` to reach it.)
 
 ### One command: `mise seed`
 
@@ -44,7 +51,7 @@ mise seed                                   # dev@gaia.local, 5 todos + 2 conver
 DEV_USER=alice@gaia.local SEED_TODOS=3 mise seed
 ```
 
-Then set `DEV_AUTH_BYPASS_EMAIL` to that email in `apps/api/.env` (the task prints the reminder).
+To act as a non-default user, boot with the **same** `DEV_USER` you seeded (`DEV_USER=alice@gaia.local mise dev --agent`) — that email becomes both the seed target and the server's bypass identity. For a one-off different user against an already-running server, use the `X-Dev-User` header instead (below).
 
 ### The endpoints directly (`X-Dev-User` for multi-user)
 
@@ -73,12 +80,12 @@ curl -sfS -X DELETE "$API/dev/users/alice@gaia.local"
 
 ---
 
-## 3. Script the LLM deterministically (`dev:sim`)
+## 3. Script the LLM deterministically (`--sim`)
 
-Under `mise dev:sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every LLM factory resolves to the stub; real keys in `.env` stay untouched and unused), the model is replaced by `tools/llm-stub` — an OpenRouter-wire-compatible server that scripts from the **newest user message carrying directives** (the graph appends context slots as trailing user messages; the stub skips them) and emits them in order (`tools/llm-stub/directives.py`, `wire.py`). No scenario files, no cost, fully deterministic.
+Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — every LLM factory resolves to the stub; real keys in `.env` stay untouched and unused), the model is replaced by `tools/llm-stub` — an OpenRouter-wire-compatible server that scripts from the **newest user message carrying directives** (the graph appends context slots as trailing user messages; the stub skips them) and emits them in order (`tools/llm-stub/directives.py`, `wire.py`). No scenario files, no cost, fully deterministic.
 
 **When to use sim mode** — verifying plumbing, not intelligence: does a tool call flow comms → executor → real tool → Mongo; does the SSE stream shape render; does a bot/Playwright flow work end to end; any test that must pass identically every run with no credentials.
-**When NOT to use it** — anything judging real model behavior: prompt changes, tool-selection quality, response tone/format, memory extraction quality, model regressions. The stub does exactly what the directive says and nothing else, so "the agent chose the right tool" is meaningless under sim. Use `mise dev` with real keys for those, and expect nondeterminism.
+**When NOT to use it** — anything judging real model behavior: prompt changes, tool-selection quality, response tone/format, memory extraction quality, model regressions. The stub does exactly what the directive says and nothing else, so "the agent chose the right tool" is meaningless under sim. Use `mise dev --agent` with real keys for those, and expect nondeterminism.
 
 ```text
 [[tool:<name> <json-args>]]   one scripted tool call — repeatable, ordered
@@ -157,7 +164,7 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents/gmail
 - Runs reuse the exact production preparation (`prepare_executor_execution` / `prepare_subagent_execution` — the same code the `handoff` tool calls), so a direct run cannot drift from what a real hand-off does.
 - Response `{user_id, conversation_id, thread_id, agent, message}` — `message` is the final text to assert on; verify side effects in Mongo (§4).
 - Multi-turn: pass the returned `conversation_id` back on the next call — the derived agent thread is reused, so the layer keeps its history.
-- Sim directives (§3) work unchanged in `task`; under `dev:sim` the executor's `retrieve_tools` hop is handled automatically, same as via chat.
+- Sim directives (§3) work unchanged in `task`; under `--sim` the executor's `retrieve_tools` hop is handled automatically, same as via chat.
 - Failures are loud: unknown email → 404 naming the mint fix; unknown subagent id → 400 pointing at `GET /dev/subagents`.
 
 ---
@@ -166,16 +173,16 @@ curl -sfS -X POST "http://localhost:${API_PORT:-8000}/api/v1/dev/subagents/gmail
 
 Every page load is already authenticated (§2), so there is no login step — just navigate and act.
 
-**Interactive / exploratory → agent-browser.** Install with `npm i -g agent-browser && agent-browser install` — a Rust CDP daemon + MCP server with accessibility-tree snapshots, stable element refs (`@e1`), and persistent encrypted profiles. Snapshot → act on the stable element ref → assert. Run `mise dev` (or `dev:sim`), open `http://localhost:${WEB_PORT:-3000}` (your worktree's `WEB_PORT`), and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
+**Interactive / exploratory → agent-browser.** Install with `npm i -g agent-browser && agent-browser install` — a Rust CDP daemon + MCP server with accessibility-tree snapshots, stable element refs (`@e1`), and persistent encrypted profiles. Snapshot → act on the stable element ref → assert. Run `mise dev --agent` (or `--sim`), open `http://localhost:${WEB_PORT:-3000}` (your worktree's `WEB_PORT`), and verify against a snapshot/screenshot before claiming a UI change works. (chrome-devtools MCP is the alternative when you need console/network introspection.)
 
 **Repeatable / scripted → Playwright.** Minimal setup lives in `apps/web/e2e/` (`playwright.config.ts`, `global-setup.ts`, `smoke.spec.ts`, `harness.ts`). One command:
 
 ```bash
 mise e2e:web          # runs nx run web:e2e against a stack you already started
-E2E_SIM=1 mise e2e:web   # also runs the scripted-chat spec (needs `mise dev:sim`)
+E2E_SIM=1 mise e2e:web   # also runs the scripted-chat spec (needs `mise dev --sim`)
 ```
 
-- Start the stack in another terminal first (`mise dev:sim`, or `mise dev` with the bypass set) — `mise e2e:web` does not boot it.
+- Start the stack in another terminal first (`mise dev --sim`, or `mise dev --agent` for a real LLM) — `mise e2e:web` does not boot it.
 - **Never run `mise seed` for e2e.** `global-setup.ts` resets → mints → seeds `dev@gaia.local` itself through the real dev endpoints; a manual seed is redundant and fights the reset.
 - The scripted-chat spec is `test.skip`ped unless `E2E_SIM=1` (it needs the stub's deterministic reply). Ports honor `WEB_PORT` / `API_PORT`.
 
@@ -202,7 +209,7 @@ Flags (see `apps/bots/harness/src/cli.ts`):
 
 Details:
 - `--emulate <platform>` pulls that platform's real `PLATFORM_LIMITS` / `STREAMING_DEFAULTS` / markdown converter from `libs/shared/ts/src/bots/` — the only residual is a conformance-locked `supportsEdit` map (`apps/bots/harness/src/emulation.ts`).
-- Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `dev:sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
+- Requires the same `apps/bots/.env` a real bot uses (`GAIA_API_URL`, `GAIA_BOT_API_KEY`, `GAIA_FRONTEND_URL`, `BOT_LOG_HASH_SECRET`) and a running API (real LLM, or the `--sim` stub via §3). Set `RABBITMQ_URL` to record proactive `outbound-delivery` events through the real outbound consumer (a loud warning prints when it is unset).
 - Transcript is JSONL events (`inbound`, `send`, `edit`, `typing`, `ephemeral`, `rich`, `split`, `outbound-delivery`) with final rendered payloads — assert on that, not on logs. Types: `apps/bots/harness/src/transcript.types.ts`.
 - A golden conformance suite (`apps/bots/__tests__/harness/conformance.test.ts`, wired into `mise test:bots`) drives the harness and the real adapter with only the SDK faked and fails CI if their output diverges. WhatsApp webhook replay lives in `apps/bots/__tests__/whatsapp/webhook-replay.e2e.test.ts`. See `apps/bots/CLAUDE.md`.
 
@@ -215,8 +222,9 @@ Read logs with the **`reading-gaia-logs`** skill (wide events, where logs land p
 | Symptom | Meaning | Fix |
 |---|---|---|
 | `401 … mint it via POST /api/v1/dev/users` | The bypass/`X-Dev-User` email has no Mongo user (fail-loud, by design). | Mint it (§2) or drop the `X-Dev-User` header. |
-| Dev routes 404 | `ENV != development` or `DEV_AUTH_BYPASS_EMAIL` unset — router not mounted. | Set both in `apps/api/.env` and restart. |
-| `JuiceFSUnavailable` on `mise dev` | Native host has no FUSE mount — expected for workspace v2 / file / artifact / sandbox paths. | Switch to `mise dev:vm`. Never stub/silence the mount check. |
+| Dev routes 404 (or the web app shows a login screen) | Bypass off — you booted a bare `mise dev` (real login), or `ENV != development`. | Add the flag: `mise dev --agent` / `--sim` (or `mise dev:vm --agent`). |
+| Boot aborts: "refusing to enable the dev auth bypass / sim mode with ENV=production" | You passed `--agent`/`--sim` with `ENV=production` (`scripts/dev/assert-not-prod.sh`, by design). | Set `ENV=development` for local driving, or drop the flag. |
+| `JuiceFSUnavailable` on a native boot (`mise dev --agent` / `--sim` / bare `dev`) | Native host has no FUSE mount — expected for workspace v2 / file / artifact / sandbox paths. | Switch to `mise dev:vm` (add `--agent` for zero login). Never stub/silence the mount check. |
 | Stub returns HTTP 500 echoing a directive | Malformed `[[tool:… <json>]]` args (or a literal `]]` inside them). | Fix the JSON in the message (§3). |
 | Telegram `409 Conflict` | Same bot token running twice (dev + Docker, or two worktrees). | Run one instance only — see `parallel-worktrees` + `apps/bots/CLAUDE.md`. |
 
@@ -233,7 +241,7 @@ Every way to test or simulate GAIA, in one table — this skill covers the live-
 | One subagent directly | `curl POST /api/v1/dev/subagents/{id}` (§5) | this skill |
 | Browser (scripted) | `mise e2e:web` / `E2E_SIM=1 mise e2e:web` (§6) | this skill, `apps/web/e2e/` |
 | Bots (emulated platforms) | `pnpm nx run bot-harness:sim -- send\|run` (§7) | this skill, `apps/bots/CLAUDE.md` |
-| Deterministic LLM | `mise dev:sim` → directives (§3) | this skill, `tools/llm-stub/` |
+| Deterministic LLM | `mise dev --sim` → directives (§3) | this skill, `tools/llm-stub/` |
 | Python unit (mocked infra) | `mise test:python:unit` | `apps/api/CLAUDE.md` |
 | Python full suite vs live services | `mise test:python` (Dagger local) / CI `test-python` | `apps/api/CLAUDE.md`, `.github/CLAUDE.md` |
 | Python e2e tier (incl. device-bridge black box) | `nx run api:test:e2e` | `apps/api/tests/service/README.md` |
