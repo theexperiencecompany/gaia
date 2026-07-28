@@ -29,6 +29,7 @@ from app.constants.hil import (
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.hil.approvals_store import (
+    clear_resume_item,
     get_approval,
     list_decided_unresumed,
     list_expired_pending,
@@ -41,6 +42,10 @@ from app.utils.errors import AppError
 from shared.py.wide_events import log
 
 DecisionKind = Literal["approve", "deny", "timeout", "abandon"]
+
+# Recorded on approvals closed because the user cancelled the run that parked on them.
+# No run ever reads it back (there is nothing left to resume) — it is the audit trail.
+CANCELLED_FEEDBACK = "The user cancelled this task; the action was never performed."
 
 # What the record audits. The paused gate receives the same status, except
 # "abandoned" resumes as a denial — the user moved on, the agent must not act.
@@ -157,6 +162,45 @@ async def abandon_conversation_approvals(
             # never strand the conversation's other paused runs, which is the whole point.
             continue
     return abandoned
+
+
+async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> list[str]:
+    """Close a cancelled run's pending approvals so nothing can restart it.
+
+    ``cancel_executor`` stops the run and drops the conversation's busy lock, but the
+    approval records are the *decision* state, and they outlive both: left pending, a
+    later "Approve" — or the timeout sweep, with no user involved at all — re-dispatches
+    the very run the user stopped, on a fresh stream the cancel flag does not cover.
+    Deciding them here is what makes a cancel stick.
+
+    Deliberately does NOT resume, which is the whole difference from
+    ``abandon_conversation_approvals``: there the run must wake up to release the lock,
+    here it is already gone. ``mark_decided`` runs first because it is the exactly-once
+    mutex — only the caller that wins the transition owns the record and may clear its
+    ``resume_item``, so a decision landing at the same instant can never lose its
+    re-dispatch context.
+    """
+    cancelled: list[str] = []
+    for record in await list_pending_for_conversation(conversation_id):
+        if record.user_id != user_id:
+            continue
+        if not await mark_decided(
+            record.approval_id,
+            "abandoned",
+            feedback=CANCELLED_FEEDBACK,
+            scope="once",
+            decided_by=user_id,
+        ):
+            continue
+        await clear_resume_item(record.approval_id)
+        cancelled.append(record.approval_id)
+    if cancelled:
+        log.info(
+            f"{LogTag.HIL} Closed pending approvals for a cancelled run",
+            conversation_id=conversation_id,
+            approval_ids=cancelled,
+        )
+    return cancelled
 
 
 async def _resolve_or_close(

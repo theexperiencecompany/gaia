@@ -134,6 +134,16 @@ async def set_resume_item(approval_id: str, item: dict[str, Any]) -> None:
     await hil_approval_repository.update(approval_id, HILApprovalUpdate(resume_item=item))
 
 
+async def clear_resume_item(approval_id: str) -> None:
+    """Drop a record's re-dispatch context — the run it pointed at is gone.
+
+    Written when a cancellation ends the paused run: with no ``resume_item`` the
+    decided-unresumed sweep can no longer bring it back, the same signal a record
+    that never registered a pause already relies on.
+    """
+    await hil_approval_repository.update(approval_id, HILApprovalUpdate(resume_item=None))
+
+
 async def stamp_subagent_resume(
     approval_id: str, *, subagent_thread_id: str, subagent_agent_name: str
 ) -> None:

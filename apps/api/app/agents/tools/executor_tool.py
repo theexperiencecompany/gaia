@@ -41,6 +41,7 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
+from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
 
 # Prevent GC of background tasks
@@ -339,6 +340,10 @@ async def cancel_executor(
         )
         # Running task was present but not targeted for cancellation
         skipped_running = bool(lock_value) and not cancelled
+        if cancelled:
+            # Only once the RUNNING task is actually gone: a cancel that spared it
+            # (queued-only) must leave its approvals alone — it is still waiting on them.
+            await cancel_conversation_approvals(conversation_id, configurable.get("user_id", ""))
         cancelled += await _cancel_queued_tasks(
             queue_key,
             task_ids,

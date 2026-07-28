@@ -13,16 +13,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.services.hil.resolution import (
+    CANCELLED_FEEDBACK,
     ApprovalNotResumable,
     ApprovalRequestForbidden,
     ApprovalRequestNotFound,
     abandon_conversation_approvals,
+    cancel_conversation_approvals,
     resolve_approval,
     resolve_approvals_batch,
     sweep_approvals,
 )
 
-from .conftest import USER_ID, make_record
+from .conftest import CONVERSATION_ID, USER_ID, make_record
 
 MODULE = "app.services.hil.resolution"
 
@@ -359,3 +361,83 @@ class TestSweep:
 
         assert counts == {"expired": 0, "redispatched": 0}
         assert resume.runner.call_count == 0
+
+
+class TestCancelledRunApprovals:
+    """A cancelled run's approvals must not be able to bring it back.
+
+    cancel_executor kills the run and drops the busy lock, but the approval records
+    outlive both. Left pending they are a live "Approve" button — and a timeout sweep
+    with no user involved at all — pointing at a run the user explicitly stopped.
+    """
+
+    async def test_a_pending_approval_is_closed_without_resuming_anything(
+        self, resume: Any
+    ) -> None:
+        record = make_record(approval_id="a1")
+        with (
+            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[record])),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
+            patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
+        ):
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+
+        assert closed == ["a1"]
+        assert decided.await_args.args == ("a1", "abandoned")
+        assert decided.await_args.kwargs["feedback"] == CANCELLED_FEEDBACK
+        assert decided.await_args.kwargs["decided_by"] == USER_ID
+        # Without this the decided-unresumed sweep re-dispatches the cancelled run.
+        assert cleared.await_args.args == ("a1",)
+        # The run is already gone — waking it is what abandon does, not this.
+        assert resume.prepare.await_count == 0
+        assert resume.runner.await_count == 0
+
+    async def test_the_resume_context_survives_a_lost_transition_race(self, resume: Any) -> None:
+        # The user hit Approve at the same instant. That decision won the exactly-once
+        # transition and is dispatching a run from this very resume_item — clearing it
+        # here would strand a run that is legitimately going ahead.
+        record = make_record(approval_id="a1")
+        with (
+            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[record])),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=False)),
+            patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
+        ):
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+
+        assert closed == []
+        assert cleared.await_count == 0
+
+    async def test_another_users_approval_is_never_touched(self, resume: Any) -> None:
+        record = make_record(approval_id="a1", user_id="507f1f77bcf86cd799439099")
+        with (
+            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[record])),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)) as decided,
+            patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
+        ):
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+
+        assert closed == []
+        assert decided.await_count == 0
+        assert cleared.await_count == 0
+
+    async def test_every_approval_of_a_batch_pause_is_closed(self, resume: Any) -> None:
+        # One executor thread pauses on several approvals at once; leaving any of them
+        # pending leaves a way back into the cancelled run.
+        records = [make_record(approval_id=f"a{i}") for i in (1, 2, 3)]
+        with (
+            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=records)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
+            patch(f"{MODULE}.clear_resume_item", new=AsyncMock()) as cleared,
+        ):
+            closed = await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+
+        assert closed == ["a1", "a2", "a3"]
+        assert [call.args[0] for call in cleared.await_args_list] == ["a1", "a2", "a3"]
+
+    async def test_a_conversation_with_no_pending_approvals_is_a_no_op(self, resume: Any) -> None:
+        with (
+            patch(f"{MODULE}.list_pending_for_conversation", new=AsyncMock(return_value=[])),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock()) as decided,
+        ):
+            assert await cancel_conversation_approvals(CONVERSATION_ID, USER_ID) == []
+        assert decided.await_count == 0

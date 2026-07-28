@@ -6,6 +6,9 @@ orchestration tool that fell through to the destructive classifier, and an auto-
 call that parked on an approval nobody could answer.
 """
 
+import asyncio
+from contextlib import ExitStack
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,14 +18,28 @@ import pytest
 
 from app.agents.core.subagents.subagent_runner import recover_from_checkpoint
 from app.constants.general import WAIT_FOR_SUBAGENTS_NAME
-from app.constants.hil import HIL_EXEMPT_TOOLS, HIL_PAUSING_TOOLS, HIL_STATUS_KWARG
+from app.constants.hil import (
+    HIL_EXEMPT_TOOLS,
+    HIL_PAUSING_TOOLS,
+    HIL_STATUS_KWARG,
+    HIL_UNRESUMED_SWEEP_STATUSES,
+)
+from app.services.hil.approvals_store import clear_resume_item
 from app.services.hil.gate import gate_tool_call
 from app.services.hil.policy import has_pausing_sibling
+from app.services.hil.resolution import (
+    cancel_conversation_approvals,
+    resolve_approval,
+    sweep_approvals,
+)
+from app.utils.errors import AppError
 
-from .conftest import USER_ID, ai_message_with_calls, make_record, make_request
+from .conftest import CONVERSATION_ID, USER_ID, ai_message_with_calls, make_record, make_request
 
 GATE = "app.services.hil.gate"
 POLICY = "app.services.hil.policy"
+RESOLUTION = "app.services.hil.resolution"
+STORE = "app.services.hil.approvals_store"
 
 
 def snapshot(next_nodes: tuple[str, ...] = (), messages: list[Any] | None = None) -> Any:
@@ -263,3 +280,143 @@ class TestAutoApprovedReplayNeverParks:
             await gate_tool_call(make_request(), AsyncMock())
 
         interrupt.assert_called_once()
+
+
+async def drain_spawned_tasks() -> None:
+    """_dispatch_resume spawns the run with create_task; let it actually start."""
+    for _ in range(3):
+        await asyncio.sleep(0)
+
+
+class _ApprovalStore:
+    """Stand-in for the approvals collection, keeping the one semantic that decides
+    this: ``pending -> decided`` is conditional, so it happens at most once."""
+
+    def __init__(self, *records: Any) -> None:
+        self.records = {record.approval_id: record for record in records}
+
+    async def get(self, approval_id: str) -> Any:
+        return self.records.get(approval_id)
+
+    async def list_pending(self, conversation_id: str) -> list[Any]:
+        return [
+            r
+            for r in self.records.values()
+            if r.conversation_id == conversation_id and r.status == "pending"
+        ]
+
+    async def mark_decided(self, approval_id: str, status: str, **kwargs: Any) -> bool:
+        record = self.records.get(approval_id)
+        if record is None or record.status != "pending":
+            return False
+        self.records[approval_id] = record.model_copy(
+            update={"status": status, "decided_at": datetime.now(UTC), **kwargs}
+        )
+        return True
+
+    async def clear_resume_item(self, approval_id: str) -> None:
+        self.records[approval_id] = self.records[approval_id].model_copy(
+            update={"resume_item": None}
+        )
+
+    async def list_decided_unresumed(self, grace: float) -> list[Any]:
+        return [
+            r
+            for r in self.records.values()
+            if r.status in HIL_UNRESUMED_SWEEP_STATUSES
+            and r.resumed_at is None
+            and r.resume_item is not None
+        ]
+
+
+class TestCancelledRunIsNotResurrectedByItsApproval:
+    """cancel_executor stops the run and drops the busy lock, but neither reaches the
+    approval record. Left pending it is a live Approve button — and a user-free timeout
+    sweep — pointing at the run the user stopped, re-dispatched on a fresh stream that
+    the original cancel flag never covered.
+    """
+
+    @staticmethod
+    def _patches(store: _ApprovalStore, runner: AsyncMock) -> Any:
+        return (
+            patch(f"{RESOLUTION}.get_approval", new=AsyncMock(side_effect=store.get)),
+            patch(
+                f"{RESOLUTION}.list_pending_for_conversation",
+                new=AsyncMock(side_effect=store.list_pending),
+            ),
+            patch(f"{RESOLUTION}.mark_decided", new=AsyncMock(side_effect=store.mark_decided)),
+            patch(
+                f"{RESOLUTION}.clear_resume_item",
+                new=AsyncMock(side_effect=store.clear_resume_item),
+            ),
+            patch(
+                f"{RESOLUTION}.list_decided_unresumed",
+                new=AsyncMock(side_effect=store.list_decided_unresumed),
+            ),
+            patch(f"{RESOLUTION}.list_expired_pending", new=AsyncMock(return_value=[])),
+            patch(
+                f"{RESOLUTION}.prepare_run_from_item",
+                new=AsyncMock(return_value=SimpleNamespace(run=None, task="t", configurable={})),
+            ),
+            patch(f"{RESOLUTION}.run_executor_background", new=runner),
+            patch(f"{RESOLUTION}.claim_resume_dispatch", new=AsyncMock(return_value=True)),
+            patch(f"{RESOLUTION}.release_resume_dispatch", new=AsyncMock()),
+            patch(f"{RESOLUTION}.mark_resumed", new=AsyncMock()),
+        )
+
+    async def test_approving_afterwards_does_not_run_the_cancelled_action(self) -> None:
+        store = _ApprovalStore(make_record(approval_id="a1"))
+        runner = AsyncMock()
+        with ExitStack() as stack:
+            for p in self._patches(store, runner):
+                stack.enter_context(p)
+
+            await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            with pytest.raises(AppError):
+                await resolve_approval(approval_id="a1", user_id=USER_ID, kind="approve")
+            await drain_spawned_tasks()
+
+        assert runner.await_count == 0
+        assert store.records["a1"].status == "abandoned"
+
+    async def test_the_timeout_sweep_does_not_bring_the_cancelled_run_back(self) -> None:
+        # No user involved at all: the sweep re-dispatches decided-but-unresumed records
+        # from their resume_item, which is exactly what a cancelled record still had.
+        store = _ApprovalStore(make_record(approval_id="a1"))
+        runner = AsyncMock()
+        with ExitStack() as stack:
+            for p in self._patches(store, runner):
+                stack.enter_context(p)
+
+            await cancel_conversation_approvals(CONVERSATION_ID, USER_ID)
+            counts = await sweep_approvals()
+            await drain_spawned_tasks()
+
+        assert counts == {"expired": 0, "redispatched": 0}
+        assert runner.await_count == 0
+
+    async def test_clearing_the_resume_context_actually_unsets_the_field(self) -> None:
+        # The whole sweep exclusion rests on this one write. HILApprovalUpdate is applied
+        # with exclude_unset, so an update built without the field sets nothing at all —
+        # only an explicit None clears it.
+        repository = AsyncMock()
+        with patch(f"{STORE}.hil_approval_repository", repository):
+            await clear_resume_item("a1")
+
+        approval_id, update = repository.update.await_args.args
+        assert approval_id == "a1"
+        assert update.model_dump(exclude_unset=True) == {"resume_item": None}
+
+    async def test_an_uncancelled_approval_still_resumes_normally(self) -> None:
+        # The guard must not cost the feature: an ordinary approval still runs.
+        store = _ApprovalStore(make_record(approval_id="a1"))
+        runner = AsyncMock()
+        with ExitStack() as stack:
+            for p in self._patches(store, runner):
+                stack.enter_context(p)
+
+            await resolve_approval(approval_id="a1", user_id=USER_ID, kind="approve")
+            await drain_spawned_tasks()
+
+        assert runner.await_count == 1
+        assert runner.await_args.kwargs["resume"].resume["status"] == "approved"

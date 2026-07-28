@@ -120,6 +120,14 @@ def fast_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(executor_tool, "REDIRECT_CANCEL_POLL_S", 0.01)
 
 
+@pytest.fixture(autouse=True)
+def closed_approvals(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """The HIL boundary (Mongo-backed): which conversations had their approvals closed."""
+    mock = AsyncMock(return_value=[])
+    monkeypatch.setattr(executor_tool, "cancel_conversation_approvals", mock)
+    return mock
+
+
 @pytest.fixture
 def broadcast(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     mock = AsyncMock()
@@ -633,6 +641,74 @@ class TestCancelExecutor:
 
         assert response == "Cancellation attempted but hit an error: redis connection reset"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:running-task"
+        broadcast.assert_not_awaited()
+
+
+class TestCancelClosesHilApprovals:
+    """A parked run's approval card is a live way back into the run.
+
+    The record outlives both the busy lock and the stream cancel flag, and a resume
+    runs under a fresh stream id the cancel never covered — so a still-pending
+    approval re-dispatches exactly the run the user asked to stop.
+    """
+
+    async def test_stopping_the_running_task_closes_its_pending_approvals(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        await run_cancel_executor(config=config_for(), task_ids=[])
+
+        closed_approvals.assert_awaited_once_with(CONVERSATION_ID, "user-1")
+
+    async def test_sparing_the_running_task_leaves_its_approvals_alone(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+    ) -> None:
+        # Only a queued task is cancelled; the parked run is still waiting on its
+        # approval, so closing it would break a task the user never stopped.
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+        await fake_redis.rpush(QUEUE_KEY, json.dumps({"task_id": "q1"}))
+
+        await run_cancel_executor(config=config_for(), task_ids=["q1"])
+
+        closed_approvals.assert_not_awaited()
+
+    async def test_nothing_matched_closes_nothing(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+    ) -> None:
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        await run_cancel_executor(config=config_for(), task_ids=["unknown"])
+
+        closed_approvals.assert_not_awaited()
+
+    async def test_a_failure_closing_approvals_surfaces_and_keeps_the_lock(
+        self,
+        fake_redis: fakeredis.aioredis.FakeRedis,
+        broadcast: AsyncMock,
+        closed_approvals: AsyncMock,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Reporting a clean cancel while approvals stayed pending would leave the
+        # user believing a stopped action can no longer run.
+        monkeypatch.setattr(StreamManager, "cancel_stream", AsyncMock())
+        closed_approvals.side_effect = RuntimeError("mongo unavailable")
+        await fake_redis.set(LOCK_KEY, "stream-1:running-task", ex=EXECUTOR_BUSY_TTL)
+
+        response = await run_cancel_executor(config=config_for(), task_ids=[])
+
+        assert response == "Cancellation attempted but hit an error: mongo unavailable"
         broadcast.assert_not_awaited()
 
 
