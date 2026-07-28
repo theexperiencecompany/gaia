@@ -8,6 +8,7 @@ import pytest
 # All public symbols imported directly from the module under test.
 # Deleting mail_service.py will break every test in this file.
 # ---------------------------------------------------------------------------
+from app.models.mail_models import GmailDraftsResponse
 from app.services.mail.mail_service import (
     _process_attachments,
     apply_labels,
@@ -812,8 +813,8 @@ class TestListDrafts:
 
         result = await list_drafts(USER_ID, max_results=5)
 
-        assert len(result["drafts"]) == 1
-        assert result["nextPageToken"] == "tok"
+        assert len(result.drafts) == 1
+        assert result.next_page_token == "tok"
         mock_transform.assert_called_once()
 
     async def test_includes_page_token_when_provided(self, mock_invoke_gmail_tool):
@@ -833,14 +834,14 @@ class TestListDrafts:
 
         result = await list_drafts(USER_ID)
 
-        assert result == {"drafts": [], "nextPageToken": None}
+        assert result == GmailDraftsResponse(drafts=[])
 
     async def test_returns_empty_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("timeout")
 
         result = await list_drafts(USER_ID)
 
-        assert result == {"drafts": [], "nextPageToken": None}
+        assert result == GmailDraftsResponse(drafts=[])
 
 
 # ---------------------------------------------------------------------------
@@ -997,9 +998,9 @@ class TestListLabels:
 
         result = await list_labels(USER_ID)
 
-        assert result["success"] is True
-        assert result["count"] == 2
-        assert len(result["labels"]) == 2
+        assert result.success is True
+        assert result.count == 2
+        assert len(result.labels) == 2
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_LIST_LABELS"
 
@@ -1011,16 +1012,18 @@ class TestListLabels:
 
         result = await list_labels(USER_ID)
 
-        assert result["success"] is False
-        assert result["labels"] == []
+        assert result.success is False
+        assert result.error == "auth error"
+        assert result.labels == []
 
     async def test_returns_failure_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("service unavailable")
 
         result = await list_labels(USER_ID)
 
-        assert result["success"] is False
-        assert result["labels"] == []
+        assert result.success is False
+        assert result.error == "service unavailable"
+        assert result.labels == []
 
 
 # ---------------------------------------------------------------------------
@@ -1041,8 +1044,8 @@ class TestGetEmailById:
 
         result = await get_email_by_id(USER_ID, "msg1")
 
-        assert result["success"] is True
-        assert "message" in result
+        assert result.success is True
+        assert result.message is not None
         mock_transform.assert_called_once()
         args, _ = mock_invoke_gmail_tool.call_args
         assert args[1] == "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"
@@ -1056,16 +1059,17 @@ class TestGetEmailById:
 
         result = await get_email_by_id(USER_ID, "msg1")
 
-        assert result["success"] is False
-        assert result["message"] is None
+        assert result.success is False
+        assert result.message is None
+        assert result.error == "not found"
 
     async def test_returns_failure_on_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("network failure")
 
         result = await get_email_by_id(USER_ID, "msg1")
 
-        assert result["success"] is False
-        assert result["message"] is None
+        assert result.success is False
+        assert result.message is None
 
 
 # ---------------------------------------------------------------------------

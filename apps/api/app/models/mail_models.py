@@ -140,3 +140,170 @@ class BulkEmailImportanceSummariesResponse(BaseModel):
     missing_count: int
     found_message_ids: list[str]
     missing_message_ids: list[str]
+
+
+# Every Gmail message, label and draft payload below stays ``dict[str, Any]``:
+# Google owns those schemas and ``transform_gmail_message`` spreads the raw
+# Composio message before adding its derived keys, so the field set varies per
+# message. Only the envelopes the API builds itself are modelled here.
+
+
+class GmailMessagesResponse(BaseModel):
+    """Response for ``GET /gmail/messages`` and ``GET /gmail/search``."""
+
+    messages: list[dict[str, Any]]
+    next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
+
+
+class GmailLabelsResult(BaseModel):
+    """Return shape of ``list_labels`` — ``count``/``error`` are branch-specific."""
+
+    success: bool
+    labels: list[dict[str, Any]] = Field(default_factory=list)
+    count: int = 0
+    error: str | None = None
+
+
+class GmailLabelResource(BaseModel):
+    """A Gmail ``labels`` resource, forwarded to the client verbatim.
+
+    No field is declared on purpose: Gmail owns this schema, so ``extra="allow"``
+    passes the payload through untouched instead of guessing at a structure that
+    would silently drop provider fields. Mirrors ``GoogleCalendarEventResource``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+
+class GmailDraftResource(BaseModel):
+    """A Gmail ``drafts`` resource, forwarded verbatim — see ``GmailLabelResource``."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class GmailLabelsResponse(BaseModel):
+    """Response for ``GET /gmail/labels``."""
+
+    labels: list[dict[str, Any]]
+    count: int
+
+
+class GmailEmailResult(BaseModel):
+    """Return shape of ``get_email_by_id``."""
+
+    success: bool
+    message: dict[str, Any] | None = None
+    error: str | None = None
+
+
+class GmailMessageResponse(BaseModel):
+    """Response for ``GET /gmail/message/{message_id}``."""
+
+    message: dict[str, Any] | None
+    status: str
+
+
+class GmailThreadResponse(BaseModel):
+    """Response for ``GET /gmail/thread/{thread_id}``.
+
+    ``thread`` is the Composio thread payload with its messages transformed, so it
+    keeps the provider's own envelope keys alongside ``messages``.
+    """
+
+    thread_id: str
+    messages_count: int
+    thread: dict[str, Any]
+
+
+class SendEmailResponse(BaseModel):
+    """Response for ``POST /gmail/send-json``."""
+
+    message_id: str | None
+    status: str
+
+
+class SendEmailWithAttachmentsResponse(SendEmailResponse):
+    """Response for ``POST /gmail/send``, which also reports the attachment count."""
+
+    attachments_count: int
+
+
+class GmailMessageActionResponse(BaseModel):
+    """Shared envelope of the bulk message-action endpoints.
+
+    Each endpoint adds the field naming the ids it acted on (``starred``,
+    ``trashed``, …); those names are part of the client contract.
+    """
+
+    success: bool
+    count: int
+    status: str
+
+
+class MarkAsReadResponse(GmailMessageActionResponse):
+    marked_as_read: list[str]
+
+
+class MarkAsUnreadResponse(GmailMessageActionResponse):
+    marked_as_unread: list[str]
+
+
+class StarEmailsResponse(GmailMessageActionResponse):
+    starred: list[str]
+
+
+class UnstarEmailsResponse(GmailMessageActionResponse):
+    unstarred: list[str]
+
+
+class TrashEmailsResponse(GmailMessageActionResponse):
+    trashed: list[str]
+
+
+class UntrashEmailsResponse(GmailMessageActionResponse):
+    restored: list[str]
+
+
+class ArchiveEmailsResponse(GmailMessageActionResponse):
+    archived: list[str]
+
+
+class MoveToInboxResponse(GmailMessageActionResponse):
+    moved_to_inbox: list[str]
+
+
+class ModifyLabelsResponse(GmailMessageActionResponse):
+    """Response for both the apply-label and remove-label endpoints."""
+
+    modified_messages: list[str]
+
+
+class GmailDraftsResponse(BaseModel):
+    """Return shape of ``list_drafts``, forwarded verbatim by ``GET /gmail/drafts``."""
+
+    drafts: list[dict[str, Any]]
+    next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
+
+
+class DraftMutationResponse(BaseModel):
+    """Response for the draft create and update endpoints."""
+
+    draft_id: str | None
+    message_id: str | None
+    status: str
+
+
+class SendDraftResponse(BaseModel):
+    """Response for ``POST /gmail/drafts/{draft_id}/send``."""
+
+    message_id: str
+    thread_id: str
+    status: str
+    successful: bool
+
+
+class GmailDeletionResponse(BaseModel):
+    """Response for the label and draft delete endpoints."""
+
+    status: Literal["success", "error"]
+    message: str

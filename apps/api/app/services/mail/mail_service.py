@@ -6,6 +6,11 @@ from fastapi import UploadFile
 from langchain_core.tools import StructuredTool
 
 from app.constants.log_tags import LogTag
+from app.models.mail_models import (
+    GmailDraftsResponse,
+    GmailEmailResult,
+    GmailLabelsResult,
+)
 from app.services.composio.composio_service import (
     get_composio_service,
 )
@@ -470,7 +475,7 @@ async def create_draft(
 
 async def list_drafts(
     user_id: str, max_results: int = 20, page_token: str | None = None
-) -> dict[str, Any]:
+) -> GmailDraftsResponse:
     """List Gmail draft messages."""
     log.info(f"{LogTag.MAIL} Listing drafts, max_results={max_results}")
     try:
@@ -492,16 +497,16 @@ async def list_drafts(
                     draft["message"] = transform_gmail_message(draft["message"])
                 detailed_drafts.append(draft)
 
-            return {
-                "drafts": detailed_drafts,
-                "nextPageToken": result.get("nextPageToken"),
-            }
+            return GmailDraftsResponse(
+                drafts=detailed_drafts,
+                next_page_token=result.get("nextPageToken"),
+            )
         log.error(f"{LogTag.MAIL} Error from GMAIL_LIST_DRAFTS: {result.get('error')}")
-        return {"drafts": [], "nextPageToken": None}
+        return GmailDraftsResponse(drafts=[])
 
     except Exception as error:
         log.error(f"{LogTag.MAIL} Error listing drafts: {error}")
-        return {"drafts": [], "nextPageToken": None}
+        return GmailDraftsResponse(drafts=[])
 
 
 async def get_draft(user_id: str, draft_id: str) -> dict[str, Any]:
@@ -597,7 +602,7 @@ async def send_draft(user_id: str, draft_id: str) -> dict[str, Any]:
         return {"error": str(error), "successful": False}
 
 
-async def list_labels(user_id: str) -> dict[str, Any]:
+async def list_labels(user_id: str) -> GmailLabelsResult:
     """List all Gmail labels."""
     log.info(f"{LogTag.MAIL} Listing Gmail labels for user {user_id}")
     try:
@@ -606,28 +611,20 @@ async def list_labels(user_id: str) -> dict[str, Any]:
 
         if result.get("successful", True):
             labels = result.get("labels", [])
-            return {
-                "success": True,
-                "labels": labels,
-                "count": len(labels),
-            }
+            return GmailLabelsResult(
+                success=True,
+                labels=labels,
+                count=len(labels),
+            )
         log.error(f"{LogTag.MAIL} Error from GMAIL_LIST_LABELS: {result.get('error')}")
-        return {
-            "success": False,
-            "error": result.get("error"),
-            "labels": [],
-        }
+        return GmailLabelsResult(success=False, error=result.get("error"))
 
     except Exception as error:
         log.error(f"{LogTag.MAIL} Error listing Gmail labels: {error}")
-        return {
-            "success": False,
-            "error": str(error),
-            "labels": [],
-        }
+        return GmailLabelsResult(success=False, error=str(error))
 
 
-async def get_email_by_id(user_id: str, message_id: str) -> dict[str, Any]:
+async def get_email_by_id(user_id: str, message_id: str) -> GmailEmailResult:
     """Get a Gmail message by its ID."""
     log.set(user={"id": user_id}, mail=MailContext(operation="fetch", provider="gmail"))
     log.info(f"{LogTag.MAIL} Fetching email with ID: {message_id}")
@@ -639,25 +636,14 @@ async def get_email_by_id(user_id: str, message_id: str) -> dict[str, Any]:
             # Transform the message data for easier frontend processing
             transformed_message = transform_gmail_message(result)
             log.set_ns("mail", result_count=1, success=True)
-            return {
-                "success": True,
-                "message": transformed_message,
-            }
+            return GmailEmailResult(success=True, message=transformed_message)
         log.error(
             f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID: {result.get('error')}"
         )
         log.set_ns("mail", success=False)
-        return {
-            "success": False,
-            "error": result.get("error"),
-            "message": None,
-        }
+        return GmailEmailResult(success=False, error=result.get("error"))
 
     except Exception as error:
         log.error(f"{LogTag.MAIL} Error fetching email {message_id}: {error}")
         log.set_ns("mail", success=False)
-        return {
-            "success": False,
-            "error": str(error),
-            "message": None,
-        }
+        return GmailEmailResult(success=False, error=str(error))

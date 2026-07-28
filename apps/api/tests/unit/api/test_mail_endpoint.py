@@ -13,6 +13,12 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.mail_models import (
+    GmailDraftsResponse,
+    GmailEmailResult,
+    GmailLabelsResult,
+)
+
 MAIL_BASE = "/api/v1"
 
 # All tests in this module need the integration check to pass.
@@ -44,11 +50,11 @@ class TestListLabels:
         new_callable=AsyncMock,
     )
     async def test_list_labels_returns_200(self, mock_labels: AsyncMock, client: AsyncClient):
-        mock_labels.return_value = {
-            "success": True,
-            "labels": [{"id": "INBOX", "name": "INBOX"}],
-            "count": 1,
-        }
+        mock_labels.return_value = GmailLabelsResult(
+            success=True,
+            labels=[{"id": "INBOX", "name": "INBOX"}],
+            count=1,
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/labels")
         assert response.status_code == 200
         data = response.json()
@@ -127,10 +133,10 @@ class TestGetEmailById:
         new_callable=AsyncMock,
     )
     async def test_get_email_returns_200(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = {
-            "success": True,
-            "message": {"id": "msg-1", "subject": "Test"},
-        }
+        mock_get.return_value = GmailEmailResult(
+            success=True,
+            message={"id": "msg-1", "subject": "Test"},
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/message/msg-1")
         assert response.status_code == 200
         data = response.json()
@@ -142,10 +148,10 @@ class TestGetEmailById:
         new_callable=AsyncMock,
     )
     async def test_get_email_not_found_returns_404(self, mock_get: AsyncMock, client: AsyncClient):
-        mock_get.return_value = {
-            "success": False,
-            "error": "Message not found",
-        }
+        mock_get.return_value = GmailEmailResult(
+            success=False,
+            error="Message not found",
+        )
         response = await client.get(f"{MAIL_BASE}/gmail/message/nonexistent")
         assert response.status_code == 404
 
@@ -692,10 +698,7 @@ class TestListDrafts:
         new_callable=AsyncMock,
     )
     async def test_list_drafts_returns_200(self, mock_list: AsyncMock, client: AsyncClient):
-        mock_list.return_value = {
-            "drafts": [{"id": "draft-001"}],
-            "nextPageToken": None,
-        }
+        mock_list.return_value = GmailDraftsResponse(drafts=[{"id": "draft-001"}])
         response = await client.get(f"{MAIL_BASE}/gmail/drafts")
         assert response.status_code == 200
 
