@@ -16,7 +16,7 @@ from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.core.request_context import set_authenticated_user
 from app.db.repositories.users import user_repository
-from app.models.user_models import user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, user_to_legacy_dict
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -243,7 +243,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
     async def _authenticate_session(
         self, wos_session: str
-    ) -> tuple[dict[str, Any] | None, str | None]:
+    ) -> tuple[AuthenticatedUser | None, str | None]:
         """Authenticate a WorkOS sealed session and bump ``last_active_at``.
 
         Returns ``(user_info, new_session)`` where ``new_session`` is the

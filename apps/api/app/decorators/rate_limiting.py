@@ -17,6 +17,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
+from app.models.user_models import AuthenticatedUser
 from app.models.usage_models import UsageInfo
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
@@ -231,7 +232,7 @@ def tiered_rate_limit(
                 user = kwargs.get("user")
                 for arg in args:
                     if isinstance(arg, dict) and "user_id" in arg:
-                        user = arg
+                        user = cast(AuthenticatedUser, arg)
                 if not user:
                     # Genuinely unauthenticated — a public route has nobody to bill.
                     return await func(*args, **kwargs)

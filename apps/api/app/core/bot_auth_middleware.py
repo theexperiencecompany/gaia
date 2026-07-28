@@ -22,6 +22,7 @@ from starlette.types import ASGIApp
 from app.config.settings import settings
 from app.constants.cache import TEN_MINUTES_TTL
 from app.db.redis import get_cache, set_cache
+from app.models.user_models import AuthenticatedUser
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.auth_utils import build_user_context
@@ -109,13 +110,13 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
 
     async def _authenticate_platform(
         self, platform: str, platform_user_id: str
-    ) -> dict[str, Any] | None:
+    ) -> AuthenticatedUser | None:
         """Authenticate via platform ID lookup with caching."""
         cache_key = f"bot_user:{platform}:{platform_user_id}"
         cached_user_info = await get_cache(cache_key)
 
         if cached_user_info and cached_user_info.get("user_id"):
-            return cast(dict[str, Any], cached_user_info)
+            return cast(AuthenticatedUser, cached_user_info)
 
         user_data = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
 
@@ -129,7 +130,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         await set_cache(cache_key, user_info, ttl=TEN_MINUTES_TTL)
         return user_info
 
-    async def _authenticate_jwt(self, token: str) -> dict[str, Any] | None:
+    async def _authenticate_jwt(self, token: str) -> AuthenticatedUser | None:
         """Authenticate via JWT session token with caching."""
         try:
             payload = verify_bot_session_token(token)
@@ -145,7 +146,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
             cached_user_info = await get_cache(cache_key)
 
             if cached_user_info and cached_user_info.get("user_id") == user_id:
-                return cast(dict[str, Any], cached_user_info)
+                return cast(AuthenticatedUser, cached_user_info)
 
             user_data = await PlatformLinkService.get_user_by_platform_id(
                 platform, platform_user_id

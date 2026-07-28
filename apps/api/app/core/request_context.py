@@ -15,18 +15,19 @@ downstream task, and a set inside one request's task never leaks into another's.
 """
 
 from contextvars import ContextVar
-from typing import Any
 
-_authenticated_user: ContextVar[dict[str, Any] | None] = ContextVar(
+from app.models.user_models import AuthenticatedUser
+
+_authenticated_user: ContextVar[AuthenticatedUser | None] = ContextVar(
     "authenticated_user", default=None
 )
 
 
-def set_authenticated_user(user: dict[str, Any] | None) -> None:
+def set_authenticated_user(user: AuthenticatedUser | None) -> None:
     """Mirror ``request.state.user`` into the request context."""
     _authenticated_user.set(user)
 
 
-def get_authenticated_user() -> dict[str, Any] | None:
+def get_authenticated_user() -> AuthenticatedUser | None:
     """The authenticated user for this request, or ``None`` on a public route."""
     return _authenticated_user.get()

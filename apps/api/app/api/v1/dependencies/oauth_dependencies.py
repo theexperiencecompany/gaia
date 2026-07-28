@@ -9,7 +9,7 @@ from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserUpdate, user_to_legacy_dict
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -34,7 +34,7 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
         log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
 
 
-async def get_current_user(request: Request) -> dict[str, Any]:
+async def get_current_user(request: Request) -> AuthenticatedUser:
     """
     Retrieves the current user from request state.
     Authentication is handled by the WorkOSAuthMiddleware.
@@ -78,10 +78,12 @@ async def get_current_user(request: Request) -> dict[str, Any]:
             "is_agent_token": bool(user.get("is_agent_token", False)),
         }
     )
-    return user
+    # request.state is untyped by Starlette; the middleware only ever puts an
+    # AuthenticatedUser there (see WorkOSAuthMiddleware).
+    return cast(AuthenticatedUser, user)
 
 
-async def get_user_id(user: dict = Depends(get_current_user)) -> str:
+async def get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
     """Extract user_id from authenticated user or raise 400."""
     user_id = user.get("user_id")
     if not user_id:
@@ -89,7 +91,7 @@ async def get_user_id(user: dict = Depends(get_current_user)) -> str:
     return str(user_id)
 
 
-async def get_current_user_ws(websocket: WebSocket) -> dict[str, Any]:
+async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     """
     Authenticate a user from a WebSocket connection using cookies.
     This is a special version of get_current_user for WebSocket connections.
@@ -150,7 +152,7 @@ async def get_current_user_ws(websocket: WebSocket) -> dict[str, Any]:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
-    return user_info
+    return cast(AuthenticatedUser, user_info)
 
 
 GET_USER_TZ_TYPE = tuple[str, datetime]

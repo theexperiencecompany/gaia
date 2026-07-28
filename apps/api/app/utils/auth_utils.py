@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from starlette.datastructures import Headers
 from workos import AsyncWorkOSClient
@@ -7,7 +7,7 @@ from app.config.settings import settings
 from app.constants.auth import DEV_USER_HEADER
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserDocument, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserDocument, user_to_legacy_dict
 from shared.py.wide_events import log
 
 
@@ -27,7 +27,7 @@ async def resolve_dev_bypass_user(headers: Headers) -> tuple[str, UserDocument |
 
 def build_user_context(
     user_data: dict[str, Any], *, auth_provider: str, **extra: bool
-) -> dict[str, Any]:
+) -> AuthenticatedUser:
     """Build the canonical ``request.state.user`` dict from a Mongo user doc.
 
     Every auth path (WorkOS session, agent token, bots) MUST construct the user
@@ -48,12 +48,15 @@ def build_user_context(
         **extra,
     }
     context.pop("_id", None)
-    return context
+    # Correct by construction: assembled right above from an already-validated
+    # UserDocument plus the auth-path flags. cast(), not isinstance() (item 12) —
+    # the spread of `user_data` is what mypy can't follow, not the shape itself.
+    return cast(AuthenticatedUser, context)
 
 
 async def authenticate_workos_session(
     session_token: str, workos_client: AsyncWorkOSClient | None = None
-) -> tuple[dict[str, Any], str | None]:
+) -> tuple[AuthenticatedUser, str | None]:
     """
     Authenticate a WorkOS session and refresh if needed.
     This is a shared utility function used by both HTTP middleware and WebSocket connections.

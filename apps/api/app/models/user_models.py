@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import Enum
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
@@ -244,6 +244,62 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
             seen.add(slug)
             out.append(slug)
     return out
+
+
+class AuthenticatedUser(TypedDict, total=False):
+    """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
+
+    A ``TypedDict``, not a ``BaseModel``, on purpose (Type Safety item 6): this
+    shape never crosses a validation boundary — ``build_user_context`` assembles
+    it in-process from an already-validated ``UserDocument`` — and ~205 call
+    sites read it with ``user["user_id"]``. A ``TypedDict`` is still a plain dict
+    at runtime, so those keep working untouched while mypy starts checking every
+    key; swapping to a model would have been a behaviour change (item 13) for no
+    extra safety.
+
+    ``total=False`` because the auth paths genuinely populate different subsets:
+    a WorkOS session sets none of the flags, the agent-token path sets
+    ``impersonated``, bots set ``bot_authenticated``, the dev bypass sets
+    ``dev_bypass``, and the legacy bot dict carries ``_id`` where the rest carry
+    ``user_id``. Fields mirror ``UserDocument`` because ``build_user_context``
+    spreads the whole document.
+    """
+
+    # Auth context layered on by build_user_context()/user_to_legacy_dict().
+    user_id: str
+    auth_provider: str
+    impersonated: bool
+    bot_authenticated: bool
+    dev_bypass: bool
+    is_agent_token: bool
+    # The bot/legacy path carries the raw Mongo id instead of `user_id`.
+    _id: str
+
+    # Spread from UserDocument — see that class for why these stay loose.
+    email: str | None
+    name: str | None
+    picture: str | None
+    timezone: str | None
+    created_at: datetime | None
+    updated_at: datetime | None
+    last_active_at: datetime | None
+    onboarding: dict[str, Any] | None
+    provider_metadata: dict[str, Any] | None
+    hil_preferences: dict[str, Any] | None
+    notification_channel_prefs: dict[str, Any] | None
+    platform_links: dict[str, Any] | None
+    platform_links_connected_at: dict[str, Any] | None
+    starred_voice_ids: list[str] | None
+    selected_voice_id: str | None
+    first_name: str | None
+    email_memory_processed: bool | None
+    email_memory_processed_at: datetime | None
+    email_memory_count: int | None
+    integration_scan_states: dict[str, Any] | None
+    is_active: bool | None
+    memory_backfilled: datetime | None
+    last_inactive_email_sent: datetime | None
+    inactive_email_count: int | None
 
 
 class UserDocument(MongoDocument):
