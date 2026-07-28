@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.todo_models import TodoWorkflowStatus, TodoWorkflowStatusResponse
+from app.models.workflow_models import WorkflowWithIntegrations
 from tests.conftest import FAKE_USER
 
 # ---------------------------------------------------------------------------
@@ -973,6 +975,21 @@ class TestToggleSubtaskCompletion:
 # ===========================================================================
 
 
+def _workflow(**overrides) -> WorkflowWithIntegrations:
+    """Build the real model `WorkflowService.get_workflow` returns."""
+    base: dict = {
+        "id": "wf1",
+        "user_id": USER_ID,
+        "title": "Generated workflow",
+        "steps": [{"id": "step_1", "title": "Step 1", "description": "First step"}],
+        "trigger_config": {"type": "manual"},
+        "required_integrations": [{"id": "gmail", "name": "Gmail"}],
+        "missing_integrations": [],
+    }
+    base.update(overrides)
+    return WorkflowWithIntegrations(**base)
+
+
 @pytest.mark.unit
 class TestGenerateWorkflow:
     """POST /api/v1/todos/{todo_id}/workflow"""
@@ -1007,9 +1024,6 @@ class TestGenerateWorkflow:
         todo_resp.workflow_id = "wf1"
         todo_resp.title = "Build feature"
         todo_resp.description = "Some desc"
-        existing_wf = MagicMock()
-        existing_wf.steps = [{"title": "Step 1"}]
-        existing_wf.id = "wf1"
         with (
             patch(
                 "app.services.todos.todo_service.TodoService.get_todo",
@@ -1019,12 +1033,18 @@ class TestGenerateWorkflow:
             patch(
                 "app.services.workflow.service.WorkflowService.get_workflow",
                 new_callable=AsyncMock,
-                return_value=existing_wf,
+                return_value=_workflow(),
             ),
         ):
             resp = await client.post(f"{API}/todos/t1/workflow")
         assert resp.status_code == 200
-        assert resp.json()["status"] == "exists"
+        body = resp.json()
+        assert body["status"] == "exists"
+        assert body["workflow"]["id"] == "wf1"
+        assert body["workflow"]["steps"][0]["title"] == "Step 1"
+        # Integration enrichment is read-path-only on WorkflowWithIntegrations;
+        # the response must not strip it back down to a bare Workflow.
+        assert body["workflow"]["required_integrations"] == [{"id": "gmail", "name": "Gmail"}]
 
     async def test_generate_workflow_queue_fails(self, client: AsyncClient) -> None:
         todo_resp = MagicMock()
@@ -1083,21 +1103,24 @@ class TestWorkflowStatus:
     """GET /api/v1/todos/{todo_id}/workflow-status"""
 
     async def test_workflow_status_cached(self, client: AsyncClient) -> None:
-        cached_result = {
-            "todo_id": "t1",
-            "has_workflow": True,
-            "is_generating": False,
-            "workflow_status": "completed",
-            "workflow": {"id": "wf1"},
-        }
+        cached_result = TodoWorkflowStatusResponse(
+            todo_id="t1",
+            has_workflow=True,
+            is_generating=False,
+            workflow_status=TodoWorkflowStatus.COMPLETED,
+            workflow=_workflow(),
+        )
         with patch(
             "app.api.v1.endpoints.todos.get_cache",
             new_callable=AsyncMock,
             return_value=cached_result,
-        ):
+        ) as mock_get_cache:
             resp = await client.get(f"{API}/todos/t1/workflow-status")
         assert resp.status_code == 200
-        assert resp.json()["workflow_status"] == "completed"
+        body = resp.json()
+        assert body["workflow_status"] == "completed"
+        assert body["workflow"]["id"] == "wf1"
+        assert mock_get_cache.await_args.kwargs["model"] is TodoWorkflowStatusResponse
 
     async def test_workflow_status_generating(self, client: AsyncClient) -> None:
         todo_resp = MagicMock()

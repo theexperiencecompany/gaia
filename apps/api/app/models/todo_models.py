@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.repositories.base import UserScopedDocument
+from app.models.workflow_models import WorkflowWithIntegrations
 
 
 class Priority(str, Enum):
@@ -263,6 +264,42 @@ class BulkOperationResponse(BaseModel):
     failed: list[dict[str, object]] = Field(default_factory=list)
     total: int
     message: str
+
+
+# Workflow generation for a todo — the todo-side view of a linked workflow.
+
+
+class TodoWorkflowGenerationStatus(str, Enum):
+    GENERATING = "generating"
+    EXISTS = "exists"
+
+
+class TodoWorkflowStatus(str, Enum):
+    NOT_STARTED = "not_started"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class TodoWorkflowGenerationResponse(BaseModel):
+    """Result of asking for a todo's workflow to be generated."""
+
+    status: TodoWorkflowGenerationStatus
+    message: str
+    todo_id: str | None = Field(default=None, description="Set when generation was queued")
+    workflow: WorkflowWithIntegrations | None = Field(
+        default=None, description="Set when a generated workflow already existed"
+    )
+
+
+class TodoWorkflowStatusResponse(BaseModel):
+    """Generation progress and the linked workflow, if any, for one todo."""
+
+    todo_id: str
+    has_workflow: bool
+    is_generating: bool
+    workflow_status: TodoWorkflowStatus
+    workflow: WorkflowWithIntegrations | None = None
 
 
 # Repository layer — persisted documents, typed updates, and aggregation results.

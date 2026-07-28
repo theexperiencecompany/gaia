@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any, cast
+from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
@@ -33,6 +33,10 @@ from app.models.todo_models import (
     TodoResponse,
     TodoSearchParams,
     TodoUpdateRequest,
+    TodoWorkflowGenerationResponse,
+    TodoWorkflowGenerationStatus,
+    TodoWorkflowStatus,
+    TodoWorkflowStatusResponse,
     UpdateProjectRequest,
 )
 from app.services.todo_canvas_storage import read_canvas
@@ -415,9 +419,9 @@ async def delete_todo(todo_id: str, user: dict = Depends(get_current_user)) -> N
 @tiered_rate_limit("todo_operations")
 async def generate_workflow(
     todo_id: str,
-    user: dict = Depends(get_current_user),
+    user_id: Annotated[str, Depends(get_user_id)],
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-) -> dict[str, Any]:
+) -> TodoWorkflowGenerationResponse:
     """Generate a workflow for a todo (background generation + WebSocket notification).
 
     This endpoint returns immediately with 'generating' status. The frontend should
@@ -426,35 +430,33 @@ async def generate_workflow(
     from app.services.workflow.queue_service import WorkflowQueueService
 
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user_id},
         todo={"operation": "generate_workflow", "id": todo_id},
     )
     try:
-        todo: TodoResponse = await TodoService.get_todo(todo_id, user["user_id"])
+        todo: TodoResponse = await TodoService.get_todo(todo_id, user_id)
 
         # Check if workflow already exists for this todo
         if todo.workflow_id:
-            existing_workflow = await WorkflowService.get_workflow(
-                todo.workflow_id, user["user_id"]
-            )
+            existing_workflow = await WorkflowService.get_workflow(todo.workflow_id, user_id)
             if existing_workflow and existing_workflow.steps and len(existing_workflow.steps) > 0:
-                return {
-                    "status": "exists",
-                    "workflow": existing_workflow,
-                    "message": "Workflow already exists for this todo",
-                }
+                return TodoWorkflowGenerationResponse(
+                    status=TodoWorkflowGenerationStatus.EXISTS,
+                    workflow=existing_workflow,
+                    message="Workflow already exists for this todo",
+                )
             # Empty or failed workflow — delete it and allow regeneration
             if existing_workflow and existing_workflow.id:
-                await WorkflowService.delete_workflow(existing_workflow.id, user["user_id"])
-            await todo_repository.clear_workflow_id(todo_id, user_id=user["user_id"])
+                await WorkflowService.delete_workflow(existing_workflow.id, user_id)
+            await todo_repository.clear_workflow_id(todo_id, user_id=user_id)
 
         # Invalidate cached workflow status so next poll reflects generating state
-        await delete_cache(f"workflow_status:{user['user_id']}:{todo_id}")
+        await delete_cache(f"workflow_status:{user_id}:{todo_id}")
 
         # Queue background generation - will send WebSocket event when complete
         success = await WorkflowQueueService.queue_todo_workflow_generation(
             todo_id=todo_id,
-            user_id=user["user_id"],
+            user_id=user_id,
             title=todo.title,
             description=todo.description or "",
         )
@@ -465,11 +467,11 @@ async def generate_workflow(
                 detail="Failed to queue workflow generation",
             )
 
-        return {
-            "status": "generating",
-            "todo_id": todo_id,
-            "message": "Workflow generation started. Listen for 'workflow.generated' WebSocket event.",
-        }
+        return TodoWorkflowGenerationResponse(
+            status=TodoWorkflowGenerationStatus.GENERATING,
+            todo_id=todo_id,
+            message="Workflow generation started. Listen for 'workflow.generated' WebSocket event.",
+        )
 
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
@@ -484,8 +486,8 @@ async def generate_workflow(
 
 @router.get("/todos/{todo_id}/workflow-status")
 async def get_workflow_status(
-    todo_id: str, response: Response, user: Annotated[dict, Depends(get_current_user)]
-) -> dict[str, Any]:
+    todo_id: str, response: Response, user_id: Annotated[str, Depends(get_user_id)]
+) -> TodoWorkflowStatusResponse:
     """
     Get the standalone workflow for a todo.
     Returns the workflow if it exists, otherwise returns None.
@@ -495,57 +497,59 @@ async def get_workflow_status(
     """
     response.headers["Cache-Control"] = "private, max-age=15"
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user_id},
         todo={"operation": "get_workflow_status", "id": todo_id},
     )
     try:
         from app.services.workflow.queue_service import WorkflowQueueService
         from app.services.workflow.service import WorkflowService
 
-        wf_cache_key = f"workflow_status:{user['user_id']}:{todo_id}"
-        cached_wf = await get_cache(wf_cache_key)
+        wf_cache_key = f"workflow_status:{user_id}:{todo_id}"
+        cached_wf: TodoWorkflowStatusResponse | None = await get_cache(
+            wf_cache_key, model=TodoWorkflowStatusResponse
+        )
         if cached_wf:
-            return cast(dict[str, Any], cached_wf)
+            return cached_wf
 
         # Parallelize independent fetch + generating check
         todo, is_generating = await asyncio.gather(
-            TodoService.get_todo(todo_id, user["user_id"]),
+            TodoService.get_todo(todo_id, user_id),
             WorkflowQueueService.is_workflow_generating(todo_id),
         )
 
         # Get standalone workflow if workflow_id exists
         workflow = None
         has_workflow = False
-        workflow_status = "not_started"
+        workflow_status = TodoWorkflowStatus.NOT_STARTED
 
         # Check if workflow generation is queued/pending (Redis flag)
         if is_generating:
-            workflow_status = "generating"
+            workflow_status = TodoWorkflowStatus.GENERATING
         elif todo.workflow_id:
-            workflow = await WorkflowService.get_workflow(todo.workflow_id, user["user_id"])
+            workflow = await WorkflowService.get_workflow(todo.workflow_id, user_id)
 
             if workflow:
                 # Workflow exists - check if steps are generated
                 has_steps = workflow.steps and len(workflow.steps) > 0
                 if has_steps:
-                    workflow_status = "completed"
+                    workflow_status = TodoWorkflowStatus.COMPLETED
                     has_workflow = True
                 elif await WorkflowQueueService.is_workflow_generating(todo_id):
                     is_generating = True
-                    workflow_status = "generating"
+                    workflow_status = TodoWorkflowStatus.GENERATING
                 else:
                     # Workflow exists but empty steps and not generating = failed
-                    workflow_status = "failed"
+                    workflow_status = TodoWorkflowStatus.FAILED
 
-        wf_result = {
-            "todo_id": todo_id,
-            "has_workflow": has_workflow,
-            "is_generating": is_generating,
-            "workflow_status": workflow_status,
-            "workflow": workflow if has_workflow else None,
-        }
+        wf_result = TodoWorkflowStatusResponse(
+            todo_id=todo_id,
+            has_workflow=has_workflow,
+            is_generating=is_generating,
+            workflow_status=workflow_status,
+            workflow=workflow if has_workflow else None,
+        )
         if not is_generating:
-            await set_cache(wf_cache_key, wf_result, ttl=60)
+            await set_cache(wf_cache_key, wf_result, ttl=60, model=TodoWorkflowStatusResponse)
         return wf_result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))

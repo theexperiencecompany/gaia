@@ -406,7 +406,7 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def get_workflow(workflow_id: str, user_id: str) -> Workflow | None:
+    async def get_workflow(workflow_id: str, user_id: str) -> WorkflowWithIntegrations | None:
         """Get a workflow by ID."""
         try:
             doc = await workflow_repository.get_for_user(workflow_id, user_id)
