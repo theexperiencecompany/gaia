@@ -1,6 +1,6 @@
 """File upload, update, and delete endpoints."""
 
-from typing import Any, cast
+from typing import cast
 
 from fastapi import (
     APIRouter,
@@ -13,11 +13,12 @@ from fastapi import (
     status,
 )
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
+from app.models.files_models import FileDocument
 from app.models.message_models import FileData
-from app.schemas.file import UpdateFileRequest
+from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from app.services.files import FileService
 from app.services.storage import SAFE_PATH_ID_PATTERN
 from shared.py.wide_events import log
@@ -89,13 +90,9 @@ async def upload_file_endpoint(
 async def update_file_endpoint(
     file_id: str,
     payload: UpdateFileRequest,
-    user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
+    user_id: str = Depends(get_user_id),
+) -> FileDocument:
     """Update file metadata; regenerates the embedding when the description changes."""
-    user_id = user.get("user_id")
-    if not user_id:
-        return {"error": "User ID is required"}
-
     try:
         result = await FileService.update(
             file_id=file_id,
@@ -105,8 +102,8 @@ async def update_file_endpoint(
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
         # CacheInvalidator erases the wrapped function's return type; FileService.update
-        # is declared -> dict, so this is correct by construction.
-        return cast(dict[str, Any], result)
+        # is declared -> FileDocument, so this is correct by construction.
+        return cast(FileDocument, result)
     except Exception as e:
         log.error(f"Error updating file {file_id}: {e!s}")
         raise HTTPException(
@@ -118,24 +115,24 @@ async def update_file_endpoint(
 @router.delete("/{file_id}", status_code=status.HTTP_200_OK)
 async def delete_file_endpoint(
     file_id: str,
-    user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
+    user_id: str = Depends(get_user_id),
+) -> FileDeletedResponse:
     """Delete a file from Cloudinary, MongoDB, and ChromaDB."""
     try:
         result = await FileService.delete(
             file_id=file_id,
-            user_id=user.get("user_id"),
+            user_id=user_id,
         )
 
         log.set(
-            user={"id": user.get("user_id")},
+            user={"id": user_id},
             operation="delete",
             file_id=file_id,
             outcome="success",
         )
         # CacheInvalidator erases the wrapped function's return type; FileService.delete
-        # is declared -> dict, so this is correct by construction.
-        return cast(dict[str, Any], result)
+        # is declared -> FileDeletedResponse, so this is correct by construction.
+        return cast(FileDeletedResponse, result)
     except Exception as e:
         log.error(f"Error deleting file {file_id}: {e!s}")
         raise HTTPException(

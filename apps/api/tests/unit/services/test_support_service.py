@@ -1001,12 +1001,12 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
-        assert len(result["requests"]) == 1
-        assert isinstance(result["requests"][0], SupportRequestResponse)
-        assert result["pagination"]["page"] == 1
-        assert result["pagination"]["per_page"] == 10
-        assert result["pagination"]["total"] == 1
-        assert result["pagination"]["pages"] == 1
+        assert len(result.requests) == 1
+        assert isinstance(result.requests[0], SupportRequestResponse)
+        assert result.pagination.page == 1
+        assert result.pagination.per_page == 10
+        assert result.pagination.total == 1
+        assert result.pagination.pages == 1
 
     async def test_with_status_filter(self, mock_support_repo):
         """Status filter is passed through to the repository."""
@@ -1031,7 +1031,7 @@ class TestGetUserSupportRequests:
             is SupportRequestStatus.RESOLVED
         )
         assert mock_support_repo.page_for_user.await_args.args[0] == USER_ID
-        assert result["requests"] == []
+        assert result.requests == []
 
     async def test_empty_results(self, mock_support_repo):
         """No matching documents returns empty list."""
@@ -1041,9 +1041,9 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
-        assert result["requests"] == []
-        assert result["pagination"]["total"] == 0
-        assert result["pagination"]["pages"] == 0
+        assert result.requests == []
+        assert result.pagination.total == 0
+        assert result.pagination.pages == 0
 
     async def test_pagination_calculation(self, mock_support_repo):
         """Pagination pages are calculated correctly with ceiling division."""
@@ -1053,8 +1053,8 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=2, per_page=10)
 
-        assert result["pagination"]["pages"] == 3
-        assert result["pagination"]["page"] == 2
+        assert result.pagination.pages == 3
+        assert result.pagination.page == 2
 
     async def test_pagination_skip_value(self, mock_support_repo):
         """The repository page query uses the correct skip/limit for page 3."""
@@ -1087,6 +1087,6 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
-        assert len(result["requests"]) == 3
-        for req in result["requests"]:
+        assert len(result.requests) == 3
+        for req in result.requests:
             assert isinstance(req, SupportRequestResponse)

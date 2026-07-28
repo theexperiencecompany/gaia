@@ -14,6 +14,8 @@ from app.models.support_models import (
     SupportEmailNotification,
     SupportRequestCreate,
     SupportRequestDocument,
+    SupportRequestListResponse,
+    SupportRequestPagination,
     SupportRequestPriority,
     SupportRequestResponse,
     SupportRequestStatus,
@@ -443,7 +445,7 @@ async def get_user_support_requests(
     page: int = 1,
     per_page: int = 10,
     status_filter: SupportRequestStatus | None = None,
-) -> dict:
+) -> SupportRequestListResponse:
     """Get paginated support requests for a user."""
     try:
         skip = (page - 1) * per_page
@@ -457,15 +459,15 @@ async def get_user_support_requests(
 
         support_requests = [SupportRequestResponse.model_validate(doc.model_dump()) for doc in docs]
 
-        return {
-            "requests": support_requests,
-            "pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "pages": (total + per_page - 1) // per_page,
-            },
-        }
+        return SupportRequestListResponse(
+            requests=support_requests,
+            pagination=SupportRequestPagination(
+                page=page,
+                per_page=per_page,
+                total=total,
+                pages=(total + per_page - 1) // per_page,
+            ),
+        )
 
     except Exception as e:
         log.error(f"Error fetching user support requests: {e!s}")

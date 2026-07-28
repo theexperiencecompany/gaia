@@ -4,13 +4,36 @@ Tests the file endpoints with a mocked ``FileService`` to verify routing,
 status codes, response bodies, validation, and conversation ownership checks.
 """
 
+from datetime import UTC, datetime
 from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 import pytest
 
+from app.models.files_models import FileDocument
+from app.schemas.file import FileDeletedResponse
+
 FILE_BASE = "/api/v1"
+
+
+def _file_doc(**overrides: object) -> FileDocument:
+    """A stored file document as ``FileService.update`` returns it."""
+    data: dict[str, object] = {
+        "id": "0" * 24,
+        "file_id": "file-001",
+        "user_id": "507f1f77bcf86cd799439011",
+        "filename": "doc.pdf",
+        "type": "application/pdf",
+        "size": 10,
+        "url": "https://cdn.example.com/doc.pdf",
+        "public_id": "pub-id",
+        "description": "desc",
+        "created_at": datetime(2025, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2025, 1, 1, tzinfo=UTC),
+    }
+    data.update(overrides)
+    return FileDocument.model_validate(data)
 
 
 @pytest.mark.unit
@@ -141,10 +164,7 @@ class TestUpdateFile:
         new_callable=AsyncMock,
     )
     async def test_update_file_returns_200(self, mock_update: AsyncMock, client: AsyncClient):
-        mock_update.return_value = {
-            "file_id": "file-001",
-            "description": "Updated description",
-        }
+        mock_update.return_value = _file_doc(description="Updated description")
         response = await client.put(
             f"{FILE_BASE}/file-001",
             json={"description": "Updated description"},
@@ -153,6 +173,9 @@ class TestUpdateFile:
         data = response.json()
         assert data["file_id"] == "file-001"
         assert data["description"] == "Updated description"
+        assert data["filename"] == "doc.pdf"
+        assert data["url"] == "https://cdn.example.com/doc.pdf"
+        assert data["created_at"].startswith("2025-01-01T00:00:00")
 
     @patch(
         "app.api.v1.endpoints.file.FileService.update",
@@ -161,7 +184,7 @@ class TestUpdateFile:
     async def test_update_file_passes_correct_args(
         self, mock_update: AsyncMock, client: AsyncClient
     ):
-        mock_update.return_value = {"file_id": "file-001"}
+        mock_update.return_value = _file_doc()
         await client.put(
             f"{FILE_BASE}/file-001",
             json={"description": "New desc"},
@@ -195,21 +218,30 @@ class TestDeleteFile:
         new_callable=AsyncMock,
     )
     async def test_delete_file_returns_200(self, mock_delete: AsyncMock, client: AsyncClient):
-        mock_delete.return_value = {
-            "message": "File deleted successfully",
-            "file_id": "file-001",
-        }
+        mock_delete.return_value = FileDeletedResponse(
+            message="File deleted successfully",
+            file_id="file-001",
+            filename="doc.pdf",
+        )
         response = await client.delete(f"{FILE_BASE}/file-001")
         assert response.status_code == 200
         data = response.json()
-        assert data["message"] == "File deleted successfully"
+        assert data == {
+            "message": "File deleted successfully",
+            "file_id": "file-001",
+            "filename": "doc.pdf",
+        }
 
     @patch(
         "app.api.v1.endpoints.file.FileService.delete",
         new_callable=AsyncMock,
     )
     async def test_delete_file_passes_user_id(self, mock_delete: AsyncMock, client: AsyncClient):
-        mock_delete.return_value = {"message": "ok"}
+        mock_delete.return_value = FileDeletedResponse(
+            message="File deleted successfully",
+            file_id="file-001",
+            filename="doc.pdf",
+        )
         await client.delete(f"{FILE_BASE}/file-001")
         call_kwargs = mock_delete.call_args.kwargs
         assert call_kwargs["file_id"] == "file-001"

@@ -670,9 +670,9 @@ class TestFileServiceDelete:
 
         result = await FileService.delete(file_id="f-1", user_id="user-abc")
 
-        assert result["message"] == "File deleted successfully"
-        assert result["file_id"] == "f-1"
-        assert result["filename"] == "doc.pdf"
+        assert result.message == "File deleted successfully"
+        assert result.file_id == "f-1"
+        assert result.filename == "doc.pdf"
         mock_file_repo.delete_by_file_id.assert_awaited_once_with("f-1", "user-abc")
         mock_cloudinary_destroy.assert_called_once_with("file_f-1_doc.pdf")
         mock_chroma_col.adelete.assert_awaited_once_with(ids=["f-1"])
@@ -714,7 +714,7 @@ class TestFileServiceDelete:
 
         # Should NOT raise
         result = await FileService.delete(file_id="f-1", user_id="user-abc")
-        assert result["message"] == "File deleted successfully"
+        assert result.message == "File deleted successfully"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_cloudinary_non_ok_result_continues(
@@ -729,7 +729,7 @@ class TestFileServiceDelete:
         mock_cloudinary_destroy.return_value = {"result": "not found"}
 
         result = await FileService.delete(file_id="f-1", user_id="user-abc")
-        assert result["message"] == "File deleted successfully"
+        assert result.message == "File deleted successfully"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_chromadb_fails_continues(
@@ -747,7 +747,7 @@ class TestFileServiceDelete:
         mock_chroma_col.adelete = AsyncMock(side_effect=Exception("ChromaDB error"))
 
         result = await FileService.delete(file_id="f-1", user_id="user-abc")
-        assert result["message"] == "File deleted successfully"
+        assert result.message == "File deleted successfully"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_no_public_id_skips_cloudinary(
@@ -761,7 +761,7 @@ class TestFileServiceDelete:
         mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
 
         result = await FileService.delete(file_id="f-1", user_id="user-abc")
-        assert result["message"] == "File deleted successfully"
+        assert result.message == "File deleted successfully"
         mock_cloudinary_destroy.assert_not_called()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
@@ -776,7 +776,7 @@ class TestFileServiceDelete:
         mock_file_repo.delete_by_file_id = AsyncMock(return_value=True)
 
         result = await FileService.delete(file_id="f-1", user_id="user-abc")
-        assert result["message"] == "File deleted successfully"
+        assert result.message == "File deleted successfully"
         mock_cloudinary_destroy.assert_not_called()
 
 
@@ -810,7 +810,7 @@ class TestFileServiceUpdate:
             update_data={"filename": "new.pdf"},
         )
 
-        assert result["filename"] == "new.pdf"
+        assert result.filename == "new.pdf"
         mock_file_repo.apply_metadata_update.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
@@ -866,7 +866,7 @@ class TestFileServiceUpdate:
                 conversation_id="conv-1",
             )
 
-        assert result["description"] == "New summary from content"
+        assert result.description == "New summary from content"
         mock_reindex.assert_awaited_once()
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
@@ -906,7 +906,7 @@ class TestFileServiceUpdate:
                 user_id="user-abc",
                 update_data={"description": "new desc"},
             )
-        assert result["description"] == "new desc"
+        assert result.description == "new desc"
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_file_not_found_after_update_raises_404(self, mock_del_cache, mock_file_repo):

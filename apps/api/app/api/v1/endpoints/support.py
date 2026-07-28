@@ -13,10 +13,14 @@ from fastapi import (
     UploadFile,
 )
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.models.support_models import (
+    SupportRateLimits,
+    SupportRateLimitStatusResponse,
+    SupportRateLimitWindow,
     SupportRequestCreate,
+    SupportRequestListResponse,
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
     SupportRequestType,
@@ -174,26 +178,11 @@ async def get_my_support_requests(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(10, ge=1, le=50, description="Items per page"),
     status: SupportRequestStatus | None = Query(None, description="Filter by status"),
-    current_user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
-    """
-    Get support requests for the current user.
-
-    Args:
-        page: Page number for pagination
-        per_page: Number of items per page (max 50)
-        status: Optional status filter
-        current_user: Current authenticated user
-
-    Returns:
-        Dictionary with user's support requests and pagination info
-    """
+    user_id: str = Depends(get_user_id),
+) -> SupportRequestListResponse:
+    """Get the current user's support requests, newest first, paginated."""
     log.set(operation="list_support_requests")
     try:
-        user_id = current_user.get("user_id")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="User authentication required")
-
         result = await get_user_support_requests(
             user_id=user_id, page=page, per_page=per_page, status_filter=status
         )
@@ -213,8 +202,8 @@ async def get_my_support_requests(
 )
 async def get_support_rate_limit_status(
     request: Request,
-    current_user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
+    current_user: dict[str, Any] = Depends(get_current_user),
+) -> SupportRateLimitStatusResponse:
     """
     Get the current rate limit status for support requests.
 
@@ -224,13 +213,13 @@ async def get_support_rate_limit_status(
     try:
         # This is a simple status endpoint - SlowAPI handles the actual limiting
         # We can return static information about the limits
-        result = {
-            "limits": {
-                "hourly": {"limit": 5, "window": "1 hour"},
-                "daily": {"limit": 10, "window": "1 day"},
-            },
-            "note": "Rate limiting is enforced per user. Limits reset at the start of each time window.",
-        }
+        result = SupportRateLimitStatusResponse(
+            limits=SupportRateLimits(
+                hourly=SupportRateLimitWindow(limit=5, window="1 hour"),
+                daily=SupportRateLimitWindow(limit=10, window="1 day"),
+            ),
+            note="Rate limiting is enforced per user. Limits reset at the start of each time window.",
+        )
         log.set(outcome="success")
         return result
     except Exception as e:

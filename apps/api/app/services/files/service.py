@@ -21,6 +21,7 @@ from app.db.repositories.files import file_repository
 from app.decorators.caching import CacheInvalidator
 from app.models.files_models import FileDocument, FileUpdate, PageWiseSummary
 from app.models.message_models import FileData as MessageFileData
+from app.schemas.file import FileDeletedResponse
 from app.services.files.sandbox import mirror_upload, write_summary_sidecar
 from app.services.files.store import (
     delete_from_index,
@@ -60,19 +61,6 @@ class _PreparedUpload:
     @property
     def public_id(self) -> str:
         return f"file_{self.file_id}_{self.filename.replace(' ', '_')}"
-
-
-def _serialize_file_response(file: FileDocument) -> dict:
-    """Shape a file document for the update endpoint's JSON response.
-
-    Preserves the pre-repository contract: the Mongo ``_id`` surfaces as ``id``
-    and the timestamps are ISO-format strings.
-    """
-    data = file.model_dump()
-    data["created_at"] = file.created_at.isoformat()
-    if file.updated_at is not None:
-        data["updated_at"] = file.updated_at.isoformat()
-    return data
 
 
 def _page_count(page_wise_summary: PageWiseSummary) -> int:
@@ -263,7 +251,7 @@ class FileService:
 
     @staticmethod
     @CacheInvalidator(key_patterns=[FILES_CACHE_PATTERN])
-    async def delete(file_id: str, user_id: str | None) -> dict:
+    async def delete(file_id: str, user_id: str | None) -> FileDeletedResponse:
         """Delete a file from Mongo, Cloudinary, and the vector index."""
         log.info(f"[files] delete start file_id={file_id}")
         if user_id is None:
@@ -287,21 +275,21 @@ class FileService:
         await delete_from_index(file_id)
         log.info(f"[files] delete complete file_id={file_id}")
 
-        return {
-            "message": "File deleted successfully",
-            "file_id": file_id,
-            "filename": file_data.filename,
-        }
+        return FileDeletedResponse(
+            message="File deleted successfully",
+            file_id=file_id,
+            filename=file_data.filename,
+        )
 
     @staticmethod
     @CacheInvalidator(key_patterns=[FILES_CACHE_PATTERN])
     async def update(
         file_id: str,
         user_id: str,
-        update_data: dict,
+        update_data: dict[str, Any],
         file_content: bytes | None = None,
         conversation_id: str | None = None,
-    ) -> dict:
+    ) -> FileDocument:
         """Update file metadata, regenerating the summary + vector index when new content is given."""
         log.info(f"[files] update start file_id={file_id}")
         log.set(file=FileContext(operation="update", file_id=file_id))
@@ -353,7 +341,7 @@ class FileService:
             )
 
         log.info(f"[files] update complete file_id={file_id}")
-        return _serialize_file_response(updated_file)
+        return updated_file
 
     @staticmethod
     async def seed_uploads(
