@@ -45,38 +45,37 @@ def _current_config() -> RunnableConfig:
 
 
 def _extract_usage(message: AIMessage) -> dict[str, int]:
-    """Return (input, cached, output) token counts from a message's usage.
+    """Return input/output/cached token counts from a message's usage metadata.
 
-    Handles both ``message.usage_metadata`` (the canonical LangChain shape)
-    and legacy ``response_metadata.usage`` payloads. ``cached_tokens`` comes
-    from ``input_token_details.cache_read`` or — when the underlying provider
-    surfaces it separately — ``cached_content_token_count``. Missing fields
-    default to 0.
+    Reads ``message.usage_metadata`` (the canonical LangChain shape) and falls
+    back to ``response_metadata.usage_metadata`` for the provider SDK versions
+    that only populate that. ``cached_tokens`` comes from
+    ``input_token_details.cache_read`` or — when the provider surfaces it
+    separately — ``cached_content_token_count``. Missing fields default to 0.
     """
     usage = getattr(message, "usage_metadata", None) or {}
-    input_tokens = int(usage.get("input_tokens", 0) or 0)
-    output_tokens = int(usage.get("output_tokens", 0) or 0)
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_usage = resp_meta.get("usage_metadata") or {}
 
-    details = usage.get("input_token_details") or {}
-    cached_tokens = int(details.get("cache_read", 0) or 0)
+    input_tokens = int(usage.get("input_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    cached_tokens = int((usage.get("input_token_details") or {}).get("cache_read") or 0)
 
-    # Some provider SDK versions surface cache reads under different keys.
-    if not cached_tokens:
-        resp_meta = getattr(message, "response_metadata", None) or {}
-        provider_usage = resp_meta.get("usage_metadata") or {}
-        cached_tokens = int(provider_usage.get("cached_content_token_count", 0) or 0)
-
+    # Each field falls back independently. Gating the output fallback behind a
+    # missing *input* count (as this once did) silently dropped output tokens —
+    # and their cost — from every message that reported only one of the two.
+    # Both `prompt_token_count`/`candidates_token_count` (provider-native shape)
+    # and the LangChain-normalised keys are accepted.
     if not input_tokens:
-        resp_meta = getattr(message, "response_metadata", None) or {}
-        resp_usage = resp_meta.get("usage_metadata") or {}
-        # Both `prompt_token_count`/`candidates_token_count` (provider-native
-        # shape) and the LangChain-normalised keys are accepted.
         input_tokens = int(
             resp_usage.get("prompt_token_count", resp_usage.get("input_tokens", 0)) or 0
         )
-        output_tokens = output_tokens or int(
+    if not output_tokens:
+        output_tokens = int(
             resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0)) or 0
         )
+    if not cached_tokens:
+        cached_tokens = int(resp_usage.get("cached_content_token_count") or 0)
 
     return {
         "input_tokens": input_tokens,
