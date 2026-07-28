@@ -24,7 +24,11 @@ from app.models.bot_models import (
     CreateLinkTokenResponse,
     IntegrationInfo,
     LinkedUsersResponse,
+    LinkTokenInfoResponse,
+    LinkTokenRecord,
     ResetSessionRequest,
+    ResetSessionResponse,
+    UnlinkAccountResponse,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.services.audio_transcription_service import (
@@ -152,11 +156,12 @@ async def create_link_token(
 
 @router.get(
     "/link-token-info/{token}",
+    response_model=LinkTokenInfoResponse,
     status_code=200,
     summary="Get Link Token Display Info",
     description="Return non-sensitive display metadata for a pending link token.",
 )
-async def get_link_token_info(token: str) -> dict:
+async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
     """Return display metadata from a link token for the confirmation page.
 
     The token itself is the credential — no additional auth required.
@@ -169,13 +174,14 @@ async def get_link_token_info(token: str) -> dict:
     data = await redis_client.hgetall(token_key)
     if not data:
         raise HTTPException(status_code=404, detail="Token not found or expired")
-    log.set(platform=data.get("platform"))
+    record = LinkTokenRecord.model_validate(data)
+    log.set(platform=record.platform)
     log.set(outcome="success")
-    return {
-        "platform": data.get("platform"),
-        "username": data.get("username"),
-        "display_name": data.get("display_name"),
-    }
+    return LinkTokenInfoResponse(
+        platform=record.platform,
+        username=record.username,
+        display_name=record.display_name,
+    )
 
 
 @router.post(
@@ -361,15 +367,23 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
 @router.post(
     "/reset-session",
+    response_model=ResetSessionResponse,
     status_code=200,
     summary="Reset Bot Session",
     description="Start a new conversation, archiving the current one.",
 )
-async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
+async def reset_session(request: Request, body: ResetSessionRequest) -> ResetSessionResponse:
     """Archive the current conversation and start a fresh bot session."""
     await require_bot_api_key(request)
     log.set(operation="reset_session", platform=body.platform)
 
+    # `user` is one of two genuinely different untyped dict shapes here —
+    # middleware's `build_user_context()` output (has "user_id", no "_id") or
+    # PlatformLinkService's legacy dict (has "_id", no "user_id") — normalized
+    # below and handed to BotService, which re-normalizes it the same way for
+    # every other bot endpoint. Unifying the two shapes is a cross-file change
+    # (platform_link_service.py, bot_auth_middleware.py, bot_service.py) out
+    # of scope here; see API CLAUDE.md Type Safety §14.
     user = getattr(request.state, "user", None)
     if not user or not getattr(request.state, "authenticated", False):
         user = await PlatformLinkService.get_user_by_platform_id(
@@ -387,7 +401,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
         body.platform, body.platform_user_id, body.channel_id, user
     )
     log.set(outcome="success")
-    return {"success": True, "conversation_id": new_conversation_id}
+    return ResetSessionResponse(success=True, conversation_id=new_conversation_id)
 
 
 @router.get(
@@ -502,11 +516,12 @@ async def get_settings(
 
 @router.post(
     "/unlink",
+    response_model=UnlinkAccountResponse,
     status_code=200,
     summary="Unlink Platform Account",
     description="Disconnect a platform account from the linked GAIA user.",
 )
-async def unlink_account(request: Request) -> dict:
+async def unlink_account(request: Request) -> UnlinkAccountResponse:
     """Unlink a platform user from their GAIA account."""
     await require_bot_api_key(request)
     log.set(operation="unlink_account")
@@ -520,6 +535,10 @@ async def unlink_account(request: Request) -> dict:
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
+    # PlatformLinkService.get_user_by_platform_id returns a transitional
+    # legacy dict (see `user_to_legacy_dict`) shared by several bot endpoints;
+    # only "_id" is read here, so it stays a dict rather than introducing a
+    # one-off model for a single field (API CLAUDE.md Type Safety §14).
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
     if not user:
         raise HTTPException(status_code=404, detail="Account not linked")
@@ -531,7 +550,7 @@ async def unlink_account(request: Request) -> dict:
     await redis_cache.client.delete(cache_key)
 
     log.set(platform=platform, outcome="success")
-    return {"success": True}
+    return UnlinkAccountResponse(success=True)
 
 
 @router.post(

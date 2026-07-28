@@ -95,6 +95,49 @@ class ResetSessionRequest(BaseModel):
         return v
 
 
+class ResetSessionResponse(BaseModel):
+    """Response model for a bot session reset."""
+
+    success: bool = Field(..., description="Whether the session reset succeeded")
+    conversation_id: str = Field(..., description="The new conversation ID")
+
+
+class LinkTokenRecord(BaseModel):
+    """The display fields read from the Redis hash ``create_link_token`` writes
+    for a pending platform link (the hash also carries ``platform_user_id``,
+    which this read path never surfaces).
+
+    Validated immediately after ``HGETALL`` returns the raw hash (see the API
+    CLAUDE.md Type Safety rules on external boundaries).
+    """
+
+    platform: str = Field(..., description="Platform name (discord, telegram, etc.)")
+    username: str | None = Field(None, description="Username on the platform")
+    display_name: str | None = Field(None, description="Display name on the platform")
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
+        if not Platform.is_valid(v):
+            raise ValueError(f"Invalid platform '{v}'")
+        return v
+
+
+class LinkTokenInfoResponse(BaseModel):
+    """Response model for the link-token confirmation page's display metadata."""
+
+    platform: str = Field(..., description="Platform name")
+    username: str | None = Field(None, description="Username on the platform")
+    display_name: str | None = Field(None, description="Display name on the platform")
+
+
+class UnlinkAccountResponse(BaseModel):
+    """Response model for unlinking a platform account."""
+
+    success: bool = Field(..., description="Whether the account was unlinked")
+
+
 class IntegrationInfo(BaseModel):
     """Integration information for bot settings."""
 
