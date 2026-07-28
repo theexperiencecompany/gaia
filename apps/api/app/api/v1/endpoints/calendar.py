@@ -383,9 +383,14 @@ async def create_events_batch(
         for event in batch_request.events:
             try:
                 created_event = await calendar_service.create_calendar_event(event, user_id)
-                successful.append(GoogleCalendarEventResource.model_validate(created_event))
             except Exception as e:
                 failed.append(BatchEventCreateFailure(event=event.summary, error=str(e)))
+                continue
+            # Validated outside the except above on purpose: the event already
+            # exists in the user's calendar by now, so a response-shape surprise
+            # must not be reported as a failure — the user would retry and end up
+            # with a duplicate event.
+            successful.append(GoogleCalendarEventResource.model_validate(created_event))
 
         return BatchEventCreateResponse(successful=successful, failed=failed)
     except HTTPException:
@@ -410,9 +415,12 @@ async def update_events_batch(
         for event in batch_request.events:
             try:
                 updated_event = await update_calendar_event(event, user_id)
-                successful.append(GoogleCalendarEventResource.model_validate(updated_event))
             except Exception as e:
                 failed.append(BatchEventFailure(event_id=event.event_id, error=str(e)))
+                continue
+            # See batch-create above: the update already landed, so validation of
+            # the echoed payload must not reclassify it as failed.
+            successful.append(GoogleCalendarEventResource.model_validate(updated_event))
 
         return BatchEventUpdateResponse(successful=successful, failed=failed)
     except HTTPException:
