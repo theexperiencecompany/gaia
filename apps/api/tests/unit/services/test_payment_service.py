@@ -514,9 +514,9 @@ class TestCreateSubscription:
             product_id="prod_abc123",
         )
 
-        assert result["subscription_id"] == "sess_001"
-        assert result["payment_link"] == "https://checkout.dodo.dev/sess_001"
-        assert result["status"] == "payment_link_created"
+        assert result.subscription_id == "sess_001"
+        assert result.payment_link == "https://checkout.dodo.dev/sess_001"
+        assert result.status == "payment_link_created"
 
     async def test_raises_404_if_user_not_found(
         self,
@@ -667,7 +667,7 @@ class TestCreateSubscription:
         )
 
         # Just verify it doesn't raise and returns the link
-        assert result["status"] == "payment_link_created"
+        assert result.status == "payment_link_created"
 
     async def test_custom_quantity_passed_to_checkout(
         self,
@@ -721,8 +721,8 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is True
-        assert result["subscription_id"] == "sub_xyz789"
+        assert result.payment_completed is True
+        assert result.subscription_id == "sub_xyz789"
         mock_send_email.assert_awaited_once()
 
     async def test_no_subscription_returns_not_completed(
@@ -735,8 +735,8 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is False
-        assert "No active subscription" in result["message"]
+        assert result.payment_completed is False
+        assert "No active subscription" in result.message
 
     async def test_email_failure_does_not_raise(
         self,
@@ -757,7 +757,7 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is True
+        assert result.payment_completed is True
 
     async def test_no_email_on_user_without_email(
         self,
@@ -798,7 +798,7 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is True
+        assert result.payment_completed is True
         mock_send_email.assert_not_awaited()
 
 

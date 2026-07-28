@@ -3,7 +3,7 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 """
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -136,6 +136,15 @@ class DodoWebhookProcessingResult(BaseModel):
     message: str
     payment_id: str | None = None
     subscription_id: str | None = None
+
+
+class DodoWebhookAckResponse(BaseModel):
+    """Acknowledgement returned to Dodo once a webhook has been accepted."""
+
+    status: Literal["success"] = "success"
+    event_type: str
+    processing_status: str
+    message: str
 
 
 class ComposioWebhookEvent(BaseModel):

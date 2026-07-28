@@ -13,6 +13,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PaymentVerificationResponse,
+)
+
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
@@ -118,7 +123,11 @@ class TestCreateSubscription:
     """Tests for the create subscription endpoint."""
 
     async def test_create_subscription_returns_200(self, client: AsyncClient):
-        mock_result = {"payment_link": "https://pay.example.com/link"}
+        mock_result = CreateSubscriptionResponse(
+            subscription_id="sess_abc",
+            payment_link="https://pay.example.com/link",
+            status="payment_link_created",
+        )
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
@@ -131,13 +140,21 @@ class TestCreateSubscription:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["payment_link"] == "https://pay.example.com/link"
+        assert data == {
+            "subscription_id": "sess_abc",
+            "payment_link": "https://pay.example.com/link",
+            "status": "payment_link_created",
+        }
 
     async def test_create_subscription_default_quantity(self, client: AsyncClient):
         with patch(
             "app.services.payments.payment_service.payment_service.create_subscription",
             new_callable=AsyncMock,
-            return_value={},
+            return_value=CreateSubscriptionResponse(
+                subscription_id="sess_abc",
+                payment_link="https://pay.example.com/link",
+                status="payment_link_created",
+            ),
         ) as mock_create:
             await client.post(
                 SUBSCRIPTIONS_URL,
@@ -178,11 +195,11 @@ class TestVerifyPayment:
         with patch(
             "app.services.payments.payment_service.payment_service.verify_payment_completion",
             new_callable=AsyncMock,
-            return_value={
-                "payment_completed": True,
-                "subscription_id": "sub_123",
-                "message": "Payment verified",
-            },
+            return_value=PaymentVerificationResponse(
+                payment_completed=True,
+                subscription_id="sub_123",
+                message="Payment verified",
+            ),
         ):
             response = await client.post(VERIFY_PAYMENT_URL)
 
@@ -195,11 +212,11 @@ class TestVerifyPayment:
         with patch(
             "app.services.payments.payment_service.payment_service.verify_payment_completion",
             new_callable=AsyncMock,
-            return_value={
-                "payment_completed": False,
-                "subscription_id": None,
-                "message": "No payment found",
-            },
+            return_value=PaymentVerificationResponse(
+                payment_completed=False,
+                subscription_id=None,
+                message="No payment found",
+            ),
         ):
             response = await client.post(VERIFY_PAYMENT_URL)
 
