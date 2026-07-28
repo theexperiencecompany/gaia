@@ -16,8 +16,13 @@ import pytest
 
 from app.models.calendar_models import (
     CalendarEventPageResponse,
+    CalendarEventsResponse,
+    CalendarListResponse,
     CalendarPreferencesResponse,
+    CalendarPreferencesUpdateResponse,
     EventDeleteResponse,
+    GoogleCalendarEventResource,
+    GoogleCalendarListEntry,
 )
 from tests.conftest import FAKE_USER
 
@@ -48,9 +53,9 @@ class TestGetCalendarList:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.list_calendars.return_value = {
-                "items": [{"id": "primary", "summary": "Main Calendar"}]
-            }
+            mock_svc.list_calendars.return_value = CalendarListResponse(
+                items=[GoogleCalendarListEntry(id="primary", summary="Main Calendar")]
+            )
             resp = await client.get(f"{API}/calendar/list")
         assert resp.status_code == 200
         data = resp.json()
@@ -85,12 +90,12 @@ class TestQueryEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {
-                "events": [{"id": "ev1", "summary": "Meeting"}],
-                "selectedCalendars": ["primary"],
-                "has_more": False,
-                "calendars_truncated": [],
-            }
+            mock_svc.get_calendar_events.return_value = CalendarEventsResponse(
+                events=[GoogleCalendarEventResource(id="ev1", summary="Meeting")],
+                selected_calendars=["primary"],
+                has_more=False,
+                calendars_truncated=[],
+            )
             resp = await client.post(
                 f"{API}/calendar/events/query",
                 json={
@@ -109,12 +114,12 @@ class TestQueryEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {
-                "events": [],
-                "selectedCalendars": ["primary"],
-                "has_more": False,
-                "calendars_truncated": [],
-            }
+            mock_svc.get_calendar_events.return_value = CalendarEventsResponse(
+                events=[],
+                selected_calendars=["primary"],
+                has_more=False,
+                calendars_truncated=[],
+            )
             resp = await client.post(
                 f"{API}/calendar/events/query",
                 json={"selected_calendars": ["primary"]},
@@ -157,12 +162,12 @@ class TestGetEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {
-                "events": [],
-                "selectedCalendars": [],
-                "has_more": False,
-                "calendars_truncated": [],
-            }
+            mock_svc.get_calendar_events.return_value = CalendarEventsResponse(
+                events=[],
+                selected_calendars=[],
+                has_more=False,
+                calendars_truncated=[],
+            )
             resp = await client.get(f"{API}/calendar/events")
         assert resp.status_code == 200
 
@@ -172,12 +177,12 @@ class TestGetEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {
-                "events": [],
-                "selectedCalendars": [],
-                "has_more": False,
-                "calendars_truncated": [],
-            }
+            mock_svc.get_calendar_events.return_value = CalendarEventsResponse(
+                events=[],
+                selected_calendars=[],
+                has_more=False,
+                calendars_truncated=[],
+            )
             resp = await client.get(
                 f"{API}/calendar/events",
                 params={"start_date": "2026-03-01", "end_date": "2026-03-31"},
@@ -190,12 +195,12 @@ class TestGetEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.get_calendar_events.return_value = {
-                "events": [],
-                "selectedCalendars": [],
-                "has_more": False,
-                "calendars_truncated": [],
-            }
+            mock_svc.get_calendar_events.return_value = CalendarEventsResponse(
+                events=[],
+                selected_calendars=[],
+                has_more=False,
+                calendars_truncated=[],
+            )
             resp = await client.get(
                 f"{API}/calendar/events",
                 params={"selected_calendars": ["primary", "work"]},
@@ -233,7 +238,7 @@ class TestGetEventsByCalendar:
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.get_calendar_events_by_id.return_value = CalendarEventPageResponse(
-                events=[{"id": "ev2"}]
+                events=[GoogleCalendarEventResource(id="ev2")]
             )
             resp = await client.get(f"{API}/calendar/my-cal-id/events")
         assert resp.status_code == 200
@@ -283,10 +288,9 @@ class TestCreateEvent:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.create_calendar_event.return_value = {
-                "id": "ev-new",
-                "summary": "Lunch",
-            }
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-new", summary="Lunch"
+            )
             resp = await client.post(
                 f"{API}/calendar/event",
                 json={
@@ -393,7 +397,7 @@ class TestUpdateEvent:
             patch(
                 UPDATE_PATCH,
                 new_callable=AsyncMock,
-                return_value={"id": "ev-001", "summary": "Updated"},
+                return_value=GoogleCalendarEventResource(id="ev-001", summary="Updated"),
             ),
         ):
             resp = await client.put(
@@ -473,9 +477,9 @@ class TestUpdateCalendarPreferences:
             patch(INTEGRATION_PATCH, new_callable=AsyncMock, return_value=True),
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.update_user_calendar_preferences.return_value = {
-                "message": "Preferences updated"
-            }
+            mock_svc.update_user_calendar_preferences.return_value = (
+                CalendarPreferencesUpdateResponse(message="Preferences updated")
+            )
             resp = await client.put(
                 f"{API}/calendar/preferences",
                 json={"selected_calendars": ["primary", "work"]},
@@ -517,7 +521,9 @@ class TestBatchCreateEvents:
             # token patch removed (composio proxy migration)
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
-            mock_svc.create_calendar_event.return_value = {"id": "ev-batch-1"}
+            mock_svc.create_calendar_event.return_value = GoogleCalendarEventResource(
+                id="ev-batch-1"
+            )
             resp = await client.post(
                 f"{API}/calendar/events/batch",
                 json={
@@ -543,7 +549,7 @@ class TestBatchCreateEvents:
             patch(SVC_PATCH, new_callable=AsyncMock) as mock_svc,
         ):
             mock_svc.create_calendar_event.side_effect = [
-                {"id": "ev-ok"},
+                GoogleCalendarEventResource(id="ev-ok"),
                 Exception("Failed"),
             ]
             resp = await client.post(
@@ -627,7 +633,7 @@ class TestBatchUpdateEvents:
             patch(
                 UPDATE_PATCH,
                 new_callable=AsyncMock,
-                return_value={"id": "ev-001", "summary": "Updated"},
+                return_value=GoogleCalendarEventResource(id="ev-001", summary="Updated"),
             ),
         ):
             resp = await client.put(
@@ -646,7 +652,7 @@ class TestBatchUpdateEvents:
                 UPDATE_PATCH,
                 new_callable=AsyncMock,
                 side_effect=[
-                    {"id": "ev-001", "summary": "Updated"},
+                    GoogleCalendarEventResource(id="ev-001", summary="Updated"),
                     Exception("Not found"),
                 ],
             ),

@@ -46,11 +46,7 @@ async def get_calendar_list(
     try:
         log.set(user={"id": user_id}, calendar={"operation": "list_calendars"})
 
-        # short=False (the default) always returns the calendarList envelope, not
-        # the trimmed list branch of list_calendars' union return type.
-        calendars = CalendarListResponse.model_validate(
-            await calendar_service.list_calendars(user_id)
-        )
+        calendars = await calendar_service.list_calendars(user_id)
         log.set(
             calendar={
                 "operation": "list_calendars",
@@ -110,16 +106,14 @@ async def query_events(
             },
         )
 
-        result = CalendarEventsResponse.model_validate(
-            await calendar_service.get_calendar_events(
-                user_id=user_id,
-                page_token=None,
-                selected_calendars=request.selected_calendars,
-                time_min=time_min,
-                time_max=time_max,
-                max_results=request.max_results,
-                fetch_all=request.fetch_all,
-            )
+        result = await calendar_service.get_calendar_events(
+            user_id=user_id,
+            page_token=None,
+            selected_calendars=request.selected_calendars,
+            time_min=time_min,
+            time_max=time_max,
+            max_results=request.max_results,
+            fetch_all=request.fetch_all,
         )
         log.set(
             calendar={
@@ -184,16 +178,14 @@ async def get_events(
             },
         )
 
-        result = CalendarEventsResponse.model_validate(
-            await calendar_service.get_calendar_events(
-                user_id=user_id,
-                page_token=page_token,
-                selected_calendars=selected_calendars,
-                time_min=time_min,
-                time_max=time_max,
-                max_results=max_results,
-                fetch_all=fetch_all,
-            )
+        result = await calendar_service.get_calendar_events(
+            user_id=user_id,
+            page_token=page_token,
+            selected_calendars=selected_calendars,
+            time_min=time_min,
+            time_max=time_max,
+            max_results=max_results,
+            fetch_all=fetch_all,
         )
         log.set(
             calendar={
@@ -292,9 +284,7 @@ async def create_event(
             },
         )
 
-        return GoogleCalendarEventResource.model_validate(
-            await calendar_service.create_calendar_event(event, user_id)
-        )
+        return await calendar_service.create_calendar_event(event, user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -358,9 +348,7 @@ async def update_event(
     try:
         log.set(user={"id": user_id}, calendar={"operation": "update_event"})
 
-        return GoogleCalendarEventResource.model_validate(
-            await update_calendar_event(event, user_id)
-        )
+        return await update_calendar_event(event, user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -386,11 +374,7 @@ async def create_events_batch(
             except Exception as e:
                 failed.append(BatchEventCreateFailure(event=event.summary, error=str(e)))
                 continue
-            # Validated outside the except above on purpose: the event already
-            # exists in the user's calendar by now, so a response-shape surprise
-            # must not be reported as a failure — the user would retry and end up
-            # with a duplicate event.
-            successful.append(GoogleCalendarEventResource.model_validate(created_event))
+            successful.append(created_event)
 
         return BatchEventCreateResponse(successful=successful, failed=failed)
     except HTTPException:
@@ -418,9 +402,7 @@ async def update_events_batch(
             except Exception as e:
                 failed.append(BatchEventFailure(event_id=event.event_id, error=str(e)))
                 continue
-            # See batch-create above: the update already landed, so validation of
-            # the echoed payload must not reclassify it as failed.
-            successful.append(GoogleCalendarEventResource.model_validate(updated_event))
+            successful.append(updated_event)
 
         return BatchEventUpdateResponse(successful=successful, failed=failed)
     except HTTPException:

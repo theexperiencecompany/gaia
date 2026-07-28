@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Any, Union, cast
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -7,13 +7,27 @@ from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
 from app.db.repositories.calendar import calendar_repository
 from app.models.calendar_models import (
+    CalendarEventDisplay,
+    CalendarEventFetchResult,
     CalendarEventPageResponse,
+    CalendarEventsResponse,
+    CalendarListResponse,
     CalendarPreferencesResponse,
     CalendarPreferencesUpdateResponse,
+    CalendarSearchResult,
+    CalendarSummary,
     EventCreateRequest,
     EventDeleteRequest,
     EventDeleteResponse,
     EventUpdateRequest,
+    GoogleCalendarAttendee,
+    GoogleCalendarEventDateTime,
+    GoogleCalendarEventResource,
+    GoogleCalendarEventsPage,
+    GoogleCalendarEventWrite,
+    GoogleConferenceCreateRequest,
+    GoogleConferenceData,
+    GoogleConferenceSolutionKey,
 )
 from app.services.composio.proxy_client import proxy_request
 from app.utils.errors import AppError
@@ -22,16 +36,21 @@ from shared.py.wide_events import log
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 
+QueryParams = dict[str, str | int]
+
 
 async def _proxy(
     user_id: str,
     *,
     endpoint: str,
     method: str,
-    body: dict[str, Any] | None = None,
-    query: dict[str, Any] | None = None,
+    body: GoogleCalendarEventWrite | None = None,
+    query: QueryParams | None = None,
 ) -> Any:
     """Wrapper that converts Composio proxy errors to FastAPI HTTPException.
+
+    Returns Google's raw JSON — this is the provider boundary, so every caller
+    validates it into a real model immediately.
 
     Calendar callers (FastAPI endpoints, custom tools) historically expect
     HTTPException-shaped failures, so we normalize AppError here.
@@ -42,7 +61,7 @@ async def _proxy(
             toolkit=CALENDAR_TOOLKIT,
             endpoint=endpoint,
             method=method,  # type: ignore[arg-type]
-            body=body,
+            body=body.model_dump(exclude_none=True) if body is not None else None,
             query=query,
         )
     except AppError as exc:
@@ -68,40 +87,32 @@ async def _proxy(
         raise HTTPException(status_code=exc.status_code, detail=detail) from exc
 
 
-async def fetch_calendar_list(
-    user_id: str, short: bool = False
-) -> Union[list[dict[str, Any]], dict[str, Any]]:
-    """Fetch the list of calendars for the authenticated user."""
-    data = await _proxy(
-        user_id,
-        endpoint=f"{CALENDAR_API_BASE}/users/me/calendarList",
-        method="GET",
+async def list_calendars(user_id: str) -> CalendarListResponse:
+    """Retrieve the user's calendar list."""
+    return CalendarListResponse.model_validate(
+        await _proxy(
+            user_id,
+            endpoint=f"{CALENDAR_API_BASE}/users/me/calendarList",
+            method="GET",
+        )
     )
 
-    if short:
-        return [
-            {
-                "id": c.get("id"),
-                "summary": c.get("summary"),
-                "description": c.get("description"),
-                "backgroundColor": c.get("backgroundColor"),
-            }
-            for c in (data or {}).get("items", [])
-        ]
 
-    # _proxy is typed Any (raw external API passthrough); the calendarList
-    # endpoint's non-short response is a dict.
-    return cast(dict[str, Any], data)
+def to_calendar_summaries(calendar_list: CalendarListResponse) -> list[CalendarSummary]:
+    """Trim Google's calendar-list entries to the fields GAIA surfaces."""
+    return [CalendarSummary.model_validate(entry.model_dump()) for entry in calendar_list.items]
 
 
-def filter_events(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def filter_events(
+    events: list[GoogleCalendarEventResource],
+) -> list[GoogleCalendarEventResource]:
     """Filter out birthdays and events missing a valid start time."""
     return [
         event
         for event in events
-        if event.get("eventType") != "birthday"
-        and "start" in event
-        and ("dateTime" in event["start"] or "date" in event["start"])
+        if event.eventType != "birthday"
+        and event.start is not None
+        and (event.start.dateTime is not None or event.start.date is not None)
     ]
 
 
@@ -112,9 +123,9 @@ async def fetch_calendar_events(
     time_min: str | None = None,
     time_max: str | None = None,
     max_results: int = 20,
-) -> dict[str, Any]:
+) -> GoogleCalendarEventsPage:
     """Fetch events for a specific calendar."""
-    query: dict[str, Any] = {
+    query: QueryParams = {
         "maxResults": max_results,
         "singleEvents": "true",
         "orderBy": "startTime",
@@ -126,16 +137,13 @@ async def fetch_calendar_events(
     if page_token:
         query["pageToken"] = page_token
 
-    # _proxy is typed Any (raw external API passthrough); the events.list
-    # endpoint's response is a dict.
-    return cast(
-        dict[str, Any],
+    return GoogleCalendarEventsPage.model_validate(
         await _proxy(
             user_id,
             endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
             method="GET",
             query=query,
-        ),
+        )
     )
 
 
@@ -145,9 +153,9 @@ async def fetch_all_calendar_events(
     time_min: str | None = None,
     time_max: str | None = None,
     max_per_page: int = 250,
-) -> dict[str, Any]:
+) -> CalendarEventFetchResult:
     """Fetch all events from a calendar within a date range, handling pagination."""
-    all_items: list[dict[str, Any]] = []
+    all_items: list[GoogleCalendarEventResource] = []
     next_page_token: str | None = None
     page_count = 0
     max_pages = 20
@@ -162,10 +170,9 @@ async def fetch_all_calendar_events(
             max_results=max_per_page,
         )
 
-        items = page_data.get("items", [])
-        all_items.extend(items)
+        all_items.extend(page_data.items)
 
-        next_page_token = page_data.get("nextPageToken")
+        next_page_token = page_data.nextPageToken
         page_count += 1
 
         if not next_page_token:
@@ -182,70 +189,61 @@ async def fetch_all_calendar_events(
             f"Calendar {calendar_id} truncated at {len(all_items)} events (hit max pages limit)"
         )
 
-    return {
-        "items": all_items,
-        "truncated": truncated,
-        "total_fetched": len(all_items),
-    }
-
-
-async def list_calendars(
-    user_id: str, short: bool = False
-) -> Union[list[dict[str, Any]], dict[str, Any]]:
-    """Retrieve the user's calendar list."""
-    return await fetch_calendar_list(user_id, short)
+    return CalendarEventFetchResult(
+        items=all_items,
+        truncated=truncated,
+        total_fetched=len(all_items),
+    )
 
 
 async def get_calendar_metadata_map(
     user_id: str,
 ) -> tuple[dict[str, str], dict[str, str]]:
     """Fetch calendar list and return color/name mappings."""
-    calendars = await list_calendars(user_id=user_id, short=True)
+    calendars = to_calendar_summaries(await list_calendars(user_id))
 
     color_map: dict[str, str] = {}
     name_map: dict[str, str] = {}
 
-    if calendars and isinstance(calendars, list):
-        for cal in calendars:
-            if isinstance(cal, dict):
-                cal_id = cal.get("id")
-                if cal_id:
-                    color_map[cal_id] = cal.get("backgroundColor", DEFAULT_CALENDAR_COLOR)
-                    name_map[cal_id] = cal.get("summary", "Calendar")
+    for cal in calendars:
+        if cal.id:
+            color_map[cal.id] = cal.backgroundColor or DEFAULT_CALENDAR_COLOR
+            name_map[cal.id] = cal.summary or "Calendar"
 
     return color_map, name_map
 
 
 def format_event_for_frontend(
-    event: dict[str, Any],
+    event: GoogleCalendarEventResource,
     calendar_color_map: dict[str, str],
     calendar_name_map: dict[str, str],
-) -> dict[str, Any]:
+) -> CalendarEventDisplay:
     """Format a calendar event for frontend display."""
     start_time = ""
     end_time = ""
 
-    if event.get("start"):
-        start_obj = event["start"]
-        start_time = start_obj.get("dateTime") or start_obj.get("date", "")
+    if event.start:
+        start_time = event.start.dateTime or event.start.date or ""
 
-    if event.get("end"):
-        end_obj = event["end"]
-        end_time = end_obj.get("dateTime") or end_obj.get("date", "")
+    if event.end:
+        end_time = event.end.dateTime or event.end.date or ""
 
-    calendar_id = event.get("calendarId", "")
-    calendar_name = calendar_name_map.get(
-        calendar_id, event.get("calendarTitle", "Unknown Calendar")
+    calendar_id = event.calendarId or ""
+    fallback_name = event.calendarTitle if event.calendarTitle is not None else "Unknown Calendar"
+
+    return CalendarEventDisplay(
+        summary=event.summary if event.summary is not None else "No Title",
+        start_time=start_time,
+        end_time=end_time,
+        calendar_name=calendar_name_map.get(calendar_id, fallback_name),
+        background_color=calendar_color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR),
     )
-    background_color = calendar_color_map.get(calendar_id, DEFAULT_CALENDAR_COLOR)
 
-    return {
-        "summary": event.get("summary", "No Title"),
-        "start_time": start_time,
-        "end_time": end_time,
-        "calendar_name": calendar_name,
-        "background_color": background_color,
-    }
+
+def _event_sort_key(event: GoogleCalendarEventResource) -> str:
+    if event.start is None:
+        return ""
+    return event.start.dateTime or event.start.date or ""
 
 
 async def get_calendar_events(
@@ -256,12 +254,9 @@ async def get_calendar_events(
     time_max: str | None = None,
     max_results: int | None = 20,
     fetch_all: bool = False,
-) -> dict[str, Any]:
+) -> CalendarEventsResponse:
     """Get events from the user's selected calendars with date-based pagination."""
-    # short=False (default) always returns the dict branch of fetch_calendar_list's
-    # Union return type.
-    calendar_data = cast(dict[str, Any], await fetch_calendar_list(user_id))
-    calendars = calendar_data.get("items", [])
+    calendars = (await list_calendars(user_id)).items
 
     user_selected_calendars: list[str] = []
     if selected_calendars is not None:
@@ -272,62 +267,56 @@ async def get_calendar_events(
         if preferences is not None and preferences.selected_calendars:
             user_selected_calendars = preferences.selected_calendars
         else:
-            user_selected_calendars = [cal["id"] for cal in calendars]
+            user_selected_calendars = [cal.id for cal in calendars]
             await calendar_repository.set_selected_calendars(user_id, user_selected_calendars)
 
-    selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
+    selected_cal_objs = [cal for cal in calendars if cal.id in user_selected_calendars]
 
-    all_events: list[dict[str, Any]] = []
-    seen_event_ids: set = set()
+    all_events: list[GoogleCalendarEventResource] = []
+    seen_event_ids: set[str] = set()
     calendars_truncated: list[str] = []
 
     if fetch_all or not max_results:
         log.info(f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range")
         for cal in selected_cal_objs:
             try:
-                result = await fetch_all_calendar_events(cal["id"], user_id, time_min, time_max)
-                events = result.get("items", [])
+                result = await fetch_all_calendar_events(cal.id, user_id, time_min, time_max)
+                events = result.items
 
-                if result.get("truncated", False):
-                    calendars_truncated.append(cal["id"])
-                    log.warning(
-                        f"Calendar {cal['id']} ({cal.get('summary', 'Unknown')}) was truncated"
-                    )
+                if result.truncated:
+                    calendars_truncated.append(cal.id)
+                    log.warning(f"Calendar {cal.id} ({cal.summary or 'Unknown'}) was truncated")
 
                 for event in events:
-                    event_id = event.get("id")
-                    if event_id and event_id in seen_event_ids:
+                    if event.id and event.id in seen_event_ids:
                         continue
-                    if event_id:
-                        seen_event_ids.add(event_id)
-                    event["calendarId"] = cal["id"]
-                    event["calendarTitle"] = cal.get("summary", "")
+                    if event.id:
+                        seen_event_ids.add(event.id)
+                    event.calendarId = cal.id
+                    event.calendarTitle = cal.summary or ""
                 all_events.extend(filter_events(events))
             except Exception as e:
-                log.error(f"Error fetching events for calendar {cal['id']}: {e}")
+                log.error(f"Error fetching events for calendar {cal.id}: {e}")
     else:
         for cal in selected_cal_objs:
             try:
-                result = await fetch_calendar_events(
-                    cal["id"], user_id, None, time_min, time_max, max_results
+                page = await fetch_calendar_events(
+                    cal.id, user_id, None, time_min, time_max, max_results
                 )
-                events = result.get("items", [])
+                events = page.items
 
                 for event in events:
-                    event_id = event.get("id")
-                    if event_id and event_id in seen_event_ids:
+                    if event.id and event.id in seen_event_ids:
                         continue
-                    if event_id:
-                        seen_event_ids.add(event_id)
-                    event["calendarId"] = cal["id"]
-                    event["calendarTitle"] = cal.get("summary", "")
+                    if event.id:
+                        seen_event_ids.add(event.id)
+                    event.calendarId = cal.id
+                    event.calendarTitle = cal.summary or ""
                 all_events.extend(filter_events(events))
             except Exception as e:
-                log.error(f"Error fetching events for calendar {cal['id']}: {e}")
+                log.error(f"Error fetching events for calendar {cal.id}: {e}")
 
-    all_events.sort(
-        key=lambda e: e.get("start", {}).get("dateTime") or e.get("start", {}).get("date") or ""
-    )
+    all_events.sort(key=_event_sort_key)
 
     log.set(
         calendar={
@@ -339,12 +328,12 @@ async def get_calendar_events(
     )
     log.info(f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars")
 
-    return {
-        "events": all_events,
-        "selectedCalendars": user_selected_calendars,
-        "has_more": len(calendars_truncated) > 0,
-        "calendars_truncated": calendars_truncated,
-    }
+    return CalendarEventsResponse(
+        events=all_events,
+        selected_calendars=user_selected_calendars,
+        has_more=len(calendars_truncated) > 0,
+        calendars_truncated=calendars_truncated,
+    )
 
 
 async def get_calendar_events_by_id(
@@ -358,22 +347,20 @@ async def get_calendar_events_by_id(
     events_data = await fetch_calendar_events(calendar_id, user_id, page_token, time_min, time_max)
 
     return CalendarEventPageResponse(
-        events=filter_events(events_data.get("items", [])),
-        next_page_token=events_data.get("nextPageToken"),
+        events=filter_events(events_data.items),
+        next_page_token=events_data.nextPageToken,
     )
 
 
 async def create_calendar_event(
     event: EventCreateRequest,
     user_id: str,
-) -> dict[str, Any]:
+) -> GoogleCalendarEventResource:
     """Create a new calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
 
-    event_payload: dict[str, Any] = {
-        "summary": event.summary,
-        "description": event.description,
-    }
+    start_obj: GoogleCalendarEventDateTime
+    end_obj: GoogleCalendarEventDateTime
 
     if event.is_all_day:
         if event.start and event.end:
@@ -388,8 +375,8 @@ async def create_calendar_event(
             start_date = today.strftime("%Y-%m-%d")
             end_date = (today + timedelta(days=1)).strftime("%Y-%m-%d")
 
-        event_payload["start"] = {"date": start_date}
-        event_payload["end"] = {"date": end_date}
+        start_obj = GoogleCalendarEventDateTime(date=start_date)
+        end_obj = GoogleCalendarEventDateTime(date=end_date)
     else:
         try:
             if not event.start or not event.end:
@@ -417,47 +404,59 @@ async def create_calendar_event(
             ):
                 end_time = end_time + "Z"
 
-            event_payload["start"] = {"dateTime": start_time, "timeZone": timezone}
-            event_payload["end"] = {"dateTime": end_time, "timeZone": timezone}
+            start_obj = GoogleCalendarEventDateTime(dateTime=start_time, timeZone=timezone)
+            end_obj = GoogleCalendarEventDateTime(dateTime=end_time, timeZone=timezone)
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
 
+    recurrence_rules: list[str] | None = None
     if event.recurrence:
         try:
             recurrence_rules = event.recurrence.to_google_calendar_format()
-            event_payload["recurrence"] = recurrence_rules
 
             if not event.is_all_day:
                 timezone = event.timezone or "UTC"
-                if "timeZone" in event_payload.get("start", {}):
-                    event_payload["start"]["timeZone"] = timezone
-                if "timeZone" in event_payload.get("end", {}):
-                    event_payload["end"]["timeZone"] = timezone
+                if start_obj.timeZone is not None:
+                    start_obj.timeZone = timezone
+                if end_obj.timeZone is not None:
+                    end_obj.timeZone = timezone
 
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
 
-    if event.attendees:
-        event_payload["attendees"] = [{"email": e} for e in event.attendees]
-
-    query_params: dict[str, Any] = {"sendUpdates": "all"} if event.attendees else {}
+    query_params: QueryParams = {"sendUpdates": "all"} if event.attendees else {}
+    conference_data: GoogleConferenceData | None = None
     if event.create_meeting_room:
-        event_payload["conferenceData"] = {
-            "createRequest": {
-                "requestId": f"meet_{int(datetime.now().timestamp())}",
-                "conferenceSolutionKey": {"type": "hangoutsMeet"},
-            }
-        }
+        conference_data = GoogleConferenceData(
+            createRequest=GoogleConferenceCreateRequest(
+                requestId=f"meet_{int(datetime.now().timestamp())}",
+                conferenceSolutionKey=GoogleConferenceSolutionKey(type="hangoutsMeet"),
+            )
+        )
         query_params["conferenceDataVersion"] = "1"
 
-    response_data = await _proxy(
-        user_id,
-        endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
-        method="POST",
-        body=event_payload,
-        query=query_params or None,
+    payload = GoogleCalendarEventWrite(
+        summary=event.summary,
+        description=event.description,
+        start=start_obj,
+        end=end_obj,
+        recurrence=recurrence_rules,
+        attendees=(
+            [GoogleCalendarAttendee(email=e) for e in event.attendees] if event.attendees else None
+        ),
+        conferenceData=conference_data,
+    )
+
+    created_event = GoogleCalendarEventResource.model_validate(
+        await _proxy(
+            user_id,
+            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+            method="POST",
+            body=payload,
+            query=query_params or None,
+        )
     )
 
     log.set(
@@ -465,12 +464,10 @@ async def create_calendar_event(
             "action": "create_event",
             "calendar_id": calendar_id,
             "summary": event.summary,
-            "event_id": response_data.get("id") if isinstance(response_data, dict) else None,
+            "event_id": created_event.id,
         }
     )
-    # _proxy is typed Any (raw external API passthrough); the events.insert
-    # endpoint's response is a dict.
-    return cast(dict[str, Any], response_data)
+    return created_event
 
 
 async def get_user_calendar_preferences(user_id: str) -> CalendarPreferencesResponse:
@@ -498,12 +495,9 @@ async def search_calendar_events_native(
     user_id: str,
     time_min: str | None = None,
     time_max: str | None = None,
-) -> dict[str, Any]:
+) -> CalendarSearchResult:
     """Search calendar events using Google Calendar API's native search."""
-    # short=False (default) always returns the dict branch of fetch_calendar_list's
-    # Union return type.
-    calendar_list_data = cast(dict[str, Any], await fetch_calendar_list(user_id))
-    calendars = calendar_list_data.get("items", [])
+    calendars = (await list_calendars(user_id)).items
 
     user_selected_calendars: list[str] = []
     preferences = await calendar_repository.get_for_user(user_id)
@@ -511,43 +505,43 @@ async def search_calendar_events_native(
         user_selected_calendars = preferences.selected_calendars
         log.info(f"User has calendar preferences: {user_selected_calendars}")
     else:
-        user_selected_calendars = [cal["id"] for cal in calendars]
+        user_selected_calendars = [cal.id for cal in calendars]
         log.info(
             f"No preferences found, defaulting to all calendars: {len(user_selected_calendars)} calendars"
         )
 
-    selected_cal_objs = [cal for cal in calendars if cal["id"] in user_selected_calendars]
+    selected_cal_objs = [cal for cal in calendars if cal.id in user_selected_calendars]
 
     log.info(
-        f"Searching in {len(selected_cal_objs)} calendars: {[cal['summary'] for cal in selected_cal_objs]}"
+        f"Searching in {len(selected_cal_objs)} calendars: {[cal.summary for cal in selected_cal_objs]}"
     )
 
     if not selected_cal_objs:
         log.info("No selected calendars found, searching all available calendars")
         selected_cal_objs = calendars
 
-    all_matching_events: list[dict[str, Any]] = []
+    all_matching_events: list[GoogleCalendarEventResource] = []
     total_events_searched = 0
 
     for cal in selected_cal_objs:
         try:
-            result = await search_events_in_calendar(cal["id"], query, user_id, time_min, time_max)
-            events = result.get("items", [])
-            log.info(f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'")
+            result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
+            events = result.items
+            log.info(f"Found {len(events)} events in calendar '{cal.summary or cal.id}'")
 
             for event in events:
-                event["calendarId"] = cal["id"]
-                event["calendarTitle"] = cal.get("summary", "")
+                event.calendarId = cal.id
+                event.calendarTitle = cal.summary or ""
 
             filtered_events = filter_events(events)
             log.info(
-                f"After filtering: {len(filtered_events)} events in calendar '{cal.get('summary', cal['id'])}'"
+                f"After filtering: {len(filtered_events)} events in calendar '{cal.summary or cal.id}'"
             )
 
             all_matching_events.extend(filtered_events)
             total_events_searched += len(filtered_events)
         except Exception as e:
-            log.error(f"Error searching events in calendar {cal['id']}: {e}")
+            log.error(f"Error searching events in calendar {cal.id}: {e}")
 
     log.info(f"Total matching events across all calendars: {len(all_matching_events)}")
 
@@ -556,33 +550,29 @@ async def search_calendar_events_native(
 
         for cal in calendars:
             try:
-                result = await search_events_in_calendar(
-                    cal["id"], query, user_id, time_min, time_max
-                )
-                events = result.get("items", [])
+                result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
+                events = result.items
 
                 if events:
-                    log.info(
-                        f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
-                    )
+                    log.info(f"Found {len(events)} events in calendar '{cal.summary or cal.id}'")
 
                     for event in events:
-                        event["calendarId"] = cal["id"]
-                        event["calendarTitle"] = cal.get("summary", "")
+                        event.calendarId = cal.id
+                        event.calendarTitle = cal.summary or ""
 
                     filtered_events = filter_events(events)
                     all_matching_events.extend(filtered_events)
                     total_events_searched += len(filtered_events)
             except Exception as e:
-                log.error(f"Error searching events in calendar {cal['id']}: {e}")
+                log.error(f"Error searching events in calendar {cal.id}: {e}")
 
-    return {
-        "query": query,
-        "matching_events": all_matching_events,
-        "total_matches": len(all_matching_events),
-        "total_events_searched": total_events_searched,
-        "searched_calendars": [cal["summary"] for cal in selected_cal_objs],
-    }
+    return CalendarSearchResult(
+        query=query,
+        matching_events=all_matching_events,
+        total_matches=len(all_matching_events),
+        total_events_searched=total_events_searched,
+        searched_calendars=[cal.summary or "" for cal in selected_cal_objs],
+    )
 
 
 async def search_events_in_calendar(
@@ -591,9 +581,9 @@ async def search_events_in_calendar(
     user_id: str,
     time_min: str | None = None,
     time_max: str | None = None,
-) -> dict[str, Any]:
+) -> GoogleCalendarEventsPage:
     """Search events in a specific calendar using Google Calendar API's native search."""
-    params: dict[str, Any] = {
+    params: QueryParams = {
         "q": query,
         "maxResults": 50,
         "singleEvents": "true",
@@ -605,17 +595,16 @@ async def search_events_in_calendar(
         params["timeMax"] = time_max
 
     log.info(f"Searching calendar {calendar_id} with query '{query}' and params: {params}")
-    result = await _proxy(
-        user_id,
-        endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
-        method="GET",
-        query=params,
+    result = GoogleCalendarEventsPage.model_validate(
+        await _proxy(
+            user_id,
+            endpoint=f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events",
+            method="GET",
+            query=params,
+        )
     )
-    event_count = len(result.get("items", []))
-    log.info(f"Calendar {calendar_id} search returned {event_count} events")
-    # _proxy is typed Any (raw external API passthrough); the events.list
-    # endpoint's response is a dict.
-    return cast(dict[str, Any], result)
+    log.info(f"Calendar {calendar_id} search returned {len(result.items)} events")
+    return result
 
 
 async def delete_calendar_event(
@@ -641,78 +630,68 @@ async def delete_calendar_event(
 async def update_calendar_event(
     event: EventUpdateRequest,
     user_id: str,
-) -> dict[str, Any]:
+) -> GoogleCalendarEventResource:
     """Update a calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
     endpoint = f"{CALENDAR_API_BASE}/calendars/{calendar_id}/events/{event.event_id}"
 
     try:
-        existing_event = await _proxy(user_id, endpoint=endpoint, method="GET")
+        existing_event = GoogleCalendarEventResource.model_validate(
+            await _proxy(user_id, endpoint=endpoint, method="GET")
+        )
     except HTTPException as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Event not found or access denied")
         raise
 
-    event_payload: dict[str, Any] = {
-        "summary": (
-            event.summary if event.summary is not None else existing_event.get("summary", "")
-        ),
-        "description": (
-            event.description
-            if event.description is not None
-            else existing_event.get("description", "")
-        ),
-    }
+    existing_start = existing_event.start or GoogleCalendarEventDateTime()
+    existing_end = existing_event.end or GoogleCalendarEventDateTime()
 
+    recurrence_rules: list[str] | None = None
     if event.recurrence is not None:
         try:
             recurrence_rules = event.recurrence.to_google_calendar_format()
-            event_payload["recurrence"] = recurrence_rules
         except Exception as e:
             log.error(f"Error processing recurrence rules: {e}")
             raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
-    elif "recurrence" in existing_event:
-        event_payload["recurrence"] = existing_event.get("recurrence", [])
+    elif existing_event.recurrence is not None:
+        recurrence_rules = existing_event.recurrence
+
+    start_obj: GoogleCalendarEventDateTime
+    end_obj: GoogleCalendarEventDateTime
 
     if event.start is not None or event.end is not None or event.is_all_day is not None:
         is_all_day = (
-            event.is_all_day
-            if event.is_all_day is not None
-            else existing_event.get("start", {}).get("date") is not None
+            event.is_all_day if event.is_all_day is not None else existing_start.date is not None
         )
 
         if is_all_day:
             if event.start is not None:
                 start_date = event.start.split("T")[0] if "T" in event.start else event.start
             else:
-                start_date = existing_event.get("start", {}).get("date", "")
+                start_date = existing_start.date or ""
 
             if event.end is not None:
                 end_date = event.end.split("T")[0] if "T" in event.end else event.end
             else:
-                end_date = existing_event.get("end", {}).get("date", "")
+                end_date = existing_end.date or ""
 
-            event_payload["start"] = {"date": start_date}
-            event_payload["end"] = {"date": end_date}
+            start_obj = GoogleCalendarEventDateTime(date=start_date)
+            end_obj = GoogleCalendarEventDateTime(date=end_date)
         else:
             try:
-                if event.start is not None:
-                    start_time = event.start
-                else:
-                    start_time = existing_event.get("start", {}).get("dateTime", "")
-
-                if event.end is not None:
-                    end_time = event.end
-                else:
-                    end_time = existing_event.get("end", {}).get("dateTime", "")
+                start_time = (
+                    event.start if event.start is not None else (existing_start.dateTime or "")
+                )
+                end_time = event.end if event.end is not None else (existing_end.dateTime or "")
 
                 timezone: str | None = None
                 if event.timezone:
                     timezone = event.timezone
                 elif event.timezone_offset:
                     timezone = event.timezone_offset
-                elif existing_event.get("start", {}).get("timeZone"):
-                    timezone = existing_event.get("start", {}).get("timeZone")
+                elif existing_start.timeZone:
+                    timezone = existing_start.timeZone
 
                 if (
                     start_time
@@ -729,30 +708,34 @@ async def update_calendar_event(
                 ):
                     end_time = end_time + "Z"
 
-                start_payload: dict[str, str] = {"dateTime": start_time}
-                end_payload: dict[str, str] = {"dateTime": end_time}
-
-                if timezone:
-                    start_payload["timeZone"] = timezone
-                    end_payload["timeZone"] = timezone
-
-                event_payload["start"] = start_payload
-                event_payload["end"] = end_payload
+                start_obj = GoogleCalendarEventDateTime(dateTime=start_time, timeZone=timezone)
+                end_obj = GoogleCalendarEventDateTime(dateTime=end_time, timeZone=timezone)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
     else:
-        event_payload["start"] = existing_event.get("start", {})
-        event_payload["end"] = existing_event.get("end", {})
+        start_obj = existing_start
+        end_obj = existing_end
+
+    payload = GoogleCalendarEventWrite(
+        summary=(event.summary if event.summary is not None else (existing_event.summary or "")),
+        description=(
+            event.description
+            if event.description is not None
+            else (existing_event.description or "")
+        ),
+        start=start_obj,
+        end=end_obj,
+        recurrence=recurrence_rules,
+    )
 
     try:
-        updated_event = await _proxy(user_id, endpoint=endpoint, method="PUT", body=event_payload)
+        updated_event = GoogleCalendarEventResource.model_validate(
+            await _proxy(user_id, endpoint=endpoint, method="PUT", body=payload)
+        )
     except HTTPException as exc:
         if exc.status_code == 404:
             raise HTTPException(status_code=404, detail="Event not found or access denied")
         raise
 
-    if isinstance(updated_event, dict):
-        updated_event["calendarId"] = calendar_id
-    # _proxy is typed Any (raw external API passthrough); the events.update
-    # endpoint's response is a dict.
-    return cast(dict[str, Any], updated_event)
+    updated_event.calendarId = calendar_id
+    return updated_event

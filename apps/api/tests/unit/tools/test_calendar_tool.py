@@ -32,6 +32,10 @@ from app.agents.tools.integrations.calendar_tool import (
 from app.constants.calendar import DEFAULT_CALENDAR_COLOR
 from app.models.calendar_models import (
     AddRecurrenceInput,
+    CalendarEventsResponse,
+    CalendarListResponse,
+    CalendarSearchResult,
+    CalendarSummary,
     CreateEventInput,
     DeleteEventInput,
     EventReference,
@@ -39,6 +43,7 @@ from app.models.calendar_models import (
     FindEventInput,
     GetDaySummaryInput,
     GetEventInput,
+    GoogleCalendarEventResource,
     ListCalendarsInput,
     PatchEventInput,
     SingleEventInput,
@@ -83,15 +88,29 @@ def writer():
         yield sink
 
 
+def _event(payload: dict[str, Any]) -> GoogleCalendarEventResource:
+    return GoogleCalendarEventResource.model_validate(payload)
+
+
 def _timed_event(
     start: str, end: str, summary: str = "Event", calendar_id: str = "primary"
-) -> dict[str, Any]:
-    return {
-        "summary": summary,
-        "start": {"dateTime": start},
-        "end": {"dateTime": end},
-        "calendarId": calendar_id,
-    }
+) -> GoogleCalendarEventResource:
+    return _event(
+        {
+            "summary": summary,
+            "start": {"dateTime": start},
+            "end": {"dateTime": end},
+            "calendarId": calendar_id,
+        }
+    )
+
+
+def _events_response(
+    events: list[GoogleCalendarEventResource], *, has_more: bool = False
+) -> CalendarEventsResponse:
+    return CalendarEventsResponse(
+        events=events, selected_calendars=[], has_more=has_more, calendars_truncated=[]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -192,12 +211,12 @@ class TestFormatCalendarOptionForStream:
 class TestFormatCalendarForStream:
     def test_google_shape(self) -> None:
         assert _format_calendar_for_stream(
-            {
-                "summary": "Work",
-                "id": "work@group.calendar.google.com",
-                "description": "team",
-                "backgroundColor": "#ff0000",
-            }
+            CalendarSummary(
+                summary="Work",
+                id="work@group.calendar.google.com",
+                description="team",
+                backgroundColor="#ff0000",
+            )
         ) == {
             "name": "Work",
             "id": "work@group.calendar.google.com",
@@ -205,18 +224,10 @@ class TestFormatCalendarForStream:
             "backgroundColor": "#ff0000",
         }
 
-    def test_snake_case_fallbacks(self) -> None:
-        out = _format_calendar_for_stream({"name": "Personal", "background_color": "#00ff00"})
-        assert out["name"] == "Personal"
-        assert out["backgroundColor"] == "#00ff00"
-
-    def test_summary_wins_over_name(self) -> None:
-        assert _format_calendar_for_stream({"summary": "A", "name": "B"})["name"] == "A"
-
     def test_missing_fields_do_not_raise(self) -> None:
-        out = _format_calendar_for_stream({})
-        assert out["name"] == ""
-        assert out["id"] == ""
+        out = _format_calendar_for_stream(CalendarSummary())
+        assert out["name"] is None
+        assert out["id"] is None
         assert out["backgroundColor"] is None
 
 
@@ -342,49 +353,67 @@ class TestRegistration:
 # ---------------------------------------------------------------------------
 
 
+_CALENDAR_LIST = CalendarListResponse.model_validate(
+    {
+        "kind": "calendar#calendarList",
+        "items": [
+            {"id": "primary", "summary": "Work", "backgroundColor": "#abc", "etag": "e1"},
+        ],
+    }
+)
+
+
 class TestListCalendars:
-    def test_returns_and_streams_calendars(self, tools, writer) -> None:
-        calendars = [{"id": "primary", "summary": "Work", "backgroundColor": "#abc"}]
+    def test_short_returns_the_trimmed_projection_and_streams_it(self, tools, writer) -> None:
         with patch(
             "app.services.calendar_service.list_calendars",
-            new=AsyncMock(return_value=calendars),
+            new=AsyncMock(return_value=_CALENDAR_LIST),
         ) as mock_list:
             out = tools["CUSTOM_LIST_CALENDARS"](ListCalendarsInput(), EXECUTE_REQUEST, AUTH)
 
-        assert out == {"calendars": calendars}
+        assert out == {
+            "calendars": [
+                {
+                    "id": "primary",
+                    "summary": "Work",
+                    "description": None,
+                    "backgroundColor": "#abc",
+                }
+            ]
+        }
         assert mock_list.await_args.args == ("user-42",)
-        assert mock_list.await_args.kwargs == {"short": True}
         assert writer.call_args[0][0] == {
             "calendar_list_fetch_data": [
                 {
                     "name": "Work",
                     "id": "primary",
-                    "description": "",
+                    "description": None,
                     "backgroundColor": "#abc",
                 }
             ]
         }
 
-    def test_short_flag_is_forwarded(self, tools, writer) -> None:
+    def test_short_false_returns_googles_full_entries_verbatim(self, tools, writer) -> None:
         with patch(
-            "app.services.calendar_service.list_calendars", new=AsyncMock(return_value=[])
-        ) as mock_list:
-            tools["CUSTOM_LIST_CALENDARS"](ListCalendarsInput(short=False), EXECUTE_REQUEST, AUTH)
-        assert mock_list.await_args.kwargs == {"short": False}
+            "app.services.calendar_service.list_calendars",
+            new=AsyncMock(return_value=_CALENDAR_LIST),
+        ):
+            out = tools["CUSTOM_LIST_CALENDARS"](
+                ListCalendarsInput(short=False), EXECUTE_REQUEST, AUTH
+            )
+        # Every key Google sent survives, including the ones the short view drops.
+        assert out["calendars"] == [
+            {"id": "primary", "summary": "Work", "backgroundColor": "#abc", "etag": "e1"}
+        ]
 
     def test_nothing_is_streamed_when_there_are_no_calendars(self, tools, writer) -> None:
-        with patch("app.services.calendar_service.list_calendars", new=AsyncMock(return_value=[])):
+        with patch(
+            "app.services.calendar_service.list_calendars",
+            new=AsyncMock(return_value=CalendarListResponse()),
+        ):
             out = tools["CUSTOM_LIST_CALENDARS"](ListCalendarsInput(), EXECUTE_REQUEST, AUTH)
         assert out == {"calendars": []}
         writer.assert_not_called()
-
-    def test_non_dict_entries_are_dropped_from_the_stream(self, tools, writer) -> None:
-        with patch(
-            "app.services.calendar_service.list_calendars",
-            new=AsyncMock(return_value=[{"id": "a"}, "junk", None]),
-        ):
-            tools["CUSTOM_LIST_CALENDARS"](ListCalendarsInput(), EXECUTE_REQUEST, AUTH)
-        assert len(writer.call_args[0][0]["calendar_list_fetch_data"]) == 1
 
     def test_missing_user_id_fails_before_any_service_call(self, tools) -> None:
         with patch("app.services.calendar_service.list_calendars", new=AsyncMock()) as mock_list:
@@ -419,7 +448,7 @@ class TestGetDaySummary:
             patch("app.services.user_service.get_user_by_id", new=AsyncMock(return_value=user)),
             patch(
                 "app.services.calendar_service.get_calendar_events",
-                new=AsyncMock(return_value={"events": events}),
+                new=AsyncMock(return_value=_events_response(events)),
             ) as mock_events,
             patch("app.services.calendar_service.get_calendar_metadata_map", new=metadata_mock),
         ):
@@ -468,7 +497,7 @@ class TestGetDaySummary:
             ),
             patch(
                 "app.services.calendar_service.get_calendar_events",
-                new=AsyncMock(return_value={"events": []}),
+                new=AsyncMock(return_value=_events_response([])),
             ),
             patch(
                 "app.services.calendar_service.get_calendar_metadata_map",
@@ -496,13 +525,23 @@ class TestGetDaySummary:
         events = [
             _timed_event("2026-03-15T09:00:00+00:00", "2026-03-15T10:30:00+00:00"),
             _timed_event("2026-03-15T13:00:00Z", "2026-03-15T14:00:00Z"),
-            {"summary": "Holiday", "start": {"date": "2026-03-15"}, "end": {"date": "2026-03-16"}},
-            {"summary": "Broken", "start": {"dateTime": "not-a-time"}, "end": {"dateTime": "x"}},
-            {
-                "summary": "Half-typed",
-                "start": {"dateTime": "2026-03-15T15:00:00Z"},
-                "end": {"date": "2026-03-16"},
-            },
+            _event(
+                {
+                    "summary": "Holiday",
+                    "start": {"date": "2026-03-15"},
+                    "end": {"date": "2026-03-16"},
+                }
+            ),
+            _event(
+                {"summary": "Broken", "start": {"dateTime": "not-a-time"}, "end": {"dateTime": "x"}}
+            ),
+            _event(
+                {
+                    "summary": "Half-typed",
+                    "start": {"dateTime": "2026-03-15T15:00:00Z"},
+                    "end": {"date": "2026-03-16"},
+                }
+            ),
         ]
         out, _ = self._run(tools, GetDaySummaryInput(date="2026-03-15"), events=events)
         assert out["busy_hours"] == 2.5
@@ -534,7 +573,9 @@ class TestGetDaySummary:
 
     def test_unparseable_event_does_not_shadow_the_real_next_event(self, tools, writer) -> None:
         events = [
-            {"summary": "corrupt", "start": {"dateTime": "23:00"}, "end": {"dateTime": "23:30"}},
+            _event(
+                {"summary": "corrupt", "start": {"dateTime": "23:00"}, "end": {"dateTime": "23:30"}}
+            ),
             _timed_event("2026-03-14T21:00:00+00:00", "2026-03-14T22:00:00+00:00", "next"),
         ]
         with patch(f"{MODULE}.datetime", _FrozenDatetime):
@@ -571,7 +612,7 @@ class TestGetDaySummary:
         out, _ = self._run(
             tools, GetDaySummaryInput(date="2026-03-15"), events=events, raises_metadata=True
         )
-        assert out["events"] == events
+        assert out["events"] == [event.model_dump() for event in events]
 
     def test_nothing_is_streamed_for_an_empty_day(self, tools, writer) -> None:
         self._run(tools, GetDaySummaryInput(date="2026-03-15"), events=[])
@@ -597,7 +638,7 @@ class TestGetDaySummary:
 
 
 class TestFetchEvents:
-    def _run(self, tools, request, *, result, metadata=None, raises_metadata=False):
+    def _run(self, tools, request, *, events, has_more=False, metadata=None, raises_metadata=False):
         metadata_mock = (
             AsyncMock(side_effect=RuntimeError("down"))
             if raises_metadata
@@ -606,7 +647,7 @@ class TestFetchEvents:
         with (
             patch(
                 "app.services.calendar_service.get_calendar_events",
-                new=AsyncMock(return_value=result),
+                new=AsyncMock(return_value=_events_response(events, has_more=has_more)),
             ) as mock_events,
             patch("app.services.calendar_service.get_calendar_metadata_map", new=metadata_mock),
         ):
@@ -615,7 +656,7 @@ class TestFetchEvents:
 
     def test_time_min_defaults_to_now_in_utc(self, tools, writer) -> None:
         with patch(f"{MODULE}.datetime", _FrozenDatetime):
-            _, mock_events = self._run(tools, FetchEventsInput(), result={"events": []})
+            _, mock_events = self._run(tools, FetchEventsInput(), events=[])
         assert mock_events.await_args.kwargs["time_min"] == "2026-03-14T20:30:00+00:00"
 
     def test_explicit_filters_are_forwarded(self, tools, writer) -> None:
@@ -627,7 +668,7 @@ class TestFetchEvents:
                 time_max="2026-01-02T00:00:00Z",
                 max_results=7,
             ),
-            result={"events": []},
+            events=[],
         )
         assert mock_events.await_args.kwargs == {
             "user_id": "user-42",
@@ -638,7 +679,7 @@ class TestFetchEvents:
         }
 
     def test_empty_calendar_ids_means_all_selected_calendars(self, tools, writer) -> None:
-        _, mock_events = self._run(tools, FetchEventsInput(calendar_ids=[]), result={"events": []})
+        _, mock_events = self._run(tools, FetchEventsInput(calendar_ids=[]), events=[])
         assert mock_events.await_args.kwargs["selected_calendars"] is None
 
     def test_events_are_formatted_and_has_more_is_propagated(self, tools, writer) -> None:
@@ -646,7 +687,8 @@ class TestFetchEvents:
         out, _ = self._run(
             tools,
             FetchEventsInput(),
-            result={"events": events, "has_more": True},
+            events=events,
+            has_more=True,
             metadata=({"cal-1": "#0f0"}, {"cal-1": "Team"}),
         )
         assert out["has_more"] is True
@@ -655,18 +697,16 @@ class TestFetchEvents:
         assert writer.call_args[0][0] == {"calendar_fetch_data": out["calendar_fetch_data"]}
 
     def test_has_more_defaults_to_false(self, tools, writer) -> None:
-        out, _ = self._run(tools, FetchEventsInput(), result={"events": []})
+        out, _ = self._run(tools, FetchEventsInput(), events=[])
         assert out["has_more"] is False
 
     def test_metadata_failure_falls_back_to_raw_events(self, tools, writer) -> None:
         events = [_timed_event("2026-01-01T09:00:00Z", "2026-01-01T10:00:00Z")]
-        out, _ = self._run(
-            tools, FetchEventsInput(), result={"events": events}, raises_metadata=True
-        )
-        assert out["calendar_fetch_data"] == events
+        out, _ = self._run(tools, FetchEventsInput(), events=events, raises_metadata=True)
+        assert out["calendar_fetch_data"] == [event.model_dump() for event in events]
 
     def test_nothing_is_streamed_when_there_are_no_events(self, tools, writer) -> None:
-        self._run(tools, FetchEventsInput(), result={"events": []})
+        self._run(tools, FetchEventsInput(), events=[])
         writer.assert_not_called()
 
 
@@ -676,7 +716,7 @@ class TestFetchEvents:
 
 
 class TestFindEvent:
-    def _run(self, tools, request, *, result, metadata=None, raises_metadata=False):
+    def _run(self, tools, request, *, matching_events, metadata=None, raises_metadata=False):
         metadata_mock = (
             AsyncMock(side_effect=RuntimeError("down"))
             if raises_metadata
@@ -685,7 +725,15 @@ class TestFindEvent:
         with (
             patch(
                 "app.services.calendar_service.search_calendar_events_native",
-                new=AsyncMock(return_value=result),
+                new=AsyncMock(
+                    return_value=CalendarSearchResult(
+                        query=request.query,
+                        matching_events=matching_events,
+                        total_matches=len(matching_events),
+                        total_events_searched=len(matching_events),
+                        searched_calendars=[],
+                    )
+                ),
             ) as mock_search,
             patch("app.services.calendar_service.get_calendar_metadata_map", new=metadata_mock),
         ):
@@ -696,7 +744,7 @@ class TestFindEvent:
         _, mock_search = self._run(
             tools,
             FindEventInput(query="dentist", time_min="2026-01-01T00:00:00Z", time_max=None),
-            result={"matching_events": []},
+            matching_events=[],
         )
         assert mock_search.await_args.kwargs == {
             "query": "dentist",
@@ -710,16 +758,16 @@ class TestFindEvent:
         out, _ = self._run(
             tools,
             FindEventInput(query="dentist"),
-            result={"matching_events": events},
+            matching_events=events,
             metadata=({"cal-1": "#00f"}, {"cal-1": "Personal"}),
         )
-        assert out["events"] == events
+        assert out["events"] == [event.model_dump() for event in events]
         assert out["calendar_search_data"][0]["summary"] == "Dentist"
         assert out["calendar_search_data"][0]["calendar_name"] == "Personal"
         assert writer.call_args[0][0] == {"calendar_fetch_data": out["calendar_search_data"]}
 
     def test_no_matches_streams_nothing(self, tools, writer) -> None:
-        out, _ = self._run(tools, FindEventInput(query="nope"), result={"matching_events": []})
+        out, _ = self._run(tools, FindEventInput(query="nope"), matching_events=[])
         assert out == {"events": [], "calendar_search_data": []}
         writer.assert_not_called()
 
@@ -728,10 +776,10 @@ class TestFindEvent:
         out, _ = self._run(
             tools,
             FindEventInput(query="x"),
-            result={"matching_events": events},
+            matching_events=events,
             raises_metadata=True,
         )
-        assert out["calendar_search_data"] == events
+        assert out["calendar_search_data"] == [event.model_dump() for event in events]
 
 
 # ---------------------------------------------------------------------------

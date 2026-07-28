@@ -23,6 +23,7 @@ from app.constants.log_tags import LogTag
 from app.decorators import with_doc
 from app.models.calendar_models import (
     AddRecurrenceInput,
+    CalendarSummary,
     CreateEventInput,
     DeleteEventInput,
     FetchEventsInput,
@@ -110,13 +111,13 @@ def _format_calendar_option_for_stream(opt: dict[str, Any]) -> dict[str, Any]:
     return formatted
 
 
-def _format_calendar_for_stream(cal: dict[str, Any]) -> dict[str, Any]:
+def _format_calendar_for_stream(cal: CalendarSummary) -> dict[str, str | None]:
     """Format a calendar entry into CalendarListFetchData schema for frontend streaming."""
     return {
-        "name": cal.get("summary", cal.get("name", "")),
-        "id": cal.get("id", ""),
-        "description": cal.get("description", ""),
-        "backgroundColor": cal.get("backgroundColor", cal.get("background_color")),
+        "name": cal.summary,
+        "id": cal.id,
+        "description": cal.description,
+        "backgroundColor": cal.backgroundColor,
     }
 
 
@@ -156,16 +157,20 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
         user_id = _get_user_id(auth_credentials)
-        calendars = _run_sync(calendar_service.list_calendars(user_id, short=request.short))
+        calendar_list = _run_sync(calendar_service.list_calendars(user_id))
+        summaries = calendar_service.to_calendar_summaries(calendar_list)
+        calendars = (
+            [summary.model_dump() for summary in summaries]
+            if request.short
+            else [entry.model_dump() for entry in calendar_list.items]
+        )
 
         writer = get_stream_writer()
-        if calendars:
+        if summaries:
             writer(
                 {
                     "calendar_list_fetch_data": [
-                        _format_calendar_for_stream(cal)
-                        for cal in calendars
-                        if isinstance(cal, dict)
+                        _format_calendar_for_stream(summary) for summary in summaries
                     ]
                 }
             )
@@ -217,41 +222,39 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             )
         )
 
-        events = result.get("events", [])
+        events = result.events
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             formatted_events = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map)
+                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
         except Exception:
-            formatted_events = events
+            formatted_events = [event.model_dump() for event in events]
 
         busy_minutes: float = 0.0
         for event in events:
-            start = event.get("start", {})
-            end = event.get("end", {})
-            if "dateTime" in start and "dateTime" in end:
+            start_time = event.start.dateTime if event.start else None
+            end_time = event.end.dateTime if event.end else None
+            if start_time and end_time:
                 try:
-                    start_dt = datetime.fromisoformat(start["dateTime"].replace("Z", "+00:00"))
-                    end_dt = datetime.fromisoformat(end["dateTime"].replace("Z", "+00:00"))
+                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
                     duration = (end_dt - start_dt).total_seconds() / 60
                     busy_minutes += duration
                 except Exception:  # nosec B110
                     pass
 
-        next_event = None
+        next_event: dict[str, Any] | None = None
         if day_start.date() == now.date():
             for event in events:
-                start = event.get("start", {})
-                if "dateTime" in start:
+                start_time = event.start.dateTime if event.start else None
+                if start_time:
                     try:
-                        event_start = datetime.fromisoformat(
-                            start["dateTime"].replace("Z", "+00:00")
-                        )
+                        event_start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                         if event_start > now:
-                            next_event = event
+                            next_event = event.model_dump()
                             break
                     except Exception:  # nosec B110
                         pass
@@ -266,7 +269,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         writer = get_stream_writer()
         if formatted_events:
-            writer({"calendar_fetch_data": [e for e in formatted_events if isinstance(e, dict)]})
+            writer({"calendar_fetch_data": formatted_events})
 
         return result_data
 
@@ -293,24 +296,24 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             )
         )
 
-        events = result.get("events", [])
+        events = result.events
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             calendar_fetch_data = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map)
+                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
                 for event in events
             ]
         except Exception:
-            calendar_fetch_data = events
+            calendar_fetch_data = [event.model_dump() for event in events]
 
         writer = get_stream_writer()
         if calendar_fetch_data:
-            writer({"calendar_fetch_data": [e for e in calendar_fetch_data if isinstance(e, dict)]})
+            writer({"calendar_fetch_data": calendar_fetch_data})
 
         return {
             "calendar_fetch_data": calendar_fetch_data,
-            "has_more": result.get("has_more", False),
+            "has_more": result.has_more,
         }
 
     @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
@@ -333,22 +336,20 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             )
         )
 
-        events = result.get("matching_events", [])
+        events = [event.model_dump() for event in result.matching_events]
 
         try:
             color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             calendar_search_data = [
-                calendar_service.format_event_for_frontend(event, color_map, name_map)
-                for event in events
+                calendar_service.format_event_for_frontend(event, color_map, name_map).model_dump()
+                for event in result.matching_events
             ]
         except Exception:
             calendar_search_data = events
 
         writer = get_stream_writer()
         if calendar_search_data:
-            writer(
-                {"calendar_fetch_data": [e for e in calendar_search_data if isinstance(e, dict)]}
-            )
+            writer({"calendar_fetch_data": calendar_search_data})
 
         return {
             "events": events,

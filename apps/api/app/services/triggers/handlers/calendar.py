@@ -188,10 +188,13 @@ class CalendarTriggerHandler(TriggerHandler):
             # Import here to avoid circular imports
             from app.services import calendar_service
 
-            calendars = await calendar_service.list_calendars(user_id)
+            calendar_list = await calendar_service.list_calendars(user_id)
 
-            if isinstance(calendars, dict) and "items" in calendars:
-                return [cal.get("id", "primary") for cal in calendars["items"] if cal.get("id")]
+            # An `items`-less payload means Google told us nothing about the user's
+            # calendars, which is not the same as "the user has zero calendars" —
+            # only the former falls back to primary.
+            if "items" in calendar_list.model_fields_set:
+                return [cal.id for cal in calendar_list.items]
             return ["primary"]
 
         except Exception as e:
