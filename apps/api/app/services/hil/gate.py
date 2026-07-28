@@ -164,7 +164,6 @@ async def _gate(
     run), or paused (card, then ``interrupt()`` — resuming below only once decided).
     """
     approval_id = approval_id_for(context.conversation_id, call.id)
-    tool_call = {"id": call.id, "name": call.name, "args": call.args}
     decision: IntentDecision | None = None
 
     try:
@@ -201,7 +200,7 @@ async def _gate(
                 stream_id=context.stream_id,
                 user_id=context.user_id,
                 conversation_id=context.conversation_id,
-                tool_call=tool_call,
+                tool_call=call,
                 summary=summary,
                 integration_name=integration_name,
                 reason=decision.reason,
@@ -214,7 +213,7 @@ async def _gate(
                 stream_id=context.stream_id,
                 user_id=context.user_id,
                 conversation_id=context.conversation_id,
-                tool_call=tool_call,
+                tool_call=call,
                 summary=summary,
                 integration_name=integration_name,
             )
@@ -248,7 +247,7 @@ async def _gate(
     await publish_approval_outcome(
         stream_id=context.stream_id,
         approval_id=approval_id,
-        tool_call=tool_call,
+        tool_call=call,
         summary=summary,
         integration_name=integration_name,
         outcome=outcome,

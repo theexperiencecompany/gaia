@@ -27,12 +27,13 @@ from app.services.hil.bridge import (
     recall_declined_call,
     remember_declined_call,
 )
+from app.services.hil.utils import GatedCall
 
 from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID
 
 MODULE = "app.services.hil.bridge"
 
-TOOL_CALL = {"id": "call-1", "name": "send_email", "args": {"to": "bob@example.com"}}
+TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"})
 
 
 @pytest.fixture

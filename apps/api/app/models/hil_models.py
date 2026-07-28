@@ -1,7 +1,7 @@
 """HIL preference + custom-tool classification documents."""
 
 from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -11,10 +11,21 @@ HILApprovalStatus = Literal[
     "pending", "approved", "denied", "timeout", "abandoned", "auto_approved"
 ]
 
+
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
 HILMode = Literal["always_allow", "always_ask", "auto"]
 HIL_DEFAULT_MODE: HILMode = "always_allow"
+
+
+class DeclinedCallRecord(TypedDict):
+    """What ``bridge.remember_declined_call`` stores in Redis for one declined call.
+
+    Written and read by that one module, so it needs no runtime validation — the
+    TypedDict is the shape contract both sides are checked against.
+    """
+
+    feedback: str | None
 
 
 class HILPreferences(BaseModel):
