@@ -5,7 +5,7 @@ Provides REST API for installing, creating, listing, and managing
 installable agent skills (Agent Skills open standard).
 """
 
-from typing import Annotated, Any, cast
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
@@ -23,6 +23,8 @@ from app.agents.skills.installer import (
 from app.agents.skills.models import (
     BuiltinSkillInfo,
     BuiltinSkillsResponse,
+    DiscoveredSkillInfo,
+    DiscoverSkillsResponse,
     Skill,
     SkillInlineCreateRequest,
     SkillListResponse,
@@ -133,7 +135,7 @@ async def list_builtin_skills_endpoint(
 async def discover_skills_from_github(
     repo: str = Query(..., description="GitHub repo (owner/repo or full URL)"),
     branch: str = Query("main", description="Branch to search"),
-) -> dict[str, Any]:
+) -> DiscoverSkillsResponse:
     """Discover available skills in a GitHub repository.
 
     Lists all skills found in standard locations without installing.
@@ -146,12 +148,21 @@ async def discover_skills_from_github(
         skills = await discover_skills_from_repo(repo, branch)
         log.set(result_count=len(skills))
         log.set(outcome="success")
-        return {
-            "repo": repo,
-            "branch": branch,
-            "skills": [s.to_dict() for s in skills],
-            "count": len(skills),
-        }
+        return DiscoverSkillsResponse(
+            repo=repo,
+            branch=branch,
+            skills=[
+                DiscoveredSkillInfo(
+                    name=s.name,
+                    description=s.description,
+                    path=s.path,
+                    repo_url=s.repo_url,
+                    subagent_id=s.subagent_id,
+                )
+                for s in skills
+            ],
+            count=len(skills),
+        )
     except ValueError as e:
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,

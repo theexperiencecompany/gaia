@@ -15,12 +15,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 import pytest
 
 if TYPE_CHECKING:
+    from app.agents.skills.github_discovery import DiscoveredSkill
     from app.agents.skills.models import Skill
 
 BASE_URL = "/api/v1/skills"
@@ -73,18 +74,18 @@ def _make_skill_mock(**overrides) -> Skill:
     return Skill(**base)  # type: ignore[arg-type]
 
 
-def _make_discovered_skill(**overrides) -> MagicMock:
+def _make_discovered_skill(**overrides) -> DiscoveredSkill:
+    from app.agents.skills.github_discovery import DiscoveredSkill
+
     base = {
         "name": "my-skill",
         "description": "Discovered skill",
         "path": "skills/my-skill",
+        "repo_url": "https://github.com/owner/repo",
+        "subagent_id": "executor",
     }
     base.update(overrides)
-    mock = MagicMock()
-    for k, v in base.items():
-        setattr(mock, k, v)
-    mock.to_dict = MagicMock(return_value=base)
-    return mock
+    return DiscoveredSkill(**base)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -108,8 +109,17 @@ class TestDiscoverSkills:
         assert response.status_code == 200
         data = response.json()
         assert data["repo"] == "owner/repo"
+        assert data["branch"] == "main"
         assert data["count"] == 1
-        assert len(data["skills"]) == 1
+        assert data["skills"] == [
+            {
+                "name": "my-skill",
+                "description": "Discovered skill",
+                "path": "skills/my-skill",
+                "repo_url": "https://github.com/owner/repo",
+                "subagent_id": "executor",
+            }
+        ]
 
     async def test_discover_skills_custom_branch(self, client: AsyncClient):
         with patch(

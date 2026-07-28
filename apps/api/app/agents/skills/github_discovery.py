@@ -40,15 +40,6 @@ class DiscoveredSkill:
     repo_url: str
     subagent_id: str = "global"
 
-    def to_dict(self) -> dict[str, str]:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "path": self.path,
-            "repo_url": self.repo_url,
-            "subagent_id": self.subagent_id,
-        }
-
 
 async def _fetch_git_tree(
     owner: str,

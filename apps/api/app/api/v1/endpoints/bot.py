@@ -28,6 +28,7 @@ from app.models.bot_models import (
     LinkTokenRecord,
     ResetSessionRequest,
     ResetSessionResponse,
+    TranscribeAudioResponse,
     UnlinkAccountResponse,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
@@ -572,9 +573,13 @@ async def unlink_account(request: Request) -> UnlinkAccountResponse:
 async def transcribe_bot_audio(
     request: Request,
     file: Annotated[UploadFile, File(...)],
+    # `tiered_rate_limit` finds the caller by reading the `user` keyword argument
+    # FastAPI injects and pulling "user_id" off it, so this stays the full auth
+    # dict rather than a `get_user_id` string — narrowing it would silently skip
+    # rate limiting for this route.
     user: Annotated[dict, Depends(get_current_user)],
     content_length: Annotated[int | None, Header(alias="content-length")] = None,
-) -> dict:
+) -> TranscribeAudioResponse:
     """Convert audio bytes into a transcript for bot adapters."""
     await require_bot_api_key(request)
     log.set(operation="bot_transcribe_audio", user={"id": user.get("user_id")})
@@ -610,4 +615,4 @@ async def transcribe_bot_audio(
         log.error(f"{LogTag.API} Transcription failed: {e}", exc_info=True)
         raise HTTPException(status_code=502, detail="Transcription failed")
 
-    return {"text": text}
+    return TranscribeAudioResponse(text=text)

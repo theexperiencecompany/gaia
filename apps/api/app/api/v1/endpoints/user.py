@@ -1,5 +1,4 @@
 from datetime import UTC, datetime
-from typing import Any
 
 from bson import ObjectId
 from fastapi import (
@@ -23,6 +22,7 @@ from app.models.user_models import (
     AuthenticatedUserResponse,
     HoloCardOnboardingFields,
     PublicHoloCardResponse,
+    UpdateHoloCardColorsResponse,
     UpdateTimezoneResponse,
     UserUpdate,
     UserUpdateResponse,
@@ -248,21 +248,18 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
 async def update_holo_card_colors(
     overlay_color: str = Form(..., description="Overlay color or gradient"),
     overlay_opacity: int = Form(..., description="Overlay opacity (0-100)"),
-    user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
+    user_id: str = Depends(get_user_id),
+) -> UpdateHoloCardColorsResponse:
     """
     Update holo card overlay color and opacity.
     """
     try:
-        user_id = user.get("user_id")
         log.set(
             user={"id": user_id},
             operation="update_holo_card_colors",
             overlay_color=overlay_color,
             overlay_opacity=overlay_opacity,
         )
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
 
         # Validate opacity range
         if not 0 <= overlay_opacity <= 100:
@@ -277,12 +274,12 @@ async def update_holo_card_colors(
             raise HTTPException(status_code=404, detail="User not found")
 
         log.set(outcome="success")
-        return {
-            "success": True,
-            "message": "Holo card colors updated successfully",
-            "overlay_color": overlay_color,
-            "overlay_opacity": overlay_opacity,
-        }
+        return UpdateHoloCardColorsResponse(
+            success=True,
+            message="Holo card colors updated successfully",
+            overlay_color=overlay_color,
+            overlay_opacity=overlay_opacity,
+        )
 
     except HTTPException:
         raise

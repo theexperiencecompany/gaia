@@ -138,6 +138,12 @@ class UnlinkAccountResponse(BaseModel):
     success: bool = Field(..., description="Whether the account was unlinked")
 
 
+class TranscribeAudioResponse(BaseModel):
+    """Response model for a transcribed bot audio clip."""
+
+    text: str = Field(..., description="Transcript of the audio clip")
+
+
 class IntegrationInfo(BaseModel):
     """Integration information for bot settings."""
 

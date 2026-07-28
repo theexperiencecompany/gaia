@@ -373,6 +373,15 @@ class HoloCardOnboardingFields(BaseModel):
     overlay_opacity: int = 40
 
 
+class UpdateHoloCardColorsResponse(BaseModel):
+    """Response for a holo-card overlay colour update, echoing the stored values."""
+
+    success: bool = Field(..., description="Whether the update succeeded")
+    message: str = Field(..., description="Response message")
+    overlay_color: str = Field(..., description="Overlay color that was stored")
+    overlay_opacity: int = Field(..., description="Overlay opacity that was stored (0-100)")
+
+
 class PublicHoloCardResponse(BaseModel):
     """Public-facing subset of a user's profile, keyed by user id (``card_id``).
 
