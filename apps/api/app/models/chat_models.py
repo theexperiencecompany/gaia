@@ -219,3 +219,15 @@ class BatchSyncRequest(BaseModel):
     """Batch of conversation sync items sent by a client to reconcile state."""
 
     conversations: list[ConversationSyncItem]
+
+
+class CancelStreamResponse(BaseModel):
+    """Outcome of a stream-cancellation request.
+
+    ``error`` is set only when the stream could not be cancelled at all (it was
+    never started, or already expired from Redis).
+    """
+
+    success: bool
+    stream_id: str
+    error: str | None = None

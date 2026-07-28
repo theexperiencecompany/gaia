@@ -503,6 +503,13 @@ class PublicWorkflowsResponse(BaseModel):
     total: int = Field(description="Total number of public workflows")
 
 
+class ResetWorkflowResponse(BaseModel):
+    """Response model for resetting a system workflow to its default definition."""
+
+    success: bool = Field(description="Whether the workflow was reset")
+    message: str = Field(description="Success or status message")
+
+
 class PublishWorkflowResponse(BaseModel):
     """Response model for publishing a workflow."""
 

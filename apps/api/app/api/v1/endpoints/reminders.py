@@ -2,7 +2,7 @@
 FastAPI endpoints for reminder management.
 """
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
@@ -14,13 +14,20 @@ from app.constants.log_tags import LogTag
 from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
+    CronValidationResponse,
     ReminderResponse,
     ReminderStatus,
     UpdateReminderRequest,
 )
 from app.services.reminder_service import reminder_scheduler
-from app.utils.cron_utils import get_next_run_time, validate_cron_expression
+from app.utils.cron_utils import (
+    calculate_next_occurrences,
+    get_next_run_time,
+    validate_cron_expression,
+)
 from shared.py.wide_events import ReminderContext, log
+
+_CRON_PREVIEW_RUNS = 5
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
 
@@ -477,30 +484,20 @@ async def resume_reminder_endpoint(
 @router.get("/cron/validate")
 async def validate_cron_endpoint(
     expression: str = Query(..., description="Cron expression to validate"),
-) -> dict[str, Any]:
-    """
-    Validate a cron expression.
-
-    Args:
-        expression: Cron expression to validate
-
-    Returns:
-        Validation result
-    """
+) -> CronValidationResponse:
+    """Validate a cron expression and preview its next few run times."""
     try:
         is_valid = validate_cron_expression(expression)
+        if not is_valid:
+            return CronValidationResponse(expression=expression, valid=False)
 
-        result = {"expression": expression, "valid": is_valid}
-
-        if is_valid:
-            # Get next few run times as examples
-            from app.utils.cron_utils import calculate_next_occurrences
-
-            next_runs = calculate_next_occurrences(expression, 5)
-            result["next_runs"] = [run.isoformat() for run in next_runs]
-
-        return result
+        next_runs = calculate_next_occurrences(expression, _CRON_PREVIEW_RUNS)
+        return CronValidationResponse(
+            expression=expression,
+            valid=True,
+            next_runs=[run.isoformat() for run in next_runs],
+        )
 
     except Exception as e:
         log.error(f"{LogTag.API} Error validating cron expression {expression}: {e}")
-        return {"expression": expression, "valid": False, "error": str(e)}
+        return CronValidationResponse(expression=expression, valid=False, error=str(e))

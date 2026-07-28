@@ -375,6 +375,20 @@ class ReminderResponse(BaseModel):
         return None
 
 
+class CronValidationResponse(BaseModel):
+    """Result of validating a cron expression."""
+
+    expression: str = Field(..., description="The cron expression that was checked")
+    valid: bool = Field(..., description="Whether the expression parses as a valid cron")
+    next_runs: list[str] = Field(
+        default_factory=list,
+        description="ISO timestamps of the next few runs; empty unless the expression is valid",
+    )
+    error: str | None = Field(
+        default=None, description="Why the expression could not be evaluated, if it raised"
+    )
+
+
 # Repository persistence models (Wave E migration)
 
 

@@ -3,13 +3,14 @@ Clean workflow API router for GAIA workflow system.
 Provides CRUD operations, execution, and status endpoints.
 """
 
-from typing import Any, cast
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
+    get_user_id,
     get_user_timezone_from_preferences,
 )
 from app.api.v1.middleware.rate_limiter import limiter
@@ -24,6 +25,7 @@ from app.models.workflow_models import (
     PublicWorkflowsResponse,
     PublishWorkflowResponse,
     RegenerateStepsRequest,
+    ResetWorkflowResponse,
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
@@ -742,8 +744,8 @@ async def update_workflow(
 
 @router.post("/workflows/{workflow_id}/reset-to-default")
 async def reset_workflow_to_default(
-    workflow_id: str, user: dict = Depends(get_current_user)
-) -> dict[str, Any]:
+    workflow_id: str, user_id: str = Depends(get_user_id)
+) -> ResetWorkflowResponse:
     """Reset a GAIA system workflow to its original definition.
 
     Restores the workflow's title, description, steps, and trigger config to
@@ -753,14 +755,14 @@ async def reset_workflow_to_default(
     Only works on workflows where is_system_workflow=True.
     """
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user_id},
         workflow=WorkflowContext(id=workflow_id),
     )
 
     try:
         success = await reset_system_workflow_to_default(
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user_id,
         )
         if not success:
             raise HTTPException(
@@ -768,7 +770,7 @@ async def reset_workflow_to_default(
                 detail="Workflow not found or is not a resettable system workflow.",
             )
         log.set(outcome="success")
-        return {"success": True, "message": "Workflow reset to default."}
+        return ResetWorkflowResponse(success=True, message="Workflow reset to default.")
 
     except HTTPException:
         raise
