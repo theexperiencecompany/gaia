@@ -16,6 +16,7 @@ from app.agents.memory.email_processor import (
     fetch_emails_for_onboarding,
     process_gmail_to_memory,
 )
+from app.models.mail_models import GmailMessagesResponse, GmailToolResult
 from app.models.user_models import UserDocument
 from app.services.onboarding.social_profile_service import (
     extract_social_profiles_from_emails,
@@ -58,7 +59,7 @@ class TestSearchPlatformEmails:
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_returns_messages(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {"messages": [{"id": "1"}, {"id": "2"}]}
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}, {"id": "2"}])
         result = await _search_platform_emails(USER_ID, "github", "from:github.com")
         assert len(result) == 2
         mock_search.assert_awaited_once_with(
@@ -67,13 +68,13 @@ class TestSearchPlatformEmails:
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_returns_empty_on_no_messages(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {"messages": []}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         result = await _search_platform_emails(USER_ID, "github", "from:github.com")
         assert result == []
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_returns_empty_on_missing_messages_key(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         result = await _search_platform_emails(USER_ID, "twitter", "from:twitter.com")
         assert result == []
 
@@ -85,7 +86,7 @@ class TestSearchPlatformEmails:
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_respects_max_results(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {"messages": [{"id": "1"}]}
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
         await _search_platform_emails(USER_ID, "github", "q", max_results=10)
         mock_search.assert_awaited_once_with(user_id=USER_ID, query="q", max_results=10)
 
@@ -108,8 +109,8 @@ class TestSearchPlatformEmailsParallel:
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_parallel_search_aggregates_results(self, mock_search: AsyncMock) -> None:
         mock_search.side_effect = [
-            {"messages": [{"id": "g1"}]},
-            {"messages": [{"id": "t1"}, {"id": "t2"}]},
+            GmailMessagesResponse(messages=[{"id": "g1"}]),
+            GmailMessagesResponse(messages=[{"id": "t1"}, {"id": "t2"}]),
         ]
         result = await _search_platform_emails_parallel(USER_ID)
         assert "github" in result
@@ -312,10 +313,7 @@ class TestProcessGmailToMemory:
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
 
-        mock_search.return_value = {
-            "messages": [{"id": "1"}, {"id": "2"}],
-            "nextPageToken": None,
-        }
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}, {"id": "2"}])
         mock_process.return_value = ([{"role": "user", "content": "email1"}], 0)
         mock_store.return_value = None
         mock_profiles.return_value = {"profiles_stored": 2}
@@ -347,7 +345,7 @@ class TestProcessGmailToMemory:
             )
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
-        mock_search.return_value = {"messages": []}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         mock_profiles.return_value = {"profiles_stored": 0}
 
         result = await process_gmail_to_memory(USER_ID)
@@ -372,7 +370,7 @@ class TestProcessGmailToMemory:
                 return_value={"profiles_stored": 0},
             ),
         ):
-            mock_search.return_value = {"messages": []}
+            mock_search.return_value = GmailMessagesResponse(messages=[])
             result = await process_gmail_to_memory(USER_ID)
             assert result["total"] == 0
 
@@ -402,7 +400,7 @@ class TestProcessGmailToMemory:
             )
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
-        mock_search.return_value = {"messages": []}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         mock_profiles.return_value = {"profiles_stored": 0}
 
         await process_gmail_to_memory(USER_ID)
@@ -433,10 +431,7 @@ class TestProcessGmailToMemory:
             )
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
-        mock_search.return_value = {
-            "messages": [{"id": "1"}],
-            "nextPageToken": None,
-        }
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
         mock_process.return_value = ([{"role": "user", "content": "c"}], 0)
         mock_store.return_value = None
         mock_profiles.side_effect = RuntimeError("profile crash")
@@ -471,10 +466,7 @@ class TestProcessGmailToMemory:
             )
         )
         mock_users.set_gmail_scan_timestamp = AsyncMock()
-        mock_search.return_value = {
-            "messages": [{"id": "1"}],
-            "nextPageToken": None,
-        }
+        mock_search.return_value = GmailMessagesResponse(messages=[{"id": "1"}])
         mock_process.return_value = ([{"role": "user", "content": "c"}], 0)
         mock_store.return_value = None
         mock_profiles.return_value = {"profiles_stored": 0}
@@ -711,21 +703,21 @@ class TestFetchEmailsForOnboardingScope:
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_defaults_to_inbox_only(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {"messages": [], "nextPageToken": None}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         await fetch_emails_for_onboarding(USER_ID)
         query = mock_search.await_args.kwargs["query"]
         assert query == "in:inbox newer_than:30d"
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_include_sent_spans_both_mailboxes(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {"messages": [], "nextPageToken": None}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         await fetch_emails_for_onboarding(USER_ID, include_sent=True)
         query = mock_search.await_args.kwargs["query"]
         assert query == "(in:inbox OR in:sent) newer_than:30d"
 
     @patch(_PATCH_SEARCH, new_callable=AsyncMock)
     async def test_months_scales_the_recency_window(self, mock_search: AsyncMock) -> None:
-        mock_search.return_value = {"messages": [], "nextPageToken": None}
+        mock_search.return_value = GmailMessagesResponse(messages=[])
         await fetch_emails_for_onboarding(USER_ID, months=3, include_sent=True)
         assert mock_search.await_args.kwargs["query"] == "(in:inbox OR in:sent) newer_than:90d"
 
@@ -753,7 +745,12 @@ class TestFetchEmailsForOnboardingSentLabelSurvives:
             new_callable=AsyncMock,
         ) as mock_invoke:
             mock_invoke.side_effect = [
-                {"successful": True, "data": {"messages": raw_messages, "nextPageToken": None}},
+                GmailToolResult.model_validate(
+                    {
+                        "successful": True,
+                        "data": {"messages": raw_messages, "nextPageToken": None},
+                    }
+                ),
             ]
             return await fetch_emails_for_onboarding(
                 USER_ID, fmt="full", include_sent=True, max_total=10

@@ -41,7 +41,7 @@ async def learn_writing_style(
             max_results=50,
         )
 
-        sent_emails = result.get("messages", [])
+        sent_emails = result.messages
         sent_count = len(sent_emails)
 
         if on_status is not None:

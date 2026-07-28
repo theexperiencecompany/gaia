@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import re
 import time
-from typing import Any, cast
+from typing import Any
 
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
@@ -91,7 +91,7 @@ class _StepTimer:
         return "\n".join(lines)
 
 
-async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]]:
+async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[str, Any]]]:
     """
     Search Gmail API in parallel for emails from all platform domains.
 
@@ -123,7 +123,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]
     results = await asyncio.gather(*[task for _, task in search_tasks], return_exceptions=True)
 
     # Build platform -> emails mapping
-    platform_emails: dict[str, list[dict]] = {}
+    platform_emails: dict[str, list[dict[str, Any]]] = {}
     for (platform, _), result in zip(search_tasks, results):
         if isinstance(result, Exception):
             log.error(f"{LogTag.MEMORY} Search failed for {platform}: {result}")
@@ -145,7 +145,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]
 
 async def _search_platform_emails(
     user_id: str, platform: str, query: str, max_results: int = 10
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Search Gmail for emails from a specific platform.
 
@@ -165,8 +165,7 @@ async def _search_platform_emails(
             max_results=max_results,
         )
 
-        emails = result.get("messages", [])
-        return cast("list[dict]", emails)
+        return result.messages
 
     except Exception as e:
         log.error(f"{LogTag.MEMORY} Error searching {platform} emails: {e}")
@@ -189,9 +188,9 @@ async def fetch_emails_for_onboarding(
     max_total: int = ONBOARDING_EMAIL_SCAN_LIMIT,
     on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
     fmt: str = "metadata",
-    into: list[dict] | None = None,
+    into: list[dict[str, Any]] | None = None,
     include_sent: bool = False,
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Fetch the last `months` months of emails for onboarding.
 
     Uses Gmail metadata format by default (no body) so batches can be 100 wide.
@@ -206,7 +205,7 @@ async def fetch_emails_for_onboarding(
     """
     scope = INBOX_OR_SENT_EMAIL_QUERY if include_sent else EMAIL_QUERY
     query = f"{scope} newer_than:{months * 30}d"
-    all_emails: list[dict] = into if into is not None else []
+    all_emails: list[dict[str, Any]] = into if into is not None else []
     page_token: str | None = None
     metadata_mode = fmt == "metadata"
 
@@ -222,7 +221,7 @@ async def fetch_emails_for_onboarding(
                 include_payload=not metadata_mode,
                 verbose=not metadata_mode,
             )
-            batch = result.get("messages", [])
+            batch = result.messages
             if not batch:
                 break
             all_emails.extend(batch)
@@ -231,7 +230,7 @@ async def fetch_emails_for_onboarding(
                     batch[-1].get("from") or batch[-1].get("sender") or ""
                 )
                 await on_batch(len(all_emails), latest_sender or None)
-            page_token = result.get("nextPageToken")
+            page_token = result.next_page_token
             if not page_token:
                 break
     except Exception as e:
@@ -322,17 +321,17 @@ async def process_gmail_to_memory(user_id: str) -> dict:
             fetch_elapsed = time.monotonic() - t0_search
             log.info(
                 f"{LogTag.MEMORY} Gmail fetch batch {batch_count}: {fetch_elapsed:.1f}s "
-                f"(fetched so far: {total_fetched + len(result.get('messages', []))})"
+                f"(fetched so far: {total_fetched + len(result.messages)})"
             )
             timer.record(f"Gmail API fetch — batch {batch_count}", fetch_elapsed)
 
-            batch_emails = result.get("messages", [])
+            batch_emails = result.messages
 
             if not batch_emails:
                 break
 
             # Update page token for next iteration
-            page_token = result.get("nextPageToken")
+            page_token = result.next_page_token
 
             # Update stats
             total_fetched += len(batch_emails)

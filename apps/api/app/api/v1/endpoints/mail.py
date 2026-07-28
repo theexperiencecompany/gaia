@@ -111,15 +111,11 @@ async def list_messages(
 ) -> GmailMessagesResponse:
     try:
         # Use the new search_messages function with inbox filter
-        search_results = await search_messages(
+        response = await search_messages(
             user_id=user_id,
             query="in:inbox",
             max_results=max_results,
             page_token=pageToken,
-        )
-        response = GmailMessagesResponse(
-            messages=search_results.get("messages", []),
-            next_page_token=search_results.get("nextPageToken"),
         )
 
         log.set(
@@ -234,15 +230,11 @@ async def search_emails(
         # Combine all query parts
         gmail_query = " ".join(query_parts)
 
-        search_results = await search_messages(
+        response = await search_messages(
             user_id=user_id,
             query=gmail_query,
             max_results=max_results,
             page_token=page_token,
-        )
-        response = GmailMessagesResponse(
-            messages=search_results.get("messages", []),
-            next_page_token=search_results.get("nextPageToken"),
         )
 
         log.set(
@@ -335,10 +327,10 @@ async def send_email_route(
             thread_id=thread_id,
         )
 
-        if not sent_message.get("successful", True):
+        if not sent_message.successful:
             raise HTTPException(
                 status_code=500,
-                detail=sent_message.get("error", "Failed to send email"),
+                detail=sent_message.error or "Failed to send email",
             )
 
         log.set(
@@ -348,9 +340,9 @@ async def send_email_route(
             attachments_count=len(attachments) if attachments else 0,
             outcome="success",
         )
-        # send_email hands back the raw Composio payload; this is the boundary read.
+        # Gmail owns the schema of the Composio envelope's ``data``; this is the boundary read.
         return SendEmailWithAttachmentsResponse(
-            message_id=sent_message.get("data", {}).get("id"),
+            message_id=(sent_message.data or {}).get("id"),
             status="Email sent successfully",
             attachments_count=len(attachments) if attachments else 0,
         )
@@ -388,10 +380,10 @@ async def send_email_json(
             attachments=None,
         )
 
-        if not sent_message.get("successful", True):
+        if not sent_message.successful:
             raise HTTPException(
                 status_code=500,
-                detail=sent_message.get("error", "Failed to send email"),
+                detail=sent_message.error or "Failed to send email",
             )
 
         log.set(
@@ -400,7 +392,7 @@ async def send_email_json(
             outcome="success",
         )
         return SendEmailResponse(
-            message_id=sent_message.get("data", {}).get("id"),
+            message_id=(sent_message.data or {}).get("id"),
             status="Email sent successfully",
         )
     except HTTPException:
@@ -435,7 +427,7 @@ async def mark_as_read(
         )
         return MarkAsReadResponse(
             success=True,
-            marked_as_read=[msg["id"] for msg in modified_messages],
+            marked_as_read=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages marked as read",
         )
@@ -469,7 +461,7 @@ async def mark_as_unread(
         )
         return MarkAsUnreadResponse(
             success=True,
-            marked_as_unread=[msg["id"] for msg in modified_messages],
+            marked_as_unread=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages marked as unread",
         )
@@ -501,7 +493,7 @@ async def star_emails(
         )
         return StarEmailsResponse(
             success=True,
-            starred=[msg["id"] for msg in modified_messages],
+            starred=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages starred",
         )
@@ -533,7 +525,7 @@ async def unstar_emails(
         )
         return UnstarEmailsResponse(
             success=True,
-            unstarred=[msg["id"] for msg in modified_messages],
+            unstarred=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages unstarred",
         )
@@ -629,7 +621,7 @@ async def archive_emails(
         )
         return ArchiveEmailsResponse(
             success=True,
-            archived=[msg["id"] for msg in modified_messages],
+            archived=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages archived",
         )
@@ -662,7 +654,7 @@ async def move_emails_to_inbox(
         )
         return MoveToInboxResponse(
             success=True,
-            moved_to_inbox=[msg["id"] for msg in modified_messages],
+            moved_to_inbox=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Messages moved to inbox",
         )
@@ -684,7 +676,7 @@ async def get_thread(
     try:
         # Get thread using the new async function
         thread = await fetch_thread(user_id=user_id, thread_id=thread_id)
-        messages_count = len(thread.get("messages", []))
+        messages_count = len(thread.messages or [])
 
         log.set(
             operation="get_thread",
@@ -695,7 +687,7 @@ async def get_thread(
         return GmailThreadResponse(
             thread_id=thread_id,
             messages_count=messages_count,
-            thread=thread,
+            thread=thread.as_payload(),
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch email thread: {e!s}")
@@ -731,7 +723,7 @@ async def create_label_route(
             label=request.name,
             outcome="success",
         )
-        return GmailLabelResource.model_validate(new_label)
+        return GmailLabelResource.model_validate(new_label.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -769,7 +761,7 @@ async def update_label_route(
             label=label_id,
             outcome="success",
         )
-        return GmailLabelResource.model_validate(updated_label)
+        return GmailLabelResource.model_validate(updated_label.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -826,7 +818,7 @@ async def apply_labels_route(
         )
         return ModifyLabelsResponse(
             success=True,
-            modified_messages=[msg["id"] for msg in modified_messages],
+            modified_messages=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Labels applied successfully",
         )
@@ -863,7 +855,7 @@ async def remove_labels_route(
         )
         return ModifyLabelsResponse(
             success=True,
-            modified_messages=[msg["id"] for msg in modified_messages],
+            modified_messages=[msg.id for msg in modified_messages],
             count=len(modified_messages),
             status="Labels removed successfully",
         )
@@ -898,7 +890,7 @@ async def create_draft_route(
             cc_list=request.cc,
             bcc_list=request.bcc,
         )
-        message_id = draft.get("message", {}).get("id")
+        message_id = (draft.message or {}).get("id")
 
         log.set(
             operation="create_draft",
@@ -906,7 +898,7 @@ async def create_draft_route(
             outcome="success",
         )
         return DraftMutationResponse(
-            draft_id=draft.get("id"),
+            draft_id=draft.id,
             message_id=message_id,
             status="Draft created successfully",
         )
@@ -966,7 +958,7 @@ async def get_draft_route(
             email_id=draft_id,
             outcome="success",
         )
-        return GmailDraftResource.model_validate(draft)
+        return GmailDraftResource.model_validate(draft.as_payload())
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1008,8 +1000,8 @@ async def update_draft_route(
             outcome="success",
         )
         return DraftMutationResponse(
-            draft_id=updated_draft.get("id"),
-            message_id=updated_draft.get("message", {}).get("id"),
+            draft_id=updated_draft.id,
+            message_id=(updated_draft.message or {}).get("id"),
             status="Draft updated successfully",
         )
     except Exception as e:
@@ -1056,8 +1048,8 @@ async def send_draft_route(
         # Send draft using the new async function
         sent_message = await send_draft(user_id=user_id, draft_id=draft_id)
 
-        if sent_message.get("successful", True):
-            thread_id = sent_message.get("threadId", "")
+        if sent_message.successful:
+            thread_id = sent_message.thread_id or ""
             log.set(
                 operation="send_draft",
                 email_id=draft_id,
@@ -1065,14 +1057,14 @@ async def send_draft_route(
                 outcome="success",
             )
             return SendDraftResponse(
-                message_id=sent_message.get("id", ""),
+                message_id=sent_message.id or "",
                 thread_id=thread_id,
                 status="Draft sent successfully",
                 successful=True,
             )
         raise HTTPException(
             status_code=500,
-            detail=sent_message.get("error", "Failed to send draft"),
+            detail=sent_message.error or "Failed to send draft",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

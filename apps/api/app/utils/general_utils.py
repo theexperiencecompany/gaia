@@ -2,6 +2,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 import tomllib
+from typing import Any
 
 ELLIPSIS = "…"
 
@@ -49,18 +50,15 @@ def get_context_window(text: str, query: str, chars_before: int = 15, chars_afte
     return context
 
 
-def transform_gmail_message(msg: dict) -> dict:
-    """Transform Gmail API message to frontend-friendly format while keeping all raw data for debugging."""
-    """
-    Transform a Gmail/Composio message to a frontend-friendly format.
-    Handles both Gmail API and Composio message formats.
-    """
+def transform_gmail_message(msg: dict[str, Any]) -> dict[str, Any]:
+    """Transform a Gmail API or Composio message into the frontend-friendly format,
+    keeping every raw key alongside the derived ones."""
     from dateutil.parser import parse as parse_date  # type: ignore[import-untyped]
 
-    def get_sender(m: dict) -> str:
+    def get_sender(m: dict[str, Any]) -> str:
         return m.get("from") or m.get("sender") or ""
 
-    def get_time(m: dict) -> str:
+    def get_time(m: dict[str, Any]) -> str:
         # Prefer 'date', then 'messageTimestamp', then fallback
         if m.get("date"):
             return str(m["date"])
@@ -79,7 +77,7 @@ def transform_gmail_message(msg: dict) -> dict:
                 return str(m["internalDate"])
         return ""
 
-    def transform_composio(m: dict) -> dict:
+    def transform_composio(m: dict[str, Any]) -> dict[str, Any]:
         labels = m.get("labelIds", [])
         return {
             **m,
@@ -97,7 +95,7 @@ def transform_gmail_message(msg: dict) -> dict:
             "is_unread": "UNREAD" in labels,
         }
 
-    def transform_gmail_api(m: dict) -> dict:
+    def transform_gmail_api(m: dict[str, Any]) -> dict[str, Any]:
         headers = {h["name"]: h["value"] for h in m.get("payload", {}).get("headers", [])}
         labels = m.get("labelIds", [])
         return {
@@ -122,7 +120,7 @@ def transform_gmail_message(msg: dict) -> dict:
     return transform_gmail_api(msg)
 
 
-def decode_message_body(msg: dict) -> str | None:
+def decode_message_body(msg: dict[str, Any]) -> str | None:
     """Decode the message body from a Gmail API message."""
     payload = msg.get("payload", {})
     parts = payload.get("parts", [])

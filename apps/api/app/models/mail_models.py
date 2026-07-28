@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -148,8 +148,67 @@ class BulkEmailImportanceSummariesResponse(BaseModel):
 # message. Only the envelopes the API builds itself are modelled here.
 
 
+class GmailAttachmentPayload(TypedDict):
+    """One entry of the ``attachments`` parameter Composio's Gmail compose tools take."""
+
+    filename: str | None
+    content: bytes
+    content_type: str | None
+
+
+class GmailToolResult(BaseModel):
+    """The result of one Composio Gmail tool invocation.
+
+    Composio's own envelope is exactly ``{data, error, successful}``
+    (``composio.core.models.tools.ToolExecutionResponse``). The fields after it
+    are the *root-level* keys ``mail_service`` reads off individual Gmail tools —
+    all optional, since no single tool sets more than one of them. ``extra="allow"``
+    keeps everything else the provider sends, so ``as_payload()`` reproduces the
+    original response for the routes that forward it verbatim.
+    """
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    successful: bool = True
+    error: str | None = None
+    data: dict[str, Any] | None = None
+    messages: list[dict[str, Any]] | None = None
+    labels: list[dict[str, Any]] | None = None
+    drafts: list[dict[str, Any]] | None = None
+    message: dict[str, Any] | None = None
+    id: str | None = None
+    thread_id: str | None = Field(default=None, alias="threadId")
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+    def as_payload(self) -> dict[str, Any]:
+        """The response exactly as the provider sent it — keys it omitted stay omitted."""
+        return self.model_dump(exclude_unset=True, by_alias=True)
+
+
+class GmailFetchEmailsData(BaseModel):
+    """The ``data`` payload of a ``GMAIL_FETCH_EMAILS`` result."""
+
+    model_config = ConfigDict(extra="allow", populate_by_name=True)
+
+    messages: list[dict[str, Any]] = Field(default_factory=list)
+    next_page_token: str | None = Field(default=None, alias="nextPageToken")
+
+
+class GmailMessageResource(BaseModel):
+    """A Gmail ``messages`` resource returned by the label-modification tools.
+
+    Only ``id`` is declared — it is the one field every caller reads, and Gmail
+    always sends it; the rest of the payload rides along via ``extra="allow"``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    id: str
+
+
 class GmailMessagesResponse(BaseModel):
-    """Response for ``GET /gmail/messages`` and ``GET /gmail/search``."""
+    """Response for ``GET /gmail/messages`` and ``GET /gmail/search``, and the return
+    shape of ``search_messages``, which the routes forward unchanged."""
 
     messages: list[dict[str, Any]]
     next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
