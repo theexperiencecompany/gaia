@@ -88,3 +88,26 @@ class UsageSummaryResponse(BaseModel):
     plan_type: PlanType
     features: dict[str, RealtimeFeatureUsage]
     last_updated: datetime
+
+
+class HistoryUsagePeriod(BaseModel):
+    """Usage counters for one feature/period window in a stored usage snapshot."""
+
+    used: int
+    limit: int
+    percentage: float
+
+
+class HistoryFeatureUsage(BaseModel):
+    """Snapshot usage for one feature across its rate-limited periods."""
+
+    title: str
+    periods: dict[str, HistoryUsagePeriod] = Field(default_factory=dict)
+
+
+class UsageHistoryEntry(BaseModel):
+    """One item in the ``GET /usage/history`` response list."""
+
+    date: str
+    plan_type: str
+    features: dict[str, HistoryFeatureUsage]

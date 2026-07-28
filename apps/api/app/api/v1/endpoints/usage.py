@@ -3,11 +3,10 @@ Usage tracking API endpoints.
 """
 
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
+from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.rate_limits import (
     FEATURE_LIMITS,
@@ -17,7 +16,14 @@ from app.config.rate_limits import (
     get_reset_time,
 )
 from app.models.payment_models import PlanType
-from app.models.usage_models import RealtimeFeatureUsage, RealtimeUsagePeriod, UsageSummaryResponse
+from app.models.usage_models import (
+    HistoryFeatureUsage,
+    HistoryUsagePeriod,
+    RealtimeFeatureUsage,
+    RealtimeUsagePeriod,
+    UsageHistoryEntry,
+    UsageSummaryResponse,
+)
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
@@ -56,13 +62,10 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
 async def get_usage_history(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to retrieve"),
     feature_key: str | None = Query(default=None, description="Specific feature to filter by"),
-    user: dict = Depends(get_current_user),
-) -> list[dict[str, Any]]:
+    user_id: str = Depends(get_user_id),
+) -> list[UsageHistoryEntry]:
     """Get usage history for the current user."""
     log.set(operation="get_usage_history", period=f"{days}d")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
 
     # Validate feature_key if provided
     if feature_key and feature_key not in FEATURE_LIMITS:
@@ -71,32 +74,27 @@ async def get_usage_history(
     try:
         history = await usage_service.get_usage_history(user_id, feature_key, days)
 
-        formatted_history = []
+        formatted_history: list[UsageHistoryEntry] = []
         for snapshot in history:
-            features_formatted: dict[str, dict[str, Any]] = {}
+            features_formatted: dict[str, HistoryFeatureUsage] = {}
             for feature in snapshot.features:
                 key = feature.feature_key
                 if key not in features_formatted:
                     feature_info = get_feature_info(key)
-                    features_formatted[key] = {
-                        "title": feature_info["title"],
-                        "periods": {},
-                    }
+                    features_formatted[key] = HistoryFeatureUsage(title=feature_info.title)
 
-                features_formatted[key]["periods"][feature.period] = {
-                    "used": feature.used,
-                    "limit": feature.limit,
-                    "percentage": (
-                        (feature.used / feature.limit * 100) if feature.limit > 0 else 0
-                    ),
-                }
+                features_formatted[key].periods[feature.period] = HistoryUsagePeriod(
+                    used=feature.used,
+                    limit=feature.limit,
+                    percentage=(feature.used / feature.limit * 100) if feature.limit > 0 else 0,
+                )
 
             formatted_history.append(
-                {
-                    "date": snapshot.created_at.isoformat(),
-                    "plan_type": snapshot.plan_type,
-                    "features": features_formatted,
-                }
+                UsageHistoryEntry(
+                    date=snapshot.created_at.isoformat(),
+                    plan_type=snapshot.plan_type,
+                    features=features_formatted,
+                )
             )
 
         log.set(result_count=len(formatted_history))
@@ -139,8 +137,8 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Re
                 )
 
         features_formatted[feature_key] = RealtimeFeatureUsage(
-            title=feature_info["title"],
-            description=feature_info["description"],
+            title=feature_info.title,
+            description=feature_info.description,
             periods=periods,
         )
 

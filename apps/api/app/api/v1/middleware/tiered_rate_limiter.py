@@ -281,7 +281,7 @@ class TieredRateLimiter:
                     feature_info = get_feature_info(check_feature_key)
                     feature_usage = FeatureUsage(
                         feature_key=check_feature_key,
-                        feature_title=feature_info["title"],
+                        feature_title=feature_info.title,
                         period=UsagePeriod(period.value),
                         used=current_usage,
                         limit=limit,
