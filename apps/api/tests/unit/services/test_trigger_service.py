@@ -962,7 +962,7 @@ class TestSlackTriggerHandler:
             integration_id="slack",
         )
         assert len(result) >= 1
-        assert result[0]["value"] == "C001"
+        assert result[0].value == "C001"
 
     @patch("app.services.triggers.handlers.slack.get_composio_service")
     async def test_get_config_options_tool_not_found(self, mock_get_composio):
@@ -1287,7 +1287,7 @@ class TestGitHubTriggerHandler:
             integration_id="github",
         )
         assert len(result) == 2
-        assert result[0]["value"] == "owner/repo1"
+        assert result[0].value == "owner/repo1"
 
     @patch("app.services.triggers.handlers.github.get_composio_service")
     async def test_get_config_options_tool_not_found(self, mock_get_composio):
@@ -1353,7 +1353,7 @@ class TestGitHubTriggerHandler:
             search="special",
         )
         assert len(result) == 1
-        assert result[0]["value"] == "owner/special-repo"
+        assert result[0].value == "owner/special-repo"
 
     def test_singleton_instance_exists(self):
         assert github_trigger_handler is not None
@@ -1543,12 +1543,16 @@ class TestCalendarTriggerHandler:
 
     @patch("app.services.calendar_service.list_calendars")
     async def test_fetch_user_calendars_success(self, mock_list_calendars):
-        mock_list_calendars.return_value = {
-            "items": [
-                {"id": "primary"},
-                {"id": "work@example.com"},
-            ]
-        }
+        from app.models.calendar_models import CalendarListResponse
+
+        mock_list_calendars.return_value = CalendarListResponse.model_validate(
+            {
+                "items": [
+                    {"id": "primary"},
+                    {"id": "work@example.com"},
+                ]
+            }
+        )
 
         handler = CalendarTriggerHandler()
         result = await handler._fetch_user_calendars(USER_ID)
@@ -1556,11 +1560,25 @@ class TestCalendarTriggerHandler:
 
     @patch("app.services.calendar_service.list_calendars")
     async def test_fetch_user_calendars_no_items(self, mock_list_calendars):
-        mock_list_calendars.return_value = {"no_items": True}
+        from app.models.calendar_models import CalendarListResponse
+
+        mock_list_calendars.return_value = CalendarListResponse.model_validate({"no_items": True})
 
         handler = CalendarTriggerHandler()
         result = await handler._fetch_user_calendars(USER_ID)
         assert result == ["primary"]
+
+    @patch("app.services.calendar_service.list_calendars")
+    async def test_fetch_user_calendars_empty_items_registers_nothing(self, mock_list_calendars):
+        """An explicit empty ``items`` means the user has no calendars, which is
+        not the same as Google telling us nothing -- no primary fallback."""
+        from app.models.calendar_models import CalendarListResponse
+
+        mock_list_calendars.return_value = CalendarListResponse.model_validate({"items": []})
+
+        handler = CalendarTriggerHandler()
+        result = await handler._fetch_user_calendars(USER_ID)
+        assert result == []
 
     @patch("app.services.calendar_service.list_calendars")
     async def test_fetch_user_calendars_exception_falls_back(self, mock_list_calendars):
@@ -1570,19 +1588,21 @@ class TestCalendarTriggerHandler:
         result = await handler._fetch_user_calendars(USER_ID)
         assert result == ["primary"]
 
-    @patch("app.services.calendar_service.list_calendars")
-    async def test_fetch_user_calendars_items_without_id_skipped(self, mock_list_calendars):
-        """Calendar items without 'id' field are excluded."""
-        mock_list_calendars.return_value = {
-            "items": [
-                {"id": "primary"},
-                {"name": "no-id-calendar"},  # no id field
-            ]
-        }
-
+    @patch("app.services.calendar_service.proxy_request")
+    async def test_fetch_user_calendars_rejects_a_payload_with_an_id_less_entry(self, mock_proxy):
+        """``id`` is required on a calendarList entry, so a payload missing one
+        fails validation loudly and falls back to primary instead of silently
+        registering triggers for a partial calendar set."""
         handler = CalendarTriggerHandler()
-        result = await handler._fetch_user_calendars(USER_ID)
-        assert result == ["primary"]
+
+        # Positive control: the same real proxy → validate → project path returns
+        # every id when the payload is well-formed, so the assertion below is
+        # about validation rejecting the entry, not about the plumbing failing.
+        mock_proxy.return_value = {"items": [{"id": "primary"}, {"id": "work@example.com"}]}
+        assert await handler._fetch_user_calendars(USER_ID) == ["primary", "work@example.com"]
+
+        mock_proxy.return_value = {"items": [{"id": "primary"}, {"name": "no-id-calendar"}]}
+        assert await handler._fetch_user_calendars(USER_ID) == ["primary"]
 
     def test_singleton_instance_exists(self):
         assert calendar_trigger_handler is not None
@@ -1809,8 +1829,8 @@ class TestLinearTriggerHandler:
             integration_id="linear",
         )
         assert len(result) == 2
-        assert result[0]["value"] == "team_1"
-        assert result[0]["label"] == "Engineering"
+        assert result[0].value == "team_1"
+        assert result[0].label == "Engineering"
 
     @patch("app.services.triggers.handlers.linear.get_composio_service")
     async def test_get_config_options_team_id_with_search(self, mock_get_composio):
@@ -1840,7 +1860,7 @@ class TestLinearTriggerHandler:
             search="design",
         )
         assert len(result) == 1
-        assert result[0]["label"] == "Design"
+        assert result[0].label == "Design"
 
     @patch("app.services.triggers.handlers.linear.get_composio_service")
     async def test_get_config_options_tool_not_found(self, mock_get_composio):

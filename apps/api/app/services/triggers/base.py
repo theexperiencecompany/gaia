@@ -6,11 +6,12 @@ All provider-specific trigger handlers must extend this class.
 
 from abc import ABC, abstractmethod
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.tracked_todo_service import tracked_todo_service
@@ -263,13 +264,17 @@ class TriggerHandler(ABC):
         integration_id: str,
         parent_ids: list[str] | None = None,
         **_kwargs: str,
-    ) -> list[dict[str, str]]:
+    ) -> Sequence[TriggerOption | TriggerOptionGroup]:
         """Get dynamic options for a trigger configuration field.
 
         Optional method for handlers to provide dropdown options for
         configuration fields (e.g., list of channels, boards, repos).
 
         Supports cascading dropdowns by accepting parent_ids to filter children.
+
+        ``Sequence`` (not ``list``) because ``list`` is invariant: handlers that
+        only ever produce flat options override this returning
+        ``list[TriggerOption]``.
 
         Args:
             trigger_name: The trigger slug (e.g., 'slack_new_message')
@@ -279,9 +284,8 @@ class TriggerHandler(ABC):
             parent_ids: Parent IDs for cascading options (e.g., workspace IDs)
 
         Returns:
-            List of options as [{"value": "...", "label": "..."}]
-            For grouped options: [{"group": "...", "options": [...]}]
-            Empty list if no dynamic options available
+            Flat options, or ``TriggerOptionGroup``s for cascading dropdowns.
+            Empty when no dynamic options are available.
         """
         return []
 

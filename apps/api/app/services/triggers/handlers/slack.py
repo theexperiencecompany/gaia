@@ -15,6 +15,7 @@ from app.models.composio_schemas import (
     SlackListAllChannelsInput,
     SlackReceiveMessagePayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import SlackChannelCreatedConfig, SlackNewMessageConfig
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
@@ -266,7 +267,7 @@ class SlackTriggerHandler(TriggerHandler):
         integration_id: str,
         parent_ids: list[str] | None = None,
         **_kwargs: str,
-    ) -> list[dict[str, str]]:
+    ) -> list[TriggerOption]:
         """Get dynamic options for Slack trigger config fields."""
         if trigger_name == "slack_new_message" and field_name == "channel_ids":
             # Fetch Slack channels list with pagination
@@ -326,7 +327,7 @@ class SlackTriggerHandler(TriggerHandler):
                                 # Public channel
                                 label = f"# {channel_name}"
 
-                            all_channels.append({"value": channel_id, "label": label})
+                            all_channels.append(TriggerOption(value=channel_id, label=label))
 
                     # Check for next page
                     cursor = data.next_cursor

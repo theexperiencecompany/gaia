@@ -37,6 +37,36 @@ class WorkflowTriggerSchema(BaseModel):
     config_schema: dict[str, TriggerConfigFieldSchema] = {}
 
 
+class WorkflowTriggerResponse(WorkflowTriggerSchema):
+    """A ``WorkflowTriggerSchema`` plus the identifiers of the integration that owns it.
+
+    The `/triggers/schema` wire contract consumed by web and mobile.
+    """
+
+    provider: str
+    integration_id: str
+
+
+class TriggerOption(BaseModel):
+    """A single selectable value for a trigger config field."""
+
+    value: str
+    label: str
+
+
+class TriggerOptionGroup(BaseModel):
+    """Options grouped under a parent (cascading dropdowns, e.g. sheets per spreadsheet)."""
+
+    group: str
+    options: list[TriggerOption]
+
+
+class TriggerOptionsResponse(BaseModel):
+    """The `/triggers/options` wire contract."""
+
+    options: list[TriggerOption | TriggerOptionGroup]
+
+
 class TriggerConfig(BaseModel):
     """Configuration for a specific trigger."""
 

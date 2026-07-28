@@ -16,6 +16,7 @@ from app.models.composio_schemas import (
     NotionPageAddedPayload,
     NotionPageUpdatedPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     NotionAllPageEventsConfig,
     NotionNewPageInDbConfig,
@@ -65,7 +66,7 @@ class NotionTriggerHandler(TriggerHandler):
         integration_id: str,
         parent_ids: list[str] | None = None,
         **kwargs: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[TriggerOption]:
         """Get dynamic options for Notion trigger config fields."""
         try:
             composio_service = get_composio_service()
@@ -111,7 +112,7 @@ class NotionTriggerHandler(TriggerHandler):
                     continue
 
                 label = item.title or "Untitled"
-                options.append({"value": item.id, "label": label})
+                options.append(TriggerOption(value=item.id, label=label))
 
             log.info(f"{LogTag.TRIGGER} Returning {len(options)} Notion {field_name} options")
             return options

@@ -17,6 +17,7 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     GitHubCommitEventConfig,
     GitHubIssueAddedConfig,
@@ -70,7 +71,7 @@ class GitHubTriggerHandler(TriggerHandler):
         integration_id: str,
         parent_ids: list[str] | None = None,
         **kwargs: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[TriggerOption]:
         """Get dynamic options for GitHub trigger config fields."""
         composio_service = get_composio_service()
 
@@ -120,7 +121,7 @@ class GitHubTriggerHandler(TriggerHandler):
         options = []
         for repo in repos:
             if repo.full_name:
-                options.append({"value": repo.full_name, "label": repo.full_name})
+                options.append(TriggerOption(value=repo.full_name, label=repo.full_name))
 
         log.info(f"{LogTag.TRIGGER} Returning {len(options)} GitHub repository options")
         return options

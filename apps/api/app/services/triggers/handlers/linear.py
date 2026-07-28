@@ -14,6 +14,7 @@ from app.models.composio_schemas import (
     LinearGetAllTeamsData,
     LinearIssueCreatedPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     LinearCommentAddedConfig,
     LinearIssueCreatedConfig,
@@ -63,7 +64,7 @@ class LinearTriggerHandler(TriggerHandler):
         integration_id: str,
         parent_ids: list[str] | None = None,
         **kwargs: str,
-    ) -> list[dict[str, Any]]:
+    ) -> list[TriggerOption]:
         """Get dynamic options for Linear trigger config fields."""
         composio_service = get_composio_service()
 
@@ -92,7 +93,7 @@ class LinearTriggerHandler(TriggerHandler):
             for team in teams:
                 if search_term and search_term not in team.name.lower():
                     continue
-                options.append({"value": team.id, "label": team.name})
+                options.append(TriggerOption(value=team.id, label=team.name))
 
             log.info(f"{LogTag.TRIGGER} Returning {len(options)} Linear team options")
             return options
