@@ -6,16 +6,16 @@ This module contains routes related to search functionality and URL metadata fet
 
 import asyncio
 import re
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.decorators import tiered_rate_limit
 from app.models.search_models import (
     EmailSearchResponse,
     MultiURLResponse,
+    SearchResultsResponse,
     URLRequest,
     URLResponse,
 )
@@ -29,21 +29,20 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 
-@router.get("/search")
+@router.get("/search", response_model=SearchResultsResponse)
 async def search_messages_endpoint(
-    query: str, user: dict = Depends(get_current_user)
-) -> dict[str, Any]:
+    query: str, user_id: str = Depends(get_user_id)
+) -> SearchResultsResponse:
     """
     Search for messages, conversations, and notes by their description or content.
 
     Args:
         query (str): The search query.
-        user (dict): The authenticated user information.
+        user_id (str): The authenticated user's id.
 
     Returns:
-        dict: A dictionary containing the search results for messages, conversations, and notes.
+        SearchResultsResponse: The search results for messages, conversations, and notes.
     """
-    user_id = user["user_id"]
     log.set(
         user={"id": user_id},
         search={
@@ -54,11 +53,7 @@ async def search_messages_endpoint(
     )
     try:
         results = await search_messages(query, user_id)
-        result_count = (
-            len(results.get("messages", []))
-            + len(results.get("conversations", []))
-            + len(results.get("notes", []))
-        )
+        result_count = len(results.messages) + len(results.conversations) + len(results.notes)
         log.set(search={"result_count": result_count})
         return results
     except Exception as e:
@@ -130,7 +125,7 @@ async def search_email_endpoint(query: str) -> EmailSearchResponse:
 @limiter.limit("100/minute")
 @limiter.limit("500/hour")
 async def fetch_url_metadata_endpoint(
-    request: Request, data: URLRequest, user: dict = Depends(get_current_user)
+    request: Request, data: URLRequest, user_id: str = Depends(get_user_id)
 ) -> MultiURLResponse:
     """
     Fetch metadata for multiple URLs in parallel.
@@ -141,7 +136,7 @@ async def fetch_url_metadata_endpoint(
     Args:
         request (Request): The FastAPI request object (required for rate limiting).
         data (URLRequest): The URL request containing an array of URLs.
-        user (dict): The authenticated user (contact lookups are per-user).
+        user_id (str): The authenticated user's id (contact lookups are per-user).
 
     Returns:
         MultiURLResponse: The metadata for all URLs.
@@ -149,7 +144,7 @@ async def fetch_url_metadata_endpoint(
     email_targets = [url for url in data.urls if is_email_target(url)]
     web_urls = [url for url in data.urls if url not in email_targets]
 
-    email_task = fetch_email_profiles(user["user_id"], email_targets)
+    email_task = fetch_email_profiles(user_id, email_targets)
     web_tasks = [fetch_url_metadata(url) for url in web_urls]
     email_results, *web_results = await asyncio.gather(
         email_task, *web_tasks, return_exceptions=True

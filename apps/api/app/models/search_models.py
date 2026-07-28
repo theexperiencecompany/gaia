@@ -3,6 +3,8 @@ from typing import Union
 from pydantic import BaseModel, ConfigDict
 
 from app.db.repositories.base import MongoDocument
+from app.models.conversation_models import ConversationDescriptionHit, ConversationMessageHit
+from app.models.notes_models import NoteSearchHit
 from app.utils.search.models import WebSearchResult
 
 
@@ -16,6 +18,26 @@ class EmailSearchResponse(BaseModel):
     emails: list[str]
     combined_text: str
     search_data: WebSearchResult
+
+
+class MessageSearchResult(ConversationMessageHit):
+    """A message hit from keyword search, with its highlighting snippet."""
+
+    snippet: str
+
+
+class NoteSearchResult(NoteSearchHit):
+    """A note hit from keyword search, with its highlighting snippet."""
+
+    snippet: str
+
+
+class SearchResultsResponse(BaseModel):
+    """Keyword search results across messages, conversations, and notes."""
+
+    messages: list[MessageSearchResult]
+    conversations: list[ConversationDescriptionHit]
+    notes: list[NoteSearchResult]
 
 
 class URLResponse(BaseModel):

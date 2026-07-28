@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.chat_models import MessageModel
+from app.models.search_models import MessageSearchResult, SearchResultsResponse
 from app.utils.search.models import SearchResultItem, WebSearchResult
 
 SEARCH_BASE = "/api/v1"
@@ -23,11 +25,17 @@ class TestSearchMessages:
         new_callable=AsyncMock,
     )
     async def test_search_returns_200(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {
-            "messages": [{"id": "msg-1", "content": "hello"}],
-            "conversations": [],
-            "notes": [],
-        }
+        mock_search.return_value = SearchResultsResponse(
+            messages=[
+                MessageSearchResult(
+                    conversation_id="conv-1",
+                    message=MessageModel(type="bot", response="hello"),
+                    snippet="hello",
+                )
+            ],
+            conversations=[],
+            notes=[],
+        )
         response = await client.get(f"{SEARCH_BASE}/search", params={"query": "hello"})
         assert response.status_code == 200
         data = response.json()
@@ -41,7 +49,7 @@ class TestSearchMessages:
         new_callable=AsyncMock,
     )
     async def test_search_passes_user_id(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
+        mock_search.return_value = SearchResultsResponse(messages=[], conversations=[], notes=[])
         await client.get(f"{SEARCH_BASE}/search", params={"query": "test"})
         mock_search.assert_awaited_once_with(
             "test",
@@ -57,7 +65,7 @@ class TestSearchMessages:
         new_callable=AsyncMock,
     )
     async def test_search_empty_results(self, mock_search: AsyncMock, client: AsyncClient):
-        mock_search.return_value = {"messages": [], "conversations": [], "notes": []}
+        mock_search.return_value = SearchResultsResponse(messages=[], conversations=[], notes=[])
         response = await client.get(f"{SEARCH_BASE}/search", params={"query": "nothing"})
         assert response.status_code == 200
         data = response.json()
