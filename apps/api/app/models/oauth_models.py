@@ -91,3 +91,9 @@ class OAuthIntegration(BaseModel):
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
         return self
+
+
+class MobileLoginUrlResponse(BaseModel):
+    """The hosted authorization URL a mobile client should open."""
+
+    url: str

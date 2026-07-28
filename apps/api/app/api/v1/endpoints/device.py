@@ -20,8 +20,11 @@ from app.schemas.device.requests import (
 )
 from app.schemas.device.responses import (
     DeviceListResponse,
+    DevicePairApproveResponse,
     DeviceResponse,
+    DeviceRevokeResponse,
     DeviceServerResponse,
+    DeviceTokenClaims,
     DeviceTokenResponse,
     PollPairingResponse,
     RegisterServerResponse,
@@ -46,7 +49,7 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/device", tags=["Device Bridge"])
 
 
-async def _current_device(authorization: str = Header(default="")) -> dict[str, str]:
+async def _current_device(authorization: str = Header(default="")) -> DeviceTokenClaims:
     """Resolve the device from its connect JWT, or 401.
 
     Re-checks the device is still active (mirrors the WS handler): a revoked
@@ -84,14 +87,14 @@ async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
 @router.post("/pair/approve", status_code=200)
 async def pair_approve(
     payload: ApprovePairingRequest, user_id: str = Depends(get_user_id)
-) -> dict[str, str]:
+) -> DevicePairApproveResponse:
     """Approve a pending pairing from the signed-in browser by its short user code."""
     log.set(device={"operation": "pair_approve"}, user={"id": user_id})
     try:
         device_id, name = await approve_pairing(user_id, payload.user_code)
     except PairingError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"device_id": device_id, "name": name}
+    return DevicePairApproveResponse(device_id=device_id, name=name)
 
 
 @router.post("/token", response_model=DeviceTokenResponse)
@@ -112,7 +115,7 @@ async def device_token(payload: DeviceTokenRequest) -> DeviceTokenResponse:
 
 @router.post("/servers", response_model=RegisterServerResponse)
 async def register_server(
-    payload: RegisterServerRequest, device: dict[str, str] = Depends(_current_device)
+    payload: RegisterServerRequest, device: DeviceTokenClaims = Depends(_current_device)
 ) -> RegisterServerResponse:
     """Register (or re-register) one MCP server the device exposes; authed by the device JWT."""
     log.set(
@@ -164,8 +167,8 @@ async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListRe
 
 
 @router.delete("/{device_id}", status_code=200)
-async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> dict[str, str]:
+async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> DeviceRevokeResponse:
     """Revoke a device and tear down its server integrations."""
     if not await revoke_device(user_id, device_id):
         raise HTTPException(status_code=404, detail="Device not found")
-    return {"device_id": device_id, "status": "revoked"}
+    return DeviceRevokeResponse(device_id=device_id, status="revoked")

@@ -147,6 +147,13 @@ class DodoWebhookAckResponse(BaseModel):
     message: str
 
 
+class ComposioWebhookAckResponse(BaseModel):
+    """Acknowledgement returned to Composio once a webhook has been accepted."""
+
+    status: Literal["success"] = "success"
+    message: str
+
+
 class ComposioWebhookEvent(BaseModel):
     """Composio webhook event structure."""
 

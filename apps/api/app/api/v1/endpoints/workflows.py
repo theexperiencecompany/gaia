@@ -32,6 +32,7 @@ from app.models.workflow_models import (
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowListResponse,
+    WorkflowMessageResponse,
     WorkflowResponse,
     WorkflowStatusResponse,
 )
@@ -500,7 +501,7 @@ async def publish_workflow(
 async def unpublish_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
-) -> dict[str, str]:
+) -> WorkflowMessageResponse:
     """Remove a workflow from the community marketplace."""
     log.set(
         user={"id": user["user_id"]},
@@ -522,7 +523,7 @@ async def unpublish_workflow(
         log.set(outcome="success")
         log.info(f"{LogTag.WORKFLOW} Unpublished workflow {workflow_id} by user {user['user_id']}")
 
-        return {"message": "Workflow unpublished successfully"}
+        return WorkflowMessageResponse(message="Workflow unpublished successfully")
 
     except HTTPException:
         raise
@@ -785,7 +786,7 @@ async def reset_workflow_to_default(
 @router.delete("/workflows/{workflow_id}")
 async def delete_workflow(
     workflow_id: str, user: dict = Depends(get_current_user)
-) -> dict[str, str]:
+) -> WorkflowMessageResponse:
     """Delete a workflow."""
     log.set(
         user={"id": user["user_id"]},
@@ -801,7 +802,7 @@ async def delete_workflow(
             )
 
         log.set(outcome="success")
-        return {"message": "Workflow deleted successfully"}
+        return WorkflowMessageResponse(message="Workflow deleted successfully")
 
     except HTTPException:
         raise

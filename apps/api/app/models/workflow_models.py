@@ -510,6 +510,12 @@ class ResetWorkflowResponse(BaseModel):
     message: str = Field(description="Success or status message")
 
 
+class WorkflowMessageResponse(BaseModel):
+    """Acknowledgement for a workflow mutation that returns no entity."""
+
+    message: str = Field(description="Human-readable outcome")
+
+
 class PublishWorkflowResponse(BaseModel):
     """Response model for publishing a workflow."""
 

@@ -21,6 +21,7 @@ from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.oauth_models import MobileLoginUrlResponse
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth.oauth_state_service import (
@@ -110,7 +111,7 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
 
 
 @router.get("/login/workos/mobile")
-async def login_workos_mobile(redirect_uri: str | None = None) -> dict[str, str]:
+async def login_workos_mobile(redirect_uri: str | None = None) -> MobileLoginUrlResponse:
     """
     Start WorkOS SSO flow for mobile apps (Expo).
 
@@ -138,11 +139,11 @@ async def login_workos_mobile(redirect_uri: str | None = None) -> dict[str, str]
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
     )
-    return {"url": authorization_url}
+    return MobileLoginUrlResponse(url=authorization_url)
 
 
 @router.get("/login/google/mobile")
-async def login_google_mobile(redirect_uri: str | None = None) -> dict[str, str]:
+async def login_google_mobile(redirect_uri: str | None = None) -> MobileLoginUrlResponse:
     """
     Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
     Users go straight to Google's sign-in page instead of the WorkOS selection screen.
@@ -167,7 +168,7 @@ async def login_google_mobile(redirect_uri: str | None = None) -> dict[str, str]
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
     )
-    return {"url": authorization_url}
+    return MobileLoginUrlResponse(url=authorization_url)
 
 
 @router.get("/workos/mobile/callback")
