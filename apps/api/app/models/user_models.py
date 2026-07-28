@@ -46,6 +46,12 @@ class UserUpdateResponse(BaseModel):
     updated_at: datetime | None = Field(None, description="Last update timestamp")
 
 
+class UpdateTimezoneResponse(BaseModel):
+    success: bool = Field(..., description="Whether the timezone update succeeded")
+    message: str = Field(..., description="Response message")
+    timezone: str = Field(..., description="The timezone that was set")
+
+
 class OnboardingPreferences(BaseModel):
     profession: str | None = Field(
         None,
@@ -286,6 +292,60 @@ class UserDocument(MongoDocument):
     email_memory_count: int | None = None
     integration_scan_states: dict[str, Any] | None = None
     # Lifecycle / re-engagement markers (workers).
+    is_active: bool | None = None
+    memory_backfilled: datetime | None = None
+    last_inactive_email_sent: datetime | None = None
+    inactive_email_count: int | None = None
+
+
+class AuthenticatedUserResponse(BaseModel):
+    """The full ``GET /me`` payload.
+
+    ``build_user_context()`` (``app/utils/auth_utils.py``) spreads the entire
+    ``UserDocument`` into ``request.state.user`` (see that class's docstring)
+    plus a handful of auth-context fields layered on top: ``user_id``
+    (replacing ``_id``), ``auth_provider``, and per-auth-path flags present on
+    only *some* paths — a plain WorkOS session sets none of them, the agent
+    token path sets ``impersonated``, bots set ``bot_authenticated``, and the
+    dev bypass sets ``dev_bypass``. This model mirrors ``UserDocument``'s
+    declared fields at the point where the endpoint returns them, rather than
+    subclassing it, so the DB document's shape and this response's shape can
+    evolve independently. ``extra="allow"`` for the same reason
+    ``UserDocument`` has it: undeclared historical fields on the document
+    still need to reach this response. ``onboarding`` holds
+    ``get_user_onboarding_status()``'s processed shape, not the raw
+    ``UserDocument.onboarding`` blob it overwrites.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    message: str
+    user_id: str
+    auth_provider: str
+    impersonated: bool | None = None
+    bot_authenticated: bool | None = None
+    dev_bypass: bool | None = None
+    onboarding: dict[str, Any]
+
+    email: str | None = None
+    name: str | None = None
+    picture: str | None = None
+    timezone: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    last_active_at: datetime | None = None
+    provider_metadata: dict[str, Any] | None = None
+    hil_preferences: dict[str, Any] | None = None
+    notification_channel_prefs: dict[str, Any] | None = None
+    platform_links: dict[str, Any] | None = None
+    platform_links_connected_at: dict[str, Any] | None = None
+    starred_voice_ids: list[str] | None = None
+    selected_voice_id: str | None = None
+    first_name: str | None = None
+    email_memory_processed: bool | None = None
+    email_memory_processed_at: datetime | None = None
+    email_memory_count: int | None = None
+    integration_scan_states: dict[str, Any] | None = None
     is_active: bool | None = None
     memory_backfilled: datetime | None = None
     last_inactive_email_sent: datetime | None = None

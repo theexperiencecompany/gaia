@@ -14,14 +14,16 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from workos import WorkOSClient
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
+    AuthenticatedUserResponse,
     HoloCardOnboardingFields,
     PublicHoloCardResponse,
+    UpdateTimezoneResponse,
     UserUpdate,
     UserUpdateResponse,
 )
@@ -36,10 +38,10 @@ router = APIRouter()
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-@router.get("/me", response_model=dict)
+@router.get("/me", response_model=AuthenticatedUserResponse)
 async def get_me(
     user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
+) -> JSONResponse:
     """
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
@@ -56,12 +58,12 @@ async def get_me(
         operation="get_me",
     )
 
+    response = AuthenticatedUserResponse.model_validate(
+        {**user, "message": "User retrieved successfully", "onboarding": onboarding_status}
+    )
+
     log.set(outcome="success")
-    return {
-        "message": "User retrieved successfully",
-        **user,
-        "onboarding": onboarding_status,
-    }
+    return JSONResponse(content=response.model_dump(mode="json", exclude_none=True))
 
 
 @router.patch("/me", response_model=UserUpdateResponse)
@@ -139,22 +141,22 @@ async def update_user_name(
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
-@router.patch("/timezone", response_model=dict)
+@router.patch("/timezone", response_model=UpdateTimezoneResponse)
 async def update_user_timezone(
     user_timezone: str = Form(
         ...,
         description="User's timezone (e.g., 'America/New_York', 'Asia/Kolkata')",
         alias="timezone",
     ),
-    user: dict = Depends(get_current_user),
-) -> dict[str, Any]:
+    user_id: str = Depends(get_user_id),
+) -> UpdateTimezoneResponse:
     """
     Update user's timezone setting.
     This updates the root-level timezone field for the user.
     """
     try:
         log.set(
-            user={"id": user["user_id"]},
+            user={"id": user_id},
             operation="update_user_timezone",
             timezone=user_timezone.strip(),
         )
@@ -164,19 +166,17 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await user_repository.update(
-            user["user_id"], UserUpdate(timezone=user_timezone.strip())
-        )
+        updated = await user_repository.update(user_id, UserUpdate(timezone=user_timezone.strip()))
 
         if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
 
         log.set(outcome="success")
-        return {
-            "success": True,
-            "message": "Timezone updated successfully",
-            "timezone": user_timezone.strip(),
-        }
+        return UpdateTimezoneResponse(
+            success=True,
+            message="Timezone updated successfully",
+            timezone=user_timezone.strip(),
+        )
     except HTTPException as e:
         raise e
     except Exception as e:
