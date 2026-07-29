@@ -78,9 +78,9 @@ class TestCreateConversationService:
 
         result = await create_conversation_service(conversation, test_user)
 
-        assert result["conversation_id"] == "conv_abc"
-        assert result["user_id"] == "user_123"
-        assert result["detail"] == "Conversation created successfully"
+        assert result.conversation_id == "conv_abc"
+        assert result.user_id == "user_123"
+        assert result.detail == "Conversation created successfully"
         # The document handed to the repository carries the caller's user_id + fields.
         document = mock_repo.create.call_args[0][0]
         assert document.user_id == "user_123"
@@ -119,8 +119,8 @@ class TestGetConversation:
     async def test_returns_dumped_document(self, mock_repo, test_user):
         mock_repo.get.return_value = _document(description="Test")
         result = await get_conversation("conv_abc", test_user)
-        assert result["conversation_id"] == "conv_abc"
-        assert result["description"] == "Test"
+        assert result.conversation_id == "conv_abc"
+        assert result.description == "Test"
         # Scoped by the caller's user_id.
         assert mock_repo.get.call_args.kwargs["user_id"] == "user_123"
 
@@ -136,7 +136,7 @@ class TestStarConversation:
     async def test_stars(self, mock_repo, test_user):
         mock_repo.set_starred.return_value = True
         result = await star_conversation("conv_abc", True, test_user)
-        assert result["starred"] is True
+        assert result.starred is True
         assert mock_repo.set_starred.call_args.kwargs["user_id"] == "user_123"
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
@@ -155,7 +155,7 @@ class TestDeleteConversation:
             patch.object(conversation_service, "_cleanup_checkpoint_threads", new=AsyncMock()),
         ):
             result = await delete_conversation("conv_abc", test_user)
-        assert result["conversation_id"] == "conv_abc"
+        assert result.conversation_id == "conv_abc"
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
         mock_repo.delete.return_value = False
@@ -168,7 +168,7 @@ class TestDeleteConversation:
         cleanup = AsyncMock()
         with patch.object(conversation_service, "_cleanup_checkpoint_threads", new=cleanup):
             result = await delete_all_conversations(test_user)
-        assert result["message"] == "All conversations deleted successfully"
+        assert result.message == "All conversations deleted successfully"
         assert cleanup.await_count == 2
 
     async def test_delete_all_raises_404_when_none(self, mock_repo, test_user):
@@ -183,7 +183,7 @@ class TestUpdateDescription:
     async def test_updates(self, mock_repo, test_user):
         mock_repo.set_description.return_value = True
         result = await update_conversation_description("conv_abc", "New Description", test_user)
-        assert result["description"] == "New Description"
+        assert result.description == "New Description"
 
     async def test_raises_404_when_not_found(self, mock_repo, test_user):
         mock_repo.set_description.return_value = False
@@ -197,7 +197,7 @@ class TestMarkAsReadUnread:
     async def test_mark_as_read(self, mock_repo, test_user):
         mock_repo.set_unread.return_value = True
         result = await mark_conversation_as_read("conv_abc", test_user)
-        assert result["conversation_id"] == "conv_abc"
+        assert result.conversation_id == "conv_abc"
         assert mock_repo.set_unread.call_args.kwargs["unread"] is False
 
     async def test_mark_as_read_rejects_unauthenticated(self, mock_repo):
@@ -208,7 +208,7 @@ class TestMarkAsReadUnread:
     async def test_mark_as_unread(self, mock_repo, test_user):
         mock_repo.set_unread.return_value = True
         result = await mark_conversation_as_unread("conv_abc", test_user)
-        assert result["conversation_id"] == "conv_abc"
+        assert result.conversation_id == "conv_abc"
         assert mock_repo.set_unread.call_args.kwargs["unread"] is True
 
     async def test_mark_as_unread_rejects_unauthenticated(self, mock_repo):
@@ -236,11 +236,11 @@ class TestListConversations:
 
         result = await get_conversations({"user_id": "user_abc"}, page=2, limit=10)
 
-        ids = [c["conversation_id"] for c in result["conversations"]]
+        ids = [c.conversation_id for c in result.conversations]
         assert ids == ["s1", "a1"]  # starred first
-        assert result["page"] == 2 and result["limit"] == 10
-        assert result["total"] == 1 + 25
-        assert result["total_pages"] == 3  # 25 active / 10
+        assert result.page == 2 and result.limit == 10
+        assert result.total == 1 + 25
+        assert result.total_pages == 3  # 25 active / 10
         # Active list is paginated with the requested page's skip/limit.
         assert mock_repo.list_active_summaries.call_args.kwargs == {"skip": 10, "limit": 10}
 
@@ -262,8 +262,8 @@ class TestUpdateMessages:
             conversation_id="conv_abc", messages=[MessageModel(type="user", response="Hi")]
         )
         result = await update_messages(request, test_user)
-        assert result["message_ids"] == ["m1"]
-        assert result["conversation_id"] == "conv_abc"
+        assert result.message_ids == ["m1"]
+        assert result.conversation_id == "conv_abc"
         assert mock_repo.append_messages.call_args.kwargs["user_id"] == "user_123"
 
     async def test_raises_404_when_conversation_missing(self, mock_repo, test_user):
@@ -284,8 +284,8 @@ class TestPinMessage:
         )
         mock_repo.set_message_pinned.return_value = True
         result = await pin_message("conv_abc", "msg_1", True, test_user)
-        assert result["pinned"] is True
-        assert "pinned successfully" in result["message"]
+        assert result.pinned is True
+        assert "pinned successfully" in result.message
 
     async def test_raises_404_conversation_not_found(self, mock_repo, test_user):
         mock_repo.get.return_value = None
@@ -312,13 +312,13 @@ class TestGetStarredMessages:
             )
         ]
         result = await get_starred_messages(test_user)
-        assert len(result["results"]) == 1
-        assert result["results"][0]["conversation_id"] == "conv_1"
+        assert len(result.results) == 1
+        assert result.results[0].conversation_id == "conv_1"
 
     async def test_returns_empty(self, mock_repo, test_user):
         mock_repo.list_pinned_messages.return_value = []
         result = await get_starred_messages(test_user)
-        assert result["results"] == []
+        assert result.results == []
 
 
 @pytest.mark.unit
@@ -328,9 +328,9 @@ class TestCreateSystemConversation:
         result = await create_system_conversation(
             "user_123", "Email Actions", SystemPurpose.EMAIL_PROCESSING
         )
-        assert result["user_id"] == "user_123"
-        assert result["is_system_generated"] is True
-        assert result["system_purpose"] == SystemPurpose.EMAIL_PROCESSING
+        assert result.user_id == "user_123"
+        assert result.is_system_generated is True
+        assert result.system_purpose == SystemPurpose.EMAIL_PROCESSING
         document = mock_repo.create.call_args[0][0]
         assert document.is_system_generated is True and document.is_unread is True
 
@@ -350,7 +350,7 @@ class TestBatchSyncConversations:
 
     async def test_returns_empty_for_empty_request(self, mock_repo, test_user):
         result = await batch_sync_conversations(BatchSyncRequest(conversations=[]), test_user)
-        assert result == {"conversations": []}
+        assert result.conversations == []
         mock_repo.find_updated_since.assert_not_called()
 
     async def test_returns_rows_with_active_stream_id(self, mock_repo, test_user):
@@ -365,9 +365,10 @@ class TestBatchSyncConversations:
             )
             result = await batch_sync_conversations(request, test_user)
 
-        assert len(result["conversations"]) == 1
-        row = result["conversations"][0]
-        assert row["conversation_id"] == "conv_abc"
-        assert row["active_stream_id"] == "stream-1"
-        # The internal user_id/_id must not leak into a sync row.
-        assert "user_id" not in row and "_id" not in row
+        assert len(result.conversations) == 1
+        row = result.conversations[0]
+        assert row.conversation_id == "conv_abc"
+        assert row.active_stream_id == "stream-1"
+        # The internal user_id/_id must not leak into a serialized sync row.
+        serialized = row.model_dump()
+        assert "user_id" not in serialized and "_id" not in serialized

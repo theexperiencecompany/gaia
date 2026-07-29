@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -40,6 +40,7 @@ from app.models.stream_events import (
     ErrorFrame,
     MainResponseCompleteFrame,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -67,7 +68,7 @@ from shared.py.wide_events import ChatContext, log, wide_task
 async def run_chat_stream_background(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
 ) -> None:
@@ -144,7 +145,7 @@ class _StreamState:
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
 ) -> None:
@@ -265,7 +266,7 @@ def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
 
 async def _resolve_pending_approval_turn(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
@@ -372,7 +373,7 @@ def _start_description_task(
     is_new_conversation: bool,
     body: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
 ) -> asyncio.Task[str] | None:
     """Create a background task to generate a conversation description if new."""
     if not is_new_conversation:
@@ -423,7 +424,7 @@ async def _wait_for_artifact_forwarder(subscribed: asyncio.Event, stream_id: str
 
 async def _publish_init_chunk(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
@@ -460,7 +461,7 @@ async def _publish_init_chunk(
 
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     source: str | None,
@@ -475,7 +476,14 @@ async def _consume_agent_stream(
     """
     async for chunk in await call_agent(
         request=body,
-        user=user,
+        # The agent-config layer (`call_agent` -> `_core_agent_logic` ->
+        # `build_agent_config` / `construct_langchain_messages`) still declares its
+        # user as a bare `dict`, and its nine other call sites each carry their own
+        # unmigrated chain (workers, subagents, handoffs). Typing it is a separate
+        # wave; this cast marks the boundary rather than widening it here (Type
+        # Safety item 14). Correct by construction — an `AuthenticatedUser` IS this
+        # dict at runtime; nothing downstream mutates it.
+        user=cast(dict[str, Any], user),
         conversation_id=conversation_id,
         usage_metadata_callback=usage_callback,
         stream_id=stream_id,
@@ -620,7 +628,7 @@ async def _handle_stream_error(
 async def _persist_turn(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -654,7 +662,7 @@ async def _persist_turn(
 async def _attach_executor_tool_data(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -695,7 +703,7 @@ async def _attach_executor_tool_data(
 async def _finalize_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
     artifact_task: asyncio.Task[None] | None,

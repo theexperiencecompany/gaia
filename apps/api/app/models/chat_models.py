@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import NotRequired, Union
+from typing import Any, NotRequired, Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -16,10 +16,15 @@ class ImageData(BaseModel):
 
 
 class ToolDataEntry(TypedDict):
-    """Unified structure for tool execution data."""
+    """Unified structure for tool execution data.
+
+    ``data`` is deliberately open: every tool owns the shape it puts here (a
+    calendar option list, an email thread, a rendered artifact), so the only
+    honest constraint is "JSON the frontend's per-tool card knows how to read".
+    """
 
     tool_name: str
-    data: Union[dict, list, str, int, float, bool]
+    data: Union[dict[str, Any], list[Any], str, int, float, bool]
     # Optional: emitters always stamp it, but legacy stored entries predate the
     # field, so a read must tolerate its absence rather than fail validation.
     timestamp: NotRequired[str | None]
@@ -80,7 +85,7 @@ class MessageModel(BaseModel):
     selectedWorkflow: SelectedWorkflowData | None = None
     tool_data: list[ToolDataEntry] | None = None
     follow_up_actions: list[str] | None = None
-    metadata: dict | None = None
+    metadata: dict[str, Any] | None = None
     replyToMessage: ReplyToMessageData | None = None
     # Terminal stream error for a bot turn that produced no response — rendered
     # on reload instead of an empty bubble.

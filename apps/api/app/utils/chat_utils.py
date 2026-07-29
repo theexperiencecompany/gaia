@@ -10,6 +10,7 @@ from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
 from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
     create_conversation_service,
     update_conversation_description,
@@ -53,7 +54,7 @@ async def _generate_description_from_message(
 @traceable(name="Create Conversation")
 async def create_conversation(
     last_message: MessageDict | None,
-    user: dict,
+    user: AuthenticatedUser,
     selectedTool: str | None | None,
     selectedWorkflow: SelectedWorkflowData | None | None = None,
     generate_description: bool = True,
@@ -102,7 +103,7 @@ async def create_conversation(
 async def generate_and_update_description(
     conversation_id: str,
     last_message: MessageDict | None,
-    user: dict,
+    user: AuthenticatedUser,
     selectedTool: str | None | None,
     selectedWorkflow: SelectedWorkflowData | None | None = None,
 ) -> str:

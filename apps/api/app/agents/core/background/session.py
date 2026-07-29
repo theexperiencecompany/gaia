@@ -23,6 +23,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
 
@@ -66,7 +67,7 @@ class ExecutorRun:
 
     stream_id: str
     conversation_id: str
-    user: dict
+    user: AuthenticatedUser
     kind: RunKind
     task_id: str | None
     user_message_id: str | None

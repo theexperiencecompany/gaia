@@ -25,6 +25,7 @@ from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
 
@@ -102,7 +103,7 @@ async def _stream_from_redis(
 async def chat_stream_endpoint(
     request: Request,
     body: MessageRequestWithHistory,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     home_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
 ) -> StreamingResponse:
     """Stream a chat turn. Continues in the background if the client disconnects."""

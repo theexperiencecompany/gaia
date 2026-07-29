@@ -6,6 +6,8 @@ handed to the comms agent as internal context (a HumanMessage with an
 persona. This module owns that single invocation.
 """
 
+from typing import Any, cast
+
 from langchain_core.messages import HumanMessage
 
 from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
@@ -17,6 +19,7 @@ from app.constants.agents import (
 )
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_markers
 from shared.py.wide_events import log
 
@@ -25,7 +28,7 @@ async def narrate_executor_result(
     result_text: str,
     msg_type: str,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
     returned_note: str = "",
     workflow_id: str | None = None,
 ) -> str:
@@ -67,7 +70,13 @@ async def narrate_executor_result(
     try:
         config = build_agent_config(
             conversation_id=conversation_id,
-            user=user,
+            # `build_agent_config` still declares its user as a bare `dict` and its
+            # nine call sites each carry their own unmigrated chain (workers,
+            # subagents, handoffs); typing that layer is a separate wave, so this
+            # cast marks the boundary rather than widening it here (Type Safety
+            # item 14). Correct by construction — an `AuthenticatedUser` IS this
+            # dict at runtime, and the config builder only reads from it.
+            user=cast(dict[str, Any], user),
             agent_name="comms_agent",
         )
         initial_state = {

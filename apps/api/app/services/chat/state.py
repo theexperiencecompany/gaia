@@ -4,25 +4,41 @@ Pure data manipulation on the orchestrator's accumulators
 (``tool_data`` / ``tool_outputs`` / ``todo_progress_accumulated`` / LangChain
 ``usage_metadata``). No I/O except for the Redis progress read used on
 cancellation paths where the ``nostream`` marker never arrives.
+
+The ``tool_data`` accumulator stays ``dict[str, Any]`` rather than becoming a
+TypedDict: its entries are heterogeneous per ``tool_name`` (each tool owns its
+own ``data`` shape), and the same object is threaded through
+``services/chat/persistence``, ``utils/stream_utils`` and
+``agents/core/background/executor_capture`` as a plain dict — naming it would
+have to retype all of them in one pass (Type Safety item 14).
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NamedTuple
 
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from shared.py.wide_events import log
 
 
+class TokenTotals(NamedTuple):
+    """Per-turn token rollup across every model call in the turn."""
+
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+
+
 def aggregate_usage_metadata(
     usage_metadata: dict[str, Any],
-) -> tuple[int, int, int]:
+) -> TokenTotals:
     """Sum input, output, and cache-read tokens across all model entries.
 
-    Returns ``(total_input, total_output, total_cached)``. ``cache_read`` lives
-    in each entry's ``input_token_details`` (LangChain canonical shape); some
-    provider SDK versions surface it under ``cached_content_token_count`` so we
-    fall back to that.
+    ``usage_metadata`` is LangChain's ``UsageMetadataCallbackHandler`` output
+    keyed by model name. It stays ``dict[str, Any]``: the per-entry values are
+    canonically ``UsageMetadata``, but some provider SDK versions add their own
+    keys (``cached_content_token_count``) that the canonical TypedDict does not
+    declare — hence the ``isinstance`` guard and the fallback below.
     """
     total_input = 0
     total_output = 0
@@ -35,7 +51,7 @@ def aggregate_usage_metadata(
         details = v.get("input_token_details") or {}
         cached = details.get("cache_read") or v.get("cached_content_token_count") or 0
         total_cached += int(cached or 0)
-    return total_input, total_output, total_cached
+    return TokenTotals(total_input, total_output, total_cached)
 
 
 async def recover_stream_state(

@@ -1,10 +1,17 @@
-"""Persistence-side models for the ``conversations`` collection.
+"""Persistence-side models for the ``conversations`` collection, plus the
+conversation endpoints' response shapes.
 
-These are distinct from the API request/response models in ``chat_models`` — they
-describe the document as it is actually stored and read back. The embedded
-``messages`` array reuses ``MessageModel``; a before-validator runs the legacy
-tool-data normalization at the read boundary so the rest of the app never sees an
-un-normalized message.
+The persistence models describe the document as it is actually stored and read
+back — distinct from the API *request* models, which live in ``chat_models``. The
+embedded ``messages`` array reuses ``MessageModel``; a before-validator runs the
+legacy tool-data normalization at the read boundary so the rest of the app never
+sees an un-normalized message.
+
+The response models at the bottom of this file live here rather than alongside
+the requests in ``chat_models`` because they are built from the persistence
+shapes above (``ConversationSummary``, ``ConversationMessageHit``) — and
+``conversation_models`` already imports ``chat_models``, so the other direction
+would be a cycle.
 
 Timestamps are the legacy camelCase pair: ``createdAt`` is an ISO string written
 at insert time, ``updatedAt`` is a BSON date bumped via ``$currentDate`` on every
@@ -174,3 +181,125 @@ class OnboardingProbe(BaseModel):
 
     is_onboarding_conversation: bool | None = None
     message_count: int = 0
+
+
+# ---------------------------------------------------------------------------
+# Conversation endpoint responses
+# ---------------------------------------------------------------------------
+
+
+class CreateConversationResponse(BaseModel):
+    """Acknowledgement for a newly created conversation."""
+
+    conversation_id: str
+    user_id: str
+    createdAt: str
+    detail: str
+
+
+class SystemConversationCreated(BaseModel):
+    """A system-generated conversation (workflow / email / reminder processing).
+
+    Carries more than :class:`CreateConversationResponse` because the caller that
+    binds the conversation to its workflow reads the system flags back. Not an
+    endpoint response — no route creates a system conversation.
+    """
+
+    conversation_id: str
+    user_id: str
+    description: str
+    is_system_generated: bool
+    system_purpose: SystemPurpose
+    createdAt: str
+    detail: str
+
+
+class ConversationListResponse(BaseModel):
+    """One page of the conversation list: every starred conversation followed by
+    the requested page of the non-starred ones."""
+
+    conversations: list[ConversationSummary]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
+class ConversationSyncRow(BaseModel):
+    """One batch-sync row — the conversation's client-visible fields plus its full
+    message history and artifact registry.
+
+    ``active_stream_id`` is the stream of an in-flight turn (``None`` when idle),
+    carried here so a reloading client re-attaches without a discovery request.
+    """
+
+    conversation_id: str
+    description: str
+    starred: bool | None = None
+    is_system_generated: bool | None = None
+    is_onboarding_conversation: bool | None = None
+    system_purpose: SystemPurpose | None = None
+    is_unread: bool | None = None
+    createdAt: str | None = None
+    updatedAt: datetime | None = None
+    messages: list[MessageModel] = Field(default_factory=list)
+    # Mirrored verbatim from the document — the element shape is owned by
+    # services/chat/artifacts_registry.py (see ConversationDocument.artifacts).
+    artifacts: list[dict[str, Any]] = Field(default_factory=list)
+    active_stream_id: str | None = None
+
+
+class BatchSyncResponse(BaseModel):
+    """The conversations a client's sync request found stale."""
+
+    conversations: list[ConversationSyncRow] = Field(default_factory=list)
+
+
+class ConversationActionResponse(BaseModel):
+    """Acknowledgement for a conversation-scoped action that reports back which
+    conversation it applied to — delete, rename, mark read/unread."""
+
+    message: str
+    conversation_id: str
+
+
+class DeleteAllConversationsResponse(BaseModel):
+    """Acknowledgement for the bulk delete, which names no single conversation."""
+
+    message: str
+
+
+class StarConversationResponse(BaseModel):
+    """Acknowledgement echoing the conversation's new starred state."""
+
+    message: str
+    starred: bool
+
+
+class UpdateDescriptionResponse(ConversationActionResponse):
+    """Rename acknowledgement, echoing the description that was stored."""
+
+    description: str
+
+
+class UpdateMessagesResponse(BaseModel):
+    """Append acknowledgement carrying the ids the appended messages were stored
+    under — the client reconciles its optimistic records against these."""
+
+    conversation_id: str
+    message: str
+    modified_count: int
+    message_ids: list[str]
+
+
+class PinMessageResponse(BaseModel):
+    """Acknowledgement echoing a message's new pinned state."""
+
+    message: str
+    pinned: bool
+
+
+class PinnedMessagesResponse(BaseModel):
+    """Every pinned message across the user's conversations."""
+
+    results: list[ConversationMessageHit] = Field(default_factory=list)
