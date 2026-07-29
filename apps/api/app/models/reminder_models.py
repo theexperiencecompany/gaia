@@ -348,7 +348,14 @@ class UpdateReminderRequest(BaseModel):
 
 
 class ReminderResponse(BaseModel):
-    """Response model for reminder operations."""
+    """Response model for reminder operations.
+
+    ``from_attributes`` so the endpoints can project a ``ReminderModel`` onto
+    this without a dict round-trip. Declared here rather than passed at each
+    call site: it is a property of this model, not of one conversion.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: str = Field(..., description="Reminder ID")
     user_id: str = Field(..., description="User ID who owns this reminder")

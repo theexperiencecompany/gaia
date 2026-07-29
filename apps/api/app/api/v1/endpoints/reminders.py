@@ -105,7 +105,7 @@ async def create_reminder_endpoint(
         log.set(reminder=_reminder_context("create", reminder))
         log.set(outcome="success")
 
-        return ReminderResponse.model_validate(reminder, from_attributes=True)
+        return ReminderResponse.model_validate(reminder)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -157,7 +157,7 @@ async def get_reminder_endpoint(
         log.set(reminder=_reminder_context("get", reminder))
         log.set(outcome="success")
 
-        return ReminderResponse.model_validate(reminder, from_attributes=True)
+        return ReminderResponse.model_validate(reminder)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -227,7 +227,7 @@ async def update_reminder_endpoint(
         log.set(reminder=_reminder_context("update", updated_reminder))
         log.set(outcome="success")
 
-        return ReminderResponse.model_validate(updated_reminder, from_attributes=True)
+        return ReminderResponse.model_validate(updated_reminder)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -333,7 +333,7 @@ async def list_reminders_endpoint(
         log.set(outcome="success")
 
         return [
-            ReminderResponse.model_validate(reminder, from_attributes=True)
+            ReminderResponse.model_validate(reminder)
             for reminder in reminders
         ]
 
@@ -392,7 +392,7 @@ async def pause_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
-        return ReminderResponse.model_validate(updated_reminder, from_attributes=True)
+        return ReminderResponse.model_validate(updated_reminder)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
