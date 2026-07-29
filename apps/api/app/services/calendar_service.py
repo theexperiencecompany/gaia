@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from typing import Any
 
 from fastapi import HTTPException
 
@@ -29,7 +28,7 @@ from app.models.calendar_models import (
     GoogleConferenceData,
     GoogleConferenceSolutionKey,
 )
-from app.services.composio.proxy_client import proxy_request
+from app.services.composio.proxy_client import ProxyMethod, proxy_request
 from app.utils.errors import AppError
 from shared.py.wide_events import log
 
@@ -43,14 +42,15 @@ async def _proxy(
     user_id: str,
     *,
     endpoint: str,
-    method: str,
+    method: ProxyMethod,
     body: GoogleCalendarEventWrite | None = None,
     query: QueryParams | None = None,
-) -> Any:
+) -> object:
     """Wrapper that converts Composio proxy errors to FastAPI HTTPException.
 
-    Returns Google's raw JSON — this is the provider boundary, so every caller
-    validates it into a real model immediately.
+    Returns Google's raw JSON as ``object`` — this is the provider boundary and
+    the shape varies per endpoint, so the type stays opaque and every caller
+    feeds it straight into a ``model_validate`` rather than reading fields off it.
 
     Calendar callers (FastAPI endpoints, custom tools) historically expect
     HTTPException-shaped failures, so we normalize AppError here.
@@ -60,7 +60,7 @@ async def _proxy(
             user_id=user_id,
             toolkit=CALENDAR_TOOLKIT,
             endpoint=endpoint,
-            method=method,  # type: ignore[arg-type]
+            method=method,
             body=body.model_dump(exclude_none=True) if body is not None else None,
             query=query,
         )
@@ -79,7 +79,7 @@ async def _proxy(
                 },
             ) from exc
         provider_response = exc.meta.get("provider_response")
-        detail: Any = exc.message
+        detail: object = exc.message
         if isinstance(provider_response, dict):
             error_message = provider_response.get("error", {})
             if isinstance(error_message, dict) and error_message.get("message"):

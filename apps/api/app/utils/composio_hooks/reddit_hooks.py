@@ -16,7 +16,7 @@ from shared.py.wide_events import log
 from .registry import register_after_hook, register_before_hook
 
 
-def process_reddit_post(post_data: dict) -> dict:
+def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
     """
     Extract only critical information from a Reddit post.
 
@@ -54,7 +54,7 @@ def process_reddit_post(post_data: dict) -> dict:
         return {}
 
 
-def process_reddit_search_results(response_data: dict) -> dict:
+def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, Any]:
     """
     Process Reddit search results to minimize data.
 
@@ -88,7 +88,7 @@ def process_reddit_search_results(response_data: dict) -> dict:
         return response_data
 
 
-def process_reddit_comment(comment_data: dict) -> dict:
+def process_reddit_comment(comment_data: dict[str, Any]) -> dict[str, Any]:
     """
     Extract only critical information from a Reddit comment.
 

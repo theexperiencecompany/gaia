@@ -16,7 +16,9 @@ from __future__ import annotations
 import asyncio
 from threading import Lock
 import time
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypedDict, cast
+
+from composio import Composio
 
 from app.config.oauth_config import get_composio_social_configs
 from app.constants.error_codes import INTEGRATION_NOT_CONNECTED
@@ -26,13 +28,25 @@ from shared.py.wide_events import log
 
 ProxyMethod = Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"]
 
+
+class ProxyResponse(TypedDict):
+    """A proxy call's full result: provider status, payload and headers.
+
+    ``data`` is the provider's parsed JSON body, so it stays ``Any`` — every
+    provider answers a different shape and this is the boundary where it lands.
+    """
+
+    status: int
+    data: Any
+    headers: dict[str, Any]
+
 _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS = 600
 
 _connected_account_cache: dict[tuple[str, str], tuple[str, float]] = {}
 _cache_lock = Lock()
 
 
-def _get_composio() -> Any:
+def _get_composio() -> Composio:
     # Lazy import to avoid a circular dependency between proxy_client and
     # the Composio service / custom-tool registry that imports it.
     from app.services.composio.composio_service import get_composio_service
@@ -179,12 +193,12 @@ def _proxy_call(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Internal: send a proxy request and return data/status/headers as a dict."""
+) -> ProxyResponse:
+    """Internal: send a proxy request and return its status, data and headers."""
     log.set(
         composio_proxy={
             "toolkit": toolkit,
@@ -262,11 +276,11 @@ def _proxy_call(
     raw_headers = response.headers or {}
     normalized_headers = {str(k).lower(): v for k, v in raw_headers.items()}
 
-    return {
-        "status": status,
-        "data": response.data,
-        "headers": normalized_headers,
-    }
+    return ProxyResponse(
+        status=status,
+        data=response.data,
+        headers=normalized_headers,
+    )
 
 
 def proxy_request_sync(
@@ -275,7 +289,7 @@ def proxy_request_sync(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
@@ -285,6 +299,11 @@ def proxy_request_sync(
     Returns the parsed `data` field from the proxy response. Raises
     `AppError` on non-2xx provider responses or when the user has no
     active connection for the toolkit.
+
+    The return stays `Any`: one function fronts every provider in the
+    codebase and each answers a different JSON shape, so the concrete type
+    only exists at the call site. Callers validate what they receive into a
+    real model there.
     """
     return _proxy_call(
         user_id=user_id,
@@ -304,11 +323,11 @@ def proxy_request_full_sync(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> dict[str, Any]:
+) -> ProxyResponse:
     """Like `proxy_request_sync` but returns `{status, data, headers}`.
 
     Use when the caller needs response headers (e.g. LinkedIn's
@@ -332,7 +351,7 @@ async def proxy_request(
     toolkit: str,
     endpoint: str,
     method: ProxyMethod,
-    body: Any | None = None,
+    body: object = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
@@ -376,6 +395,7 @@ def invalidate_connected_account_cache(
 
 __all__ = [
     "ProxyMethod",
+    "ProxyResponse",
     "proxy_request",
     "proxy_request_sync",
     "proxy_request_full_sync",

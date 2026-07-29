@@ -1096,7 +1096,7 @@ async def get_email_importance_summaries(
             important_only=important_only,
             outcome="success",
         )
-        return EmailImportanceSummariesResponse(**result)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving email summaries: {e!s}")
 
@@ -1131,7 +1131,7 @@ async def get_single_email_importance_summary(
             email_id=message_id,
             outcome="success",
         )
-        return EmailImportanceSummaryResponse(**result)
+        return result
     except HTTPException:
         raise
     except Exception as e:
@@ -1162,6 +1162,6 @@ async def get_bulk_email_importance_summaries(
             result_count=len(request.message_ids),
             outcome="success",
         )
-        return BulkEmailImportanceSummariesResponse(**result)
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving bulk email summaries: {e!s}")

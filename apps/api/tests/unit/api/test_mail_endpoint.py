@@ -14,6 +14,9 @@ from httpx import AsyncClient
 import pytest
 
 from app.models.mail_models import (
+    BulkEmailImportanceSummariesResponse,
+    EmailImportanceSummariesResponse,
+    EmailImportanceSummaryResponse,
     GmailDraftsResponse,
     GmailEmailResult,
     GmailLabelsResult,
@@ -834,33 +837,40 @@ class TestGetImportanceSummaries:
         new_callable=AsyncMock,
     )
     async def test_returns_200(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {
+        mock_svc.return_value = EmailImportanceSummariesResponse(
+            status="success", emails=[], count=0, filtered_by_importance=False
+        )
+        response = await client.get(f"{MAIL_BASE}/gmail/importance-summaries")
+        assert response.status_code == 200
+        # Asserted against a literal, not the model: this is the wire contract
+        # the web client reads, and it must not move when the service's return
+        # type does.
+        assert response.json() == {
             "status": "success",
             "emails": [],
             "count": 0,
             "filtered_by_importance": False,
         }
-        response = await client.get(f"{MAIL_BASE}/gmail/importance-summaries")
-        assert response.status_code == 200
-        assert response.json() == mock_svc.return_value
 
     @patch(
         "app.api.v1.endpoints.mail.get_importance_summaries_service",
         new_callable=AsyncMock,
     )
     async def test_with_params(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {
-            "status": "success",
-            "emails": [],
-            "count": 0,
-            "filtered_by_importance": True,
-        }
+        mock_svc.return_value = EmailImportanceSummariesResponse(
+            status="success", emails=[], count=0, filtered_by_importance=True
+        )
         response = await client.get(
             f"{MAIL_BASE}/gmail/importance-summaries",
             params={"limit": 10, "important_only": True},
         )
         assert response.status_code == 200
-        assert response.json() == mock_svc.return_value
+        assert response.json() == {
+            "status": "success",
+            "emails": [],
+            "count": 0,
+            "filtered_by_importance": True,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -874,7 +884,17 @@ class TestGetSingleImportanceSummary:
         new_callable=AsyncMock,
     )
     async def test_returns_200(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {
+        mock_svc.return_value = EmailImportanceSummaryResponse(
+            status="success",
+            email={
+                "is_important": True,
+                "importance_level": "HIGH",
+                "summary": "Action required",
+            },
+        )
+        response = await client.get(f"{MAIL_BASE}/gmail/importance-summary/msg-1")
+        assert response.status_code == 200
+        assert response.json() == {
             "status": "success",
             "email": {
                 "is_important": True,
@@ -882,9 +902,6 @@ class TestGetSingleImportanceSummary:
                 "summary": "Action required",
             },
         }
-        response = await client.get(f"{MAIL_BASE}/gmail/importance-summary/msg-1")
-        assert response.status_code == 200
-        assert response.json() == mock_svc.return_value
 
     @patch(
         "app.api.v1.endpoints.mail.get_single_importance_summary_service",
@@ -907,7 +924,20 @@ class TestBulkImportanceSummaries:
         new_callable=AsyncMock,
     )
     async def test_returns_200(self, mock_svc: AsyncMock, client: AsyncClient):
-        mock_svc.return_value = {
+        mock_svc.return_value = BulkEmailImportanceSummariesResponse(
+            status="success",
+            emails={},
+            found_count=0,
+            missing_count=2,
+            found_message_ids=[],
+            missing_message_ids=["msg-1", "msg-2"],
+        )
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/importance-summaries/bulk",
+            json={"message_ids": ["msg-1", "msg-2"]},
+        )
+        assert response.status_code == 200
+        assert response.json() == {
             "status": "success",
             "emails": {},
             "found_count": 0,
@@ -915,12 +945,6 @@ class TestBulkImportanceSummaries:
             "found_message_ids": [],
             "missing_message_ids": ["msg-1", "msg-2"],
         }
-        response = await client.post(
-            f"{MAIL_BASE}/gmail/importance-summaries/bulk",
-            json={"message_ids": ["msg-1", "msg-2"]},
-        )
-        assert response.status_code == 200
-        assert response.json() == mock_svc.return_value
 
     async def test_missing_message_ids_returns_422(self, client: AsyncClient):
         response = await client.post(
