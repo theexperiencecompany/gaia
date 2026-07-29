@@ -1,7 +1,7 @@
 """Workflow utility functions for GAIA workflow system."""
 
 import asyncio
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
@@ -20,6 +20,29 @@ from shared.py.wide_events import log
 
 class WorkflowConfigError(Exception):
     pass
+
+
+class WorkflowCreatedTriggerConfig(TypedDict):
+    """The ``trigger_config`` block of the ``workflow_created`` stream frame."""
+
+    type: TriggerType
+    cron_expression: str | None
+    trigger_name: str | None
+    enabled: bool
+    timezone: str | None
+
+
+class WorkflowCreatedPayload(TypedDict):
+    """The ``workflow_created`` frame streamed when a workflow is created
+    without a confirmation card — the frontend renders it as a created-workflow
+    tool card."""
+
+    id: str | None
+    title: str
+    description: str
+    trigger_config: WorkflowCreatedTriggerConfig
+    integration_ids: list[str]
+    activated: bool
 
 
 async def handle_workflow_error(
@@ -56,12 +79,17 @@ def ensure_trigger_config_object(trigger_config: TriggerConfig | dict[str, Any])
     return trigger_config
 
 
-def error_response(error_code: str, message: str) -> dict:
+# The two envelopes below stay `dict[str, Any]` rather than becoming a pair of
+# TypedDicts: every workflow tool returns them straight out of a `-> dict`
+# handler in agents/tools/workflow_shared_tools.py, and mypy does not accept a
+# TypedDict where a plain `dict` is declared — naming the shape means retyping
+# that module's tools in the same pass (Type Safety item 14).
+def error_response(error_code: str, message: str) -> dict[str, Any]:
     """Return a standardized error response."""
     return {"success": False, "error": error_code, "message": message}
 
 
-def success_response(data: object, message: str | None = None) -> dict:
+def success_response(data: object, message: str | None = None) -> dict[str, Any]:
     """Return a standardized success response."""
     response: dict[str, Any] = {"success": True, "data": data}
     if message:
@@ -147,7 +175,7 @@ async def create_workflow_directly(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict | None:
+) -> dict[str, Any] | None:
     """
     Create a workflow directly from a finalized draft.
 
@@ -190,7 +218,7 @@ async def create_workflow_directly(
             user_timezone=user_timezone,
         )
 
-        workflow_data = {
+        workflow_data: WorkflowCreatedPayload = {
             "id": workflow.id,
             "title": workflow.title,
             "description": workflow.description,
@@ -276,7 +304,7 @@ async def apply_workflow_edit(
     user_id: str,
     writer: StreamWriter,
     user_timezone: str = "UTC",
-) -> dict:
+) -> dict[str, Any]:
     """Apply a finalized edit draft to an existing workflow via WorkflowService.update_workflow.
 
     Applies title/description/prompt and manual/scheduled trigger changes directly.
@@ -297,7 +325,7 @@ async def apply_workflow_edit(
     # The assistant re-emits the FULL workflow on every edit, so only persist
     # fields that actually changed. This keeps a rename/schedule-only edit from
     # rewriting the prompt and triggering an unnecessary step regeneration below.
-    update_fields: dict[str, Any] = {}
+    update_fields: dict[str, str | list[str] | TriggerConfig] = {}
     if draft.title and draft.title != workflow.title:
         update_fields["title"] = draft.title
     if draft.description and draft.description != (workflow.description or ""):
@@ -346,9 +374,14 @@ async def apply_workflow_edit(
             "No changes to apply.",
         )
 
+    # The splat is what gives the request its ``exclude_unset`` semantics — only
+    # the keys set above are persisted. Widened back to Any for the call because
+    # mypy checks a ``**`` splat field-by-field and cannot match a union value
+    # type against each optional field; the narrow type above is what actually
+    # guards the writes.
     updated = await WorkflowService.update_workflow(
         workflow.id or "",
-        UpdateWorkflowRequest(**update_fields),
+        UpdateWorkflowRequest(**cast(dict[str, Any], update_fields)),
         user_id,
         user_timezone=user_timezone,
     )

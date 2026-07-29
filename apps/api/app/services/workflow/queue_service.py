@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.utils.redis_utils import RedisPoolManager
@@ -36,7 +37,7 @@ class WorkflowQueueService:
 
     @staticmethod
     async def queue_workflow_execution(
-        workflow_id: str, user_id: str, context: dict | None = None
+        workflow_id: str, user_id: str, context: dict[str, Any] | None = None
     ) -> bool:
         """Queue workflow execution as a background task.
 

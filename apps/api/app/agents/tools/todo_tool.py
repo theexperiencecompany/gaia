@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, time, timedelta
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 import uuid
 
 from langchain_core.runnables import RunnableConfig
@@ -68,6 +68,132 @@ from app.templates.docstrings.todo_tool_docs import (
 from app.utils.chat_utils import get_user_id_from_config
 from shared.py.wide_events import log
 
+# A TodoResponse / ProjectResponse / TodoStats serialized with
+# ``model_dump(mode="json")`` — an arbitrary JSON object by the time a tool
+# hands it to the LLM and the stream writer.
+SerializedModel: TypeAlias = dict[str, Any]
+
+
+class _TodoBucket(TypedDict):
+    """One count + capped-preview bucket of the todos summary payload."""
+
+    count: int
+    todos: list[SerializedModel]
+    has_more: bool
+
+
+class _SummaryStats(TypedDict):
+    """Productivity counters of the todos summary payload."""
+
+    total: int
+    completed: int
+    pending: int
+    completed_today: int
+    overdue: int
+    completion_rate: float
+
+
+class _RecentlyCompletedBucket(TypedDict):
+    """The recently-completed bucket — capped like ``_TodoBucket`` but with no
+    ``has_more`` flag (the summary card never offers to expand it)."""
+
+    count: int
+    todos: list[SerializedModel]
+
+
+class _ProjectCounts(TypedDict):
+    """Per-project task tallies of the todos summary payload."""
+
+    total: int
+    completed: int
+    pending: int
+
+
+class TodosSummary(TypedDict):
+    """The ``get_todos_summary`` payload — streamed as ``todo_data.summary``."""
+
+    today: _TodoBucket
+    overdue: _TodoBucket
+    upcoming_week: _TodoBucket
+    high_priority: _TodoBucket
+    recently_completed: _RecentlyCompletedBucket
+    next_deadline: SerializedModel | None
+    stats: _SummaryStats
+    by_project: dict[str, _ProjectCounts]
+
+
+# ---------------------------------------------------------------------------
+# Tool return shapes. Plain TypedDicts, not models: the value goes straight to
+# LangChain, which stringifies it into the ToolMessage the LLM reads — so the
+# runtime object must stay the exact dict it is today. ``count`` is
+# ``NotRequired`` because the error paths deliberately return only the payload
+# key plus ``error``.
+# ---------------------------------------------------------------------------
+
+
+class TodoResult(TypedDict):
+    """A single-todo mutation result (create/update/subtask edits)."""
+
+    todo: SerializedModel | None
+    error: str | None
+
+
+class TodoListResult(TypedDict):
+    """A list of todos, with the match count on the success path."""
+
+    todos: list[SerializedModel]
+    count: NotRequired[int]
+    error: str | None
+
+
+class SemanticSearchResult(TodoListResult):
+    """``semantic_search_todos`` — a todo list tagged with the search backend."""
+
+    search_type: NotRequired[Literal["semantic"]]
+
+
+class SuccessResult(TypedDict):
+    """A delete/bulk-delete outcome carrying no entity."""
+
+    success: bool
+    error: str | None
+
+
+class TodoStatsResult(TypedDict):
+    """``get_todo_statistics`` — the serialized stats model."""
+
+    stats: SerializedModel | None
+    error: str | None
+
+
+class ProjectResult(TypedDict):
+    """A single-project mutation result."""
+
+    project: SerializedModel | None
+    error: str | None
+
+
+class ProjectListResult(TypedDict):
+    """A list of projects, with the match count on the success path."""
+
+    projects: list[SerializedModel]
+    count: NotRequired[int]
+    error: str | None
+
+
+class LabelListResult(TypedDict):
+    """``get_all_labels`` — every label the user has, serialized."""
+
+    labels: list[SerializedModel]
+    error: str | None
+
+
+class TodosSummaryResult(TypedDict):
+    """``get_todos_summary`` — the whole snapshot in one call."""
+
+    summary: TodosSummary | None
+    error: str | None
+
 
 @tool
 @with_rate_limiting("todo_operations")
@@ -83,7 +209,7 @@ async def create_todo(
     ] = None,
     priority: Annotated[str | None, "Priority level: high, medium, low, or none"] = None,
     project_id: Annotated[str | None, "Project ID to assign the todo to"] = None,
-) -> dict[str, Any]:
+) -> TodoResult:
     try:
         log.set(tool={"name": "create_todo", "action": "create"})
         log.info(f"{LogTag.TOOL} Todo Tool: Creating todo with title '{title}'")
@@ -143,7 +269,7 @@ async def list_todos(
     overdue: Annotated[bool | None, "Filter overdue uncompleted todos"] = None,
     skip: Annotated[int, "Number of records to skip for pagination"] = 0,
     limit: Annotated[int, "Maximum number of records to return"] = 50,
-) -> dict[str, Any]:
+) -> TodoListResult:
     try:
         log.set(tool={"name": "list_todos", "action": "list"})
         log.info(f"{LogTag.TOOL} Todo Tool: Listing todos with filters")
@@ -155,8 +281,7 @@ async def list_todos(
         # Ensure limit is reasonable
         limit = min(limit, 100)
 
-        # Convert priority string to value if provided
-        priority_value = priority if priority else None
+        priority_value = Priority(priority) if priority else None
 
         results = await get_all_todos_service(
             user_id,
@@ -204,7 +329,7 @@ async def update_todo(
     priority: Annotated[str | None, "New priority: high, medium, low, or none"] = None,
     project_id: Annotated[str | None, "Move to different project"] = None,
     completed: Annotated[bool | None, "Mark as complete/incomplete"] = None,
-) -> dict[str, Any]:
+) -> TodoResult:
     try:
         log.set(tool={"name": "update_todo", "action": "update"})
         log.info(f"{LogTag.TOOL} Todo Tool: Updating todo {todo_id}")
@@ -252,7 +377,7 @@ async def update_todo(
 async def delete_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the todo to delete (required)"],
-) -> dict[str, Any]:
+) -> SuccessResult:
     try:
         log.set(tool={"name": "delete_todo", "action": "delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Deleting todo {todo_id}")
@@ -291,7 +416,7 @@ async def delete_todo(
 async def search_todos(
     config: RunnableConfig,
     query: Annotated[str, "Search query to match against todos (required)"],
-) -> dict[str, Any]:
+) -> TodoListResult:
     try:
         log.set(tool={"name": "search_todos", "action": "search"})
         log.info(f"{LogTag.TOOL} Todo Tool: Searching todos with query '{query}'")
@@ -332,7 +457,7 @@ async def semantic_search_todos(
     project_id: Annotated[str | None, "Filter by specific project ID"] = None,
     completed: Annotated[bool | None, "Filter by completion status"] = None,
     priority: Annotated[str | None, "Filter by priority: high, medium, low, or none"] = None,
-) -> dict[str, Any]:
+) -> SemanticSearchResult:
     try:
         log.set(tool={"name": "semantic_search_todos", "action": "search"})
         log.info(f"{LogTag.TOOL} Todo Tool: Semantic search for '{query}'")
@@ -350,7 +475,7 @@ async def semantic_search_todos(
             limit=limit,
             project_id=project_id,
             completed=completed,
-            priority=priority,
+            priority=Priority(priority) if priority else None,
         )
 
         todos_data = [todo.model_dump(mode="json") for todo in results]
@@ -382,7 +507,7 @@ async def semantic_search_todos(
 
 @tool
 @with_doc(GET_TODO_STATS)
-async def get_todo_statistics(config: RunnableConfig) -> dict[str, Any]:
+async def get_todo_statistics(config: RunnableConfig) -> TodoStatsResult:
     try:
         log.set(tool={"name": "get_todo_statistics", "action": "stats"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting todo statistics")
@@ -391,7 +516,7 @@ async def get_todo_statistics(config: RunnableConfig) -> dict[str, Any]:
         if not user_id:
             return {"error": "User authentication required", "stats": None}
 
-        stats = await get_todo_stats_service(user_id)
+        stats = (await get_todo_stats_service(user_id)).model_dump(mode="json")
 
         # Stream the stats to frontend
         writer = get_stream_writer()
@@ -415,7 +540,7 @@ async def get_todo_statistics(config: RunnableConfig) -> dict[str, Any]:
 
 @tool
 @with_doc(GET_TODAY_TODOS)
-async def get_today_todos(config: RunnableConfig) -> dict[str, Any]:
+async def get_today_todos(config: RunnableConfig) -> TodoListResult:
     try:
         log.set(tool={"name": "get_today_todos", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting today's todos")
@@ -459,7 +584,7 @@ async def get_today_todos(config: RunnableConfig) -> dict[str, Any]:
 async def get_upcoming_todos(
     config: RunnableConfig,
     days: Annotated[int, "Number of days to look ahead"] = 7,
-) -> dict[str, Any]:
+) -> TodoListResult:
     try:
         log.set(tool={"name": "get_upcoming_todos", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting upcoming todos for next {days} days")
@@ -505,7 +630,7 @@ async def create_project(
     name: Annotated[str, "Name of the project (required)"],
     description: Annotated[str | None, "Project description"] = None,
     color: Annotated[str | None, "Hex color code (e.g., #FF5733)"] = None,
-) -> dict[str, Any]:
+) -> ProjectResult:
     try:
         log.set(tool={"name": "create_project", "action": "create"})
         log.info(f"{LogTag.TOOL} Todo Tool: Creating project '{name}'")
@@ -545,7 +670,7 @@ async def create_project(
 
 @tool
 @with_doc(LIST_PROJECTS)
-async def list_projects(config: RunnableConfig) -> dict[str, Any]:
+async def list_projects(config: RunnableConfig) -> ProjectListResult:
     try:
         log.set(tool={"name": "list_projects", "action": "list"})
         log.info(f"{LogTag.TOOL} Todo Tool: Listing all projects")
@@ -585,7 +710,7 @@ async def update_project(
     name: Annotated[str | None, "New project name"] = None,
     description: Annotated[str | None, "New project description"] = None,
     color: Annotated[str | None, "New hex color code"] = None,
-) -> dict[str, Any]:
+) -> ProjectResult:
     try:
         log.set(tool={"name": "update_project", "action": "update"})
         log.info(f"{LogTag.TOOL} Todo Tool: Updating project {project_id}")
@@ -594,16 +719,7 @@ async def update_project(
         if not user_id:
             return {"error": "User authentication required", "project": None}
 
-        # Build update data with only provided fields
-        update_data = {}
-        if name is not None:
-            update_data["name"] = name
-        if description is not None:
-            update_data["description"] = description
-        if color is not None:
-            update_data["color"] = color
-
-        update_request = UpdateProjectRequest(**update_data)
+        update_request = UpdateProjectRequest(name=name, description=description, color=color)
         result = await update_project_service(project_id, update_request, user_id)
         project_dict = result.model_dump(mode="json")
 
@@ -632,7 +748,7 @@ async def update_project(
 async def delete_project(
     config: RunnableConfig,
     project_id: Annotated[str, "ID of the project to delete (required)"],
-) -> dict[str, Any]:
+) -> SuccessResult:
     try:
         log.set(tool={"name": "delete_project", "action": "delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Deleting project {project_id}")
@@ -672,7 +788,7 @@ async def delete_project(
 async def get_todos_by_label(
     config: RunnableConfig,
     label: Annotated[str, "The label to filter by (required)"],
-) -> dict[str, Any]:
+) -> TodoListResult:
     try:
         log.set(tool={"name": "get_todos_by_label", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting todos with label '{label}'")
@@ -710,7 +826,7 @@ async def get_todos_by_label(
 
 @tool
 @with_doc(GET_ALL_LABELS)
-async def get_all_labels(config: RunnableConfig) -> dict[str, Any]:
+async def get_all_labels(config: RunnableConfig) -> LabelListResult:
     try:
         log.set(tool={"name": "get_all_labels", "action": "get"})
         log.info(f"{LogTag.TOOL} Todo Tool: Getting all labels")
@@ -720,7 +836,7 @@ async def get_all_labels(config: RunnableConfig) -> dict[str, Any]:
             return {"error": "User authentication required", "labels": []}
 
         results = await get_all_labels_service(user_id)
-        return {"labels": results, "error": None}
+        return {"labels": [label.model_dump() for label in results], "error": None}
 
     except Exception as e:
         error_msg = f"Error getting labels: {e!s}"
@@ -733,7 +849,7 @@ async def get_all_labels(config: RunnableConfig) -> dict[str, Any]:
 async def bulk_complete_todos(
     config: RunnableConfig,
     todo_ids: Annotated[list[str], "List of todo IDs to mark as complete (required)"],
-) -> dict[str, Any]:
+) -> TodoListResult:
     try:
         log.set(tool={"name": "bulk_complete_todos", "action": "bulk_complete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Bulk completing {len(todo_ids)} todos")
@@ -775,7 +891,7 @@ async def bulk_move_todos(
     config: RunnableConfig,
     todo_ids: Annotated[list[str], "List of todo IDs to move (required)"],
     project_id: Annotated[str, "Target project ID (required)"],
-) -> dict[str, Any]:
+) -> TodoListResult:
     try:
         log.set(tool={"name": "bulk_move_todos", "action": "bulk_move"})
         log.info(f"{LogTag.TOOL} Todo Tool: Moving {len(todo_ids)} todos to project {project_id}")
@@ -816,7 +932,7 @@ async def bulk_move_todos(
 async def bulk_delete_todos(
     config: RunnableConfig,
     todo_ids: Annotated[list[str], "List of todo IDs to delete (required)"],
-) -> dict[str, Any]:
+) -> SuccessResult:
     try:
         log.set(tool={"name": "bulk_delete_todos", "action": "bulk_delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Bulk deleting {len(todo_ids)} todos")
@@ -852,7 +968,7 @@ async def add_subtask(
     config: RunnableConfig,
     todo_id: Annotated[str, "Parent todo ID (required)"],
     title: Annotated[str, "Subtask title (required)"],
-) -> dict[str, Any]:
+) -> TodoResult:
     try:
         log.set(tool={"name": "add_subtask", "action": "create"})
         log.info(f"{LogTag.TOOL} Todo Tool: Adding subtask to todo {todo_id}")
@@ -901,7 +1017,7 @@ async def update_subtask(
     subtask_id: Annotated[str, "Subtask ID to update (required)"],
     title: Annotated[str | None, "New subtask title"] = None,
     completed: Annotated[bool | None, "Subtask completion status"] = None,
-) -> dict[str, Any]:
+) -> TodoResult:
     try:
         log.set(tool={"name": "update_subtask", "action": "update"})
         log.info(f"{LogTag.TOOL} Todo Tool: Updating subtask {subtask_id} in todo {todo_id}")
@@ -959,7 +1075,7 @@ async def delete_subtask(
     config: RunnableConfig,
     todo_id: Annotated[str, "Parent todo ID (required)"],
     subtask_id: Annotated[str, "Subtask ID to delete (required)"],
-) -> dict[str, Any]:
+) -> TodoResult:
     try:
         log.set(tool={"name": "delete_subtask", "action": "delete"})
         log.info(f"{LogTag.TOOL} Todo Tool: Deleting subtask {subtask_id} from todo {todo_id}")
@@ -1004,7 +1120,7 @@ async def delete_subtask(
 
 @tool
 @with_doc(GET_TODOS_SUMMARY)
-async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
+async def get_todos_summary(config: RunnableConfig) -> TodosSummaryResult:
     """Get a comprehensive summary of the user's todos in a single call."""
 
     try:
@@ -1051,7 +1167,7 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
             all_todos: list[TodoResponse],
             recently_completed: list[TodoResponse],
             overdue: list[TodoResponse],
-        ) -> dict[str, int | float]:
+        ) -> _SummaryStats:
             """Calculate productivity statistics."""
             total = len(all_todos)
             completed = len([t for t in all_todos if t.completed])
@@ -1067,9 +1183,9 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
 
         def build_project_breakdown(
             all_todos: list[TodoResponse], projects: list[ProjectResponse]
-        ) -> dict[str, dict[str, int]]:
+        ) -> dict[str, _ProjectCounts]:
             """Build per-project task counts."""
-            breakdown: dict[str, dict[str, int]] = {}
+            breakdown: dict[str, _ProjectCounts] = {}
             for project in projects:
                 project_todos = [t for t in all_todos if t.project_id == project.id]
                 breakdown[project.name] = {
@@ -1079,7 +1195,7 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
                 }
             return breakdown
 
-        def serialize_todos(todos: list[TodoResponse], limit: int = 5) -> dict[str, Any]:
+        def serialize_todos(todos: list[TodoResponse], limit: int = 5) -> _TodoBucket:
             """Serialize todos with optional limit."""
             return {
                 "count": len(todos),
@@ -1105,15 +1221,15 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
         project_breakdown = build_project_breakdown(all_todos, all_projects)
 
         # --- Build summary ---
-        summary = {
+        summary: TodosSummary = {
             "today": serialize_todos(today_todos),
             "overdue": serialize_todos(overdue),
             "upcoming_week": serialize_todos(upcoming_todos),
             "high_priority": serialize_todos(high_priority),
-            "recently_completed": {
-                "count": len(recently_completed),
-                "todos": [t.model_dump(mode="json") for t in recently_completed[:3]],
-            },
+            "recently_completed": _RecentlyCompletedBucket(
+                count=len(recently_completed),
+                todos=[t.model_dump(mode="json") for t in recently_completed[:3]],
+            ),
             "next_deadline": next_deadline.model_dump(mode="json") if next_deadline else None,
             "stats": stats,
             "by_project": project_breakdown,

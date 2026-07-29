@@ -689,7 +689,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": expected_conv_id},
+                return_value=expected_conv_id,
             ) as mock_get_conv,
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -732,7 +732,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_123"},
+                return_value="conv_123",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -764,7 +764,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_ctx"},
+                return_value="conv_ctx",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -796,7 +796,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_1"},
+                return_value="conv_1",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -826,7 +826,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_fallback"},
+                return_value="conv_fallback",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -864,7 +864,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_steps"},
+                return_value="conv_steps",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -901,7 +901,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_none"},
+                return_value="conv_none",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -934,7 +934,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_usermsg"},
+                return_value="conv_usermsg",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",

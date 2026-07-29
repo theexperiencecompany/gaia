@@ -588,7 +588,7 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(
             workflow_tasks,
             "get_or_create_workflow_conversation",
-            AsyncMock(return_value={"conversation_id": "conv-workflow-1"}),
+            AsyncMock(return_value="conv-workflow-1"),
         )
         monkeypatch.setattr(
             workflow_tasks, "add_workflow_execution_messages", AsyncMock(return_value=None)

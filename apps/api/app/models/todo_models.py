@@ -206,6 +206,13 @@ class PaginationMeta(BaseModel):
     has_prev: bool = Field(..., description="Whether there's a previous page")
 
 
+class TodoLabelCount(BaseModel):
+    """One label with the number of (incomplete) todos carrying it."""
+
+    name: str
+    count: int
+
+
 class TodoStats(BaseModel):
     total: int = Field(default=0)
     completed: int = Field(default=0)
@@ -214,13 +221,19 @@ class TodoStats(BaseModel):
     by_priority: dict[str, int] = Field(default_factory=dict)
     by_project: dict[str, int] = Field(default_factory=dict)
     completion_rate: float = Field(default=0.0)
-    labels: list[dict[str, object]] | None = None
+    labels: list[TodoLabelCount] | None = None
 
 
 class TodoListResponse(BaseModel):
     data: list[TodoResponse]
     meta: PaginationMeta
     stats: TodoStats | None = None
+
+
+class TodoCanvasResponse(BaseModel):
+    """A tracked todo's canvas markdown. Empty string when the todo has no canvas."""
+
+    content: str
 
 
 # Search
@@ -402,13 +415,6 @@ class TodoCounts(BaseModel):
     upcoming: int = 0
     completed: int = 0
     overdue: int = 0
-
-
-class TodoLabelCount(BaseModel):
-    """One label with the number of (incomplete) todos carrying it."""
-
-    name: str
-    count: int
 
 
 class TodoPage(BaseModel):

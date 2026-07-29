@@ -17,8 +17,10 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
+    CreateWorkflowFromTodoRequest,
     CreateWorkflowRequest,
     GenerateWorkflowPromptRequest,
     GenerateWorkflowPromptResponse,
@@ -58,7 +60,7 @@ router = APIRouter()
 @tiered_rate_limit("workflow_operations")
 async def create_workflow(
     request: CreateWorkflowRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> WorkflowResponse:
     """Create a new workflow with automatic timezone detection."""
@@ -122,7 +124,7 @@ async def create_workflow(
 @limiter.limit("100/minute")
 @limiter.limit("1000/hour")
 async def list_workflows(
-    request: Request, user: dict = Depends(get_current_user)
+    request: Request, user: AuthenticatedUser = Depends(get_current_user)
 ) -> WorkflowListResponse:
     """List all workflows for the current user."""
     log.set(
@@ -151,7 +153,7 @@ async def list_workflows(
 async def execute_workflow(
     workflow_id: str,
     request: WorkflowExecutionRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> WorkflowExecutionResponse:
     """Execute a workflow (run now)."""
     log.set(
@@ -188,7 +190,7 @@ async def get_workflow_executions(
     workflow_id: str,
     limit: int = 10,
     offset: int = 0,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> WorkflowExecutionsResponse:
     """Get execution history for a workflow."""
     log.set(
@@ -224,7 +226,7 @@ async def get_workflow_executions(
 
 @router.get("/workflows/{workflow_id}/status", response_model=WorkflowStatusResponse)
 async def get_workflow_status(
-    workflow_id: str, user: dict = Depends(get_current_user)
+    workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> WorkflowStatusResponse:
     """Get the current status of a workflow (for polling)."""
     log.set(
@@ -257,7 +259,7 @@ async def get_workflow_status(
 @router.post("/workflows/{workflow_id}/activate", response_model=WorkflowResponse)
 async def activate_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> WorkflowResponse:
     """Activate a workflow (enable its trigger)."""
@@ -304,7 +306,7 @@ async def activate_workflow(
 @router.post("/workflows/{workflow_id}/deactivate", response_model=WorkflowResponse)
 async def deactivate_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> WorkflowResponse:
     """Deactivate a workflow (disable its trigger)."""
@@ -340,7 +342,7 @@ async def deactivate_workflow(
 async def regenerate_workflow_steps(
     workflow_id: str,
     request: RegenerateStepsRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> WorkflowResponse:
     """Regenerate steps for an existing workflow with optional parameters."""
     log.set(
@@ -378,8 +380,8 @@ async def regenerate_workflow_steps(
 @router.post("/workflows/from-todo", response_model=WorkflowResponse)
 @tiered_rate_limit("workflow_operations")
 async def create_workflow_from_todo(
-    request: dict,  # {todo_id: str, todo_title: str, todo_description?: str}
-    user: dict = Depends(get_current_user),
+    request: CreateWorkflowFromTodoRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> WorkflowResponse:
     """Create a workflow from a todo item with automatic timezone detection."""
@@ -389,11 +391,10 @@ async def create_workflow_from_todo(
     )
 
     try:
-        todo_id = request.get("todo_id")
-        todo_title = request.get("todo_title")
-        todo_description = request.get("todo_description", "")
+        todo_title = request.todo_title
+        todo_description = request.todo_description
 
-        if not todo_id or not todo_title:
+        if not request.todo_id or not todo_title:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="todo_id and todo_title are required",
@@ -437,7 +438,7 @@ async def create_workflow_from_todo(
 @router.post("/workflows/{workflow_id}/publish", response_model=PublishWorkflowResponse)
 async def publish_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> PublishWorkflowResponse:
     """Publish a workflow to the community marketplace."""
     log.set(
@@ -500,7 +501,7 @@ async def publish_workflow(
 @router.post("/workflows/{workflow_id}/unpublish")
 async def unpublish_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> WorkflowMessageResponse:
     """Remove a workflow from the community marketplace."""
     log.set(
@@ -634,7 +635,7 @@ async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowRe
 @router.post("/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse)
 async def generate_workflow_prompt_endpoint(
     request: GenerateWorkflowPromptRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> GenerateWorkflowPromptResponse:
     """Generate or improve workflow instructions using AI."""
     log.set(
@@ -664,7 +665,7 @@ async def generate_workflow_prompt_endpoint(
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
 async def get_workflow(
-    request: Request, workflow_id: str, user: dict = Depends(get_current_user)
+    request: Request, workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> WorkflowResponse:
     """Get a specific workflow by ID."""
     log.set(
@@ -705,7 +706,7 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: str,
     request: UpdateWorkflowRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ) -> WorkflowResponse:
     """Update an existing workflow with automatic timezone detection."""
@@ -785,7 +786,7 @@ async def reset_workflow_to_default(
 
 @router.delete("/workflows/{workflow_id}")
 async def delete_workflow(
-    workflow_id: str, user: dict = Depends(get_current_user)
+    workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> WorkflowMessageResponse:
     """Delete a workflow."""
     log.set(

@@ -182,9 +182,13 @@ class BaseSchedulerService(ABC):
         # Recurrence is computed in the task's own timezone. Reminders store it on
         # the task itself; workflows store it on trigger_config (the zone the cron
         # was authored against) which therefore wins. Neither set => UTC.
-        user_timezone = getattr(task, "timezone", None)
-        trigger_config = getattr(task, "trigger_config", None)
-        trigger_timezone = getattr(trigger_config, "timezone", None) if trigger_config else None
+        # Both are read off the BaseScheduledTask by name because only some
+        # subclasses declare them, so `object` is the honest static type here.
+        user_timezone: str | None = getattr(task, "timezone", None)
+        trigger_config: object | None = getattr(task, "trigger_config", None)
+        trigger_timezone: str | None = (
+            getattr(trigger_config, "timezone", None) if trigger_config else None
+        )
         if trigger_timezone:
             user_timezone = trigger_timezone
         log.set(scheduler_recurrence_timezone=user_timezone)
@@ -229,7 +233,7 @@ class BaseSchedulerService(ABC):
         task: BaseScheduledTask,
         occurrence_count: int,
         next_run: datetime,
-        trigger_config: Any,
+        trigger_config: object | None,
     ) -> None:
         """Persist the next occurrence and re-enqueue the recurring task."""
         # Store scheduled_at as a native datetime so the `$lte` scan can match it.
@@ -243,8 +247,12 @@ class BaseSchedulerService(ABC):
         await self.reschedule_task(task.id, next_run)
         log.info(f"Rescheduled recurring task {task.id} for {next_run}")
 
-    def _build_job_args(self, task_id: str) -> tuple:
-        """Positional args passed to the ARQ job. Subclasses may add context."""
+    def _build_job_args(self, task_id: str) -> tuple[object, ...]:
+        """Positional args passed to the ARQ job. Subclasses may add context.
+
+        Heterogeneous by design — ARQ takes opaque ``*args`` and the workflow
+        scheduler appends a trigger-context dict after the id.
+        """
         return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:

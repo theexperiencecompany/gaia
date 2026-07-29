@@ -486,12 +486,11 @@ async def execute_workflow_as_chat(
             user_data = {"user_id": user_id}
 
         # Get or create the workflow conversation for thread context
-        conversation = await get_or_create_workflow_conversation(
+        conversation_id = await get_or_create_workflow_conversation(
             workflow_id=workflow.id,
             user_id=user_id,
             workflow_title=workflow.title,
         )
-        conversation_id: str = conversation["conversation_id"]
         log.set(conversation_context_found=bool(conversation_id))
 
         selected_workflow_data = SelectedWorkflowData(

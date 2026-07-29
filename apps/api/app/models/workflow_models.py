@@ -5,7 +5,7 @@ Clean and lean workflow models for GAIA workflow system.
 from collections.abc import Sequence
 from datetime import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, TypedDict
 import uuid
 
 from pydantic import (
@@ -258,6 +258,9 @@ class Workflow(BaseScheduledTask):
         ),
     )
 
+    # Shaped by `format_creator` (app/utils/creator.py), which is shared with the
+    # public-integrations endpoint and still returns a dict; typing this field
+    # means typing that helper's return for both consumers at once.
     creator: dict[str, Any] | None = Field(
         default=None,
         description="Creator info hydrated for public workflow lookups.",
@@ -402,6 +405,20 @@ class CreateWorkflowRequest(BaseModel):
         return v.strip() if v else None
 
 
+class CreateWorkflowFromTodoRequest(BaseModel):
+    """Request model for the todo → workflow migration helper.
+
+    ``todo_id``/``todo_title`` are optional at the schema level on purpose: the
+    endpoint rejects a payload missing either with a 400, and declaring them
+    required here would turn that into FastAPI's 422 — a change to the contract
+    the web client already codes against, not a typing fix.
+    """
+
+    todo_id: str | None = None
+    todo_title: str | None = None
+    todo_description: str | None = None
+
+
 class UpdateWorkflowRequest(BaseModel):
     """Request model for updating an existing workflow."""
 
@@ -497,6 +514,15 @@ class RegenerateStepsRequest(BaseModel):
 class PublicWorkflowsResponse(BaseModel):
     """Response model for listing public workflows."""
 
+    # Deliberately left as untyped card dicts. Three endpoints build these — the
+    # community and explore lists here plus /public/{id}/workflows in
+    # integrations/public.py — and each emits a different key set (explore adds
+    # categories + total_executions, related adds total_executions). Modelling
+    # them as a card base + subclasses means every construction site must hand
+    # over a model instead of a dict, or Pydantic silently drops the subclass-only
+    # keys from the payload; that reaches outside this flow's files and changes
+    # what a frontend consumer receives if it is done partially (Type Safety
+    # item 14). Typed together with that endpoint, not before.
     workflows: list[dict[str, Any]] = Field(
         description="List of public workflows with creator info"
     )
@@ -524,12 +550,27 @@ class PublishWorkflowResponse(BaseModel):
     slug: str | None = Field(default=None, description="Public URL slug for the workflow")
 
 
+class PromptTriggerHint(BaseModel):
+    """The subset of a trigger config the magic-prompt generator reads.
+
+    The workflow editor posts whatever it currently holds in the trigger form, so
+    every field is optional and unknown keys are ignored — this is a hint for the
+    LLM, never a trigger that gets persisted. ``type`` defaults to ``"manual"``
+    but is nullable, matching the ``.get("type", "manual")`` this replaced: an
+    omitted type means manual, an explicitly null one stays unset.
+    """
+
+    type: str | None = "manual"
+    cron_expression: str | None = None
+    trigger_name: str | None = None
+
+
 class GenerateWorkflowPromptRequest(BaseModel):
     """Request model for AI-generated workflow instructions."""
 
     title: str | None = None
     description: str | None = None
-    trigger_config: dict[str, Any] | None = None
+    trigger_config: PromptTriggerHint | None = None
     existing_prompt: str | None = None  # non-empty → improve mode
     integration_ids: list[str] | None = Field(
         default=None,
@@ -597,6 +638,20 @@ class GenerateWorkflowPromptResponse(BaseModel):
 
     prompt: str
     suggested_trigger: SuggestedTrigger | None = None
+
+
+class GeneratedPromptResult(TypedDict):
+    """What ``generate_workflow_prompt`` hands back to its two callers.
+
+    A ``TypedDict``, not the response model above (Type Safety item 6): the value
+    never crosses a validation boundary — the endpoint builds the response model
+    from it, and onboarding's ``_build_one_workflow`` reads the same two keys
+    off the dict. Being a plain dict at runtime keeps both call sites working
+    untouched while mypy starts checking the keys.
+    """
+
+    prompt: str
+    suggested_trigger: SuggestedTrigger | None
 
 
 # Repository persistence models (Wave E migration)

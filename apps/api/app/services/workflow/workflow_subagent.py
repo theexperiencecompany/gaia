@@ -147,7 +147,7 @@ class WorkflowSubagentRunner:
         # Build config
         subagent_thread_id = f"workflow_{thread_id}"
 
-        user = {
+        user: dict[str, str | None] = {
             "user_id": user_id,
             "email": None,
             "name": user_name,
@@ -193,7 +193,7 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        initial_state = {
+        initial_state: dict[str, Any] = {
             "messages": [system_message, context_message, human_message],
             "intent": task,
             "integration_usernames": {},
@@ -205,7 +205,7 @@ class WorkflowSubagentRunner:
         # structure or integration_ids that name a non-existent integration), hand the
         # error back and let it re-emit, up to MAX_DRAFT_CORRECTIONS times.
         emitted_tool_calls: set[str] = set()
-        state: dict = initial_state
+        state: dict[str, Any] = initial_state
         complete_message = ""
         for attempt in range(MAX_DRAFT_CORRECTIONS + 1):
             complete_message, hit_limit = await WorkflowSubagentRunner._stream_turn(
@@ -278,7 +278,7 @@ class WorkflowSubagentRunner:
     @staticmethod
     async def _stream_turn(
         subagent_graph: CompiledStateGraph,
-        state: dict,
+        state: dict[str, Any],
         config: RunnableConfig,
         stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],

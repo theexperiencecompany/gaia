@@ -4,7 +4,6 @@ from typing import Annotated
 import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
-from fastapi.responses import JSONResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
@@ -27,6 +26,7 @@ from app.models.todo_models import (
     SubTask,
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
+    TodoCanvasResponse,
     TodoCounts,
     TodoLabelCount,
     TodoListResponse,
@@ -40,6 +40,7 @@ from app.models.todo_models import (
     TodoWorkflowStatusResponse,
     UpdateProjectRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.todo_canvas_storage import read_canvas
 from app.services.todos.todo_service import ProjectService, TodoService
 from app.services.tracked_todo_service import tracked_todo_service
@@ -78,7 +79,7 @@ async def get_todo_counts(
 # Labels endpoint — dedicated aggregation for most-used labels
 @router.get("/todos/labels")
 async def get_todo_labels(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     limit: int = 10,
 ) -> list[TodoLabelCount]:
     """Get most-used labels for the current user's todos."""
@@ -111,7 +112,7 @@ async def list_todos(
     per_page: int = Query(50, ge=1, le=100),
     # Options
     include_stats: bool = Query(False, description="Include statistics in response"),
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> TodoListResponse:
     """
     List todos with comprehensive filtering and search options.
@@ -145,7 +146,7 @@ async def list_todos(
         user={"id": user["user_id"]},
         todo={
             "operation": "list",
-            "search_mode": mode.value if hasattr(mode, "value") else str(mode),
+            "search_mode": mode.value,
             "query": q,
             "page": page,
             "per_page": per_page,
@@ -182,12 +183,7 @@ async def list_todos(
 
     try:
         result = await TodoService.list_todos(user["user_id"], params)
-        log.set(
-            todo={
-                "operation": "list",
-                "result_count": len(result.todos) if hasattr(result, "todos") else 0,
-            }
-        )
+        log.set(todo={"operation": "list", "result_count": len(result.data)})
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -200,19 +196,17 @@ async def list_todos(
 
 @router.post("/todos", response_model=TodoResponse, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("todo_operations")
-async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)) -> TodoResponse:
+async def create_todo(
+    todo: TodoModel, user: AuthenticatedUser = Depends(get_current_user)
+) -> TodoResponse:
     """Create a new todo. If no project is specified, it will be added to Inbox."""
     log.set(
         user={"id": user["user_id"]},
         todo={
             "operation": "create",
-            "priority": todo.priority.value
-            if todo.priority and hasattr(todo.priority, "value")
-            else str(todo.priority)
-            if todo.priority
-            else None,
+            "priority": todo.priority.value,
             "has_due_date": todo.due_date is not None,
-            "project_id": todo.project_id if hasattr(todo, "project_id") else None,
+            "project_id": todo.project_id,
         },
     )
     try:
@@ -234,7 +228,7 @@ async def create_todo(todo: TodoModel, user: dict = Depends(get_current_user)) -
 @router.put("/todos/bulk", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
 async def bulk_update_todos(
-    request: BulkUpdateRequest, user: dict = Depends(get_current_user)
+    request: BulkUpdateRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> BulkOperationResponse:
     """
     Bulk update multiple todos with the same changes.
@@ -252,10 +246,7 @@ async def bulk_update_todos(
     """
     log.set(
         user={"id": user["user_id"]},
-        todo={
-            "operation": "bulk_update",
-            "bulk_count": len(request.todo_ids) if hasattr(request, "todo_ids") else 0,
-        },
+        todo={"operation": "bulk_update", "bulk_count": len(request.todo_ids)},
     )
     try:
         return await TodoService.bulk_update_todos(request, user["user_id"])
@@ -269,7 +260,7 @@ async def bulk_update_todos(
 @router.post("/todos/bulk/move", response_model=BulkOperationResponse)
 @tiered_rate_limit("todo_operations")
 async def bulk_move_todos(
-    request: BulkMoveRequest, user: dict = Depends(get_current_user)
+    request: BulkMoveRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> BulkOperationResponse:
     """Move multiple todos to a different project."""
     log.set(
@@ -294,7 +285,7 @@ async def bulk_move_todos(
 @tiered_rate_limit("todo_operations")
 async def bulk_delete_todos(
     todo_ids: list[str] = Body(..., min_length=1, max_length=100),
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> BulkOperationResponse:
     """Delete multiple todos."""
     log.set(
@@ -315,7 +306,7 @@ async def bulk_delete_todos(
 @tiered_rate_limit("todo_operations")
 async def bulk_complete_todos(
     todo_ids: list[str] = Body(..., min_length=1, max_length=100),
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> BulkOperationResponse:
     """Mark multiple todos as completed (convenience endpoint)."""
     log.set(
@@ -336,7 +327,9 @@ async def bulk_complete_todos(
 
 
 @router.get("/todos/{todo_id}", response_model=TodoResponse)
-async def get_todo(todo_id: str, user: dict = Depends(get_current_user)) -> TodoResponse:
+async def get_todo(
+    todo_id: str, user: AuthenticatedUser = Depends(get_current_user)
+) -> TodoResponse:
     """Get a specific todo by ID."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "get", "id": todo_id})
     try:
@@ -352,20 +345,20 @@ async def get_todo(todo_id: str, user: dict = Depends(get_current_user)) -> Todo
 
 @router.get("/todos/{todo_id}/canvas")
 async def get_todo_canvas(
-    todo_id: str, user: Annotated[dict, Depends(get_current_user)]
-) -> JSONResponse:
+    todo_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
+) -> TodoCanvasResponse:
     """Return the canvas markdown for a tracked todo."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "get_canvas", "id": todo_id})
     content = await read_canvas(todo_id, user["user_id"])
     if content is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
-    return JSONResponse(content={"content": content})
+    return TodoCanvasResponse(content=content)
 
 
 @router.put("/todos/{todo_id}", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
 async def update_todo(
-    todo_id: str, updates: TodoUpdateRequest, user: dict = Depends(get_current_user)
+    todo_id: str, updates: TodoUpdateRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> TodoResponse:
     """Update a todo."""
     log.set(
@@ -373,9 +366,7 @@ async def update_todo(
         todo={
             "operation": "update",
             "id": todo_id,
-            "completion_toggled": updates.completed is not None
-            if hasattr(updates, "completed")
-            else False,
+            "completion_toggled": updates.completed is not None,
         },
     )
     try:
@@ -400,7 +391,7 @@ async def update_todo(
 
 @router.delete("/todos/{todo_id}", status_code=status.HTTP_204_NO_CONTENT)
 @tiered_rate_limit("todo_operations")
-async def delete_todo(todo_id: str, user: dict = Depends(get_current_user)) -> None:
+async def delete_todo(todo_id: str, user: AuthenticatedUser = Depends(get_current_user)) -> None:
     """Delete a todo."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "delete", "id": todo_id})
     try:
@@ -562,7 +553,9 @@ async def get_workflow_status(
 
 # Project Endpoints
 @router.get("/projects", response_model=list[ProjectResponse])
-async def list_projects(user: dict = Depends(get_current_user)) -> list[ProjectResponse]:
+async def list_projects(
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> list[ProjectResponse]:
     """List all projects with todo counts."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "list_projects"})
     try:
@@ -577,7 +570,7 @@ async def list_projects(user: dict = Depends(get_current_user)) -> list[ProjectR
 @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
 @tiered_rate_limit("todo_operations")
 async def create_project(
-    project: ProjectCreate, user: dict = Depends(get_current_user)
+    project: ProjectCreate, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ProjectResponse:
     """Create a new project."""
     log.set(user={"id": user["user_id"]}, todo={"operation": "create_project"})
@@ -595,7 +588,7 @@ async def create_project(
 async def update_project(
     project_id: str,
     updates: UpdateProjectRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ProjectResponse:
     """Update a project. Cannot update the default Inbox project."""
     log.set(
@@ -622,7 +615,9 @@ async def update_project(
 
 @router.delete("/projects/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 @tiered_rate_limit("todo_operations")
-async def delete_project(project_id: str, user: dict = Depends(get_current_user)) -> None:
+async def delete_project(
+    project_id: str, user: AuthenticatedUser = Depends(get_current_user)
+) -> None:
     """Delete a project. All todos will be moved to Inbox. Cannot delete Inbox."""
     log.set(
         user={"id": user["user_id"]},
@@ -654,7 +649,7 @@ async def delete_project(project_id: str, user: dict = Depends(get_current_user)
 )
 @tiered_rate_limit("todo_operations")
 async def create_subtask(
-    todo_id: str, subtask: SubtaskCreateRequest, user: dict = Depends(get_current_user)
+    todo_id: str, subtask: SubtaskCreateRequest, user: AuthenticatedUser = Depends(get_current_user)
 ) -> TodoResponse:
     """Add a new subtask to a todo."""
     log.set(
@@ -684,7 +679,7 @@ async def update_subtask(
     todo_id: str,
     subtask_id: str,
     updates: SubtaskUpdateRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> TodoResponse:
     """Update a specific subtask."""
     log.set(
@@ -719,7 +714,7 @@ async def update_subtask(
 @router.delete("/todos/{todo_id}/subtasks/{subtask_id}", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
 async def delete_subtask(
-    todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
+    todo_id: str, subtask_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> TodoResponse:
     """Delete a specific subtask."""
     log.set(
@@ -750,7 +745,7 @@ async def delete_subtask(
 @router.post("/todos/{todo_id}/subtasks/{subtask_id}/toggle", response_model=TodoResponse)
 @tiered_rate_limit("todo_operations")
 async def toggle_subtask_completion(
-    todo_id: str, subtask_id: str, user: dict = Depends(get_current_user)
+    todo_id: str, subtask_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> TodoResponse:
     """Toggle the completion status of a subtask (convenience endpoint)."""
     log.set(

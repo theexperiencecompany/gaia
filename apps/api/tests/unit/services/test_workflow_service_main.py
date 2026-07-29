@@ -47,6 +47,7 @@ from app.models.workflow_models import (
     GeneratedPromptOutput,
     GeneratedStep,
     GeneratedWorkflow,
+    PromptTriggerHint,
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
@@ -1237,17 +1238,10 @@ class TestRegenerateWorkflowSteps:
         wf = _make_workflow()
         mock_get.return_value = wf
         new_steps = [
-            {
-                "id": "step_0",
-                "title": "New Step",
-                "category": "gaia",
-                "description": "New",
-            }
+            WorkflowStep(id="step_0", title="New Step", category="gaia", description="New")
         ]
         mock_gen.return_value = new_steps
-        mock_set_steps.return_value = _make_workflow_doc(
-            wf, steps=[WorkflowStep(**s) for s in new_steps]
-        )
+        mock_set_steps.return_value = _make_workflow_doc(wf, steps=new_steps)
 
         result = await WorkflowService.regenerate_workflow_steps(WORKFLOW_ID, USER_ID)
         assert result is not None
@@ -1292,7 +1286,7 @@ class TestRegenerateWorkflowSteps:
         wf = _make_workflow()
         mock_get.return_value = wf
         mock_gen.return_value = [
-            {"id": "step_0", "title": "T", "category": "c", "description": "d"}
+            WorkflowStep(id="step_0", title="T", category="c", description="d")
         ]
 
         result = await WorkflowService.regenerate_workflow_steps(WORKFLOW_ID, USER_ID)
@@ -1363,7 +1357,7 @@ class TestGenerateWorkflowSteps:
     ):
         wf = _make_workflow()
         mock_get.return_value = wf
-        steps_data = [{"id": "step_0", "title": "S", "category": "gaia", "description": "D"}]
+        steps_data = [WorkflowStep(id="step_0", title="S", category="gaia", description="D")]
         mock_gen.return_value = steps_data
         mock_touch.return_value = _make_workflow_doc(wf)
 
@@ -1466,10 +1460,10 @@ class TestEnrichSteps:
         ]
         result = enrich_steps(steps)
         assert len(result) == 2
-        assert result[0]["id"] == "step_0"
-        assert result[1]["id"] == "step_1"
-        assert result[0]["title"] == "Step A"
-        assert result[0]["category"] == "gmail"
+        assert result[0].id == "step_0"
+        assert result[1].id == "step_1"
+        assert result[0].title == "Step A"
+        assert result[0].category == "gmail"
 
     def test_enrich_empty_list(self):
         result = enrich_steps([])
@@ -1484,27 +1478,27 @@ class TestBuildTriggerHint:
         assert "No trigger selected" in result
 
     def test_schedule_with_cron(self):
-        config = {"type": "schedule", "cron_expression": "0 9 * * *"}
+        config = PromptTriggerHint(type="schedule", cron_expression="0 9 * * *")
         result = _build_trigger_hint(config)
         assert "scheduled trigger" in result
         assert "0 9 * * *" in result
 
     def test_schedule_without_cron(self):
-        config = {"type": "schedule"}
+        config = PromptTriggerHint(type="schedule")
         result = _build_trigger_hint(config)
         assert "scheduled trigger" in result
 
     def test_manual(self):
-        result = _build_trigger_hint({"type": "manual"})
+        result = _build_trigger_hint(PromptTriggerHint(type="manual"))
         assert "manual trigger" in result
 
     def test_integration_with_name(self):
-        config = {"type": "integration", "trigger_name": "gmail_new_message"}
+        config = PromptTriggerHint(type="integration", trigger_name="gmail_new_message")
         result = _build_trigger_hint(config)
         assert "gmail_new_message" in result
 
     def test_unknown_type(self):
-        result = _build_trigger_hint({"type": "webhook"})
+        result = _build_trigger_hint(PromptTriggerHint(type="webhook"))
         assert "webhook" in result
 
 
@@ -1556,8 +1550,8 @@ class TestGenerateStepsWithLLM:
         )
 
         assert len(result) == 1
-        assert result[0]["id"] == "step_0"
-        assert result[0]["title"] == "Step 1"
+        assert result[0].id == "step_0"
+        assert result[0].title == "Step 1"
         assert mock_structured.await_args[0][0] is GeneratedWorkflow
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
@@ -1588,7 +1582,7 @@ class TestGenerateStepsWithLLM:
         )
 
         assert len(result) == 1
-        assert result[0]["title"] == "Parsed"
+        assert result[0].title == "Parsed"
         assert mock_structured.await_count == 2
 
     @patch("app.services.workflow.generation_service.OAUTH_INTEGRATIONS", [])
