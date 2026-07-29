@@ -9,7 +9,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
-from app.services.mcp.mcp_tools_service import store_mcp_tools_batch
+from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools_batch
 from shared.py.wide_events import log
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
@@ -486,7 +486,7 @@ class ToolRegistry:
             )
         ]
 
-        mongo_batch: list[tuple[str, list[dict]]] = []
+        mongo_batch: list[tuple[str, list[RawToolMetadata]]] = []
         total = 0
 
         async def load_metadata(integration: OAuthIntegration) -> None:

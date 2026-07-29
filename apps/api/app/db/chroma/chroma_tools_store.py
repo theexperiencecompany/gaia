@@ -1,12 +1,13 @@
 """Modularized helper functions for ChromaStore initialization."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 import hashlib
 import inspect
-from typing import Any, cast
+from typing import Any, NotRequired, Protocol, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from langchain_core.tools import BaseTool
+from chromadb.api.types import Where
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import PutOp
 
 from app.agents.core.subagents.registry import all_subagents
@@ -20,7 +21,49 @@ from shared.py.wide_events import VectorContext, log
 from .chroma_store import ChromaStore
 
 
-async def _compute_tool_hash(tool: BaseTool) -> str:
+class IndexableTool(Protocol):
+    """The only surface indexing reads off a tool: its name and description.
+
+    A ``Protocol`` rather than ``BaseTool`` because the provider-catalog warmup
+    deliberately indexes ``_CatalogToolMeta`` — a two-slot stand-in that avoids
+    materializing ~1.6k StructuredTools just to embed their descriptions.
+    """
+
+    name: str
+    description: str
+
+
+class IndexedToolEntry(TypedDict):
+    """One entry of the current/existing tool maps the diff runs over.
+
+    Keyed by ``"<namespace>::<tool_name>"``. ``tool`` is present for real tools
+    and ``description`` for subagent entries — ``_build_put_operations``
+    discriminates on which one is there; rows read back from Chroma carry
+    neither, since only the hash matters for the diff.
+    """
+
+    hash: str
+    namespace: str
+    tool: NotRequired[IndexableTool]
+    description: NotRequired[str]
+
+
+def _namespace_equals(namespace: str) -> Where:
+    """A ``Where`` clause matching one namespace.
+
+    The filter itself is correct — chromadb\'s own ``validate_where`` accepts it
+    (and rejects a bogus operator, so that check is not a no-op), and running it
+    against a live collection returns exactly the matching namespace\'s rows. The
+    ``cast`` is purely a stub limitation: chromadb\'s ``Where`` alias allows bare
+    ``str`` for field names but keys the operator dict by ``Literal["$eq", ...]``,
+    so mypy widens the nested literal to ``dict[str, str]`` and rejects it. Keeping
+    it in one helper confines the unchecked spot instead of spreading it over
+    three call sites.
+    """
+    return cast(Where, {"namespace": {"$eq": namespace}})
+
+
+async def _compute_tool_hash(tool: IndexableTool) -> str:
     """Compute hash for a tool based on description and source code."""
     try:
         # inspect.getsource's stub only accepts module/class/function/etc, not an
@@ -40,7 +83,7 @@ async def _compute_tool_hash(tool: BaseTool) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[str, dict]:
+async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[str, IndexedToolEntry]:
     """Get all current tools with their hashes and namespaces.
 
     Args:
@@ -50,7 +93,7 @@ async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[st
         Dictionary mapping composite keys (namespace::tool_name) to their hash and namespace info.
         Composite keys prevent collisions when different namespaces have same-named tools.
     """
-    current_tools = {}
+    current_tools: dict[str, IndexedToolEntry] = {}
     tool_dict = tool_registry.get_tool_dict()
 
     # Add regular tools
@@ -62,11 +105,9 @@ async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[st
         )
         if tool_category:
             composite_key = f"{tool_category.space}::{tool_name}"
-            current_tools[composite_key] = {
-                "hash": tool_hash,
-                "namespace": tool_category.space,
-                "tool": tool,
-            }
+            current_tools[composite_key] = IndexedToolEntry(
+                hash=tool_hash, namespace=tool_category.space, tool=tool
+            )
 
     # Add subagent tools
     subagent_tools = await _get_subagent_tools()
@@ -75,13 +116,13 @@ async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[st
     return current_tools
 
 
-async def _get_subagent_tools() -> dict[str, dict]:
+async def _get_subagent_tools() -> dict[str, IndexedToolEntry]:
     """Get subagent tools with their hashes.
 
     Returns:
         Dictionary mapping subagent tool names to their hash and namespace info
     """
-    subagent_tools = {}
+    subagent_tools: dict[str, IndexedToolEntry] = {}
 
     for subagent in all_subagents():
         cfg = subagent.config
@@ -99,18 +140,16 @@ async def _get_subagent_tools() -> dict[str, dict]:
         # Compute hash based on description only
         subagent_hash = hashlib.sha256(description.encode()).hexdigest()
 
-        subagent_tools[f"subagents::subagent:{subagent.id}"] = {
-            "hash": subagent_hash,
-            "namespace": "subagents",
-            "description": description,
-        }
+        subagent_tools[f"subagents::subagent:{subagent.id}"] = IndexedToolEntry(
+            hash=subagent_hash, namespace="subagents", description=description
+        )
 
     return subagent_tools
 
 
 async def _get_existing_tools_from_chroma(
     collection: AsyncCollection, namespaces: set[str] | None = None
-) -> dict[str, dict]:
+) -> dict[str, IndexedToolEntry]:
     """Fetch existing tools from ChromaDB collection.
 
     Args:
@@ -122,25 +161,25 @@ async def _get_existing_tools_from_chroma(
         and namespace info. Composite keys prevent collisions when different
         namespaces have same-named tools.
     """
-    existing_tools: dict[str, dict] = {}
+    existing_tools: dict[str, IndexedToolEntry] = {}
 
     try:
         # Use ChromaDB where filter for efficient namespace filtering
-        where_filter: dict[str, Any] | None = None
+        where_filter: Where | None = None
         if namespaces is not None:
             ns_list = list(namespaces)
             if len(ns_list) == 1:
-                where_filter = {"namespace": {"$eq": ns_list[0]}}
+                where_filter = _namespace_equals(ns_list[0])
             elif len(ns_list) > 1:
-                where_filter = {"$or": [{"namespace": {"$eq": ns}} for ns in ns_list]}
+                where_filter = {"$or": [_namespace_equals(ns) for ns in ns_list]}
             else:
                 return existing_tools
 
-        get_kwargs: dict[str, Any] = {"include": ["metadatas"]}
-        if where_filter:
-            get_kwargs["where"] = where_filter
-
-        existing_data = await collection.get(**get_kwargs)
+        existing_data = (
+            await collection.get(include=["metadatas"], where=where_filter)
+            if where_filter
+            else await collection.get(include=["metadatas"])
+        )
         if existing_data and existing_data.get("ids") and existing_data.get("metadatas"):
             for doc_id, metadata in zip(existing_data["ids"], existing_data["metadatas"] or []):
                 if metadata and "::" in doc_id:
@@ -148,10 +187,10 @@ async def _get_existing_tools_from_chroma(
                     namespace = parts[0] if len(parts) > 1 else "default"
 
                     # Use full doc_id as composite key to prevent collisions
-                    existing_tools[doc_id] = {
-                        "hash": metadata.get("tool_hash", ""),
-                        "namespace": namespace,
-                    }
+                    existing_tools[doc_id] = IndexedToolEntry(
+                        hash=str(metadata.get("tool_hash", "")),
+                        namespace=namespace,
+                    )
     except Exception as e:
         log.warning(f"{LogTag.CHROMA} Error fetching existing tools: {e}, will register all tools")
 
@@ -159,8 +198,8 @@ async def _get_existing_tools_from_chroma(
 
 
 def _compute_tool_diff(
-    current_tools: dict[str, dict], existing_tools: dict[str, dict]
-) -> tuple[list[tuple[str, dict]], list[tuple[str, str]]]:
+    current_tools: dict[str, IndexedToolEntry], existing_tools: dict[str, IndexedToolEntry]
+) -> tuple[list[tuple[str, IndexedToolEntry]], list[tuple[str, str]]]:
     """Compute the difference between current and existing tools.
 
     Args:
@@ -170,8 +209,8 @@ def _compute_tool_diff(
     Returns:
         Tuple of (tools_to_upsert, tools_to_delete)
     """
-    tools_to_upsert = []
-    tools_to_delete = []
+    tools_to_upsert: list[tuple[str, IndexedToolEntry]] = []
+    tools_to_delete: list[tuple[str, str]] = []
 
     # Find new or modified tools
     for tool_name, tool_data in current_tools.items():
@@ -189,7 +228,7 @@ def _compute_tool_diff(
 
 
 def _build_put_operations(
-    tools_to_upsert: list[tuple[str, dict]],
+    tools_to_upsert: list[tuple[str, IndexedToolEntry]],
     tools_to_delete: list[tuple[str, str]],
 ) -> list[PutOp]:
     """Build PutOp operations for upserting and deleting tools.
@@ -203,7 +242,7 @@ def _build_put_operations(
     Returns:
         List of PutOp operations
     """
-    put_ops = []
+    put_ops: list[PutOp] = []
 
     # Add upsert operations
     for composite_key, tool_data in tools_to_upsert:
@@ -268,7 +307,7 @@ async def _execute_batch_operations(
     log.info(f"{LogTag.CHROMA} Successfully updated {total_ops} tools in ChromaDB")
 
 
-async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]) -> None:
+async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, str]]) -> None:
     """Index tools into ChromaDB store on-demand with full diff logic.
 
     This function manages tools for a specific namespace:
@@ -336,25 +375,26 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]) -> None:
         )
         return
 
-    store = await providers.aget("chroma_tools_store")
-    if store is None:
+    raw_store = await providers.aget("chroma_tools_store")
+    if raw_store is None:
         log.warning(
             f"{LogTag.CHROMA} index_tools_to_store: chroma_tools_store provider returned None "
             f"for namespace '{namespace}', skipping {input_count} tools"
         )
         return
 
+    # providers.aget declares -> Any | None; this provider is registered by
+    # initialize_chroma_tools_store below, which always returns a ChromaStore.
+    store = cast(ChromaStore, raw_store)
     collection = await store._get_collection()
 
-    current_tools = {}
+    current_tools: dict[str, IndexedToolEntry] = {}
     for tool, space in tools_with_space:
         tool_hash = await _compute_tool_hash(tool)
         composite_key = f"{space}::{tool.name}"
-        current_tools[composite_key] = {
-            "hash": tool_hash,
-            "namespace": space,
-            "tool": tool,
-        }
+        current_tools[composite_key] = IndexedToolEntry(
+            hash=tool_hash, namespace=space, tool=tool
+        )
     log.info(
         f"{LogTag.CHROMA} index_tools_to_store: built current_tools dict for '{namespace}': "
         f"{len(current_tools)} unique composite keys from {input_count} inputs"
@@ -407,18 +447,16 @@ async def delete_tools_by_namespace(namespace: str) -> int:
 
     log.set(vector=VectorContext(operation="delete", collection="langgraph_tools_store"))
 
-    store = await providers.aget("chroma_tools_store")
-    if not store:
+    raw_store = await providers.aget("chroma_tools_store")
+    if not raw_store:
         log.warning(f"{LogTag.CHROMA} ChromaDB store not available for cleanup")
         return 0
 
+    store = cast(ChromaStore, raw_store)
     collection = await store._get_collection()
 
-    # Use ChromaDB metadata filter to avoid a full collection scan
-    results = await collection.get(
-        where={"namespace": {"$eq": namespace}},
-        include=[],
-    )
+    # Use ChromaDB metadata filter to avoid a full collection scan.
+    results = await collection.get(where=_namespace_equals(namespace), include=[])
     ids_to_delete = results.get("ids", [])
     log.set_ns("vector", result_count=len(ids_to_delete))
 
@@ -452,10 +490,13 @@ async def initialize_chroma_tools_store() -> ChromaStore:
     """
     tool_registry = await get_tool_registry()
     chroma_client = await ChromaClient.get_client()
-    embeddings = await providers.aget("google_embeddings")
+    raw_embeddings = await providers.aget("google_embeddings")
 
-    if embeddings is None:
+    if raw_embeddings is None:
         raise RuntimeError("Embeddings not available")
+
+    # Registered by init_embeddings() in app/agents/tools/core/store.py.
+    embeddings = cast(GoogleGenerativeAIEmbeddings, raw_embeddings)
 
     store = ChromaStore(
         client=chroma_client,
