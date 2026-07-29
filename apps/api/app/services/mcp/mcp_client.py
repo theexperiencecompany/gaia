@@ -307,7 +307,7 @@ class MCPClient:
     def _sanitize_config(self, config: MCPUseConfig) -> _SanitizedMcpConfig:
         """Sanitize config for logging by removing sensitive data."""
         sanitized: dict[str, _SanitizedMcpServer] = {}
-        for server_id, server_config in config["mcpServers"].items():
+        for server_id, server_config in config.get("mcpServers", {}).items():
             sanitized[server_id] = _SanitizedMcpServer(
                 url=server_config.get("url"),
                 transport=server_config.get("transport"),
