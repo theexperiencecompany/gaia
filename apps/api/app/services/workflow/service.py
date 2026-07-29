@@ -613,7 +613,14 @@ class WorkflowService:
                 # The repository dumps the update in python mode, so
                 # trigger_config.next_run stays a native datetime (BSON date),
                 # consistent with the create and re-arm paths.
-                update.trigger_config = new_trigger_config
+                #
+                # Rebuilt rather than assigned directly: model_copy carries the
+                # request's __pydantic_fields_set__, and the repository's
+                # model_dump(exclude_unset=True) propagates into the nested model
+                # — so assigning it writes only the keys the client happened to
+                # send, leaving the stored sub-document a different shape from
+                # one written by the create path. Same values either way.
+                update.trigger_config = TriggerConfig(**new_trigger_config.model_dump())
 
             # activated changed without a trigger_config rewrite: mirror the nested
             # `enabled` flag by rewriting the sub-document from the current config
@@ -622,7 +629,10 @@ class WorkflowService:
             if "trigger_config" not in provided and "activated" in provided:
                 synced = current_workflow.trigger_config
                 synced.enabled = effective_activated
-                update.trigger_config = synced
+                # Rebuilt for the same reason as the branch above: a config read
+                # back from a partially-written document carries only that
+                # document's keys in its fields_set.
+                update.trigger_config = TriggerConfig(**synced.model_dump())
 
             # An empty request (nothing set) is a bare touch, matching the prior
             # always-stamp-updated_at behavior — the typed update rejects an empty set.
