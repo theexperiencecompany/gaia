@@ -31,6 +31,7 @@ from app.services.integrations.user_integrations import (
     invalidate_user_integration_caches,
     remove_user_integration,
 )
+from app.services.mcp.mcp_client import MCPClient
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
 from shared.py.wide_events import log
@@ -227,7 +228,7 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
 async def create_and_connect_custom_integration(
     user_id: str,
     request: CreateCustomIntegrationRequest,
-    mcp_client: Any,
+    mcp_client: MCPClient,
 ) -> tuple[Integration, dict]:
     """Create a custom integration and attempt connection."""
     log.set(
@@ -271,7 +272,7 @@ async def _fetch_icon_safely(server_url: str) -> str | None:
         return None
 
 
-async def _probe_connection_safely(mcp_client: Any, server_url: str) -> dict[str, Any]:
+async def _probe_connection_safely(mcp_client: MCPClient, server_url: str) -> dict[str, Any]:
     """Probe connection with error handling."""
     try:
         return cast(dict[str, Any], await mcp_client.probe_connection(server_url))
@@ -280,7 +281,7 @@ async def _probe_connection_safely(mcp_client: Any, server_url: str) -> dict[str
 
 
 async def _connect_with_bearer_token(
-    user_id: str, integration_id: str, bearer_token: str, mcp_client: Any
+    user_id: str, integration_id: str, bearer_token: str, mcp_client: MCPClient
 ) -> tuple[Any, dict]:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
@@ -301,7 +302,7 @@ async def _connect_with_bearer_token(
 
 
 async def _connect_without_auth(
-    integration: Integration, mcp_client: Any
+    integration: Integration, mcp_client: MCPClient
 ) -> tuple[Integration, dict]:
     """Attempt connection without authentication."""
     try:
@@ -324,7 +325,7 @@ async def _get_integration(integration_id: str) -> Integration | None:
     return await integration_repository.get(integration_id)
 
 
-async def _build_oauth_result(mcp_client: Any, integration_id: str) -> dict:
+async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> dict:
     """Build OAuth redirect result."""
     try:
         auth_url = await mcp_client.build_oauth_auth_url(

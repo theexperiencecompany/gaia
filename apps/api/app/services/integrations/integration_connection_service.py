@@ -16,6 +16,7 @@ from app.config.token_repository import token_repository
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.mcp_config import McpAuthChallenge, McpProbeResult
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
     IntegrationConfigItem,
@@ -84,7 +85,7 @@ async def _redirect_to_oauth(
     integration_id: str,
     integration_name: str,
     redirect_path: str,
-    challenge_data: dict | None = None,
+    challenge_data: McpAuthChallenge | None = None,
 ) -> ConnectIntegrationResponse:
     """Build the provider OAuth URL and wrap it in a redirect response."""
     auth_url = await mcp_client.build_oauth_auth_url(
@@ -118,7 +119,7 @@ async def _handle_auth_required(
     *,
     is_platform: bool,
     detected_auth_type: str | None,
-    probe_result: dict | None,
+    probe_result: McpProbeResult | None,
     mcp_client: MCPClient,
 ) -> ConnectIntegrationResponse:
     """Bearer servers return bearer_required (frontend collects a key); everything
@@ -135,8 +136,16 @@ async def _handle_auth_required(
             message="This integration requires an API key.",
         )
 
+    # The WWW-Authenticate challenge lives under `oauth_challenge`, not at the top
+    # level of the probe result — passing the whole result meant discovery saw none
+    # of the challenge keys, dropped `initial_scope`, and re-fetched the PRM it was
+    # given. Typing both ends surfaced it.
     return await _redirect_to_oauth(
-        mcp_client, integration_id, integration_name, redirect_path, challenge_data=probe_result
+        mcp_client,
+        integration_id,
+        integration_name,
+        redirect_path,
+        challenge_data=probe_result.get("oauth_challenge") if probe_result else None,
     )
 
 
@@ -169,7 +178,7 @@ async def connect_mcp_integration(
     redirect_path: str,
     server_url: str | None = None,
     is_platform: bool = False,
-    probe_result: dict | None = None,
+    probe_result: McpProbeResult | None = None,
     bearer_token: str | None = None,
 ) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
