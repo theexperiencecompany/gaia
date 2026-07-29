@@ -350,7 +350,7 @@ def format_sse_data(data: dict) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload: Any) -> dict:
+def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
     """Extract tool execution data from a custom LangGraph event payload.
 
     Returns the extracted tool data, or an empty dict on failure / no data.

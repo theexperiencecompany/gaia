@@ -301,7 +301,7 @@ async def _judge(
     )
 
 
-def _outcome_from_resume(raw: Any) -> ApprovalOutcome:
+def _outcome_from_resume(raw: object) -> ApprovalOutcome:
     """Interpret the value handed back by ``Command(resume=...)``.
 
     ``resolution.py`` sends the already-resolved status; anything unrecognised is a denial

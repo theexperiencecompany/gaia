@@ -384,7 +384,7 @@ unfixable = [
 # ARG001: Composio's @custom_tool contract always passes `execute_request`
 # positionally to every registered custom tool handler regardless of whether
 # a given handler needs it.
-"apps/api/app/services/composio/custom_tools/gmail_tools.py" = ["ARG001", "ANN401"]
+"apps/api/app/services/composio/custom_tools/gmail_tools.py" = ["ARG001"]
 # ARG001: rate_limiting.py's `count_tokens` kwarg is a public decorator
 # parameter with real keyword callers elsewhere (image.py, tiered_rate_limiter.py)
 # -- cannot rename/delete. Its enforcement body is separately known to be
@@ -396,14 +396,15 @@ unfixable = [
 "apps/api/app/config/settings.py" = ["ANN401"]
 "apps/api/app/decorators/caching.py" = ["ANN401"]
 "apps/api/app/decorators/integration.py" = ["ANN401"]
+# ANN401: StructuredTool.run overrides LangChain BaseTool.run and forwards
+# *args/**kwargs straight through (BaseTool.run itself returns Any); the wrapped
+# action fn takes the tool-argument bag, whose signature is synthesized at
+# runtime from each Composio tool's JSON schema, so no static annotation fits.
 "apps/api/app/services/composio/langchain_composio_service.py" = ["ANN401"]
-"apps/api/app/services/sandbox/lifecycle.py" = ["ANN401"]
-"apps/api/app/services/integrations/custom_crud.py" = ["ANN401"]
-"apps/api/app/utils/linkedin_utils.py" = ["ANN401"]
-"apps/api/app/agents/prompts/trigger_prompts.py" = ["ANN401"]
 # ANN401: LazyLoader's provider registry deliberately returns arbitrary
 # provider instances (DB clients, LLM clients, any registered service) by
-# design; _is_value_missing checks required-key values of unknown type.
+# design -- get()/aget() are keyed by name, so the concrete type is only
+# knowable at the call site (callers narrow with cast()).
 "apps/api/app/core/lazy_loader.py" = ["ANN401"]
 # ANN401: Pydantic "before" validators receive unvalidated raw input by
 # definition -- the whole point is to normalize whatever was given.
@@ -417,16 +418,9 @@ unfixable = [
 "apps/api/app/agents/middleware/summarization.py" = ["ANN401"]
 "apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["ANN401"]
 "apps/api/app/services/mcp/langchain_adapter.py" = ["ANN401"]
-"apps/api/app/services/hil/gate.py" = ["ANN401"]
 # ANN401: generic decorated-function key/cache helpers forwarding *args/**kwargs
 # to an arbitrary wrapped callable (Cacheable decorator contract).
 "apps/api/app/memory/retrieval.py" = ["ANN401"]
-# ANN401: relays raw, per-endpoint-shaped third-party API JSON (Google Calendar
-# proxy passthrough) -- shape genuinely varies per call, not app-controlled.
-"apps/api/app/services/calendar_service.py" = ["ANN401"]
-# ANN401: mirrors the identical, already-documented tradeoff in sibling file
-# app/services/sandbox/pool.py (typed Any to avoid an import at module load).
-"apps/api/app/services/sandbox/artifact_watcher.py" = ["ANN401"]
 # ANN401: general-purpose error constructor called from dozens of files with
 # heterogeneous metadata; stored as dict[str, Any] by design.
 "apps/api/app/utils/errors.py" = ["ANN401"]
@@ -482,9 +476,17 @@ unfixable = [
 "apps/api/app/patches/composio_custom_tool_schema_patch.py" = ["PLC0415", "ANN401"]
 "apps/api/app/patches/composio_langchain_patch.py" = ["PLC0415", "ANN401"]
 "apps/api/app/services/composio/composio_service.py" = ["PLC0415"]
+# ANN401: proxy_request_sync/proxy_request front every provider in the
+# codebase and return the provider's own parsed JSON, so the concrete type
+# only exists at the call site -- callers validate what they receive.
 "apps/api/app/services/composio/proxy_client.py" = ["PLC0415", "ANN401"]
 "apps/api/app/services/device_token_service.py" = ["PLC0415"]
 "apps/api/app/services/mcp/mcp_client_pool.py" = ["PLC0415"]
+# ANN401: reconnect_and_call returns whatever the wrapped LangChain tool's
+# _arun yields. Two different callables reach it -- the MCP adapter's _arun and
+# the null-filter wrapper's filtered_arun -- and it is handed straight back to
+# wrap_tools_with_null_filter's `Callable[[str, dict], Awaitable[Any]]` contract,
+# so narrowing gains nothing downstream. Every other Any in this file is gone.
 "apps/api/app/services/mcp/mcp_client.py" = ["PLC0415", "ANN401"]
 "apps/api/app/services/mcp/mcp_token_store.py" = ["PLC0415"]
 "apps/api/app/services/reminder_service.py" = ["PLC0415"]
@@ -499,7 +501,7 @@ unfixable = [
 "apps/api/app/services/workflow/service.py" = ["PLC0415"]
 "apps/api/app/services/workflow/trigger_search.py" = ["PLC0415"]
 "apps/api/app/services/workflow/workflow_subagent.py" = ["PLC0415"]
-"apps/api/app/utils/agent_utils.py" = ["PLC0415", "ANN401"]
+"apps/api/app/utils/agent_utils.py" = ["PLC0415"]
 "apps/api/app/utils/context_utils.py" = ["PLC0415"]
 "apps/api/app/utils/general_utils.py" = ["PLC0415"]
 "apps/api/app/utils/google_docs_utils.py" = ["PLC0415"]
