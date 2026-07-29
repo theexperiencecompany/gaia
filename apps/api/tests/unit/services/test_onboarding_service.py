@@ -205,8 +205,8 @@ class TestGetUserOnboardingStatus:
 
         result = await get_user_onboarding_status(sample_user_id)
 
-        assert result["completed"] is True
-        assert result["preferences"]["profession"] == "Engineer"
+        assert result.completed is True
+        assert result.preferences.profession == "Engineer"
 
     async def test_user_not_found_raises_404(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = None
@@ -221,8 +221,8 @@ class TestGetUserOnboardingStatus:
 
         result = await get_user_onboarding_status(sample_user_id)
 
-        assert result["completed"] is False
-        assert result["preferences"] == {}
+        assert result.completed is False
+        assert result.preferences.profession is None
 
     async def test_exception_raises_500(self, mock_repo):
         mock_repo.get.side_effect = Exception("DB error")

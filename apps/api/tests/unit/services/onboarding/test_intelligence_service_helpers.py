@@ -18,10 +18,12 @@ from app.constants.onboarding import NOT_SPECIFIED, OAUTH_INTEGRATION_NAME_BY_ID
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
+    OnboardingWorkflowSummary,
+    WorkflowsReadyPayload,
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType
+from app.models.workflow_models import SuggestedTrigger, TriggerConfig, TriggerType
 from app.services.onboarding.intelligence_service import (
     _DEFAULT_WORKFLOW_CRON,
     _TODO_TITLE_MAX_CHARS,
@@ -122,6 +124,23 @@ class TestTruncateTitle:
 # ---------------------------------------------------------------------------
 
 
+def _trigger_wire(config: TriggerConfig) -> dict[str, Any]:
+    """The trigger exactly as it reaches the client, inside `workflows_ready`."""
+    payload = WorkflowsReadyPayload(
+        status_text="",
+        workflows=[
+            OnboardingWorkflowSummary(
+                id="wf_1",
+                title="t",
+                description="d",
+                categories=[],
+                trigger=_serialize_trigger_for_payload(config),
+            )
+        ],
+    )
+    return dict(payload.to_wire()["workflows"][0]["trigger"])
+
+
 class TestSerializeTriggerForPayload:
     # BUG: this used `str(trigger_config.type)`. TriggerType subclasses str via
     # Enum, so str() renders "TriggerType.SCHEDULE" — while the workflow API
@@ -130,7 +149,7 @@ class TestSerializeTriggerForPayload:
         "trigger_type", [TriggerType.MANUAL, TriggerType.SCHEDULE, TriggerType.INTEGRATION]
     )
     def test_type_is_the_wire_value_not_the_enum_repr(self, trigger_type: TriggerType) -> None:
-        payload = _serialize_trigger_for_payload(TriggerConfig(type=trigger_type))
+        payload = _trigger_wire(TriggerConfig(type=trigger_type))
 
         assert payload["type"] == trigger_type.value
         assert "TriggerType" not in payload["type"]
@@ -138,18 +157,14 @@ class TestSerializeTriggerForPayload:
     def test_matches_the_canonical_api_serialization(self) -> None:
         # Same field, two endpoints — the frontend types them identically.
         config = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON)
-        assert (
-            _serialize_trigger_for_payload(config)["type"]
-            == (config.model_dump(mode="json")["type"])
-        )
+        assert _trigger_wire(config)["type"] == config.model_dump(mode="json")["type"]
 
     def test_cron_expression_is_included_when_set(self) -> None:
         config = TriggerConfig(type=TriggerType.SCHEDULE, cron_expression="0 6 * * 1")
-        assert _serialize_trigger_for_payload(config)["cron_expression"] == "0 6 * * 1"
+        assert _trigger_wire(config)["cron_expression"] == "0 6 * * 1"
 
     def test_optional_keys_are_omitted_when_unset(self) -> None:
-        payload = _serialize_trigger_for_payload(TriggerConfig(type=TriggerType.MANUAL))
-        assert payload == {"type": "manual"}
+        assert _trigger_wire(TriggerConfig(type=TriggerType.MANUAL)) == {"type": "manual"}
 
     def test_timezone_and_trigger_name_are_included_when_set(self) -> None:
         config = TriggerConfig(
@@ -157,7 +172,7 @@ class TestSerializeTriggerForPayload:
             trigger_name="GMAIL_NEW_GMAIL_MESSAGE",
             timezone="Europe/London",
         )
-        payload = _serialize_trigger_for_payload(config)
+        payload = _trigger_wire(config)
 
         assert payload["trigger_name"] == "GMAIL_NEW_GMAIL_MESSAGE"
         assert payload["timezone"] == "Europe/London"
@@ -169,9 +184,9 @@ class TestSerializeTriggerForPayload:
 
 
 class TestBuildTriggerConfigFromSuggestion:
-    @pytest.mark.parametrize("suggestion", [None, {}])
+    @pytest.mark.parametrize("suggestion", [None, SuggestedTrigger(type="")])
     def test_absent_suggestion_falls_back_to_the_default_schedule(
-        self, suggestion: dict | None
+        self, suggestion: SuggestedTrigger | None
     ) -> None:
         config = _build_trigger_config_from_suggestion(suggestion)
 
@@ -179,18 +194,21 @@ class TestBuildTriggerConfigFromSuggestion:
         assert config.cron_expression == _DEFAULT_WORKFLOW_CRON
 
     def test_manual_suggestion_maps_to_a_manual_trigger(self) -> None:
-        config = _build_trigger_config_from_suggestion({"type": "manual"})
+        config = _build_trigger_config_from_suggestion(SuggestedTrigger(type="manual"))
 
         assert config.type is TriggerType.MANUAL
         assert config.cron_expression is None
 
     def test_type_matching_is_case_insensitive(self) -> None:
         # The LLM emits "Manual"/"MANUAL" as readily as "manual".
-        assert _build_trigger_config_from_suggestion({"type": "MANUAL"}).type is TriggerType.MANUAL
+        assert (
+            _build_trigger_config_from_suggestion(SuggestedTrigger(type="MANUAL")).type
+            is TriggerType.MANUAL
+        )
 
     def test_schedule_suggestion_keeps_its_cron(self) -> None:
         config = _build_trigger_config_from_suggestion(
-            {"type": "schedule", "cron_expression": "30 7 * * 1-5"}
+            SuggestedTrigger(type="schedule", cron_expression="30 7 * * 1-5")
         )
 
         assert config.type is TriggerType.SCHEDULE
@@ -198,7 +216,7 @@ class TestBuildTriggerConfigFromSuggestion:
 
     def test_cron_whitespace_is_stripped(self) -> None:
         config = _build_trigger_config_from_suggestion(
-            {"type": "schedule", "cron_expression": "  0 8 * * *  "}
+            SuggestedTrigger(type="schedule", cron_expression="  0 8 * * *  ")
         )
         assert config.cron_expression == "0 8 * * *"
 
@@ -206,30 +224,30 @@ class TestBuildTriggerConfigFromSuggestion:
     def test_blank_cron_falls_back_to_the_default(self, cron: str | None) -> None:
         # A whitespace-only cron would otherwise be persisted and never fire.
         config = _build_trigger_config_from_suggestion(
-            {"type": "schedule", "cron_expression": cron}
+            SuggestedTrigger(type="schedule", cron_expression=cron)
         )
         assert config.cron_expression == _DEFAULT_WORKFLOW_CRON
 
     def test_unknown_type_falls_back_to_the_default_schedule(self) -> None:
-        config = _build_trigger_config_from_suggestion({"type": "telepathy"})
+        config = _build_trigger_config_from_suggestion(SuggestedTrigger(type="telepathy"))
 
         assert config.type is TriggerType.SCHEDULE
         assert config.cron_expression == _DEFAULT_WORKFLOW_CRON
 
     def test_integration_without_a_trigger_name_falls_back(self) -> None:
-        config = _build_trigger_config_from_suggestion({"type": "integration"})
+        config = _build_trigger_config_from_suggestion(SuggestedTrigger(type="integration"))
         assert config.type is TriggerType.SCHEDULE
 
     def test_unknown_trigger_slug_falls_back(self) -> None:
         config = _build_trigger_config_from_suggestion(
-            {"type": "integration", "trigger_name": "NOT_A_REAL_TRIGGER"}
+            SuggestedTrigger(type="integration", trigger_name="NOT_A_REAL_TRIGGER")
         )
         assert config.type is TriggerType.SCHEDULE
 
     def test_known_config_free_slug_becomes_an_integration_trigger(self) -> None:
         slug = _a_slug_without_config_schema()
         config = _build_trigger_config_from_suggestion(
-            {"type": "integration", "trigger_name": slug}
+            SuggestedTrigger(type="integration", trigger_name=slug)
         )
 
         assert config.type is TriggerType.INTEGRATION
@@ -240,7 +258,7 @@ class TestBuildTriggerConfigFromSuggestion:
         # registering one without it would create a trigger that never fires.
         slug = _a_slug_with_config_schema()
         config = _build_trigger_config_from_suggestion(
-            {"type": "integration", "trigger_name": slug}
+            SuggestedTrigger(type="integration", trigger_name=slug)
         )
 
         assert config.type is TriggerType.SCHEDULE

@@ -2,6 +2,7 @@
 
 from collections.abc import Awaitable, Callable
 import time
+from typing import Any
 
 from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import (
@@ -41,7 +42,7 @@ async def learn_writing_style(
             max_results=50,
         )
 
-        sent_emails = result.messages
+        sent_emails: list[dict[str, Any]] = result.messages
         sent_count = len(sent_emails)
 
         if on_status is not None:

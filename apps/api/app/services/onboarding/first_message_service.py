@@ -12,7 +12,10 @@ from app.agents.prompts.onboarding_prompts import (
 )
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import (
+    ClarifyAnswerRecord,
     InboxTriage,
+    OnboardingTodoSummary,
+    OnboardingWorkflowSummary,
     WritingStyleProfile,
 )
 from app.services.onboarding.clarify_service import format_clarify_context
@@ -24,25 +27,25 @@ async def generate_first_message(
     name: str,
     profession: str,
     triage: InboxTriage | None,
-    created_todos: list[dict],
-    created_workflows: list[dict],
+    created_todos: list[OnboardingTodoSummary],
+    created_workflows: list[OnboardingWorkflowSummary],
     writing_style: WritingStyleProfile | None,
     has_gmail: bool,
     focus: str = "",
-    executed_todos: list[dict] | None = None,
-    clarify_answers: list[dict] | None = None,
+    executed_todos: list[OnboardingTodoSummary] | None = None,
+    clarify_answers: list[ClarifyAnswerRecord] | None = None,
 ) -> str:
     """Generate GAIA's first message to a new user."""
     t0 = time.monotonic()
     try:
-        executed_ids = {t["id"] for t in (executed_todos or []) if t.get("id")}
-        queued_todos = [t for t in created_todos if t.get("id") not in executed_ids]
-        todos_text = ", ".join(t["title"] for t in queued_todos) if queued_todos else "none"
+        executed_ids = {t.id for t in (executed_todos or []) if t.id}
+        queued_todos = [t for t in created_todos if t.id not in executed_ids]
+        todos_text = ", ".join(t.title for t in queued_todos) if queued_todos else "none"
         workflows_text = (
-            ", ".join(w["title"] for w in created_workflows) if created_workflows else "none"
+            ", ".join(w.title for w in created_workflows) if created_workflows else "none"
         )
         todos_executed_text = (
-            ", ".join(t["title"] for t in executed_todos) if executed_todos else "none"
+            ", ".join(t.title for t in executed_todos) if executed_todos else "none"
         )
 
         if has_gmail:

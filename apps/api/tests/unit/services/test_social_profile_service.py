@@ -483,13 +483,15 @@ class TestExtractSocialProfilesFromEmails:
 
 class TestSaveConfirmedProfiles:
     async def test_persists_profiles_for_the_user(self):
-        profiles = [{"platform": "twitter", "url": "https://twitter.com/bob"}]
+        profiles = [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
         with patch.object(
             svc.user_repository, "set_social_profiles", new_callable=AsyncMock
         ) as set_profiles:
             await save_confirmed_profiles("user-1", profiles)
 
-        set_profiles.assert_awaited_once_with("user-1", profiles)
+        set_profiles.assert_awaited_once_with(
+            "user-1", [{"platform": "twitter", "url": "https://twitter.com/bob"}]
+        )
 
     async def test_persists_an_empty_list_to_clear_profiles(self):
         with patch.object(

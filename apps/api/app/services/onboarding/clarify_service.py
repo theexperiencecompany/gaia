@@ -14,16 +14,19 @@ answers come back on the existing `POST /onboarding` payload as
 from __future__ import annotations
 
 import time
-from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import CLARIFY_QUESTIONS_PROMPT
 from app.constants.log_tags import LogTag
+from app.models.onboarding_models import (
+    ClarifyAnswerRecord,
+    ClarifyQuestion,
+    ClarifyQuestionKind,
+)
 from shared.py.wide_events import log
 
-ClarifyQuestionKind = Literal["scope", "blocker", "constraint"]
 _KINDS: tuple[ClarifyQuestionKind, ...] = ("scope", "blocker", "constraint")
 
 
@@ -43,38 +46,38 @@ class _ClarifyQuestionList(BaseModel):
     )
 
 
-def _fallback_questions() -> list[dict[str, Any]]:
+def _fallback_questions() -> list[ClarifyQuestion]:
     return [
-        {
-            "id": "scope",
-            "kind": "scope",
-            "question": "What needs to move forward this week?",
-            "options": [
+        ClarifyQuestion(
+            id="scope",
+            kind="scope",
+            question="What needs to move forward this week?",
+            options=[
                 "The main project — shipping the next milestone",
                 "External work — outreach, meetings, customers",
                 "Internal work — planning, hiring, ops",
             ],
-        },
-        {
-            "id": "blocker",
-            "kind": "blocker",
-            "question": "Where are you actually stuck right now?",
-            "options": [
+        ),
+        ClarifyQuestion(
+            id="blocker",
+            kind="blocker",
+            question="Where are you actually stuck right now?",
+            options=[
                 "Too many open threads, nothing's closing",
                 "Waiting on someone else to come back",
                 "I know what to do, just not getting to it",
             ],
-        },
-        {
-            "id": "constraint",
-            "kind": "constraint",
-            "question": "How much focused time can you realistically carve out?",
-            "options": [
+        ),
+        ClarifyQuestion(
+            id="constraint",
+            kind="constraint",
+            question="How much focused time can you realistically carve out?",
+            options=[
                 "A few hours every day",
                 "One or two deep-work blocks total",
                 "Honestly, very little — I'm mostly in meetings",
             ],
-        },
+        ),
     ]
 
 
@@ -82,7 +85,7 @@ async def generate_clarify_questions(
     name: str,
     profession: str,
     focus: str,
-) -> list[dict[str, Any]]:
+) -> list[ClarifyQuestion]:
     """Produce the 3-question follow-up set for the no-Gmail path."""
     t0 = time.monotonic()
     prompt = CLARIFY_QUESTIONS_PROMPT.format(
@@ -102,7 +105,7 @@ async def generate_clarify_questions(
         )
 
         by_kind = {q.kind: q for q in parsed.questions}
-        questions: list[dict[str, Any]] = []
+        questions: list[ClarifyQuestion] = []
         for kind in _KINDS:
             q = by_kind.get(kind)
             if q is None:
@@ -111,12 +114,12 @@ async def generate_clarify_questions(
             if len(options) < 2:
                 continue
             questions.append(
-                {
-                    "id": kind,
-                    "kind": kind,
-                    "question": q.question.strip(),
-                    "options": options,
-                }
+                ClarifyQuestion(
+                    id=kind,
+                    kind=kind,
+                    question=q.question.strip(),
+                    options=options,
+                )
             )
 
         if len(questions) < 3:
@@ -142,7 +145,7 @@ async def generate_clarify_questions(
         return _fallback_questions()
 
 
-def format_clarify_context(clarify_answers: list[dict[str, Any]] | None) -> str:
+def format_clarify_context(clarify_answers: list[ClarifyAnswerRecord] | None) -> str:
     """Render persisted clarify answers as a prompt fragment."""
     if not clarify_answers:
         return ""

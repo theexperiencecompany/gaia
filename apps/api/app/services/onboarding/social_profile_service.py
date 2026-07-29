@@ -1,8 +1,10 @@
 """Extract and save social profile URLs from email sender info and snippets."""
 
+from typing import Any
 import urllib.parse
 
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.llm.exceptions import LLMNotConfiguredError
@@ -21,6 +23,25 @@ _MAX_CONTEXT_FIELD_LEN = 100
 _MAX_CONTEXT_SNIPPET_LEN = 120
 _MAX_HANDLE_LEN = 60
 _MIN_URL_CHARS_AFTER_SCHEME = 5
+
+
+class _CandidateContext(BaseModel):
+    """One email a candidate URL appeared in, as shown to the ownership LLM."""
+
+    sender: str
+    subject: str
+    snippet: str
+
+
+class _ProfileCandidate(BaseModel):
+    """A harvested social URL plus the evidence used to judge ownership."""
+
+    platform: str
+    handle: str
+    canonical_url: str
+    frequency: int = 0
+    is_sent: bool = False
+    contexts: list[_CandidateContext] = []
 
 
 def _is_tracking_url(url: str) -> bool:
@@ -126,13 +147,13 @@ def _extract_handle(remainder: str) -> str | None:
 
 
 async def extract_social_profiles_from_emails(
-    emails: list[dict],
+    emails: list[dict[str, Any]],
     user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
     """Extract social profiles from emails: broad URL harvest + LLM ownership
     filter to keep only profiles owned by the user."""
-    candidates: dict[tuple[str, str], dict] = {}
+    candidates: dict[tuple[str, str], _ProfileCandidate] = {}
 
     for email in emails:
         body = email.get("body", "") or email.get("snippet", "") or email.get("messageText", "")
@@ -169,43 +190,40 @@ async def extract_social_profiles_from_emails(
             seen_in_email.add(key)
 
             if key not in candidates:
-                candidates[key] = {
-                    "platform": platform,
-                    "handle": handle,
-                    "canonical_url": canonical,
-                    "frequency": 0,
-                    "is_sent": False,
-                    "contexts": [],
-                }
+                candidates[key] = _ProfileCandidate(
+                    platform=platform,
+                    handle=handle,
+                    canonical_url=canonical,
+                )
             entry = candidates[key]
-            entry["frequency"] += 1
+            entry.frequency += 1
             if is_sent:
-                entry["is_sent"] = True
-            if len(entry["contexts"]) < _MAX_CONTEXTS_PER_CANDIDATE:
-                entry["contexts"].append(
-                    {
-                        "sender": sender[:_MAX_CONTEXT_FIELD_LEN],
-                        "subject": subject[:_MAX_CONTEXT_FIELD_LEN],
-                        "snippet": (email.get("snippet", "") or "")[:_MAX_CONTEXT_SNIPPET_LEN],
-                    }
+                entry.is_sent = True
+            if len(entry.contexts) < _MAX_CONTEXTS_PER_CANDIDATE:
+                entry.contexts.append(
+                    _CandidateContext(
+                        sender=sender[:_MAX_CONTEXT_FIELD_LEN],
+                        subject=subject[:_MAX_CONTEXT_FIELD_LEN],
+                        snippet=(email.get("snippet", "") or "")[:_MAX_CONTEXT_SNIPPET_LEN],
+                    )
                 )
 
     if not candidates:
         log.info(f"{LogTag.ONBOARDING} No social URL candidates found in emails")
         return []
 
-    by_platform: dict[str, list[dict]] = {}
+    by_platform: dict[str, list[_ProfileCandidate]] = {}
     for entry in candidates.values():
-        p = entry["platform"]
-        if p not in by_platform:
-            by_platform[p] = []
-        by_platform[p].append(entry)
+        platform_name = entry.platform
+        if platform_name not in by_platform:
+            by_platform[platform_name] = []
+        by_platform[platform_name].append(entry)
 
-    capped: list[dict] = []
+    capped: list[_ProfileCandidate] = []
     for platform_entries in by_platform.values():
         sorted_entries = sorted(
             platform_entries,
-            key=lambda e: (e["is_sent"], e["frequency"]),
+            key=lambda e: (e.is_sent, e.frequency),
             reverse=True,
         )
         capped.extend(sorted_entries[:_MAX_CANDIDATES_PER_PLATFORM])
@@ -216,24 +234,23 @@ async def extract_social_profiles_from_emails(
     )
 
     for entry in capped:
-        sent_label = "SENT" if entry["is_sent"] else "recv"
+        sent_label = "SENT" if entry.is_sent else "recv"
         log.info(
-            f"{LogTag.ONBOARDING} social profile candidate: {entry['platform']}/{entry['handle']} "
-            f"freq={entry['frequency']} {sent_label}"
+            f"{LogTag.ONBOARDING} social profile candidate: {entry.platform}/{entry.handle} "
+            f"freq={entry.frequency} {sent_label}"
         )
 
     candidates_lines: list[str] = []
     for entry in capped:
-        sent_label = "yes" if entry["is_sent"] else "no"
+        sent_label = "yes" if entry.is_sent else "no"
         header = (
-            f"Platform: {entry['platform']} | Handle: {entry['handle']} | "
-            f"Appeared in {entry['frequency']} email(s) | Sent email: {sent_label}"
+            f"Platform: {entry.platform} | Handle: {entry.handle} | "
+            f"Appeared in {entry.frequency} email(s) | Sent email: {sent_label}"
         )
         context_lines = []
-        for i, ctx in enumerate(entry["contexts"], 1):
+        for i, ctx in enumerate(entry.contexts, 1):
             context_lines.append(
-                f"  Context {i} — From: {ctx['sender']} | "
-                f'Subject: {ctx["subject"]} | "{ctx["snippet"]}"'
+                f'  Context {i} — From: {ctx.sender} | Subject: {ctx.subject} | "{ctx.snippet}"'
             )
         candidates_lines.append(header)
         candidates_lines.extend(context_lines)
@@ -242,9 +259,7 @@ async def extract_social_profiles_from_emails(
     candidates_text = "\n".join(candidates_lines).strip()
 
     sent_fallback = [
-        SocialProfile(platform=e["platform"], url=e["canonical_url"])
-        for e in capped
-        if e["is_sent"]
+        SocialProfile(platform=e.platform, url=e.canonical_url) for e in capped if e.is_sent
     ]
 
     try:
@@ -267,14 +282,14 @@ async def extract_social_profiles_from_emails(
         )
 
         url_lookup: dict[tuple[str, str], str] = {
-            (e["platform"], e["handle"]): e["canonical_url"] for e in capped
+            (e.platform, e.handle): e.canonical_url for e in capped
         }
 
         owned: list[SocialProfile] = []
         for item in result.owned_profiles:
             # The LLM echoes back handles from the prompt; don't lose a profile to casing.
-            item_platform = str(item.get("platform") or "").strip().lower()
-            item_handle = str(item.get("handle") or "").strip().lower()
+            item_platform = item.platform.strip().lower()
+            item_handle = item.handle.strip().lower()
             canonical_url = url_lookup.get((item_platform, item_handle))
             if canonical_url:
                 owned.append(SocialProfile(platform=item_platform, url=canonical_url))
@@ -311,7 +326,7 @@ def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProf
     return result
 
 
-async def save_confirmed_profiles(user_id: str, profiles: list[dict]) -> None:
+async def save_confirmed_profiles(user_id: str, profiles: list[SocialProfile]) -> None:
     """Persist user-confirmed social profiles, overwriting extracted ones."""
-    await user_repository.set_social_profiles(user_id, profiles)
+    await user_repository.set_social_profiles(user_id, [p.model_dump() for p in profiles])
     log.info(f"{LogTag.ONBOARDING} Saved {len(profiles)} confirmed social profiles for {user_id}")

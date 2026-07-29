@@ -9,6 +9,10 @@ from app.db.repositories.todos import todo_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
+from app.models.onboarding_models import (
+    OnboardingResetCounts,
+    OnboardingStatusResponse,
+)
 from app.models.user_models import (
     BioStatus,
     IntegrationSlug,
@@ -34,7 +38,15 @@ from shared.py.wide_events import log
 
 
 def _serialize_user(user: UserDocument) -> dict[str, Any]:
-    """The JSON-serializable user dict the onboarding endpoints return."""
+    """The JSON-serializable user dict the onboarding endpoints return.
+
+    Stays a ``dict[str, Any]`` deliberately: ``UserDocument`` is ``extra="allow"``
+    precisely so these endpoints can spread the whole stored document into their
+    response, and the frontend's ``UserInfo`` reads it that way. Narrowing this to
+    a declared model would silently strip whatever undeclared fields production
+    rows carry — a change to data returned to an external consumer, which is a
+    product decision, not a typing fix (Type Safety item 14).
+    """
     data = user.model_dump(mode="json", exclude={"id"})
     data["_id"] = user.id
     data["user_id"] = user.id
@@ -187,16 +199,8 @@ async def submit_onboarding_integrations(
     return OnboardingIntegrationsStatus.QUEUED
 
 
-async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
-    """
-    Get user's onboarding status and preferences.
-
-    Args:
-        user_id: The user's MongoDB ID
-
-    Returns:
-        Dictionary with onboarding status and preferences
-    """
+async def get_user_onboarding_status(user_id: str) -> OnboardingStatusResponse:
+    """Get user's onboarding status and preferences."""
     try:
         user = await user_repository.get(user_id)
 
@@ -205,13 +209,15 @@ async def get_user_onboarding_status(user_id: str) -> dict[str, Any]:
 
         onboarding_data = user.onboarding or {}
 
-        return {
-            "completed": onboarding_data.get("completed", False),
-            "completed_at": onboarding_data.get("completed_at"),
-            "phase": onboarding_data.get("phase"),
-            "preferences": onboarding_data.get("preferences", {}),
-            "first_message_conversation_id": onboarding_data.get("first_message_conversation_id"),
-        }
+        return OnboardingStatusResponse(
+            completed=onboarding_data.get("completed", False),
+            completed_at=onboarding_data.get("completed_at"),
+            phase=onboarding_data.get("phase"),
+            preferences=OnboardingPreferences.model_validate(
+                onboarding_data.get("preferences") or {}
+            ),
+            first_message_conversation_id=onboarding_data.get("first_message_conversation_id"),
+        )
 
     except HTTPException:
         raise
@@ -274,7 +280,7 @@ async def update_onboarding_preferences(
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
-async def reset_onboarding(user_id: str) -> dict[str, int]:
+async def reset_onboarding(user_id: str) -> OnboardingResetCounts:
     """Fully reset a user's onboarding so they can run the flow from scratch.
     Returns counts of what was deleted."""
     log.set(auth={"user_id": user_id}, onboarding={"operation": "reset"})
@@ -302,8 +308,8 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
         )
 
     onboarding = user.onboarding or {}
-    workflow_ids: list[Any] = onboarding.get("suggested_workflows", []) or []
-    first_conversation_id = onboarding.get("first_message_conversation_id")
+    workflow_ids: list[str] = onboarding.get("suggested_workflows", []) or []
+    first_conversation_id: str | None = onboarding.get("first_message_conversation_id")
 
     workflows_deleted = 0
     for wf_id in workflow_ids:
@@ -345,15 +351,15 @@ async def reset_onboarding(user_id: str) -> dict[str, int]:
 
     await user_repository.reset_onboarding(user_id)
 
-    counts = {
-        "workflows_deleted": workflows_deleted,
-        "todos_deleted": todos_deleted,
-        "conversation_deleted": conversation_deleted,
-        "demo_conversations_deleted": demo_conversations_deleted,
-        "integrations_disconnected": integrations_disconnected,
-        "memories_cleared": memories_cleared,
-    }
-    log.set(onboarding={"operation": "reset", **counts})
+    counts = OnboardingResetCounts(
+        workflows_deleted=workflows_deleted,
+        todos_deleted=todos_deleted,
+        conversation_deleted=conversation_deleted,
+        demo_conversations_deleted=demo_conversations_deleted,
+        integrations_disconnected=integrations_disconnected,
+        memories_cleared=memories_cleared,
+    )
+    log.set(onboarding={"operation": "reset", **counts.model_dump()})
     log.info(f"{LogTag.ONBOARDING} Onboarding reset complete for user {user_id}")
     return counts
 

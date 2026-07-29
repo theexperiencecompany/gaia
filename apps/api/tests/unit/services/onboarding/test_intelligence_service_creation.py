@@ -16,11 +16,23 @@ from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.models.onboarding_models import (
     EmailSummary,
     InboxTriage,
+    OnboardingTodoSource,
+    OnboardingTodoSummary,
+    OnboardingTriggerPayload,
+    OnboardingWorkflowSummary,
+    ProfileCardDesign,
     SocialProfile,
+    UserProfileMetadata,
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.workflow_models import TriggerConfig, TriggerType
+from app.models.user_models import UserDocument
+from app.models.workflow_models import (
+    IntegrationRef,
+    SuggestedTrigger,
+    TriggerConfig,
+    TriggerType,
+)
 from app.services.onboarding.intelligence_service import (
     _DEFAULT_WORKFLOW_CRON,
     OnboardingStage,
@@ -86,8 +98,8 @@ class TestCreateFocusTodos:
             result = await _create_focus_todos(USER, "Ann", "lawyer", "close Q3")
 
         assert result == [
-            {"id": "t1", "title": "Draft the brief"},
-            {"id": "t2", "title": "Book the review"},
+            OnboardingTodoSummary(id="t1", title="Draft the brief"),
+            OnboardingTodoSummary(id="t2", title="Book the review"),
         ]
 
     async def test_todos_are_labelled_for_onboarding(self) -> None:
@@ -135,7 +147,7 @@ class TestCreateFocusTodos:
             service.create_todo = AsyncMock(return_value=_made_todo())
             result = await _create_focus_todos(USER, "Ann", "lawyer", "close Q3")
 
-        assert result[0]["title"] == " ".join(c * 10 for c in "abcdefg")
+        assert result[0].title == " ".join(c * 10 for c in "abcdefg")
 
     async def test_one_failed_creation_does_not_lose_the_others(self) -> None:
         parsed = _FocusTodoList(todos=["A", "B", "C"])
@@ -148,7 +160,7 @@ class TestCreateFocusTodos:
             )
             result = await _create_focus_todos(USER, "Ann", "lawyer", "close Q3")
 
-        assert [r["id"] for r in result] == ["t1", "t3"]
+        assert [r.id for r in result] == ["t1", "t3"]
 
     async def test_an_llm_failure_degrades_to_an_empty_list(self) -> None:
         with patch(f"{MODULE}.ainvoke_structured", AsyncMock(side_effect=RuntimeError("llm"))):
@@ -196,7 +208,7 @@ class TestCreateTodosFromTriage:
             service.create_todo = AsyncMock(return_value=_made_todo("t1"))
             result = await _create_todos_from_triage(USER, _triage())
 
-        assert result == [{"id": "t1", "title": "Reply to Ann"}]
+        assert result == [OnboardingTodoSummary(id="t1", title="Reply to Ann")]
 
     async def test_a_real_source_email_is_attached(self) -> None:
         parsed = _TodoListFromEmails(
@@ -209,7 +221,9 @@ class TestCreateTodosFromTriage:
             service.create_todo = AsyncMock(return_value=_made_todo())
             result = await _create_todos_from_triage(USER, _triage())
 
-        assert result[0]["source_email"] == {"sender": "ann@x.com", "subject": "Contract"}
+        assert result[0].source_email == OnboardingTodoSource(
+            sender="ann@x.com", subject="Contract"
+        )
 
     @pytest.mark.parametrize(
         ("sender", "subject"),
@@ -230,7 +244,7 @@ class TestCreateTodosFromTriage:
             service.create_todo = AsyncMock(return_value=_made_todo())
             result = await _create_todos_from_triage(USER, _triage())
 
-        assert "source_email" not in result[0]
+        assert result[0].source_email is None
 
     async def test_a_todo_with_no_source_claim_is_still_created(self) -> None:
         parsed = _TodoListFromEmails(todos=[_spec(source_sender="", source_subject="")])
@@ -241,8 +255,8 @@ class TestCreateTodosFromTriage:
             service.create_todo = AsyncMock(return_value=_made_todo())
             result = await _create_todos_from_triage(USER, _triage())
 
-        assert result[0]["id"] == "t1"
-        assert "source_email" not in result[0]
+        assert result[0].id == "t1"
+        assert result[0].source_email is None
 
     async def test_only_the_first_eight_emails_ground_the_prompt(self) -> None:
         triage = _triage(
@@ -308,7 +322,7 @@ class TestCreateTodosFromTriage:
             service.create_todo = AsyncMock(side_effect=[RuntimeError("mongo"), _made_todo("t2")])
             result = await _create_todos_from_triage(USER, _triage())
 
-        assert [r["id"] for r in result] == ["t2"]
+        assert [r.id for r in result] == ["t2"]
 
     async def test_an_llm_failure_degrades_to_an_empty_list(self) -> None:
         with patch(f"{MODULE}.ainvoke_structured", AsyncMock(side_effect=RuntimeError("llm"))):
@@ -325,6 +339,22 @@ class TestCreateTodosFromTriage:
 # ---------------------------------------------------------------------------
 # _build_one_workflow
 # ---------------------------------------------------------------------------
+
+
+def _card(workflow_id: str, title: str = "Daily Briefing") -> OnboardingWorkflowSummary:
+    return OnboardingWorkflowSummary(
+        id=workflow_id,
+        title=title,
+        description="d",
+        categories=[],
+        trigger=OnboardingTriggerPayload(
+            type=TriggerType.SCHEDULE, cron_expression=_DEFAULT_WORKFLOW_CRON
+        ),
+    )
+
+
+def _fallback_cards() -> list[OnboardingWorkflowSummary]:
+    return [_card("fb")]
 
 
 def _workflow(workflow_id: str = "w1") -> MagicMock:
@@ -359,7 +389,8 @@ class TestBuildOneWorkflow:
         spec = _WorkflowSpec(title="Daily brief", description="Summarize", categories=["gmail"])
         result = await _build_one_workflow(USER, 0, spec, "UTC")
 
-        assert result == {
+        assert result is not None
+        assert result.model_dump(mode="json", exclude_none=True) == {
             "id": "w1",
             "title": "Daily brief",
             "description": "Summarize",
@@ -402,25 +433,22 @@ class TestBuildOneWorkflow:
 
     async def test_a_suggested_trigger_is_mapped(self, workflow_stack: Any) -> None:
         generation, service = workflow_stack
-        suggestion = MagicMock()
-        suggestion.model_dump.return_value = {"type": "manual"}
         generation.generate_workflow_prompt = AsyncMock(
-            return_value={"prompt": "p", "suggested_trigger": suggestion}
+            return_value={"prompt": "p", "suggested_trigger": SuggestedTrigger(type="manual")}
         )
         await _build_one_workflow(USER, 0, _WorkflowSpec(title="t", description="d"), "UTC")
 
         assert service.create_workflow.await_args.args[0].trigger_config.type is TriggerType.MANUAL
 
     async def test_missing_integrations_are_surfaced_on_the_card(self, workflow_stack: Any) -> None:
-        ref = MagicMock()
-        ref.id, ref.name = "slack", "Slack"
+        ref = IntegrationRef(id="slack", name="Slack")
         with patch(f"{MODULE}.compute_missing_integrations", AsyncMock(return_value=[ref])):
             result = await _build_one_workflow(
                 USER, 0, _WorkflowSpec(title="t", description="d"), "UTC"
             )
 
         assert result is not None
-        assert result["missing_integrations"] == [{"id": "slack", "name": "Slack"}]
+        assert result.missing_integrations == [IntegrationRef(id="slack", name="Slack")]
 
     async def test_the_persisted_trigger_is_echoed_not_the_requested_one(
         self, workflow_stack: Any
@@ -436,7 +464,7 @@ class TestBuildOneWorkflow:
         )
 
         assert result is not None
-        assert result["trigger"] == {"type": "manual"}
+        assert result.trigger.model_dump(mode="json", exclude_none=True) == {"type": "manual"}
 
     async def test_a_creation_failure_yields_none(self, workflow_stack: Any) -> None:
         _, service = workflow_stack
@@ -474,24 +502,24 @@ class TestCreateOnboardingWorkflows:
             patch(f"{MODULE}._generate_workflow_specs", AsyncMock(return_value=_specs())),
             patch(
                 f"{MODULE}._build_one_workflow",
-                AsyncMock(side_effect=[{"id": f"w{i}"} for i in range(4)]),
+                AsyncMock(side_effect=[_card(f"w{i}") for i in range(4)]),
             ),
         ):
             result = await _create_onboarding_workflows(USER, "dev", True)
 
-        assert [r["id"] for r in result] == ["w0", "w1", "w2", "w3"]
+        assert [r.id for r in result] == ["w0", "w1", "w2", "w3"]
 
     async def test_failed_specs_are_dropped_without_failing_the_batch(self) -> None:
         with (
             patch(f"{MODULE}._generate_workflow_specs", AsyncMock(return_value=_specs())),
             patch(
                 f"{MODULE}._build_one_workflow",
-                AsyncMock(side_effect=[{"id": "w0"}, None, {"id": "w2"}, None]),
+                AsyncMock(side_effect=[_card("w0"), None, _card("w2"), None]),
             ),
         ):
             result = await _create_onboarding_workflows(USER, "dev", True)
 
-        assert [r["id"] for r in result] == ["w0", "w2"]
+        assert [r.id for r in result] == ["w0", "w2"]
 
     async def test_unknown_integration_ids_are_filtered_out(self) -> None:
         captured: list[Any] = []
@@ -546,12 +574,12 @@ class TestCreateOnboardingWorkflows:
         with (
             patch(f"{MODULE}._generate_workflow_specs", AsyncMock(side_effect=RuntimeError("llm"))),
             patch(
-                f"{MODULE}._create_fallback_workflow", AsyncMock(return_value=[{"id": "fb"}])
+                f"{MODULE}._create_fallback_workflow", AsyncMock(return_value=_fallback_cards())
             ) as fallback,
         ):
             result = await _create_onboarding_workflows(USER, "dev", False, "ship v2", "UTC")
 
-        assert result == [{"id": "fb"}]
+        assert result == _fallback_cards()
         assert fallback.await_args.args[:3] == (USER, "ship v2", "UTC")
 
 
@@ -566,9 +594,9 @@ class TestCreateFallbackWorkflow:
             service.create_workflow = AsyncMock(return_value=_workflow("fb1"))
             result = await _create_fallback_workflow(USER)
 
-        assert result[0]["id"] == "fb1"
-        assert result[0]["title"] == "Daily Briefing"
-        assert result[0]["trigger"] == {
+        assert result[0].id == "fb1"
+        assert result[0].title == "Daily Briefing"
+        assert result[0].trigger.model_dump(mode="json", exclude_none=True) == {
             "type": "schedule",
             "cron_expression": _DEFAULT_WORKFLOW_CRON,
         }
@@ -578,14 +606,14 @@ class TestCreateFallbackWorkflow:
             service.create_workflow = AsyncMock(return_value=_workflow())
             result = await _create_fallback_workflow(USER, "close Q3 deals")
 
-        assert "close Q3 deals" in result[0]["description"]
+        assert "close Q3 deals" in result[0].description
 
     async def test_without_focus_a_generic_description_is_used(self) -> None:
         with patch(f"{MODULE}.WorkflowService") as service:
             service.create_workflow = AsyncMock(return_value=_workflow())
             result = await _create_fallback_workflow(USER, "")
 
-        assert "Focus:" not in result[0]["description"]
+        assert "Focus:" not in result[0].description
 
     async def test_integration_ids_are_forwarded(self) -> None:
         with patch(f"{MODULE}.WorkflowService") as service:
@@ -611,11 +639,13 @@ def holo_stack() -> Any:
     with (
         patch(
             f"{MODULE}.get_user_metadata",
-            AsyncMock(return_value={"account_number": "0001", "member_since": "2026"}),
+            AsyncMock(return_value=UserProfileMetadata(account_number=1, member_since="2026")),
         ),
         patch(
             f"{MODULE}.generate_profile_card_design",
-            return_value={"house": "ember", "overlay_color": "#fff", "overlay_opacity": 0.2},
+            return_value=ProfileCardDesign(
+                house="mistgrove", overlay_color="#fff", overlay_opacity=20
+            ),
         ),
         patch(
             f"{MODULE}.generate_holo_card_content",
@@ -630,11 +660,11 @@ def holo_stack() -> Any:
 class TestRunHoloCard:
     async def test_saves_the_generated_card_and_announces_readiness(self, holo_stack: Any) -> None:
         _, save, emit = holo_stack
-        await _run_holo_card(USER, {"_id": USER}, "focus", None, None)
+        await _run_holo_card(USER, UserDocument(id=USER), "focus", None, None)
 
         args = save.await_args.args
         assert args[0] == USER
-        assert args[1] == "ember"
+        assert args[1] == "mistgrove"
         assert args[2] == "a phrase"
         assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 
@@ -642,7 +672,7 @@ class TestRunHoloCard:
         content, _, _ = holo_stack
         await _run_holo_card(
             USER,
-            {"_id": USER},
+            UserDocument(id=USER),
             "ship v2",
             _triage(),
             WritingStyleProfile(summary="Terse", example=WritingStyleExampleBlocks(body=["x"])),
@@ -662,7 +692,7 @@ class TestRunHoloCard:
     async def test_blank_clarify_answers_are_skipped(self, holo_stack: Any) -> None:
         content, _, _ = holo_stack
         await _run_holo_card(
-            USER, {"_id": USER}, "", None, None, None, [{"kind": "goal", "value": "   "}]
+            USER, UserDocument(id=USER), "", None, None, None, [{"kind": "goal", "value": "   "}]
         )
 
         assert "Goal" not in content.await_args.args[1]
@@ -671,13 +701,15 @@ class TestRunHoloCard:
         self, holo_stack: Any
     ) -> None:
         content, _, _ = holo_stack
-        await _run_holo_card(USER, {"_id": USER}, "", None, None, None, [{"value": "some note"}])
+        await _run_holo_card(
+            USER, UserDocument(id=USER), "", None, None, None, [{"value": "some note"}]
+        )
 
         assert "Context: some note" in content.await_args.args[1]
 
     async def test_absent_signals_produce_an_empty_summary(self, holo_stack: Any) -> None:
         content, _, _ = holo_stack
-        await _run_holo_card(USER, {"_id": USER}, "", None, None)
+        await _run_holo_card(USER, UserDocument(id=USER), "", None, None)
 
         assert content.await_args.args[1] == ""
 
@@ -685,7 +717,7 @@ class TestRunHoloCard:
         # The frontend waits on HOLO_READY; skipping it leaves the card spinning.
         _, _, emit = holo_stack
         with patch(f"{MODULE}.get_user_metadata", AsyncMock(side_effect=RuntimeError("mongo"))):
-            await _run_holo_card(USER, {"_id": USER}, "", None, None)
+            await _run_holo_card(USER, UserDocument(id=USER), "", None, None)
 
         assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 

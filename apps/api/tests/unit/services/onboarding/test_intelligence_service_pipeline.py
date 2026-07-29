@@ -18,6 +18,7 @@ import pytest
 
 from app.constants.onboarding import ONBOARDING_DEFAULT_FIRST_MESSAGE
 from app.models.onboarding_models import (
+    CompletePayload,
     EmailSummary,
     InboxTriage,
     WritingStyleExampleBlocks,
@@ -342,7 +343,7 @@ class TestFinalizeOnboarding:
 
         stage, payload = emit.await_args.args[1], emit.await_args.args[2]
         assert stage is OnboardingStage.COMPLETE
-        assert payload == {"conversation_id": "conv-1"}
+        assert payload == CompletePayload(conversation_id="conv-1")
 
     async def test_context_reaches_the_message_generator(self, finalize_stack: Any) -> None:
         message, _, _, _ = finalize_stack
@@ -393,7 +394,7 @@ class TestFinalizeOnboarding:
             assert await _finalize_onboarding(USER, **_finalize_kwargs()) is None
 
         assert repo.set_pipeline_completion.await_count == 1
-        assert emit.await_args.args[2] == {"conversation_id": None}
+        assert emit.await_args.args[2] == CompletePayload(conversation_id=None)
 
 
 # ---------------------------------------------------------------------------
@@ -545,8 +546,7 @@ class TestProcessOnboardingIntelligence:
     async def test_a_blank_timezone_falls_back_to_utc(
         self, pipeline_stack: Any, stored: str | None
     ) -> None:
-        user = _user()
-        user.model_dump.return_value = {"timezone": stored}
+        user = _user(timezone=stored)
         pipeline_stack["repo"].get = AsyncMock(return_value=user)
 
         await process_onboarding_intelligence(USER)
@@ -554,8 +554,7 @@ class TestProcessOnboardingIntelligence:
         assert pipeline_stack["workflows"].await_args.args[4] == "UTC"
 
     async def test_a_stored_timezone_is_used(self, pipeline_stack: Any) -> None:
-        user = _user()
-        user.model_dump.return_value = {"timezone": "Europe/London"}
+        user = _user(timezone="Europe/London")
         pipeline_stack["repo"].get = AsyncMock(return_value=user)
 
         await process_onboarding_intelligence(USER)

@@ -18,12 +18,20 @@ import pytest
 from app.constants.email import ONBOARDING_EMAIL_SCAN_LIMIT
 from app.constants.onboarding import TRIAGE_EARLY_THRESHOLD
 from app.models.onboarding_models import (
+    CompletePayload,
     EmailSummary,
     InboxTriage,
+    OnboardingTodoSummary,
+    OnboardingTriggerPayload,
+    OnboardingWorkflowSummary,
     SocialProfile,
+    StagePayload,
+    StatusTextPayload,
+    TriageReadyPayload,
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
+from app.models.workflow_models import TriggerType
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
     OnboardingStage,
@@ -66,16 +74,30 @@ def _style() -> WritingStyleProfile:
     return WritingStyleProfile(summary="Terse", example=WritingStyleExampleBlocks(body=["Thanks."]))
 
 
+def _workflow(workflow_id: str, title: str = "Daily") -> OnboardingWorkflowSummary:
+    return OnboardingWorkflowSummary(
+        id=workflow_id,
+        title=title,
+        description="d",
+        categories=[],
+        trigger=OnboardingTriggerPayload(type=TriggerType.SCHEDULE, cron_expression="0 9 * * *"),
+    )
+
+
 class StageSink:
-    """Records every stage emission so tests can assert the pipeline's UI contract."""
+    """Records every stage emission so tests can assert the pipeline's UI contract.
+
+    Payloads are recorded as their wire dicts, not the models, so assertions here
+    pin the JSON the frontend actually receives.
+    """
 
     def __init__(self) -> None:
         self.emissions: list[tuple[OnboardingStage, dict]] = []
 
     async def __call__(
-        self, user_id: str, stage: OnboardingStage, payload: dict | None = None
+        self, user_id: str, stage: OnboardingStage, payload: StagePayload | None = None
     ) -> None:
-        self.emissions.append((stage, payload or {}))
+        self.emissions.append((stage, payload.to_wire() if payload else {}))
 
     def stages(self) -> list[OnboardingStage]:
         return [stage for stage, _ in self.emissions]
@@ -113,13 +135,32 @@ class TestEmitStage:
         manager = MagicMock()
         manager.broadcast_to_user = AsyncMock()
         with patch(f"{MODULE}.websocket_manager", manager):
-            await _emit_stage(USER, OnboardingStage.TRIAGE_READY, {"total_scanned": 4})
+            await _emit_stage(
+                USER,
+                OnboardingStage.TRIAGE_READY,
+                TriageReadyPayload(
+                    total_scanned=4,
+                    total_unread=0,
+                    summary=None,
+                    patterns=[],
+                    important_emails=[],
+                ),
+            )
 
         kwargs = manager.broadcast_to_user.await_args.kwargs
         assert kwargs["user_id"] == USER
         assert kwargs["message"] == {
             "type": "onboarding_stage",
-            "data": {"stage": "triage_ready", "payload": {"total_scanned": 4}},
+            "data": {
+                "stage": "triage_ready",
+                "payload": {
+                    "total_scanned": 4,
+                    "total_unread": 0,
+                    "summary": None,
+                    "patterns": [],
+                    "important_emails": [],
+                },
+            },
         }
 
     async def test_stage_is_sent_as_its_wire_value(self) -> None:
@@ -154,7 +195,9 @@ class TestEmitStage:
         manager.broadcast_to_user = AsyncMock()
         with patch(f"{MODULE}.websocket_manager", manager), patch(f"{MODULE}.log") as log:
             await _emit_stage(
-                USER, OnboardingStage.INBOX_SCANNING, {"status_text": "Connecting to Gmail"}
+                USER,
+                OnboardingStage.INBOX_SCANNING,
+                StatusTextPayload(status_text="Connecting to Gmail"),
             )
 
         line = log.info.call_args.args[0]
@@ -165,7 +208,7 @@ class TestEmitStage:
         manager = MagicMock()
         manager.broadcast_to_user = AsyncMock()
         with patch(f"{MODULE}.websocket_manager", manager), patch(f"{MODULE}.log") as log:
-            await _emit_stage(USER, OnboardingStage.COMPLETE, {"conversation_id": "c1"})
+            await _emit_stage(USER, OnboardingStage.COMPLETE, CompletePayload(conversation_id="c1"))
 
         line = log.info.call_args.args[0]
         assert "complete" in line
@@ -770,7 +813,7 @@ class TestRunTodos:
         [(0, "No todos to save"), (1, "Saved 1 todo"), (2, "Saved 2 todos")],
     )
     async def test_ready_status_is_pluralized(self, stages: Any, count: int, expected: str) -> None:
-        created = [{"id": f"t{i}", "title": "x"} for i in range(count)]
+        created = [OnboardingTodoSummary(id=f"t{i}", title="x") for i in range(count)]
         with patch(f"{MODULE}._create_focus_todos", AsyncMock(return_value=created)):
             await _run_todos(
                 USER, "Ann", "dev", "ship v2", False, asyncio.ensure_future(_resolved(None)), []
@@ -786,7 +829,7 @@ class TestRunTodos:
 
 class TestRunWorkflows:
     async def test_created_workflows_are_returned_and_announced(self, stages: Any) -> None:
-        created = [{"id": "w1", "title": "Daily"}]
+        created = [_workflow("w1", title="Daily")]
         with (
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
             patch(f"{MODULE}.user_repository") as repo,
@@ -795,10 +838,12 @@ class TestRunWorkflows:
             result = await _run_workflows(USER, "dev", True, "", "UTC", None, None)
 
         assert result == created
-        assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == created
+        assert stages.payload_for(OnboardingStage.WORKFLOWS_READY)["workflows"] == [
+            w.model_dump(mode="json", exclude_none=True) for w in created
+        ]
 
     async def test_workflow_ids_are_persisted_as_suggestions(self, stages: Any) -> None:
-        created = [{"id": "w1"}, {"id": "w2"}]
+        created = [_workflow("w1"), _workflow("w2")]
         with (
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
             patch(f"{MODULE}.user_repository") as repo,
@@ -812,7 +857,7 @@ class TestRunWorkflows:
         with (
             patch(
                 f"{MODULE}._create_onboarding_workflows",
-                AsyncMock(return_value=[{"title": "no id"}]),
+                AsyncMock(return_value=[_workflow("")]),
             ),
             patch(f"{MODULE}.user_repository") as repo,
         ):
@@ -823,7 +868,7 @@ class TestRunWorkflows:
 
     async def test_a_persistence_failure_does_not_lose_the_workflows(self, stages: Any) -> None:
         # The workflows exist in Mongo either way; only the suggestion list is lost.
-        created = [{"id": "w1"}]
+        created = [_workflow("w1")]
         with (
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
             patch(f"{MODULE}.user_repository") as repo,
@@ -853,7 +898,7 @@ class TestRunWorkflows:
                 "Europe/London",
                 triage,
                 style,
-                [{"q": "a"}],
+                [{"kind": "scope", "value": "a"}],
                 ["slack"],
             )
 
@@ -865,7 +910,7 @@ class TestRunWorkflows:
             "Europe/London",
             triage,
             style,
-            [{"q": "a"}],
+            [{"kind": "scope", "value": "a"}],
             ["slack"],
         )
 
@@ -874,7 +919,7 @@ class TestRunWorkflows:
         [(0, "No workflows to save"), (1, "Saved 1 workflow"), (2, "Saved 2 workflows")],
     )
     async def test_ready_status_is_pluralized(self, stages: Any, count: int, expected: str) -> None:
-        created = [{"id": f"w{i}"} for i in range(count)]
+        created = [_workflow(f"w{i}") for i in range(count)]
         with (
             patch(f"{MODULE}._create_onboarding_workflows", AsyncMock(return_value=created)),
             patch(f"{MODULE}.user_repository"),
@@ -982,11 +1027,13 @@ class TestFetchOnboardingTodos:
         todo.id, todo.title = "t1", "Reply to Ann"
         with patch(f"{MODULE}.todo_repository") as repo:
             repo.list_onboarding_todos = AsyncMock(return_value=[todo])
-            assert await _fetch_onboarding_todos(USER) == [{"id": "t1", "title": "Reply to Ann"}]
+            assert await _fetch_onboarding_todos(USER) == [
+                OnboardingTodoSummary(id="t1", title="Reply to Ann")
+            ]
 
     async def test_a_missing_title_becomes_an_empty_string(self) -> None:
         todo = MagicMock()
         todo.id, todo.title = "t1", None
         with patch(f"{MODULE}.todo_repository") as repo:
             repo.list_onboarding_todos = AsyncMock(return_value=[todo])
-            assert await _fetch_onboarding_todos(USER) == [{"id": "t1", "title": ""}]
+            assert await _fetch_onboarding_todos(USER) == [OnboardingTodoSummary(id="t1", title="")]
