@@ -15,10 +15,13 @@ from app.decorators import tiered_rate_limit
 from app.models.reminder_models import (
     CreateReminderRequest,
     CronValidationResponse,
+    ReminderModel,
     ReminderResponse,
     ReminderStatus,
+    ReminderUpdate,
     UpdateReminderRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.reminder_service import reminder_scheduler
 from app.utils.cron_utils import (
     calculate_next_occurrences,
@@ -32,12 +35,29 @@ _CRON_PREVIEW_RUNS = 5
 router = APIRouter(prefix="/reminders", tags=["reminders"])
 
 
+def _reminder_context(operation: str, reminder: ReminderModel) -> ReminderContext:
+    """Wide-event context for one reminder.
+
+    ``recurrence`` and ``next_run_time`` read ``repeat``/``scheduled_at`` — the
+    fields a reminder actually has. The previous
+    ``reminder.recurrence if hasattr(reminder, "recurrence") else None`` spelling
+    named attributes ``ReminderModel`` has never defined, so both fields were
+    logged as ``None`` on every request.
+    """
+    context = ReminderContext(operation=operation, id=str(reminder.id))
+    if reminder.repeat:
+        context["recurrence"] = reminder.repeat
+    if reminder.scheduled_at:
+        context["next_run_time"] = reminder.scheduled_at.isoformat()
+    return context
+
+
 @router.post("", response_model=ReminderResponse, status_code=http_status.HTTP_201_CREATED)
 @tiered_rate_limit("reminder_operations")
 async def create_reminder_endpoint(
     reminder_data: CreateReminderRequest,
     user_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ReminderResponse:
     """
     Create a new reminder.
@@ -82,19 +102,10 @@ async def create_reminder_endpoint(
                 detail="Failed to retrieve created reminder",
             )
 
-        log.set(
-            reminder=ReminderContext(
-                operation="create",
-                id=str(reminder.id),
-                recurrence=reminder.recurrence if hasattr(reminder, "recurrence") else None,
-                next_run_time=str(reminder.next_run_time)
-                if hasattr(reminder, "next_run_time") and reminder.next_run_time
-                else None,
-            )
-        )
+        log.set(reminder=_reminder_context("create", reminder))
         log.set(outcome="success")
 
-        return ReminderResponse(**reminder.model_dump())
+        return ReminderResponse.model_validate(reminder, from_attributes=True)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -108,7 +119,7 @@ async def create_reminder_endpoint(
 
 @router.get("/{reminder_id}", response_model=ReminderResponse)
 async def get_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
+    reminder_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ReminderResponse:
     """
     Get a reminder by ID.
@@ -143,16 +154,10 @@ async def get_reminder_endpoint(
                 detail=f"Reminder {reminder_id} not found",
             )
 
-        log.set(
-            reminder=ReminderContext(
-                operation="get",
-                id=str(reminder.id),
-                recurrence=reminder.recurrence if hasattr(reminder, "recurrence") else None,
-            )
-        )
+        log.set(reminder=_reminder_context("get", reminder))
         log.set(outcome="success")
 
-        return ReminderResponse(**reminder.model_dump())
+        return ReminderResponse.model_validate(reminder, from_attributes=True)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -168,7 +173,7 @@ async def get_reminder_endpoint(
 async def update_reminder_endpoint(
     reminder_id: str,
     request: UpdateReminderRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ReminderResponse:
     """
     Update an existing reminder.
@@ -196,12 +201,13 @@ async def update_reminder_endpoint(
             reminder=ReminderContext(operation="update", id=reminder_id),
         )
 
-        # Prepare update data
-        update_data = request.model_dump(exclude_none=True)
+        # exclude_none keeps an omitted field out of `model_fields_set`, so the
+        # repository's `$set` only touches what the caller actually sent.
+        update = ReminderUpdate(**request.model_dump(exclude_none=True))
 
         # Update reminder
         success = await reminder_scheduler.update_reminder(
-            reminder_id, user_id=user_id, update_data=update_data
+            reminder_id, user_id=user_id, update=update
         )
 
         if not success:
@@ -218,18 +224,10 @@ async def update_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
-        log.set(
-            reminder=ReminderContext(
-                operation="update",
-                id=str(updated_reminder.id),
-                recurrence=updated_reminder.recurrence
-                if hasattr(updated_reminder, "recurrence")
-                else None,
-            )
-        )
+        log.set(reminder=_reminder_context("update", updated_reminder))
         log.set(outcome="success")
 
-        return ReminderResponse(**updated_reminder.model_dump())
+        return ReminderResponse.model_validate(updated_reminder, from_attributes=True)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -243,7 +241,7 @@ async def update_reminder_endpoint(
 
 @router.delete("/{reminder_id}", status_code=http_status.HTTP_204_NO_CONTENT)
 async def cancel_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
+    reminder_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> None:
     """
     Cancel a reminder.
@@ -289,7 +287,7 @@ async def cancel_reminder_endpoint(
 
 @router.get("", response_model=list[ReminderResponse])
 async def list_reminders_endpoint(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     status: ReminderStatus | None = Query(None, description="Filter by status"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
     skip: int = Query(0, ge=0, description="Number of results to skip"),
@@ -334,7 +332,10 @@ async def list_reminders_endpoint(
         )
         log.set(outcome="success")
 
-        return [ReminderResponse(**reminder.model_dump()) for reminder in reminders]
+        return [
+            ReminderResponse.model_validate(reminder, from_attributes=True)
+            for reminder in reminders
+        ]
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -348,7 +349,7 @@ async def list_reminders_endpoint(
 
 @router.post("/{reminder_id}/pause", response_model=ReminderResponse)
 async def pause_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
+    reminder_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ReminderResponse:
     """
     Pause a reminder.
@@ -374,7 +375,7 @@ async def pause_reminder_endpoint(
 
         # Update status to paused
         success = await reminder_scheduler.update_reminder(
-            reminder_id, {"status": ReminderStatus.PAUSED}, user_id=user_id
+            reminder_id, ReminderUpdate(status=ReminderStatus.PAUSED), user_id=user_id
         )
 
         if not success:
@@ -391,7 +392,7 @@ async def pause_reminder_endpoint(
                 detail="Failed to retrieve updated reminder",
             )
 
-        return ReminderResponse(**updated_reminder.model_dump())
+        return ReminderResponse.model_validate(updated_reminder, from_attributes=True)
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
@@ -405,7 +406,7 @@ async def pause_reminder_endpoint(
 
 @router.post("/{reminder_id}/resume", response_model=ReminderResponse)
 async def resume_reminder_endpoint(
-    reminder_id: str, user: dict = Depends(get_current_user)
+    reminder_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ReminderResponse:
     """
     Resume a paused reminder.
@@ -444,16 +445,13 @@ async def resume_reminder_endpoint(
             )
 
         # Update status to scheduled and reschedule if needed
-        update_data: dict = {"status": ReminderStatus.SCHEDULED}
+        update = ReminderUpdate(status=ReminderStatus.SCHEDULED)
 
         # If it's a recurring reminder, calculate next run time
         if existing_reminder.repeat:
-            next_run = get_next_run_time(existing_reminder.repeat)
-            update_data["scheduled_at"] = next_run
+            update.scheduled_at = get_next_run_time(existing_reminder.repeat)
 
-        success = await reminder_scheduler.update_reminder(
-            reminder_id, update_data, user_id=user_id
-        )
+        success = await reminder_scheduler.update_reminder(reminder_id, update, user_id=user_id)
 
         if not success:
             raise HTTPException(

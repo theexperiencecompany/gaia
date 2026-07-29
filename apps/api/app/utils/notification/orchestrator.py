@@ -1,6 +1,5 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import Request
 
@@ -15,11 +14,15 @@ from app.models.notification.notification_models import (
     ActionResult,
     BulkActions,
     ChannelDeliveryStatus,
+    NotificationActionView,
+    NotificationChannelView,
+    NotificationContentView,
     NotificationRecord,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
+    NotificationView,
 )
 from app.utils.notification.actions import (
     ActionHandler,
@@ -184,7 +187,11 @@ class NotificationOrchestrator:
                 notification.user_id,
                 {
                     "type": "notification.delivered",
-                    "notification": await self._serialize_notification(notification),
+                    # The socket frame is JSON, so the view is dumped in json mode —
+                    # enums as their values, matching what REST clients receive.
+                    "notification": (await self._serialize_notification(notification)).model_dump(
+                        mode="json"
+                    ),
                 },
             )
 
@@ -367,14 +374,14 @@ class NotificationOrchestrator:
         channel_type: str | None = None,
         notification_type: NotificationType | None = None,
         source: NotificationSourceEnum | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[NotificationView]:
         """Get a user's notifications with optional filtering and pagination."""
         notifications = await self.storage.get_user_notifications(
             user_id, status, limit, offset, channel_type, notification_type, source
         )
         return [await self._serialize_notification(n) for n in notifications]
 
-    async def get_notification(self, notification_id: str, user_id: str) -> dict[str, Any] | None:
+    async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:
         """Get a specific notification by ID for a user."""
         notification = await self.storage.get_notification(notification_id, user_id)
         if not notification:
@@ -404,49 +411,54 @@ class NotificationOrchestrator:
         return results
 
     # UTILITY & SERIALIZATION METHODS
-    async def _serialize_notification(self, notification: NotificationRecord) -> dict[str, Any]:
-        """Serialize a notification record for API responses."""
-        return {
-            "id": notification.id,
-            "user_id": notification.user_id,
-            "status": notification.status.value,
-            "created_at": notification.created_at.isoformat(),
-            "delivered_at": (
+    async def _serialize_notification(self, notification: NotificationRecord) -> NotificationView:
+        """Flatten a stored record into the view API/tool consumers read.
+
+        Timestamps are emitted as ISO strings because ``NotificationView`` publishes
+        them as ``str`` — that is the established wire contract.
+        """
+        request = notification.original_request
+        return NotificationView(
+            id=notification.id,
+            user_id=notification.user_id,
+            status=notification.status,
+            created_at=notification.created_at.isoformat(),
+            delivered_at=(
                 notification.delivered_at.isoformat() if notification.delivered_at else None
             ),
-            "read_at": (notification.read_at.isoformat() if notification.read_at else None),
-            "content": {
-                "title": notification.original_request.content.title,
-                "body": notification.original_request.content.body,
-                "actions": [
-                    {
-                        "id": action.id,
-                        "type": action.type.value,
-                        "label": action.label,
-                        "style": action.style.value,
-                        "requires_confirmation": action.requires_confirmation,
-                        "confirmation_message": action.confirmation_message,
-                        "config": action.config.model_dump() if action.config else None,
-                        "executed": action.executed,
-                        "executed_at": (
+            read_at=(notification.read_at.isoformat() if notification.read_at else None),
+            content=NotificationContentView(
+                title=request.content.title,
+                body=request.content.body,
+                actions=[
+                    NotificationActionView(
+                        id=action.id,
+                        type=action.type,
+                        label=action.label,
+                        style=action.style,
+                        requires_confirmation=action.requires_confirmation,
+                        confirmation_message=action.confirmation_message,
+                        config=action.config,
+                        executed=action.executed,
+                        executed_at=(
                             action.executed_at.isoformat() if action.executed_at else None
                         ),
-                        "disabled": action.disabled,
-                    }
-                    for action in (notification.original_request.content.actions or [])
+                        disabled=action.disabled,
+                    )
+                    for action in (request.content.actions or [])
                 ],
-            },
-            "source": notification.original_request.source,
-            "type": notification.original_request.type.value,
-            "metadata": notification.original_request.metadata,
-            "channels": [
-                {
-                    "channel_type": ch.channel_type,
-                    "status": ch.status.value,
-                    "skipped": ch.skipped,
-                    "delivered_at": (ch.delivered_at.isoformat() if ch.delivered_at else None),
-                    "error_message": ch.error_message,
-                }
+            ),
+            source=request.source,
+            type=request.type,
+            metadata=request.metadata,
+            channels=[
+                NotificationChannelView(
+                    channel_type=ch.channel_type,
+                    status=ch.status,
+                    skipped=ch.skipped,
+                    delivered_at=(ch.delivered_at.isoformat() if ch.delivered_at else None),
+                    error_message=ch.error_message,
+                )
                 for ch in notification.channels
             ],
-        }
+        )

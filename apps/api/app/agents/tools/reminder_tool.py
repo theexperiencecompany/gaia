@@ -13,6 +13,7 @@ from app.models.reminder_models import (
     AgentType,
     CreateReminderToolRequest,
     ReminderStatus,
+    ReminderUpdate,
     StaticReminderPayload,
 )
 from app.services.reminder_service import reminder_scheduler
@@ -214,11 +215,15 @@ async def update_reminder_tool(
         if not user_id:
             return {"error": "User ID is required to update reminder"}
 
-        update_data: dict[str, Any] = {}
+        # Assigned field-by-field rather than passed to the constructor: only the
+        # fields the caller actually touched land in ``model_fields_set``, which is
+        # what the repository's ``exclude_unset`` $set relies on to avoid nulling
+        # the fields this update never mentions.
+        update = ReminderUpdate()
         if repeat is not None:
-            update_data["repeat"] = repeat
+            update.repeat = repeat
         if max_occurrences is not None:
-            update_data["max_occurrences"] = max_occurrences
+            update.max_occurrences = max_occurrences
         if stop_after:
             try:
                 # Parse the datetime string
@@ -234,16 +239,16 @@ async def update_reminder_tool(
                     # Absolute time with no timezone - no timezone info
                     processed_stop_after = dt
 
-                update_data["stop_after"] = processed_stop_after
+                update.stop_after = processed_stop_after
             except ValueError as e:
                 log.error(f"{LogTag.TOOL} Invalid stop_after format: {stop_after}, error: {e}")
                 return {
                     "error": f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
                 }
         if payload is not None:
-            update_data["payload"] = payload
+            update.payload = StaticReminderPayload.model_validate(payload)
 
-        success = await reminder_scheduler.update_reminder(reminder_id, update_data, user_id)
+        success = await reminder_scheduler.update_reminder(reminder_id, update, user_id)
         if success:
             return {"status": "updated"}
         log.error(f"{LogTag.TOOL} Failed to update reminder")

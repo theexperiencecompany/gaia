@@ -409,9 +409,16 @@ class ReminderDocument(ReminderModel, MongoDocument):
 
 class ReminderUpdate(BaseModel):
     """Partial ``$set`` update for a reminder — the fields the update and
-    scheduler-status paths mutate. All optional, ``extra="forbid"``."""
+    scheduler-status paths mutate. All optional, ``extra="forbid"``.
 
-    model_config = ConfigDict(extra="forbid")
+    ``validate_assignment`` because the reminder tool builds this by assigning
+    one field at a time (only touched fields land in ``model_fields_set``, which
+    is what the repository's ``exclude_unset`` ``$set`` relies on). Without it,
+    assignment would skip the coercion the constructor performs and write an
+    unconverted value straight to Mongo.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     agent: AgentType | None = None
     repeat: str | None = None
