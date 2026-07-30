@@ -65,6 +65,9 @@ export interface BotWideEventFields {
   is_voice_note?: boolean;
   envelope_id?: string;
   queue?: string;
+  http_status?: number;
+  event_type?: string;
+  event_count?: number;
   delivered_count?: number;
   attachment_filename?: string;
   error_type?: string;
