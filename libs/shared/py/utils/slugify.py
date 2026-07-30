@@ -15,13 +15,17 @@ def slugify(text: str, max_length: int = 80) -> str:
     text = text.encode("ascii", "ignore").decode("ascii")
     # Lowercase
     text = text.lower()
-    # Replace common separators with hyphens
-    text = re.sub(r"[→&/\\|+@#%^*=<>]", "-", text)
+    # Replace whitespace and common separators with hyphens
+    text = re.sub(r"[\s→&/\\|+@#%^*=<>]", "-", text)
     # Strip everything that isn't alphanumeric or hyphen
     text = re.sub(r"[^a-z0-9\-]", "", text)
     # Collapse multiple hyphens, strip leading/trailing
     text = re.sub(r"-+", "-", text).strip("-")
     # Enforce max length at a word boundary
     if len(text) > max_length:
-        text = text[:max_length].rsplit("-", 1)[0]
+        truncated = text[:max_length]
+        # Only drop the trailing fragment when the cut lands mid-word
+        if text[max_length] != "-":
+            truncated = truncated.rsplit("-", 1)[0]
+        text = truncated.strip("-")
     return text

@@ -42,7 +42,7 @@ class TestSlugifySpecialChars:
             ("  Spaces & Special! Chars ", "spaces-special-chars"),
             ("foo/bar/baz", "foo-bar-baz"),
             ("A + B = C", "a-b-c"),
-            ("hello@world.com", "helloworld-com"),
+            ("hello@world.com", "hello-worldcom"),
             ("price: $100", "price-100"),
             ("50% off!", "50-off"),
             ("foo\\bar", "foo-bar"),
@@ -130,8 +130,8 @@ class TestSlugifyWhitespace:
             ("-leading-hyphen", "leading-hyphen"),
             ("trailing-hyphen-", "trailing-hyphen"),
             ("-both-sides-", "both-sides"),
-            ("tabs\there", "tabshere"),
-            ("newlines\nhere", "newlineshere"),
+            ("tabs\there", "tabs-here"),
+            ("newlines\nhere", "newlines-here"),
         ],
         ids=[
             "leading-space",
@@ -193,7 +193,8 @@ class TestSlugifyMaxLength:
         assert result == "hello-world"
 
     def test_hyphen_at_max_length_boundary(self):
-        # "one-two-three" is 13 chars; max_length=7 -> "one-two"[:7] = "one-two", rsplit -> "one-two"
+        # "one-two-three" is 13 chars; the cut at 7 lands on a hyphen, so "one-two"
+        # is a complete pair of words and must be kept whole
         result = slugify("one two three", max_length=7)
         assert result == "one-two"
 

@@ -221,7 +221,7 @@ class TestGenerateUniqueWorkflowSlug:
     async def test_unique_slug_first_try(self, _mock_conflict, _mock_suffix):
         # No conflicting public workflow → the first candidate is free.
         slug = await generate_unique_workflow_slug("My Test Workflow")
-        assert slug == "mytestworkflow-aabbcc"
+        assert slug == "my-test-workflow-aabbcc"
 
     @patch("app.services.workflow.service._slug_suffix", side_effect=["hex001", "hex002"])
     @patch(f"{_REPO}.find_public_slug_conflict", new_callable=AsyncMock)
@@ -229,7 +229,7 @@ class TestGenerateUniqueWorkflowSlug:
         # First candidate collides (a conflict doc), second is free (None).
         mock_conflict.side_effect = [_make_workflow_doc(), None]
         slug = await generate_unique_workflow_slug("My Workflow")
-        assert slug == "myworkflow-hex002"
+        assert slug == "my-workflow-hex002"
 
     @patch(
         "app.services.workflow.service._slug_suffix",
@@ -239,7 +239,7 @@ class TestGenerateUniqueWorkflowSlug:
     async def test_slug_multiple_collisions(self, mock_conflict, _mock_suffix):
         mock_conflict.side_effect = [_make_workflow_doc(), _make_workflow_doc(), None]
         slug = await generate_unique_workflow_slug("My Workflow")
-        assert slug == "myworkflow-hex003"
+        assert slug == "my-workflow-hex003"
 
     @patch("app.services.workflow.service._slug_suffix", return_value="aabbcc")
     @patch("app.services.workflow.service.slugify", return_value="")

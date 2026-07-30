@@ -31,8 +31,13 @@ class TestBaseAppSettingsDefaults:
             settings = BaseAppSettings()
         assert settings.ENV == "development"
 
-    def test_env_rejects_invalid_value(self):
+    def test_env_can_be_staging(self):
         with patch.dict(os.environ, {"ENV": "staging"}, clear=True):
+            settings = BaseAppSettings()
+        assert settings.ENV == "staging"
+
+    def test_env_rejects_invalid_value(self):
+        with patch.dict(os.environ, {"ENV": "qa"}, clear=True):
             with pytest.raises(ValidationError):
                 BaseAppSettings()
 
