@@ -73,8 +73,13 @@ timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
 # `|| true` on grep: a PR that changes zero matching files is a valid "skip"
 # case, not an error. Without it, grep's no-match exit 1 + `set -o pipefail`
 # would make this script exit 1 and fail the lane's `FILES=$(...)` step.
+# The existence guard is a full `if` on purpose: `[[ -f ]] && printf` leaves
+# the loop (and via pipefail, the whole script) with exit 1 when the LAST
+# path fails the test — turning one dead symlink into a hard lane failure.
 git diff --name-only --diff-filter=ACMR "origin/${GITHUB_BASE_REF}...HEAD" \
   | { grep -E "$ext_regex" || true; } \
   | while IFS= read -r f; do
-      [[ -f "$f" ]] && printf '%s\n' "$f"
+      if [[ -f "$f" ]]; then
+        printf '%s\n' "$f"
+      fi
     done

@@ -514,6 +514,89 @@ jobs:
           echo "::endgroup::"
           echo "pip-audit: informational — review CVEs above (does not fail CI)"
 
+  # --- Observability score (evlog map) ------------------------------------
+  # Python port of evlog's `map` (tools/evlog_map): scores every FastAPI/ARQ
+  # entry point on wide-event instrumentation, weighted so money/auth routes
+  # count double. Full-repo score goes to the job summary; on PRs the changed
+  # files are scored at the merge-base and at HEAD with the same scanner and
+  # the lane fails on regression (new files get a hard "good"-grade floor).
+  # Stdlib-only — no toolchain install.
+  observability:
+    name: Observability score (evlog map)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Full-repo observability score (posted to job summary)
+        run: |
+          echo "::group::evlog map — full scan"
+          python3 tools/evlog_map --github-summary --no-write
+          echo "::endgroup::"
+          echo "observability: full-repo score posted to the job summary"
+      - name: Changed-files regression gate (per-file, score must not drop)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          FILES=$(scripts/ci/changed-files.sh py)
+          if [ -z "$FILES" ]; then
+            echo "observability: OK (no changed Python files)"
+            exit 0
+          fi
+          if [ "$FILES" = "__FULL__" ]; then
+            echo "observability: OK (full run — covered by the full scan above)"
+            exit 0
+          fi
+          BASE_SHA=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
+          # NB: keep the worktree dir name free of sensitivity terms
+          # ("checkout", "auth", ...) — it prefixes every base file path.
+          git worktree add --detach /tmp/obs-merge-base "$BASE_SHA"
+          # Rename-aware lists: a renamed file must ratchet against its OLD
+          # path, not be treated (and floor-gated) as brand-new. Same
+          # merge-base diff + ACMR filter as changed-files.sh, plus -M and
+          # --name-status to see the old path of each rename.
+          : > /tmp/head-files.txt
+          : > /tmp/base-files.txt
+          : > /tmp/renames.txt
+          while IFS=$'\t' read -r status p1 p2; do
+            case "$status" in
+              R*)
+                head_path="$p2"
+                base_path="$p1"
+                ;;
+              *)
+                head_path="$p1"
+                base_path="$p1"
+                ;;
+            esac
+            case "$head_path" in
+              *.py) ;;
+              *) continue ;;
+            esac
+            if [ -f "$head_path" ]; then
+              echo "$head_path" >> /tmp/head-files.txt
+            fi
+            if [ -f "/tmp/obs-merge-base/$base_path" ]; then
+              echo "/tmp/obs-merge-base/$base_path" >> /tmp/base-files.txt
+              if [ "$base_path" != "$head_path" ]; then
+                printf '%s\t%s\n' "$base_path" "$head_path" >> /tmp/renames.txt
+              fi
+            fi
+          done < <(git diff --name-status -M --diff-filter=ACMR "$BASE_SHA"...HEAD)
+          echo "::group::evlog map — changed files vs merge-base (per-file ratchet)"
+          # Score the changed files at the merge-base with the HEAD scanner,
+          # then ratchet per file: a file must score at least what it scored
+          # at base (legacy debt never blocks, regressions always do), and a
+          # file with no baseline must reach the "good"-grade floor (70).
+          python3 tools/evlog_map --files-from /tmp/base-files.txt --json --no-write > /tmp/base-map.json
+          python3 tools/evlog_map --files-from /tmp/head-files.txt --no-write \
+            --baseline /tmp/base-map.json --rename-map /tmp/renames.txt
+          echo "::endgroup::"
+          echo "observability: OK (no per-file regression on changed files)"
+
   # --- Dead code detection (knip + vulture) — enforced ---------------------
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
   # lane. The scan is tightened to drop systematic false positives (tests,
@@ -565,6 +648,7 @@ jobs:
       - python-interrogate
       - python-xenon
       - python-security
+      - observability
       - dead-code
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -589,6 +673,7 @@ jobs:
           PYTHON_INTERROGATE: ${{ needs.python-interrogate.result }}
           PYTHON_XENON: ${{ needs.python-xenon.result }}
           PYTHON_SECURITY: ${{ needs.python-security.result }}
+          OBSERVABILITY: ${{ needs.observability.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
@@ -613,20 +698,21 @@ jobs:
             [python-interrogate]="$PYTHON_INTERROGATE"
             [python-xenon]="$PYTHON_XENON"
             [python-security]="$PYTHON_SECURITY"
+            [observability]="$OBSERVABILITY"
             [dead-code]="$DEAD_CODE"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates type-coverage package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
-                 dead-code)
+                 observability dead-code)
 
           # ---------------------------------------------------------------
           # RATCHET: a lane is ENFORCED (can fail this gate) if the marker
           # file .github/quality-gate/enforced/<lane> exists. Every other
           # lane is reported but never blocks merge. Each resolution PR adds
           # its own marker file — separate paths never merge-conflict the way
-          # editing one shared list does. When all 15 markers exist, the full
-          # strict rule set is enforced.
+          # editing one shared list does. When every lane has its marker, the
+          # full strict rule set is enforced.
           # ---------------------------------------------------------------
           ENFORCED=()
           if [ -d .github/quality-gate/enforced ]; then
