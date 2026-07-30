@@ -98,7 +98,18 @@ The `observability` lane in `.github/workflows/code-quality.yml`:
    against their old path.
 
 That makes the score a ratchet: legacy gaps don't block you, but the files you
-touch must leave the map at least as bright as you found them.
+touch must leave the map at least as bright as you found them. The lane is
+enforced (`.github/quality-gate/enforced/observability`) — the backend reached
+100/100 before the marker was added.
+
+## Scope
+
+The adapter observes the entire Python API surface: every decorator-registered
+FastAPI route/websocket (multi-decorator stacks collapse to one entry point)
+and every ARQ task registered in `app/worker.py`. Out of scope today:
+`apps/voice-agent` (LiveKit worker callbacks would need their own adapter —
+its per-turn logging already runs inside `wide_task` boundaries) and the
+TypeScript bots (separate logging stack).
 
 ## Limitations
 
