@@ -13,6 +13,7 @@ Key behaviors:
 - .info()    → real-time Loguru line only (no wide event noise)
 - .warning() → real-time Loguru line + appended to wide_event["warnings"]
 - .error()   → real-time Loguru line + appended to wide_event["errors"]
+- .audit()   → AUDIT-level Loguru line + appended to wide_event["audit"]
 - .set()     → merges structured kwargs into the request's wide event
 - .bind()    → Loguru-compat: calls .set() and returns self
 
@@ -60,15 +61,35 @@ def env_context() -> dict[str, str]:
     return {
         "env": os.getenv("ENV", "production"),
         "service": _SERVICE_NAME,
-        "commit": os.getenv("GIT_COMMIT_SHA", os.getenv("COMMIT_SHA", "local"))[:8],
+        # `or`-chained so a set-but-empty var (a Docker ARG default baked as
+        # ENV GIT_COMMIT_SHA="") still falls back to "local".
+        "commit": (os.getenv("GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA") or "local")[:8],
     }
 
 
-_wide_event: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
-    "wide_event", default=None
-)
-_max_level: contextvars.ContextVar[str] = contextvars.ContextVar(
-    "wide_event_max_level", default="INFO"
+class _EventState:
+    """Mutable per-request accumulator shared across context copies.
+
+    The ContextVar below holds this object, and every write path MUTATES it
+    in place rather than rebinding the var. That distinction is load-bearing:
+    Starlette's ``BaseHTTPMiddleware`` runs the downstream app in a task with
+    a *copy* of the middleware's context, so a rebound ContextVar value in a
+    handler is invisible to the middleware after ``call_next`` — with the old
+    immutable-rebind design every handler/service ``log.set()`` was silently
+    dropped from the emitted HTTP event. A context copy still references the
+    same state object, so in-place mutation crosses that boundary, while each
+    request's ``reset()`` binds a fresh object, keeping requests isolated.
+    """
+
+    __slots__ = ("fields", "max_level")
+
+    def __init__(self, fields: dict[str, Any] | None = None) -> None:
+        self.fields: dict[str, Any] = fields if fields is not None else {}
+        self.max_level: str = "INFO"
+
+
+_event_state: contextvars.ContextVar[_EventState | None] = contextvars.ContextVar(
+    "wide_event_state", default=None
 )
 _trace_id: contextvars.ContextVar[str] = contextvars.ContextVar("wide_event_trace_id", default="")
 
@@ -497,22 +518,32 @@ class WideEventFields(TypedDict, total=False):
     error: dict[str, Any]
     errors: list[dict[str, Any]]
     warnings: list[dict[str, Any]]
+    audit: list[dict[str, Any]]
 
 
 class WideEventLogger:
     """
     Drop-in replacement for a Loguru logger that accumulates a wide event.
 
-    The wide event is stored in a ContextVar — each async task (request) gets
-    its own isolated copy. No thread-safety issues, no cross-request leakage.
+    The accumulator is a mutable ``_EventState`` held in a ContextVar: each
+    request binds a fresh state (isolation), and every write mutates it in
+    place so fields set inside ``BaseHTTPMiddleware``'s context-copied handler
+    task still reach the middleware's emit (see ``_EventState``).
     """
 
     # --- Primary API ---
 
+    def _state(self) -> _EventState:
+        """The current accumulator, created on first use outside a boundary."""
+        state = _event_state.get()
+        if state is None:
+            state = _EventState()
+            _event_state.set(state)
+        return state
+
     def set(self, **kwargs: Any) -> None:
         """Merge structured context into the current request's wide event."""
-        current = _wide_event.get() or {}
-        _wide_event.set({**current, **kwargs})
+        self._state().fields.update(kwargs)
 
     def set_ns(self, namespace: str, **kwargs: Any) -> None:
         """Merge ``kwargs`` into a nested ``namespace`` dict on the wide event.
@@ -523,9 +554,8 @@ class WideEventLogger:
         accumulated across a multi-step path (the sandbox acquire path is the
         canonical case — see ``SandboxContext``).
         """
-        current = _wide_event.get() or {}
-        ns = {**current.get(namespace, {}), **kwargs}
-        _wide_event.set({**current, namespace: ns})
+        fields = self._state().fields
+        fields[namespace] = {**fields.get(namespace, {}), **kwargs}
 
     # --- Loguru-compatible message methods ---
 
@@ -560,8 +590,29 @@ class WideEventLogger:
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
 
+    def audit(self, message: str, **kwargs: Any) -> None:
+        """Record an audit-trail entry for a sensitive operation (auth, money, PII).
+
+        Emits a real-time AUDIT-level line (level registered in
+        ``shared.py.logging``) and appends ``{"msg": message, **kwargs}`` to the
+        event's ``audit`` array, so `{...} | json | audit != "[]"` finds every
+        request that performed an audited operation. Does not bump the event's
+        severity — an audit entry is a record, not a problem.
+
+        Usage:
+            log.audit("subscription cancelled", actor=user_id, resource=sub_id)
+        """
+        exc_info = kwargs.pop("exc_info", False)
+        _loguru.opt(depth=1, exception=exc_info).log("AUDIT", message, **kwargs)
+        self._append("audit", message, **kwargs)
+
     def bind(self, **kwargs: Any) -> "WideEventLogger":
-        """Loguru compat: logger.bind(user_id=x).info(...) — merges into wide event."""
+        """Loguru-compat shim: merges ``kwargs`` into the wide event and returns self.
+
+        Unlike loguru's ``bind``, this does NOT attach fields to subsequent
+        real-time lines (so ``bind(performance=True)`` cannot route to the
+        performance sink) — the fields land on the request's wide event only.
+        """
         self.set(**kwargs)
         return self
 
@@ -575,22 +626,21 @@ class WideEventLogger:
 
     def get(self) -> dict[str, Any]:
         """Return accumulated wide event dict for this request."""
-        return _wide_event.get() or {}
+        return self._state().fields
 
     def get_max_level(self) -> str:
         """Return the highest severity level seen during this request."""
-        return _max_level.get()
+        return self._state().max_level
 
     def get_trace_id(self) -> str:
         """Return the trace_id for the current request/task."""
         return _trace_id.get()
 
     def reset(self) -> None:
-        """Reset wide event for a new request. Called by middleware."""
-        _max_level.set("INFO")
+        """Bind a fresh accumulator for a new request. Called by middleware."""
         tid = _generate_trace_id()
         _trace_id.set(tid)
-        _wide_event.set({"trace_id": tid})
+        _event_state.set(_EventState({"trace_id": tid}))
 
     # --- Private helpers ---
 
@@ -598,16 +648,14 @@ class WideEventLogger:
         # NB: the first parameter is `category` (not `key`) on purpose — callers
         # routinely pass a `key=` field (e.g. redis ops log the cache key), and a
         # parameter named `key` would collide with it ("multiple values for 'key'").
-        current = _wide_event.get() or {}
+        fields = self._state().fields
         entry: dict[str, Any] = {"msg": message, **kwargs}
-        items = list(current.get(category, []))
-        items.append(entry)
-        _wide_event.set({**current, category: items})
+        fields.setdefault(category, []).append(entry)
 
     def _bump(self, level: str) -> None:
-        current = _max_level.get()
-        if _LEVEL_ORDER.get(level, 0) > _LEVEL_ORDER.get(current, 0):
-            _max_level.set(level)
+        state = self._state()
+        if _LEVEL_ORDER.get(level, 0) > _LEVEL_ORDER.get(state.max_level, 0):
+            state.max_level = level
 
 
 log = WideEventLogger()

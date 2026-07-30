@@ -174,12 +174,8 @@ async def list_todos(
 
     try:
         result = await TodoService.list_todos(user["user_id"], params)
-        log.set(
-            todo={
-                "operation": "list",
-                "result_count": len(result.todos) if hasattr(result, "todos") else 0,
-            }
-        )
+        # set_ns: log.set(todo={...}) would clobber the search context set above
+        log.set_ns("todo", result_count=len(result.todos) if hasattr(result, "todos") else 0)
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -9,9 +9,8 @@ import pytest
 from shared.py.wide_events import (
     _LEVEL_ORDER,
     WideEventLogger,
-    _max_level,
+    _event_state,
     _trace_id,
-    _wide_event,
     get_trace_id,
     log,
     wide_task,
@@ -25,12 +24,10 @@ from shared.py.wide_events import (
 @pytest.fixture(autouse=True)
 def _reset_context_vars():
     """Reset all ContextVars between tests to prevent cross-test leakage."""
-    _wide_event.set(None)
-    _max_level.set("INFO")
+    _event_state.set(None)
     _trace_id.set("")
     yield
-    _wide_event.set(None)
-    _max_level.set("INFO")
+    _event_state.set(None)
     _trace_id.set("")
 
 
@@ -69,7 +66,7 @@ class TestWideEventLoggerSetGetReset:
         assert len(event["trace_id"]) == 16
 
     def test_reset_resets_max_level_to_info(self):
-        _max_level.set("ERROR")
+        log.error("bump to error")
         log.reset()
         assert log.get_max_level() == "INFO"
 
@@ -238,7 +235,7 @@ class TestBumpMaxLevel:
         logger = WideEventLogger()
         logger._bump("UNKNOWN")
         # Should not bump above INFO default
-        assert _max_level.get() == "INFO"
+        assert log.get_max_level() == "INFO"
 
 
 # ---------------------------------------------------------------------------

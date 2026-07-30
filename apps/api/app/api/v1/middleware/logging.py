@@ -119,6 +119,28 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
     _SKIP_PATHS = frozenset(["/health", "/metrics", "/favicon.ico"])
 
+    @staticmethod
+    def _attach_user_context(request: Request) -> None:
+        """Merge the authenticated user's identity into the wide event.
+
+        WorkOSAuthMiddleware is outermost, so ``request.state.user`` is already
+        populated when this middleware runs — but it cannot ``log.set()`` itself
+        (Starlette copies the context at ``call_next``, so its fields would be
+        wiped by ``log.reset()``). Reading state here closes that gap for every
+        request; fields a handler set explicitly win over the automatic ones.
+        """
+        user = getattr(request.state, "user", None)
+        if not user:
+            return
+        auto = {
+            key: value
+            for key, value in {"id": user.get("user_id"), "email": user.get("email")}.items()
+            if value
+        }
+        if not auto:
+            return
+        wide_log.set(user={**auto, **wide_log.get().get("user", {})})
+
     async def dispatch(self, request: Request, call_next):
         if request.url.path in self._SKIP_PATHS:
             return await call_next(request)
@@ -158,6 +180,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             # Still emit the wide event before re-raising
             duration_ms = round((time.time() - start) * 1000, 2)
             wide_log.set(final_level="ERROR")
+            self._attach_user_context(request)
             wide_event_context = wide_log.get()
             client_ip = (
                 request.client.host
@@ -198,6 +221,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         wide_log.set(final_level=level)
 
         # Merge all context accumulated by route handlers and services
+        self._attach_user_context(request)
         wide_event_context = wide_log.get()
 
         context = {

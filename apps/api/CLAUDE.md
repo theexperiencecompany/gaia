@@ -85,7 +85,7 @@ Pre-model hooks in `app/agents/core/nodes/`:
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields to the request's wide event. `log.info(...)` emits a real-time line only and **never reaches the wide event**; `log.error(...)` / `log.warning(...)` emit a line *and* append to the event's `errors[]`/`warnings[]` — always with structured kwargs (`error_type=`, ids), not data interpolated into the message. `log.set(ns={...})` replaces the whole namespace dict — use `log.set_ns("ns", key=value)` for follow-up fields. Sensitive operations (auth, payments, PII writes) also call `log.audit(...)`. ARQ worker tasks wrap their body in `wide_task()`, fire-and-forget background work in `log_context()` — without a boundary every `log.set()` is silently discarded. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
@@ -141,7 +141,7 @@ async def create_todo(
 ) -> JSONResponse:
     log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
     result = await create_todo_service(payload, user)
-    log.set(todo={"id": result["_id"]})
+    log.set_ns("todo", id=result["_id"])  # set_ns: set(todo={...}) would clobber step 1
     return JSONResponse(content=result)
 ```
 
