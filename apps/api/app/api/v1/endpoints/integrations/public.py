@@ -145,8 +145,12 @@ async def add_public_integration(
                     integration_id=integration_id,
                     initial_status="created",
                 )
-            except ValueError:
-                pass
+            except ValueError as e:
+                log.warning(
+                    "adding user integration skipped — continuing with connect",
+                    error_type=type(e).__name__,
+                    integration_id=integration_id,
+                )
 
             await integration_repository.increment_clone_count(integration_id)
 

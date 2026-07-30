@@ -99,6 +99,7 @@ async def query_events(
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
+            # evlog-map-disable-next-line error-handling -- optional derived field; parse failure means field omitted
             except Exception:  # nosec B110
                 pass
 
@@ -178,6 +179,7 @@ async def get_events(
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
+            # evlog-map-disable-next-line error-handling -- optional derived field; parse failure means field omitted
             except Exception:  # nosec B110
                 pass
 
@@ -255,6 +257,7 @@ async def get_events_by_calendar(
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
+            # evlog-map-disable-next-line error-handling -- optional derived field; parse failure means field omitted
             except Exception:  # nosec B110
                 pass
 
@@ -410,6 +413,11 @@ async def create_events_batch(
                 created_event = await calendar_service.create_calendar_event(event, str(user_id))
                 results["successful"].append(created_event)
             except Exception as e:
+                log.warning(
+                    "calendar batch item failed",
+                    operation="batch_create",
+                    error_type=type(e).__name__,
+                )
                 results["failed"].append(
                     {
                         "event": event.summary,
@@ -445,6 +453,12 @@ async def update_events_batch(
                 updated_event = await update_calendar_event(event, str(user_id))
                 results["successful"].append(updated_event)
             except Exception as e:
+                log.warning(
+                    "calendar batch item failed",
+                    operation="batch_update",
+                    event_id=event.event_id,
+                    error_type=type(e).__name__,
+                )
                 results["failed"].append(
                     {
                         "event_id": event.event_id,
@@ -485,6 +499,12 @@ async def delete_events_batch(
                     }
                 )
             except Exception as e:
+                log.warning(
+                    "calendar batch item failed",
+                    operation="batch_delete",
+                    event_id=event.event_id,
+                    error_type=type(e).__name__,
+                )
                 results["failed"].append(
                     {
                         "event_id": event.event_id,

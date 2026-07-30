@@ -155,19 +155,16 @@ async def mcp_oauth_callback(
     frontend_url = get_frontend_url()
 
     # Parse state: "token:integration_id:redirect_path"
-    try:
-        parts = state.split(":", 2)
-        if len(parts) < 2:
-            raise ValueError("Invalid state format")
-        state_token = parts[0]
-        integration_id = parts[1]
-        redirect_path = parts[2] if len(parts) > 2 else "/integrations"
-        log.set(mcp=McpContext(operation="connect", server_id=integration_id))
-    except Exception as e:
-        log.error(f"{LogTag.MCP} Failed to parse OAuth state", error=str(e))
+    parts = state.split(":", 2)
+    if len(parts) < 2:
+        log.error(f"{LogTag.MCP} Failed to parse OAuth state", error_type="invalid_state_format")
         return RedirectResponse(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
+    state_token = parts[0]
+    integration_id = parts[1]
+    redirect_path = parts[2] if len(parts) > 2 else "/integrations"
+    log.set(mcp=McpContext(operation="connect", server_id=integration_id))
 
     client = await get_mcp_client(user_id=str(user_id))
     redirect_uri = f"{get_api_base_url()}/api/v1/mcp/oauth/callback"
@@ -260,6 +257,8 @@ async def mcp_oauth_callback(
             )
 
         await invalidate_user_integration_caches(str(user_id))
+
+        log.audit("mcp integration connected via oauth", actor=user_id, resource=integration_id)
 
         frontend_url = get_frontend_url()
         log.set(outcome="connected")

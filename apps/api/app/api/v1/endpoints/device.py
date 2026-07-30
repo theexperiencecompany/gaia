@@ -77,7 +77,9 @@ async def pair_start(payload: StartPairingRequest) -> StartPairingResponse:
 @router.post("/pair/poll", response_model=PollPairingResponse)
 async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
     """Daemon polls for the user's browser approval of a pending pairing."""
+    log.set(device={"operation": "pair_poll"})
     result = await poll_pairing(payload.device_code)
+    log.set_ns("device", pairing_status=result["status"])
     return PollPairingResponse(**result)  # type: ignore[arg-type]
 
 
@@ -130,6 +132,7 @@ async def register_server(
 @router.get("/list", response_model=DeviceListResponse)
 async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListResponse:
     """List the current user's active devices with their online status and servers."""
+    log.set(device={"operation": "list"}, user={"id": user_id})
     devices = await list_devices(user_id)
     device_ids = [d.id for d in devices]
     online = await online_device_ids(device_ids)
@@ -160,12 +163,14 @@ async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListRe
                 ],
             )
         )
+    log.set_ns("device", result_count=len(responses))
     return DeviceListResponse(devices=responses)
 
 
 @router.delete("/{device_id}", status_code=200)
 async def revoke(device_id: str, user_id: str = Depends(get_user_id)) -> dict[str, str]:
     """Revoke a device and tear down its server integrations."""
+    log.set(device={"operation": "revoke", "device_id": device_id}, user={"id": user_id})
     if not await revoke_device(user_id, device_id):
         raise HTTPException(status_code=404, detail="Device not found")
     return {"device_id": device_id, "status": "revoked"}

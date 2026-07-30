@@ -51,7 +51,8 @@ async def search_messages_endpoint(query: str, user: dict = Depends(get_current_
             + len(results.get("conversations", []))
             + len(results.get("notes", []))
         )
-        log.set(search={"result_count": result_count})
+        # set_ns: log.set(search={...}) would clobber the query context set above
+        log.set_ns("search", result_count=result_count)
         return results
     except Exception as e:
         log.error(f"Error searching messages: {e!s}")
@@ -140,6 +141,7 @@ async def fetch_url_metadata_endpoint(
     Returns:
         MultiURLResponse: The metadata for all URLs.
     """
+    log.set(user={"id": user["user_id"]}, search={"mode": "url_metadata"})
     email_targets = [url for url in data.urls if is_email_target(url)]
     web_urls = [url for url in data.urls if url not in email_targets]
 
@@ -159,4 +161,5 @@ async def fetch_url_metadata_endpoint(
         if isinstance(result, URLResponse):
             response_data[url] = result
 
+    log.set_ns("search", result_count=len(response_data))
     return MultiURLResponse(results=response_data)

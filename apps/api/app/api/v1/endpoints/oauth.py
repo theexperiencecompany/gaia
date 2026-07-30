@@ -35,6 +35,7 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 
 
 @router.get("/client-metadata.json")
+# evlog-map-disable-next-line audit -- public spec-mandated discovery document; no actor, no state change
 async def get_client_metadata():
     """
     OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
@@ -45,6 +46,7 @@ async def get_client_metadata():
     The document URL is used as the client_id value.
     See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00
     """
+    log.set(oauth=OAuthContext(operation="client_metadata"))
     base_url = get_api_base_url()  # e.g., https://api.heygaia.com
     metadata_url = f"{base_url}/api/v1/oauth/client-metadata.json"
 
@@ -66,6 +68,7 @@ async def get_client_metadata():
 
 
 @router.get("/login/workos")
+# evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
 async def login_workos(return_url: str | None = None):
     """
     Start the WorkOS SSO authentication flow.
@@ -76,6 +79,10 @@ async def login_workos(return_url: str | None = None):
     Returns:
         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
     """
+    log.set(
+        oauth_flow_type=OAUTH_FLOW_WEB,
+        oauth=OAuthContext(operation="authorize", provider="authkit"),
+    )
     state = secrets.token_urlsafe(32)
 
     # Store return_url in Redis so we can redirect after callback
@@ -106,6 +113,7 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
 
 
 @router.get("/login/workos/mobile")
+# evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
 async def login_workos_mobile(redirect_uri: str | None = None):
     """
     Start WorkOS SSO flow for mobile apps (Expo).
@@ -138,6 +146,7 @@ async def login_workos_mobile(redirect_uri: str | None = None):
 
 
 @router.get("/login/google/mobile")
+# evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
 async def login_google_mobile(redirect_uri: str | None = None):
     """
     Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
@@ -226,6 +235,13 @@ async def workos_mobile_callback(
         # Store user info in DB
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
+        log.audit(
+            "login succeeded",
+            actor=str(user_id),
+            flow="mobile",
+            provider="authkit",
+            is_new_user=is_new_user,
+        )
 
         token = auth_response.sealed_session or auth_response.access_token
         return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
@@ -240,6 +256,7 @@ async def workos_mobile_callback(
 
 
 @router.get("/login/workos/desktop")
+# evlog-map-disable-next-line audit -- pre-auth redirect; the auth event is audited at the callback
 async def login_workos_desktop():
     """
     Start the WorkOS SSO authentication flow for desktop app.
@@ -248,6 +265,10 @@ async def login_workos_desktop():
     Returns:
         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
     """
+    log.set(
+        oauth_flow_type=OAUTH_FLOW_DESKTOP,
+        oauth=OAuthContext(operation="authorize", provider="authkit"),
+    )
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_DESKTOP_REDIRECT_URI,
@@ -309,6 +330,13 @@ async def workos_desktop_callback(
         # Store user info in our database
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
+        log.audit(
+            "login succeeded",
+            actor=str(user_id),
+            flow="desktop",
+            provider="authkit",
+            is_new_user=is_new_user,
+        )
 
         # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
@@ -385,6 +413,13 @@ async def workos_callback(
         # Store user info in our database
         user_id, is_new_user = await store_user_info(name, email, picture_url)
         log.set(user_id=str(user_id), is_new_user=is_new_user)
+        log.audit(
+            "login succeeded",
+            actor=str(user_id),
+            flow="web",
+            provider="authkit",
+            is_new_user=is_new_user,
+        )
 
         # Redirect to return_url if provided and safe, otherwise default /redirect
         if return_url and is_safe_redirect_path(return_url):
@@ -507,6 +542,12 @@ async def composio_callback(
             integration_config=integration_config,
             connected_account_id=connectedAccountId,
             background_tasks=background_tasks,
+        )
+        log.audit(
+            "integration connected",
+            actor=str(user_id),
+            resource=integration_config.id,
+            provider=integration_config.provider,
         )
 
         # Successful connection - redirect to frontend with success indicator

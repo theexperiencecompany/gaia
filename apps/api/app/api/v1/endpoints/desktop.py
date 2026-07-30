@@ -32,9 +32,9 @@ async def latest_desktop_release() -> DesktopReleaseResponse:
     Public (no auth) — the download page links straight to the correct
     platform/arch asset instead of falling back to the GitHub releases list.
     """
-    log.set(desktop_release={"operation": "resolve_latest"})
+    log.set(desktop={"operation": "latest_release"})
     release = await get_latest_desktop_release()
-    log.set(desktop_release={"tag": release.tag, "asset_count": len(release.assets)})
+    log.set_ns("desktop", version=release.tag, asset_count=len(release.assets))
     return release
 
 

@@ -32,6 +32,7 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 
 
 @router.get("/me", response_model=dict)
+# evlog-map-disable-next-line audit -- read-only profile lookup, no state change to audit
 async def get_me(
     background_tasks: BackgroundTasks,
     user: dict = Depends(get_current_user),
@@ -106,6 +107,12 @@ async def update_me(
     # Update user profile
     updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
+    changed_fields = [
+        field
+        for field, changed in (("name", name is not None), ("picture", picture_data is not None))
+        if changed
+    ]
+    log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
     log.set(outcome="success")
     return UserUpdateResponse(**updated_user)
 
@@ -126,6 +133,7 @@ async def update_user_name(
             raise HTTPException(status_code=400, detail="Invalid user ID")
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
+        log.audit("profile updated", actor=user_id, changed_fields=["name"])
         log.set(outcome="success")
         return UserUpdateResponse(**updated_user)
     except HTTPException as e:
@@ -167,6 +175,7 @@ async def update_user_timezone(
         if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.audit("profile updated", actor=user["user_id"], changed_fields=["timezone"])
         log.set(outcome="success")
         return {
             "success": True,
@@ -181,6 +190,7 @@ async def update_user_timezone(
 
 
 @router.get("/holo-card/{card_id}")
+# evlog-map-disable-next-line audit -- read-only public card lookup, no state change to audit
 async def get_public_holo_card(card_id: str):
     """
     Get public holo card data by card ID (user ID).
@@ -272,6 +282,11 @@ async def update_holo_card_colors(
         if not matched:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.audit(
+            "profile updated",
+            actor=user_id,
+            changed_fields=["overlay_color", "overlay_opacity"],
+        )
         log.set(outcome="success")
         return {
             "success": True,
@@ -323,6 +338,8 @@ async def logout(
                 )
 
         logout_url = session.get_logout_url()
+
+        log.audit("logged out", actor=user_id)
 
         # Create response with logout URL
         response = JSONResponse(content={"logout_url": logout_url})

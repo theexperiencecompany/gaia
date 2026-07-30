@@ -25,6 +25,7 @@ router = APIRouter()
 
 @router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
+# evlog-map-disable-next-line audit -- read-only plan catalog lookup, no state change to audit
 async def get_plans_endpoint(request: Request, active_only: bool = True):
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
@@ -57,9 +58,16 @@ async def create_subscription_endpoint(
         },
     )
     try:
-        return await payment_service.create_subscription(
+        result = await payment_service.create_subscription(
             user_id, subscription_data.product_id, subscription_data.quantity
         )
+        log.audit(
+            "subscription checkout created",
+            actor=user_id,
+            resource=str(subscription_data.product_id) if subscription_data.product_id else None,
+            provider="dodo",
+        )
+        return result
     except Exception as e:
         log.error(f"{LogTag.PAYMENT} Error creating subscription: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to create subscription")
@@ -82,6 +90,7 @@ async def verify_payment_endpoint(
     )
     try:
         result = await payment_service.verify_payment_completion(user_id)
+        log.audit("payment verification completed", actor=user_id, provider="dodo")
         return PaymentVerificationResponse(**result)
     except Exception as e:
         log.error(f"{LogTag.PAYMENT} Error verifying payment: {e!s}")
@@ -90,6 +99,7 @@ async def verify_payment_endpoint(
 
 @router.get("/subscription-status", response_model=UserSubscriptionStatus)
 @limiter.limit("60/minute")
+# evlog-map-disable-next-line audit -- read-only subscription status lookup, no state change to audit
 async def get_subscription_status_endpoint(
     request: Request,
     current_user: dict = Depends(get_current_user),
@@ -149,6 +159,12 @@ async def handle_dodo_webhook(
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
 
+        log.audit(
+            "payment webhook processed",
+            actor="dodo-webhook",
+            event_type=result.event_type,
+            processing_status=result.status,
+        )
         log.info(f"{LogTag.PAYMENT} Webhook processed: {result.event_type} - {result.status}")
         return {
             "status": "success",

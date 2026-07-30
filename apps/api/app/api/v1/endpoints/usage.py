@@ -26,6 +26,7 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
+# evlog-map-disable-next-line audit -- read-only usage lookup, no state change to audit
 async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str, Any]:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
@@ -55,6 +56,7 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
 
 
 @router.get("/history")
+# evlog-map-disable-next-line audit -- read-only usage/plan history lookup, no state change to audit
 async def get_usage_history(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to retrieve"),
     feature_key: str | None = Query(default=None, description="Specific feature to filter by"),

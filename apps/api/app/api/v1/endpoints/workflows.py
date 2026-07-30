@@ -535,8 +535,11 @@ async def get_explore_workflows(
     offset: int = 0,
 ):
     """Get explore/featured workflows for the discover section."""
+    log.set(workflow=WorkflowContext(operation="explore"))
     try:
-        return await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
+        result = await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
+        log.set_ns("workflow", result_count=len(result.workflows))
+        return result
     except Exception as e:
         log.error(f"{LogTag.WORKFLOW} Error fetching explore workflows: {e!s}")
         raise HTTPException(
@@ -554,10 +557,13 @@ async def get_public_workflows(
     offset: int = 0,
 ):
     """Get public workflows from the community marketplace."""
+    log.set(workflow=WorkflowContext(operation="list_public"))
     try:
-        return await WorkflowService.get_community_workflows(
+        result = await WorkflowService.get_community_workflows(
             limit=limit, offset=offset, user_id=None
         )
+        log.set_ns("workflow", result_count=len(result.workflows))
+        return result
     except Exception as e:
         log.error(f"{LogTag.WORKFLOW} Error fetching public workflows: {e!s}")
         raise HTTPException(

@@ -250,6 +250,8 @@ async def discord_oauth_callback(
     error: str | None = None,
 ):
     """Handle Discord OAuth callback."""
+    log.set(oauth={"operation": "callback", "provider": "discord", "error_type": error})
+    log.audit("platform oauth callback", provider="discord", oauth_error=error)
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
 
@@ -260,4 +262,6 @@ async def slack_oauth_callback(
     error: str | None = None,
 ):
     """Handle Slack OAuth callback."""
+    log.set(oauth={"operation": "callback", "provider": "slack", "error_type": error})
+    log.audit("platform oauth callback", provider="slack", oauth_error=error)
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["slack"])

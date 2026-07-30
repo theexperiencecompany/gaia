@@ -16,9 +16,22 @@ from app.models.platform_models import (
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import Platform, PlatformLinkService
+from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 router = APIRouter()
+
+
+def _require_user_id(current_user: dict) -> str:
+    user_id = current_user.get("user_id")
+    if not isinstance(user_id, str):
+        raise create_error(
+            message="user_id must be a string",
+            why="authenticated session resolved without a string user_id",
+            fix="re-authenticate and retry; report if it persists",
+            status_code=500,
+        )
+    return user_id
 
 
 @router.get("", response_model=GetPlatformLinksResponse)
@@ -29,9 +42,7 @@ async def get_platform_links(
     if not current_user:
         raise HTTPException(status_code=401, detail="Not authenticated")
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="get_platform_links")
     platform_links = await PlatformLinkService.get_linked_platforms(user_id)
     log.set(outcome="success", result_count=len(platform_links))
@@ -83,9 +94,7 @@ async def link_platform(
             detail="Platform mismatch. This token was not generated for this platform.",
         )
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="link_platform", platform=platform)
 
     profile: dict = {}
@@ -118,9 +127,7 @@ async def disconnect_platform(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="disconnect_platform", platform=platform)
 
     # Read platform_user_id before unlinking so we can clear the bot auth cache
@@ -158,9 +165,7 @@ async def initiate_platform_connect(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
-    user_id = current_user.get("user_id")
-    if not isinstance(user_id, str):
-        raise ValueError("user_id must be a string")
+    user_id = _require_user_id(current_user)
     log.set(user={"id": user_id}, operation="initiate_platform_connect", platform=platform)
 
     # Discord OAuth flow

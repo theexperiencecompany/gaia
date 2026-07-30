@@ -73,7 +73,9 @@ async def get_todo_labels(
     limit: int = 10,
 ) -> list[dict]:
     """Get most-used labels for the current user's todos."""
+    log.set(user={"id": user["user_id"]}, todo={"operation": "list_labels"})
     labels = await todo_repository.top_labels(user_id=user["user_id"], limit=limit)
+    log.set_ns("todo", result_count=len(labels))
     return [label.model_dump() for label in labels]
 
 
@@ -649,10 +651,12 @@ async def create_subtask(
             todo_id, user_id=user["user_id"], subtask=new_subtask
         )
         if not updated_todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
+            )
         return TodoResponse.from_document(updated_todo)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -682,15 +686,17 @@ async def update_subtask(
             completed=updates.completed,
         )
         if not updated_todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
+            )
 
         # Verify subtask exists (a non-matching id updates nothing but still succeeds)
         if not any(s.id == subtask_id for s in updated_todo.subtasks):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         return TodoResponse.from_document(updated_todo)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -711,15 +717,17 @@ async def delete_subtask(todo_id: str, subtask_id: str, user: dict = Depends(get
             todo_id, user_id=user["user_id"], subtask_id=subtask_id
         )
         if not updated_todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
+            )
 
         # If the subtask is still present, nothing was removed → it did not exist.
         if any(s.id == subtask_id for s in updated_todo.subtasks):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
         return TodoResponse.from_document(updated_todo)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -741,7 +749,9 @@ async def toggle_subtask_completion(
         # First, read the current completion status to toggle.
         todo = await todo_repository.get(todo_id, user_id=user["user_id"])
         if not todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
+            )
 
         subtask = next((s for s in todo.subtasks if s.id == subtask_id), None)
         if not subtask:
@@ -754,11 +764,13 @@ async def toggle_subtask_completion(
             completed=not subtask.completed,
         )
         if not updated_todo:
-            raise ValueError(f"Todo {todo_id} not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"Todo {todo_id} not found"
+            )
 
         return TodoResponse.from_document(updated_todo)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

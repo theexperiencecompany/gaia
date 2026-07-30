@@ -13,7 +13,11 @@ event" / canonical log line) instead of scattering log lines through a request:
   request with method, path, status, duration, user, and every field handlers
   attached via `log.set(...)`.
 - **ARQ worker tasks** — `wide_task()` emits one `worker_task` line per job.
-- **Background asyncio work** — `log_context()` emits one `background_task` line.
+- **Background asyncio work** — `log_context()` (or `spawn_logged_task()`,
+  the sanctioned fire-and-forget spawner) emits one `background_task` line
+  correlated to the spawning request's `trace_id`.
+- **WebSocket connections** — a `log_context()` boundary per connection emits
+  one event per connection lifetime.
 
 Every event carries environment characteristics (`env`, `service`, `commit`),
 a `trace_id` (echoed on the `x-trace-id` response header), high-cardinality

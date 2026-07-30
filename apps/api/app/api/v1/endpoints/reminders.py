@@ -479,6 +479,7 @@ async def validate_cron_endpoint(
     Returns:
         Validation result
     """
+    log.set(reminder=ReminderContext(operation="validate_cron"))
     try:
         is_valid = validate_cron_expression(expression)
 

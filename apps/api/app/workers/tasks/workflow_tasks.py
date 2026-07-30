@@ -48,6 +48,7 @@ from app.services.workflow.conversation_service import (
 )
 from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
+from app.utils.errors import create_error
 from app.utils.timezone import Timezone, format_local_time
 from shared.py.wide_events import WorkflowContext, log, wide_task
 
@@ -100,7 +101,13 @@ async def process_workflow_generation_task(
                 # Verify workflow actually has steps before linking
                 if not workflow.steps or len(workflow.steps) == 0:
                     reason = workflow.error_message or "unknown error"
-                    raise ValueError(f"Workflow {workflow.id} created but has no steps — {reason}")
+                    raise create_error(
+                        message=f"Workflow {workflow.id} created but has no steps — {reason}",
+                        why="workflow generation completed without producing any steps",
+                        fix="retry workflow generation for this todo",
+                        workflow_id=workflow.id,
+                        todo_id=todo_id,
+                    )
 
                 linked = await todo_repository.update(
                     todo_id, user_id=user_id, update=TodoUpdate(workflow_id=workflow.id)
@@ -140,13 +147,23 @@ async def process_workflow_generation_task(
                     await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
 
                     return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
-                raise ValueError(f"Todo {todo_id} not found or not updated")
+                raise create_error(
+                    message=f"Todo {todo_id} not found or not updated",
+                    why="the todo was deleted or the workflow-link update matched no document",
+                    fix="verify the todo still exists before regenerating its workflow",
+                    todo_id=todo_id,
+                )
 
             # Mark workflow generation as failed
             log.error(
                 f"{LogTag.WORKER} Failed to generate workflow for todo {todo_id}: No workflow created"
             )
-            raise ValueError("Workflow generation failed: No workflow created")
+            raise create_error(
+                message="Workflow generation failed: No workflow created",
+                why="WorkflowService.create_workflow returned no workflow",
+                fix="check workflow generation logs for the underlying failure",
+                todo_id=todo_id,
+            )
 
         except Exception as e:
             # Clear the generating flag on failure too
@@ -154,6 +171,7 @@ async def process_workflow_generation_task(
                 from app.services.workflow.queue_service import WorkflowQueueService
 
                 await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
+            # evlog-map-disable-next-line error-handling -- cleanup should not raise
             except Exception:  # nosec B110 - Intentional: cleanup should not raise
                 pass
 
@@ -320,7 +338,11 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                         error_message=str(e),
                     )
                 except Exception as e2:
-                    log.debug(f"{LogTag.WORKER} Failed to complete execution record: %s" % e2)
+                    log.warning(
+                        f"{LogTag.WORKER} Failed to complete execution record",
+                        error_type=type(e2).__name__,
+                        execution_id=execution_id,
+                    )
 
             # Track failed execution
             if workflow:
@@ -329,7 +351,11 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                         workflow_id, workflow.user_id, is_successful=False
                     )
                 except Exception as e2:
-                    log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
+                    log.warning(
+                        f"{LogTag.WORKER} Failed to update workflow stats",
+                        error_type=type(e2).__name__,
+                        workflow_id=workflow_id,
+                    )
 
             # Send failure notification so the user knows the workflow failed
             if workflow:
@@ -349,7 +375,12 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                                 try:
                                     reset_user = await get_user_by_id(workflow.user_id)
                                     reset_tz = reset_user.get("timezone") if reset_user else None
-                                except Exception:
+                                except Exception as tz_err:
+                                    log.warning(
+                                        f"{LogTag.WORKER} Failed to fetch user timezone for notification",
+                                        error_type=type(tz_err).__name__,
+                                        workflow_id=workflow_id,
+                                    )
                                     reset_tz = None
                                 formatted_reset = format_local_time(
                                     reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z"
@@ -360,7 +391,12 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                                     f"Resets {formatted_reset}. "
                                     f"Upgrade to {plan_required} for higher daily limits."
                                 )
-                            except Exception:
+                            except Exception as fmt_err:
+                                log.warning(
+                                    f"{LogTag.WORKER} Failed to format quota reset time for notification",
+                                    error_type=type(fmt_err).__name__,
+                                    workflow_id=workflow_id,
+                                )
                                 body = (
                                     f"'{workflow.title}' couldn't run — "
                                     f"you've used all your workflow executions for today. "
@@ -408,8 +444,10 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                         )
                     )
                 except Exception as notify_err:
-                    log.debug(
-                        f"{LogTag.WORKER} Failed to send failure notification: %s" % notify_err
+                    log.warning(
+                        f"{LogTag.WORKER} Failed to send failure notification",
+                        error_type=type(notify_err).__name__,
+                        workflow_id=workflow_id,
                     )
 
             # Still arm the next occurrence — a transient failure (rate limit, LLM

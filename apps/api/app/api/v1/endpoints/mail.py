@@ -253,10 +253,12 @@ async def process_email(
     request: EmailRequest,
     current_user: dict = Depends(require_integration("gmail")),
 ) -> Any:
+    log.set(mail={"operation": "compose"})
     try:
         user_id = current_user.get("user_id")
         if user_id is None:
             raise HTTPException(status_code=401, detail="User ID is required")
+        log.set(user={"id": str(user_id)})
 
         notes = await search_notes_by_similarity(input_text=request.prompt, user_id=str(user_id))
 
@@ -402,10 +404,12 @@ async def summarize_email(
 
     Returns a summary of the email with optional key points and action items.
     """
+    log.set(mail={"operation": "summarize"})
     try:
         user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
+        log.set(user={"id": str(user_id)})
 
         # Note: Getting email by ID for summarization would need a dedicated Composio tool
         # For now, return a placeholder response or implement with available tools

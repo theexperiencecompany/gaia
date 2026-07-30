@@ -124,7 +124,11 @@ async def list_session_artifacts(
     await _assert_owns(user_id, conv_id)
     try:
         items = await list_artifacts(user_id, conv_id)
-    except JuiceFSUnavailable:
+    except JuiceFSUnavailable as e:
+        log.warning(
+            "workspace storage offline — returning empty artifact list",
+            error_type=type(e).__name__,
+        )
         items = []
     return JSONResponse(content=[asdict(i) for i in items])
 
@@ -158,7 +162,11 @@ async def list_uploads(
     await _assert_owns(user_id, conv_id)
     try:
         items = await list_user_uploaded(user_id, conv_id)
-    except JuiceFSUnavailable:
+    except JuiceFSUnavailable as e:
+        log.warning(
+            "workspace storage offline — returning empty upload list",
+            error_type=type(e).__name__,
+        )
         items = []
     return JSONResponse(content=[asdict(i) for i in items])
 
