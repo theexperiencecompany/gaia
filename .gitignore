@@ -167,3 +167,6 @@ skills-lock.json
 infra/load-testing
 # E2B template build staging artifact (transient)
 apps/api/scripts/_gaia_system.tar.gz
+
+# evlog map output (tools/evlog_map)
+evlog.map.json
