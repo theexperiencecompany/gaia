@@ -21,6 +21,11 @@ canonical log lines) is implemented as infrastructure:
 | HTTP request | `LoggingMiddleware` (`apps/api/app/api/v1/middleware/logging.py`) | `http_request` |
 | ARQ worker task | `wide_task("task_name", ...)` context manager | `worker_task` |
 | Background asyncio work | `log_context("operation", ...)` context manager | `background_task` |
+| Bot interaction (TypeScript) | `withWideEvent(...)` (`libs/shared/ts/src/bots/utils/wide-events.ts`) | `bot_event` |
+
+The rest of this skill covers the Python facade; the bots use the TS analogue
+(`wideLog.set`/`setNs`/`warning`/`error`/`audit`) with the same semantics and
+its own scanner, `scripts/ci/evlog-map-bots.mjs`.
 
 `env`/`service`/`commit`, `trace_id`, `duration_ms`, status and `final_level`
 are stamped automatically. The middleware also attaches `user.id`/`user.email`

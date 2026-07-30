@@ -19,7 +19,11 @@ from app.models.reminder_models import (
     UpdateReminderRequest,
 )
 from app.services.reminder_service import reminder_scheduler
-from app.utils.cron_utils import get_next_run_time, validate_cron_expression
+from app.utils.cron_utils import (
+    calculate_next_occurrences,
+    get_next_run_time,
+    validate_cron_expression,
+)
 from shared.py.wide_events import ReminderContext, log
 
 router = APIRouter(prefix="/reminders", tags=["reminders"])
@@ -527,8 +531,6 @@ async def validate_cron_endpoint(
 
         if is_valid:
             # Get next few run times as examples
-            from app.utils.cron_utils import calculate_next_occurrences
-
             next_runs = calculate_next_occurrences(expression, 5)
             result["next_runs"] = [run.isoformat() for run in next_runs]
 

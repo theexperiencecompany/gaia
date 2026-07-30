@@ -30,6 +30,7 @@ raw loguru logger outside the wide-event lifecycle.
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import date, timedelta
 import json as _json
 import logging
 import os
@@ -70,6 +71,9 @@ _COLLIDING_KEY_PREFIX = "ctx_"
 _CONSUMED_EXTRA_KEYS = frozenset({"logger_name", "worker"})
 # Loki rejects lines over its max_line_size (256KB by default) — cap below it.
 MAX_JSON_LINE_BYTES = 200_000
+# Matches Loki's retention_period (infra/docker/observability/loki-config.yaml)
+# and the gaia-*.log sink, so local structured files age out at the same rate.
+STRUCTURED_LOG_RETENTION_DAYS = 30
 _TRUNCATED_MESSAGE_MAX_CHARS = 10_000
 
 LOG_CONFIG: _LogConfig = {
@@ -209,6 +213,28 @@ def _json_stdout_sink(message: Message) -> None:
     sys.stdout.flush()
 
 
+def _prune_structured_logs(log_dir: Path, today: date) -> None:
+    """Delete structured-*.json files older than the retention window.
+
+    Loguru applies `retention=` only to sinks it owns; this one is a callable
+    sink, so it prunes its own files. Called on handle open, i.e. once per
+    process and again on each midnight rollover.
+    """
+    cutoff = today - timedelta(days=STRUCTURED_LOG_RETENTION_DAYS)
+    for path in log_dir.glob("structured-*.json"):
+        try:
+            file_date = date.fromisoformat(path.stem.removeprefix("structured-"))
+        except ValueError:
+            continue  # not one of ours — a foreign file matching the glob
+        if file_date >= cutoff:
+            continue
+        try:
+            path.unlink()
+        except OSError as exc:
+            # Inside loguru's own sink — cannot log via loguru, so surface on stderr.
+            sys.stderr.write(f"[gaia-logging] failed to prune old log {path}: {exc}\n")
+
+
 def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
     """Create a callable sink that writes flat NDJSON to daily rotating files.
 
@@ -238,6 +264,7 @@ def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
                         sys.stderr.write(
                             f"[gaia-logging] failed to close stale log handle {old_key}: {exc}\n"
                         )
+            _prune_structured_logs(log_dir, record["time"].date())
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
 

@@ -190,18 +190,22 @@ curl -sG http://localhost:3100/loki/api/v1/query_range \
 ## Keeping it healthy: the observability score
 
 `tools/evlog_map` (a Python port of [evlog](https://evlog.dev)'s `map`
-command) statically scores every FastAPI/ARQ entry point on wide-event
-instrumentation:
+command) statically scores every FastAPI/ARQ entry point and the LiveKit voice
+worker on wide-event instrumentation. The TypeScript bots run on their own
+logging stack and are scored by the matching port,
+`scripts/ci/evlog-map-bots.mjs`:
 
 ```bash
-python3 tools/evlog_map          # full report
-python3 tools/evlog_map --all    # per-entry check matrix
+python3 tools/evlog_map            # full report (apps/api + apps/voice-agent)
+python3 tools/evlog_map --all      # per-entry check matrix
+node scripts/ci/evlog-map-bots.mjs # bots surface (apps/bots + libs/shared/ts)
 ```
 
-CI runs it on every PR (`observability` lane in code-quality.yml): changed
-files are scored at the merge-base and at HEAD, and the lane fails if the
-score regressed. See `tools/evlog_map/README.md` for the checks, weights, and
-suppression comments.
+CI runs both on every PR (`observability` lane in code-quality.yml): changed
+Python files are scored at the merge-base and at HEAD and the lane fails if the
+score regressed, while the bots surface is held at 100. See
+`tools/evlog_map/README.md` for the checks, weights, and suppression
+comments.
 
 ### Rules of thumb when writing logs
 

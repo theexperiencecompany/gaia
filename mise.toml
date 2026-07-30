@@ -580,7 +580,7 @@ description = "Check for dead code (fail on findings)"
 run = "bash scripts/dead-code-check.sh --strict"
 
 [tasks."observability:map"]
-description = "Observability score for the FastAPI backend (evlog map port)"
+description = "Observability score for the API + voice-agent (evlog map port)"
 run = "python3 tools/evlog_map"
 
 [tasks."observability:map:all"]

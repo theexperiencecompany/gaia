@@ -152,10 +152,6 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
         return default
 
 
-# Module-level set prevents GC of fire-and-forget tasks
-_background_tasks: set[asyncio.Task] = set()
-
-
 @dataclass
 class InboxScanContext:
     """Shared state between the inbox fetch task and triage (which starts
@@ -235,46 +231,34 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
         )
 
 
-def _start_gmail_branch(
-    user_id: str,
-) -> tuple[InboxScanContext, asyncio.Task[None]]:
+def _start_gmail_branch(user_id: str) -> InboxScanContext:
     """Kick off the Gmail-only inbox scan + memory ingestion task and the system
-    workflow provisioning task. Returns the shared inbox context and the
-    provision future.
+    workflow provisioning task. Returns the shared inbox context.
 
-    Both tasks can outlive the pipeline's worker boundary (memory ingestion,
-    provisioning kept alive past pipeline return), so each gets its own
-    ``spawn_logged_task`` boundary carrying the worker's trace_id."""
+    Both tasks outlive the pipeline's worker boundary, so each gets its own
+    ``spawn_logged_task`` boundary — which carries the worker's trace_id and
+    retains the task until it completes."""
     inbox_ctx = InboxScanContext()
     spawn_logged_task(
         "onboarding_inbox_scan",
         _scan_then_enqueue_memory(user_id, inbox_ctx),
         user={"id": user_id},
     )
-    provision_future = spawn_logged_task(
+    spawn_logged_task(
         "onboarding_gmail_provision",
         _run_provision_gmail(user_id),
         user={"id": user_id},
     )
-    return inbox_ctx, provision_future
+    return inbox_ctx
 
 
-async def _persist_completion(
-    user_id: str,
-    conversation_id: str | None,
-    provision_future: asyncio.Task[None] | None,
-) -> None:
-    """Write the unconditional end-of-pipeline phase transition and keep any
-    still-running provision task alive past pipeline return."""
+async def _persist_completion(user_id: str, conversation_id: str | None) -> None:
+    """Write the unconditional end-of-pipeline phase transition."""
     await user_repository.set_pipeline_completion(
         user_id,
         phase=OnboardingPhase.PERSONALIZATION_COMPLETE,
         conversation_id=conversation_id or None,
     )
-
-    if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
 
 
 async def _finalize_onboarding(
@@ -289,7 +273,6 @@ async def _finalize_onboarding(
     has_gmail: bool,
     focus: str,
     clarify_answers: list[dict],
-    provision_future: asyncio.Task[None] | None,
     concurrent_tasks: Sequence[Awaitable[Any]] = (),
 ) -> str | None:
     """Shared pipeline tail for both onboarding shapes: generate the first
@@ -333,7 +316,7 @@ async def _finalize_onboarding(
 
     # Unconditional end-of-pipeline transition: guarantees the user advances even
     # if the holo leg (which also writes this) failed.
-    await _persist_completion(user_id, conversation_id, provision_future)
+    await _persist_completion(user_id, conversation_id)
     await _emit_stage(
         user_id,
         OnboardingStage.COMPLETE,
@@ -342,18 +325,11 @@ async def _finalize_onboarding(
     return conversation_id
 
 
-async def _finish_early_phase(
-    user_id: str,
-    provision_future: asyncio.Task[None] | None,
-) -> None:
-    """Mark the early half done so the workflows-phase job can proceed, and
-    keep any still-running provision task alive past pipeline return.
+async def _finish_early_phase(user_id: str) -> None:
+    """Mark the early half done so the workflows-phase job can proceed.
     `updated_at` is refreshed so the stuck-personalization cron's cutoff
     doesn't treat a user who is merely picking integrations as stale."""
     await user_repository.mark_early_intelligence_done(user_id)
-    if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
 
 
 async def _social_then_holo(
@@ -464,10 +440,9 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
 
     inbox_ctx: InboxScanContext | None = None
-    provision_future: asyncio.Task[None] | None = None
 
     if has_gmail:
-        inbox_ctx, provision_future = _start_gmail_branch(user_id)
+        inbox_ctx = _start_gmail_branch(user_id)
 
     writing_style_future: asyncio.Task[WritingStyleProfile | None] = asyncio.create_task(
         _run_writing_style(user_id, has_gmail, profession)
@@ -537,7 +512,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 has_gmail=has_gmail,
             ),
         )
-        await _finish_early_phase(user_id, provision_future)
+        await _finish_early_phase(user_id)
         log.info(
             f"{LogTag.ONBOARDING} early pipeline done — awaiting integration selection",
             user_id=user_id,
@@ -562,7 +537,6 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         has_gmail=has_gmail,
         focus=focus,
         clarify_answers=clarify_answers,
-        provision_future=provision_future,
         concurrent_tasks=(
             _persist_profiles(user_id, writing_style, triage),
             _social_then_holo(
@@ -1388,7 +1362,6 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
         has_gmail=has_gmail,
         focus=focus,
         clarify_answers=clarify_answers,
-        provision_future=None,
     )
 
     log.info(

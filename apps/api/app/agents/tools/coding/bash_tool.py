@@ -48,13 +48,11 @@ from app.services.storage import FsOps, fs_timer
 from app.services.storage.metrics import _register_once
 from app.templates.docstrings.coding_tools_docs import BASH_TOOL
 from app.utils.output_limiter import truncate_head_tail
-from shared.py.logging import get_contextual_logger
 from shared.py.wide_events import log
 
 MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TIMEOUT_SECONDS = 120
 MAX_COMMAND_LENGTH = 16_000
-_metrics_log = get_contextual_logger("app.agents.tools.coding.bash_tool.metrics")
 
 # Bucketed bash exit code counter. The buckets (string labels) are part of the
 # `fs-metrics-coverage` capability contract; changing them requires a spec

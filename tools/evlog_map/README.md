@@ -116,8 +116,9 @@ every ARQ task registered in `app/worker.py`, and the LiveKit voice worker
 `log_context("voice_session")` boundary and each turn inside `wide_task`;
 `prewarm` is waived with a reason (sync per-fork bootstrap, no event loop for
 a boundary), and the `start`/`download-files` CLI wrappers are not LiveKit
-entry points, so they carry no runtime instrumentation to score. Out of scope
-today: the TypeScript bots (separate logging stack).
+entry points, so they carry no runtime instrumentation to score. The
+TypeScript bots (`apps/bots` + `libs/shared/ts`) run on a separate logging
+stack and are scored by their own port, `scripts/ci/evlog-map-bots.mjs`.
 
 ## Limitations
 
