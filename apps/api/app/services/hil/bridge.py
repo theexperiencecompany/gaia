@@ -14,7 +14,6 @@ where ``get_stream_writer`` is unavailable — so this dual write, keyed purely 
 ``stream_id``, is what makes the card work at every nesting depth.
 """
 
-import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
@@ -40,11 +39,7 @@ from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
 from app.utils.general_utils import clip_text
-from shared.py.wide_events import log
-
-# Keep-alive set so fire-and-forget notify tasks aren't GC'd mid-flight
-# (asyncio.create_task holds only a weak reference).
-_notify_tasks: set[asyncio.Task[None]] = set()
+from shared.py.wide_events import log, spawn_logged_task
 
 
 @dataclass
@@ -219,11 +214,13 @@ def _schedule_pending_notification(
 ) -> None:
     """Wake clients not watching the stream. Detached — a notify failure must
     never block the gate."""
-    task = asyncio.create_task(
-        notify_approval_pending(user_id, conversation_id, approval_id, summary)
+    spawn_logged_task(
+        "approval_pending_notification",
+        notify_approval_pending(user_id, conversation_id, approval_id, summary),
+        user={"id": user_id},
+        conversation_id=conversation_id,
+        approval_id=approval_id,
     )
-    _notify_tasks.add(task)
-    task.add_done_callback(_notify_tasks.discard)
 
 
 async def _publish_entry(stream_id: str, entry: dict[str, Any]) -> None:

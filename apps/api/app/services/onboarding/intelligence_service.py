@@ -87,7 +87,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_onboarding_conversation
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 
 class OnboardingStage(str, Enum):
@@ -228,12 +228,22 @@ def _start_gmail_branch(
 ) -> tuple[InboxScanContext, asyncio.Task[None]]:
     """Kick off the Gmail-only inbox scan + memory ingestion task and the system
     workflow provisioning task. Returns the shared inbox context and the
-    provision future."""
+    provision future.
+
+    Both tasks can outlive the pipeline's worker boundary (memory ingestion,
+    provisioning kept alive past pipeline return), so each gets its own
+    ``spawn_logged_task`` boundary carrying the worker's trace_id."""
     inbox_ctx = InboxScanContext()
-    scan_task = asyncio.create_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
-    _background_tasks.add(scan_task)
-    scan_task.add_done_callback(_background_tasks.discard)
-    provision_future = asyncio.create_task(_run_provision_gmail(user_id))
+    spawn_logged_task(
+        "onboarding_inbox_scan",
+        _scan_then_enqueue_memory(user_id, inbox_ctx),
+        user={"id": user_id},
+    )
+    provision_future = spawn_logged_task(
+        "onboarding_gmail_provision",
+        _run_provision_gmail(user_id),
+        user={"id": user_id},
+    )
     return inbox_ctx, provision_future
 
 

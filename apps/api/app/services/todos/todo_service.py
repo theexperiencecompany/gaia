@@ -37,7 +37,7 @@ from app.utils.todo_vector_utils import (
     store_todo_embedding,
     update_todo_embedding,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 
 async def _get_workflow_categories_for_todos(
@@ -75,10 +75,6 @@ def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
             subtask if subtask.id else subtask.model_copy(update={"id": str(uuid.uuid4())})
         )
     return result
-
-
-# Module-level set to hold references to background tasks and prevent GC
-_background_tasks: set[asyncio.Task] = set()
 
 
 class TodoService:
@@ -157,16 +153,17 @@ class TodoService:
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
-            _task = asyncio.create_task(
+            spawn_logged_task(
+                "todo_workflow_generation",
                 WorkflowQueueService.queue_todo_workflow_generation(
                     todo_id=created.id,
                     user_id=user_id,
                     title=todo.title,
                     description=todo.description or "",
-                )
+                ),
+                user={"id": user_id},
+                todo={"id": created.id},
             )
-            _background_tasks.add(_task)
-            _task.add_done_callback(_background_tasks.discard)
             log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
         except Exception as e:
             log.warning("todo.workflow_queue_failed", title=todo.title, error=str(e))

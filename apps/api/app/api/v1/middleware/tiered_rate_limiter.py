@@ -40,7 +40,7 @@ from app.models.usage_models import (
 )
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 
 class RateLimitExceededException(HTTPException):
@@ -173,13 +173,16 @@ class TieredRateLimiter:
                         continue
 
         # Real-time usage sync after rate limit usage
-        asyncio.create_task(
+        spawn_logged_task(
+            "usage_sync",
             self._sync_usage_real_time(
                 user_id=user_id,
                 feature_key=feature_key,
                 user_plan=user_plan,
                 credits_used=credits_used,
-            )
+            ),
+            user={"id": user_id},
+            feature_key=feature_key,
         )
 
         return usage_info

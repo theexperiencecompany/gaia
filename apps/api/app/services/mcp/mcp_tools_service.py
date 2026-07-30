@@ -5,17 +5,12 @@ The repository owns the Mongo access (typed); this service adds the aggregate ca
 the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
-import asyncio
-
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.integration_models import IntegrationTool
-from shared.py.wide_events import log
-
-# Background refresh tasks are held here so they are not garbage-collected mid-flight.
-_background_tasks: set[asyncio.Task] = set()
+from shared.py.wide_events import log, spawn_logged_task
 
 
 def _format_tools(tools: list[dict]) -> list[IntegrationTool]:
@@ -39,9 +34,7 @@ async def _refresh_cache() -> None:
 
 
 def _schedule_refresh() -> None:
-    task = asyncio.create_task(_refresh_cache())
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
+    spawn_logged_task("mcp_tools_cache_refresh", _refresh_cache())
 
 
 async def store_mcp_tools(integration_id: str, tools: list[dict]) -> None:

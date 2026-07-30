@@ -19,12 +19,9 @@ from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
 from app.utils.webhook_utils import verify_composio_webhook_signature
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 router = APIRouter()
-
-# Prevent GC of fire-and-forget tasks
-_webhook_tasks: set[asyncio.Task[Any]] = set()
 
 # Background tasks are cancelled after this many seconds to prevent indefinite hangs.
 _WEBHOOK_TASK_TIMEOUT: float = 120.0
@@ -102,9 +99,12 @@ async def webhook_composio(request: Request) -> dict[str, str]:
         return {"status": "success", "message": "Webhook received"}
 
     # Fire-and-forget: return 200 immediately, process in background
-    task = asyncio.create_task(_process_webhook_event(handler, event_data))
-    _webhook_tasks.add(task)
-    task.add_done_callback(_webhook_tasks.discard)
+    spawn_logged_task(
+        "composio_webhook_processing",
+        _process_webhook_event(handler, event_data),
+        user={"id": event_data.user_id},
+        webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},
+    )
 
     log.set(operation="webhook_accepted", outcome="success")
     return {"status": "success", "message": "Webhook accepted"}

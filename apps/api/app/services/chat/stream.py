@@ -61,7 +61,7 @@ from app.services.storage import flush_fs_metrics
 from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
-from shared.py.wide_events import ChatContext, log, wide_task
+from shared.py.wide_events import ChatContext, get_trace_id, log, wide_task
 
 
 async def run_chat_stream_background(
@@ -77,8 +77,11 @@ async def run_chat_stream_background(
     completion even if the client disconnects. Frames land in a replayable
     event log, so publish/subscribe timing needs no coordination.
     """
+    # get_trace_id() reads the spawning request's trace_id from this task's
+    # copied context, so the agent-run event joins with its http_request event.
     async with wide_task(
         "chat_stream",
+        trace_id=get_trace_id() or None,
         conversation_id=conversation_id,
         stream_id=stream_id,
     ):
@@ -547,13 +550,13 @@ def _log_usage_summary(state: _StreamState) -> None:
     event.
 
     Reads ``cache_read`` from the LangChain ``UsageMetadataCallback`` rather
-    than the wide-event ``ContextVar``. ``LLMAccountingMiddleware`` writes
-    ``cached_tokens`` per-step into the wide event from inside a LangGraph
-    node, but those writes happen in a child ``copy_context()`` frame that does
-    not propagate back to the ``wide_task`` block — so the worker rollup would
-    otherwise see ``cached_tokens=null`` even when caching fired. The callback
-    handler runs in the parent context via LangChain's tracer and accumulates
-    correctly across every model call.
+    than the wide-event ``ContextVar``. Not because in-node writes are lost —
+    since the mutable-state fix, ``LLMAccountingMiddleware``'s ``log.set``
+    calls share this task's accumulator and do land on the event — but because
+    the callback is the turn's authoritative usage source: LangChain's tracer
+    feeds it every model call, so the totals here are computed from raw
+    per-call metadata rather than from a field this function is about to
+    overwrite.
     """
     total_input, total_output, total_cached = aggregate_usage_metadata(state.usage_metadata)
     cache_hit_rate = round(total_cached / max(total_input, 1), 4) if total_input else 0.0

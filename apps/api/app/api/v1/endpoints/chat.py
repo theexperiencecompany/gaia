@@ -25,7 +25,7 @@ from app.decorators import tiered_rate_limit
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.stream import run_chat_stream_background
-from shared.py.wide_events import ChatContext, log
+from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
 
 # asyncio.create_task only keeps a weakref; without this set the task can be GC'd mid-flight.
 _background_tasks: set[asyncio.Task] = set()
@@ -76,24 +76,36 @@ async def _stream_from_redis(
 
     The log replays from ``last_event_id`` (or the beginning), so this can be
     attached at any point in the turn's lifetime without losing frames.
-    """
-    if not redis_cache.redis:
-        log.error(f"{LogTag.CHAT} Redis unavailable for stream {stream_id}")
-        yield "data: [STREAM_ERROR]\n\n"
-        return
 
-    try:
-        async for chunk in stream_manager.subscribe_stream(stream_id, last_event_id=last_event_id):
-            if await request.is_disconnected():
-                log.info(
-                    f"{LogTag.CHAT} Client disconnected, stream {stream_id} continues in background"
-                )
-                break
-            yield chunk
-    except asyncio.CancelledError:
-        log.info(f"{LogTag.CHAT} Stream {stream_id}: client connection cancelled")
-    except Exception as e:
-        log.error(f"{LogTag.CHAT} Error streaming to client: {e}")
+    The body runs while the response streams — after the request's
+    ``http_request`` event has emitted — so it needs its own boundary or the
+    delivery outcome (disconnects, delivery errors) is silently discarded.
+    The generator body inherits the request's context, so ``get_trace_id()``
+    here still returns the request's trace_id (verified against
+    ``LoggingMiddleware`` + ``StreamingResponse``).
+    """
+    async with log_context("sse_delivery", trace_id=get_trace_id() or None, stream_id=stream_id):
+        if not redis_cache.redis:
+            log.error(f"{LogTag.CHAT} Redis unavailable for stream {stream_id}")
+            yield "data: [STREAM_ERROR]\n\n"
+            return
+
+        try:
+            async for chunk in stream_manager.subscribe_stream(
+                stream_id, last_event_id=last_event_id
+            ):
+                if await request.is_disconnected():
+                    log.set(client_disconnected=True)
+                    log.info(
+                        f"{LogTag.CHAT} Client disconnected, stream {stream_id} continues in background"
+                    )
+                    break
+                yield chunk
+        except asyncio.CancelledError:
+            log.set(client_disconnected=True)
+            log.info(f"{LogTag.CHAT} Stream {stream_id}: client connection cancelled")
+        except Exception as e:
+            log.error(f"{LogTag.CHAT} Error streaming to client: {e}")
 
 
 @router.post("/chat-stream")

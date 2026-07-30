@@ -39,7 +39,7 @@ from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import Platform, PlatformLinkService
-from shared.py.wide_events import log
+from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
 
@@ -259,101 +259,116 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     _background_tasks.add(task)
 
     async def stream_from_redis():
-        """Subscribe to Redis stream and translate chunks for bot clients."""
-        # Send session token as first event
-        yield f"data: {json.dumps({'session_token': session_token})}\n\n"
+        """Subscribe to Redis stream and translate chunks for bot clients.
 
-        # Send initial keepalive to establish connection
-        yield ": keepalive\n\n"
+        The body runs while the response streams — after the request's
+        ``http_request`` event has emitted — so it needs its own boundary or
+        the delivery outcome is silently discarded. The generator body
+        inherits the request's context, so ``get_trace_id()`` still returns
+        the request's trace_id.
+        """
+        async with log_context(
+            "sse_delivery",
+            trace_id=get_trace_id() or None,
+            stream_id=stream_id,
+            platform=body.platform,
+        ):
+            # Send session token as first event
+            yield f"data: {json.dumps({'session_token': session_token})}\n\n"
 
-        try:
-            async for chunk in stream_manager.subscribe_stream(stream_id):
-                # Match the web stream path: stop forwarding if the bot client
-                # dropped the connection. The background task keeps running and
-                # persists the conversation.
-                if await request.is_disconnected():
-                    log.info(
-                        f"{LogTag.API} Bot client disconnected, stream {stream_id} continues in background"
-                    )
-                    break
-                # Forward keepalive comments directly
-                if chunk.startswith(":"):
-                    yield chunk
-                    continue
+            # Send initial keepalive to establish connection
+            yield ": keepalive\n\n"
 
-                # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...")
-                # for Last-Event-ID resume — split the id line off before the data
-                # checks, or every content frame is silently dropped.
-                if chunk.startswith("id: "):
-                    _, _, chunk = chunk.partition("\n")
-
-                if not chunk.startswith("data: "):
-                    continue
-
-                raw = chunk[len("data: ") :].strip()
-                if raw == "[DONE]":
-                    yield f"data: {json.dumps({'done': True, 'conversation_id': conversation_id})}\n\n"
-                    return
-
-                try:
-                    data = json.loads(raw)
-
-                    # Forward keepalives so bot clients reset inactivity timers
-                    if data.get("keepalive"):
-                        yield f"data: {json.dumps({'keepalive': True})}\n\n"
-                        continue
-
-                    # Surface rate-limit cards (web-only UI) to bots as a short
-                    # text notice, before the web-only fields are dropped below.
-                    # Non-terminal: the agent's partial reply still streams, so
-                    # pad with blank lines on both sides to keep the notice on its
-                    # own paragraph rather than running into adjacent agent text.
-                    rate_limit_notice = _bot_rate_limit_notice(data)
-                    if rate_limit_notice is not None:
-                        payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
-                        yield f"data: {payload}\n\n"
-                        continue
-
-                    # Surface HIL approval cards to bots as a dedicated frame the
-                    # client renders as an out-of-band prompt (before tool_data
-                    # is dropped below).
-                    approval_payload = _bot_approval_payload(data)
-                    if approval_payload is not None:
-                        yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
-                        continue
-
-                    # Skip web-only fields
-                    if any(
-                        key in data
-                        for key in [
-                            "conversation_description",
-                            "user_message_id",
-                            "bot_message_id",
-                            "stream_id",
-                            "tool_data",
-                            "tool_output",
-                            "follow_up_actions",
-                        ]
-                    ):
-                        continue
-
-                    # Translate {"response": "..."} → {"text": "..."}
-                    if "response" in data:
-                        yield f"data: {json.dumps({'text': data['response']})}\n\n"
-                    elif "error" in data:
-                        yield f"data: {json.dumps({'error': data['error']})}\n\n"
+            try:
+                async for chunk in stream_manager.subscribe_stream(stream_id):
+                    # Match the web stream path: stop forwarding if the bot client
+                    # dropped the connection. The background task keeps running and
+                    # persists the conversation.
+                    if await request.is_disconnected():
+                        log.set(client_disconnected=True)
+                        log.info(
+                            f"{LogTag.API} Bot client disconnected, stream {stream_id} continues in background"
+                        )
                         break
-                except json.JSONDecodeError:
-                    log.warning(f"{LogTag.API} Bot stream: dropped a malformed SSE chunk")
-                    continue
-        except asyncio.CancelledError:
-            # Client disconnected mid-stream — expected, not an error. The
-            # background LangGraph task keeps running and persists the result.
-            log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
-            raise
-        except Exception as e:
-            log.error(f"{LogTag.API} Bot stream subscription error: {e}", error=str(e))
-            yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
+                    # Forward keepalive comments directly
+                    if chunk.startswith(":"):
+                        yield chunk
+                        continue
+
+                    # subscribe_stream id-tags every frame ("id: <redis-id>\ndata: ...")
+                    # for Last-Event-ID resume — split the id line off before the data
+                    # checks, or every content frame is silently dropped.
+                    if chunk.startswith("id: "):
+                        _, _, chunk = chunk.partition("\n")
+
+                    if not chunk.startswith("data: "):
+                        continue
+
+                    raw = chunk[len("data: ") :].strip()
+                    if raw == "[DONE]":
+                        yield f"data: {json.dumps({'done': True, 'conversation_id': conversation_id})}\n\n"
+                        return
+
+                    try:
+                        data = json.loads(raw)
+
+                        # Forward keepalives so bot clients reset inactivity timers
+                        if data.get("keepalive"):
+                            yield f"data: {json.dumps({'keepalive': True})}\n\n"
+                            continue
+
+                        # Surface rate-limit cards (web-only UI) to bots as a short
+                        # text notice, before the web-only fields are dropped below.
+                        # Non-terminal: the agent's partial reply still streams, so
+                        # pad with blank lines on both sides to keep the notice on its
+                        # own paragraph rather than running into adjacent agent text.
+                        rate_limit_notice = _bot_rate_limit_notice(data)
+                        if rate_limit_notice is not None:
+                            payload = json.dumps({"text": f"\n\n{rate_limit_notice}\n\n"})
+                            yield f"data: {payload}\n\n"
+                            continue
+
+                        # Surface HIL approval cards to bots as a dedicated frame the
+                        # client renders as an out-of-band prompt (before tool_data
+                        # is dropped below).
+                        approval_payload = _bot_approval_payload(data)
+                        if approval_payload is not None:
+                            yield f"data: {json.dumps({'approval': approval_payload})}\n\n"
+                            continue
+
+                        # Skip web-only fields
+                        if any(
+                            key in data
+                            for key in [
+                                "conversation_description",
+                                "user_message_id",
+                                "bot_message_id",
+                                "stream_id",
+                                "tool_data",
+                                "tool_output",
+                                "follow_up_actions",
+                            ]
+                        ):
+                            continue
+
+                        # Translate {"response": "..."} → {"text": "..."}
+                        if "response" in data:
+                            yield f"data: {json.dumps({'text': data['response']})}\n\n"
+                        elif "error" in data:
+                            yield f"data: {json.dumps({'error': data['error']})}\n\n"
+                            break
+                    except json.JSONDecodeError:
+                        log.warning(f"{LogTag.API} Bot stream: dropped a malformed SSE chunk")
+                        continue
+            except asyncio.CancelledError:
+                # Client disconnected mid-stream — expected, not an error. The
+                # background LangGraph task keeps running and persists the result.
+                log.set(client_disconnected=True)
+                log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
+                raise
+            except Exception as e:
+                log.error(f"{LogTag.API} Bot stream subscription error: {e}", error=str(e))
+                yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
 
@@ -396,6 +411,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
     summary="Check Auth Status",
     description="Check if a platform user is linked to a GAIA account.",
 )
+# evlog-map-disable-next-line audit -- read-only auth status probe, no state change to audit
 async def check_auth_status(
     request: Request,
     platform: str,

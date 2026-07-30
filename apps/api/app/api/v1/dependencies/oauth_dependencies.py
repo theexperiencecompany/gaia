@@ -1,6 +1,4 @@
-import asyncio
 from datetime import datetime
-from typing import Any
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
@@ -16,9 +14,7 @@ from app.utils.auth_utils import (
     resolve_dev_bypass_user,
 )
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
-from shared.py.wide_events import log
-
-_TIMEZONE_BACKFILL_TASKS: set[asyncio.Task[Any]] = set()
+from shared.py.wide_events import log, spawn_logged_task
 
 
 async def _backfill_user_timezone(user_id: str, tz: str) -> None:
@@ -215,9 +211,12 @@ async def get_user_timezone_from_preferences(
             )
 
         if resolved.should_heal and user_id:
-            task = asyncio.create_task(_backfill_user_timezone(user_id, resolved.timezone.value))
-            _TIMEZONE_BACKFILL_TASKS.add(task)
-            task.add_done_callback(_TIMEZONE_BACKFILL_TASKS.discard)
+            spawn_logged_task(
+                "timezone_backfill",
+                _backfill_user_timezone(user_id, resolved.timezone.value),
+                user={"id": user_id},
+                timezone=resolved.timezone.value,
+            )
 
         return resolved.timezone.value
 

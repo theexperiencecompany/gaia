@@ -11,7 +11,7 @@ from fastapi import HTTPException, UploadFile
 from app.agents.prompts.image_prompts import IMAGE_PROMPT_REFINER
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.image_utils import convert_image_to_text, generate_image
-from shared.py.wide_events import log
+from shared.py.wide_events import get_trace_id, log, log_context
 
 
 def generate_public_id(refined_text: str, max_length: int = 50) -> str:
@@ -133,17 +133,28 @@ async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
 
     Yields:
         str: Formatted response lines for streaming
+
+    The body runs while the response streams — after the request's
+    ``http_request`` event has emitted — so it needs its own boundary or the
+    generation outcome is silently discarded. The generator body inherits the
+    request's context, so ``get_trace_id()`` still returns the request's
+    trace_id.
     """
-    try:
-        yield f"data: {json.dumps({'status': 'generating_image'})}\n\n"
+    async with log_context(
+        "image_generation_stream",
+        trace_id=get_trace_id() or None,
+        prompt_length=len(query_text),
+    ):
+        try:
+            yield f"data: {json.dumps({'status': 'generating_image'})}\n\n"
 
-        # Get image result with the new structure
-        image_result = await api_generate_image(query_text)
+            # Get image result with the new structure
+            image_result = await api_generate_image(query_text)
 
-        # Format the response to match the expected frontend format
-        yield f"data: {json.dumps({'image_data': image_result})}\n\n"
-        yield "data: [DONE]\n\n"
-    except Exception as e:
-        log.error(f"Error generating image: {e!s}")
-        yield f"data: {json.dumps({'error': f'Failed to generate image: {e!s}'})}\n\n"
-        yield "data: [DONE]\n\n"
+            # Format the response to match the expected frontend format
+            yield f"data: {json.dumps({'image_data': image_result})}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            log.error(f"Error generating image: {e!s}")
+            yield f"data: {json.dumps({'error': f'Failed to generate image: {e!s}'})}\n\n"
+            yield "data: [DONE]\n\n"
