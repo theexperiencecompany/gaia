@@ -98,7 +98,10 @@ class NotionTriggerHandler(TriggerHandler):
                 query=kwargs.get("search"),
             )
 
-            log.debug(f"{LogTag.TRIGGER} Notion fetch input: {input_model.model_dump()}")
+            log.debug(
+                f"{LogTag.TRIGGER} Notion fetch input",
+                input_fields=sorted(input_model.model_dump().keys()),
+            )
 
             result = await asyncio.to_thread(tool.invoke, input_model.model_dump(exclude_none=True))
 

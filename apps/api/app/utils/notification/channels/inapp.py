@@ -78,9 +78,7 @@ class InAppChannelAdapter(ChannelAdapter):
                     "notification": content,
                 },
             )
-            log.info(
-                f"{LogTag.NOTIFICATION} In-app notification delivered to user {user_id}: {content.get('title')}"
-            )
+            log.info(f"{LogTag.NOTIFICATION} In-app notification delivered", user_id=user_id)
             return self._success()
         except Exception as e:
             log.error(

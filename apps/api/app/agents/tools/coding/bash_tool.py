@@ -233,7 +233,7 @@ async def bash(
     except Exception as e:
         # acquire_sandbox already evicted the sandbox if this failure means it
         # died (it health-checks on any error) — here we just surface it.
-        log.error(f"{LogTag.SANDBOX} bash tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} bash tool failed", error_type=type(e).__name__, exc_info=True)
         return _emit_bash_error(run_id, str(e), f"Error executing command: {e}", session_id)
 
 

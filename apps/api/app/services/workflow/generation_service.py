@@ -248,8 +248,10 @@ class WorkflowGenerationService:
                 )
 
         log.info(
-            f"{LogTag.WORKFLOW} Categories: {len(category_names)} "
-            f"(prefer={sorted(prefer_set)}, explicit={sorted(explicit_set)})"
+            f"{LogTag.WORKFLOW} Categories resolved",
+            category_count=len(category_names),
+            prefer=sorted(prefer_set),
+            explicit=sorted(explicit_set),
         )
 
         trigger_context = generate_trigger_context(trigger_config)
@@ -293,7 +295,7 @@ class WorkflowGenerationService:
             tools="\n".join(tools_with_categories),
             categories=", ".join(category_names),
         )
-        log.info(f"{LogTag.WORKFLOW} Prompt: {len(formatted_prompt)} chars")
+        log.info(f"{LogTag.WORKFLOW} Prompt built", prompt_chars=len(formatted_prompt))
 
         # Transient provider errors are retried inside ainvoke_structured; this loop
         # only regenerates when the model returns an empty or schema-invalid result.
@@ -313,8 +315,10 @@ class WorkflowGenerationService:
                 # keep propagating so ainvoke_structured owns retry/fallback.
                 last_error = e
                 log.warning(
-                    f"{LogTag.WORKFLOW} Structured output invalid "
-                    f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating: {e}"
+                    f"{LogTag.WORKFLOW} Structured output invalid; regenerating",
+                    attempt=attempt + 1,
+                    max_attempts=_MAX_GENERATION_ATTEMPTS,
+                    error_type=type(e).__name__,
                 )
                 continue
 
@@ -330,8 +334,9 @@ class WorkflowGenerationService:
                 "the model may not have understood the request"
             )
             log.warning(
-                f"{LogTag.WORKFLOW} No steps "
-                f"(attempt {attempt + 1}/{_MAX_GENERATION_ATTEMPTS}); regenerating"
+                f"{LogTag.WORKFLOW} No steps; regenerating",
+                attempt=attempt + 1,
+                max_attempts=_MAX_GENERATION_ATTEMPTS,
             )
 
         log.error(

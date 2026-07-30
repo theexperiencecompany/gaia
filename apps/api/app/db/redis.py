@@ -137,7 +137,7 @@ class RedisCache:
         if self.redis is None:
             message = "Redis is UNAVAILABLE: REDIS_URL is not configured."
             log.set(db={"connection_status": "unavailable", "backend": "redis"})
-            log.error(f"{LogTag.STORAGE} {message}")
+            log.error(f"{LogTag.STORAGE} Redis is UNAVAILABLE: REDIS_URL is not configured")
             if settings.ENV == "production":
                 raise ConnectionError(message)
             return
@@ -149,7 +149,9 @@ class RedisCache:
         except Exception as e:
             message = f"Redis is UNAVAILABLE: ping failed ({type(e).__name__}: {e})"
             log.set(db={"connection_status": "error", "backend": "redis"})
-            log.error(f"{LogTag.STORAGE} {message}")
+            log.error(
+                f"{LogTag.STORAGE} Redis is UNAVAILABLE: ping failed", error_type=type(e).__name__
+            )
             if settings.ENV == "production":
                 raise ConnectionError(message) from e
 

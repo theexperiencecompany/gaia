@@ -72,13 +72,6 @@ async def process_workflow_generation_task(
         Processing result message
     """
     async with wide_task("process_workflow_generation_task", todo_id=todo_id, user_id=user_id):
-        log.info(
-            f"{LogTag.WORKER} Processing workflow generation for todo",
-            todo_id=todo_id,
-            title=title,
-            user_id=user_id,
-        )
-
         try:
             # Build short card description plus detailed execution prompt
             workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
@@ -144,10 +137,6 @@ async def process_workflow_generation_task(
                             },
                         )
                         log.set(websocket_broadcast_success=True)
-                        log.info(
-                            f"{LogTag.WORKER} WebSocket event sent for workflow",
-                            workflow_id=workflow.id,
-                        )
                     except Exception as ws_error:
                         log.set(websocket_broadcast_success=False)
                         log.warning(
@@ -206,7 +195,6 @@ async def process_workflow_generation_task(
                     },
                 )
                 log.set(websocket_broadcast_success=True)
-                log.info(f"{LogTag.WORKER} WebSocket failure event sent for todo", todo_id=todo_id)
             except Exception as ws_error:
                 log.set(websocket_broadcast_success=False)
                 log.warning(
@@ -707,10 +695,6 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
         Processing result message
     """
     async with wide_task("generate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
-        log.info(
-            f"{LogTag.WORKER} Generating workflow steps", workflow_id=workflow_id, user_id=user_id
-        )
-
         # Import here to avoid circular imports
         from app.services.workflow import WorkflowService
 
@@ -745,10 +729,6 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
                     },
                 )
                 log.set(websocket_broadcast_success=True)
-                log.info(
-                    f"{LogTag.WORKER} WebSocket event sent for todo workflow",
-                    workflow_id=workflow_id,
-                )
             except Exception as ws_error:
                 log.set(websocket_broadcast_success=False)
                 log.warning(

@@ -88,7 +88,10 @@ def _emit_todo_progress(todos: list[Todo], source: str, source_label: str | None
         writer = get_stream_writer()
         writer(payload)
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Stream writer not available for todo_progress: {e}")
+        log.warning(
+            f"{LogTag.TOOL} Stream writer not available for todo_progress",
+            error_type=type(e).__name__,
+        )
 
 
 def _format_todos(todos: list[Todo]) -> str:

@@ -42,7 +42,7 @@ Every run writes `evlog.map.json` (gitignored) to the repo root unless
 Infra routes (`/health`, `/metrics`, `/favicon.ico`) are exempt — nothing to
 instrument, excluded from the score.
 
-## Requirements (score-bearing, evlog's weights)
+## Requirements (score-bearing)
 
 | Check | Weight | Passes when |
 |---|---|---|
@@ -51,6 +51,14 @@ instrument, excluded from the score.
 | `structured-errors` | 20 | raises are `AppError`/`create_error`/`HTTPException(detail=...)` — not bare `ValueError("...")` |
 | `context` | 15 | `log.set()` uses at least one canonical `WideEventFields` key (schema is parsed live from `wide_events.py`) |
 | `error-handling` | 15 | every `except` clause logs or re-raises — no silent swallows |
+| `error-context` | 15 | every `log.error`/`log.warning` carries structured kwargs (`error_type=`, ids) instead of data interpolated into prose |
+| `info-noise` | 10 | fewer than three `log.info()` lines per entry point — info never reaches the wide event, so narration belongs in `log.set()` fields |
+
+The first five weights are evlog's. `error-context` and `info-noise` were
+reported-but-unscored nudges until the backend was swept clean of both; they now
+carry weight like every other check, so a regression costs score instead of
+printing a suggestion. **Nothing in this scanner is non-scoring anymore** — every
+rule a run reports is a requirement.
 
 Per entry point: 100 minus failed weights. Global score: weighted average —
 **money/auth routes count double**. Grades: ≥90 excellent, ≥70 good,
@@ -59,11 +67,6 @@ Per entry point: 100 minus failed weights. Global score: weighted average —
 Sensitivity is classified from whole-word route/module terms (`payment`,
 `auth`, `login`, …), payment/auth imports (`razorpay`, `stripe`, `workos`), and
 PII field names next to write calls — same heuristics as upstream evlog.
-
-## Opportunities (reported, never scored)
-
-- `error-context` — `log.error(f"...")` with zero structured kwargs
-- `info-noise` — handlers narrating with `log.info()` (which never reaches the wide event) instead of accumulating `log.set()` fields
 
 ## Suppressions
 

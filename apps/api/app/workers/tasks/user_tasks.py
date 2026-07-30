@@ -59,8 +59,6 @@ async def check_inactive_users(ctx: dict) -> str:
     async with wide_task("check_inactive_users"):
         from app.services.email import send_inactive_user_email
 
-        log.info(f"{LogTag.WORKER} Checking for inactive users")
-
         now = datetime.now(UTC)
         seven_days_ago = now - timedelta(days=7)
 
@@ -83,7 +81,6 @@ async def check_inactive_users(ctx: dict) -> str:
                     user.id, _emails_sent_this_episode(user) + 1
                 )
                 email_count += 1
-                log.info(f"{LogTag.WORKER} Sent inactive email", user_id=user.id, email=user.email)
             except Exception as e:
                 email_failures += 1
                 log.error(
@@ -95,9 +92,4 @@ async def check_inactive_users(ctx: dict) -> str:
                 )
 
         log.set(emails_sent=email_count, email_failures=email_failures)
-        log.info(
-            f"{LogTag.WORKER} Processed inactive users",
-            user_count=len(inactive_users),
-            emails_sent=email_count,
-        )
         return f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"

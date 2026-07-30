@@ -122,7 +122,12 @@ async def run_file_filter(
         # Either the binary or the file is missing; the message says which.
         return f"Error: {e}"
     except Exception as e:
-        log.error(f"{LogTag.SANDBOX} {error_label} tool failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.SANDBOX} coding tool failed",
+            tool_name=error_label,
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return f"Error running {error_label}: {e}"
 
 

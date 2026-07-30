@@ -156,7 +156,11 @@ async def _spill_to_workspace(
     }
 
     log.info(
-        f"{LogTag.AGENT} Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
+        f"{LogTag.AGENT} Compacted tool output",
+        tool_name=tool_name,
+        content_chars=len(content_str),
+        sandbox_path=sandbox_path,
+        reason=reason,
     )
     return ToolMessage(
         content=body,
@@ -239,10 +243,15 @@ async def compact_tool_output(
             existing_additional_kwargs=existing_additional_kwargs or {},
         )
     except JuiceFSUnavailable as e:
-        log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
+        log.warning(
+            f"{LogTag.AGENT} Compaction skipped (workspace unavailable)",
+            error_type=type(e).__name__,
+        )
         return None
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
+        log.error(
+            f"{LogTag.AGENT} Compaction failed", tool_name=tool_name, error_type=type(e).__name__
+        )
         return None
 
 

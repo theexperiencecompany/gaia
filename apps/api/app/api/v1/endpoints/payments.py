@@ -162,7 +162,7 @@ async def handle_dodo_webhook(
 
         # Verify webhook signature using Standard Webhooks library
         if not payment_webhook_service.verify_webhook_signature(payload, headers):
-            log.warning(f"{LogTag.PAYMENT} Invalid webhook signature")
+            log.warning(f"{LogTag.PAYMENT} Invalid webhook signature", webhook_id=webhook_id)
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
         # Parse webhook data
@@ -199,8 +199,10 @@ async def handle_dodo_webhook(
 
     except HTTPException:
         raise
-    except json.JSONDecodeError:
-        log.error(f"{LogTag.PAYMENT} Invalid JSON in webhook payload")
+    except json.JSONDecodeError as exc:
+        log.error(
+            f"{LogTag.PAYMENT} Invalid JSON in webhook payload", error_type=type(exc).__name__
+        )
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     except Exception as e:
         log.error(

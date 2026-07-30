@@ -208,7 +208,10 @@ async def workos_mobile_callback(
 
     try:
         if not code:
-            log.error(f"{LogTag.OAUTH} No authorization code received from WorkOS (mobile)")
+            log.error(
+                f"{LogTag.OAUTH} No authorization code received from WorkOS (mobile)",
+                failure_reason="missing_code",
+            )
             return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
@@ -312,7 +315,10 @@ async def workos_desktop_callback(
     try:
         # Validate code parameter
         if not code:
-            log.error(f"{LogTag.OAUTH} No authorization code received from WorkOS (desktop)")
+            log.error(
+                f"{LogTag.OAUTH} No authorization code received from WorkOS (desktop)",
+                failure_reason="missing_code",
+            )
             return RedirectResponse(url=f"{DESKTOP_DEEP_LINK}?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
@@ -404,7 +410,10 @@ async def workos_callback(
     try:
         # Validate code parameter
         if not code:
-            log.error(f"{LogTag.OAUTH} No authorization code received from WorkOS")
+            log.error(
+                f"{LogTag.OAUTH} No authorization code received from WorkOS",
+                failure_reason="missing_code",
+            )
             return RedirectResponse(url=f"{settings.FRONTEND_URL}/login?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
@@ -526,7 +535,11 @@ async def composio_callback(
 
     # Ensure we have connectedAccountId for success status
     if not connectedAccountId:
-        log.error(f"{LogTag.OAUTH} Connected account ID missing for successful connection")
+        log.error(
+            f"{LogTag.OAUTH} Connected account ID missing for successful connection",
+            failure_reason="missing_connected_account_id",
+            status=status,
+        )
         return RedirectResponse(url=f"{settings.FRONTEND_URL}{redirect_path}?oauth_error=failed")
 
     composio_service = get_composio_service()

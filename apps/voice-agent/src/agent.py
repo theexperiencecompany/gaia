@@ -56,20 +56,25 @@ def prewarm(proc: JobProcess) -> None:
     not affected by model I/O. MultilingualModel is created per-room in entrypoint()
     because its constructor requires a job context.
     """
-    log.info(f"{LogTag.AGENT} prewarm start")
     t0 = time.monotonic()
 
     settings = bootstrap_settings()
     proc.userdata["settings"] = settings
-    log.info(f"{LogTag.AGENT} settings loaded", elapsed_ms=ms_since(t0))
+    settings_ms = ms_since(t0)
 
     t_vad = time.monotonic()
     proc.userdata["vad"] = silero.VAD.load()
-    log.info(f"{LogTag.AGENT} VAD loaded", elapsed_ms=ms_since(t_vad))
+    vad_ms = ms_since(t_vad)
 
     # MultilingualModel cannot be instantiated here — its __init__ calls
     # get_job_context().inference_executor which only exists inside entrypoint().
-    log.info(f"{LogTag.AGENT} prewarm done", phase="prewarm_done", total_ms=ms_since(t0))
+    log.info(
+        f"{LogTag.AGENT} prewarm done",
+        phase="prewarm_done",
+        settings_ms=settings_ms,
+        vad_ms=vad_ms,
+        total_ms=ms_since(t0),
+    )
 
 
 def _register_session_logging(
@@ -261,7 +266,6 @@ async def entrypoint(ctx: JobContext) -> None:
         log.set(voice=VoiceContext(operation="session_start", room=ctx.room.name))
 
         room_start = time.monotonic()
-        log.info(f"{LogTag.AGENT} room start", phase="room_start", **identity)
 
         custom_llm = CustomLLM(
             base_url=settings.GAIA_BACKEND_URL,

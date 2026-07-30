@@ -71,7 +71,12 @@ async def fetch_tool_response(
         result = await tool.ainvoke({})
         data = result.get("data", {})
 
-        log.info(f"Fetched {tool_name} for {integration_id}: {type(data)}")
+        log.info(
+            "Fetched provider metadata tool result",
+            tool_name=tool_name,
+            integration_id=integration_id,
+            data_type=type(data).__name__,
+        )
 
         # Handle different response types
         if isinstance(data, dict):
@@ -80,10 +85,18 @@ async def fetch_tool_response(
             try:
                 return json.loads(data)
             except json.JSONDecodeError:
-                log.warning(f"Could not parse tool response as JSON: {data[:100]}")
+                log.warning(
+                    "Could not parse tool response as JSON",
+                    tool_name=tool_name,
+                    response_length=len(data),
+                )
                 return None
         else:
-            log.warning(f"Unexpected response type from {tool_name}: {type(data)}")
+            log.warning(
+                "Unexpected response type from tool",
+                tool_name=tool_name,
+                data_type=type(data).__name__,
+            )
             return None
 
     except Exception as e:

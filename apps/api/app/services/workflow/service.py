@@ -1106,8 +1106,9 @@ class WorkflowService:
 
             if missing:
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
-                    f"missing step integrations: {[m.id for m in missing]}"
+                    f"{LogTag.WORKFLOW} Workflow kept inactive — missing step integrations",
+                    workflow_id=workflow_id,
+                    missing_integrations=[m.id for m in missing],
                 )
 
             result = await workflow_repository.set_steps(
@@ -1147,7 +1148,9 @@ class WorkflowService:
             )
             if success:
                 log.debug(
-                    f"{LogTag.WORKFLOW} Updated execution count for workflow {workflow_id}: total +1, successful +{1 if is_successful else 0}"
+                    f"{LogTag.WORKFLOW} Updated execution count for workflow",
+                    workflow_id=workflow_id,
+                    successful_increment=1 if is_successful else 0,
                 )
             else:
                 log.warning(
@@ -1294,8 +1297,9 @@ class WorkflowService:
             if missing:
                 # Keep deactivated when step integrations are not connected.
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
-                    f"missing step integrations: {[m.id for m in missing]}"
+                    f"{LogTag.WORKFLOW} Workflow kept inactive — missing step integrations",
+                    workflow_id=workflow_id,
+                    missing_integrations=[m.id for m in missing],
                 )
 
             await workflow_repository.set_steps(

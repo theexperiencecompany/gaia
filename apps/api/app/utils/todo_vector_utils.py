@@ -214,7 +214,7 @@ async def semantic_search_todos(
 
         if not todo_ids:
             # No vector results found
-            log.info(f"{LogTag.CHROMA} No vector results for query '{query}'")
+            log.info(f"{LogTag.CHROMA} No vector results for query", query=query)
             return []
 
         # Fetch full todo documents in the order of similarity
@@ -224,7 +224,9 @@ async def semantic_search_todos(
             if todo_doc:
                 todos.append(TodoResponse.from_document(todo_doc))
 
-        log.info(f"{LogTag.CHROMA} Semantic search returned {len(todos)} todos for query '{query}'")
+        log.info(
+            f"{LogTag.CHROMA} Semantic search returned todos", todo_count=len(todos), query=query
+        )
         return todos
 
     except Exception as e:
@@ -307,7 +309,9 @@ async def hybrid_search_todos(
         # Return top results
         result = [all_todos[todo_id] for todo_id in sorted_todo_ids[:top_k]]
 
-        log.info(f"{LogTag.CHROMA} Hybrid search returned {len(result)} todos for query '{query}'")
+        log.info(
+            f"{LogTag.CHROMA} Hybrid search returned todos", todo_count=len(result), query=query
+        )
         return result
 
     except Exception as e:

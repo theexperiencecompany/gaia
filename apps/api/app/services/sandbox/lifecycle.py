@@ -275,7 +275,7 @@ async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
     stderr = getattr(result, "stderr", "") or ""
     if "WARN:" in stderr:
         _record(mount_status="ephemeral_fallback")
-        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback: {stderr.strip()}")
+        log.warning(f"{LogTag.SANDBOX} ephemeral /workspace fallback", stderr=stderr.strip())
     else:
         _record(mount_status="mounted")
         log.info(f"{LogTag.SANDBOX} workspace mounted")

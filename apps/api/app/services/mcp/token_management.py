@@ -118,11 +118,13 @@ async def try_refresh_token(
                     pass
 
                 log.warning(
-                    f"{LogTag.MCP} try_refresh_token: token endpoint returned "
-                    f"{response.status_code} for {integration_id} "
-                    f"user={token_store.user_id} "
-                    f"(oauth_error={error_code!r}, desc={error_description!r}) "
-                    f"endpoint={_endpoint_host(token_endpoint)}"
+                    f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
+                    status_code=response.status_code,
+                    integration_id=integration_id,
+                    user_id=token_store.user_id,
+                    oauth_error=error_code,
+                    oauth_error_description=error_description,
+                    endpoint_host=_endpoint_host(token_endpoint),
                 )
                 return False
 
@@ -148,19 +150,21 @@ async def try_refresh_token(
             )
 
             log.info(
-                f"{LogTag.MCP} try_refresh_token: refreshed token for {integration_id} "
-                f"user={token_store.user_id} "
-                f"(new_access_token_length={len(token.access_token)}, "
-                f"refresh_token_rotated={token.refresh_token is not None}, "
-                f"expires_at={expires_at})"
+                f"{LogTag.MCP} try_refresh_token: refreshed token",
+                integration_id=integration_id,
+                user_id=token_store.user_id,
+                new_access_token_length=len(token.access_token),
+                refresh_token_rotated=token.refresh_token is not None,
+                expires_at=expires_at,
             )
             return True
 
     except Exception as e:
         log.warning(
-            f"{LogTag.MCP} try_refresh_token: exception during refresh for "
-            f"{integration_id} user={token_store.user_id}: "
-            f"{type(e).__name__}: {e}"
+            f"{LogTag.MCP} try_refresh_token: exception during refresh",
+            integration_id=integration_id,
+            user_id=token_store.user_id,
+            error_type=type(e).__name__,
         )
         return False
 

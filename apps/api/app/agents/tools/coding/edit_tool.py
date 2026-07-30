@@ -77,7 +77,7 @@ async def edit(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"edit tool failed: {e}", exc_info=True)
+        log.error("edit tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error editing file: {e}"
 
 

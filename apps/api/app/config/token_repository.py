@@ -471,7 +471,9 @@ class TokenRepository:
 
             # Log token status for debugging
             log.debug(
-                f"{LogTag.STARTUP} Token expiry status - is_expired: {oauth_token.is_expired()}, will_renew: {renew_if_expired}"
+                f"{LogTag.STARTUP} Token expiry status",
+                is_expired=oauth_token.is_expired(),
+                will_renew=renew_if_expired,
             )
 
             # Check if token is expired

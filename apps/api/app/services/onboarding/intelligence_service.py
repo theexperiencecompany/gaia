@@ -1534,10 +1534,7 @@ async def _create_todos_from_triage(
                         "subject": spec.source_subject,
                     }
                 elif spec.source_sender or spec.source_subject:
-                    log.warning(
-                        f"{LogTag.ONBOARDING} Dropped hallucinated source_email "
-                        f"sender={spec.source_sender!r} subject={spec.source_subject!r}"
-                    )
+                    log.warning(f"{LogTag.ONBOARDING} Dropped hallucinated source_email")
                 return todo_dict
             except Exception as e:
                 log.warning(

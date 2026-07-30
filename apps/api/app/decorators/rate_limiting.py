@@ -205,7 +205,9 @@ def with_rate_limiting(
                 tokens_used = result.get("tokens_used", 0)
                 if tokens_used > 0:
                     log.debug(
-                        f"{LogTag.API} Token usage recorded: {tokens_used} tokens for feature {actual_feature_key}"
+                        f"{LogTag.API} Token usage recorded",
+                        tokens_used=tokens_used,
+                        feature_key=actual_feature_key,
                     )
 
             return result

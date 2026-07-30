@@ -178,7 +178,10 @@ async def mcp_oauth_callback(
     # Handle OAuth error response from authorization server
     if error:
         log.warning(
-            f"{LogTag.MCP} OAuth error for {integration_id}: {error} - {error_description or 'no description'}"
+            f"{LogTag.MCP} OAuth error returned by provider",
+            integration_id=integration_id,
+            oauth_error=error,
+            oauth_error_description=error_description,
         )
 
         # Some servers advertise scopes in their metadata that a dynamically
@@ -195,13 +198,17 @@ async def mcp_oauth_callback(
                     return RedirectResponse(url=retry_url)
             except Exception as retry_err:
                 log.warning(
-                    f"{LogTag.MCP} Scope retry URL build failed for {integration_id}: {retry_err}"
+                    f"{LogTag.MCP} Scope retry URL build failed",
+                    integration_id=integration_id,
+                    error_type=type(retry_err).__name__,
                 )
         try:
             await client.token_store.clear_excluded_scopes(integration_id)
         except Exception as clear_err:
             log.warning(
-                f"{LogTag.MCP} Failed to clear excluded scopes for {integration_id}: {clear_err}"
+                f"{LogTag.MCP} Failed to clear excluded scopes",
+                integration_id=integration_id,
+                error_type=type(clear_err).__name__,
             )
 
         # Map common OAuth errors to user-friendly codes
@@ -236,8 +243,9 @@ async def mcp_oauth_callback(
 
     log.set_ns("mcp", server_name=integration_name)
     log.info(
-        f"{LogTag.MCP} mcp_oauth_callback: starting handle_oauth_callback for "
-        f"integration={integration_id} user={user_id}"
+        f"{LogTag.MCP} mcp_oauth_callback: starting handle_oauth_callback",
+        integration_id=integration_id,
+        user_id=user_id,
     )
     try:
         # handle_oauth_callback now stores tokens, flips status to connected,
@@ -258,8 +266,9 @@ async def mcp_oauth_callback(
             await client.token_store.clear_excluded_scopes(integration_id)
         except Exception as clear_err:
             log.warning(
-                f"{LogTag.MCP} Failed to clear excluded scopes after OAuth success for "
-                f"{integration_id}: {clear_err}"
+                f"{LogTag.MCP} Failed to clear excluded scopes after OAuth success",
+                integration_id=integration_id,
+                error_type=type(clear_err).__name__,
             )
 
         await invalidate_user_integration_caches(str(user_id))
@@ -270,8 +279,9 @@ async def mcp_oauth_callback(
         log.set(outcome="connected")
         log.set_ns("mcp", success=True)
         log.info(
-            f"{LogTag.MCP} mcp_oauth_callback: OAuth complete for {integration_id} user={user_id}; "
-            f"connect dispatched to background, redirecting now"
+            f"{LogTag.MCP} mcp_oauth_callback: OAuth complete; connect dispatched to background, redirecting now",
+            integration_id=integration_id,
+            user_id=user_id,
         )
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(integration_name)}"
@@ -281,8 +291,10 @@ async def mcp_oauth_callback(
         log.set(outcome="failed")
         log.set_ns("mcp", success=False, error_type=type(e).__name__)
         log.error(
-            f"{LogTag.MCP} mcp_oauth_callback FAILED for integration={integration_id} user={user_id}: "
-            f"{type(e).__name__}: {e}"
+            f"{LogTag.MCP} mcp_oauth_callback failed",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
         )
         frontend_url = get_frontend_url()
         # Sanitize error - use generic codes instead of raw exception messages

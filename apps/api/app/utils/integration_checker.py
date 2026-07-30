@@ -101,7 +101,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
         token = await token_repository.get_token_by_auth_token(access_token, renew_if_expired=True)
 
         if not token:
-            log.warning(f"{LogTag.INTEGRATION} No token found for access token: {access_token}")
+            log.warning(f"{LogTag.INTEGRATION} No token found for access token")
             return False
 
         authorized_scopes = str(token.get("scope", "")).split()

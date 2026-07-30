@@ -51,7 +51,11 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
             )
 
         updated = await todo_repository.find_by_ids(user_id, todo_ids)
-        log.info(f"{LogTag.TODO} Bulk completed {modified + len(tracked)} todos for user {user_id}")
+        log.info(
+            f"{LogTag.TODO} Bulk completed todos",
+            todo_count=modified + len(tracked),
+            user_id=user_id,
+        )
         return [TodoResponse.from_document(todo) for todo in updated]
 
     except HTTPException:

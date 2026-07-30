@@ -115,7 +115,7 @@ class TriggerService:
         handler = get_handler_by_name(trigger_name)
         if not handler:
             error_msg = f"No handler found for trigger: {trigger_name}"
-            log.error(f"{LogTag.WORKFLOW} {error_msg}")
+            log.error(f"{LogTag.WORKFLOW} No handler found for trigger", trigger_name=trigger_name)
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)
             return []
@@ -139,7 +139,7 @@ class TriggerService:
             raise
         except Exception as e:
             error_msg = f"Error registering triggers: {type(e).__name__}: {e!s}"
-            log.error(f"{LogTag.WORKFLOW} {error_msg}")
+            log.error(f"{LogTag.WORKFLOW} Error registering triggers", error_type=type(e).__name__)
             log.exception(f"{LogTag.WORKFLOW} Full traceback:")
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)

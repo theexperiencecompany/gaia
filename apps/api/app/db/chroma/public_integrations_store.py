@@ -107,5 +107,7 @@ async def search_public_integrations(
         # integrations" — tool retrieval needs the failure to distinguish a
         # total search outage, and the marketplace endpoint should 500 honestly
         # rather than render an empty catalog.
-        log.error(f"{LogTag.CHROMA} Failed to search public integrations: {type(e).__name__}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to search public integrations", error_type=type(e).__name__
+        )
         raise

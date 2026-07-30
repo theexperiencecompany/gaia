@@ -48,7 +48,7 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
             )
             contacts = data.get("results", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} HubSpot contacts fetch failed", error_type=type(e).__name__)
 
         deals: list[dict[str, Any]] = []
         try:
@@ -68,7 +68,7 @@ def register_hubspot_custom_tools(composio: Composio) -> list[str]:
             )
             deals = data.get("results", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed: {e}")
+            log.debug(f"{LogTag.TOOL} HubSpot deals fetch failed", error_type=type(e).__name__)
 
         recent_contacts = [
             {

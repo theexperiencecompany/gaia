@@ -77,7 +77,8 @@ class WebSocketEventConsumer:
 
                 if data.get("type") != "websocket_broadcast":
                     log.warning(
-                        f"{LogTag.STARTUP} Received unknown WebSocket message type: {data.get('type')}"
+                        f"{LogTag.STARTUP} Received unknown WebSocket message type",
+                        message_type=data.get("type"),
                     )
                     return
 

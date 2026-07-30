@@ -1016,8 +1016,10 @@ class MCPClient:
             )
         except Exception as e:
             log.error(
-                f"{LogTag.MCP} [{integration_id}] _index_platform_mcp_tools failed for "
-                f"namespace='{namespace}': {type(e).__name__}: {e}"
+                f"{LogTag.MCP} _index_platform_mcp_tools failed",
+                integration_id=integration_id,
+                namespace=namespace,
+                error_type=type(e).__name__,
             )
 
     async def _handle_custom_integration_connect(
@@ -1051,8 +1053,10 @@ class MCPClient:
             await index_tools_to_store(tools_with_space)
         except Exception as e:
             log.error(
-                f"{LogTag.MCP} [{integration_id}] index_tools_to_store failed for namespace "
-                f"'{namespace}': {type(e).__name__}: {e}"
+                f"{LogTag.MCP} index_tools_to_store failed",
+                integration_id=integration_id,
+                namespace=namespace,
+                error_type=type(e).__name__,
             )
 
         # Index as subagent for discovery via retrieve_tools
@@ -1099,7 +1103,9 @@ class MCPClient:
                 )
         except Exception as e:
             log.warning(
-                f"{LogTag.MCP} [{integration_id}] index_custom_mcp_as_subagent failed: {type(e).__name__}: {e}"
+                f"{LogTag.MCP} index_custom_mcp_as_subagent failed",
+                integration_id=integration_id,
+                error_type=type(e).__name__,
             )
 
     async def _try_refresh_token(self, integration_id: str, mcp_config: MCPConfig) -> bool:
@@ -1310,7 +1316,9 @@ class MCPClient:
 
         excluded = await self.token_store.add_excluded_scopes(integration_id, rejected)
         log.info(
-            f"{LogTag.MCP} [{integration_id}] invalid_scope — retrying authorization without {sorted(excluded)}"
+            f"{LogTag.MCP} invalid_scope — retrying authorization without excluded scopes",
+            integration_id=integration_id,
+            excluded_scopes=sorted(excluded),
         )
         return await self.build_oauth_auth_url(
             integration_id, redirect_uri, redirect_path, excluded_scopes=excluded
@@ -1476,9 +1484,9 @@ class MCPClient:
             )
 
         log.info(
-            f"{LogTag.MCP} [{integration_id}] client_id resolved for token exchange: "
-            f"client_id={client_id[:50]}{'...' if len(client_id) > 50 else ''}, "
-            f"has_secret={client_secret is not None}"
+            f"{LogTag.MCP} client_id resolved for token exchange",
+            integration_id=integration_id,
+            has_secret=client_secret is not None,
         )
 
         # Get resource for token binding (RFC 8707)
@@ -1520,8 +1528,10 @@ class MCPClient:
             if not (200 <= response.status_code < 300):
                 error_info = parse_oauth_error_response(response)
                 log.error(
-                    f"{LogTag.MCP} Token exchange failed for {integration_id}: "
-                    f"{error_info['error']} - {error_info.get('error_description')}"
+                    f"{LogTag.MCP} Token exchange failed",
+                    integration_id=integration_id,
+                    oauth_error=error_info["error"],
+                    oauth_error_description=error_info.get("error_description"),
                 )
                 raise ValueError(
                     f"Token exchange failed: {error_info['error']} - "
@@ -1583,10 +1593,11 @@ class MCPClient:
         new_refresh_token = token.refresh_token
 
         log.info(
-            f"{LogTag.MCP} [{integration_id}] OAuth callback - token exchange successful. "
-            f"access_token length={len(access_token)}, "
-            f"has_refresh_token={new_refresh_token is not None}, "
-            f"expires_at={expires_at}"
+            f"{LogTag.MCP} OAuth callback - token exchange successful",
+            integration_id=integration_id,
+            access_token_length=len(access_token),
+            has_refresh_token=new_refresh_token is not None,
+            expires_at=expires_at,
         )
 
         # Store tokens (~20ms) — required before redirect so reconnect can use them.
@@ -1628,8 +1639,10 @@ class MCPClient:
                 is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
                 terminal = _is_terminal_auth_failure(e, refresh_attempted=False) or is_auth_error
                 log.error(
-                    f"{LogTag.MCP} [{integration_id}] background connect after OAuth failed: "
-                    f"{type(e).__name__}: {e} (terminal={terminal})"
+                    f"{LogTag.MCP} background connect after OAuth failed",
+                    integration_id=integration_id,
+                    error_type=type(e).__name__,
+                    terminal=terminal,
                 )
                 if terminal:
                     await self._reset_to_disconnected(integration_id)

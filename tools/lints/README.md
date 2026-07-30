@@ -99,6 +99,26 @@ import allowlist does not exempt it.
 **Fix:** rename the field to a domain-specific name (e.g. `job_level`,
 `source_module`).
 
+### Constant log messages
+
+**Rule:** the message passed to `log.debug` / `log.info` / `log.warning` /
+`log.error` / `log.exception` / `log.critical` must be a constant string. The one
+interpolation allowed is a leading `{LogTag.X}` prefix — anything else in the
+f-string (`{e}`, `{user_id}`, `{len(items)}`) is a violation.
+
+**Why:** a wide-event message is an identifier, not a sentence. Grouping,
+alerting and every Loki query key off the literal string, so
+`f"upload failed for {user_id}"` shards one event into as many distinct messages
+as there are users, and the interpolated value lands in prose where nothing can
+query, filter or aggregate it. Applies to the facade whatever it is imported as
+(`log`, or an alias like `wide_log`).
+
+**Fix:** keep the message constant and move the data to structured kwargs —
+`log.error(f"{LogTag.X} upload failed", error_type=type(e).__name__, user_id=user_id)`.
+Exception logs carry `error_type=`; add the ids already in scope. Never pass
+secrets or raw user content (tokens, message bodies, email addresses) as a field
+— log a count, a length, or a type instead.
+
 ---
 
 ## repository-boundaries

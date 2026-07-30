@@ -67,7 +67,7 @@ async def get_notifications(
         return {"notifications": notifications}
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error getting notifications: {e!s}")
+        log.error(f"{LogTag.TOOL} Error getting notifications", error_type=type(e).__name__)
         return {"error": str(e), "notifications": []}
 
 
@@ -120,7 +120,7 @@ async def search_notifications(
         return {"notifications": matching_notifications}
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error searching notifications: {e!s}")
+        log.error(f"{LogTag.TOOL} Error searching notifications", error_type=type(e).__name__)
         return {"error": str(e), "notifications": []}
 
 
@@ -145,7 +145,7 @@ async def get_notification_count(
         return {"count": total_count}
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error getting notification count: {e!s}")
+        log.error(f"{LogTag.TOOL} Error getting notification count", error_type=type(e).__name__)
         return {"error": str(e), "count": 0}
 
 
@@ -182,7 +182,7 @@ async def mark_notifications_read(
         return {"success": success}
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error marking notifications as read: {e!s}")
+        log.error(f"{LogTag.TOOL} Error marking notifications as read", error_type=type(e).__name__)
         return {"error": str(e), "success": False}
 
 
@@ -297,7 +297,7 @@ async def send_notification(
         return result
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error sending notification: {e!s}")
+        log.error(f"{LogTag.TOOL} Error sending notification", error_type=type(e).__name__)
         return {"error": str(e), "success": False}
 
 
@@ -327,7 +327,9 @@ async def get_notification_preferences(
         }
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error fetching notification preferences: {e!s}")
+        log.error(
+            f"{LogTag.TOOL} Error fetching notification preferences", error_type=type(e).__name__
+        )
         return {"error": str(e), "preferences": {}}
 
 

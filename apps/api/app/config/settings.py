@@ -652,7 +652,8 @@ def _ensure_infisical_loaded():
         infisical_start = time.time()
         inject_infisical_secrets()
         log.info(
-            f"{LogTag.STARTUP} Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
+            f"{LogTag.STARTUP} Infisical secrets loaded",
+            duration_seconds=round(time.time() - infisical_start, 3),
         )
         _infisical_secrets_loaded = True
 

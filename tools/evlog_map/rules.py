@@ -9,9 +9,10 @@ each check re-expressed in this repo's idiom:
 - audit         → ``log.audit(...)`` on money/auth routes
 - error handling → every ``except`` logs or re-raises
 
-Requirement weights are evlog's: a failed check costs its weight from the entry
-point's 100. Opportunities cost nothing — they only point at more of what the
-codebase already does.
+Every rule is a requirement: a failed check costs its weight from the entry
+point's 100. Error context and info noise used to be non-scoring nudges; the
+backend has since been swept clean of both, so they are held at their own weight
+like everything else — the score is the ratchet that keeps them clean.
 """
 
 from __future__ import annotations
@@ -255,18 +256,20 @@ RULES: tuple[Rule, ...] = (
     ),
     Rule(
         id="error-context",
-        category="opportunity",
+        category="requirement",
         title="err-ctx",
         question="Do error logs carry structured fields?",
         kinds=HANDLER_KINDS,
+        weight=15,
         check=_check_error_context,
     ),
     Rule(
         id="info-noise",
-        category="opportunity",
+        category="requirement",
         title="info",
         question="Is real-time narration standing in for event context?",
         kinds=HANDLER_KINDS,
+        weight=10,
         check=_check_info_noise,
     ),
 )

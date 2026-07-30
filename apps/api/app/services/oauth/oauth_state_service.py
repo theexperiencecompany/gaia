@@ -99,7 +99,7 @@ async def validate_and_consume_oauth_state(
         state_data = await redis_client.hgetall(state_key)
 
         if not state_data:
-            log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token: {state_token}")
+            log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token")
             return None
 
         # Decode bytes to strings
@@ -114,7 +114,7 @@ async def validate_and_consume_oauth_state(
 
         # Validate that we have all required fields
         if not all([result["user_id"], result["redirect_path"], result["integration_id"]]):
-            log.warning(f"{LogTag.OAUTH} Incomplete OAuth state data for token: {state_token}")
+            log.warning(f"{LogTag.OAUTH} Incomplete OAuth state data for token")
             return None
 
         # Delete the token to prevent replay attacks

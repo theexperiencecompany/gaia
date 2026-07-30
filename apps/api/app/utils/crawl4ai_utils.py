@@ -365,7 +365,9 @@ async def batch_fetch_with_crawl4ai(
         raise
     except Exception as e:
         error = f"{context_name} batch error: {e}"
-        log.warning(f"{LogTag.TOOL} {error}")
+        log.warning(
+            f"{LogTag.TOOL} batch error", context_name=context_name, error_type=type(e).__name__
+        )
         return {}, dict.fromkeys(urls, error)
 
     requested_by_exact: dict[str, deque[int]] = defaultdict(deque)

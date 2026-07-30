@@ -259,7 +259,11 @@ class LazyLoader(Generic[T]):
 
         except Exception as e:
             error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
-            log.error(f"{LogTag.STARTUP} {error_msg}")
+            log.error(
+                f"{LogTag.STARTUP} Failed to initialize provider",
+                provider_name=self.provider_name,
+                error_type=type(e).__name__,
+            )
 
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e
@@ -324,7 +328,11 @@ class LazyLoader(Generic[T]):
 
         except Exception as e:
             error_msg = f"Failed to initialize provider '{self.provider_name}': {e!s}"
-            log.error(f"{LogTag.STARTUP} {error_msg}")
+            log.error(
+                f"{LogTag.STARTUP} Failed to initialize provider",
+                provider_name=self.provider_name,
+                error_type=type(e).__name__,
+            )
 
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e

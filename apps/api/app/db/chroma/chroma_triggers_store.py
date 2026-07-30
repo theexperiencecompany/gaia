@@ -232,8 +232,9 @@ async def _execute_batch_operations(
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
         log.info(
-            f"{LogTag.CHROMA} Processed triggers batch {i // batch_size + 1}/"
-            f"{(total_ops + batch_size - 1) // batch_size}"
+            f"{LogTag.CHROMA} Processed triggers batch",
+            batch_index=i // batch_size + 1,
+            batch_total=(total_ops + batch_size - 1) // batch_size,
         )
 
     log.info(f"{LogTag.CHROMA} Successfully updated triggers in ChromaDB", total_ops=total_ops)

@@ -26,7 +26,8 @@ async def _compute_tool_hash(tool: Any) -> str:
         content = f"{tool.description}::{code_source}"
     except (OSError, TypeError, AttributeError):
         log.debug(
-            f"{LogTag.CHROMA} Source unavailable for {getattr(tool, 'name', 'unknown')}, using description hash"
+            f"{LogTag.CHROMA} Source unavailable for tool, using description hash",
+            tool_name=getattr(tool, "name", "unknown"),
         )
         content = f"{tool.name}::{tool.description}"
 
@@ -257,7 +258,9 @@ async def _execute_batch_operations(store, put_ops: list[PutOp], batch_size: int
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
         log.info(
-            f"{LogTag.CHROMA} Processed batch {i // batch_size + 1}/{(total_ops + batch_size - 1) // batch_size}"
+            f"{LogTag.CHROMA} Processed batch",
+            batch_index=i // batch_size + 1,
+            batch_total=(total_ops + batch_size - 1) // batch_size,
         )
 
     log.info(f"{LogTag.CHROMA} Successfully updated tools in ChromaDB", total_ops=total_ops)
@@ -303,9 +306,8 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     distinct_namespaces = {space for _, space in tools_with_space}
     if len(distinct_namespaces) > 1:
         log.error(
-            f"{LogTag.CHROMA} index_tools_to_store: mixed namespaces in single call "
-            f"({sorted(distinct_namespaces)}); aborting to prevent partial indexing. "
-            f"Caller must batch per-namespace."
+            f"{LogTag.CHROMA} index_tools_to_store: mixed namespaces in single call; aborting to prevent partial indexing — caller must batch per-namespace",
+            namespaces=sorted(distinct_namespaces),
         )
         return
 

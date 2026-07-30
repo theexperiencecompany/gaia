@@ -267,7 +267,7 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     # R2 credentials ride in env (the JuiceFS CLI honours the standard AWS
     # variables when --access-key/--secret-key are absent), so they do not
     # appear in argv visible to `ps auxww` during the format window.
-    log.info(f"{LogTag.STORAGE} formatting filesystem against {_bucket_url()}")
+    log.info(f"{LogTag.STORAGE} formatting filesystem", bucket_url=_bucket_url())
     r2_key = (settings.R2_ACCESS_KEY or "").strip()
     r2_secret = (settings.R2_SECRET_KEY or "").strip()
     cmd: list[str] = [

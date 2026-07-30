@@ -39,6 +39,6 @@ async def generate_image(
 
     except Exception as e:
         writer = get_stream_writer()
-        log.error(f"{LogTag.TOOL} Error generating image: {e!s}")
+        log.error(f"{LogTag.TOOL} Error generating image", error_type=type(e).__name__)
         writer({"error": f"Error generating image: {e!s}"})
         return {"status": "error", "message": f"Error generating image: {e!s}"}

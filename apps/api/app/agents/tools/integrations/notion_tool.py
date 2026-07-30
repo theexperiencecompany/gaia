@@ -100,7 +100,9 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
             )
             # Composio tools return ToolExecutionResponse format
             if not title_response["successful"]:
-                log.warning(f"{LogTag.TOOL} Failed to fetch title: {title_response.get('error')}")
+                log.warning(
+                    f"{LogTag.TOOL} Failed to fetch title", error=title_response.get("error")
+                )
             else:
                 title_data = title_response["data"]
                 # Extract title from results array
@@ -114,7 +116,7 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
                             title = item["title"].get("plain_text", "")
                             break
         except Exception as e:
-            log.warning(f"{LogTag.TOOL} Could not fetch title: {e}")
+            log.warning(f"{LogTag.TOOL} Could not fetch title", error_type=type(e).__name__)
 
         # Call NOTION_FETCH_ALL_BLOCK_CONTENTS via composio
         blocks_response: ToolExecutionResponse = composio.tools.execute(
@@ -292,10 +294,14 @@ def register_notion_custom_tools(composio: Composio) -> list[str]:
             }
 
         except AppError as e:
-            log.error(f"{LogTag.TOOL} Notion API error: {e.message}")
+            log.error(f"{LogTag.TOOL} Notion API error", error_type=type(e).__name__)
             raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e.message}")
         except Exception as e:
-            log.error(f"{LogTag.TOOL} Error fetching Notion {request.fetch_type}: {e}")
+            log.error(
+                f"{LogTag.TOOL} Error fetching from Notion",
+                fetch_type=request.fetch_type,
+                error_type=type(e).__name__,
+            )
             raise RuntimeError(f"Failed to fetch {request.fetch_type}: {e!s}")
 
     @composio.tools.custom_tool(toolkit="NOTION")

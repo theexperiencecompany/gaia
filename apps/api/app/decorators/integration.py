@@ -47,7 +47,8 @@ def require_integration(tool_category: str, tool_name: str | None = None):
 
             if not config:
                 log.warning(
-                    f"{LogTag.API} No RunnableConfig found for tool: {tool_name or func.__name__}"
+                    f"{LogTag.API} No RunnableConfig found for tool",
+                    tool_name=tool_name or func.__name__,
                 )
                 return "Configuration error: Unable to verify integration permissions."
 
@@ -59,7 +60,8 @@ def require_integration(tool_category: str, tool_name: str | None = None):
 
             if not access_token:
                 log.warning(
-                    f"{LogTag.API} No access token found for tool: {tool_name or func.__name__}"
+                    f"{LogTag.API} No access token found for tool",
+                    tool_name=tool_name or func.__name__,
                 )
                 return "Authentication required: Please ensure you're logged in."
 

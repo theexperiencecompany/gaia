@@ -46,7 +46,9 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
             )
             review_requests = reviews_data.get("items", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} GitHub review requests fetch skipped: {e}")
+            log.debug(
+                f"{LogTag.TOOL} GitHub review requests fetch skipped", error_type=type(e).__name__
+            )
 
         notifications: list[dict[str, Any]] = []
         try:
@@ -58,7 +60,9 @@ def register_github_custom_tools(composio: Composio) -> list[str]:
             raw = notif_data.get("notifications", notif_data)
             notifications = raw if isinstance(raw, list) else []
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} GitHub notifications fetch skipped: {e}")
+            log.debug(
+                f"{LogTag.TOOL} GitHub notifications fetch skipped", error_type=type(e).__name__
+            )
 
         return {
             "assigned_issues": actual_issues,

@@ -133,8 +133,9 @@ def wrap_tool_with_null_filter(
                         return await reconnect_and_retry(tool.name, filtered_kwargs)
                     except Exception as retry_err:
                         log.error(
-                            f"{LogTag.MCP} MCP tool '{tool.name}' reconnect-retry failed: "
-                            f"{type(retry_err).__name__}: {retry_err}"
+                            f"{LogTag.MCP} MCP tool reconnect-retry failed",
+                            tool_name=tool.name,
+                            error_type=type(retry_err).__name__,
                         )
                         # A 401 that survives a fresh token = server rejecting a valid
                         # token; surface it so the user can re-authenticate.

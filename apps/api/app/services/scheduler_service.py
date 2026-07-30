@@ -290,7 +290,11 @@ class BaseSchedulerService(ABC):
         )
 
         if not job:
-            log.warning(f"Task {task_id} already enqueued for {scheduled_at.isoformat()}; skipping")
+            log.warning(
+                "Task already enqueued; skipping",
+                task_id=task_id,
+                scheduled_at=scheduled_at.isoformat(),
+            )
             return False
 
         log.set(arq_job_id=job.job_id, arq_job_name=job_name)

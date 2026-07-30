@@ -364,8 +364,11 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                         elif "error" in data:
                             yield f"data: {json.dumps({'error': data['error']})}\n\n"
                             break
-                    except json.JSONDecodeError:
-                        log.warning(f"{LogTag.API} Bot stream: dropped a malformed SSE chunk")
+                    except json.JSONDecodeError as exc:
+                        log.warning(
+                            f"{LogTag.API} Bot stream: dropped a malformed SSE chunk",
+                            error_type=type(exc).__name__,
+                        )
                         continue
             except asyncio.CancelledError:
                 # Client disconnected mid-stream — expected, not an error. The

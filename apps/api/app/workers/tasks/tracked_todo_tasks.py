@@ -476,11 +476,11 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
     """
     async with wide_task("safety_net_check_orphaned_todos"):
         now = datetime.now(UTC)
-        log.info("tracked_todo.safety_net_scan_started")
 
         candidates = await todo_repository.find_due_tracked_all_users(
             now=now, max_retries=MAX_RETRY_ATTEMPTS, limit=100
         )
+        log.set(tracked_todo={"candidates": len(candidates)})
 
         pool = await RedisPoolManager.get_pool()
         re_enqueued = 0
@@ -500,15 +500,6 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
             run_at = now + timedelta(seconds=jitter_seconds)
             await pool.enqueue_job("execute_tracked_todo", todo_id, _defer_until=run_at)
             re_enqueued += 1
-            log.info(
-                "tracked_todo.safety_net_re_enqueued",
-                todo_id=todo_id,
-                run_at=run_at.isoformat(),
-            )
 
-        log.info(
-            "tracked_todo.safety_net_done",
-            re_enqueued=re_enqueued,
-            skipped=skipped,
-        )
+        log.set_ns("tracked_todo", re_enqueued=re_enqueued, skipped=skipped)
         return f"re_enqueued:{re_enqueued} skipped:{skipped}"

@@ -228,7 +228,10 @@ async def update_onboarding_phase(
         )
 
         if not user_id or not isinstance(user_id, str):
-            log.error(f"{LogTag.ONBOARDING} user_id is missing or not a string")
+            log.error(
+                f"{LogTag.ONBOARDING} user_id is missing or not a string",
+                user_id_type=type(user_id).__name__,
+            )
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
         matched = await user_repository.set_onboarding_phase(user_id, request.phase.value)

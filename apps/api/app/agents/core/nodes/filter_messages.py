@@ -67,5 +67,5 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
         return {**state, "messages": filtered_messages}  # type: ignore[return-value]
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error in filter messages node: {e}")
+        log.error(f"{LogTag.AGENT} Error in filter messages node", error_type=type(e).__name__)
         return state

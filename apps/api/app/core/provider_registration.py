@@ -148,7 +148,11 @@ def _spawn_background_services(
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 failed += 1
-                log.error(f"{LogTag.STARTUP} Background init failed ({service_names[i]}): {result}")
+                log.error(
+                    f"{LogTag.STARTUP} Background init failed",
+                    service_name=service_names[i],
+                    error_type=type(result).__name__,
+                )
 
         if failed:
             log.warning(
@@ -335,7 +339,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         )  # raise on required failures; degrade best-effort
 
         log.info(f"{LogTag.STARTUP} All services initialized successfully", context=context)
-        log.info(f"{LogTag.STARTUP} {context.title().replace('_', ' ')} startup complete")
+        log.info(f"{LogTag.STARTUP} Startup complete", context=context)
 
     except Exception as e:
         log.error(
@@ -407,7 +411,10 @@ async def unified_shutdown(context: Literal["main_app", "arq_worker"]) -> None:
         for i, result in enumerate(shutdown_results):
             if isinstance(result, Exception):
                 log.error(
-                    f"{LogTag.STARTUP} Error during {context} {shutdown_service_names[i]} shutdown: {result}"
+                    f"{LogTag.STARTUP} Error during service shutdown",
+                    context=context,
+                    service_name=shutdown_service_names[i],
+                    error_type=type(result).__name__,
                 )
 
         log.info(f"{LogTag.STARTUP} services shutdown completed", context=context)

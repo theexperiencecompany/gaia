@@ -197,8 +197,10 @@ def gmail_compose_before_hook(
             # If validation fails, return params immediately to skip streaming
             if not has_recipient or not has_content:
                 log.warning(
-                    f"{LogTag.COMPOSIO} Skipping streaming for {tool}: Missing required fields. "
-                    f"Has recipient: {has_recipient}, Has content: {has_content}"
+                    f"{LogTag.COMPOSIO} Skipping streaming: missing required fields",
+                    tool_name=tool,
+                    has_recipient=has_recipient,
+                    has_content=has_content,
                 )
                 return params
 

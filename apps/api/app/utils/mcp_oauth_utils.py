@@ -281,7 +281,10 @@ async def extract_auth_challenge(server_url: str) -> dict:
     except Exception as e:
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         log.warning(
-            f"{LogTag.MCP} Probe {server_url}: Error after {elapsed_ms:.0f}ms - {type(e).__name__}: {e}"
+            f"{LogTag.MCP} Probe failed",
+            server_url=server_url,
+            elapsed_ms=round(elapsed_ms),
+            error_type=type(e).__name__,
         )
         return {}
 
@@ -551,7 +554,7 @@ async def introspect_token(
 
             if response.status_code == 200:
                 result = response.json()
-                log.debug(f"{LogTag.MCP} Token introspection result: active={result.get('active')}")
+                log.debug(f"{LogTag.MCP} Token introspection result", active=result.get("active"))
                 return result
 
             log.warning(
@@ -686,8 +689,10 @@ def validate_jwt_issuer(
 
             if normalized_token != normalized_expected:
                 log.warning(
-                    f"{LogTag.MCP} JWT issuer mismatch for {integration_id}: "
-                    f"expected '{expected_issuer}', got '{token_issuer}'"
+                    f"{LogTag.MCP} JWT issuer mismatch",
+                    integration_id=integration_id,
+                    expected_issuer=expected_issuer,
+                    token_issuer=token_issuer,
                 )
                 return False
 
@@ -717,6 +722,8 @@ def select_authorization_server(servers: list[str]) -> str:
         return servers[0]
 
     log.info(
-        f"{LogTag.MCP} Multiple auth servers available ({len(servers)}), using first: {servers[0]}"
+        f"{LogTag.MCP} Multiple auth servers available, using first",
+        server_count=len(servers),
+        auth_server=servers[0],
     )
     return servers[0]

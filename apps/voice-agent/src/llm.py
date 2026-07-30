@@ -681,7 +681,8 @@ class _VoiceTurn:
                 self.first_tts_flush_ms = ms_since(self.turn_start)
         if label:
             log.debug(
-                f"{LogTag.LLM} {label}",
+                f"{LogTag.LLM} TTS text sanitized",
+                label=label,
                 phase="tts_flush" if label == "TTS FLUSH" else "tts_final",
                 text_before_sanitize=raw,
                 text_after_sanitize=out,

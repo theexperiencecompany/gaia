@@ -377,7 +377,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"{LogTag.TOOL} Error getting event {event_ref.event_id}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Error getting event",
+                    event_id=event_ref.event_id,
+                    error_type=type(e).__name__,
+                )
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
@@ -422,7 +426,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     }
                 )
             except AppError as e:
-                log.error(f"{LogTag.TOOL} Error deleting event {event_ref.event_id}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Error deleting event",
+                    event_id=event_ref.event_id,
+                    error_type=type(e).__name__,
+                )
                 errors.append(
                     {
                         "event_id": event_ref.event_id,

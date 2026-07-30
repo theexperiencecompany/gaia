@@ -167,8 +167,10 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
             except Exception as e:
                 failed_tools.append((tool.name, str(e)))
                 log.warning(
-                    f"{LogTag.MCP} [{integration_id}] Failed to convert tool '{tool.name}': "
-                    f"{type(e).__name__}: {e}"
+                    f"{LogTag.MCP} Failed to convert tool",
+                    integration_id=integration_id,
+                    tool_name=tool.name,
+                    error_type=type(e).__name__,
                 )
                 # Continue with other tools
 
