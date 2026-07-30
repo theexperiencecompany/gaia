@@ -524,19 +524,25 @@ jobs:
   observability:
     name: Observability score (evlog map)
     needs: [changes]
-    if: needs.changes.outputs.has_python == 'true'
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Full-repo observability score (posted to job summary)
+      # Node toolchain only for the bots scanner (TS compiler API needs
+      # node_modules); the Python scanner stays stdlib-only.
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Full observability score — API + voice-agent + bots (details in job summary)
         run: |
-          echo "::group::evlog map — full scan"
-          python3 tools/evlog_map --github-summary --no-write
+          echo "::group::evlog map — python surface (apps/api + apps/voice-agent)"
+          python3 tools/evlog_map --github-summary --no-write | head -4
           echo "::endgroup::"
-          echo "observability: full-repo score posted to the job summary"
+          echo "::group::evlog map — bots surface (apps/bots + libs/shared/ts)"
+          node scripts/ci/evlog-map-bots.mjs | head -4
+          echo "::endgroup::"
+          echo "observability: full scores above; per-entry detail in the job summary only"
       - name: Changed-files regression gate (per-file, score must not drop)
         if: github.event_name == 'pull_request'
         run: |
@@ -595,7 +601,26 @@ jobs:
           python3 tools/evlog_map --files-from /tmp/head-files.txt --no-write \
             --baseline /tmp/base-map.json --rename-map /tmp/renames.txt
           echo "::endgroup::"
-          echo "observability: OK (no per-file regression on changed files)"
+          echo "observability: OK (no per-file regression on changed Python files)"
+      - name: Bots regression gate (full surface, held at 100)
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          BOT_FILES=$(scripts/ci/changed-files.sh ts)
+          if [ -z "$BOT_FILES" ]; then
+            echo "observability-bots: OK (no changed TypeScript files)"
+            exit 0
+          fi
+          if [ "$BOT_FILES" != "__FULL__" ] && ! grep -qE '^(apps/bots/|libs/shared/ts/)' <<< "$BOT_FILES"; then
+            echo "observability-bots: OK (no bot-surface files changed)"
+            exit 0
+          fi
+          # The bots surface is small and already at 100 — hold it there
+          # outright rather than baselining per file.
+          echo "::group::evlog map — bots surface gate"
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          echo "::endgroup::"
+          echo "observability-bots: OK (surface held at 100)"
 
   # --- Dead code detection (knip + vulture) — enforced ---------------------
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
