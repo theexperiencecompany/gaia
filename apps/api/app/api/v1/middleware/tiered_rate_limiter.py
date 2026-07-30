@@ -229,7 +229,11 @@ class TieredRateLimiter:
         except Exception as e:
             # Log error but don't raise - this shouldn't break the main request
             log.error(
-                f"{LogTag.API} Real-time usage sync failed for user {user_id}, feature {feature_key}: {e!s}"
+                f"{LogTag.API} Real-time usage sync failed",
+                user_id=user_id,
+                feature_key=feature_key,
+                error_type=type(e).__name__,
+                error=str(e),
             )
 
     async def _collect_feature_usage(self, user_id: str, user_plan: PlanType) -> list[FeatureUsage]:

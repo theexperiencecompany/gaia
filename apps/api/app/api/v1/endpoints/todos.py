@@ -372,7 +372,13 @@ async def update_todo(
             try:
                 await tracked_todo_service.reschedule_execution(todo_id, updates.scheduled_at)
             except Exception as e:
-                log.warning(f"{LogTag.TODO} Failed to reschedule todo {todo_id} after update: {e}")
+                log.warning(
+                    f"{LogTag.TODO} Failed to reschedule todo after update",
+                    todo_id=todo_id,
+                    user_id=user["user_id"],
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
 
         return updated_todo
     except ValueError as e:

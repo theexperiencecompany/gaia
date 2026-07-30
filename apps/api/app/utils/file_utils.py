@@ -64,7 +64,13 @@ class DocumentProcessor:
             ext = os.path.splitext(filename)[1].lower()
             return f"File of type {ext} (no content extraction available)"
         except Exception as e:
-            log.error(f"{LogTag.TOOL} Failed to process file {filename}: {e!s}", exc_info=True)
+            log.error(
+                f"{LogTag.TOOL} Failed to process file",
+                filename=filename,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             return f"File processing failed for {filename}"
 
     async def process_image(self, image_data: bytes) -> str:
@@ -78,7 +84,9 @@ class DocumentProcessor:
         try:
             inline = await ImageCodec.from_bytes(image_data)
         except InvalidImage as e:
-            log.error(f"{LogTag.TOOL} Failed to process image: {e!s}")
+            log.error(
+                f"{LogTag.TOOL} Failed to process image", error=str(e), error_type=type(e).__name__
+            )
             return _IMAGE_SUMMARY_UNAVAILABLE
 
         description = await describe_image(
@@ -145,7 +153,12 @@ class DocumentProcessor:
             ]
 
         except Exception as e:
-            log.error(f"{LogTag.TOOL} Failed to process PDF: {e!s}", exc_info=True)
+            log.error(
+                f"{LogTag.TOOL} Failed to process PDF",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             return []
 
     async def process_text(self, text_data: bytes) -> DocumentSummaryModel:
@@ -166,7 +179,12 @@ class DocumentProcessor:
             )
 
         except Exception as e:
-            log.error(f"{LogTag.TOOL} Failed to process text: {e!s}", exc_info=True)
+            log.error(
+                f"{LogTag.TOOL} Failed to process text",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             raise e
 
     async def _generate_text_summary(self, text: str) -> str:
@@ -190,7 +208,12 @@ class DocumentProcessor:
             return response.text.strip()
 
         except Exception as e:
-            log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)
+            log.error(
+                f"{LogTag.TOOL} Failed to generate summary",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
             return "Summary could not be generated."
 
 

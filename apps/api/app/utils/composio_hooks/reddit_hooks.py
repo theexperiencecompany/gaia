@@ -50,7 +50,11 @@ def process_reddit_post(post_data: dict) -> dict:
             "stickied": data.get("stickied", False),
         }
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error processing Reddit post: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error processing Reddit post",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return {}
 
 
@@ -84,7 +88,11 @@ def process_reddit_search_results(response_data: dict) -> dict:
             "result_count": len(processed_posts),
         }
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error processing Reddit search results: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error processing Reddit search results",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response_data
 
 
@@ -117,7 +125,11 @@ def process_reddit_comment(comment_data: dict) -> dict:
             "edited": data.get("edited", False),
         }
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error processing Reddit comment: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error processing Reddit comment",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return {}
 
 
@@ -152,7 +164,11 @@ def reddit_content_before_hook(
 
             writer(payload)
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_content_before_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_content_before_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return params
 
@@ -169,7 +185,11 @@ def reddit_delete_before_hook(
             payload = {"progress": f"Deleting {content_type}..."}
             writer(payload)
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_delete_before_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_delete_before_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return params
 
@@ -191,7 +211,11 @@ def reddit_retrieve_before_hook(
 
             writer(payload)
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_retrieve_before_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_retrieve_before_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return params
 
@@ -245,7 +269,11 @@ def reddit_search_after_hook(tool: str, toolkit: str, response: ToolExecutionRes
         return processed_response
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_search_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_search_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
@@ -294,7 +322,11 @@ def reddit_post_detail_after_hook(tool: str, toolkit: str, response: ToolExecuti
         return processed_post
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_post_detail_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_post_detail_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
@@ -360,7 +392,11 @@ def reddit_comments_after_hook(tool: str, toolkit: str, response: ToolExecutionR
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_comments_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_comments_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})
 
 
@@ -420,5 +456,9 @@ def reddit_content_created_after_hook(
         }
 
     except Exception as e:
-        log.error(f"{LogTag.COMPOSIO} Error in reddit_content_created_after_hook: {e}")
+        log.error(
+            f"{LogTag.COMPOSIO} Error in reddit_content_created_after_hook",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return response.get("data", {})

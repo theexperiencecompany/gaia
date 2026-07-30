@@ -42,17 +42,32 @@ async def cleanup_integration_chroma_data(
         if store:
             await store.adelete(namespace=("subagents",), key=integration_id)
             results["subagent"] = True
-            log.debug(f"{LogTag.CHROMA} Deleted subagent entry for {integration_id}")
+            log.debug(f"{LogTag.CHROMA} Deleted subagent entry for", integration_id=integration_id)
     except Exception as e:
-        log.warning(f"{LogTag.CHROMA} Failed to delete subagent entry for {integration_id}: {e}")
+        log.warning(
+            f"{LogTag.CHROMA} Failed to delete subagent entry for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     # 2. Delete indexed tools
     try:
         deleted_count = await delete_tools_by_namespace(namespace)
         results["tools"] = True
-        log.info(f"{LogTag.CHROMA} Deleted {deleted_count} tools for namespace '{namespace}'")
+        log.info(
+            f"{LogTag.CHROMA} Deleted tools for namespace",
+            deleted_count=deleted_count,
+            namespace=namespace,
+        )
     except Exception as e:
-        log.warning(f"{LogTag.CHROMA} Failed to delete tools for namespace '{namespace}': {e}")
+        log.warning(
+            f"{LogTag.CHROMA} Failed to delete tools for namespace",
+            namespace=namespace,
+            error=str(e),
+            error_type=type(e).__name__,
+            integration_id=integration_id,
+        )
 
     # 3. Invalidate caches: namespace hash + the per-integration name caches
     # (subagent_info and handoff_name both embed the display name).
@@ -62,6 +77,12 @@ async def cleanup_integration_chroma_data(
         await delete_cache(f"{HANDOFF_NAME_CACHE_PREFIX}:{integration_id}")
         results["cache"] = True
     except Exception as e:
-        log.warning(f"{LogTag.CHROMA} Failed to invalidate cache for namespace '{namespace}': {e}")
+        log.warning(
+            f"{LogTag.CHROMA} Failed to invalidate cache for namespace",
+            namespace=namespace,
+            error=str(e),
+            error_type=type(e).__name__,
+            integration_id=integration_id,
+        )
 
     return results

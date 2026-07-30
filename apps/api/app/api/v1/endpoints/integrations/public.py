@@ -102,7 +102,12 @@ async def get_public_integration(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching public integration {identifier}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching public integration",
+            identifier=identifier,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
 
 
@@ -136,7 +141,9 @@ async def add_public_integration(
                     message="Integration already connected",
                 )
             log.info(
-                f"{LogTag.INTEGRATION} User {user_id} re-attempting connection to {integration_id}"
+                f"{LogTag.INTEGRATION} User re-attempting integration connection",
+                user_id=user_id,
+                integration_id=integration_id,
             )
         else:
             try:
@@ -154,7 +161,11 @@ async def add_public_integration(
 
             await integration_repository.increment_clone_count(integration_id)
 
-            log.info(f"{LogTag.INTEGRATION} User {user_id} added integration {integration_id}")
+            log.info(
+                f"{LogTag.INTEGRATION} User added integration",
+                user_id=user_id,
+                integration_id=integration_id,
+            )
 
         mcp_config = original.mcp_config
         server_url = mcp_config.server_url if mcp_config else None
@@ -197,7 +208,13 @@ async def add_public_integration(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error adding integration {integration_id}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error adding integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -254,7 +271,11 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
         return SearchIntegrationsResponse(integrations=formatted, query=q)
 
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error searching integrations: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error searching integrations",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to search integrations")
 
 
@@ -315,5 +336,10 @@ async def get_related_workflows(
         return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching related workflows for {identifier}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching related workflows",
+            identifier=identifier,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch related workflows")

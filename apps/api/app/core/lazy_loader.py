@@ -105,7 +105,8 @@ class LazyLoader(Generic[T]):
                     # For async functions, we can't auto-initialize during __init__
                     # Log a message and defer initialization to first get() call
                     log.info(
-                        f"{LogTag.STARTUP} Async provider '{self.provider_name}' will be auto-initialized on first access"
+                        f"{LogTag.STARTUP} Async provider will be auto-initialized on first access",
+                        provider_name=self.provider_name,
                     )
                 else:
                     self._initialize_sync()
@@ -115,13 +116,17 @@ class LazyLoader(Generic[T]):
                     # "Auto-initialized" here too would report a broken provider as up.
                     if self.is_initialized():
                         log.info(
-                            f"{LogTag.STARTUP} Auto-initialized provider '{self.provider_name}' at registration time"
+                            f"{LogTag.STARTUP} Auto-initialized provider at registration time",
+                            provider_name=self.provider_name,
                         )
             except Exception as e:
                 if self.strategy == MissingKeyStrategy.ERROR:
                     raise
                 log.warning(
-                    f"{LogTag.STARTUP} Auto-initialization failed for '{self.provider_name}': {e}"
+                    f"{LogTag.STARTUP} Auto-initialization failed for",
+                    provider_name=self.provider_name,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
     def _check_availability_and_warn(self):
@@ -235,7 +240,8 @@ class LazyLoader(Generic[T]):
                 self.loader_func()
                 self._is_configured = True
                 log.info(
-                    f"{LogTag.STARTUP} Successfully configured global provider: {self.provider_name}"
+                    f"{LogTag.STARTUP} Successfully configured global provider",
+                    provider_name=self.provider_name,
                 )
                 return True  # type: ignore[return-value]
             # For instance-based providers, store and return the instance
@@ -245,7 +251,10 @@ class LazyLoader(Generic[T]):
                     f"Sync initialization called on async loader function for '{self.provider_name}'"
                 )
             self._instance = cast(T, result)
-            log.info(f"{LogTag.STARTUP} Successfully initialized provider: {self.provider_name}")
+            log.info(
+                f"{LogTag.STARTUP} Successfully initialized provider",
+                provider_name=self.provider_name,
+            )
             return self._instance
 
         except Exception as e:
@@ -287,7 +296,8 @@ class LazyLoader(Generic[T]):
                         )
                 self._is_configured = True
                 log.info(
-                    f"{LogTag.STARTUP} Successfully configured global provider: {self.provider_name}"
+                    f"{LogTag.STARTUP} Successfully configured global provider",
+                    provider_name=self.provider_name,
                 )
                 return True  # type: ignore[return-value]
             # For instance-based providers, store and return the instance
@@ -306,7 +316,10 @@ class LazyLoader(Generic[T]):
                         f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
                     )
                 self._instance = cast(T, result)
-            log.info(f"{LogTag.STARTUP} Successfully initialized provider: {self.provider_name}")
+            log.info(
+                f"{LogTag.STARTUP} Successfully initialized provider",
+                provider_name=self.provider_name,
+            )
             return self._instance
 
         except Exception as e:
@@ -357,7 +370,7 @@ class LazyLoader(Generic[T]):
 
     def _log_warning(self, message: str):
         """Log warning message."""
-        log.warning(f"{LogTag.STARTUP} [LazyLoader] {message}")
+        log.warning(f"{LogTag.STARTUP} [LazyLoader]", message=message)
 
     def is_available(self) -> bool:
         """Check if the provider is available without initializing it."""
@@ -451,7 +464,7 @@ class ProviderRegistry:
         """Register a new provider."""
         with self._lock:
             if name in self._providers:
-                log.warning(f"{LogTag.STARTUP} Provider '{name}' is being re-registered")
+                log.warning(f"{LogTag.STARTUP} Provider is being re-registered", name=name)
 
             provider = LazyLoader(
                 loader_func=loader_func,
@@ -508,7 +521,7 @@ class ProviderRegistry:
                     # aget returns None (no raise) for a WARN/SILENT provider that is
                     # unavailable or whose loader failed — don't log success for those.
                     if provider is not None and provider.is_initialized():
-                        log.info(f"{LogTag.STARTUP} Auto-initialized provider '{name}'")
+                        log.info(f"{LogTag.STARTUP} Auto-initialized provider", name=name)
                 except asyncio.CancelledError:
                     # Propagate cancellation so shutdown can stop warmup promptly.
                     raise
@@ -517,10 +530,18 @@ class ProviderRegistry:
                     provider = self._providers.get(name)
                     provider_strategy = provider.strategy if provider else MissingKeyStrategy.WARN
                     if provider_strategy == MissingKeyStrategy.ERROR:
-                        log.error(f"{LogTag.STARTUP} Auto-initialization failed for '{name}': {e}")
+                        log.error(
+                            f"{LogTag.STARTUP} Auto-initialization failed for",
+                            name=name,
+                            error=str(e),
+                            error_type=type(e).__name__,
+                        )
                     else:
                         log.warning(
-                            f"{LogTag.STARTUP} Auto-initialization failed for '{name}': {e}"
+                            f"{LogTag.STARTUP} Auto-initialization failed for",
+                            name=name,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
 
         with self._lock:
@@ -529,7 +550,9 @@ class ProviderRegistry:
             return
 
         await asyncio.gather(*[_init_provider(name) for name in names])
-        log.info(f"{LogTag.STARTUP} Completed auto-initialization for {len(names)} providers")
+        log.info(
+            f"{LogTag.STARTUP} Completed auto-initialization for providers", names_count=len(names)
+        )
 
         if strict and errors:
             failed = ", ".join(name for name, _ in errors)
@@ -583,7 +606,12 @@ class ProviderRegistry:
                     raise
                 except Exception as e:
                     errors.append((name, e))
-                    log.error(f"{LogTag.STARTUP} Provider warmup failed for '{name}': {e}")
+                    log.error(
+                        f"{LogTag.STARTUP} Provider warmup failed for",
+                        name=name,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
 
         if not warmup_names:
             if strict and errors:
@@ -595,13 +623,15 @@ class ProviderRegistry:
 
         if errors:
             log.warning(
-                f"{LogTag.STARTUP} Provider warmup completed with {len(errors)} errors "
-                f"({skipped_unavailable} unavailable providers skipped)"
+                f"{LogTag.STARTUP} Provider warmup completed with errors ( unavailable providers skipped)",
+                errors_count=len(errors),
+                skipped_unavailable=skipped_unavailable,
             )
         else:
             log.info(
-                f"{LogTag.STARTUP} Provider warmup completed for {len(warmup_names)} providers "
-                f"({skipped_unavailable} unavailable providers skipped)"
+                f"{LogTag.STARTUP} Provider warmup completed for providers ( unavailable providers skipped)",
+                warmup_names_count=len(warmup_names),
+                skipped_unavailable=skipped_unavailable,
             )
 
         if strict and errors:

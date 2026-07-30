@@ -47,9 +47,15 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
             document_id=note_id,
             document=Document(page_content=note.plaintext),
         )
-        log.info(f"Note with id {note_id} updated in ChromaDB")
+        log.info("Note with id updated in ChromaDB", note_id=note_id)
     except Exception as e:
-        log.error(f"Failed to update note in ChromaDB: {e!s}")
+        log.error(
+            "Failed to update note in ChromaDB",
+            error=str(e),
+            error_type=type(e).__name__,
+            note_id=note_id,
+            user_id=user_id,
+        )
 
     return NoteResponse.model_validate(updated.model_dump())
 
@@ -66,9 +72,15 @@ async def delete_note(note_id: str, user_id: str) -> None:
     try:
         chroma_notes_collection = await ChromaClient.get_langchain_client(collection_name="notes")
         await chroma_notes_collection.adelete(ids=[note_id])
-        log.info(f"Note with id {note_id} deleted from ChromaDB")
+        log.info("Note with id deleted from ChromaDB", note_id=note_id)
     except Exception as e:
-        log.error(f"Failed to delete note from ChromaDB: {e!s}")
+        log.error(
+            "Failed to delete note from ChromaDB",
+            error=str(e),
+            error_type=type(e).__name__,
+            note_id=note_id,
+            user_id=user_id,
+        )
 
 
 async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
@@ -76,5 +88,7 @@ async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
     try:
         return await insert_note(note, user_id)
     except Exception as e:
-        log.error(f"Failed to create note: {e!s}")
+        log.error(
+            "Failed to create note", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
         raise HTTPException(status_code=500, detail="Failed to create note")

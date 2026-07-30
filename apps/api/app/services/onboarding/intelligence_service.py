@@ -122,11 +122,17 @@ async def _emit_stage(
         )
         status_text = (payload or {}).get("status_text")
         if status_text:
-            log.info(f"{LogTag.ONBOARDING} stage {stage.value} — {status_text}")
+            log.info(f"{LogTag.ONBOARDING} stage", stage=stage.value, status_text=status_text)
         else:
-            log.info(f"{LogTag.ONBOARDING} stage {stage.value}")
+            log.info(f"{LogTag.ONBOARDING} stage", stage=stage.value)
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} Failed to emit stage {stage.value}: {e}")
+        log.warning(
+            f"{LogTag.ONBOARDING} Failed to emit stage",
+            stage=stage.value,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 T = TypeVar("T")
@@ -136,7 +142,13 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
     try:
         return await coro
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Node '{name}' failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Node failed",
+            name=name,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return default
 
 
@@ -1169,7 +1181,13 @@ async def _persist_social_profiles(user_id: str, social_profiles: list[SocialPro
             user_id, [p.model_dump() for p in social_profiles]
         )
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} persist social_profiles failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} persist social_profiles failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            exc_info=True,
+        )
 
 
 async def _persist_profiles(
@@ -1208,7 +1226,13 @@ async def _persist_profiles(
                 triage_summary=triage_summary,
             )
         except Exception as e:
-            log.error(f"{LogTag.ONBOARDING} persist update_fields failed: {e}", exc_info=True)
+            log.error(
+                f"{LogTag.ONBOARDING} persist update_fields failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                exc_info=True,
+            )
 
     log.info(
         f"{LogTag.ONBOARDING} persist_profiles done",
@@ -1235,7 +1259,12 @@ def _triage_from_doc(raw: object) -> InboxTriage | None:
             ],
         )
     except (TypeError, ValueError) as e:
-        log.error(f"{LogTag.ONBOARDING} triage reconstruction failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} triage reconstruction failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return None
 
 
@@ -1254,7 +1283,12 @@ def _writing_style_from_doc(raw: object) -> WritingStyleProfile | None:
             user_edited_summary=raw.get("user_edited_summary"),
         )
     except ValidationError as e:
-        log.error(f"{LogTag.ONBOARDING} writing_style reconstruction failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} writing_style reconstruction failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return None
 
 
@@ -1325,8 +1359,8 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     if prior_workflow_ids:
         deleted = await workflow_repository.delete_many_for_user(prior_workflow_ids, user_id)
         log.info(
-            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted} "
-            f"stale suggested workflows before regenerating",
+            f"{LogTag.ONBOARDING} workflows phase retry — purged stale suggested workflows before regenerating",
+            deleted=deleted,
             user_id=user_id,
         )
 
@@ -1506,7 +1540,11 @@ async def _create_todos_from_triage(
                     )
                 return todo_dict
             except Exception as e:
-                log.warning(f"{LogTag.ONBOARDING} Failed to create todo: {e}")
+                log.warning(
+                    f"{LogTag.ONBOARDING} Failed to create todo",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 return None
 
         t_create = time.monotonic()
@@ -1883,5 +1921,10 @@ async def _create_fallback_workflow(
             }
         ]
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} Fallback workflow creation failed: {e}")
+        log.warning(
+            f"{LogTag.ONBOARDING} Fallback workflow creation failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return []

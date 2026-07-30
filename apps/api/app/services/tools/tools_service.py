@@ -105,7 +105,7 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
         locked = requires_integration and cat_id not in connected
         for tool in category_obj.tools:
             if tool.name in seen_tool_names:
-                log.debug(f"{LogTag.TOOL} Skipping duplicate tool from registry: {tool.name}")
+                log.debug(f"{LogTag.TOOL} Skipping duplicate tool from registry", name=tool.name)
                 continue
             seen_tool_names.add(tool.name)
             tool_infos.append(
@@ -127,7 +127,12 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
     try:
         global_mcp_tools: dict[str, dict[str, Any]] = await get_all_mcp_tools()
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Failed to fetch MCP tools: {e}")
+        log.warning(
+            f"{LogTag.TOOL} Failed to fetch MCP tools",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         global_mcp_tools = {}
 
     for integration_id, data in global_mcp_tools.items():
@@ -145,12 +150,16 @@ async def _build_tools_response(user_id: str | None = None) -> ToolsListResponse
             tool_name = tool_dict.get("name")
             if not tool_name:
                 log.warning(
-                    f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP {integration_id}"
+                    f"{LogTag.TOOL} Skipping tool with missing 'name' from custom MCP",
+                    integration_id=integration_id,
+                    user_id=user_id,
                 )
                 continue
             if tool_name in seen_tool_names:
                 log.debug(
-                    f"{LogTag.TOOL} Skipping duplicate tool from custom MCP {integration_id}: {tool_name}"
+                    f"{LogTag.TOOL} Skipping duplicate tool from custom MCP",
+                    integration_id=integration_id,
+                    tool_name=tool_name,
                 )
                 continue
             seen_tool_names.add(tool_name)

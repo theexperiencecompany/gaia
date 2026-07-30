@@ -157,7 +157,7 @@ class WorkflowGenerationService:
         Raises:
             RuntimeError: If generation fails after all retry attempts.
         """
-        log.info(f"{LogTag.WORKFLOW} ========== START: {title} ==========")
+        log.info(f"{LogTag.WORKFLOW} ========== START", title=title)
 
         log.info(f"{LogTag.WORKFLOW} Getting tool registry...")
         tool_registry = await get_tool_registry()
@@ -241,7 +241,10 @@ class WorkflowGenerationService:
                 # Custom integrations are an enrichment for generation; degrade to
                 # the built-in catalog rather than failing the whole generation.
                 log.warning(
-                    f"{LogTag.WORKFLOW} Could not load custom integrations for user {user_id}: {e}"
+                    f"{LogTag.WORKFLOW} Could not load custom integrations for user",
+                    user_id=user_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
         log.info(
@@ -297,7 +300,9 @@ class WorkflowGenerationService:
         last_error: Exception | None = None
         for attempt in range(_MAX_GENERATION_ATTEMPTS):
             if attempt > 0:
-                log.info(f"{LogTag.WORKFLOW} Regeneration attempt {attempt} for: {title}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Regeneration attempt for", attempt=attempt, title=title
+                )
 
             try:
                 result = await ainvoke_structured(
@@ -315,7 +320,9 @@ class WorkflowGenerationService:
 
             if result and result.steps:
                 steps_data = enrich_steps(result.steps)
-                log.info(f"{LogTag.WORKFLOW} ========== DONE: {len(steps_data)} steps ==========")
+                log.info(
+                    f"{LogTag.WORKFLOW} ========== DONE: steps", steps_data_count=len(steps_data)
+                )
                 return steps_data
 
             last_error = ValueError(
@@ -328,8 +335,10 @@ class WorkflowGenerationService:
             )
 
         log.error(
-            f"{LogTag.WORKFLOW} ========== FAILED after {_MAX_GENERATION_ATTEMPTS} "
-            f"attempts: {last_error} =========="
+            f"{LogTag.WORKFLOW} ========== FAILED after attempts",
+            _max_generation_attempts=_MAX_GENERATION_ATTEMPTS,
+            last_error=last_error,
+            user_id=user_id,
         )
         raise RuntimeError(
             f"Workflow step generation failed for '{title}' "

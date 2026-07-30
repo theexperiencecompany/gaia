@@ -55,7 +55,9 @@ async def create_execution(
         }
     )
     log.info(
-        f"{LogTag.WORKFLOW} Created execution {execution.execution_id} for workflow {workflow_id}"
+        f"{LogTag.WORKFLOW} Created execution for workflow",
+        execution_id=execution.execution_id,
+        workflow_id=workflow_id,
     )
 
     return execution
@@ -89,7 +91,11 @@ async def complete_execution(
         conversation_id=conversation_id,
     )
     if updated is None:
-        log.warning(f"{LogTag.WORKFLOW} Execution {execution_id} not found for completion")
+        log.warning(
+            f"{LogTag.WORKFLOW} Execution not found for completion",
+            execution_id=execution_id,
+            conversation_id=conversation_id,
+        )
         return False
 
     duration_seconds = updated.duration_seconds
@@ -103,7 +109,10 @@ async def complete_execution(
         }
     )
     log.info(
-        f"{LogTag.WORKFLOW} Completed execution {execution_id} with status {status}, duration {duration_seconds}s"
+        f"{LogTag.WORKFLOW} Completed execution with status , duration s",
+        execution_id=execution_id,
+        status=status,
+        duration_seconds=duration_seconds,
     )
 
     return True

@@ -91,7 +91,11 @@ class ReminderScheduler(BaseSchedulerService):
         # Schedule the task using base scheduler
         await self.schedule_task(reminder_id, schedule_config)
 
-        log.info(f"Created and scheduled reminder {reminder_id} for {created.scheduled_at}")
+        log.info(
+            "Created and scheduled reminder for",
+            reminder_id=reminder_id,
+            scheduled_at=created.scheduled_at,
+        )
         return reminder_id
 
     async def update_reminder(self, reminder_id: str, update_data: dict, user_id: str) -> bool:
@@ -110,7 +114,7 @@ class ReminderScheduler(BaseSchedulerService):
         if updated is None:
             return False
 
-        log.info(f"Updated reminder {reminder_id}")
+        log.info("Updated reminder", reminder_id=reminder_id)
 
         # If scheduled_at was updated, reschedule the task
         if "scheduled_at" in update_data and "status" in update_data:

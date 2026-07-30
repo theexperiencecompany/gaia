@@ -76,7 +76,12 @@ async def upload_file_endpoint(
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).
         raise
     except Exception as e:
-        log.error(f"Error uploading file: {e!s}")
+        log.error(
+            "Error uploading file",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload file",
@@ -104,7 +109,13 @@ async def update_file_endpoint(
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
         return result
     except Exception as e:
-        log.error(f"Error updating file {file_id}: {e!s}")
+        log.error(
+            "Error updating file",
+            file_id=file_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update file",
@@ -131,7 +142,13 @@ async def delete_file_endpoint(
         )
         return result
     except Exception as e:
-        log.error(f"Error deleting file {file_id}: {e!s}")
+        log.error(
+            "Error deleting file",
+            file_id=file_id,
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file",

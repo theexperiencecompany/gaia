@@ -63,7 +63,9 @@ class ApiCallActionHandler(ActionHandler):
 
         if api_config is None:
             log.error(
-                f"{LogTag.NOTIFICATION} API call configuration missing for action {action.id} in notification {notification.id}"
+                f"{LogTag.NOTIFICATION} API call configuration missing for action in notification",
+                id=action.id,
+                user_id=user_id,
             )
             return ActionResult(
                 success=False,
@@ -122,7 +124,11 @@ class ApiCallActionHandler(ActionHandler):
 
         except httpx.HTTPError as e:
             log.error(
-                f"{LogTag.NOTIFICATION} API call failed for action {action.id} in notification {notification.id}: {e!s}"
+                f"{LogTag.NOTIFICATION} API call failed for action in notification",
+                id=action.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
             )
             return ActionResult(
                 success=False,
@@ -131,7 +137,11 @@ class ApiCallActionHandler(ActionHandler):
             )
         except Exception as e:
             log.error(
-                f"{LogTag.NOTIFICATION} Unexpected error during API call for action {action.id} in notification {notification.id}: {e!s}"
+                f"{LogTag.NOTIFICATION} Unexpected error during API call for action in notification",
+                id=action.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
             )
             return ActionResult(
                 success=False,
@@ -161,7 +171,9 @@ class RedirectActionHandler(ActionHandler):
 
         if redirect_config is None:
             log.error(
-                f"{LogTag.NOTIFICATION} Redirect configuration missing for action {action.id} in notification {notification.id}"
+                f"{LogTag.NOTIFICATION} Redirect configuration missing for action in notification",
+                id=action.id,
+                user_id=user_id,
             )
             return ActionResult(
                 success=False,
@@ -203,7 +215,9 @@ class ModalActionHandler(ActionHandler):
 
         if modal_config is None:
             log.error(
-                f"{LogTag.NOTIFICATION} Modal configuration missing for action {action.id} in notification {notification.id}"
+                f"{LogTag.NOTIFICATION} Modal configuration missing for action in notification",
+                id=action.id,
+                user_id=user_id,
             )
             return ActionResult(
                 success=False,

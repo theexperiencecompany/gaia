@@ -82,11 +82,16 @@ class TriggerService:
                     safe_to_delete.append(trigger_id)
                 else:
                     log.debug(
-                        f"{LogTag.WORKFLOW} Trigger {trigger_id} still referenced by {count} other workflow(s), skipping deletion"
+                        f"{LogTag.WORKFLOW} Trigger still referenced by other workflow(s), skipping deletion",
+                        trigger_id=trigger_id,
+                        count=count,
                     )
             except Exception as e:
                 log.error(
-                    f"{LogTag.WORKFLOW} Error checking trigger references for {trigger_id}: {e}"
+                    f"{LogTag.WORKFLOW} Error checking trigger references for",
+                    trigger_id=trigger_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
                 # Don't delete if we can't verify - safer to leave orphaned triggers
                 continue
@@ -121,7 +126,13 @@ class TriggerService:
             return trigger_ids
         except TypeError as e:
             # Re-raise TypeError for type validation failures
-            log.error(f"{LogTag.WORKFLOW} Type validation error registering triggers: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Type validation error registering triggers",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                workflow_id=workflow_id,
+            )
             raise
         except TriggerRegistrationError:
             # Re-raise our custom exception
@@ -153,7 +164,12 @@ class TriggerService:
 
         handler = get_handler_by_name(trigger_name)
         if not handler:
-            log.error(f"{LogTag.WORKFLOW} No handler found for trigger: {trigger_name}")
+            log.error(
+                f"{LogTag.WORKFLOW} No handler found for trigger",
+                trigger_name=trigger_name,
+                user_id=user_id,
+                workflow_id=workflow_id,
+            )
             return False
 
         try:
@@ -164,20 +180,27 @@ class TriggerService:
 
             if not safe_to_delete:
                 log.info(
-                    f"{LogTag.WORKFLOW} No triggers safe to delete - all {len(trigger_ids)} trigger(s) "
-                    "are still referenced by other workflows"
+                    f"{LogTag.WORKFLOW} No triggers safe to delete - all trigger(s) are still referenced by other workflows",
+                    trigger_ids_count=len(trigger_ids),
                 )
                 return True
 
             if len(safe_to_delete) < len(trigger_ids):
                 log.info(
-                    f"{LogTag.WORKFLOW} Only {len(safe_to_delete)} of {len(trigger_ids)} triggers "
-                    "are safe to delete (others still referenced)"
+                    f"{LogTag.WORKFLOW} Only of triggers are safe to delete (others still referenced)",
+                    safe_to_delete_count=len(safe_to_delete),
+                    trigger_ids_count=len(trigger_ids),
                 )
 
             return await handler.unregister(user_id, safe_to_delete)
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error unregistering triggers: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error unregistering triggers",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                workflow_id=workflow_id,
+            )
             return False
 
     @staticmethod
@@ -207,8 +230,12 @@ class TriggerService:
                 )
             except Exception as e:
                 log.error(
-                    f"{LogTag.WORKFLOW} Trigger resync failed for workflow {workflow_id} "
-                    f"({tc.trigger_name}): {e}"
+                    f"{LogTag.WORKFLOW} Trigger resync failed for workflow",
+                    workflow_id=workflow_id,
+                    trigger_name=tc.trigger_name,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
                 )
                 continue
             # Account-level triggers (e.g. gmail_new_message) return no ids — nothing to repoint.
@@ -221,6 +248,9 @@ class TriggerService:
                     user_id, tc.trigger_name, stale_ids, workflow_id
                 )
             log.info(
-                f"{LogTag.WORKFLOW} Resynced triggers for workflow {workflow_id} "
-                f"({tc.trigger_name}): {old_ids} -> {new_ids}"
+                f"{LogTag.WORKFLOW} Resynced triggers for workflow",
+                workflow_id=workflow_id,
+                trigger_name=tc.trigger_name,
+                old_ids=old_ids,
+                new_ids=new_ids,
             )

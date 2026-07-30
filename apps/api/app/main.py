@@ -22,5 +22,6 @@ app: FastAPI = create_app()  # type: ignore[assignment, no-redef]
 init_sentry()
 
 log.info(
-    f"{LogTag.STARTUP} Application setup completed in {(time.time() - app_creation_start):.3f}s"
+    f"{LogTag.STARTUP} Application setup completed",
+    duration_s=round(time.time() - app_creation_start, 3),
 )

@@ -55,7 +55,7 @@ class GmailTriggerHandler(TriggerHandler):
                 f"but got {type(trigger_data).__name__}"
             )
 
-        log.info(f"{LogTag.TRIGGER} Gmail trigger enabled for workflow {workflow_id}")
+        log.info(f"{LogTag.TRIGGER} Gmail trigger enabled for workflow", workflow_id=workflow_id)
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
@@ -74,7 +74,11 @@ class GmailTriggerHandler(TriggerHandler):
             try:
                 GmailNewMessagePayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Gmail payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Gmail payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             user_id = data.get("user_id")
             if not user_id and not trigger_id:
@@ -107,7 +111,12 @@ class GmailTriggerHandler(TriggerHandler):
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding Gmail workflows: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding Gmail workflows",
+                error=str(e),
+                error_type=type(e).__name__,
+                trigger_id=trigger_id,
+            )
             return []
 
 

@@ -55,7 +55,12 @@ async def search_messages_endpoint(query: str, user: dict = Depends(get_current_
         log.set_ns("search", result_count=result_count)
         return results
     except Exception as e:
-        log.error(f"Error searching messages: {e!s}")
+        log.error(
+            "Error searching messages",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Search failed",

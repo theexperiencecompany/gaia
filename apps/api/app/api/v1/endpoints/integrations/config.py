@@ -98,7 +98,13 @@ async def disconnect_integration_endpoint(
         # For "no active connected account" or other cases, return 400
         raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error disconnecting {integration_id}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error disconnecting integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to disconnect integration")
 
 
@@ -203,7 +209,13 @@ async def connect_integration_endpoint(
             error=f"Unsupported integration type: {resolved.managed_by}",
         )
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Failed to connect {integration_id}: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Failed to connect integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         log.set(integration={"id": integration_id, "status": "error"})
         return ConnectIntegrationResponse(
             status="error",

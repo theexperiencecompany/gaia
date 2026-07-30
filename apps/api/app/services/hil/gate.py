@@ -112,7 +112,12 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
     except GraphBubbleUp:
         raise
     except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
-        log.error(f"{LogTag.HIL} Gate check failed for {call.name}; denying: {e}")
+        log.error(
+            f"{LogTag.HIL} Gate check failed for ; denying",
+            name=call.name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return _gate_error_message(call)
 
     if policy == "allow":
@@ -121,7 +126,7 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
         # The call is gated and HIL is on, but this run (background subagent, workflow,
         # scheduled task) has no live client to approve it. Fail closed: refuse rather
         # than run it unapproved or stall on an interrupt nothing can resume.
-        log.info(f"{LogTag.HIL} Denying gated {call.name}: run cannot pause for approval")
+        log.info(f"{LogTag.HIL} Denying gated : run cannot pause for approval", name=call.name)
         return _unpausable_denial_message(call)
     return await _gate(request, handler, context, policy, call)
 
@@ -173,7 +178,7 @@ async def _gate(
         # retries) — auto-deny with their original feedback instead.
         declined = await recall_declined_call(context.stream_id, call.name, call.args)
         if declined is not None:
-            log.info(f"{LogTag.HIL} auto-denying {call.name}: declined earlier this turn")
+            log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
             return _refusal_message(call, declined)
 
         # A replay of a call auto mode already RAN. It must neither run again (the action
@@ -184,7 +189,7 @@ async def _gate(
         # mode out of a replayable node in the first place; this is the backstop.
         record = await get_approval(approval_id)
         if record is not None and record.status == "auto_approved":
-            log.info(f"{LogTag.HIL} {call.name} already ran under auto mode; not repeating")
+            log.info(f"{LogTag.HIL} already ran under auto mode; not repeating", name=call.name)
             return _already_ran_message(call)
 
         integration_name = await _integration_name_for(call.name)
@@ -221,13 +226,18 @@ async def _gate(
     except GraphBubbleUp:
         raise
     except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
-        log.error(f"{LogTag.HIL} Could not publish approval for {call.name}; denying: {e}")
+        log.error(
+            f"{LogTag.HIL} Could not publish approval for ; denying",
+            name=call.name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return _gate_error_message(call)
 
     # Outside the fail-closed try, so a tool's own failure surfaces as a tool error
     # rather than a spurious gate denial.
     if decision is not None and decision.aligned:
-        log.info(f"{LogTag.HIL} auto-approved {call.name}: {decision.reason}")
+        log.info(f"{LogTag.HIL} auto-approved", name=call.name, reason=decision.reason)
         return await handler(request)
 
     # The run checkpoints and EXITS here. Everything below executes only once a decision
@@ -244,7 +254,7 @@ async def _gate(
             }
         )
     )
-    log.info(f"{LogTag.HIL} HIL decision for {call.name}: {outcome.status}")
+    log.info(f"{LogTag.HIL} HIL decision for", name=call.name, status=outcome.status)
     await publish_approval_outcome(
         stream_id=context.stream_id,
         approval_id=approval_id,
@@ -289,7 +299,7 @@ async def _judge(
     if record is not None:
         return None
     if await has_pausing_sibling(request, context.user_id, call.id):
-        log.info(f"{LogTag.HIL} not auto-approving {call.name}: a sibling call may pause")
+        log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
         return None
     return await judge_intent(
         user_messages=context.user_messages,

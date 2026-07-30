@@ -46,12 +46,18 @@ async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent)
         )
     except TimeoutError:
         log.error(
-            f"{LogTag.COMPOSIO} Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
-            f"for {event_data.type}"
+            f"{LogTag.COMPOSIO} Webhook background processing timed out",
+            timeout_s=_WEBHOOK_TASK_TIMEOUT,
+            event_type=event_data.type,
+            user_id=event_data.user_id,
         )
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} Webhook background processing failed for {event_data.type}: {e}"
+            f"{LogTag.COMPOSIO} Webhook background processing failed",
+            event_type=event_data.type,
+            user_id=event_data.user_id,
+            error_type=type(e).__name__,
+            error=str(e),
         )
 
 
@@ -71,7 +77,7 @@ async def webhook_composio(request: Request) -> dict[str, str]:
             f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600
         )
         if already_processed:
-            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored: {webhook_id}")
+            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored", webhook_id=webhook_id)
             return {"status": "success", "message": "Duplicate webhook ignored"}
 
     body = await request.json()
@@ -95,7 +101,7 @@ async def webhook_composio(request: Request) -> dict[str, str]:
     # Find handler for this event type
     handler = get_handler_by_event(event_data.type)
     if not handler:
-        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type: {event_data.type}")
+        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type", event_type=event_data.type)
         return {"status": "success", "message": "Webhook received"}
 
     # Fire-and-forget: return 200 immediately, process in background

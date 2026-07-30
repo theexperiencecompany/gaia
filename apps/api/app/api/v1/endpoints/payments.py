@@ -32,7 +32,11 @@ async def get_plans_endpoint(request: Request, active_only: bool = True):
     try:
         return await payment_service.get_plans(active_only=active_only)
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error getting plans: {e!s}")
+        log.error(
+            f"{LogTag.PAYMENT} Error getting plans",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to get plans")
 
 
@@ -69,7 +73,13 @@ async def create_subscription_endpoint(
         )
         return result
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error creating subscription: {e!s}")
+        log.error(
+            f"{LogTag.PAYMENT} Error creating subscription",
+            user_id=user_id,
+            product_id=str(subscription_data.product_id) if subscription_data.product_id else None,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
 
@@ -93,7 +103,12 @@ async def verify_payment_endpoint(
         log.audit("payment verification completed", actor=user_id, provider="dodo")
         return PaymentVerificationResponse(**result)
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error verifying payment: {e!s}")
+        log.error(
+            f"{LogTag.PAYMENT} Error verifying payment",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to verify payment")
 
 
@@ -116,7 +131,12 @@ async def get_subscription_status_endpoint(
     try:
         return await payment_service.get_user_subscription_status(user_id)
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error getting subscription status: {e!s}")
+        log.error(
+            f"{LogTag.PAYMENT} Error getting subscription status",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to get subscription status")
 
 
@@ -165,7 +185,11 @@ async def handle_dodo_webhook(
             event_type=result.event_type,
             processing_status=result.status,
         )
-        log.info(f"{LogTag.PAYMENT} Webhook processed: {result.event_type} - {result.status}")
+        log.info(
+            f"{LogTag.PAYMENT} Webhook processed",
+            event_type=result.event_type,
+            processing_status=result.status,
+        )
         return {
             "status": "success",
             "event_type": result.event_type,
@@ -179,5 +203,9 @@ async def handle_dodo_webhook(
         log.error(f"{LogTag.PAYMENT} Invalid JSON in webhook payload")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error processing webhook: {e}")
+        log.error(
+            f"{LogTag.PAYMENT} Error processing webhook",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Webhook processing failed")

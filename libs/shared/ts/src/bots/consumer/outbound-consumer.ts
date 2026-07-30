@@ -14,6 +14,7 @@ import type { PlatformName } from "../types";
 import { renderForPlatform } from "../utils/formatters";
 import { type BotLogger, createBotLogger } from "../utils/logger";
 import { chunkResponse } from "../utils/text";
+import { wideLog, withWideEvent } from "../utils/wide-events";
 import {
   type OutboundAttachment,
   type OutboundMessageEnvelope,
@@ -142,7 +143,7 @@ export class OutboundConsumer {
     try {
       action();
     } catch {
-      this.logger.warn("outbound_settle_skipped", {
+      wideLog.warning("outbound_settle_skipped", {
         reason: "channel replaced mid-handle",
       });
     }
@@ -159,27 +160,42 @@ export class OutboundConsumer {
     // platform, add a dedupe check on `env.id` backed by SHARED state (e.g.
     // Redis SETNX with a TTL) here — an in-process cache will not work because
     // duplicates land on a different worker process.
-    const env = this.parseEnvelope(channel, msg);
-    if (!env) return;
+    await withWideEvent(
+      "outbound_message",
+      {
+        platform: this.platform,
+        component: "outbound-consumer",
+        queue: OUTBOUND_QUEUES[this.platform],
+      },
+      async () => {
+        const env = this.parseEnvelope(channel, msg);
+        if (!env) return;
 
-    if (env.attachment) {
-      await this.handleAttachment(
-        channel,
-        msg,
-        env.id,
-        env.destination_id,
-        env.attachment,
-      );
-      return;
-    }
+        wideLog.set({
+          envelope_id: env.id,
+          has_attachment: Boolean(env.attachment),
+        });
 
-    await this.handleText(
-      channel,
-      msg,
-      env.id,
-      env.destination_id,
-      env.text,
-      env.text_parts,
+        if (env.attachment) {
+          await this.handleAttachment(
+            channel,
+            msg,
+            env.id,
+            env.destination_id,
+            env.attachment,
+          );
+          return;
+        }
+
+        await this.handleText(
+          channel,
+          msg,
+          env.id,
+          env.destination_id,
+          env.text,
+          env.text_parts,
+        );
+      },
     );
   }
 
@@ -195,12 +211,15 @@ export class OutboundConsumer {
     try {
       raw = JSON.parse(msg.content.toString());
     } catch {
+      wideLog.warning("outbound_envelope_unparseable", {
+        bytes: msg.content.length,
+      });
       this.settle(channel, () => channel.nack(msg, false, false)); // unparseable → DLQ
       return null;
     }
     const parsed = outboundMessageEnvelopeSchema.safeParse(raw);
     if (!parsed.success) {
-      this.logger.warn("outbound_envelope_invalid", {
+      wideLog.warning("outbound_envelope_invalid", {
         issues: parsed.error.issues.length,
       });
       this.settle(channel, () => channel.nack(msg, false, false)); // schema mismatch → DLQ
@@ -212,7 +231,7 @@ export class OutboundConsumer {
     // topology/routing key drifted (or a misrouted publish). Dead-letter it
     // rather than send through the wrong adapter.
     if (env.platform !== this.platform) {
-      this.logger.warn("outbound_platform_mismatch", {
+      wideLog.warning("outbound_platform_mismatch", {
         expected: this.platform,
         got: env.platform,
       });
@@ -234,13 +253,14 @@ export class OutboundConsumer {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
+    wideLog.set({ attachment_filename: attachment.filename });
     try {
       await this.deliverFile(destinationId, attachment);
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
-      this.logger.error(
+      wideLog.error(
         "outbound_file_delivery_failed",
-        { id, redelivered: msg.fields.redelivered },
+        { envelope_id: id, redelivered: msg.fields.redelivered },
         err,
       );
       // Never requeue a file: deliverFile fetches the bytes AND uploads +
@@ -269,6 +289,7 @@ export class OutboundConsumer {
   ): Promise<void> {
     const sources = resolveSources(text, textParts);
     if (sources.length === 0) {
+      wideLog.warning("outbound_envelope_empty", { envelope_id: id });
       this.settle(channel, () => channel.nack(msg, false, false)); // nothing to send → DLQ
       return;
     }
@@ -278,20 +299,22 @@ export class OutboundConsumer {
     const progress = { delivered: 0 };
     try {
       await this.deliverSources(destinationId, sources, progress);
+      wideLog.set({ delivered_count: progress.delivered });
       // Non-empty source text that rendered to nothing on every chunk: don't
       // silently ack it away (the backend recorded it DELIVERED). Dead-letter
       // it so the dropped message is visible for inspection.
       if (progress.delivered === 0) {
-        this.logger.warn("outbound_text_rendered_empty", { id });
+        wideLog.warning("outbound_text_rendered_empty", { envelope_id: id });
         this.settle(channel, () => channel.nack(msg, false, false));
         return;
       }
       this.settle(channel, () => channel.ack(msg));
     } catch (err) {
-      this.logger.error(
+      wideLog.set({ delivered_count: progress.delivered });
+      wideLog.error(
         "outbound_delivery_failed",
         {
-          id,
+          envelope_id: id,
           delivered: progress.delivered,
           redelivered: msg.fields.redelivered,
         },

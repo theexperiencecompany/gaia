@@ -13,7 +13,7 @@ async def get_user_by_id(user_id: str) -> dict | None:
         user = await user_repository.get(user_id)
         return user_to_legacy_dict(user) if user else None
     except Exception as e:
-        log.error(f"Error fetching user {user_id}: {e}")
+        log.error("Error fetching user", user_id=user_id, error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=404, detail="User not found")
 
 
@@ -51,7 +51,12 @@ async def update_user_profile(
                 update_fields["picture"] = await upload_user_picture(picture_data, public_id)
 
             except Exception as e:
-                log.error(f"Error uploading profile picture: {e}")
+                log.error(
+                    "Error uploading profile picture",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
                 raise HTTPException(status_code=500, detail="Failed to upload profile picture")
 
         # Only write (and bump updated_at) when something actually changed.
@@ -75,5 +80,10 @@ async def update_user_profile(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"Error updating user profile: {e}")
+        log.error(
+            "Error updating user profile",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(status_code=500, detail="Failed to update profile")

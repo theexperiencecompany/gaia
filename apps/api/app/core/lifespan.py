@@ -32,7 +32,9 @@ async def lifespan(app: FastAPI):
         yield
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error during startup: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Error during startup", error=str(e), error_type=type(e).__name__
+        )
         raise RuntimeError("Startup failed") from e
 
     finally:

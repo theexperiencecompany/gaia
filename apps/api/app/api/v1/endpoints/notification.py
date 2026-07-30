@@ -76,7 +76,12 @@ async def get_notifications(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to get notifications: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to get notifications",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -101,7 +106,12 @@ async def get_channel_preferences(
             slack=prefs["slack"],
         )
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to get channel preferences: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to get channel preferences",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -138,7 +148,12 @@ async def update_channel_preferences(
             slack=prefs["slack"],
         )
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to update channel preferences: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to update channel preferences",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -179,7 +194,13 @@ async def execute_action(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to execute action: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to execute action",
+            user_id=user_id,
+            notification_id=notification_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -215,7 +236,13 @@ async def mark_as_read(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to mark notification as read: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to mark notification as read",
+            user_id=user_id,
+            notification_id=notification_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -260,7 +287,13 @@ async def bulk_actions(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to perform bulk actions: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to perform bulk actions",
+            user_id=user_id,
+            notification_count=len(notification_ids),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -317,7 +350,12 @@ async def register_device_token(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to register device token: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to register device token",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -350,7 +388,12 @@ async def unregister_device_token(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to unregister device token: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to unregister device token",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -386,5 +429,11 @@ async def get_notification(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.NOTIFICATION} Failed to get notification: {e}")
+        log.error(
+            f"{LogTag.NOTIFICATION} Failed to get notification",
+            user_id=user_id,
+            notification_id=notification_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail=str(e))

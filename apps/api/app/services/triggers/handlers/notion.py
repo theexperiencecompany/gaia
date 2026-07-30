@@ -83,7 +83,12 @@ class NotionTriggerHandler(TriggerHandler):
             elif field_name == "page_id":
                 fetch_type = "pages"
             else:
-                log.warning(f"{LogTag.TRIGGER} Unknown Notion field '{field_name}', fetching all")
+                log.warning(
+                    f"{LogTag.TRIGGER} Unknown Notion field , fetching all",
+                    field_name=field_name,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
                 fetch_type = "all"
 
             # Invoke tool with typed input
@@ -98,7 +103,12 @@ class NotionTriggerHandler(TriggerHandler):
             result = await asyncio.to_thread(tool.invoke, input_model.model_dump(exclude_none=True))
 
             if not result["successful"]:
-                log.error(f"{LogTag.TRIGGER} Notion API error: {result['error']}")
+                log.error(
+                    f"{LogTag.TRIGGER} Notion API error",
+                    error=result["error"],
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
                 return []
 
             # Extract and parse data
@@ -113,11 +123,22 @@ class NotionTriggerHandler(TriggerHandler):
                 label = item.title or "Untitled"
                 options.append({"value": item.id, "label": label})
 
-            log.info(f"{LogTag.TRIGGER} Returning {len(options)} Notion {field_name} options")
+            log.info(
+                f"{LogTag.TRIGGER} Returning Notion options",
+                options_count=len(options),
+                field_name=field_name,
+            )
             return options
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Failed to get Notion options for {field_name}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Failed to get Notion options for",
+                field_name=field_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                integration_id=integration_id,
+            )
             return []
 
     async def register(
@@ -215,7 +236,11 @@ class NotionTriggerHandler(TriggerHandler):
                 elif "all_page_events" in event_type.lower():
                     NotionAllPageEventsPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Notion payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Notion payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             # Match by specific trigger ID since these are manually registered
             workflows: list[Workflow] = []
@@ -223,7 +248,12 @@ class NotionTriggerHandler(TriggerHandler):
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

@@ -23,7 +23,10 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
             await process_onboarding_intelligence(user_id)
         except Exception as e:
             log.error(
-                f"{LogTag.WORKER} Onboarding intelligence failed for user {user_id}: {e}",
+                f"{LogTag.WORKER} Onboarding intelligence failed",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
                 exc_info=True,
             )
             try:
@@ -38,11 +41,15 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                         user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE.value
                     )
                     log.info(
-                        f"{LogTag.WORKER} Set phase to PERSONALIZATION_COMPLETE after failure for user {user_id}"
+                        f"{LogTag.WORKER} Set phase to PERSONALIZATION_COMPLETE after failure",
+                        user_id=user_id,
                     )
             except Exception as db_err:
                 log.error(
-                    f"{LogTag.WORKER} Failed to update onboarding phase after error for user {user_id}: {db_err}",
+                    f"{LogTag.WORKER} Failed to update onboarding phase after error",
+                    user_id=user_id,
+                    error_type=type(db_err).__name__,
+                    error=str(db_err),
                     exc_info=True,
                 )
             return f"Onboarding intelligence failed for user {user_id}: {e}"
@@ -52,12 +59,15 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
                     await clear_active_intelligence_job(user_id, job_id)
                 except Exception as clear_err:
                     log.warning(
-                        f"{LogTag.WORKER} Failed to clear intelligence job id for user {user_id}: {clear_err}"
+                        f"{LogTag.WORKER} Failed to clear intelligence job id",
+                        user_id=user_id,
+                        job_id=job_id,
+                        error_type=type(clear_err).__name__,
+                        error=str(clear_err),
                     )
 
-        message = f"Onboarding intelligence completed for user {user_id}"
-        log.info(f"{LogTag.WORKER} {message}")
-        return message
+        log.info(f"{LogTag.WORKER} Onboarding intelligence completed", user_id=user_id)
+        return f"Onboarding intelligence completed for user {user_id}"
 
 
 async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
@@ -73,7 +83,10 @@ async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
             await process_onboarding_workflows_phase(user_id)
         except Exception as e:
             log.error(
-                f"{LogTag.WORKER} Onboarding workflows phase failed for user {user_id}: {e}",
+                f"{LogTag.WORKER} Onboarding workflows phase failed",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
                 exc_info=True,
             )
             # This IS the completing phase — rescue the user out of the pending
@@ -84,7 +97,10 @@ async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
                 )
             except Exception as db_err:
                 log.error(
-                    f"{LogTag.WORKER} Failed to update onboarding phase after error for user {user_id}: {db_err}",
+                    f"{LogTag.WORKER} Failed to update onboarding phase after error",
+                    user_id=user_id,
+                    error_type=type(db_err).__name__,
+                    error=str(db_err),
                     exc_info=True,
                 )
             return f"Onboarding workflows phase failed for user {user_id}: {e}"
@@ -94,9 +110,12 @@ async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
                     await clear_active_workflows_job(user_id, job_id)
                 except Exception as clear_err:
                     log.warning(
-                        f"{LogTag.WORKER} Failed to clear workflows job id for user {user_id}: {clear_err}"
+                        f"{LogTag.WORKER} Failed to clear workflows job id",
+                        user_id=user_id,
+                        job_id=job_id,
+                        error_type=type(clear_err).__name__,
+                        error=str(clear_err),
                     )
 
-        message = f"Onboarding workflows phase completed for user {user_id}"
-        log.info(f"{LogTag.WORKER} {message}")
-        return message
+        log.info(f"{LogTag.WORKER} Onboarding workflows phase completed", user_id=user_id)
+        return f"Onboarding workflows phase completed for user {user_id}"

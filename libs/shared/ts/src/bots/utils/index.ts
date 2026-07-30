@@ -23,3 +23,4 @@ export * from "./logger";
 export * from "./media";
 export * from "./streaming";
 export * from "./text";
+export * from "./wide-events";

@@ -109,7 +109,12 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                 try:
                     outcome = await _requeue_stuck_user(user)
                 except Exception as e:
-                    log.exception(f"{LogTag.WORKER} error re-queueing user {user_id}: {e}")
+                    log.exception(
+                        f"{LogTag.WORKER} error re-queueing user",
+                        user_id=user_id,
+                        error_type=type(e).__name__,
+                        error=str(e),
+                    )
                     outcome = _RequeueOutcome.ERROR
                 tally[outcome] += 1
 
@@ -125,6 +130,9 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
             )
 
         except Exception as e:
-            error_msg = f"Error in cleanup_stuck_personalization: {e}"
-            log.exception(f"{LogTag.WORKER} {error_msg}")
-            return error_msg
+            log.exception(
+                f"{LogTag.WORKER} Error in cleanup_stuck_personalization",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            return f"Error in cleanup_stuck_personalization: {e}"

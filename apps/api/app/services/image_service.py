@@ -89,7 +89,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         )
 
         image_url = upload_result.get("secure_url")
-        log.info(f"Image uploaded successfully. URL: {image_url}")
+        log.info("Image uploaded successfully. URL", image_url=image_url)
 
         # Format the response in the new structure
         return {
@@ -101,7 +101,11 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         }
 
     except Exception as e:
-        log.error(f"Error occurred while processing image generation: {e!s}")
+        log.error(
+            "Error occurred while processing image generation",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -118,7 +122,11 @@ async def image_to_text_endpoint(message: str, file: UploadFile) -> dict:
         # status the conversion chose reach them.
         raise
     except Exception as e:
-        log.error(f"Error occurred while processing image-to-text: {e!s}")
+        log.error(
+            "Error occurred while processing image-to-text",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
@@ -155,6 +163,6 @@ async def generate_image_stream(query_text: str) -> AsyncGenerator[str, None]:
             yield f"data: {json.dumps({'image_data': image_result})}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
-            log.error(f"Error generating image: {e!s}")
+            log.error("Error generating image", error=str(e), error_type=type(e).__name__)
             yield f"data: {json.dumps({'error': f'Failed to generate image: {e!s}'})}\n\n"
             yield "data: [DONE]\n\n"

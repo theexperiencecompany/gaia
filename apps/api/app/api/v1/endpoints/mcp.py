@@ -126,7 +126,13 @@ async def test_mcp_connection(
             }
         )
     except Exception as e:
-        log.error(f"{LogTag.MCP} OAuth URL build failed for {integration_id}: {e}")
+        log.error(
+            f"{LogTag.MCP} OAuth URL build failed",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return JSONResponse(
             content={
                 "status": "failed",
@@ -219,7 +225,7 @@ async def mcp_oauth_callback(
 
     # Validate code is present (required for success case)
     if not code:
-        log.error(f"{LogTag.MCP} OAuth callback missing code for {integration_id}")
+        log.error(f"{LogTag.MCP} OAuth callback missing code", integration_id=integration_id)
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error=missing_code"
         )

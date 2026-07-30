@@ -25,7 +25,11 @@ def convert_markdown_to_html(markdown_text: str) -> str:
         )
         return html
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error converting markdown to HTML: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error converting markdown to HTML",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return markdown_text
 
 

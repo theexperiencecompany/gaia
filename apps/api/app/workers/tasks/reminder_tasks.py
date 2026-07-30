@@ -22,11 +22,10 @@ async def process_reminder(ctx: dict, reminder_id: str) -> str:
         Processing result message
     """
     async with wide_task("process_reminder", reminder_id=reminder_id):
-        log.info(f"{LogTag.WORKER} Processing reminder task: {reminder_id}")
+        log.info(f"{LogTag.WORKER} Processing reminder task", reminder_id=reminder_id)
         await reminder_scheduler.process_task_execution(reminder_id)
-        result = f"Successfully processed reminder {reminder_id}"
-        log.info(f"{LogTag.WORKER} {result}")
-        return result
+        log.info(f"{LogTag.WORKER} Successfully processed reminder", reminder_id=reminder_id)
+        return f"Successfully processed reminder {reminder_id}"
 
 
 async def cleanup_expired_reminders(ctx: dict) -> str:
@@ -45,6 +44,5 @@ async def cleanup_expired_reminders(ctx: dict) -> str:
 
         deleted = await reminder_repository.delete_finished_before(cutoff_date)
         log.set(reminders_deleted=deleted)
-        message = f"Cleaned up {deleted} expired reminders"
-        log.info(f"{LogTag.WORKER} {message}")
-        return message
+        log.info(f"{LogTag.WORKER} Cleaned up expired reminders", deleted_count=deleted)
+        return f"Cleaned up {deleted} expired reminders"

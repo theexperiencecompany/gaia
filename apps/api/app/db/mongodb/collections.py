@@ -45,7 +45,10 @@ def _get_mongodb_instance():
 def _get_collection(collection_name: str):
     """Get async collection with lazy loading and caching."""
     if collection_name not in _collections_cache:
-        log.info(f"{LogTag.MONGO} Creating async collection '{collection_name}' (lazy loading)")
+        log.info(
+            f"{LogTag.MONGO} Creating async collection (lazy loading)",
+            collection_name=collection_name,
+        )
         mongodb_instance = _get_mongodb_instance()
         _collections_cache[collection_name] = mongodb_instance.get_collection(collection_name)
     return _collections_cache[collection_name]

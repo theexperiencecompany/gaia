@@ -32,7 +32,12 @@ async def get_email_importance_summaries(
             "filtered_by_importance": important_only,
         }
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Error retrieving email summaries for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.MAIL} Error retrieving email summaries for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -51,7 +56,11 @@ async def get_single_email_importance_summary(
         return {"status": "success", "email": _mail_dict(summary)}
     except Exception as e:
         log.error(
-            f"{LogTag.MAIL} Error retrieving email summary for user {user_id}, message {message_id}: {e}"
+            f"{LogTag.MAIL} Error retrieving email summary for user , message",
+            user_id=user_id,
+            message_id=message_id,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         raise
 
@@ -81,5 +90,10 @@ async def get_bulk_email_importance_summaries(
             "missing_message_ids": list(missing_message_ids),
         }
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Error retrieving bulk email summaries for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.MAIL} Error retrieving bulk email summaries for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise

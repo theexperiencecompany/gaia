@@ -27,7 +27,13 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
             timezone=tz,
         )
     except Exception as e:
-        log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
+        log.warning(
+            f"{LogTag.OAUTH} Failed to backfill user.timezone",
+            user_id=user_id,
+            timezone=tz,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
 
 async def get_current_user(request: Request):
@@ -114,8 +120,9 @@ async def get_current_user_ws(websocket: WebSocket):
                 user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
             )
         log.error(
-            f"{LogTag.OAUTH} Dev bypass target {target_email!r} has no Mongo user — "
-            f"{DEV_USER_MISSING_HINT}"
+            f"{LogTag.OAUTH} Dev bypass target has no Mongo user",
+            target_email=target_email,
+            fix=DEV_USER_MISSING_HINT,
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
@@ -162,7 +169,7 @@ def get_user_timezone(
     """
     tz = Timezone.parse(x_timezone)
     now = tz.now()
-    log.debug(f"{LogTag.OAUTH} User timezone: {tz.value}, Current time: {now}")
+    log.debug(f"{LogTag.OAUTH} Resolved user timezone", timezone=tz.value, now=str(now))
     return tz.value, now
 
 
@@ -221,6 +228,11 @@ async def get_user_timezone_from_preferences(
         return resolved.timezone.value
 
     except Exception as e:
-        log.warning(f"{LogTag.OAUTH} Error resolving user timezone: {e}", user_id=user_id)
+        log.warning(
+            f"{LogTag.OAUTH} Error resolving user timezone",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="UTC")
         return "UTC"

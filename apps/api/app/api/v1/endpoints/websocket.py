@@ -60,7 +60,12 @@ async def websocket_endpoint(websocket: WebSocket):
         except Exception as e:
             # Handle any other exceptions
             log.set(disconnect_reason="server_error")
-            log.error(f"WebSocket error for user {user_id}: {e!s}")
+            log.error(
+                "WebSocket error",
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             connection_manager.remove_connection(user_id=user_id, websocket=websocket)
             try:
                 await websocket.close(code=status.WS_1011_INTERNAL_ERROR)

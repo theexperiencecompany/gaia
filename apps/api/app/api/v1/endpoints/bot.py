@@ -253,7 +253,13 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
         """Drop the finished background task from the registry and log failures."""
         _background_tasks.discard(t)
         if t.exception():
-            log.error(f"{LogTag.API} Background stream task failed: {t.exception()}")
+            log.error(
+                f"{LogTag.API} Background stream task failed",
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                error_type=type(t.exception()).__name__,
+                error=str(t.exception()),
+            )
 
     task.add_done_callback(task_done_callback)
     _background_tasks.add(task)
@@ -287,7 +293,8 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                     if await request.is_disconnected():
                         log.set(client_disconnected=True)
                         log.info(
-                            f"{LogTag.API} Bot client disconnected, stream {stream_id} continues in background"
+                            f"{LogTag.API} Bot client disconnected, stream continues in background",
+                            stream_id=stream_id,
                         )
                         break
                     # Forward keepalive comments directly
@@ -367,7 +374,13 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                 log.info(f"{LogTag.API} Bot stream cancelled (client disconnected)")
                 raise
             except Exception as e:
-                log.error(f"{LogTag.API} Bot stream subscription error: {e}", error=str(e))
+                log.error(
+                    f"{LogTag.API} Bot stream subscription error",
+                    stream_id=stream_id,
+                    conversation_id=conversation_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
                 yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
@@ -497,7 +510,12 @@ async def get_settings(
                         )
                     )
     except Exception as e:
-        log.error(f"{LogTag.API} Error fetching integrations for settings: {e}")
+        log.error(
+            f"{LogTag.API} Error fetching integrations for settings",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
     user_name = user.get("name") or user.get("username")
     profile_image_url = user.get("profile_image_url") or user.get("avatar_url")
@@ -603,7 +621,13 @@ async def transcribe_bot_audio(
             content_type=normalized,
         )
     except Exception as e:
-        log.error(f"{LogTag.API} Transcription failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.API} Transcription failed",
+            filename=filename,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
         raise HTTPException(status_code=502, detail="Transcription failed")
 
     return {"text": text}

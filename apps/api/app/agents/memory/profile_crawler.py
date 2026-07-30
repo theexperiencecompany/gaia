@@ -33,7 +33,7 @@ async def crawl_profile_url(url: str, platform: str, semaphore: asyncio.Semaphor
     async with semaphore:
         start_time = time.time()
         try:
-            log.info(f"{LogTag.MEMORY} Crawling {platform} profile: {url}")
+            log.info(f"{LogTag.MEMORY} Crawling profile", platform=platform, url=url)
 
             # Process-wide cap on live Chromium instances (shared with
             # crawl4ai_utils) so concurrent profile crawls can't fan out into
@@ -59,7 +59,10 @@ async def crawl_profile_url(url: str, platform: str, semaphore: asyncio.Semaphor
                 elapsed = time.time() - start_time
                 content_size = len(result.markdown)
                 log.info(
-                    f"{LogTag.MEMORY} Successfully crawled {url} in {elapsed:.2f}s ({content_size:,} chars)"
+                    f"{LogTag.MEMORY} Successfully crawled profile",
+                    url=url,
+                    duration_s=round(elapsed, 2),
+                    content_size=content_size,
                 )
                 return {
                     "url": url,
@@ -76,9 +79,17 @@ async def crawl_profile_url(url: str, platform: str, semaphore: asyncio.Semaphor
                 error_msg = f"{error_type}: {e!r}"
 
             log.error(
-                f"{LogTag.MEMORY} Failed to crawl {url} after {elapsed:.2f}s: {error_type}: {error_msg}"
+                f"{LogTag.MEMORY} Failed to crawl profile",
+                url=url,
+                duration_s=round(elapsed, 2),
+                error_type=error_type,
+                error=error_msg,
             )
-            log.debug(f"{LogTag.MEMORY} Full traceback for {url}:\n{traceback.format_exc()}")
+            log.debug(
+                f"{LogTag.MEMORY} Full crawl failure traceback",
+                url=url,
+                traceback=traceback.format_exc(),
+            )
 
             return {
                 "url": url,

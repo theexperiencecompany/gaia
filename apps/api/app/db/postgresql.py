@@ -175,4 +175,8 @@ async def close_postgresql_db() -> None:
             await engine.dispose()
             log.info(f"{LogTag.STARTUP} PostgreSQL connections closed")
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error closing PostgreSQL connections: {e}")
+        log.error(
+            f"{LogTag.STARTUP} Error closing PostgreSQL connections",
+            error=str(e),
+            error_type=type(e).__name__,
+        )

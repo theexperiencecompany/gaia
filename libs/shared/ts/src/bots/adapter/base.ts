@@ -50,7 +50,6 @@ import {
   type BotLogger,
   createBotLogger,
   hashLogIdentifier,
-  sanitizeErrorForLog,
 } from "../utils/logger";
 import {
   type IncomingMedia,
@@ -58,6 +57,7 @@ import {
   OUTBOUND_FILE_LIMITS,
   processBotMedia,
 } from "../utils/media";
+import { wideLog, withWideEvent } from "../utils/wide-events";
 import { BotServer } from "./base-server";
 
 /**
@@ -377,89 +377,115 @@ export abstract class BaseBotAdapter {
     rawText?: string,
   ): Promise<void> {
     const distinctId = `${this.platform}:${target.userId}`;
+    const userHash = hashLogIdentifier(target.userId);
+    const channelHash = hashLogIdentifier(target.channelId);
 
-    // No identify() — platform-handle PII (username, display_name) is
-    // intentionally not shipped to PostHog. Profiles are auto-created from
-    // the first capture using the distinctId.
+    await withWideEvent(
+      "command",
+      {
+        platform: this.platform,
+        component: "base-adapter",
+        command: name,
+        user_hash: userHash,
+        channel_hash: channelHash,
+      },
+      async () => {
+        // No identify() — platform-handle PII (username, display_name) is
+        // intentionally not shipped to PostHog. Profiles are auto-created from
+        // the first capture using the distinctId.
 
-    this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
-      interaction_type: "command",
-      command: name,
-      has_args: Object.keys(args).length > 0,
-      has_raw_text: !!rawText,
-      channel_id: target.channelId,
-    });
+        this.analytics.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
+          interaction_type: "command",
+          command: name,
+          has_args: Object.keys(args).length > 0,
+          has_raw_text: !!rawText,
+          channel_id: target.channelId,
+        });
 
-    if (name === "auth") {
-      this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
-        channel_id: target.channelId,
-      });
-    }
+        if (name === "auth") {
+          wideLog.audit("auth_link_requested", { user_hash: userHash });
+          this.analytics.capture(distinctId, BOT_EVENTS.AUTH_INITIATED, {
+            channel_id: target.channelId,
+          });
+        }
 
-    const command = this.commands.get(name);
-    if (!command) {
-      await target.sendEphemeral(`Unknown command: /${name}`);
-      return;
-    }
+        const command = this.commands.get(name);
+        if (!command) {
+          wideLog.warning("unknown_command", { command: name });
+          await target.sendEphemeral(`Unknown command: /${name}`);
+          return;
+        }
 
-    const ctx = this.buildContext(
-      target.userId,
-      target.channelId,
-      target.profile,
+        const ctx = this.buildContext(
+          target.userId,
+          target.channelId,
+          target.profile,
+        );
+
+        const startMs = Date.now();
+        try {
+          this.logger.info("command_dispatch_started", {
+            command: name,
+            user_hash: userHash,
+            channel_hash: channelHash,
+          });
+          await command.execute({
+            gaia: this.gaia,
+            target,
+            ctx,
+            args,
+            rawText,
+          });
+          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+            command: name,
+            duration_ms: Date.now() - startMs,
+            success: true,
+            channel_id: target.channelId,
+          });
+          this.logger.info("command_dispatch_completed", {
+            command: name,
+            user_hash: userHash,
+            channel_hash: channelHash,
+            duration_ms: Date.now() - startMs,
+          });
+        } catch (error) {
+          const durationMs = Date.now() - startMs;
+          const errorType = error instanceof Error ? error.name : "Unknown";
+          wideLog.error(
+            "command_dispatch_failed",
+            {
+              command: name,
+              user_hash: userHash,
+              channel_hash: channelHash,
+              duration_ms: durationMs,
+              error_type: errorType,
+            },
+            error,
+          );
+          // Capture only the error class name. Raw messages can contain file
+          // paths, request IDs, or upstream-echoed tokens — never ship them.
+          this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
+            command: name,
+            duration_ms: durationMs,
+            success: false,
+            error_type: errorType,
+            channel_id: target.channelId,
+          });
+          this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
+            context: `command:${name}`,
+            error_type: errorType,
+            channel_id: target.channelId,
+          });
+          const errMsg = formatBotError(error);
+          try {
+            await target.sendEphemeral(errMsg);
+          } catch {
+            // Target may be expired (e.g. Discord interaction timeout).
+            wideLog.warning("error_notice_send_failed", { command: name });
+          }
+        }
+      },
     );
-
-    const startMs = Date.now();
-    try {
-      this.logger.info("command_dispatch_started", {
-        command: name,
-        user_hash: hashLogIdentifier(target.userId),
-        channel_hash: hashLogIdentifier(target.channelId),
-      });
-      await command.execute({ gaia: this.gaia, target, ctx, args, rawText });
-      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
-        command: name,
-        duration_ms: Date.now() - startMs,
-        success: true,
-        channel_id: target.channelId,
-      });
-      this.logger.info("command_dispatch_completed", {
-        command: name,
-        user_hash: hashLogIdentifier(target.userId),
-        channel_hash: hashLogIdentifier(target.channelId),
-        duration_ms: Date.now() - startMs,
-      });
-    } catch (error) {
-      const durationMs = Date.now() - startMs;
-      const errorType = error instanceof Error ? error.name : "Unknown";
-      this.logger.error("command_dispatch_failed", {
-        command: name,
-        user_hash: hashLogIdentifier(target.userId),
-        channel_hash: hashLogIdentifier(target.channelId),
-        duration_ms: durationMs,
-        error_type: errorType,
-        ...sanitizeErrorForLog(error),
-      });
-      // Capture only the error class name. Raw messages can contain file
-      // paths, request IDs, or upstream-echoed tokens — never ship them.
-      this.analytics.capture(distinctId, BOT_EVENTS.COMMAND_EXECUTED, {
-        command: name,
-        duration_ms: durationMs,
-        success: false,
-        error_type: errorType,
-        channel_id: target.channelId,
-      });
-      this.analytics.capture(distinctId, BOT_EVENTS.ERROR, {
-        context: `command:${name}`,
-        error_type: errorType,
-        channel_id: target.channelId,
-      });
-      const errMsg = formatBotError(error);
-      try {
-        await target.sendEphemeral(errMsg);
-      } catch {
-        // Target may be expired (e.g. Discord interaction timeout)
-      }
-    }
   }
 
   /**

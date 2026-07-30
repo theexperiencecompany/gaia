@@ -1,7 +1,8 @@
 import { createHash, createHmac } from "node:crypto";
 import type { PlatformName } from "../types";
 
-type BotLogLevel = "debug" | "info" | "warn" | "error";
+/** `audit` mirrors the backend's custom AUDIT loguru level (between info and warn). */
+export type BotLogLevel = "debug" | "info" | "warn" | "error" | "audit";
 
 type JsonValue =
   | string
@@ -25,11 +26,28 @@ const RESERVED_LOG_KEYS = new Set([
   "level",
   "env",
   "service",
+  "logger",
   "platform",
   "component",
   "event",
   "error",
 ]);
+
+/**
+ * The `service` value stamped on every log line. Must match the Promtail label
+ * for the container the line is emitted from (the Docker Compose service names:
+ * `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot` — see
+ * infra/docker/observability/promtail-config.yaml), so
+ * `{service="discord-bot"} | json | service="discord-bot"` agrees with itself.
+ * Loggers created with the "shared" platform (module-scope loggers in shared
+ * code) resolve via the container's `BOT_NAME` env (set in apps/bots/Dockerfile),
+ * falling back to "gaia-bots" outside a bot container.
+ */
+function resolveServiceName(platform: PlatformName | "shared"): string {
+  if (platform !== "shared") return `${platform}-bot`;
+  const botName = process.env.BOT_NAME;
+  return botName ? `${botName}-bot` : "gaia-bots";
+}
 
 export function hashLogIdentifier(
   value: string | number | undefined | null,
@@ -119,7 +137,7 @@ function write(level: BotLogLevel, line: string): void {
     console.debug(line);
     return;
   }
-  if (level === "info") {
+  if (level === "info" || level === "audit") {
     console.log(line);
     return;
   }
@@ -142,7 +160,10 @@ function buildRecord(
     time: new Date().toISOString(),
     level: level.toUpperCase(),
     env: process.env.NODE_ENV ?? "development",
-    service: platform === "shared" ? "gaia-bots" : `gaia-bot-${platform}`,
+    service: resolveServiceName(platform),
+    // Promtail extracts `logger` into the logger_name label (see
+    // infra/docker/observability/promtail-config.yaml pipeline_stages).
+    logger: component,
     platform,
     component,
     event,
@@ -163,31 +184,36 @@ function buildRecord(
   return record;
 }
 
+/**
+ * Serializes and writes one canonical JSON log line. The single low-level
+ * emitter shared by {@link createBotLogger} and the wide-event runtime
+ * (`wide-events.ts`), so every line carries the same envelope
+ * (time/level/env/service/logger/platform/component/event).
+ */
+export function emitBotLogLine(
+  level: BotLogLevel,
+  platform: PlatformName | "shared",
+  component: string,
+  event: string,
+  fields?: BotLogFields,
+  error?: unknown,
+): void {
+  const record = buildRecord(level, platform, component, event, fields, error);
+  write(level, JSON.stringify(record));
+}
+
 export function createBotLogger(
   platform: PlatformName | "shared",
   component: string,
 ): BotLogger {
-  const emit = (
-    level: BotLogLevel,
-    event: string,
-    fields?: BotLogFields,
-    error?: unknown,
-  ) => {
-    const record = buildRecord(
-      level,
-      platform,
-      component,
-      event,
-      fields,
-      error,
-    );
-    write(level, JSON.stringify(record));
-  };
-
   return {
-    debug: (event, fields) => emit("debug", event, fields),
-    info: (event, fields) => emit("info", event, fields),
-    warn: (event, fields) => emit("warn", event, fields),
-    error: (event, fields, error) => emit("error", event, fields, error),
+    debug: (event, fields) =>
+      emitBotLogLine("debug", platform, component, event, fields),
+    info: (event, fields) =>
+      emitBotLogLine("info", platform, component, event, fields),
+    warn: (event, fields) =>
+      emitBotLogLine("warn", platform, component, event, fields),
+    error: (event, fields, error) =>
+      emitBotLogLine("error", platform, component, event, fields, error),
   };
 }

@@ -104,7 +104,12 @@ async def device_ws(websocket: WebSocket) -> None:
             log.info(f"{LogTag.API} Device disconnected", device_id=device_id)
         except Exception as e:
             log.set(disconnect_reason="server_error")
-            log.warning(f"{LogTag.API} Device socket error: {e}", device_id=device_id)
+            log.warning(
+                f"{LogTag.API} Device socket error",
+                device_id=device_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
         finally:
             for task in tasks:
                 task.cancel()

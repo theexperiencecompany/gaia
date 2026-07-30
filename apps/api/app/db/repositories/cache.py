@@ -63,7 +63,12 @@ async def read_generation(policy: CachePolicy, scope: str) -> int | None:
     try:
         raw = await client.get(policy.generation_key(scope))
     except Exception as exc:  # Redis hiccup → degrade to no query cache, not an error
-        log.warning(f"{LogTag.STORAGE} repo generation read failed for {scope}: {exc}")
+        log.warning(
+            f"{LogTag.STORAGE} repo generation read failed for",
+            scope=scope,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
         return None
     return int(raw) if raw is not None else 0
 
@@ -76,4 +81,9 @@ async def bump_generation(policy: CachePolicy, scope: str) -> None:
     try:
         await client.incr(policy.generation_key(scope))
     except Exception as exc:
-        log.warning(f"{LogTag.STORAGE} repo generation bump failed for {scope}: {exc}")
+        log.warning(
+            f"{LogTag.STORAGE} repo generation bump failed for",
+            scope=scope,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )

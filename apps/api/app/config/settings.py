@@ -54,7 +54,11 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            log.warning(f"{LogTag.STARTUP} Error creating settings: {e!s}")
+            log.warning(
+                f"{LogTag.STARTUP} Error creating settings",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -720,7 +724,11 @@ def get_settings():
         return settings_obj
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error initializing settings: {e!s}")
+        log.error(
+            f"{LogTag.STARTUP} Error initializing settings",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":

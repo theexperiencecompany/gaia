@@ -31,7 +31,12 @@ async def sweep_idle_sandboxes(_ctx: dict[str, Any]) -> str:
                 await mark_sandbox_dead(user_id)
                 evicted += 1
             except Exception as e:
-                log.warning(f"{LogTag.SANDBOX} failed to mark dead user={user_id}: {e}")
+                log.warning(
+                    f"{LogTag.SANDBOX} failed to mark sandbox dead",
+                    user_id=user_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
         log.set(sandbox=SandboxContext(operation="sweep", evicted_count=evicted))
-        log.info(f"{LogTag.SANDBOX} sweep evicted {evicted} idle sandboxes")
+        log.info(f"{LogTag.SANDBOX} sweep evicted idle sandboxes", evicted_count=evicted)
         return f"Evicted {evicted} idle sandboxes (cutoff={cutoff.isoformat()})"

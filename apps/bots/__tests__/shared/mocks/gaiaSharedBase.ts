@@ -139,11 +139,25 @@ export function makeGaiaSharedMock(
     return { error_name: "Unknown", error_message: String(error) };
   });
 
+  const wideLog = {
+    set: vi.fn(),
+    setNs: vi.fn(),
+    warning: vi.fn(),
+    error: vi.fn(),
+    audit: vi.fn(),
+    getTraceId: vi.fn(() => undefined),
+  };
+
   return {
     BaseBotAdapter,
     createBotLogger,
     hashLogIdentifier,
     sanitizeErrorForLog,
+    wideLog,
+    withWideEvent: vi.fn(
+      (_operation: string, _fields: unknown, fn: () => Promise<unknown>) =>
+        fn(),
+    ),
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),

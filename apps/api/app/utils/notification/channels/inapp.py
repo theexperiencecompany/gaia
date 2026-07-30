@@ -84,6 +84,9 @@ class InAppChannelAdapter(ChannelAdapter):
             return self._success()
         except Exception as e:
             log.error(
-                f"{LogTag.NOTIFICATION} Failed to deliver in-app notification to user {user_id}: {e}"
+                f"{LogTag.NOTIFICATION} Failed to deliver in-app notification to user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return self._error(str(e))

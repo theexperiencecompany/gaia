@@ -100,7 +100,12 @@ async def _people_search(user_id: str, endpoint: str, query: str, read_mask: str
             query={"query": query, "readMask": read_mask},
         )
     except Exception as exc:
-        log.debug(f"email_profile people search failed ({endpoint}): {exc}")
+        log.debug(
+            "email_profile people search failed",
+            endpoint=endpoint,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
         return None
 
 
@@ -152,7 +157,12 @@ async def _fetch_profile_photo(user_id: str, person: dict) -> str | None:
             query={"personFields": "photos"},
         )
     except Exception as exc:
-        log.debug(f"email_profile people.get failed ({resource_name}): {exc}")
+        log.debug(
+            "email_profile people.get failed",
+            resource_name=resource_name,
+            error=str(exc),
+            error_type=type(exc).__name__,
+        )
         return None
     return _pick_photo((full or {}).get("photos", []))
 
@@ -170,7 +180,9 @@ async def _fetch_gravatar_profile(email: str) -> dict | None:
             return None
         entries = response.json().get("entry", [])
     except (httpx.HTTPError, ValueError) as exc:
-        log.debug(f"email_profile gravatar lookup failed: {exc}")
+        log.debug(
+            "email_profile gravatar lookup failed", error=str(exc), error_type=type(exc).__name__
+        )
         return None
 
     if not entries:

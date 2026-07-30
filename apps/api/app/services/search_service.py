@@ -78,7 +78,9 @@ async def search_messages(query: str, user_id: str) -> dict:
             "notes": notes_with_snippets,
         }
     except Exception as e:
-        log.error(f"Error in search_messages: {e}")
+        log.error(
+            "Error in search_messages", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform search: {e!s}",

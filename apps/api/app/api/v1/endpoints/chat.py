@@ -86,7 +86,7 @@ async def _stream_from_redis(
     """
     async with log_context("sse_delivery", trace_id=get_trace_id() or None, stream_id=stream_id):
         if not redis_cache.redis:
-            log.error(f"{LogTag.CHAT} Redis unavailable for stream {stream_id}")
+            log.error(f"{LogTag.CHAT} Redis unavailable for stream", stream_id=stream_id)
             yield "data: [STREAM_ERROR]\n\n"
             return
 
@@ -97,15 +97,21 @@ async def _stream_from_redis(
                 if await request.is_disconnected():
                     log.set(client_disconnected=True)
                     log.info(
-                        f"{LogTag.CHAT} Client disconnected, stream {stream_id} continues in background"
+                        f"{LogTag.CHAT} Client disconnected, stream continues in background",
+                        stream_id=stream_id,
                     )
                     break
                 yield chunk
         except asyncio.CancelledError:
             log.set(client_disconnected=True)
-            log.info(f"{LogTag.CHAT} Stream {stream_id}: client connection cancelled")
+            log.info(f"{LogTag.CHAT} Client connection cancelled", stream_id=stream_id)
         except Exception as e:
-            log.error(f"{LogTag.CHAT} Error streaming to client: {e}")
+            log.error(
+                f"{LogTag.CHAT} Error streaming to client",
+                stream_id=stream_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
 
 @router.post("/chat-stream")
@@ -214,7 +220,7 @@ async def cancel_stream_endpoint(
         )
 
     success = await stream_manager.cancel_stream(stream_id)
-    log.info(f"{LogTag.CHAT} Cancel stream request: stream_id={stream_id}, success={success}")
+    log.info(f"{LogTag.CHAT} Cancel stream request", stream_id=stream_id, success=success)
 
     return {
         "success": success,
@@ -260,7 +266,10 @@ async def subscribe_executor_stream(
     # Race condition: executor finished before frontend subscribed.
     # Return [DONE] immediately so the client closes cleanly.
     if progress.get("is_complete"):
-        log.info(f"{LogTag.CHAT} Executor stream {stream_id} already complete, returning [DONE]")
+        log.info(
+            f"{LogTag.CHAT} Executor stream already complete, returning [DONE]",
+            stream_id=stream_id,
+        )
 
         async def _already_done() -> AsyncGenerator[str, None]:
             yield "data: [DONE]\n\n"
@@ -276,7 +285,7 @@ async def subscribe_executor_stream(
             },
         )
 
-    log.info(f"{LogTag.CHAT} Client subscribed to executor stream {stream_id}")
+    log.info(f"{LogTag.CHAT} Client subscribed to executor stream", stream_id=stream_id)
 
     return StreamingResponse(
         _stream_from_redis(stream_id, request, last_event_id=request.headers.get("Last-Event-ID")),

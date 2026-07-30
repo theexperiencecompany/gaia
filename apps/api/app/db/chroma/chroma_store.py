@@ -127,7 +127,10 @@ class ChromaStore(BaseStore):
                         collection=self.collection_name,
                     )
                 )
-                log.info(f"{LogTag.CHROMA} Creating ChromaDB collection: {self.collection_name}")
+                log.info(
+                    f"{LogTag.CHROMA} Creating ChromaDB collection",
+                    collection_name=self.collection_name,
+                )
                 self._collection_cache = await self.client.create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
@@ -292,7 +295,12 @@ class ChromaStore(BaseStore):
                 else datetime.now(UTC),
             )
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error getting item {doc_id}: {e}")
+            log.error(
+                f"{LogTag.CHROMA} Error getting item",
+                doc_id=doc_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return None
 
     async def _filter_items(self, op: SearchOp, collection: AsyncCollection) -> list[str]:
@@ -326,7 +334,12 @@ class ChromaStore(BaseStore):
                 try:
                     value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
                 except Exception as e:
-                    log.debug(f"{LogTag.CHROMA} Failed to deserialize document at index {idx}: {e}")
+                    log.debug(
+                        f"{LogTag.CHROMA} Failed to deserialize document at index",
+                        idx=idx,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
                     continue
                 if not isinstance(value, dict):
                     continue
@@ -538,8 +551,10 @@ class ChromaStore(BaseStore):
         ]
         succeeded = len(results) - len(failures)
         log.info(
-            f"{LogTag.CHROMA} _apply_put_ops completed: total={len(results)} succeeded={succeeded} "
-            f"failed={len(failures)}"
+            f"{LogTag.CHROMA} _apply_put_ops completed: total= succeeded= failed",
+            results_count=len(results),
+            succeeded=succeeded,
+            failures_count=len(failures),
         )
         if failures:
             # Show up to 3 distinct exception classes to make patterns obvious.
@@ -653,7 +668,11 @@ class ChromaStore(BaseStore):
             sorted_namespaces = sorted(namespaces)
             return sorted_namespaces[op.offset : op.offset + op.limit]
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Error listing namespaces: {e}")
+            log.error(
+                f"{LogTag.CHROMA} Error listing namespaces",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
     def _does_match(self, match_condition: MatchCondition, key: tuple[str, ...]) -> bool:

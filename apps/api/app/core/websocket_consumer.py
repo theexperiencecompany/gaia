@@ -40,7 +40,11 @@ class WebSocketEventConsumer:
             )
 
         except Exception as e:
-            log.error(f"{LogTag.STARTUP} Failed to start WebSocket event consumer: {e}")
+            log.error(
+                f"{LogTag.STARTUP} Failed to start WebSocket event consumer",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
     async def stop(self) -> None:
@@ -58,7 +62,11 @@ class WebSocketEventConsumer:
             log.info(f"{LogTag.STARTUP} WebSocket event consumer stopped")
 
         except Exception as e:
-            log.error(f"{LogTag.STARTUP} Error stopping WebSocket event consumer: {e}")
+            log.error(
+                f"{LogTag.STARTUP} Error stopping WebSocket event consumer",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def _handle_websocket_message(self, message: AbstractIncomingMessage) -> None:
         """Handle incoming WebSocket broadcast messages from RabbitMQ"""
@@ -93,7 +101,10 @@ class WebSocketEventConsumer:
                             await websocket.send_json(ws_message)
                         except Exception as e:
                             log.warning(
-                                f"{LogTag.STARTUP} Failed to send WebSocket message to user {user_id}: {e}"
+                                f"{LogTag.STARTUP} Failed to send WebSocket message to user",
+                                user_id=user_id,
+                                error=str(e),
+                                error_type=type(e).__name__,
                             )
                             disconnected.add(websocket)
 
@@ -101,14 +112,26 @@ class WebSocketEventConsumer:
                     for ws in disconnected:
                         websocket_manager.connections[user_id].discard(ws)
 
-                    log.debug(f"{LogTag.STARTUP} Broadcasted WebSocket message to user {user_id}")
+                    log.debug(
+                        f"{LogTag.STARTUP} Broadcasted WebSocket message to user", user_id=user_id
+                    )
                 else:
-                    log.debug(f"{LogTag.STARTUP} No WebSocket connections found for user {user_id}")
+                    log.debug(
+                        f"{LogTag.STARTUP} No WebSocket connections found for user", user_id=user_id
+                    )
 
             except json.JSONDecodeError as e:
-                log.error(f"{LogTag.STARTUP} Failed to decode WebSocket message JSON: {e}")
+                log.error(
+                    f"{LogTag.STARTUP} Failed to decode WebSocket message JSON",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
             except Exception as e:
-                log.error(f"{LogTag.STARTUP} Failed to process WebSocket message: {e}")
+                log.error(
+                    f"{LogTag.STARTUP} Failed to process WebSocket message",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
 
 # Global instance

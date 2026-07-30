@@ -236,7 +236,10 @@ class WorkflowSubagentRunner:
                 ]
             }
 
-        log.info(f"{LogTag.WORKFLOW} Completed. Response: {len(complete_message)} chars")
+        log.info(
+            f"{LogTag.WORKFLOW} Completed. Response: chars",
+            complete_message_count=len(complete_message),
+        )
         return complete_message if complete_message else "Task completed"
 
     @staticmethod

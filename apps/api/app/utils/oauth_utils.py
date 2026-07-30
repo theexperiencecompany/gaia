@@ -50,7 +50,12 @@ async def build_google_oauth_url(
             if token:
                 existing_scopes = (token.get("scope") or "").split()
         except Exception as e:
-            log.debug(f"{LogTag.OAUTH} Could not get existing scopes for user {user_id}: {e}")
+            log.debug(
+                f"{LogTag.OAUTH} Could not get existing scopes for user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     # Combine all scopes (base + existing + new), removing duplicates
     all_scopes = list(set(base_scopes + existing_scopes + integration_scopes))
@@ -96,10 +101,15 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             log.error(f"{LogTag.OAUTH} Missing secure_url in Cloudinary upload response")
             raise HTTPException(status_code=500, detail="Invalid response from image service")
 
-        log.info(f"{LogTag.OAUTH} Image uploaded successfully. URL: {image_url}")
+        log.info(f"{LogTag.OAUTH} Image uploaded successfully. URL", image_url=image_url)
         return image_url
     except Exception as e:
-        log.error(f"{LogTag.OAUTH} Failed to upload image to Cloudinary: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.OAUTH} Failed to upload image to Cloudinary",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Image upload failed")
 
 
@@ -120,7 +130,7 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         token = await token_repository.get_token(user_id, "google")
 
         if not token:
-            log.error(f"{LogTag.OAUTH} No token found in repository for user: {user_id}")
+            log.error(f"{LogTag.OAUTH} No token found in repository for user", user_id=user_id)
             return "", "", False
 
         # Check if token needs refresh
@@ -128,7 +138,7 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         refresh_token = cast(str, token.get("refresh_token", ""))
 
         if not refresh_token:
-            log.error(f"{LogTag.OAUTH} Missing refresh token for user: {user_id}")
+            log.error(f"{LogTag.OAUTH} Missing refresh token for user", user_id=user_id)
             return "", "", False
 
         # Check if token needs to be refreshed
@@ -140,7 +150,7 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         refreshed_token = await token_repository.refresh_token(user_id, "google")
 
         if not refreshed_token:
-            log.error(f"{LogTag.OAUTH} Failed to refresh token for user: {user_id}")
+            log.error(f"{LogTag.OAUTH} Failed to refresh token for user", user_id=user_id)
             return "", refresh_token, False
 
         new_access_token = cast(str, refreshed_token.get("access_token", ""))
@@ -149,5 +159,10 @@ async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
         return new_access_token, new_refresh_token, True
 
     except Exception as e:
-        log.error(f"{LogTag.OAUTH} Error getting tokens for user {user_id}: {e!s}")
+        log.error(
+            f"{LogTag.OAUTH} Error getting tokens for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return "", "", False

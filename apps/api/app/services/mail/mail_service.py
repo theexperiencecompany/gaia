@@ -22,7 +22,13 @@ def get_gmail_tool(tool_name: str, user_id: str):
             tool_name, use_before_hook=False, use_after_hook=False, user_id=user_id
         )
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Error getting Gmail tool {tool_name}: {e}")
+        log.error(
+            f"{LogTag.MAIL} Error getting Gmail tool",
+            tool_name=tool_name,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -39,7 +45,13 @@ async def invoke_gmail_tool(
         result = await tool.ainvoke(parameters)
         return result
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Error invoking Gmail tool {tool_name} for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.MAIL} Error invoking Gmail tool for user",
+            tool_name=tool_name,
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return {"error": str(e), "successful": False}
 
 
@@ -110,7 +122,11 @@ async def send_email(
             parameters["attachments"] = await asyncio.to_thread(_process_attachments, attachments)
 
         log.info(
-            f"{LogTag.MAIL} Using {tool_name} to {'reply to thread ' + (thread_id or '') if is_reply else 'send new email to ' + to}"
+            f"{LogTag.MAIL} Sending email via Gmail tool",
+            tool_name=tool_name,
+            is_reply=is_reply,
+            thread_id=thread_id,
+            to=to,
         )
 
         result = await invoke_gmail_tool(user_id, tool_name, parameters)
@@ -118,7 +134,12 @@ async def send_email(
         return result
 
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Error sending email for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.MAIL} Error sending email for user",
+            user_id=user_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         log.set_ns("mail", success=False)
         return {"error": str(e), "successful": False}
 
@@ -148,7 +169,13 @@ async def modify_message_labels(
             if add_result.get("successful", True):
                 results.extend(add_result.get("messages", []))
         except Exception as e:
-            log.error(f"{LogTag.MAIL} Error adding labels {add_labels} to messages: {e}")
+            log.error(
+                f"{LogTag.MAIL} Error adding labels to messages",
+                add_labels=add_labels,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     # Remove labels if specified
     if remove_labels:
@@ -163,7 +190,13 @@ async def modify_message_labels(
                 if not add_labels:
                     results.extend(remove_result.get("messages", []))
         except Exception as e:
-            log.error(f"{LogTag.MAIL} Error removing labels {remove_labels} from messages: {e}")
+            log.error(
+                f"{LogTag.MAIL} Error removing labels from messages",
+                remove_labels=remove_labels,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     return results
 
@@ -180,19 +213,19 @@ async def mark_messages_as_unread(user_id: str, message_ids: list[str]) -> list[
 
 async def star_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """Star Gmail messages by adding the STARRED label."""
-    log.info(f"{LogTag.MAIL} Starring {len(message_ids)} messages")
+    log.info(f"{LogTag.MAIL} Starring messages", message_ids_count=len(message_ids))
     return await modify_message_labels(user_id, message_ids, add_labels=["STARRED"])
 
 
 async def unstar_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """Unstar Gmail messages by removing the STARRED label."""
-    log.info(f"{LogTag.MAIL} Unstarring {len(message_ids)} messages")
+    log.info(f"{LogTag.MAIL} Unstarring messages", message_ids_count=len(message_ids))
     return await modify_message_labels(user_id, message_ids, remove_labels=["STARRED"])
 
 
 async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """Move Gmail messages to trash."""
-    log.info(f"{LogTag.MAIL} Moving {len(message_ids)} messages to trash")
+    log.info(f"{LogTag.MAIL} Moving messages to trash", message_ids_count=len(message_ids))
     results = []
 
     for message_id in message_ids:
@@ -203,17 +236,25 @@ async def trash_messages(user_id: str, message_ids: list[str]) -> list[dict[str,
                 results.append(result)
             else:
                 log.error(
-                    f"{LogTag.MAIL} Error trashing message {message_id}: {result.get('error')}"
+                    f"{LogTag.MAIL} Error trashing message",
+                    message_id=message_id,
+                    error=result.get("error"),
                 )
         except Exception as e:
-            log.error(f"{LogTag.MAIL} Error trashing message {message_id}: {e}")
+            log.error(
+                f"{LogTag.MAIL} Error trashing message",
+                message_id=message_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     return results
 
 
 async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """Restore Gmail messages from trash."""
-    log.info(f"{LogTag.MAIL} Restoring {len(message_ids)} messages from trash")
+    log.info(f"{LogTag.MAIL} Restoring messages from trash", message_ids_count=len(message_ids))
     results = []
 
     for message_id in message_ids:
@@ -224,30 +265,38 @@ async def untrash_messages(user_id: str, message_ids: list[str]) -> list[dict[st
                 results.append(result)
             else:
                 log.error(
-                    f"{LogTag.MAIL} Error untrashing message {message_id}: {result.get('error')}"
+                    f"{LogTag.MAIL} Error untrashing message",
+                    message_id=message_id,
+                    error=result.get("error"),
                 )
         except Exception as e:
-            log.error(f"{LogTag.MAIL} Error untrashing message {message_id}: {e}")
+            log.error(
+                f"{LogTag.MAIL} Error untrashing message",
+                message_id=message_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     return results
 
 
 async def archive_messages(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """Archive Gmail messages by removing the INBOX label."""
-    log.info(f"{LogTag.MAIL} Archiving {len(message_ids)} messages")
+    log.info(f"{LogTag.MAIL} Archiving messages", message_ids_count=len(message_ids))
     return await modify_message_labels(user_id, message_ids, remove_labels=["INBOX"])
 
 
 async def move_to_inbox(user_id: str, message_ids: list[str]) -> list[dict[str, Any]]:
     """Move Gmail messages to inbox by adding the INBOX label."""
-    log.info(f"{LogTag.MAIL} Moving {len(message_ids)} messages to inbox")
+    log.info(f"{LogTag.MAIL} Moving messages to inbox", message_ids_count=len(message_ids))
     return await modify_message_labels(user_id, message_ids, add_labels=["INBOX"])
 
 
 async def fetch_thread(user_id: str, thread_id: str) -> dict[str, Any]:
     """Fetch a complete email thread with all messages."""
     log.set(user={"id": user_id}, mail=MailContext(operation="fetch", provider="gmail"))
-    log.info(f"{LogTag.MAIL} Fetching thread with ID: {thread_id}")
+    log.info(f"{LogTag.MAIL} Fetching thread with ID", thread_id=thread_id)
     try:
         parameters = {
             "thread_id": thread_id,
@@ -268,13 +317,19 @@ async def fetch_thread(user_id: str, thread_id: str) -> dict[str, Any]:
             log.set_ns("mail", message_count=len(thread.get("messages", [])), success=True)
             return thread
         log.error(
-            f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_THREAD_ID: {result.get('error')}"
+            f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_THREAD_ID", error=result.get("error")
         )
         log.set_ns("mail", success=False)
         return {"messages": []}
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error fetching thread {thread_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error fetching thread",
+            thread_id=thread_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         log.set_ns("mail", success=False)
         return {"messages": []}
 
@@ -337,7 +392,7 @@ async def create_label(
     text_color: str | None = None,
 ) -> dict[str, Any]:
     """Create a new Gmail label."""
-    log.info(f"{LogTag.MAIL} Creating new label: {name}")
+    log.info(f"{LogTag.MAIL} Creating new label", name=name)
     try:
         parameters = {
             "name": name,
@@ -357,7 +412,13 @@ async def create_label(
         result = await invoke_gmail_tool(user_id, "GMAIL_CREATE_LABEL", parameters)
         return result
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error creating label {name}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error creating label",
+            name=name,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {"error": str(error), "successful": False}
 
 
@@ -371,7 +432,7 @@ async def update_label(
     text_color: str | None = None,
 ) -> dict[str, Any]:
     """Update an existing Gmail label."""
-    log.info(f"{LogTag.MAIL} Updating label {label_id}")
+    log.info(f"{LogTag.MAIL} Updating label", label_id=label_id)
     try:
         parameters = {
             "label_id": label_id,
@@ -397,19 +458,31 @@ async def update_label(
         result = await invoke_gmail_tool(user_id, "GMAIL_PATCH_LABEL", parameters)
         return result
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error updating label {label_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error updating label",
+            label_id=label_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {"error": str(error), "successful": False}
 
 
 async def delete_label(user_id: str, label_id: str) -> bool:
     """Delete a Gmail label."""
-    log.info(f"{LogTag.MAIL} Deleting label {label_id}")
+    log.info(f"{LogTag.MAIL} Deleting label", label_id=label_id)
     try:
         parameters = {"label_id": label_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_DELETE_LABEL", parameters)
         return result.get("successful", True)
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error deleting label {label_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error deleting label",
+            label_id=label_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return False
 
 
@@ -417,7 +490,11 @@ async def apply_labels(
     user_id: str, message_ids: list[str], label_ids: list[str]
 ) -> list[dict[str, Any]]:
     """Apply one or more labels to the specified messages."""
-    log.info(f"{LogTag.MAIL} Applying labels {label_ids} to {len(message_ids)} messages")
+    log.info(
+        f"{LogTag.MAIL} Applying labels to messages",
+        label_ids=label_ids,
+        message_ids_count=len(message_ids),
+    )
     return await modify_message_labels(user_id, message_ids, add_labels=label_ids)
 
 
@@ -425,7 +502,11 @@ async def remove_labels(
     user_id: str, message_ids: list[str], label_ids: list[str]
 ) -> list[dict[str, Any]]:
     """Remove one or more labels from the specified messages."""
-    log.info(f"{LogTag.MAIL} Removing labels {label_ids} from {len(message_ids)} messages")
+    log.info(
+        f"{LogTag.MAIL} Removing labels from messages",
+        label_ids=label_ids,
+        message_ids_count=len(message_ids),
+    )
     return await modify_message_labels(user_id, message_ids, remove_labels=label_ids)
 
 
@@ -441,7 +522,7 @@ async def create_draft(
 
     Body is always sent as HTML; the Composio before-hook converts Markdown.
     """
-    log.info(f"{LogTag.MAIL} Creating draft email to {to_list} with subject: {subject}")
+    log.info(f"{LogTag.MAIL} Creating draft email", to=to_list)
     try:
         parameters: dict[str, Any] = {
             "to": to_list,
@@ -458,7 +539,12 @@ async def create_draft(
         result = await invoke_gmail_tool(user_id, "GMAIL_CREATE_EMAIL_DRAFT", parameters)
         return result
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error creating draft: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error creating draft",
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {"error": str(error), "successful": False}
 
 
@@ -466,7 +552,7 @@ async def list_drafts(
     user_id: str, max_results: int = 20, page_token: str | None = None
 ) -> dict[str, Any]:
     """List Gmail draft messages."""
-    log.info(f"{LogTag.MAIL} Listing drafts, max_results={max_results}")
+    log.info(f"{LogTag.MAIL} Listing drafts, max_results", max_results=max_results)
     try:
         parameters: dict[str, Any] = {
             "max_results": max_results,
@@ -490,17 +576,22 @@ async def list_drafts(
                 "drafts": detailed_drafts,
                 "nextPageToken": result.get("nextPageToken"),
             }
-        log.error(f"{LogTag.MAIL} Error from GMAIL_LIST_DRAFTS: {result.get('error')}")
+        log.error(f"{LogTag.MAIL} Error from GMAIL_LIST_DRAFTS", error=result.get("error"))
         return {"drafts": [], "nextPageToken": None}
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error listing drafts: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error listing drafts",
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {"drafts": [], "nextPageToken": None}
 
 
 async def get_draft(user_id: str, draft_id: str) -> dict[str, Any]:
     """Get a specific Gmail draft."""
-    log.info(f"{LogTag.MAIL} Fetching draft {draft_id}")
+    log.info(f"{LogTag.MAIL} Fetching draft", draft_id=draft_id)
     try:
         parameters = {"draft_id": draft_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_GET_DRAFT", parameters)
@@ -510,11 +601,17 @@ async def get_draft(user_id: str, draft_id: str) -> dict[str, Any]:
             if "message" in result:
                 result["message"] = transform_gmail_message(result["message"])
             return result
-        log.error(f"{LogTag.MAIL} Error from GMAIL_GET_DRAFT: {result.get('error')}")
+        log.error(f"{LogTag.MAIL} Error from GMAIL_GET_DRAFT", error=result.get("error"))
         return {"error": result.get("error"), "successful": False}
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error fetching draft {draft_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error fetching draft",
+            draft_id=draft_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {"error": str(error), "successful": False}
 
 
@@ -531,7 +628,7 @@ async def update_draft(
 
     Body is always sent as HTML; the Composio before-hook converts Markdown.
     """
-    log.info(f"{LogTag.MAIL} Updating draft {draft_id}")
+    log.info(f"{LogTag.MAIL} Updating draft", draft_id=draft_id)
     try:
         parameters = {
             "draft_id": draft_id,
@@ -550,30 +647,42 @@ async def update_draft(
 
         if result.get("successful", True):
             return result
-        log.error(f"{LogTag.MAIL} Error from GMAIL_UPDATE_DRAFT: {result.get('error')}")
+        log.error(f"{LogTag.MAIL} Error from GMAIL_UPDATE_DRAFT", error=result.get("error"))
         return {"error": result.get("error"), "successful": False}
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error updating draft {draft_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error updating draft",
+            draft_id=draft_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {"error": str(error), "successful": False}
 
 
 async def delete_draft(user_id: str, draft_id: str) -> bool:
     """Delete a Gmail draft."""
-    log.info(f"{LogTag.MAIL} Deleting draft {draft_id}")
+    log.info(f"{LogTag.MAIL} Deleting draft", draft_id=draft_id)
     try:
         parameters = {"draft_id": draft_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_DELETE_DRAFT", parameters)
         return result.get("successful", True)
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error deleting draft {draft_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error deleting draft",
+            draft_id=draft_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return False
 
 
 async def send_draft(user_id: str, draft_id: str) -> dict[str, Any]:
     """Send an existing Gmail draft."""
     log.set(user={"id": user_id}, mail=MailContext(operation="send", provider="gmail"))
-    log.info(f"{LogTag.MAIL} Sending draft {draft_id}")
+    log.info(f"{LogTag.MAIL} Sending draft", draft_id=draft_id)
     try:
         parameters = {"draft_id": draft_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_SEND_DRAFT", parameters)
@@ -581,19 +690,25 @@ async def send_draft(user_id: str, draft_id: str) -> dict[str, Any]:
         if result.get("successful", True):
             log.set_ns("mail", success=True)
             return result
-        log.error(f"{LogTag.MAIL} Error from GMAIL_SEND_DRAFT: {result.get('error')}")
+        log.error(f"{LogTag.MAIL} Error from GMAIL_SEND_DRAFT", error=result.get("error"))
         log.set_ns("mail", success=False)
         return {"error": result.get("error"), "successful": False}
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error sending draft {draft_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error sending draft",
+            draft_id=draft_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         log.set_ns("mail", success=False)
         return {"error": str(error), "successful": False}
 
 
 async def list_labels(user_id: str) -> dict[str, Any]:
     """List all Gmail labels."""
-    log.info(f"{LogTag.MAIL} Listing Gmail labels for user {user_id}")
+    log.info(f"{LogTag.MAIL} Listing Gmail labels for user", user_id=user_id)
     try:
         parameters: dict[str, Any] = {}  # No parameters needed for listing labels
         result = await invoke_gmail_tool(user_id, "GMAIL_LIST_LABELS", parameters)
@@ -605,7 +720,7 @@ async def list_labels(user_id: str) -> dict[str, Any]:
                 "labels": labels,
                 "count": len(labels),
             }
-        log.error(f"{LogTag.MAIL} Error from GMAIL_LIST_LABELS: {result.get('error')}")
+        log.error(f"{LogTag.MAIL} Error from GMAIL_LIST_LABELS", error=result.get("error"))
         return {
             "success": False,
             "error": result.get("error"),
@@ -613,7 +728,12 @@ async def list_labels(user_id: str) -> dict[str, Any]:
         }
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error listing Gmail labels: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error listing Gmail labels",
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         return {
             "success": False,
             "error": str(error),
@@ -624,7 +744,7 @@ async def list_labels(user_id: str) -> dict[str, Any]:
 async def get_email_by_id(user_id: str, message_id: str) -> dict[str, Any]:
     """Get a Gmail message by its ID."""
     log.set(user={"id": user_id}, mail=MailContext(operation="fetch", provider="gmail"))
-    log.info(f"{LogTag.MAIL} Fetching email with ID: {message_id}")
+    log.info(f"{LogTag.MAIL} Fetching email with ID", message_id=message_id)
     try:
         parameters = {"message_id": message_id}
         result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", parameters)
@@ -638,7 +758,7 @@ async def get_email_by_id(user_id: str, message_id: str) -> dict[str, Any]:
                 "message": transformed_message,
             }
         log.error(
-            f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID: {result.get('error')}"
+            f"{LogTag.MAIL} Error from GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", error=result.get("error")
         )
         log.set_ns("mail", success=False)
         return {
@@ -648,7 +768,13 @@ async def get_email_by_id(user_id: str, message_id: str) -> dict[str, Any]:
         }
 
     except Exception as error:
-        log.error(f"{LogTag.MAIL} Error fetching email {message_id}: {error}")
+        log.error(
+            f"{LogTag.MAIL} Error fetching email",
+            message_id=message_id,
+            error=str(error),
+            error_type=type(error).__name__,
+            user_id=user_id,
+        )
         log.set_ns("mail", success=False)
         return {
             "success": False,

@@ -35,6 +35,7 @@ import {
   sanitizeErrorForLog,
 } from "./logger";
 import { chunkResponse, truncateResponse } from "./text";
+import { wideLog, withWideEvent } from "./wide-events";
 
 const logger = createBotLogger("shared", "streaming");
 
@@ -340,6 +341,11 @@ async function _handleStream(
 
 /**
  * Handles streaming chat for authenticated users (slash commands).
+ *
+ * Runs inside a {@link withWideEvent} boundary: every adapter message/mention
+ * flow that routes through here emits one canonical `bot_event` line carrying
+ * the full chat context (latency, chunk counts, errors) — the shared
+ * instrumentation chokepoint for all four platforms.
  */
 export async function handleStreamingChat(
   gaia: GaiaClient,
@@ -351,16 +357,57 @@ export async function handleStreamingChat(
   options: StreamingOptions,
   analytics?: Analytics,
 ): Promise<void> {
-  const distinctId = `${request.platform}:${request.platformUserId}`;
-  const startMs = Date.now();
-  let responseLength = 0;
-  let hadError = false;
   // Latency + high-cardinality observability for the chat pipeline. user_hash
   // is the HMAC-hashed id (no PII). ttfb_ms = time to first streamed chunk.
   const userHash = hashLogIdentifier(request.platformUserId);
   // channelId can be a raw PII identifier (e.g. the WhatsApp phone/waId), so it
   // is hashed like user_hash before it reaches the logs.
   const channelHash = hashLogIdentifier(request.channelId);
+
+  return withWideEvent(
+    "chat",
+    {
+      platform: request.platform,
+      component: "streaming",
+      user_hash: userHash,
+      channel_hash: channelHash,
+      message_length: request.message.length,
+      has_files: Boolean(request.fileIds?.length || request.fileData?.length),
+      streaming_enabled: options.streaming,
+    },
+    () =>
+      runStreamingChat(
+        gaia,
+        request,
+        editMessage,
+        sendNewMessage,
+        onAuthError,
+        onGenericError,
+        options,
+        analytics,
+        userHash,
+        channelHash,
+      ),
+  );
+}
+
+/** The body of {@link handleStreamingChat}, running inside its wide-event boundary. */
+async function runStreamingChat(
+  gaia: GaiaClient,
+  request: ChatRequest,
+  editMessage: MessageEditor,
+  sendNewMessage: NewMessageSender | null,
+  onAuthError: (authUrl: string) => Promise<void>,
+  onGenericError: (formattedError: string) => Promise<void>,
+  options: StreamingOptions,
+  analytics: Analytics | undefined,
+  userHash: string | undefined,
+  channelHash: string | undefined,
+): Promise<void> {
+  const distinctId = `${request.platform}:${request.platformUserId}`;
+  const startMs = Date.now();
+  let responseLength = 0;
+  let hadError = false;
   let firstChunkMs: number | null = null;
   let chunkCount = 0;
   let conversationId = "";
@@ -389,14 +436,17 @@ export async function handleStreamingChat(
   const wrappedOnAuthError = async (authUrl: string) => {
     // Auth failures are terminal — skip chat_completed in the finally block.
     hadError = true;
+    // A fresh auth link was minted for this user (createLinkToken in
+    // _handleStream) — leave an audit trail like the backend's auth routes do.
+    wideLog.audit("auth_link_issued", { user_hash: userHash });
     await onAuthError(authUrl);
   };
 
   const wrappedOnGenericError = async (formattedError: string) => {
     hadError = true;
-    // Surface the failure with full latency context so every error is visible.
-    logger.error("chat_stream_failed", {
-      platform: request.platform,
+    // Surface the failure with full latency context so every error is visible —
+    // a real-time line plus an errors[] entry on this chat's wide event.
+    wideLog.error("chat_stream_failed", {
       user_hash: userHash,
       channel_hash: channelHash,
       duration_ms: Date.now() - startMs,
@@ -476,6 +526,12 @@ export async function handleStreamingChat(
       options,
     );
   } finally {
+    wideLog.set({
+      ttfb_ms: firstChunkMs ?? undefined,
+      chunk_count: chunkCount,
+      response_length: responseLength,
+      conversation_id: conversationId || undefined,
+    });
     if (!hadError) {
       logger.info("chat_stream_completed", {
         platform: request.platform,

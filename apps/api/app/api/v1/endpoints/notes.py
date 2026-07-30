@@ -46,7 +46,12 @@ async def create_note_endpoint(
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error creating note: {e!s}")
+        log.error(
+            f"{LogTag.API} Error creating note",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create note",
@@ -74,7 +79,13 @@ async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error getting note {note_id}: {e!s}")
+        log.error(
+            f"{LogTag.API} Error getting note",
+            note_id=note_id,
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve note",
@@ -101,7 +112,12 @@ async def get_all_notes_endpoint(user: dict = Depends(get_current_user)):
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error listing notes: {e!s}")
+        log.error(
+            f"{LogTag.API} Error listing notes",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve notes",
@@ -135,7 +151,13 @@ async def update_note_endpoint(
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating note {note_id}: {e!s}")
+        log.error(
+            f"{LogTag.API} Error updating note",
+            note_id=note_id,
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update note",
@@ -163,7 +185,13 @@ async def delete_note_endpoint(
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error deleting note {note_id}: {e!s}")
+        log.error(
+            f"{LogTag.API} Error deleting note",
+            note_id=note_id,
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete note",

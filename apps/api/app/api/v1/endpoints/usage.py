@@ -51,7 +51,12 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
             "last_updated": datetime.now(UTC).isoformat(),
         }
     except Exception as e:
-        log.error(f"Error getting usage summary: {e!s}")
+        log.error(
+            "Error getting usage summary",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to get usage summary")
 
 
@@ -107,7 +112,12 @@ async def get_usage_history(
         log.set(outcome="success")
         return formatted_history
     except Exception as e:
-        log.error(f"Error getting usage history: {e!s}")
+        log.error(
+            "Error getting usage history",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to get usage history")
 
 

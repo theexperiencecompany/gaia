@@ -32,10 +32,17 @@ async def index_public_integration(
             ids=[integration_id],
             metadatas=[{"integration_id": integration_id}],
         )
-        log.info(f"{LogTag.CHROMA} Indexed public integration {integration_id} in ChromaDB")
+        log.info(
+            f"{LogTag.CHROMA} Indexed public integration in ChromaDB", integration_id=integration_id
+        )
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to index public integration {integration_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to index public integration",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -50,10 +57,18 @@ async def remove_public_integration(integration_id: str) -> None:
             create_if_not_exists=True,
         )
         await chroma.adelete(ids=[integration_id])
-        log.info(f"{LogTag.CHROMA} Removed public integration {integration_id} from ChromaDB")
+        log.info(
+            f"{LogTag.CHROMA} Removed public integration from ChromaDB",
+            integration_id=integration_id,
+        )
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Failed to remove public integration {integration_id}: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Failed to remove public integration",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def search_public_integrations(

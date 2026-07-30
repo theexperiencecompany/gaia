@@ -144,7 +144,10 @@ async def _handle_platform_oauth_callback(
 
             if token_response.status_code != 200:
                 log.error(
-                    f"{LogTag.API} {config.platform} token exchange failed: {token_response.text}"
+                    f"{LogTag.API} Platform token exchange failed",
+                    platform=config.platform,
+                    status_code=token_response.status_code,
+                    error=token_response.text,
                 )
                 return RedirectResponse(
                     url=_redirect_url(
@@ -156,7 +159,7 @@ async def _handle_platform_oauth_callback(
 
             # Slack-specific error handling
             if config.platform == "slack" and not token_data.get("ok"):
-                log.error(f"{LogTag.API} Slack OAuth failed: {token_data.get('error')}")
+                log.error(f"{LogTag.API} Slack OAuth failed", error=token_data.get("error"))
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL, redirect_path, oauth_error="token_failed"
@@ -175,7 +178,10 @@ async def _handle_platform_oauth_callback(
 
                 if user_response.status_code != 200:
                     log.error(
-                        f"{LogTag.API} {config.platform} user fetch failed: {user_response.text}"
+                        f"{LogTag.API} Platform user fetch failed",
+                        platform=config.platform,
+                        status_code=user_response.status_code,
+                        error=user_response.text,
                     )
                     return RedirectResponse(
                         url=_redirect_url(
@@ -206,7 +212,10 @@ async def _handle_platform_oauth_callback(
             if link_result.get("is_new_link"):
                 await notify_account_linked(config.platform, user_id)
             log.info(
-                f"{LogTag.API} {config.platform} account {platform_user_id} linked to user {user_id} via OAuth"
+                f"{LogTag.API} Platform account linked via OAuth",
+                platform=config.platform,
+                platform_user_id=platform_user_id,
+                user_id=user_id,
             )
         except ValueError as e:
             error_msg = str(e)
@@ -219,7 +228,13 @@ async def _handle_platform_oauth_callback(
                         oauth_error="already_linked",
                     )
                 )
-            log.error(f"{LogTag.API} Failed to link account: {error_msg}")
+            log.error(
+                f"{LogTag.API} Failed to link account",
+                platform=config.platform,
+                user_id=user_id,
+                error_type=type(e).__name__,
+                error=error_msg,
+            )
             return RedirectResponse(
                 url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
             )
@@ -237,7 +252,13 @@ async def _handle_platform_oauth_callback(
 
     except Exception as e:
         log.set(outcome="failed")
-        log.error(f"{LogTag.API} {config.platform} OAuth callback error: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.API} Platform OAuth callback error",
+            platform=config.platform,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
         return RedirectResponse(
             url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
         )

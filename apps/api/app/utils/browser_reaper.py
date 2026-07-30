@@ -74,11 +74,17 @@ async def _reaper_loop() -> None:
         try:
             reaped = await asyncio.to_thread(reap_leaked_browsers)
             if reaped:
-                log.warning(f"{LogTag.TOOL} Reaped {reaped} leaked browser driver process(es)")
+                log.warning(
+                    f"{LogTag.TOOL} Reaped leaked browser driver process(es)", reaped=reaped
+                )
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.warning(f"{LogTag.TOOL} Browser reaper sweep failed: {e}")
+            log.warning(
+                f"{LogTag.TOOL} Browser reaper sweep failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
 
 def start_browser_reaper() -> None:
@@ -88,8 +94,9 @@ def start_browser_reaper() -> None:
         return
     _reaper_task = asyncio.get_running_loop().create_task(_reaper_loop())
     log.info(
-        f"{LogTag.TOOL} Browser reaper started (interval={BROWSER_REAPER_INTERVAL_SECONDS:.0f}s, "
-        f"max_age={BROWSER_REAPER_MAX_AGE_SECONDS:.0f}s)"
+        f"{LogTag.TOOL} Browser reaper started (interval=s, max_age=s)",
+        browser_reaper_interval_seconds=BROWSER_REAPER_INTERVAL_SECONDS,
+        browser_reaper_max_age_seconds=BROWSER_REAPER_MAX_AGE_SECONDS,
     )
 
 

@@ -53,7 +53,13 @@ async def add_integration_to_workspace(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error adding integration: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error adding integration",
+            integration_id=request.integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -81,7 +87,13 @@ async def remove_integration_from_workspace(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error removing integration: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error removing integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to remove integration")
 
 
@@ -120,7 +132,13 @@ async def get_integration_instructions(
             updated_at=record.updated_at,
         )
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching integration instructions: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching integration instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch integration instructions")
 
 
@@ -165,5 +183,11 @@ async def update_integration_instructions(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error updating integration instructions: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error updating integration instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to update integration instructions")

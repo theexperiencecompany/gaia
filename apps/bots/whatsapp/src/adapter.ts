@@ -36,6 +36,7 @@ import {
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   unsupportedMediaMessage,
+  wideLog,
 } from "@gaia/shared";
 import { WhatsAppClient } from "@kapso/whatsapp-cloud-api";
 import {
@@ -203,9 +204,10 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           this.whatsAppConfig.kapsoWebhookSecret,
         )
       ) {
-        // Surface rejected webhooks — a spike here means a misconfigured secret
-        // or a spoofing attempt, not something to drop silently.
-        this.adapterLogger.warn("webhook_signature_rejected", {
+        // Surface rejected webhooks as an audit-trail entry — a spike here
+        // means a misconfigured secret or a spoofing attempt, not something
+        // to drop silently.
+        wideLog.audit("webhook_signature_rejected", {
           has_signature: signature !== null,
         });
         return c.json({ error: "Invalid signature" }, 401);

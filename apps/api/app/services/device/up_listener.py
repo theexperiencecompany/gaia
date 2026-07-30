@@ -87,7 +87,11 @@ async def _listener_loop() -> None:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.warning(f"{LogTag.API} Device up-listener dropped, resubscribing: {e}")
+            log.warning(
+                f"{LogTag.API} Device up-listener dropped, resubscribing",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         await asyncio.sleep(DEVICE_LISTENER_RESUBSCRIBE_SECONDS)
 
 

@@ -84,7 +84,7 @@ async def create_todo(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "create_todo", "action": "create"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Creating todo with title '{title}'")
+        log.info(f"{LogTag.TOOL} Todo Tool: Creating todo", title=title)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -126,7 +126,12 @@ async def create_todo(
 
     except Exception as e:
         error_msg = f"Error creating todo: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error creating todo",
+            error_type=type(e).__name__,
+            error=str(e),
+            title=title,
+        )
         return {"error": error_msg, "todo": None}
 
 
@@ -185,7 +190,11 @@ async def list_todos(
 
     except Exception as e:
         error_msg = f"Error listing todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error listing todos",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -205,7 +214,7 @@ async def update_todo(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "update_todo", "action": "update"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Updating todo {todo_id}")
+        log.info(f"{LogTag.TOOL} Todo Tool: Updating todo", todo_id=todo_id)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -241,7 +250,12 @@ async def update_todo(
 
     except Exception as e:
         error_msg = f"Error updating todo: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error updating todo",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_id=todo_id,
+        )
         return {"error": error_msg, "todo": None}
 
 
@@ -253,7 +267,7 @@ async def delete_todo(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "delete_todo", "action": "delete"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Deleting todo {todo_id}")
+        log.info(f"{LogTag.TOOL} Todo Tool: Deleting todo", todo_id=todo_id)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -280,7 +294,12 @@ async def delete_todo(
 
     except Exception as e:
         error_msg = f"Error deleting todo: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error deleting todo",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_id=todo_id,
+        )
         return {"error": error_msg, "success": False}
 
 
@@ -292,7 +311,7 @@ async def search_todos(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "search_todos", "action": "search"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Searching todos with query '{query}'")
+        log.info(f"{LogTag.TOOL} Todo Tool: Searching todos", query=query)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -317,7 +336,11 @@ async def search_todos(
 
     except Exception as e:
         error_msg = f"Error searching todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error searching todos",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -333,7 +356,7 @@ async def semantic_search_todos(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "semantic_search_todos", "action": "search"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Semantic search for '{query}'")
+        log.info(f"{LogTag.TOOL} Todo Tool: Semantic search", query=query)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -374,7 +397,11 @@ async def semantic_search_todos(
 
     except Exception as e:
         error_msg = f"Error in semantic search: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error in semantic search",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -407,7 +434,11 @@ async def get_todo_statistics(config: RunnableConfig) -> dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error getting todo statistics: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error getting todo statistics",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "stats": None}
 
 
@@ -448,7 +479,11 @@ async def get_today_todos(config: RunnableConfig) -> dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error getting today's todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error getting today's todos",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -460,7 +495,7 @@ async def get_upcoming_todos(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "get_upcoming_todos", "action": "get"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Getting upcoming todos for next {days} days")
+        log.info(f"{LogTag.TOOL} Todo Tool: Getting upcoming todos", days=days)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -492,7 +527,12 @@ async def get_upcoming_todos(
 
     except Exception as e:
         error_msg = f"Error getting upcoming todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error getting upcoming todos",
+            error_type=type(e).__name__,
+            error=str(e),
+            days=days,
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -506,7 +546,7 @@ async def create_project(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "create_project", "action": "create"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Creating project '{name}'")
+        log.info(f"{LogTag.TOOL} Todo Tool: Creating project", project_name=name)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -537,7 +577,11 @@ async def create_project(
 
     except Exception as e:
         error_msg = f"Error creating project: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error creating project",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "project": None}
 
 
@@ -571,7 +615,11 @@ async def list_projects(config: RunnableConfig) -> dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error listing projects: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error listing projects",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "projects": []}
 
 
@@ -586,7 +634,7 @@ async def update_project(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "update_project", "action": "update"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Updating project {project_id}")
+        log.info(f"{LogTag.TOOL} Todo Tool: Updating project", project_id=project_id)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -621,7 +669,12 @@ async def update_project(
 
     except Exception as e:
         error_msg = f"Error updating project: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error updating project",
+            error_type=type(e).__name__,
+            error=str(e),
+            project_id=project_id,
+        )
         return {"error": error_msg, "project": None}
 
 
@@ -633,7 +686,7 @@ async def delete_project(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "delete_project", "action": "delete"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Deleting project {project_id}")
+        log.info(f"{LogTag.TOOL} Todo Tool: Deleting project", project_id=project_id)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -661,7 +714,12 @@ async def delete_project(
 
     except Exception as e:
         error_msg = f"Error deleting project: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error deleting project",
+            error_type=type(e).__name__,
+            error=str(e),
+            project_id=project_id,
+        )
         return {"error": error_msg, "success": False}
 
 
@@ -673,7 +731,7 @@ async def get_todos_by_label(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "get_todos_by_label", "action": "get"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Getting todos with label '{label}'")
+        log.info(f"{LogTag.TOOL} Todo Tool: Getting todos by label", label=label)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -702,7 +760,12 @@ async def get_todos_by_label(
 
     except Exception as e:
         error_msg = f"Error getting todos by label: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error getting todos by label",
+            error_type=type(e).__name__,
+            error=str(e),
+            label=label,
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -722,7 +785,11 @@ async def get_all_labels(config: RunnableConfig) -> dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error getting labels: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error getting labels",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "labels": []}
 
 
@@ -734,7 +801,7 @@ async def bulk_complete_todos(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "bulk_complete_todos", "action": "bulk_complete"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Bulk completing {len(todo_ids)} todos")
+        log.info(f"{LogTag.TOOL} Todo Tool: Bulk completing todos", todo_count=len(todo_ids))
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -763,7 +830,12 @@ async def bulk_complete_todos(
 
     except Exception as e:
         error_msg = f"Error bulk completing todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error bulk completing todos",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_count=len(todo_ids),
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -776,7 +848,11 @@ async def bulk_move_todos(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "bulk_move_todos", "action": "bulk_move"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Moving {len(todo_ids)} todos to project {project_id}")
+        log.info(
+            f"{LogTag.TOOL} Todo Tool: Bulk moving todos",
+            todo_count=len(todo_ids),
+            project_id=project_id,
+        )
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -805,7 +881,13 @@ async def bulk_move_todos(
 
     except Exception as e:
         error_msg = f"Error bulk moving todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error bulk moving todos",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_count=len(todo_ids),
+            project_id=project_id,
+        )
         return {"error": error_msg, "todos": []}
 
 
@@ -817,7 +899,7 @@ async def bulk_delete_todos(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "bulk_delete_todos", "action": "bulk_delete"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Bulk deleting {len(todo_ids)} todos")
+        log.info(f"{LogTag.TOOL} Todo Tool: Bulk deleting todos", todo_count=len(todo_ids))
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -840,7 +922,12 @@ async def bulk_delete_todos(
 
     except Exception as e:
         error_msg = f"Error bulk deleting todos: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error bulk deleting todos",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_count=len(todo_ids),
+        )
         return {"error": error_msg, "success": False}
 
 
@@ -853,7 +940,7 @@ async def add_subtask(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "add_subtask", "action": "create"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Adding subtask to todo {todo_id}")
+        log.info(f"{LogTag.TOOL} Todo Tool: Adding subtask", todo_id=todo_id)
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -887,7 +974,12 @@ async def add_subtask(
 
     except Exception as e:
         error_msg = f"Error adding subtask: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error adding subtask",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_id=todo_id,
+        )
         return {"error": error_msg, "todo": None}
 
 
@@ -902,7 +994,9 @@ async def update_subtask(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "update_subtask", "action": "update"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Updating subtask {subtask_id} in todo {todo_id}")
+        log.info(
+            f"{LogTag.TOOL} Todo Tool: Updating subtask", subtask_id=subtask_id, todo_id=todo_id
+        )
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -947,7 +1041,13 @@ async def update_subtask(
 
     except Exception as e:
         error_msg = f"Error updating subtask: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error updating subtask",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_id=todo_id,
+            subtask_id=subtask_id,
+        )
         return {"error": error_msg, "todo": None}
 
 
@@ -960,7 +1060,9 @@ async def delete_subtask(
 ) -> dict[str, Any]:
     try:
         log.set(tool={"name": "delete_subtask", "action": "delete"})
-        log.info(f"{LogTag.TOOL} Todo Tool: Deleting subtask {subtask_id} from todo {todo_id}")
+        log.info(
+            f"{LogTag.TOOL} Todo Tool: Deleting subtask", subtask_id=subtask_id, todo_id=todo_id
+        )
         user_id = get_user_id_from_config(config)
 
         if not user_id:
@@ -996,7 +1098,13 @@ async def delete_subtask(
 
     except Exception as e:
         error_msg = f"Error deleting subtask: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error deleting subtask",
+            error_type=type(e).__name__,
+            error=str(e),
+            todo_id=todo_id,
+            subtask_id=subtask_id,
+        )
         return {"error": error_msg, "todo": None}
 
 
@@ -1125,7 +1233,11 @@ async def get_todos_summary(config: RunnableConfig) -> dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error getting todos summary: {e!s}"
-        log.error(f"{LogTag.TOOL} {error_msg}")
+        log.error(
+            f"{LogTag.TOOL} Error getting todos summary",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"error": error_msg, "summary": None}
 
 

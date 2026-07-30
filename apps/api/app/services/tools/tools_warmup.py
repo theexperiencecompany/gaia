@@ -28,4 +28,8 @@ async def warmup_tools_cache() -> None:
             f"{LogTag.TOOL} Provider catalog metadata indexed (tools materialized lazily on use)"
         )
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Tools catalog warmup failed (non-fatal): {e}")
+        log.warning(
+            f"{LogTag.TOOL} Tools catalog warmup failed (non-fatal)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )

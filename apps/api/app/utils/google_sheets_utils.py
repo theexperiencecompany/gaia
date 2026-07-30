@@ -70,7 +70,12 @@ def get_sheet_id_by_name(spreadsheet_id: str, sheet_name: str, user_id: str) -> 
                 return sheet["properties"]["sheetId"]
         return None
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error getting sheet ID: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error getting sheet ID",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None
 
 
@@ -95,5 +100,10 @@ def get_column_index_by_header(
                 return idx
         return None
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error getting column index: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error getting column index",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return None

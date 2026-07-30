@@ -92,7 +92,12 @@ async def create_reminder_endpoint(
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error creating reminder: {e}")
+        log.error(
+            f"{LogTag.API} Error creating reminder",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create reminder",
@@ -148,7 +153,13 @@ async def get_reminder_endpoint(reminder_id: str, user: dict = Depends(get_curre
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error getting reminder {reminder_id}: {e}")
+        log.error(
+            f"{LogTag.API} Error getting reminder",
+            reminder_id=reminder_id,
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve reminder",
@@ -225,7 +236,13 @@ async def update_reminder_endpoint(
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating reminder {reminder_id}: {e}")
+        log.error(
+            f"{LogTag.API} Error updating reminder",
+            reminder_id=reminder_id,
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update reminder",
@@ -269,7 +286,13 @@ async def cancel_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cu
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error cancelling reminder {reminder_id}: {e}")
+        log.error(
+            f"{LogTag.API} Error cancelling reminder",
+            reminder_id=reminder_id,
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to cancel reminder",
@@ -328,7 +351,12 @@ async def list_reminders_endpoint(
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error listing reminders for user {user_id}: {e}")
+        log.error(
+            f"{LogTag.API} Error listing reminders",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list reminders",
@@ -383,7 +411,13 @@ async def pause_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cur
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500
     except Exception as e:
-        log.error(f"{LogTag.API} Error pausing reminder {reminder_id}: {e}")
+        log.error(
+            f"{LogTag.API} Error pausing reminder",
+            reminder_id=reminder_id,
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to pause reminder",
@@ -459,7 +493,13 @@ async def resume_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cu
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.API} Error resuming reminder {reminder_id}: {e}")
+        log.error(
+            f"{LogTag.API} Error resuming reminder",
+            reminder_id=reminder_id,
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to resume reminder",
@@ -495,5 +535,10 @@ async def validate_cron_endpoint(
         return result
 
     except Exception as e:
-        log.error(f"{LogTag.API} Error validating cron expression {expression}: {e}")
+        log.error(
+            f"{LogTag.API} Error validating cron expression",
+            expression=expression,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return {"expression": expression, "valid": False, "error": str(e)}

@@ -99,7 +99,8 @@ async def authenticate_workos_session(
                 if not refresh_result.authenticated:
                     # Authentication failed, even after refresh
                     log.warning(
-                        f"{LogTag.AGENT} Authentication failed even after refresh with reason: {refresh_result.reason}"  # type: ignore[reportOptionalMemberAccess]
+                        f"{LogTag.AGENT} Authentication failed even after refresh with reason",
+                        reason=refresh_result.reason,  # type: ignore[reportOptionalMemberAccess]
                     )
                     return {}, None
 
@@ -118,7 +119,11 @@ async def authenticate_workos_session(
                     return {}, None
 
             except Exception as e:
-                log.error(f"{LogTag.AGENT} Session refresh error: {e}")
+                log.error(
+                    f"{LogTag.AGENT} Session refresh error",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 return {}, None
 
         # Make sure we have a valid user before continuing
@@ -135,7 +140,8 @@ async def authenticate_workos_session(
             if user_doc is None:
                 # User doesn't exist in our database
                 log.warning(
-                    f"{LogTag.AGENT} User {user_email} authenticated but not found in database"
+                    f"{LogTag.AGENT} User authenticated but not found in database",
+                    user_email=user_email,
                 )
                 return {}, new_session
 
@@ -144,9 +150,17 @@ async def authenticate_workos_session(
             return user_info, new_session
 
         except Exception as e:
-            log.error(f"{LogTag.AGENT} Error processing user data: {e}")
+            log.error(
+                f"{LogTag.AGENT} Error processing user data",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return {}, new_session
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error in authenticate_workos_session: {e}")
+        log.error(
+            f"{LogTag.AGENT} Error in authenticate_workos_session",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return {}, None

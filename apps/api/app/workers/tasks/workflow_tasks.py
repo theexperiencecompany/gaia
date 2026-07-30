@@ -72,7 +72,12 @@ async def process_workflow_generation_task(
         Processing result message
     """
     async with wide_task("process_workflow_generation_task", todo_id=todo_id, user_id=user_id):
-        log.info(f"{LogTag.WORKER} Processing workflow generation for todo {todo_id}: {title}")
+        log.info(
+            f"{LogTag.WORKER} Processing workflow generation for todo",
+            todo_id=todo_id,
+            title=title,
+            user_id=user_id,
+        )
 
         try:
             # Build short card description plus detailed execution prompt
@@ -115,7 +120,10 @@ async def process_workflow_generation_task(
 
                 if linked is not None:
                     log.info(
-                        f"{LogTag.WORKER} Successfully generated and linked standalone workflow {workflow.id} for todo {todo_id} with {len(workflow.steps)} steps"
+                        f"{LogTag.WORKER} Successfully generated and linked standalone workflow",
+                        workflow_id=workflow.id,
+                        todo_id=todo_id,
+                        steps_count=len(workflow.steps),
                     )
                     log.set(
                         workflow=WorkflowContext(
@@ -136,10 +144,19 @@ async def process_workflow_generation_task(
                             },
                         )
                         log.set(websocket_broadcast_success=True)
-                        log.info(f"{LogTag.WORKER} WebSocket event sent for workflow {workflow.id}")
+                        log.info(
+                            f"{LogTag.WORKER} WebSocket event sent for workflow",
+                            workflow_id=workflow.id,
+                        )
                     except Exception as ws_error:
                         log.set(websocket_broadcast_success=False)
-                        log.warning(f"{LogTag.WORKER} Failed to send WebSocket event: {ws_error}")
+                        log.warning(
+                            f"{LogTag.WORKER} Failed to send WebSocket event",
+                            error_type=type(ws_error).__name__,
+                            error=str(ws_error),
+                            workflow_id=workflow.id,
+                            todo_id=todo_id,
+                        )
 
                     # Clear the generating flag
                     from app.services.workflow.queue_service import WorkflowQueueService
@@ -156,7 +173,9 @@ async def process_workflow_generation_task(
 
             # Mark workflow generation as failed
             log.error(
-                f"{LogTag.WORKER} Failed to generate workflow for todo {todo_id}: No workflow created"
+                f"{LogTag.WORKER} Failed to generate workflow for todo: no workflow created",
+                todo_id=todo_id,
+                user_id=user_id,
             )
             raise create_error(
                 message="Workflow generation failed: No workflow created",
@@ -187,10 +206,16 @@ async def process_workflow_generation_task(
                     },
                 )
                 log.set(websocket_broadcast_success=True)
-                log.info(f"{LogTag.WORKER} WebSocket failure event sent for todo {todo_id}")
+                log.info(f"{LogTag.WORKER} WebSocket failure event sent for todo", todo_id=todo_id)
             except Exception as ws_error:
                 log.set(websocket_broadcast_success=False)
-                log.warning(f"{LogTag.WORKER} Failed to send failure WebSocket event: {ws_error}")
+                log.warning(
+                    f"{LogTag.WORKER} Failed to send failure WebSocket event",
+                    error_type=type(ws_error).__name__,
+                    error=str(ws_error),
+                    todo_id=todo_id,
+                    user_id=user_id,
+                )
 
             raise
 
@@ -220,7 +245,7 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
     async with wide_task("execute_workflow_by_id", workflow_id=workflow_id):
         actual_fire_utc = datetime.now(UTC)
         log.set(actual_fire_utc=actual_fire_utc.isoformat())
-        log.info(f"{LogTag.WORKER} Processing workflow execution: {workflow_id}")
+        log.info(f"{LogTag.WORKER} Processing workflow execution", workflow_id=workflow_id)
 
         scheduler = WorkflowScheduler()
         workflow = None
@@ -257,8 +282,9 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 await scheduler.claim_scheduled_for_execution(workflow_id)
             ):
                 log.warning(
-                    f"{LogTag.WORKER} Workflow {workflow_id} not in scheduled state "
-                    f"(already claimed or running); skipping duplicate scheduled fire"
+                    f"{LogTag.WORKER} Workflow not in scheduled state "
+                    f"(already claimed or running); skipping duplicate scheduled fire",
+                    workflow_id=workflow_id,
                 )
                 return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
@@ -273,8 +299,9 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 )
                 if abs(drift) > 300:
                     log.warning(
-                        f"{LogTag.WORKER} Workflow {workflow_id} fired {drift}s off schedule "
-                        f"(positive = late, negative = early)",
+                        f"{LogTag.WORKER} Workflow fired off schedule (positive drift = late, negative = early)",
+                        workflow_id=workflow_id,
+                        drift_seconds=drift,
                     )
 
             # Create execution record at start
@@ -312,7 +339,10 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 await _rearm_if_scheduled(scheduler, workflow, context)
             except Exception as rearm_err:
                 log.error(
-                    f"{LogTag.WORKER} Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err)
+                    f"{LogTag.WORKER} Failed to re-arm workflow",
+                    workflow_id=workflow_id,
+                    error_type=type(rearm_err).__name__,
+                    error=str(rearm_err),
                 )
 
             return f"Workflow {workflow_id} executed successfully"
@@ -324,10 +354,18 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 # doesn't trip the ARQ failed-task alert. The execution is still
                 # recorded as failed and the user is notified below.
                 log.warning(
-                    f"{LogTag.WORKER} Workflow {workflow_id} skipped — rate limit exceeded: {e}"
+                    f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+                    workflow_id=workflow_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
                 )
             else:
-                log.exception(f"{LogTag.WORKER} Error executing workflow {workflow_id}: {e}")
+                log.exception(
+                    f"{LogTag.WORKER} Error executing workflow",
+                    workflow_id=workflow_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
 
             # Complete execution record with failure
             if execution_id:
@@ -456,7 +494,10 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
                 await _rearm_if_scheduled(scheduler, workflow, context)
             except Exception as rearm_err:
                 log.error(
-                    f"{LogTag.WORKER} Failed to re-arm workflow %s: %s" % (workflow_id, rearm_err)
+                    f"{LogTag.WORKER} Failed to re-arm workflow",
+                    workflow_id=workflow_id,
+                    error_type=type(rearm_err).__name__,
+                    error=str(rearm_err),
                 )
 
             return "Error executing workflow %s: %s" % (workflow_id, str(e))
@@ -486,7 +527,9 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
 
     try:
         log.info(
-            f"{LogTag.WORKER} Executing workflow {workflow.id} as chat session for user {user_id}"
+            f"{LogTag.WORKER} Executing workflow as chat session",
+            workflow_id=workflow.id,
+            user_id=user_id,
         )
 
         # Resolve the agent's home zone for this run. There is no request header
@@ -514,7 +557,13 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> str:
             log.set(workflow_agent_timezone=resolved_tz.value)
             user_data["timezone"] = resolved_tz.value
         except Exception as e:
-            log.warning(f"{LogTag.WORKER} Could not resolve workflow timezone for {user_id}: {e}")
+            log.warning(
+                f"{LogTag.WORKER} Could not resolve workflow timezone",
+                user_id=user_id,
+                workflow_id=workflow.id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
             user_data = {"user_id": user_id}
 
         # Get or create the workflow conversation for thread context
@@ -621,7 +670,10 @@ async def regenerate_workflow_steps(
     """
     async with wide_task("regenerate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
         log.info(
-            f"{LogTag.WORKER} Regenerating workflow steps: {workflow_id} for user {user_id}, reason: {regeneration_reason}"
+            f"{LogTag.WORKER} Regenerating workflow steps",
+            workflow_id=workflow_id,
+            user_id=user_id,
+            reason=regeneration_reason,
         )
 
         # Import here to avoid circular imports
@@ -635,9 +687,10 @@ async def regenerate_workflow_steps(
             force_different_tools,
         )
 
-        result = f"Successfully regenerated steps for workflow {workflow_id}"
-        log.info(f"{LogTag.WORKER} {result}")
-        return result
+        log.info(
+            f"{LogTag.WORKER} Successfully regenerated workflow steps", workflow_id=workflow_id
+        )
+        return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
 async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> str:
@@ -654,7 +707,9 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
         Processing result message
     """
     async with wide_task("generate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
-        log.info(f"{LogTag.WORKER} Generating workflow steps: {workflow_id} for user {user_id}")
+        log.info(
+            f"{LogTag.WORKER} Generating workflow steps", workflow_id=workflow_id, user_id=user_id
+        )
 
         # Import here to avoid circular imports
         from app.services.workflow import WorkflowService
@@ -690,11 +745,19 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
                     },
                 )
                 log.set(websocket_broadcast_success=True)
-                log.info(f"{LogTag.WORKER} WebSocket event sent for todo workflow {workflow_id}")
+                log.info(
+                    f"{LogTag.WORKER} WebSocket event sent for todo workflow",
+                    workflow_id=workflow_id,
+                )
             except Exception as ws_error:
                 log.set(websocket_broadcast_success=False)
-                log.warning(f"{LogTag.WORKER} Failed to send WebSocket event: {ws_error}")
+                log.warning(
+                    f"{LogTag.WORKER} Failed to send WebSocket event",
+                    error_type=type(ws_error).__name__,
+                    error=str(ws_error),
+                    workflow_id=workflow_id,
+                    user_id=user_id,
+                )
 
-        result = f"Successfully generated steps for workflow {workflow_id}"
-        log.info(f"{LogTag.WORKER} {result}")
-        return result
+        log.info(f"{LogTag.WORKER} Successfully generated workflow steps", workflow_id=workflow_id)
+        return f"Successfully generated steps for workflow {workflow_id}"

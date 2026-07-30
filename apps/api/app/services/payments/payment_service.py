@@ -40,7 +40,11 @@ class DodoPaymentService:
                 environment=environment,
             )
         except Exception as e:
-            log.error(f"{LogTag.PAYMENT} Failed to instantiate dodo payments: {e}")
+            log.error(
+                f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def get_plans(self, active_only: bool = True) -> list[PlanResponse]:
         """Get subscription plans with caching."""
@@ -138,7 +142,12 @@ class DodoPaymentService:
 
             checkout_session = self.client.checkout_sessions.create(**params)
         except Exception as e:
-            log.error(f"{LogTag.PAYMENT} Error creating Dodo checkout session: {e}")
+            log.error(
+                f"{LogTag.PAYMENT} Error creating Dodo checkout session",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise HTTPException(502, f"Payment service error: {e!s}")
 
         # Look up plan name for richer logging
@@ -185,7 +194,11 @@ class DodoPaymentService:
                     user_email=user.email,
                 )
         except Exception as e:
-            log.debug(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
+            log.debug(
+                f"{LogTag.PAYMENT} Failed to send welcome email",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
         return {
             "payment_completed": True,

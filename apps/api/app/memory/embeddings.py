@@ -88,8 +88,9 @@ def _get_embedding_model() -> TextEmbedding:
                     enable_cpu_mem_arena=ONNX_ENABLE_CPU_MEM_ARENA,
                 )
                 log.info(
-                    f"Loaded memory embedding model {EMBEDDING_MODEL_NAME} "
-                    f"in {time.perf_counter() - started:.2f}s"
+                    "Loaded memory embedding model",
+                    model_name=EMBEDDING_MODEL_NAME,
+                    duration_s=round(time.perf_counter() - started, 2),
                 )
     return _embedding_model
 
@@ -108,8 +109,9 @@ def _get_reranker_model() -> TextCrossEncoder:
                     enable_cpu_mem_arena=ONNX_ENABLE_CPU_MEM_ARENA,
                 )
                 log.info(
-                    f"Loaded memory reranker model {RERANKER_MODEL_NAME} "
-                    f"in {time.perf_counter() - started:.2f}s"
+                    "Loaded memory reranker model",
+                    model_name=RERANKER_MODEL_NAME,
+                    duration_s=round(time.perf_counter() - started, 2),
                 )
     return _reranker_model
 

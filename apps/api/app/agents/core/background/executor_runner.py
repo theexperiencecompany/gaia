@@ -121,7 +121,8 @@ async def run_executor_background(
                 # sweep closes the orphaned approval.
                 result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
             log.info(
-                f"{LogTag.AGENT} Background executor {result_type}",
+                f"{LogTag.AGENT} Background executor finished",
+                result_type=result_type,
                 task_id=run.task_id,
                 stream_id=run.stream_id,
             )

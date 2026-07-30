@@ -243,7 +243,11 @@ class ArtifactWatcher:
         except JuiceFSUnavailable:
             return
         except Exception as e:
-            log.debug(f"{LogTag.ARTIFACT_WATCHER} event dispatch failed: {e}")
+            log.debug(
+                f"{LogTag.ARTIFACT_WATCHER} event dispatch failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     # -- accesslog mode ---------------------------------------------------
 
@@ -325,7 +329,11 @@ class ArtifactWatcher:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.debug(f"{LogTag.ARTIFACT_WATCHER} rescan failed: {e}")
+            log.debug(
+                f"{LogTag.ARTIFACT_WATCHER} rescan failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def _rescan_all(self) -> None:
         async with fs_timer(FsOps.WATCHER_RESCAN):

@@ -127,7 +127,9 @@ async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
                     }
     except Exception as e:
         log.warning(
-            f"{LogTag.CHROMA} Error fetching existing triggers: {e}, will register all triggers"
+            f"{LogTag.CHROMA} Error fetching existing triggers: , will register all triggers",
+            error=str(e),
+            error_type=type(e).__name__,
         )
 
     return existing_triggers
@@ -234,7 +236,7 @@ async def _execute_batch_operations(
             f"{(total_ops + batch_size - 1) // batch_size}"
         )
 
-    log.info(f"{LogTag.CHROMA} Successfully updated {total_ops} triggers in ChromaDB")
+    log.info(f"{LogTag.CHROMA} Successfully updated triggers in ChromaDB", total_ops=total_ops)
 
 
 @lazy_provider(
@@ -279,7 +281,9 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
             collection="langgraph_triggers_store",
         )
     )
-    log.info(f"{LogTag.CHROMA} Found {len(current_triggers)} triggers to manage")
+    log.info(
+        f"{LogTag.CHROMA} Found triggers to manage", current_triggers_count=len(current_triggers)
+    )
 
     existing_triggers = await _get_existing_triggers_from_chroma(collection)
 
@@ -293,8 +297,9 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
         return store
 
     log.info(
-        f"{LogTag.CHROMA} Updating ChromaDB triggers store: {len(triggers_to_upsert)} to upsert, "
-        f"{len(triggers_to_delete)} to delete"
+        f"{LogTag.CHROMA} Updating ChromaDB triggers store: to upsert, to delete",
+        triggers_to_upsert_count=len(triggers_to_upsert),
+        triggers_to_delete_count=len(triggers_to_delete),
     )
 
     put_ops = _build_put_operations(triggers_to_upsert, triggers_to_delete)

@@ -22,7 +22,11 @@ async def list_marketplace_integrations(category: str | None = None):
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching marketplace: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching marketplace",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch integrations")
 
 

@@ -48,4 +48,9 @@ class FreeTierBudget:
             await client.incr(key)
             await client.expire(key, _TTL_SECONDS)
         except Exception as e:
-            log.warning(f"Search budget update failed for {provider}: {e}")
+            log.warning(
+                "Search budget update failed for",
+                provider=provider,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
