@@ -526,6 +526,9 @@ services:
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
+      # Persist read positions across container recreations — without this,
+      # promtail re-ingests every retained structured-*.json from byte 0.
+      - promtail_positions:/var/lib/promtail
       # Mount local log files so promtail can ship them even when services
       # run outside Docker (nx dev api, nx worker api, nx dev voice-agent).
       - ../../apps/api/logs:/var/log/gaia-api:ro
@@ -616,6 +619,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  promtail_positions:
   juicefs_cache:
 
 networks:

@@ -687,7 +687,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"arq_worker|gaia-backend\"} | json | logger=\"WORKER\" | level=~\"ERROR|WARNING\"",
+          "expr": "{service=~\"arq_worker|gaia-backend\"} | json | logger=\"WORKER\" | level=~\"ERROR|CRITICAL|WARNING\"",
           "legendFormat": "",
           "refId": "A"
         }

@@ -1,12 +1,8 @@
 """
 Wide event logging — one context-rich structured event per request.
 
-Drop-in replacement for any Loguru logger. Migration is one import line per file:
+The canonical logging surface for all app code:
 
-    # Before
-    from app.config.loggers import chat_logger as logger
-
-    # After — import as log and use log.set(), log.info(), etc.
     from shared.py.wide_events import log
 
 Key behaviors:
@@ -21,6 +17,8 @@ The middleware calls log.reset() at the start of each request and merges
 log.get() into the final emitted event. For worker tasks use wide_task().
 """
 
+import asyncio
+from collections.abc import Coroutine
 import contextlib
 import contextvars
 import functools
@@ -462,6 +460,34 @@ class VoiceContext(TypedDict, total=False):
     turn_index: int
 
 
+class DeviceContext(TypedDict, total=False):
+    """Device-bridge pairing/token/registration operation context."""
+
+    operation: str  # "pair_start"|"pair_poll"|"pair_approve"|"token"|"list"|"revoke"|"register"
+    device_id: str
+    pairing_status: str  # "pending"|"approved"|"expired"
+    result_count: int
+    success: bool
+
+
+class DesktopContext(TypedDict, total=False):
+    """Desktop-app release/bridge operation context."""
+
+    operation: str  # "latest_release"|"tool_result"
+    platform: str  # "darwin"|"win32"|"linux"
+    version: str
+
+
+class DevContext(TypedDict, total=False):
+    """Development-only identity/agent-harness endpoint context (dev router)."""
+
+    operation: (
+        str  # "create_user"|"seed"|"remove_user"|"list_subagents"|"run_executor"|"run_subagent"
+    )
+    target_email: str
+    subagent_id: str
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -498,6 +524,9 @@ class WideEventFields(TypedDict, total=False):
     skill: SkillContext
     vector: VectorContext
     voice: VoiceContext
+    device: DeviceContext
+    desktop: DesktopContext
+    dev: DevContext
     # Top-level convenience fields used across endpoints
     operation: str
     outcome: str
@@ -534,11 +563,20 @@ class WideEventLogger:
     # --- Primary API ---
 
     def _state(self) -> _EventState:
-        """The current accumulator, created on first use outside a boundary."""
+        """The current accumulator; a throwaway when no boundary is active.
+
+        Deliberately does NOT bind the throwaway into the context: a lazily
+        bound ambient state gets inherited by every task spawned from that
+        context, turning one dict into a process-global sink that grows
+        forever and mixes users (observed with WebSocket connections and ARQ
+        jobs inheriting the main context). Outside a boundary every write is
+        discarded either way — a fresh throwaway makes that leak-free and
+        isolation-safe. Accumulation requires a boundary: the HTTP middleware,
+        ``wide_task``, ``log_context`` or ``spawn_logged_task``.
+        """
         state = _event_state.get()
         if state is None:
-            state = _EventState()
-            _event_state.set(state)
+            return _EventState()
         return state
 
     def set(self, **kwargs: Any) -> None:
@@ -558,35 +596,42 @@ class WideEventLogger:
         fields[namespace] = {**fields.get(namespace, {}), **kwargs}
 
     # --- Loguru-compatible message methods ---
+    #
+    # kwargs travel via ``.bind(**kwargs)`` — NEVER as loguru format args.
+    # Passing them to the log call itself makes loguru ``str.format`` the
+    # message at the call site, so any brace in dynamic message content (JSON
+    # in an exception's text, LLM output) raised ValueError/KeyError *inside*
+    # the log call — masking the real error and skipping the code after it.
+    # bind() delivers the same fields to record["extra"] without formatting.
 
     def debug(self, message: str, **kwargs: Any) -> None:
         """Emit a debug log line; not recorded in the wide event."""
-        _loguru.opt(depth=1).debug(message, **kwargs)
+        _loguru.opt(depth=1).bind(**kwargs).debug(message)
 
     def info(self, message: str, **kwargs: Any) -> None:
         """Emit an info log line; not recorded in the wide event (info is noise there)."""
         # Emit real-time Loguru line for visibility.
         # Does NOT add to wide event — info messages are noise there.
-        _loguru.opt(depth=1).info(message, **kwargs)
+        _loguru.opt(depth=1).bind(**kwargs).info(message)
 
     def warning(self, message: str, **kwargs: Any) -> None:
         """Log a warning, append it to the event's ``warnings`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
-        _loguru.opt(depth=1, exception=exc_info).warning(message, **kwargs)
+        _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).warning(message)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
 
     def error(self, message: str, **kwargs: Any) -> None:
         """Log an error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
-        _loguru.opt(depth=1, exception=exc_info).error(message, **kwargs)
+        _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 
     def critical(self, message: str, **kwargs: Any) -> None:
         """Log a critical error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
-        _loguru.opt(depth=1, exception=exc_info).critical(message, **kwargs)
+        _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).critical(message)
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
 
@@ -603,15 +648,14 @@ class WideEventLogger:
             log.audit("subscription cancelled", actor=user_id, resource=sub_id)
         """
         exc_info = kwargs.pop("exc_info", False)
-        _loguru.opt(depth=1, exception=exc_info).log("AUDIT", message, **kwargs)
+        _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).log("AUDIT", message)
         self._append("audit", message, **kwargs)
 
     def bind(self, **kwargs: Any) -> "WideEventLogger":
         """Loguru-compat shim: merges ``kwargs`` into the wide event and returns self.
 
         Unlike loguru's ``bind``, this does NOT attach fields to subsequent
-        real-time lines (so ``bind(performance=True)`` cannot route to the
-        performance sink) — the fields land on the request's wide event only.
+        real-time lines — the fields land on the request's wide event only.
         """
         self.set(**kwargs)
         return self
@@ -755,6 +799,32 @@ def log_context(operation: str, *, trace_id: str | None = None, **initial_contex
     )
 
 
+_spawned_tasks: set[asyncio.Task[Any]] = set()
+
+
+def spawn_logged_task(
+    operation: str, coro: Coroutine[Any, Any, Any], **initial_context: Any
+) -> asyncio.Task[Any]:
+    """``asyncio.create_task`` with a wide-event boundary and GC-safe bookkeeping.
+
+    The sanctioned way to spawn fire-and-forget work from a request handler or
+    service: without a boundary the task's ``log.set()`` fields are silently
+    discarded (the request's event has already emitted by the time it runs).
+    The spawned work emits one ``background_task`` event carrying the spawning
+    request's ``trace_id``, and the task reference is retained until done so
+    it cannot be garbage-collected mid-flight.
+    """
+
+    async def _run() -> Any:
+        async with log_context(operation, trace_id=get_trace_id() or None, **initial_context):
+            return await coro
+
+    task = asyncio.create_task(_run())
+    _spawned_tasks.add(task)
+    task.add_done_callback(_spawned_tasks.discard)
+    return task
+
+
 def get_trace_id() -> str:
     """Return the trace_id for the current request or worker task."""
     return log.get_trace_id()
@@ -764,6 +834,7 @@ __all__ = [
     "log",
     "wide_task",
     "log_context",
+    "spawn_logged_task",
     "env_context",
     "WideEventLogger",
     "WideEventFields",
@@ -793,5 +864,8 @@ __all__ = [
     "SkillContext",
     "VectorContext",
     "VoiceContext",
+    "DeviceContext",
+    "DesktopContext",
+    "DevContext",
     "get_trace_id",
 ]

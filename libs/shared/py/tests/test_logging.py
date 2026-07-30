@@ -90,7 +90,6 @@ class TestConfigureLoguru:
         configure_loguru()
         level_calls = mock_logger.level.call_args_list
         level_names = [c.args[0] for c in level_calls]
-        assert "PERFORMANCE" in level_names
         assert "AUDIT" in level_names
         assert "SECURITY" in level_names
 
@@ -149,10 +148,10 @@ class TestConfigureFileLogging:
         configure_file_logging(tmp_path)
         assert mock_logger.add.call_count == call_count
 
-    def test_adds_five_sinks(self, tmp_path: Path, mock_logger: MagicMock):
+    def test_adds_four_sinks(self, tmp_path: Path, mock_logger: MagicMock):
         configure_file_logging(tmp_path)
-        # general, error, json (callable), critical, performance
-        assert mock_logger.add.call_count == 5
+        # general, error, json (callable), critical
+        assert mock_logger.add.call_count == 4
 
     def test_default_log_dir_from_config(self, mock_logger: MagicMock):
         with patch.dict(LOG_CONFIG, {"log_dir": "/tmp/claude/test_logs"}):
@@ -164,19 +163,7 @@ class TestConfigureFileLogging:
 
     def test_accepts_string_path(self, tmp_path: Path, mock_logger: MagicMock):
         configure_file_logging(str(tmp_path))
-        assert mock_logger.add.call_count == 5
-
-    def test_performance_sink_has_filter(self, tmp_path: Path, mock_logger: MagicMock):
-        configure_file_logging(tmp_path)
-        # The last .add() call is the performance sink
-        perf_call = mock_logger.add.call_args_list[4]
-        assert "filter" in perf_call.kwargs
-        filter_fn = perf_call.kwargs["filter"]
-        # Filter should pass when 'performance' is in extra
-        record_with = {"extra": {"performance": True}}
-        record_without: dict[str, dict[str, bool]] = {"extra": {}}
-        assert filter_fn(record_with) is True
-        assert filter_fn(record_without) is False
+        assert mock_logger.add.call_count == 4
 
 
 # ---------------------------------------------------------------------------

@@ -123,11 +123,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
     def _attach_user_context(request: Request) -> None:
         """Merge the authenticated user's identity into the wide event.
 
-        WorkOSAuthMiddleware is outermost, so ``request.state.user`` is already
-        populated when this middleware runs — but it cannot ``log.set()`` itself
-        (Starlette copies the context at ``call_next``, so its fields would be
-        wiped by ``log.reset()``). Reading state here closes that gap for every
-        request; fields a handler set explicitly win over the automatic ones.
+        Called after ``call_next``: the auth middlewares run inside this
+        boundary and populate ``request.state.user`` during it. Attaching from
+        state here guarantees user identity on every event regardless of what
+        the handler did; fields a handler set explicitly win over the
+        automatic ones.
         """
         user = getattr(request.state, "user", None)
         if not user:

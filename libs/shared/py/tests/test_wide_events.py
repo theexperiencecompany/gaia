@@ -23,9 +23,10 @@ from shared.py.wide_events import (
 
 @pytest.fixture(autouse=True)
 def _reset_context_vars():
-    """Reset all ContextVars between tests to prevent cross-test leakage."""
+    """Fresh boundary per test; writes outside a boundary are discarded by design."""
     _event_state.set(None)
     _trace_id.set("")
+    log.reset()
     yield
     _event_state.set(None)
     _trace_id.set("")
@@ -40,17 +41,24 @@ class TestWideEventLoggerSetGetReset:
     """Tests for the core set(), get(), reset() API."""
 
     def test_get_returns_empty_dict_when_no_event(self):
+        _event_state.set(None)
         assert log.get() == {}
 
-    def test_set_creates_event_from_none(self):
+    def test_set_without_boundary_is_discarded(self):
+        # No boundary -> throwaway state: leak-free and isolation-safe.
+        _event_state.set(None)
         log.set(user_id="abc")
-        assert log.get() == {"user_id": "abc"}
+        assert log.get() == {}
+        log.reset()
+        log.set(user_id="abc")
+        assert log.get()["user_id"] == "abc"
 
     def test_set_merges_keys(self):
         log.set(a=1)
         log.set(b=2)
         event = log.get()
-        assert event == {"a": 1, "b": 2}
+        assert event["a"] == 1
+        assert event["b"] == 2
 
     def test_set_overwrites_existing_key(self):
         log.set(status="pending")
@@ -78,6 +86,7 @@ class TestWideEventLoggerSetGetReset:
         assert tid1 != tid2
 
     def test_get_trace_id_returns_empty_before_reset(self):
+        _trace_id.set("")
         assert log.get_trace_id() == ""
 
 
@@ -92,15 +101,15 @@ class TestWideEventLoggerLevels:
     @patch("shared.py.wide_events._loguru")
     def test_info_emits_loguru_but_not_wide_event(self, mock_loguru: MagicMock):
         log.info("hello")
-        mock_loguru.opt.return_value.info.assert_called_once_with("hello")
-        # info should NOT append to wide event
-        assert log.get() == {}
+        mock_loguru.opt.return_value.bind.return_value.info.assert_called_once_with("hello")
+        # info should NOT append to wide event (only the boundary's trace_id)
+        assert set(log.get()) == {"trace_id"}
 
     @patch("shared.py.wide_events._loguru")
     def test_debug_emits_loguru_but_not_wide_event(self, mock_loguru: MagicMock):
         log.debug("debugging")
-        mock_loguru.opt.return_value.debug.assert_called_once_with("debugging")
-        assert log.get() == {}
+        mock_loguru.opt.return_value.bind.return_value.debug.assert_called_once_with("debugging")
+        assert set(log.get()) == {"trace_id"}
 
     @patch("shared.py.wide_events._loguru")
     def test_warning_appends_to_warnings(self, mock_loguru: MagicMock):
@@ -207,7 +216,7 @@ class TestWideEventLoggerBind:
     def test_bind_then_info(self, mock_loguru: MagicMock):
         log.bind(user_id="u1").info("hello")
         assert log.get()["user_id"] == "u1"
-        mock_loguru.opt.return_value.info.assert_called_once_with("hello")
+        mock_loguru.opt.return_value.bind.return_value.info.assert_called_once_with("hello")
 
 
 # ---------------------------------------------------------------------------

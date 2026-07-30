@@ -3,8 +3,11 @@ server:
   grpc_listen_port: 0
   log_level: info
 
+# Must live on the promtail_positions named volume (see the compose files) —
+# a container-local path loses read offsets on every container recreation,
+# re-ingesting every retained log file from byte 0.
 positions:
-  filename: /tmp/promtail-positions.yaml
+  filename: /var/lib/promtail/promtail-positions.yaml
 
 clients:
   - url: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}

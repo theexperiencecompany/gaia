@@ -20,10 +20,11 @@ Environment variables:
 - LOG_COLORIZE: Colored console output (default: true, ignored in json mode)
 - LOG_DIR: Directory to write log files into (default: ./logs)
 
-Usage:
-    from shared.py.logging import get_contextual_logger
-    logger = get_contextual_logger("myapp")
-    logger.info("Hello world")
+Usage: app code logs through the wide-event facade (``from
+shared.py.wide_events import log``), never this module directly — importing
+this module (which the facade's package init does) is what activates the
+sinks. ``get_contextual_logger`` exists for shared/infra code that needs a
+raw loguru logger outside the wide-event lifecycle.
 """
 
 from __future__ import annotations
@@ -61,6 +62,16 @@ class _LogConfig(TypedDict):
 _LOGURU_CONFIGURED = False
 _FILE_LOGGING_CONFIGURED = False
 
+# Top-level keys every JSON line is built from. Extra fields must never
+# overwrite them — a colliding key is re-emitted under _COLLIDING_KEY_PREFIX.
+_CORE_KEYS = frozenset({"time", "level", "logger", "message", "module", "line", "worker"})
+_COLLIDING_KEY_PREFIX = "ctx_"
+# Extra keys consumed into the core entry (never re-emitted as extra fields).
+_CONSUMED_EXTRA_KEYS = frozenset({"logger_name", "worker"})
+# Loki rejects lines over its max_line_size (256KB by default) — cap below it.
+MAX_JSON_LINE_BYTES = 200_000
+_TRUNCATED_MESSAGE_MAX_CHARS = 10_000
+
 LOG_CONFIG: _LogConfig = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
     # Set LOG_FORMAT=json in production Docker to emit newline-delimited JSON to
@@ -93,11 +104,54 @@ LOG_CONFIG: _LogConfig = {
 }
 
 
+def _core_fields(entry: dict[str, object]) -> dict[str, object]:
+    return {
+        key: entry[key]
+        for key in ("time", "level", "logger", "message", "module", "line", "worker")
+    }
+
+
+def _sanitized_entry(entry: dict[str, object], exc: Exception) -> dict[str, object]:
+    """Fallback entry when the full record cannot be serialized.
+
+    `default=str` cannot save non-str dict keys or circular structures — rather
+    than dropping the whole line, preserve the core fields (all plain str/int,
+    always serializable) plus trace_id, and record what went wrong.
+    """
+    sanitized = _core_fields(entry)
+    if "trace_id" in entry:
+        sanitized["trace_id"] = str(entry["trace_id"])
+    sanitized["serialization_error"] = type(exc).__name__
+    return sanitized
+
+
+def _truncated_entry(entry: dict[str, object], original_size_bytes: int) -> dict[str, object]:
+    """Minimal entry emitted when the full line would exceed MAX_JSON_LINE_BYTES."""
+    truncated = _core_fields(entry)
+    truncated["message"] = str(entry["message"])[:_TRUNCATED_MESSAGE_MAX_CHARS]
+    if "trace_id" in entry:
+        truncated["trace_id"] = str(entry["trace_id"])
+    truncated["line_truncated"] = True
+    truncated["original_size_bytes"] = original_size_bytes
+    return truncated
+
+
 def _build_json_entry(record: Record) -> str:
-    """Serialize a loguru record to a flat NDJSON line.
+    """Serialize a loguru record to a flat NDJSON line — total, never raises.
 
     Produces one JSON object per line. Fields from `.bind()` calls are merged
     into the top-level object so that LogQL `| json` can filter on them directly.
+    Three guarantees keep the sink total:
+
+    - Core keys always win: an extra field colliding with a core key (e.g.
+      `log.set(level=...)`) is emitted as `ctx_<key>` instead of corrupting the
+      line's real level/message.
+    - Serialization never drops a record: unserializable extras (non-str dict
+      keys, circular refs) fall back to a sanitized entry carrying the core
+      fields, trace_id and `serialization_error`.
+    - Lines are capped at MAX_JSON_LINE_BYTES: oversized lines are replaced by
+      a minimal entry with `line_truncated` + `original_size_bytes`, so Loki
+      (default max_line_size 256KB) never rejects them.
 
     NOTE: must NOT be used as loguru's `format=` parameter — loguru treats
     callable formats as template generators and calls str.format_map() on the
@@ -109,19 +163,21 @@ def _build_json_entry(record: Record) -> str:
          "message": "http_request", "method": "GET", "path": "/api/v1/chat",
          "status_code": 200, "duration_ms": 234.56, "client_ip": "1.2.3.4"}
     """
+    extra = record["extra"]
     entry: dict[str, object] = {
         "time": record["time"].isoformat(),
         "level": record["level"].name,
-        "logger": record["extra"].get("logger_name", "app"),
+        "logger": extra.get("logger_name", "app"),
         "message": record["message"],
         "module": record["module"],
         "line": record["line"],
-        "worker": record["extra"].get("worker", "main"),
+        "worker": extra.get("worker", "main"),
     }
 
-    for key, value in record["extra"].items():
-        if key != "logger_name":
-            entry[key] = value
+    for key, value in extra.items():
+        if key in _CONSUMED_EXTRA_KEYS:
+            continue
+        entry[f"{_COLLIDING_KEY_PREFIX}{key}" if key in _CORE_KEYS else key] = value
 
     if record["exception"] is not None:
         exc = record["exception"]
@@ -130,7 +186,16 @@ def _build_json_entry(record: Record) -> str:
             "value": str(exc.value) if exc.value else None,
         }
 
-    return _json.dumps(entry, default=str) + "\n"
+    try:
+        line = _json.dumps(entry, default=str)
+    except (TypeError, ValueError) as serialization_exc:
+        line = _json.dumps(_sanitized_entry(entry, serialization_exc), default=str)
+
+    original_size_bytes = len(line.encode("utf-8"))
+    if original_size_bytes > MAX_JSON_LINE_BYTES:
+        line = _json.dumps(_truncated_entry(entry, original_size_bytes), default=str)
+
+    return line + "\n"
 
 
 def _json_stdout_sink(message: Message) -> None:
@@ -252,7 +317,6 @@ def configure_loguru():
 
     # Custom levels — use numbers that don't collide with Loguru built-ins:
     # TRACE=5, DEBUG=10, INFO=20, SUCCESS=25, WARNING=30, ERROR=40, CRITICAL=50
-    logger.level("PERFORMANCE", no=3, color="<magenta>", icon="⚡")
     logger.level("AUDIT", no=28, color="<blue>", icon="📊")
     logger.level("SECURITY", no=38, color="<red>", icon="🔒")
 
@@ -329,8 +393,8 @@ def configure_file_logging(log_dir: str | Path | None = None) -> None:
     """
     Add rotating file log sinks. Call this once from apps that need persistent logs.
 
-    Creates separate files for general, error, structured JSON, critical,
-    and performance logs — all with automatic rotation and compression.
+    Creates separate files for general, error, structured JSON, and critical
+    logs — all with automatic rotation and compression.
 
     Safe to call multiple times — only configures once.
 
@@ -391,22 +455,6 @@ def configure_file_logging(log_dir: str | Path | None = None) -> None:
         compression="zip",
         backtrace=True,
         diagnose=True,
-        enqueue=False,
-        catch=True,
-    )
-
-    # Captures any log where .bind(performance=...) was used, regardless of level.
-    # Use logger.bind(performance=True).info("...") to route to this file.
-    logger.add(
-        logs_dir / "performance-{time:YYYY-MM-DD}.log",
-        format=LOG_CONFIG["format"]["file"],
-        level="TRACE",
-        rotation="20 MB",
-        retention="7 days",
-        compression="zip",
-        filter=lambda record: "performance" in record["extra"],
-        backtrace=False,
-        diagnose=False,
         enqueue=False,
         catch=True,
     )

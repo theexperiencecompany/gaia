@@ -15,7 +15,8 @@ if os.getenv("LOG_FORMAT", "console") != "json":
     configure_file_logging("./logs")
 
 # Used exclusively by LoggingMiddleware to emit the final wide event as a
-# structured JSON log line with logger_name="REQUEST".
-request_logger = get_contextual_logger("REQUEST")
+# structured JSON log line with logger_name=REQUEST_LOGGER_NAME.
+REQUEST_LOGGER_NAME = "REQUEST"
+request_logger = get_contextual_logger(REQUEST_LOGGER_NAME)
 
-__all__ = ["request_logger"]
+__all__ = ["REQUEST_LOGGER_NAME", "request_logger"]

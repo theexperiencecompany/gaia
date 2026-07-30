@@ -883,7 +883,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{service=~\"voice-agent.*\"} | json | level=~\"ERROR|WARNING\"",
+          "expr": "{service=~\"voice-agent.*\"} | json | level=~\"ERROR|CRITICAL|WARNING\"",
           "legendFormat": "",
           "queryType": "range",
           "refId": "A"

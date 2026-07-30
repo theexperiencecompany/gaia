@@ -119,13 +119,14 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        """Catch all unhandled exceptions, log them, and return 500."""
-        wide_log.error(
-            "unhandled_exception",
-            error_type=type(exc).__name__,
-            error_message=str(exc),
-        )
-        wide_log.set(outcome="failed")
+        """Return the generic 500 body for exceptions that escaped everything.
+
+        No logging here on purpose: this handler runs in ServerErrorMiddleware,
+        OUTSIDE the LoggingMiddleware boundary, so wide-event calls would land
+        on an orphan state — and the boundary's own except path has already
+        recorded the exception and emitted the http_request line by the time
+        this runs.
+        """
         return JSONResponse(
             status_code=500,
             content={"error": "internal_server_error"},

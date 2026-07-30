@@ -5,6 +5,7 @@ Sentry configuration for error tracking and performance monitoring.
 from loguru import logger as _loguru
 import sentry_sdk
 
+from app.config.loggers import REQUEST_LOGGER_NAME
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -28,6 +29,17 @@ def _make_sentry_loguru_sink():
             return
 
         extra = dict(record["extra"])
+
+        # Skip the per-request wide-event roll-up (the single "http_request"
+        # line LoggingMiddleware emits with logger_name="REQUEST"). Forwarding
+        # it would turn every 5xx into a Sentry event with the constant message
+        # "http_request" — all grouped under one useless issue — carrying the
+        # full wide event (user email, client_ip) in extras. The underlying
+        # log.error() / log.exception() calls that made the request an ERROR
+        # already pass through this sink individually with proper grouping, so
+        # nothing is lost by dropping the roll-up.
+        if extra.get("logger_name") == REQUEST_LOGGER_NAME:
+            return
         exc_info = record["exception"]
 
         with sentry_sdk.new_scope() as scope:
