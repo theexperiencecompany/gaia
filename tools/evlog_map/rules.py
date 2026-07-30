@@ -3,7 +3,7 @@
 Ported from evlog's rule registry (``packages/cli/src/lib/map/rules``), with
 each check re-expressed in this repo's idiom:
 
-- wide event    → ``log.set(...)`` (HTTP) / ``wide_task()`` ``log_context()`` (workers)
+- wide event    → ``log.set(...)`` (HTTP) / ``wide_task()`` ``log_context()`` (workers, voice)
 - context       → a canonical ``WideEventFields`` key, so dashboards can query it
 - structured errors → ``AppError`` / ``create_error`` / ``HTTPException(detail=...)``
 - audit         → ``log.audit(...)`` on money/auth routes
@@ -23,8 +23,11 @@ from directives import Suppression, find_suppression
 from facts import FileFacts, HandlerFacts
 from sensitivity import Sensitivity
 
-HANDLER_KINDS = ("api", "websocket", "worker")
+HANDLER_KINDS = ("api", "websocket", "worker", "voice")
 HTTP_KINDS = ("api", "websocket")
+# Workers keep their historical context exemption; voice entry points set
+# canonical VoiceContext fields, so they are held to the context check too.
+CONTEXT_KINDS = (*HTTP_KINDS, "voice")
 
 STRUCTURED_ERROR_FACTORIES = frozenset({"AppError", "create_error"})
 GENERIC_EXCEPTIONS = frozenset({"Exception", "ValueError", "RuntimeError", "TypeError", "KeyError"})
@@ -75,6 +78,18 @@ class Rule:
 
 def _check_wide_event(ctx: RuleContext) -> Finding | None:
     handler = ctx.handler
+    if handler.kind == "voice":
+        # The LiveKit worker has no logging middleware, so unlike ARQ tasks a
+        # bare log.set() proves nothing — only a boundary makes fields emit.
+        if handler.has_boundary:
+            return None
+        return Finding(
+            message=(
+                "no wide_task()/log_context() boundary — the voice worker has no "
+                "middleware, every log.set() here is silently discarded"
+            ),
+            line=handler.line,
+        )
     if handler.kind == "worker":
         if handler.has_boundary or handler.sets_wide_event:
             return None
@@ -203,7 +218,7 @@ RULES: tuple[Rule, ...] = (
         category="requirement",
         title="context",
         question="Does it attach canonical, queryable context?",
-        kinds=HTTP_KINDS,
+        kinds=CONTEXT_KINDS,
         weight=15,
         when=lambda ctx: ctx.handler.sets_wide_event,
         check=_check_context,

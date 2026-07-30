@@ -23,6 +23,7 @@ from src.constants import (
     RESPONSE_KEY,
     SENTENCE_ENDINGS,
     SSE_DATA_PREFIX,
+    TRACE_ID_HEADER,
     TTS_FINAL_MIN_CHARS,
     TTS_HARD_FLUSH_CHARS,
     TTS_MIN_EMIT_CHARS,
@@ -344,6 +345,11 @@ class _VoiceTurn:
             json=payload,
             timeout=aiohttp.ClientTimeout(sock_read=self.llm.request_timeout_s),
         )
+        # Adopt the backend's trace id so this turn's wide event correlates
+        # 1:1 with the backend's http_request event for the same turn.
+        backend_trace_id = resp.headers.get(TRACE_ID_HEADER)
+        if backend_trace_id:
+            log.set(trace_id=backend_trace_id)
         handed_off = False
         try:
             if resp.status >= 400:

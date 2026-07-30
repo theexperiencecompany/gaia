@@ -1,14 +1,15 @@
-# evlog map — observability score for the FastAPI backend
+# evlog map — observability score for the Python backends
 
 A Python port of [evlog](https://github.com/HugoRCD/evlog)'s `map` command (MIT),
-with a FastAPI/ARQ adapter for this repo's wide-event runtime
-(`shared.py.wide_events`). It statically answers: *if something goes wrong in
-production tonight, which parts of the backend will be able to tell you why?*
+with a FastAPI/ARQ adapter and a LiveKit voice adapter for this repo's
+wide-event runtime (`shared.py.wide_events`). It statically answers: *if
+something goes wrong in production tonight, which parts of the backend will be
+able to tell you why?*
 
 Stdlib only — no deps, runs anywhere `python3` does.
 
 ```bash
-python3 tools/evlog_map                  # full scan (apps/api/app), terminal report
+python3 tools/evlog_map                  # full scan (apps/api/app + apps/voice-agent/src)
 python3 tools/evlog_map --all            # per-entry check matrix
 python3 tools/evlog_map --json           # full map as JSON (the evlog.map.json contract)
 python3 tools/evlog_map --min-score 70   # exit 1 when the global score is below N
@@ -36,6 +37,7 @@ Every run writes `evlog.map.json` (gitignored) to the repo root unless
 | `api` | `@router.<verb>` / `@app.<verb>` decorated functions |
 | `websocket` | `@router.websocket` handlers |
 | `worker` | ARQ tasks **registered in `app/worker.py`** (helpers in `workers/tasks/` are not entry points) |
+| `voice` | LiveKit callbacks wired in `apps/voice-agent/src/agent.py`'s `WorkerOptions` (`entrypoint_fnc`/`prewarm_fnc`), plus the per-turn coroutine the `LLM` subclass's `chat()` delegates to in `llm.py` (`voice.collect_voice_registry` parses both wirings) |
 
 Infra routes (`/health`, `/metrics`, `/favicon.ico`) are exempt — nothing to
 instrument, excluded from the score.
@@ -44,7 +46,7 @@ instrument, excluded from the score.
 
 | Check | Weight | Passes when |
 |---|---|---|
-| `wide-event` | 40 | handler calls `log.set()`/`log.set_ns()` (HTTP) or runs inside `wide_task()`/`log_context()` (worker) |
+| `wide-event` | 40 | handler calls `log.set()`/`log.set_ns()` (HTTP) or runs inside `wide_task()`/`log_context()` (worker); voice entry points require the boundary itself — the LiveKit worker has no middleware, so a bare `log.set()` is discarded |
 | `audit` | 25 | *high-sensitivity routes only:* handler calls `log.audit(...)` |
 | `structured-errors` | 20 | raises are `AppError`/`create_error`/`HTTPException(detail=...)` — not bare `ValueError("...")` |
 | `context` | 15 | `log.set()` uses at least one canonical `WideEventFields` key (schema is parsed live from `wide_events.py`) |
@@ -104,12 +106,15 @@ enforced (`.github/quality-gate/enforced/observability`) — the backend reached
 
 ## Scope
 
-The adapter observes the entire Python API surface: every decorator-registered
-FastAPI route/websocket (multi-decorator stacks collapse to one entry point)
-and every ARQ task registered in `app/worker.py`. Out of scope today:
-`apps/voice-agent` (LiveKit worker callbacks would need their own adapter —
-its per-turn logging already runs inside `wide_task` boundaries) and the
-TypeScript bots (separate logging stack).
+The adapter observes the entire Python surface: every decorator-registered
+FastAPI route/websocket (multi-decorator stacks collapse to one entry point),
+every ARQ task registered in `app/worker.py`, and the LiveKit voice worker
+(`apps/voice-agent/src`) — its session entrypoint runs inside a
+`log_context("voice_session")` boundary and each turn inside `wide_task`;
+`prewarm` is waived with a reason (sync per-fork bootstrap, no event loop for
+a boundary), and the `start`/`download-files` CLI wrappers are not LiveKit
+entry points, so they carry no runtime instrumentation to score. Out of scope
+today: the TypeScript bots (separate logging stack).
 
 ## Limitations
 
@@ -118,7 +123,7 @@ attached context is *useful* at runtime, and it reads one file at a time — a
 handler whose `log.set` lives in the service layer needs the call (or a
 suppression) in the handler itself, exactly like the `route-contract` lint.
 The PR gate scans only changed files, so a change to
-`libs/shared/py/wide_events.py` (the schema) or `app/worker.py` (the task
-registry) can move *unchanged* files' scores — the full-repo scan in the same
-lane is where that shows up. Both schema and registry are always read from
-HEAD, for the base scan too.
+`libs/shared/py/wide_events.py` (the schema), `app/worker.py` (the task
+registry) or the voice wiring (`agent.py`/`llm.py`) can move *unchanged*
+files' scores — the full-repo scan in the same lane is where that shows up.
+Schema and registries are always read from HEAD, for the base scan too.

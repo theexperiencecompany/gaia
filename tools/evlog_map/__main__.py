@@ -1,7 +1,7 @@
 """CLI for the FastAPI evlog map.
 
 Usage:
-    python3 tools/evlog_map [paths ...]           # full scan (default apps/api/app)
+    python3 tools/evlog_map [paths ...]           # full scan (apps/api/app + apps/voice-agent/src)
     python3 tools/evlog_map --all                 # per-entry check matrix
     python3 tools/evlog_map --min-score 70        # exit 1 below the threshold
     python3 tools/evlog_map --files-from -        # scan only listed files (CI diff mode)
@@ -30,17 +30,21 @@ from compare import (  # noqa: E402
 from report import render_github_summary, render_terminal, to_json, write_map_json  # noqa: E402
 from scan import collect_worker_registry, scan  # noqa: E402
 from schema import canonical_fields  # noqa: E402
+from voice import collect_voice_registry  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_SCAN_PATH = REPO_ROOT / "apps/api/app"
+DEFAULT_SCAN_PATHS = (REPO_ROOT / "apps/api/app", REPO_ROOT / "apps/voice-agent/src")
 WORKER_REGISTRY_MODULE = REPO_ROOT / "apps/api/app/worker.py"
+VOICE_AGENT_MODULE = REPO_ROOT / "apps/voice-agent/src/agent.py"
+VOICE_LLM_MODULE = REPO_ROOT / "apps/voice-agent/src/llm.py"
 MAP_JSON = REPO_ROOT / "evlog.map.json"
 DEFAULT_MIN_NEW_SCORE = 70
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="evlog map", description="Observability score for the FastAPI backend."
+        prog="evlog map",
+        description="Observability score for the FastAPI backend and the LiveKit voice worker.",
     )
     parser.add_argument("paths", nargs="*", help="files or directories to scan")
     parser.add_argument(
@@ -95,7 +99,7 @@ def _resolve_paths(args: argparse.Namespace) -> list[Path]:
         )
         paths += [Path(line.strip()) for line in raw.splitlines() if line.strip().endswith(".py")]
     if not paths and not args.files_from:
-        paths = [DEFAULT_SCAN_PATH]
+        paths = list(DEFAULT_SCAN_PATHS)
     missing = [p for p in paths if not p.exists()]
     if missing:
         raise SystemExit(
@@ -110,7 +114,8 @@ def main(argv: list[str]) -> int:
     paths = _resolve_paths(args)
     fields = canonical_fields(REPO_ROOT)
     worker_registry = collect_worker_registry(WORKER_REGISTRY_MODULE)
-    result = scan(paths, fields, worker_registry)
+    voice_registry = collect_voice_registry(VOICE_AGENT_MODULE, VOICE_LLM_MODULE)
+    result = scan(paths, fields, worker_registry, voice_registry)
 
     if not args.no_write:
         write_map_json(result, MAP_JSON)

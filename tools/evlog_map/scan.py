@@ -2,7 +2,9 @@
 
 The FastAPI adapter: route handlers are ``@router.<verb>`` / ``@app.<verb>``
 functions anywhere under the scanned paths, workers are module-level async
-functions in ``app/workers/tasks/``. Scoring is evlog's: per-entry 100 minus
+functions in ``app/workers/tasks/``, and voice entry points are the LiveKit
+callbacks named by the voice registry (``voice.collect_voice_registry``).
+Scoring is evlog's: per-entry 100 minus
 failed requirement weights; global score is the weighted average where
 high-sensitivity handlers count double; grade bands at 90 / 70 / 50.
 """
@@ -159,7 +161,10 @@ def collect_worker_registry(worker_module: Path) -> frozenset[str]:
 
 
 def scan(
-    paths: list[Path], canonical_fields: frozenset[str], worker_registry: frozenset[str]
+    paths: list[Path],
+    canonical_fields: frozenset[str],
+    worker_registry: frozenset[str],
+    voice_registry: dict[str, frozenset[str]],
 ) -> MapResult:
     """Discover, classify, and score every entry point under ``paths``."""
     entries: list[RouteEntry] = []
@@ -169,7 +174,12 @@ def scan(
     for file in iter_python_files(paths):
         source = file.read_text(encoding="utf-8")
         is_worker = _WORKER_SEGMENT in file.as_posix()
-        file_facts: FileFacts | None = collect_file_facts(file, source, is_worker_module=is_worker)
+        file_facts: FileFacts | None = collect_file_facts(
+            file,
+            source,
+            is_worker_module=is_worker,
+            voice_entries=voice_registry.get(file.as_posix(), frozenset()),
+        )
         if file_facts is None:
             unparsable.append(file)
             continue

@@ -23,8 +23,8 @@ def _display(path: Path) -> str:
 def _route_label(entry: RouteEntry) -> str:
     handler = entry.handler
     badge = _BADGES.get(entry.sensitivity.label, " ")
-    if handler.kind == "worker":
-        return f"{badge} worker {handler.route_path}"
+    if handler.kind in ("worker", "voice"):
+        return f"{badge} {handler.kind} {handler.route_path}"
     verb = "/".join(m.upper() for m in handler.methods) or "WS"
     return f"{badge} {verb} {handler.route_path or handler.name}"
 

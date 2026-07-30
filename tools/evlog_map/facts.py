@@ -55,7 +55,7 @@ class HandlerFacts:
     name: str
     line: int
     deco_line: int  # first decorator's line; suppressions may sit above it
-    kind: str  # "api" | "websocket" | "worker"
+    kind: str  # "api" | "websocket" | "worker" | "voice"
     methods: tuple[str, ...]
     route_path: str
     # Every registered path — a handler can stack several route decorators
@@ -271,8 +271,35 @@ def _router_prefix(tree: ast.Module) -> str:
     return ""
 
 
-def collect_file_facts(path: Path, source: str, *, is_worker_module: bool) -> FileFacts | None:
-    """Parse one file into facts. Returns None when the file fails to parse."""
+def _qualified_functions(
+    tree: ast.Module,
+) -> list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]]:
+    """``(qualname, node)`` for module-level functions and their class methods."""
+    out: list[tuple[str, ast.FunctionDef | ast.AsyncFunctionDef]] = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out.append((node.name, node))
+        elif isinstance(node, ast.ClassDef):
+            out.extend(
+                (f"{node.name}.{stmt.name}", stmt)
+                for stmt in node.body
+                if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+            )
+    return out
+
+
+def collect_file_facts(
+    path: Path,
+    source: str,
+    *,
+    is_worker_module: bool,
+    voice_entries: frozenset[str] = frozenset(),
+) -> FileFacts | None:
+    """Parse one file into facts. Returns None when the file fails to parse.
+
+    ``voice_entries`` are the qualified names the voice registry declared as
+    LiveKit entry points in this file (see ``voice.collect_voice_registry``).
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -312,6 +339,15 @@ def collect_file_facts(path: Path, source: str, *, is_worker_module: bool) -> Fi
             task_path = f"{path.stem}:{node.name}"
             facts.handlers.append(
                 _collect_handler_facts(node, "worker", (), task_path, (task_path,), log_aliases)
+            )
+
+    if voice_entries:
+        for qualname, func in _qualified_functions(tree):
+            if qualname not in voice_entries:
+                continue
+            entry_path = f"{path.stem}:{qualname}"
+            facts.handlers.append(
+                _collect_handler_facts(func, "voice", (), entry_path, (entry_path,), log_aliases)
             )
 
     return facts
