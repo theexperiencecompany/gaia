@@ -1,1 +1,5 @@
-export * from "./command-manifest";
+export {
+  CLI_COMMAND_DESCRIPTIONS,
+  REQUIRED_DOC_COMMANDS,
+  REQUIRED_INSTALL_COMMANDS,
+} from "./command-manifest";

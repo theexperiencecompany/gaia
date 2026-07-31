@@ -6,7 +6,19 @@ import type {
 } from "./approvals.types";
 import type { StreamToolDataEntry } from "./streaming";
 
-export type * from "./approvals.types";
+export type {
+  ApprovalDecision,
+  ApprovalDecisionPayload,
+  ApprovalRequestData,
+  ApprovalScope,
+  ApprovalStatus,
+  BatchApprovalDecisionPayload,
+  BatchApprovalDecisionResponse,
+  BatchDecisionItem,
+  BatchDecisionOutcome,
+  HilMode,
+  HilPreferences,
+} from "./approvals.types";
 
 export const APPROVAL_REQUEST_TOOL_NAME = "approval_request";
 
