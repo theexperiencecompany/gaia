@@ -69,22 +69,31 @@ def reap_leaked_browsers() -> int:
 
 
 async def _reaper_loop() -> None:
+    """Sweep on an interval, one wide event per sweep.
+
+    The boundary is per sweep, not around the loop: the leak this guards
+    against is cumulative, so "how many did we reap, when" has to be queryable
+    history rather than a real-time line nobody was watching. A single boundary
+    around the loop would emit one event, at process exit.
+    """
     while True:
         await asyncio.sleep(BROWSER_REAPER_INTERVAL_SECONDS)
-        try:
-            reaped = await asyncio.to_thread(reap_leaked_browsers)
-            if reaped:
+        async with log_context("browser_reaper_sweep"):
+            try:
+                reaped = await asyncio.to_thread(reap_leaked_browsers)
+                log.set(result_count=reaped)
+                if reaped:
+                    log.warning(
+                        f"{LogTag.TOOL} Reaped leaked browser driver process(es)", reaped=reaped
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
                 log.warning(
-                    f"{LogTag.TOOL} Reaped leaked browser driver process(es)", reaped=reaped
+                    f"{LogTag.TOOL} Browser reaper sweep failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            log.warning(
-                f"{LogTag.TOOL} Browser reaper sweep failed",
-                error=str(e),
-                error_type=type(e).__name__,
-            )
 
 
 def start_browser_reaper() -> None:

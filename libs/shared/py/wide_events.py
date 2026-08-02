@@ -458,12 +458,27 @@ class VectorContext(TypedDict, total=False):
 class VoiceContext(TypedDict, total=False):
     """Voice-agent (LiveKit) session/turn operation context."""
 
-    operation: str  # "session_start"|"turn"|"tts"|"stt"|"tool_call"|"session_end"
+    operation: (
+        str  # "session_start"|"turn"|"drain"|"credentials"|"tts"|"stt"|"tool_call"|"session_end"
+    )
     room: str
     participant: str
     model: str
     provider: str
     turn_index: int
+    # Session-end aggregate. The LiveKit session lifecycle callbacks fire after
+    # the entrypoint's setup event has emitted, so the worker accumulates them
+    # and reports the whole session once from its shutdown callback (see
+    # apps/voice-agent/src/agent.py). LLM tokens go on ModelContext instead.
+    shutdown_reason: str
+    user_turns: int
+    user_speaking_ms: float
+    stt_final_count: int
+    stt_transcript_chars: int
+    stt_latency_ms_avg: float
+    false_interruptions: int
+    tts_characters: int
+    stt_audio_duration_s: float
 
 
 class DeviceContext(TypedDict, total=False):
@@ -474,6 +489,9 @@ class DeviceContext(TypedDict, total=False):
     pairing_status: str  # "pending"|"approved"|"expired"
     result_count: int
     success: bool
+    # Per-pod listener context (revoke_listener / up_listener).
+    socket_owned: bool  # revoke enforcement: this pod held the device's socket
+    session_id: str  # MCP session a device up-frame is addressed to
 
 
 class DesktopContext(TypedDict, total=False):
@@ -734,7 +752,17 @@ async def _wide_event_boundary(
     ``event_name`` is the log message dashboards filter on; ``logger_name`` is
     the ``logger`` field. Keeping these explicit lets worker rollups stay on
     ``message = "worker_task"`` while ad-hoc background work uses its own name.
+
+    Boundaries nest. ``log.reset()`` rebinds the accumulator in the *caller's*
+    context (an ``asynccontextmanager`` body is not a task, so it gets no
+    context copy), so without restoring it an inner boundary would keep the
+    outer one's ContextVar pointed at the inner state — the outer event would
+    emit the inner's fields twice and lose its own. The enclosing accumulator
+    and trace_id are therefore restored after the emit, which also keeps a
+    long-lived loop's per-iteration boundary usable inside an outer one.
     """
+    outer_state = _event_state.get()
+    outer_trace_id = _trace_id.get()
     log.reset()
     if trace_id:
         log.set(trace_id=trace_id)
@@ -744,6 +772,12 @@ async def _wide_event_boundary(
     try:
         yield log
         log.set(outcome="success")
+    except asyncio.CancelledError:
+        # Shutdown and client disconnects cancel long-lived work: a clean exit,
+        # not a failure. Record it (an outcome-less event reads as "still
+        # running") and propagate so cancellation semantics are unchanged.
+        log.set(outcome="cancelled")
+        raise
     except Exception as exc:
         log.error(
             "task failed",
@@ -762,6 +796,8 @@ async def _wide_event_boundary(
         # must not be able to contradict the Promtail label for this process.
         event = {**log.get(), **env_context()}
         _loguru.bind(logger_name=logger_name, **event).log(level, event_name)
+        _event_state.set(outer_state)
+        _trace_id.set(outer_trace_id)
 
 
 def wide_task(task_name: str, *, trace_id: str | None = None, **initial_context: Any):

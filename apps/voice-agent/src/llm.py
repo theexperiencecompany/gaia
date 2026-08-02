@@ -11,7 +11,7 @@ import aiohttp
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 
-from shared.py.wide_events import VoiceContext, log, wide_task
+from shared.py.wide_events import VoiceContext, get_trace_id, log, log_context, wide_task
 from src.constants import (
     BACKEND_REQUEST_TIMEOUT_S,
     DONE_SENTINEL,
@@ -150,17 +150,41 @@ class CustomLLM(LLM):
         if text:
             await self.forward_stream_event_to_frontend(json.dumps({RESPONSE_KEY: text}))
 
-    def spawn_drain(self, resp: aiohttp.ClientResponse) -> None:
+    def spawn_drain(self, resp: aiohttp.ClientResponse, *, trace_id: str, turn_index: int) -> None:
         """Drain the rest of a comms turn's stream in the background.
 
         The comms turn (its chat() generator) ends as soon as the reply is done,
         so the ack plays immediately. The executor's UI events and narrated
         answer arrive later on the same still-open stream — this keeps reading
         them: forwarding tool cards to the screen and speaking each answer.
+
+        The drain deliberately outlives the turn, so it gets its own wide event
+        rather than writing into the turn's — that one has already been emitted
+        by the time the executor answers, and anything the drain logged into it
+        would be dropped. ``trace_id`` is the turn's, so the two events join.
         """
-        task = asyncio.create_task(self._drain(resp))
+        task = asyncio.create_task(self._drain_in_event(resp, trace_id, turn_index))
         self._drain_tasks.add(task)
         task.add_done_callback(self._drain_tasks.discard)
+
+    async def _drain_in_event(
+        self, resp: aiohttp.ClientResponse, trace_id: str, turn_index: int
+    ) -> None:
+        """Wide-event boundary for the background drain, correlated to its turn."""
+        async with log_context(
+            "voice_drain",
+            trace_id=trace_id or None,
+            user_id=self.user_id,
+            conversation_id=self.conversation_id,
+        ):
+            log.set(
+                voice=VoiceContext(
+                    operation="drain",
+                    room=self.room.name if self.room else None,
+                    turn_index=turn_index,
+                )
+            )
+            await self._drain(resp)
 
     async def _drain(self, resp: aiohttp.ClientResponse) -> None:
         """Forward the post-reply UI events and speak each executor answer.
@@ -296,6 +320,11 @@ class _VoiceTurn:
         # Set when the stream fully ended ([DONE]) within the comms turn — then
         # there's nothing left to drain.
         self.stream_done = False
+        # The trace id this turn's wide event is actually emitted with. Tracked
+        # explicitly because adopting the backend's id below rewrites the event
+        # FIELD only — get_trace_id() keeps returning the boundary's generated
+        # id, so work spawned from here must be handed this value to correlate.
+        self.trace_id = ""
 
     async def run(self) -> AsyncGenerator[ChatChunk, None]:
         """Drive the whole turn; yields sanitized TTS chunks as they flush."""
@@ -306,6 +335,7 @@ class _VoiceTurn:
             user_id=self.llm.user_id,
             conversation_id=self.llm.conversation_id,
         ):
+            self.trace_id = get_trace_id()
             log.set(
                 voice=VoiceContext(
                     operation="turn",
@@ -350,6 +380,7 @@ class _VoiceTurn:
         backend_trace_id = resp.headers.get(TRACE_ID_HEADER)
         if backend_trace_id:
             log.set(trace_id=backend_trace_id)
+            self.trace_id = backend_trace_id
         handed_off = False
         try:
             if resp.status >= 400:
@@ -371,7 +402,7 @@ class _VoiceTurn:
             # a background reader (which forwards tool cards and speaks each
             # answer) and end this turn now, so the ack plays immediately.
             if self.comms_complete and not self.stream_done:
-                self.llm.spawn_drain(resp)
+                self.llm.spawn_drain(resp, trace_id=self.trace_id, turn_index=self.turn_index)
                 handed_off = True
 
             log.info(
