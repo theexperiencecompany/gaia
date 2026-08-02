@@ -18,7 +18,14 @@
 #                     including structured-<date>.json. What a dev reads locally.
 
 export ENV=development
-export GAIA_SERVICE_NAME=gaia-backend
+
+# Deliberately NOT setting GAIA_SERVICE_NAME. Each service names itself via
+# os.environ.setdefault at its own entrypoint (apps/api/app/workers/lifecycle/
+# startup.py -> arq_worker, apps/voice-agent/src/agent.py -> voice-agent-worker);
+# the API falls back to gaia-backend. Exporting it here would win over every one
+# of those defaults and silently relabel the worker and the voice agent as
+# gaia-backend — which is exactly what happened, and what production does not do,
+# since no compose file sets it either.
 
 # Dev auth bypass. The target email must resolve to a real Mongo user or every
 # request 401s ("Dev bypass target has no Mongo user"). Mint it once the API is
