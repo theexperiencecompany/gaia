@@ -25,7 +25,8 @@ Before writing anything, prove the metric is emitted **by the exporter version
 pinned in `docker-compose.prod.yml`**. A rule built on a metric nothing exports
 provisions cleanly, never fires, and never complains — it is worse than no rule,
 because it reads as coverage. Query prod Prometheus, or read the exporter's docs
-for that exact version.
+for that exact version. Then prove it mechanically with pint's `promql/series`
+check before you open the PR — see "Linting rules with pint" below.
 
 Watch for two specific traps that have already bitten us here:
 
@@ -157,6 +158,75 @@ path in the container to let provisioning complete.
 To see what a message will actually look like, point the webhook at a local HTTP
 sink and let a rule fire against the `grafana-testdata-datasource` — that is the
 only path that exercises Grafana's real annotation expander end to end.
+
+## Linting rules with pint
+
+[pint](https://github.com/cloudflare/pint) is a Prometheus rule linter. It reads
+Prometheus-native rule YAML, so `tools/alert-rules/extract_promql.py` derives
+that from this file first — each rule's `refId: A` expression plus its threshold,
+translated into one alerting rule. Nothing is generated into the tree; the
+translation is thrown away after each run. The extractor aborts on any rule it
+cannot translate rather than skipping it, because a rule that silently drops out
+of linting is the failure mode all of this exists to prevent.
+
+```bash
+uv run tools/alert-rules/extract_promql.py -o /tmp/gaia-rules.yaml
+
+# What the `alert-rules` CI lane runs — no Prometheus needed:
+pint --offline --config config/pint.hcl lint /tmp/gaia-rules.yaml
+```
+
+### CI cannot catch the bug this file keeps warning about
+
+The offline run proves each rule is valid PromQL: it catches syntax errors,
+queries that can never match (`promql/impossible`), sampling functions that make
+alerts flap (`promql/fragile`), and regexp matchers with no metacharacters. It
+cannot tell you whether a metric exists, because that answer only lives in
+Prometheus. **`promql/series` is the check that catches a rule built on a metric
+nothing exports, and it needs a live server.** So do the online pass before
+merging a new rule.
+
+Prod Prometheus has no `ports:` block in `docker-compose.prod.yml` — it is
+reachable only on the `gaia-prod-shared` overlay network — so it has to be
+brought to `localhost:9090` first. One way that leaves the running stack alone,
+on the swarm manager:
+
+```bash
+docker run --rm -d --name pint-proxy --network gaia-prod-shared \
+  -p 127.0.0.1:9090:9090 alpine/socat \
+  TCP-LISTEN:9090,fork,reuseaddr TCP:prometheus:9090
+```
+
+then forward it and lint (any other route to the Prometheus HTTP API works too —
+the URI lives in `config/pint.hcl`):
+
+```bash
+ssh -N -L 9090:127.0.0.1:9090 <prod-host> &
+curl -s localhost:9090/api/v1/query?query=up | head -c 200   # prove the tunnel first
+pint --config config/pint.hcl lint --min-severity=info /tmp/gaia-rules.yaml
+```
+
+That `curl` is not optional. Pointed at the wrong server — or at nothing —
+`promql/series` reports every rule in the file as missing, which reads like a
+catastrophe and is really a broken tunnel.
+
+The online run adds, on top of the offline set: `promql/series` (metric never
+existed, or existed and disappeared, or has no series matching your label
+matchers), `alerts/count` (how many times the rule would have fired in the last
+week — **0 is the signature of a threshold that cannot be reached**),
+`promql/rate` and `promql/counter` (a `rate()` over a gauge is valid PromQL and
+always wrong; offline pint cannot tell a counter from a gauge because that
+metadata lives in Prometheus), `promql/vector_matching`, and `labels/conflict`.
+
+`--min-severity=info` is not optional either: `alerts/count` reports at
+`Information` and is hidden without it.
+
+One finding is expected noise: `alerts/for` calls `for: 0m` a redundant default.
+True in Prometheus, false here — Grafana rejects the whole file without a `for`.
+It stays at `Information` and never fails anything.
+
+`tools/alert-rules/README.md` has the full check split and the details of the
+Grafana → Prometheus translation.
 
 ## Notification routing and cadence
 
