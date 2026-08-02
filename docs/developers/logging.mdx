@@ -45,8 +45,34 @@ The canonical field schema is `WideEventFields` in
 | Run mode | Canonical line lives | Read it with |
 |---|---|---|
 | `mise dev` (native) | terminal + `apps/api/logs/structured-<date>.json` | `rg` the JSON file |
+| `nx worker api` (native) | `apps/api/logs/worker/structured-<date>.json` | `rg` the JSON file |
+| `nx dev voice-agent` (native) | `apps/voice-agent/logs/structured-<date>.json` | `rg` the JSON file |
+| `nx dev bot-<platform>` (native) | terminal + `apps/bots/<platform>/logs/structured-<date>.json` | `rg` the JSON file |
 | `mise dev:vm` / Docker | container stdout (JSON) | `docker logs -f gaia-backend` |
+| Bots in Docker | container stdout (JSON) | `docker logs -f discord-bot` |
 | Observability stack up | Loki (via Promtail) | Grafana Explore / LogQL |
+
+Promtail reaches both halves of that table: a **file** job (`gaia_api_local`,
+`gaia_bots_local`) tails the `structured-<date>.json` files that natively-run
+services write, and a **Docker service-discovery** job scrapes container
+stdout. Files rotate daily and are pruned after 30 days. Both paths produce the
+same `service` label — `{service="discord-bot"}` finds a bot whether it ran
+locally or in Docker.
+
+### One query, every surface
+
+The Python services and the TypeScript bots emit the **same key names for the
+same concepts**, so a single LogQL query spans both: `time`, `level` (loguru
+names — `WARNING`, not `WARN`), `service`, `logger`, `message`, `env`,
+`trace_id`, `duration_ms`, `outcome`, `final_level`, `commit`, and the
+`errors[]` / `warnings[]` / `audit[]` arrays (each entry keyed by `msg`).
+
+```logql
+{service=~"gaia-backend|discord-bot"} | json | trace_id="<TRACE_ID>"
+```
+
+The event name lives under `message` on both surfaces — `worker_task` /
+`http_request` for Python, `bot_event` for the bots.
 
 Start the stack:
 

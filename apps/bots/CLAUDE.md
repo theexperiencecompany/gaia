@@ -56,6 +56,17 @@ Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLA
 
 Infisical is optional in dev, fatal-if-missing when `NODE_ENV=production`, and only fills keys not already in `process.env`.
 
+## Logging
+
+`emitBotLogLine()` (`libs/shared/ts/src/bots/utils/logger.ts`) is the single writer for every bot log line — both real-time lines and the `bot_event` wide event from `withWideEvent()`. Each line goes to **two** sinks:
+
+1. **stdout/stderr** (unchanged) — what Promtail's Docker service-discovery job scrapes for dockered bots.
+2. **`<logDir>/structured-<YYYY-MM-DD>.json`** (`utils/log-file-sink.ts`) — NDJSON, daily rollover, pruned after 30 days, tailed by Promtail's `gaia_bots_local` file job so a locally-run bot reaches Loki too. Exact port of `_json_file_sink_factory` in `libs/shared/py/logging.py`.
+
+`logDir` resolution: `BOT_LOG_DIR` if set to a non-empty path (set it to an empty string to disable); otherwise `<cwd>/logs` when the process started from `apps/bots/<platform>` — which `nx dev bot-<platform>` does. The bot image runs with WORKDIR `/app`, so no default resolves and the file sink stays off in Docker (stdout is already scraped there). A failed open/write disables the sink permanently, reports once on stderr, and leaves stdout untouched — logging must never take a bot down.
+
+**Field parity is a contract.** The emitted envelope uses the same key names and shapes as the Python services (`libs/shared/py/logging.py` + `wide_events.py`) so one LogQL query spans every surface: `time`, `level`, `service`, `logger`, `message`, `env`, `trace_id`, `duration_ms`, `outcome`, `final_level`, `commit`, and `errors[]` / `warnings[]` / `audit[]` (entries keyed by `msg`). Two consequences to respect when editing the logger: the **event name lands under `message`**, not `event`, and `level` uses **loguru names** (`WARNING`, not `WARN`). `service` intentionally differs per surface (`discord-bot` vs `gaia-backend`) and must keep matching the Promtail label.
+
 ## Platform gotchas
 
 | | Discord | Slack | Telegram | WhatsApp |

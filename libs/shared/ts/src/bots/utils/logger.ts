@@ -1,8 +1,23 @@
 import { createHash, createHmac } from "node:crypto";
 import type { PlatformName } from "../types";
+import { appendStructuredLogLine } from "./log-file-sink";
 
 /** `audit` mirrors the backend's custom AUDIT loguru level (between info and warn). */
 export type BotLogLevel = "debug" | "info" | "warn" | "error" | "audit";
+
+/**
+ * The `level` value written to the log line. These are loguru's level names,
+ * not the TS method names — the Python services emit "WARNING" and Promtail
+ * promotes `level` to an indexed Loki label, so `{level="WARNING"}` has to
+ * match a bot line and an API line alike.
+ */
+export const LOG_LEVEL_NAMES: Record<BotLogLevel, string> = {
+  debug: "DEBUG",
+  info: "INFO",
+  warn: "WARNING",
+  error: "ERROR",
+  audit: "AUDIT",
+};
 
 type JsonValue =
   | string
@@ -29,7 +44,7 @@ const RESERVED_LOG_KEYS = new Set([
   "logger",
   "platform",
   "component",
-  "event",
+  "message",
   "error",
 ]);
 
@@ -148,7 +163,16 @@ function write(level: BotLogLevel, line: string): void {
   console.error(line);
 }
 
+/**
+ * Builds the canonical envelope. The key names are deliberately identical to
+ * the ones `_build_json_entry` emits in `libs/shared/py/logging.py` — `time`,
+ * `level`, `service`, `logger`, `message`, plus the wide-event fields
+ * (`trace_id`, `duration_ms`, `outcome`, `errors`, `warnings`, `audit`, `env`)
+ * — so a single LogQL query spans the Python services and the bots. The event
+ * name lands under `message`, not `event`, for exactly that reason.
+ */
 function buildRecord(
+  time: string,
   level: BotLogLevel,
   platform: PlatformName | "shared",
   component: string,
@@ -157,8 +181,8 @@ function buildRecord(
   error?: unknown,
 ): Record<string, JsonValue> {
   const record: Record<string, JsonValue> = {
-    time: new Date().toISOString(),
-    level: level.toUpperCase(),
+    time,
+    level: LOG_LEVEL_NAMES[level],
     env: process.env.NODE_ENV ?? "development",
     service: resolveServiceName(platform),
     // Promtail extracts `logger` into the logger_name label (see
@@ -166,7 +190,7 @@ function buildRecord(
     logger: component,
     platform,
     component,
-    event,
+    message: event,
   };
 
   if (fields) {
@@ -188,7 +212,11 @@ function buildRecord(
  * Serializes and writes one canonical JSON log line. The single low-level
  * emitter shared by {@link createBotLogger} and the wide-event runtime
  * (`wide-events.ts`), so every line carries the same envelope
- * (time/level/env/service/logger/platform/component/event).
+ * (time/level/env/service/logger/platform/component/message).
+ *
+ * The same line goes to stdout (scraped by Promtail's Docker service-discovery
+ * job) and to the local structured file sink (scraped by Promtail's file job
+ * when the bot runs outside Docker) — see `log-file-sink.ts`.
  */
 export function emitBotLogLine(
   level: BotLogLevel,
@@ -198,8 +226,19 @@ export function emitBotLogLine(
   fields?: BotLogFields,
   error?: unknown,
 ): void {
-  const record = buildRecord(level, platform, component, event, fields, error);
-  write(level, JSON.stringify(record));
+  const time = new Date().toISOString();
+  const record = buildRecord(
+    time,
+    level,
+    platform,
+    component,
+    event,
+    fields,
+    error,
+  );
+  const line = JSON.stringify(record);
+  write(level, line);
+  appendStructuredLogLine(time, line);
 }
 
 export function createBotLogger(

@@ -28,7 +28,7 @@ import {
   sanitizeErrorForLog,
 } from "./logger";
 
-/** The `event` value of every emitted wide-event line. */
+/** The `message` value of every emitted wide-event line. */
 export const WIDE_EVENT_MESSAGE = "bot_event";
 
 /** One warnings[]/errors[]/audit[] entry: the message plus structured fields. */
@@ -90,7 +90,7 @@ export type WideEventBoundaryFields = BotLogFields & {
 const LEVEL_ORDER: Record<string, number> = {
   DEBUG: 0,
   INFO: 1,
-  WARN: 2,
+  WARNING: 2,
   ERROR: 3,
 };
 
@@ -103,7 +103,7 @@ interface WideEventState {
   errors: WideEventEntry[];
   warnings: WideEventEntry[];
   audit: WideEventEntry[];
-  maxLevel: "INFO" | "WARN" | "ERROR";
+  maxLevel: "INFO" | "WARNING" | "ERROR";
 }
 
 const storage = new AsyncLocalStorage<WideEventState>();
@@ -133,7 +133,7 @@ function mergeFields(
   }
 }
 
-function bump(state: WideEventState, level: "WARN" | "ERROR"): void {
+function bump(state: WideEventState, level: "WARNING" | "ERROR"): void {
   if (LEVEL_ORDER[level] > LEVEL_ORDER[state.maxLevel]) {
     state.maxLevel = level;
   }
@@ -159,7 +159,7 @@ function record(
   if (fields) mergeFields(entry, fields);
   if (error !== undefined) mergeFields(entry, sanitizeErrorForLog(error));
   state[category].push(entry);
-  if (level === "warn") bump(state, "WARN");
+  if (level === "warn") bump(state, "WARNING");
   if (level === "error") bump(state, "ERROR");
 }
 
@@ -232,7 +232,7 @@ function emitWideEvent(state: WideEventState, durationMs: number): void {
   const level: BotLogLevel =
     state.maxLevel === "ERROR"
       ? "error"
-      : state.maxLevel === "WARN"
+      : state.maxLevel === "WARNING"
         ? "warn"
         : "info";
   emitBotLogLine(
