@@ -18,6 +18,7 @@ from app.models.scheduler_models import (
 )
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 
@@ -287,8 +288,12 @@ class BaseSchedulerService(ABC):
         # Deterministic job id: ARQ dedupes a task+fire-time so concurrent scans or
         # repeated enqueues can't stack duplicate jobs for the same occurrence.
         job_id = f"{job_name}:{task_id}:{int(scheduled_at.timestamp())}"
-        job = await self.arq_pool.enqueue_job(
-            job_name, *self._build_job_args(task_id), _job_id=job_id, _defer_until=scheduled_at
+        job = await enqueue_worker_job(
+            self.arq_pool,
+            job_name,
+            *self._build_job_args(task_id),
+            _job_id=job_id,
+            _defer_until=scheduled_at,
         )
 
         if not job:

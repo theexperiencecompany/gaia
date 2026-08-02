@@ -40,7 +40,7 @@
     "dev": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-8000} --reload --reload-dir app --log-level info",
+        "command": "uv run --group backend uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT:-8000} --reload --reload-dir app --log-level info --no-access-log",
         "cwd": "{projectRoot}"
       }
     },
@@ -105,7 +105,7 @@
     "worker": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend arq app.worker.WorkerSettings",
+        "command": "uv run --group backend arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG",
         "cwd": "{projectRoot}"
       }
     },

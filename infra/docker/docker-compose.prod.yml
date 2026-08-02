@@ -121,7 +121,7 @@ services:
   arq_worker:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
-    command: python -m arq app.worker.WorkerSettings
+    command: python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged

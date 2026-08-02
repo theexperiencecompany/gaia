@@ -106,24 +106,42 @@ class TestConfigureLoguru:
         first_add = mock_logger.add.call_args_list[0]
         assert first_add.args[0] is _json_stdout_sink
 
-    def test_intercept_handlers_attached(self, mock_logger: MagicMock):
+    def test_root_logger_owns_the_only_handler(self, mock_logger: MagicMock):
         configure_loguru()
-        for name in [
-            "uvicorn",
-            "uvicorn.access",
-            "uvicorn.error",
-            "fastapi",
-            "gunicorn",
-            "livekit",
-            "app",
-        ]:
-            specific = logging.getLogger(name)
-            assert len(specific.handlers) == 1
-            assert specific.propagate is False
+        root = logging.getLogger()
+        assert [type(h).__name__ for h in root.handlers] == ["_InterceptHandler"]
+        assert root.level == logging.getLevelName(logging_mod.THIRD_PARTY_LOG_LEVEL)
 
-    def test_app_logger_set_to_debug(self, mock_logger: MagicMock):
+    def test_owned_namespaces_propagate_to_root(self, mock_logger: MagicMock):
         configure_loguru()
-        assert logging.getLogger("app").level == logging.DEBUG
+        for name in logging_mod._OWNED_LOG_NAMESPACES:
+            owned = logging.getLogger(name)
+            assert owned.handlers == []
+            assert owned.propagate is True
+            assert owned.level == logging.getLevelName(LOG_CONFIG["level"])
+
+    def test_no_access_log_is_honored(self, mock_logger: MagicMock):
+        """uvicorn --no-access-log clears the logger; re-attaching would undo the flag."""
+        access = logging.getLogger("uvicorn.access")
+        access.handlers.clear()
+        access.propagate = False
+
+        configure_loguru()
+
+        assert access.handlers == []
+        assert access.propagate is False
+        assert access.hasHandlers() is False
+
+    def test_access_log_left_enabled_is_routed_through_root(self, mock_logger: MagicMock):
+        """With access logging on, uvicorn's own stream handler is still replaced."""
+        access = logging.getLogger("uvicorn.access")
+        access.handlers = [logging.StreamHandler(sys.stdout)]
+        access.propagate = False
+
+        configure_loguru()
+
+        assert access.handlers == []
+        assert access.propagate is True
 
 
 # ---------------------------------------------------------------------------
@@ -346,32 +364,36 @@ class TestJsonFileSinkFactory:
 class TestInterceptHandler:
     """Test the stdlib InterceptHandler installed by configure_loguru."""
 
-    def test_app_namespace_intercepted(self, mock_logger: MagicMock):
-        configure_loguru()
-        handler = logging.getLogger("app").handlers[0]
-        # The handler should be an InterceptHandler
-        assert handler.__class__.__name__ == "InterceptHandler"
-
-    def test_non_app_namespace_ignored(self, mock_logger: MagicMock):
-        configure_loguru()
-        handler = logging.getLogger("app").handlers[0]
-        # Create a record from a namespace that should NOT be intercepted
-        record = logging.LogRecord(
-            name="some.random.lib",
-            level=logging.INFO,
+    @staticmethod
+    def _record(name: str) -> logging.LogRecord:
+        return logging.LogRecord(
+            name=name,
+            level=logging.ERROR,
             pathname="test.py",
             lineno=1,
-            msg="should be ignored",
+            msg="broker is down",
             args=(),
             exc_info=None,
         )
-        # This should not raise and should not log
-        handler.emit(record)
+
+    def test_app_namespace_intercepted(self, mock_logger: MagicMock):
+        configure_loguru()
+        handler = logging.getLogger().handlers[0]
+        handler.emit(self._record("app.services.chat"))
+        mock_logger.bind.assert_called_with(logger_name="CHAT")
+
+    def test_third_party_namespace_intercepted(self, mock_logger: MagicMock):
+        """The old allowlist dropped these on the floor; they must reach the sink."""
+        configure_loguru()
+        handler = logging.getLogger().handlers[0]
+        handler.emit(self._record("aiormq.connection"))
+        mock_logger.bind.assert_called_with(logger_name="AIORMQ")
 
     def test_uvicorn_namespace_mapped(self, mock_logger: MagicMock):
         configure_loguru()
-        handler = logging.getLogger("uvicorn.access").handlers[0]
-        assert handler.__class__.__name__ == "InterceptHandler"
+        handler = logging.getLogger().handlers[0]
+        handler.emit(self._record("uvicorn.error"))
+        mock_logger.bind.assert_called_with(logger_name="UVICORN")
 
 
 # ---------------------------------------------------------------------------

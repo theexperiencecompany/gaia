@@ -23,6 +23,7 @@ from app.constants.onboarding import (
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.users import user_repository
 from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 # Each helper below is parameterized by `field` so the same logic serves both
@@ -159,7 +160,7 @@ async def enqueue_intelligence_job(user_id: str) -> str | None:
         )
 
     pool = await RedisPoolManager.get_pool()
-    job = await pool.enqueue_job(INTELLIGENCE_TASK, user_id)
+    job = await enqueue_worker_job(pool, INTELLIGENCE_TASK, user_id)
     if job is None:
         log.error(f"{LogTag.ONBOARDING} intelligence_job enqueue returned no job", user_id=user_id)
         return None
@@ -179,7 +180,7 @@ async def enqueue_workflows_job(user_id: str) -> str | None:
     await abort_active_workflows_job(user_id)
 
     pool = await RedisPoolManager.get_pool()
-    job = await pool.enqueue_job(WORKFLOWS_TASK, user_id)
+    job = await enqueue_worker_job(pool, WORKFLOWS_TASK, user_id)
     if job is None:
         log.error(f"{LogTag.ONBOARDING} workflows_job enqueue returned no job", user_id=user_id)
         return None

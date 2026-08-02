@@ -201,7 +201,7 @@ services:
     # in the API Dockerfile, so call python directly. `uv run` would try to
     # rewrite /app/uv.lock and fail (Permission denied) under the non-root
     # appuser the runtime image switches to.
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     # Same FUSE requirements as gaia-backend (see that service for details).
     cap_add:

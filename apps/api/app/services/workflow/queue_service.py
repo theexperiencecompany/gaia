@@ -5,6 +5,7 @@ import json
 
 from app.constants.log_tags import LogTag
 from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 
@@ -17,7 +18,7 @@ class WorkflowQueueService:
         try:
             pool = await RedisPoolManager.get_pool()
 
-            job = await pool.enqueue_job("generate_workflow_steps", workflow_id, user_id)
+            job = await enqueue_worker_job(pool, "generate_workflow_steps", workflow_id, user_id)
 
             if job:
                 log.set(workflow={"id": workflow_id, "status": "generation_queued"})
@@ -67,8 +68,8 @@ class WorkflowQueueService:
                 "execute_workflow_by_id:" + hashlib.sha256(dedup_payload.encode()).hexdigest()[:32]
             )
 
-            job = await pool.enqueue_job(
-                "execute_workflow_by_id", workflow_id, context or {}, _job_id=job_id
+            job = await enqueue_worker_job(
+                pool, "execute_workflow_by_id", workflow_id, context or {}, _job_id=job_id
             )
 
             if job is None:
@@ -118,7 +119,8 @@ class WorkflowQueueService:
         try:
             pool = await RedisPoolManager.get_pool()
 
-            job = await pool.enqueue_job(
+            job = await enqueue_worker_job(
+                pool,
                 "process_workflow_generation_task",
                 todo_id,
                 user_id,

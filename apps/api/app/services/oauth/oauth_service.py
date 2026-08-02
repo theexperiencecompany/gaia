@@ -36,6 +36,7 @@ from app.services.system_workflows.provisioner import provision_system_workflows
 from app.services.workflow.trigger_service import TriggerService
 from app.services.workspace_sync import schedule_user_provision
 from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import OAuthContext, log
 
 
@@ -424,7 +425,7 @@ async def handle_oauth_connection(
         if onboarding_completed:
             try:
                 pool = await RedisPoolManager.get_pool()
-                await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+                await enqueue_worker_job(pool, "process_gmail_emails_to_memory", user_id)
                 log.info(f"{LogTag.OAUTH} Queued Gmail processing job for user", user_id=user_id)
             except Exception as e:
                 log.error(

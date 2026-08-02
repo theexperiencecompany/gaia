@@ -1,5 +1,8 @@
 import typing as t
 
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
+
 
 def apply():
     try:
@@ -48,10 +51,14 @@ def apply():
 
         lc_base._handle_validation_error = patched_handle_validation_error
 
-        # Print success
-        print("[PATCH] Applied composio_langchain_patch for arrays and tool validation errors")
+        log.info(f"{LogTag.PATCH} Applied composio_langchain_patch", patch="composio_langchain")
     except Exception as e:
-        print(f"[PATCH] Failed to apply composio langchain patch: {e}")
+        log.error(
+            f"{LogTag.PATCH} Failed to apply composio langchain patch",
+            patch="composio_langchain",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 # Call it directly on importing

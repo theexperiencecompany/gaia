@@ -68,7 +68,12 @@ class TestMongoDBInit:
         error_calls = [c for c in mock_log.set.call_args_list if "error" in str(c)]
         assert len(error_calls) >= 1
         mock_log.error.assert_called_once()
-        assert "conn error" in mock_log.error.call_args[0][0]
+        # The message is a constant identifier; the exception rides in kwargs,
+        # so one event name stays queryable instead of sharding into thousands.
+        message, kwargs = mock_log.error.call_args[0][0], mock_log.error.call_args[1]
+        assert "conn error" not in message
+        assert kwargs["error"] == "conn error"
+        assert kwargs["error_type"] == "Exception"
 
 
 # ---------------------------------------------------------------------------

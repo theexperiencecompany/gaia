@@ -50,7 +50,7 @@ from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
 from app.utils.errors import create_error
 from app.utils.timezone import Timezone, format_local_time
-from shared.py.wide_events import WorkflowContext, log, wide_task
+from shared.py.wide_events import WorkflowContext, log
 
 
 async def process_workflow_generation_task(
@@ -71,141 +71,143 @@ async def process_workflow_generation_task(
     Returns:
         Processing result message
     """
-    async with wide_task("process_workflow_generation_task", todo_id=todo_id, user_id=user_id):
-        try:
-            # Build short card description plus detailed execution prompt
-            workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
-            workflow_prompt = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
-                title=title,
-                details_section=f"**Details:** {description}" if description else "",
-            )
-            # Create standalone workflow with todo workflow flag
-            workflow_request = CreateWorkflowRequest(
-                title=f"Todo: {title}",
-                description=workflow_description,
-                prompt=workflow_prompt,
-                trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
-                generate_immediately=True,
-            )
+    log.set(todo_id=todo_id, user_id=user_id)
+    try:
+        # Build short card description plus detailed execution prompt
+        workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
+        workflow_prompt = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
+            title=title,
+            details_section=f"**Details:** {description}" if description else "",
+        )
+        # Create standalone workflow with todo workflow flag
+        workflow_request = CreateWorkflowRequest(
+            title=f"Todo: {title}",
+            description=workflow_description,
+            prompt=workflow_prompt,
+            trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
+            generate_immediately=True,
+        )
 
-            workflow = await WorkflowService.create_workflow(
-                workflow_request,
-                user_id,
-                is_todo_workflow=True,
-                source_todo_id=todo_id,
-            )
+        workflow = await WorkflowService.create_workflow(
+            workflow_request,
+            user_id,
+            is_todo_workflow=True,
+            source_todo_id=todo_id,
+        )
 
-            if workflow and workflow.id:
-                # Verify workflow actually has steps before linking
-                if not workflow.steps or len(workflow.steps) == 0:
-                    reason = workflow.error_message or "unknown error"
-                    raise create_error(
-                        message=f"Workflow {workflow.id} created but has no steps — {reason}",
-                        why="workflow generation completed without producing any steps",
-                        fix="retry workflow generation for this todo",
-                        workflow_id=workflow.id,
-                        todo_id=todo_id,
-                    )
-
-                linked = await todo_repository.update(
-                    todo_id, user_id=user_id, update=TodoUpdate(workflow_id=workflow.id)
-                )
-
-                if linked is not None:
-                    log.info(
-                        f"{LogTag.WORKER} Successfully generated and linked standalone workflow",
-                        workflow_id=workflow.id,
-                        todo_id=todo_id,
-                        steps_count=len(workflow.steps),
-                    )
-                    log.set(
-                        workflow=WorkflowContext(
-                            id=workflow.id,
-                            steps_count=len(workflow.steps),
-                            trigger_type=TriggerType.MANUAL.value,
-                        )
-                    )
-
-                    try:
-                        websocket_manager = get_websocket_manager()
-                        await websocket_manager.broadcast_to_user(
-                            user_id,
-                            {
-                                "type": "workflow.generated",
-                                "todo_id": todo_id,
-                                "workflow": workflow.model_dump(mode="json"),
-                            },
-                        )
-                        log.set(websocket_broadcast_success=True)
-                    except Exception as ws_error:
-                        log.set(websocket_broadcast_success=False)
-                        log.warning(
-                            f"{LogTag.WORKER} Failed to send WebSocket event",
-                            error_type=type(ws_error).__name__,
-                            error=str(ws_error),
-                            workflow_id=workflow.id,
-                            todo_id=todo_id,
-                        )
-
-                    # Clear the generating flag
-                    from app.services.workflow.queue_service import WorkflowQueueService
-
-                    await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-
-                    return f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
+        if workflow and workflow.id:
+            # Verify workflow actually has steps before linking
+            if not workflow.steps or len(workflow.steps) == 0:
+                reason = workflow.error_message or "unknown error"
                 raise create_error(
-                    message=f"Todo {todo_id} not found or not updated",
-                    why="the todo was deleted or the workflow-link update matched no document",
-                    fix="verify the todo still exists before regenerating its workflow",
+                    message=f"Workflow {workflow.id} created but has no steps — {reason}",
+                    why="workflow generation completed without producing any steps",
+                    fix="retry workflow generation for this todo",
+                    workflow_id=workflow.id,
                     todo_id=todo_id,
                 )
 
-            # Mark workflow generation as failed
-            log.error(
-                f"{LogTag.WORKER} Failed to generate workflow for todo: no workflow created",
-                todo_id=todo_id,
-                user_id=user_id,
-            )
-            raise create_error(
-                message="Workflow generation failed: No workflow created",
-                why="WorkflowService.create_workflow returned no workflow",
-                fix="check workflow generation logs for the underlying failure",
-                todo_id=todo_id,
+            linked = await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(workflow_id=workflow.id)
             )
 
-        except Exception as e:
-            # Clear the generating flag on failure too
-            try:
+            if linked is not None:
+                log.info(
+                    f"{LogTag.WORKER} Successfully generated and linked standalone workflow",
+                    workflow_id=workflow.id,
+                    todo_id=todo_id,
+                    steps_count=len(workflow.steps),
+                )
+                log.set(
+                    workflow=WorkflowContext(
+                        id=workflow.id,
+                        steps_count=len(workflow.steps),
+                        trigger_type=TriggerType.MANUAL.value,
+                    )
+                )
+
+                try:
+                    websocket_manager = get_websocket_manager()
+                    await websocket_manager.broadcast_to_user(
+                        user_id,
+                        {
+                            "type": "workflow.generated",
+                            "todo_id": todo_id,
+                            "workflow": workflow.model_dump(mode="json"),
+                        },
+                    )
+                    log.set(websocket_broadcast_success=True)
+                except Exception as ws_error:
+                    log.set(websocket_broadcast_success=False)
+                    log.warning(
+                        f"{LogTag.WORKER} Failed to send WebSocket event",
+                        error_type=type(ws_error).__name__,
+                        error=str(ws_error),
+                        workflow_id=workflow.id,
+                        todo_id=todo_id,
+                    )
+
+                # Clear the generating flag
                 from app.services.workflow.queue_service import WorkflowQueueService
 
                 await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-            # evlog-map-disable-next-line error-handling -- cleanup should not raise
-            except Exception:  # nosec B110 - Intentional: cleanup should not raise
-                pass
 
-            # Broadcast failure WebSocket event so frontend can handle it
-            try:
-                websocket_manager = get_websocket_manager()
-                await websocket_manager.broadcast_to_user(
-                    user_id,
-                    {
-                        "type": "workflow.generation_failed",
-                        "todo_id": todo_id,
-                        "error": str(e),
-                    },
+                return (
+                    f"Successfully generated standalone workflow {workflow.id} for todo {todo_id}"
                 )
-                log.set(websocket_broadcast_success=True)
-            except Exception as ws_error:
-                log.set(websocket_broadcast_success=False)
-                log.warning(
-                    f"{LogTag.WORKER} Failed to send failure WebSocket event",
-                    error_type=type(ws_error).__name__,
-                    error=str(ws_error),
-                    todo_id=todo_id,
-                    user_id=user_id,
-                )
+            raise create_error(
+                message=f"Todo {todo_id} not found or not updated",
+                why="the todo was deleted or the workflow-link update matched no document",
+                fix="verify the todo still exists before regenerating its workflow",
+                todo_id=todo_id,
+            )
 
-            raise
+        # Mark workflow generation as failed
+        log.error(
+            f"{LogTag.WORKER} Failed to generate workflow for todo: no workflow created",
+            todo_id=todo_id,
+            user_id=user_id,
+        )
+        raise create_error(
+            message="Workflow generation failed: No workflow created",
+            why="WorkflowService.create_workflow returned no workflow",
+            fix="check workflow generation logs for the underlying failure",
+            todo_id=todo_id,
+        )
+
+    except Exception as e:
+        # Clear the generating flag on failure too
+        try:
+            from app.services.workflow.queue_service import WorkflowQueueService
+
+            await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
+        # evlog-map-disable-next-line error-handling -- cleanup should not raise
+        except Exception:  # nosec B110 - Intentional: cleanup should not raise
+            pass
+
+        # Broadcast failure WebSocket event so frontend can handle it
+        try:
+            websocket_manager = get_websocket_manager()
+            await websocket_manager.broadcast_to_user(
+                user_id,
+                {
+                    "type": "workflow.generation_failed",
+                    "todo_id": todo_id,
+                    "error": str(e),
+                },
+            )
+            log.set(websocket_broadcast_success=True)
+        except Exception as ws_error:
+            log.set(websocket_broadcast_success=False)
+            log.warning(
+                f"{LogTag.WORKER} Failed to send failure WebSocket event",
+                error_type=type(ws_error).__name__,
+                error=str(ws_error),
+                todo_id=todo_id,
+                user_id=user_id,
+            )
+
+        raise
 
 
 async def _rearm_if_scheduled(
@@ -230,269 +232,269 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
     """
     Execute a workflow by ID with proper execution count tracking.
     """
-    async with wide_task("execute_workflow_by_id", workflow_id=workflow_id):
-        actual_fire_utc = datetime.now(UTC)
-        log.set(actual_fire_utc=actual_fire_utc.isoformat())
-        log.info(f"{LogTag.WORKER} Processing workflow execution", workflow_id=workflow_id)
+    log.set(workflow_id=workflow_id)
+    actual_fire_utc = datetime.now(UTC)
+    log.set(actual_fire_utc=actual_fire_utc.isoformat())
+    log.info(f"{LogTag.WORKER} Processing workflow execution", workflow_id=workflow_id)
 
-        scheduler = WorkflowScheduler()
-        workflow = None
-        execution_id = None
+    scheduler = WorkflowScheduler()
+    workflow = None
+    execution_id = None
 
-        # Import execution service
-        from app.services.workflow.execution_service import (
-            complete_execution,
-            create_execution,
+    # Import execution service
+    from app.services.workflow.execution_service import (
+        complete_execution,
+        create_execution,
+    )
+
+    try:
+        await scheduler.initialize()
+        workflow = await scheduler.get_task(workflow_id)
+
+        if not workflow:
+            return f"Workflow {workflow_id} not found"
+
+        # Determine trigger type from context
+        trigger_type = context.get("trigger_type", "manual") if context else "manual"
+        log.set(
+            workflow=WorkflowContext(
+                id=workflow_id,
+                trigger_type=trigger_type,
+                steps_count=len(workflow.steps),
+            )
         )
 
-        try:
-            await scheduler.initialize()
-            workflow = await scheduler.get_task(workflow_id)
-
-            if not workflow:
-                return f"Workflow {workflow_id} not found"
-
-            # Determine trigger type from context
-            trigger_type = context.get("trigger_type", "manual") if context else "manual"
-            log.set(
-                workflow=WorkflowContext(
-                    id=workflow_id,
-                    trigger_type=trigger_type,
-                    steps_count=len(workflow.steps),
-                )
-            )
-
-            # Scheduler-originated fires: atomically claim the occurrence (scheduled ->
-            # executing) so a concurrent recovery scan can't double-execute a workflow
-            # whose previous fire is still running. Manual/integration "run now" fires
-            # don't go through the scan and must not be status-gated.
-            if trigger_type == TriggerType.SCHEDULE.value and not (
-                await scheduler.claim_scheduled_for_execution(workflow_id)
-            ):
-                log.warning(
-                    f"{LogTag.WORKER} Workflow not in scheduled state "
-                    f"(already claimed or running); skipping duplicate scheduled fire",
-                    workflow_id=workflow_id,
-                )
-                return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
-
-            scheduled_at = getattr(workflow, "scheduled_at", None)
-            if isinstance(scheduled_at, datetime):
-                if scheduled_at.tzinfo is None:
-                    scheduled_at = scheduled_at.replace(tzinfo=UTC)
-                drift = int((actual_fire_utc - scheduled_at).total_seconds())
-                log.set(
-                    scheduled_at_utc=scheduled_at.isoformat(),
-                    drift_from_scheduled_seconds=drift,
-                )
-                if abs(drift) > 300:
-                    log.warning(
-                        f"{LogTag.WORKER} Workflow fired off schedule (positive drift = late, negative = early)",
-                        workflow_id=workflow_id,
-                        drift_seconds=drift,
-                    )
-
-            # Create execution record at start
-            execution = await create_execution(
+        # Scheduler-originated fires: atomically claim the occurrence (scheduled ->
+        # executing) so a concurrent recovery scan can't double-execute a workflow
+        # whose previous fire is still running. Manual/integration "run now" fires
+        # don't go through the scan and must not be status-gated.
+        if trigger_type == TriggerType.SCHEDULE.value and not (
+            await scheduler.claim_scheduled_for_execution(workflow_id)
+        ):
+            log.warning(
+                f"{LogTag.WORKER} Workflow not in scheduled state "
+                f"(already claimed or running); skipping duplicate scheduled fire",
                 workflow_id=workflow_id,
-                user_id=workflow.user_id,
-                trigger_type=trigger_type,
             )
-            execution_id = execution.execution_id
+            return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
-            # Run the workflow as a silent chat turn. The executor does all the
-            # steps and its result is delivered as the completion notification
-            # from the background delivery path (gated by workflow_id), so there
-            # is no separate notification call here.
-            conversation_id = await execute_workflow_as_chat(
-                workflow, {"user_id": workflow.user_id}, context or {}
+        scheduled_at = getattr(workflow, "scheduled_at", None)
+        if isinstance(scheduled_at, datetime):
+            if scheduled_at.tzinfo is None:
+                scheduled_at = scheduled_at.replace(tzinfo=UTC)
+            drift = int((actual_fire_utc - scheduled_at).total_seconds())
+            log.set(
+                scheduled_at_utc=scheduled_at.isoformat(),
+                drift_from_scheduled_seconds=drift,
             )
-
-            # Track successful execution
-            await WorkflowService.increment_execution_count(
-                workflow_id, workflow.user_id, is_successful=True
-            )
-
-            # Complete execution record with success
-            await complete_execution(
-                execution_id=execution_id,
-                status="success",
-                summary="Workflow executed",
-                conversation_id=conversation_id,
-            )
-
-            # Arm the next occurrence (scheduled recurring workflows only). A re-arm
-            # failure must not turn a successful execution into a reported failure.
-            try:
-                await _rearm_if_scheduled(scheduler, workflow, context)
-            except Exception as rearm_err:
-                log.error(
-                    f"{LogTag.WORKER} Failed to re-arm workflow",
-                    workflow_id=workflow_id,
-                    error_type=type(rearm_err).__name__,
-                    error=str(rearm_err),
-                )
-
-            return f"Workflow {workflow_id} executed successfully"
-
-        except Exception as e:
-            if isinstance(e, RateLimitExceededException):
-                # User hit their plan's workflow-execution quota — an expected,
-                # by-design outcome, not a worker failure. Log at WARNING so it
-                # doesn't trip the ARQ failed-task alert. The execution is still
-                # recorded as failed and the user is notified below.
+            if abs(drift) > 300:
                 log.warning(
-                    f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+                    f"{LogTag.WORKER} Workflow fired off schedule (positive drift = late, negative = early)",
                     workflow_id=workflow_id,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
-            else:
-                log.exception(
-                    f"{LogTag.WORKER} Error executing workflow",
-                    workflow_id=workflow_id,
-                    error_type=type(e).__name__,
-                    error=str(e),
+                    drift_seconds=drift,
                 )
 
-            # Complete execution record with failure
-            if execution_id:
-                try:
-                    await complete_execution(
-                        execution_id=execution_id,
-                        status="failed",
-                        error_message=str(e),
-                    )
-                except Exception as e2:
-                    log.warning(
-                        f"{LogTag.WORKER} Failed to complete execution record",
-                        error_type=type(e2).__name__,
-                        execution_id=execution_id,
-                    )
+        # Create execution record at start
+        execution = await create_execution(
+            workflow_id=workflow_id,
+            user_id=workflow.user_id,
+            trigger_type=trigger_type,
+        )
+        execution_id = execution.execution_id
 
-            # Track failed execution
-            if workflow:
-                try:
-                    await WorkflowService.increment_execution_count(
-                        workflow_id, workflow.user_id, is_successful=False
-                    )
-                except Exception as e2:
-                    log.warning(
-                        f"{LogTag.WORKER} Failed to update workflow stats",
-                        error_type=type(e2).__name__,
-                        workflow_id=workflow_id,
-                    )
+        # Run the workflow as a silent chat turn. The executor does all the
+        # steps and its result is delivered as the completion notification
+        # from the background delivery path (gated by workflow_id), so there
+        # is no separate notification call here.
+        conversation_id = await execute_workflow_as_chat(
+            workflow, {"user_id": workflow.user_id}, context or {}
+        )
 
-            # Send failure notification so the user knows the workflow failed
-            if workflow:
-                try:
-                    if isinstance(e, RateLimitExceededException):
-                        title = f"Workflow Failed: {workflow.title}"
-                        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
-                        plan_required = detail.get("plan_required", "pro").upper()
-                        reset_time_str = detail.get("reset_time", "")
+        # Track successful execution
+        await WorkflowService.increment_execution_count(
+            workflow_id, workflow.user_id, is_successful=True
+        )
 
-                        if reset_time_str:
-                            # Quota exhausted — show when the limit resets
+        # Complete execution record with success
+        await complete_execution(
+            execution_id=execution_id,
+            status="success",
+            summary="Workflow executed",
+            conversation_id=conversation_id,
+        )
+
+        # Arm the next occurrence (scheduled recurring workflows only). A re-arm
+        # failure must not turn a successful execution into a reported failure.
+        try:
+            await _rearm_if_scheduled(scheduler, workflow, context)
+        except Exception as rearm_err:
+            log.error(
+                f"{LogTag.WORKER} Failed to re-arm workflow",
+                workflow_id=workflow_id,
+                error_type=type(rearm_err).__name__,
+                error=str(rearm_err),
+            )
+
+        return f"Workflow {workflow_id} executed successfully"
+
+    except Exception as e:
+        if isinstance(e, RateLimitExceededException):
+            # User hit their plan's workflow-execution quota — an expected,
+            # by-design outcome, not a worker failure. Log at WARNING so it
+            # doesn't trip the ARQ failed-task alert. The execution is still
+            # recorded as failed and the user is notified below.
+            log.warning(
+                f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+                workflow_id=workflow_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+        else:
+            log.exception(
+                f"{LogTag.WORKER} Error executing workflow",
+                workflow_id=workflow_id,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+
+        # Complete execution record with failure
+        if execution_id:
+            try:
+                await complete_execution(
+                    execution_id=execution_id,
+                    status="failed",
+                    error_message=str(e),
+                )
+            except Exception as e2:
+                log.warning(
+                    f"{LogTag.WORKER} Failed to complete execution record",
+                    error_type=type(e2).__name__,
+                    execution_id=execution_id,
+                )
+
+        # Track failed execution
+        if workflow:
+            try:
+                await WorkflowService.increment_execution_count(
+                    workflow_id, workflow.user_id, is_successful=False
+                )
+            except Exception as e2:
+                log.warning(
+                    f"{LogTag.WORKER} Failed to update workflow stats",
+                    error_type=type(e2).__name__,
+                    workflow_id=workflow_id,
+                )
+
+        # Send failure notification so the user knows the workflow failed
+        if workflow:
+            try:
+                if isinstance(e, RateLimitExceededException):
+                    title = f"Workflow Failed: {workflow.title}"
+                    detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
+                    plan_required = detail.get("plan_required", "pro").upper()
+                    reset_time_str = detail.get("reset_time", "")
+
+                    if reset_time_str:
+                        # Quota exhausted — show when the limit resets
+                        try:
+                            reset_dt = datetime.fromisoformat(reset_time_str)
+                            if reset_dt.tzinfo is None:
+                                reset_dt = reset_dt.replace(tzinfo=UTC)
                             try:
-                                reset_dt = datetime.fromisoformat(reset_time_str)
-                                if reset_dt.tzinfo is None:
-                                    reset_dt = reset_dt.replace(tzinfo=UTC)
-                                try:
-                                    reset_user = await get_user_by_id(workflow.user_id)
-                                    reset_tz = reset_user.get("timezone") if reset_user else None
-                                except Exception as tz_err:
-                                    log.warning(
-                                        f"{LogTag.WORKER} Failed to fetch user timezone for notification",
-                                        error_type=type(tz_err).__name__,
-                                        workflow_id=workflow_id,
-                                    )
-                                    reset_tz = None
-                                formatted_reset = format_local_time(
-                                    reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z"
-                                )
-                                body = (
-                                    f"'{workflow.title}' couldn't run — "
-                                    f"you've used all your workflow executions for today. "
-                                    f"Resets {formatted_reset}. "
-                                    f"Upgrade to {plan_required} for higher daily limits."
-                                )
-                            except Exception as fmt_err:
+                                reset_user = await get_user_by_id(workflow.user_id)
+                                reset_tz = reset_user.get("timezone") if reset_user else None
+                            except Exception as tz_err:
                                 log.warning(
-                                    f"{LogTag.WORKER} Failed to format quota reset time for notification",
-                                    error_type=type(fmt_err).__name__,
+                                    f"{LogTag.WORKER} Failed to fetch user timezone for notification",
+                                    error_type=type(tz_err).__name__,
                                     workflow_id=workflow_id,
                                 )
-                                body = (
-                                    f"'{workflow.title}' couldn't run — "
-                                    f"you've used all your workflow executions for today. "
-                                    f"Upgrade to {plan_required} for higher daily limits."
-                                )
-                        else:
-                            # Plan-gated — feature isn't available on their plan at all
+                                reset_tz = None
+                            formatted_reset = format_local_time(
+                                reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z"
+                            )
                             body = (
                                 f"'{workflow.title}' couldn't run — "
-                                f"automated workflow execution is not available on your current plan. "
-                                f"Upgrade to {plan_required} to unlock this feature."
+                                f"you've used all your workflow executions for today. "
+                                f"Resets {formatted_reset}. "
+                                f"Upgrade to {plan_required} for higher daily limits."
                             )
-
-                        upgrade_action = NotificationAction(
-                            type=ActionType.REDIRECT,
-                            label=f"Upgrade to {plan_required}",
-                            style=ActionStyle.PRIMARY,
-                            config=ActionConfig(
-                                redirect=RedirectConfig(
-                                    url="/settings?section=subscription",
-                                    open_in_new_tab=False,
-                                    close_notification=True,
-                                )
-                            ),
-                        )
+                        except Exception as fmt_err:
+                            log.warning(
+                                f"{LogTag.WORKER} Failed to format quota reset time for notification",
+                                error_type=type(fmt_err).__name__,
+                                workflow_id=workflow_id,
+                            )
+                            body = (
+                                f"'{workflow.title}' couldn't run — "
+                                f"you've used all your workflow executions for today. "
+                                f"Upgrade to {plan_required} for higher daily limits."
+                            )
                     else:
-                        title = f"Workflow Failed: {workflow.title}"
-                        body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
-                        upgrade_action = None
-
-                    await notification_service.create_notification(
-                        NotificationRequest(
-                            user_id=workflow.user_id,
-                            source=NotificationSourceEnum.WORKFLOW_FAILED,
-                            type=NotificationType.ERROR,
-                            content=NotificationContent(
-                                title=title,
-                                body=body,
-                                actions=[upgrade_action] if upgrade_action else None,
-                            ),
-                            metadata={
-                                "workflow_id": workflow.id,
-                                "error_type": type(e).__name__,
-                            },
+                        # Plan-gated — feature isn't available on their plan at all
+                        body = (
+                            f"'{workflow.title}' couldn't run — "
+                            f"automated workflow execution is not available on your current plan. "
+                            f"Upgrade to {plan_required} to unlock this feature."
                         )
-                    )
-                except Exception as notify_err:
-                    log.warning(
-                        f"{LogTag.WORKER} Failed to send failure notification",
-                        error_type=type(notify_err).__name__,
-                        workflow_id=workflow_id,
-                    )
 
-            # Still arm the next occurrence — a transient failure (rate limit, LLM
-            # error) must not permanently kill a recurring workflow.
-            try:
-                await _rearm_if_scheduled(scheduler, workflow, context)
-            except Exception as rearm_err:
-                log.error(
-                    f"{LogTag.WORKER} Failed to re-arm workflow",
+                    upgrade_action = NotificationAction(
+                        type=ActionType.REDIRECT,
+                        label=f"Upgrade to {plan_required}",
+                        style=ActionStyle.PRIMARY,
+                        config=ActionConfig(
+                            redirect=RedirectConfig(
+                                url="/settings?section=subscription",
+                                open_in_new_tab=False,
+                                close_notification=True,
+                            )
+                        ),
+                    )
+                else:
+                    title = f"Workflow Failed: {workflow.title}"
+                    body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
+                    upgrade_action = None
+
+                await notification_service.create_notification(
+                    NotificationRequest(
+                        user_id=workflow.user_id,
+                        source=NotificationSourceEnum.WORKFLOW_FAILED,
+                        type=NotificationType.ERROR,
+                        content=NotificationContent(
+                            title=title,
+                            body=body,
+                            actions=[upgrade_action] if upgrade_action else None,
+                        ),
+                        metadata={
+                            "workflow_id": workflow.id,
+                            "error_type": type(e).__name__,
+                        },
+                    )
+                )
+            except Exception as notify_err:
+                log.warning(
+                    f"{LogTag.WORKER} Failed to send failure notification",
+                    error_type=type(notify_err).__name__,
                     workflow_id=workflow_id,
-                    error_type=type(rearm_err).__name__,
-                    error=str(rearm_err),
                 )
 
-            return "Error executing workflow %s: %s" % (workflow_id, str(e))
+        # Still arm the next occurrence — a transient failure (rate limit, LLM
+        # error) must not permanently kill a recurring workflow.
+        try:
+            await _rearm_if_scheduled(scheduler, workflow, context)
+        except Exception as rearm_err:
+            log.error(
+                f"{LogTag.WORKER} Failed to re-arm workflow",
+                workflow_id=workflow_id,
+                error_type=type(rearm_err).__name__,
+                error=str(rearm_err),
+            )
 
-        finally:
-            if scheduler:
-                await scheduler.close()
+        return "Error executing workflow %s: %s" % (workflow_id, str(e))
+
+    finally:
+        if scheduler:
+            await scheduler.close()
 
 
 @tiered_rate_limit("trigger_workflow_executions")
@@ -656,29 +658,27 @@ async def regenerate_workflow_steps(
     Returns:
         Processing result message
     """
-    async with wide_task("regenerate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
-        log.info(
-            f"{LogTag.WORKER} Regenerating workflow steps",
-            workflow_id=workflow_id,
-            user_id=user_id,
-            reason=regeneration_reason,
-        )
+    log.set(workflow_id=workflow_id, user_id=user_id)
+    log.info(
+        f"{LogTag.WORKER} Regenerating workflow steps",
+        workflow_id=workflow_id,
+        user_id=user_id,
+        reason=regeneration_reason,
+    )
 
-        # Import here to avoid circular imports
-        from app.services.workflow import WorkflowService
+    # Import here to avoid circular imports
+    from app.services.workflow import WorkflowService
 
-        # Regenerate steps using the service method (without background queue)
-        await WorkflowService.regenerate_workflow_steps(
-            workflow_id,
-            user_id,
-            regeneration_reason,
-            force_different_tools,
-        )
+    # Regenerate steps using the service method (without background queue)
+    await WorkflowService.regenerate_workflow_steps(
+        workflow_id,
+        user_id,
+        regeneration_reason,
+        force_different_tools,
+    )
 
-        log.info(
-            f"{LogTag.WORKER} Successfully regenerated workflow steps", workflow_id=workflow_id
-        )
-        return f"Successfully regenerated steps for workflow {workflow_id}"
+    log.info(f"{LogTag.WORKER} Successfully regenerated workflow steps", workflow_id=workflow_id)
+    return f"Successfully regenerated steps for workflow {workflow_id}"
 
 
 async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> str:
@@ -694,50 +694,46 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
     Returns:
         Processing result message
     """
-    async with wide_task("generate_workflow_steps", workflow_id=workflow_id, user_id=user_id):
-        # Import here to avoid circular imports
-        from app.services.workflow import WorkflowService
+    log.set(workflow_id=workflow_id, user_id=user_id)
+    # Import here to avoid circular imports
+    from app.services.workflow import WorkflowService
 
-        # Generate steps using the service method
-        await WorkflowService._generate_workflow_steps(workflow_id, user_id)
+    # Generate steps using the service method
+    await WorkflowService._generate_workflow_steps(workflow_id, user_id)
 
-        # Fetch the updated workflow to get the generated steps
-        updated_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
+    # Fetch the updated workflow to get the generated steps
+    updated_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
 
-        if updated_workflow:
-            log.set(
-                workflow=WorkflowContext(
-                    id=workflow_id,
-                    steps_count=len(updated_workflow.steps),
-                )
+    if updated_workflow:
+        log.set(
+            workflow=WorkflowContext(
+                id=workflow_id,
+                steps_count=len(updated_workflow.steps),
+            )
+        )
+
+    # If this is a todo workflow, send WebSocket event
+    if updated_workflow and updated_workflow.is_todo_workflow and updated_workflow.source_todo_id:
+        try:
+            websocket_manager = get_websocket_manager()
+            await websocket_manager.broadcast_to_user(
+                user_id,
+                {
+                    "type": "workflow.generated",
+                    "todo_id": updated_workflow.source_todo_id,
+                    "workflow": updated_workflow.model_dump(mode="json"),
+                },
+            )
+            log.set(websocket_broadcast_success=True)
+        except Exception as ws_error:
+            log.set(websocket_broadcast_success=False)
+            log.warning(
+                f"{LogTag.WORKER} Failed to send WebSocket event",
+                error_type=type(ws_error).__name__,
+                error=str(ws_error),
+                workflow_id=workflow_id,
+                user_id=user_id,
             )
 
-        # If this is a todo workflow, send WebSocket event
-        if (
-            updated_workflow
-            and updated_workflow.is_todo_workflow
-            and updated_workflow.source_todo_id
-        ):
-            try:
-                websocket_manager = get_websocket_manager()
-                await websocket_manager.broadcast_to_user(
-                    user_id,
-                    {
-                        "type": "workflow.generated",
-                        "todo_id": updated_workflow.source_todo_id,
-                        "workflow": updated_workflow.model_dump(mode="json"),
-                    },
-                )
-                log.set(websocket_broadcast_success=True)
-            except Exception as ws_error:
-                log.set(websocket_broadcast_success=False)
-                log.warning(
-                    f"{LogTag.WORKER} Failed to send WebSocket event",
-                    error_type=type(ws_error).__name__,
-                    error=str(ws_error),
-                    workflow_id=workflow_id,
-                    user_id=user_id,
-                )
-
-        log.info(f"{LogTag.WORKER} Successfully generated workflow steps", workflow_id=workflow_id)
-        return f"Successfully generated steps for workflow {workflow_id}"
+    log.info(f"{LogTag.WORKER} Successfully generated workflow steps", workflow_id=workflow_id)
+    return f"Successfully generated steps for workflow {workflow_id}"

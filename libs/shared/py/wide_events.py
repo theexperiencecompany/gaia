@@ -827,10 +827,14 @@ def wide_task(task_name: str, *, trace_id: str | None = None, **initial_context:
     reset()/get(). Use this context manager to wrap each task function.
 
     Usage:
-        async def process_reminder(ctx: dict, reminder_id: str) -> str:
-            async with wide_task("process_reminder", reminder_id=reminder_id):
-                log.set(job_id=ctx.get("job_id"))
-                await reminder_scheduler.process_task_execution(reminder_id)
+        async def run_nightly_sweep() -> None:
+            async with wide_task("nightly_sweep", trace_id=get_trace_id() or None):
+                log.set(swept=await sweep())
+
+    GAIA's ARQ tasks do not call this themselves — ``app.workers.task_envelope``
+    applies it once per task at registration so the trace id propagated by the
+    enqueuer and ARQ's ``job_id``/``job_try`` land on every task's event without
+    21 call sites having to remember. Task bodies just call ``log.set(...)``.
     """
     return _wide_event_boundary(
         task_name,

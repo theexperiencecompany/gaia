@@ -32,6 +32,7 @@ from app.utils.canvas_vector_utils import (
     update_canvas_embedding,
 )
 from app.utils.redis_utils import RedisPoolManager
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log
 
 CANVAS_TEMPLATE = """# {title}
@@ -349,7 +350,8 @@ class TrackedTodoService:
         """
         try:
             pool = await RedisPoolManager.get_pool()
-            await pool.enqueue_job(
+            await enqueue_worker_job(
+                pool,
                 "execute_tracked_todo",
                 todo_id,
                 _defer_until=scheduled_at,

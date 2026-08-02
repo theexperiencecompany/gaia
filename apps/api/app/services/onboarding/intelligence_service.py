@@ -87,6 +87,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_onboarding_conversation
+from app.workers.queue import enqueue_worker_job
 from shared.py.wide_events import log, spawn_logged_task
 
 
@@ -217,7 +218,7 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
     await _run_inbox_scanning(user_id, ctx)
     try:
         pool = await RedisPoolManager.get_pool()
-        await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
+        await enqueue_worker_job(pool, "process_gmail_emails_to_memory", user_id)
         log.info(
             f"{LogTag.ONBOARDING} queued gmail->memory ingestion",
             user_id=user_id,

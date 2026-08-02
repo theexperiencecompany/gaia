@@ -265,7 +265,7 @@ services:
       - JUICEFS_META_URL_TEMPLATE=postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
     expose:
       - "9100"
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app

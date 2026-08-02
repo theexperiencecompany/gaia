@@ -291,6 +291,17 @@ class TestTraceId:
 # ---------------------------------------------------------------------------
 
 
+def _emitted_event(mock_loguru: MagicMock) -> dict:
+    """The event the boundary actually emitted.
+
+    Read this instead of ``log.get()`` after a boundary exits. A boundary
+    restores the enclosing accumulator on exit, so once it has closed there is
+    deliberately nothing left to read — asserting on ``log.get()`` afterwards
+    only passed while boundaries leaked their state outward, which was the bug.
+    """
+    return dict(mock_loguru.bind.call_args.kwargs)
+
+
 class TestWideTask:
     """Tests for the wide_task async context manager."""
 
@@ -313,8 +324,7 @@ class TestWideTask:
     async def test_success_sets_outcome(self, mock_loguru: MagicMock):
         async with wide_task("ok_task"):
             pass
-        # After exiting, the final event should have outcome=success
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert event["outcome"] == "success"
 
     @pytest.mark.asyncio
@@ -323,7 +333,7 @@ class TestWideTask:
         with pytest.raises(RuntimeError, match="boom"):
             async with wide_task("fail_task"):
                 raise RuntimeError("boom")
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert event["outcome"] == "failed"
 
     @pytest.mark.asyncio
@@ -331,7 +341,7 @@ class TestWideTask:
     async def test_duration_ms_recorded(self, mock_loguru: MagicMock):
         async with wide_task("timed_task"):
             pass
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert "duration_ms" in event
         assert isinstance(event["duration_ms"], float)
 
@@ -340,7 +350,7 @@ class TestWideTask:
     async def test_final_level_set(self, mock_loguru: MagicMock):
         async with wide_task("level_task"):
             log.warning("w")
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert event["final_level"] == "WARNING"
 
     @pytest.mark.asyncio
@@ -380,7 +390,7 @@ class TestWideTask:
         with pytest.raises(ValueError):
             async with wide_task("err_task"):
                 raise ValueError("bad value")
-        event = log.get()
+        event = _emitted_event(mock_loguru)
         assert len(event["errors"]) == 1
         assert event["errors"][0]["error"] == "bad value"
         assert event["errors"][0]["error_type"] == "ValueError"

@@ -14,7 +14,8 @@ apps that need it (e.g. the API). It no-ops under LOG_FORMAT=json, so callers
 never repeat that check. Console logging is always enabled on import.
 
 Environment variables:
-- LOG_LEVEL: Minimum log level (default: INFO)
+- LOG_LEVEL: Minimum log level for GAIA's own namespaces (default: INFO)
+- LOG_LEVEL_THIRD_PARTY: Minimum level for every other library (default: WARNING)
 - LOG_FORMAT: Output format — "console" (default) or "json" for production/Loki
 - LOG_DIAGNOSE: Show error diagnosis (default: false)
 - LOG_BACKTRACE: Show stack traces (default: true)
@@ -110,6 +111,46 @@ LOG_CONFIG: _LogConfig = {
 }
 
 
+# Third-party libraries log at INFO/DEBUG far more freely than we do, and every
+# stdlib record now reaches our sink (see configure_loguru). WARNING keeps the
+# stream to what an operator would act on; raise or lower this — independently
+# of LOG_LEVEL, which governs GAIA's own namespaces — to debug a library.
+THIRD_PARTY_LOG_LEVEL = os.getenv("LOG_LEVEL_THIRD_PARTY", "WARNING")
+
+# Namespaces GAIA owns: they log at LOG_LEVEL, not the third-party floor above.
+# uvicorn/gunicorn/livekit are framework loggers we treat as ours because their
+# records are about our process, not about a library's internals.
+_OWNED_LOG_NAMESPACES = ("app", "gaia_shared", "uvicorn", "fastapi", "gunicorn", "livekit")
+
+# Short display names for the busiest loggers. Anything unmapped falls back to
+# its top-level package (`aiormq.connection` → `AIORMQ`).
+_LOGGER_DISPLAY_NAMES = {
+    "uvicorn": "UVICORN",
+    "uvicorn.error": "UVICORN",
+    "uvicorn.access": "UVICORN",
+    "fastapi": "FASTAPI",
+    "gunicorn": "GUNICOR",
+    "livekit": "LIVEKIT",
+    "py.warnings": "WARNING",
+}
+
+if LOG_CONFIG["format_mode"] == "json":
+    # Under LOG_FORMAT=json, stdout is a data stream — one JSON object per line,
+    # parsed by Promtail. A tqdm progress bar writes straight to that descriptor
+    # and ends its frames with \r instead of \n, so the next event is appended to
+    # the bar's last frame and the line stops being JSON: the event is not ugly,
+    # it is gone from every structured query. No logging configuration can fix a
+    # direct fd write, so the bars have to be off.
+    #
+    # Both switches are read by their libraries at import time (huggingface_hub
+    # binds HF_HUB_DISABLE_PROGRESS_BARS in its constants module, tqdm reads
+    # TQDM_* through its envwrap decorator), so they are set here — the earliest
+    # import in every GAIA process — rather than at a call site. setdefault keeps
+    # an operator's explicit value.
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    os.environ.setdefault("TQDM_DISABLE", "1")
+
+
 def _core_fields(entry: dict[str, object]) -> dict[str, object]:
     return {
         key: entry[key]
@@ -169,13 +210,50 @@ def _sanitized_entry(entry: dict[str, object], exc: Exception) -> dict[str, obje
 
 
 def _truncated_entry(entry: dict[str, object], original_size_bytes: int) -> dict[str, object]:
-    """Minimal entry emitted when the full line would exceed MAX_JSON_LINE_BYTES."""
+    """Rebuild an oversized entry under the byte cap, dropping only what does not fit.
+
+    Truncation must cost payload, never identity. Collapsing to the core fields
+    alone kept ``message`` — so the line still reads as a canonical boundary
+    event — while discarding ``service``, ``env``, ``task``, ``outcome`` and
+    ``duration_ms``, the fields that make it one. A single fat job argument was
+    then enough to erase a task's outcome from the record while the event itself
+    still appeared in Loki.
+
+    Fields are spent smallest-first, so what gets shed is whatever is actually
+    fat. Identity is small — ``service``, ``env``, ``task``, ``outcome``,
+    ``trace_id`` are a few dozen bytes between them — so it survives any line an
+    oversized payload can produce, without this sink having to know the
+    wide-event vocabulary. The names that did not fit are listed in
+    ``dropped_fields``, so a dropped field reads as shed-for-size rather than as
+    a field the code never set.
+    """
     truncated = _core_fields(entry)
     truncated["message"] = str(entry["message"])[:_TRUNCATED_MESSAGE_MAX_CHARS]
-    if "trace_id" in entry:
-        truncated["trace_id"] = str(entry["trace_id"])
     truncated["line_truncated"] = True
     truncated["original_size_bytes"] = original_size_bytes
+    dropped: list[str] = []
+    truncated["dropped_fields"] = dropped
+
+    candidates = {key: value for key, value in entry.items() if key not in truncated}
+    sizes = {key: len(_dumps({key: value}).encode("utf-8")) for key, value in candidates.items()}
+    # Reserve room for every candidate's name up front. Worst case is that all
+    # of them end up in dropped_fields, so reserving unconditionally makes the
+    # cap hold no matter how the split lands.
+    names = sum(len(_dumps(key).encode("utf-8")) + 2 for key in candidates)
+    budget = MAX_JSON_LINE_BYTES - len(_dumps(truncated).encode("utf-8")) - names
+
+    kept: set[str] = set()
+    for key in sorted(candidates, key=lambda k: sizes[k]):
+        if sizes[key] > budget:
+            break  # ascending order: nothing after this fits either
+        kept.add(key)
+        budget -= sizes[key]
+
+    for key, value in candidates.items():  # emit in the order app code set them
+        if key in kept:
+            truncated[key] = value
+        else:
+            dropped.append(key)
     return truncated
 
 
@@ -192,9 +270,10 @@ def _build_json_entry(record: Record) -> str:
     - Serialization never drops a record: unserializable extras (non-str dict
       keys, circular refs) fall back to a sanitized entry carrying the core
       fields, trace_id and `serialization_error`.
-    - Lines are capped at MAX_JSON_LINE_BYTES: oversized lines are replaced by
-      a minimal entry with `line_truncated` + `original_size_bytes`, so Loki
-      (default max_line_size 256KB) never rejects them.
+    - Lines are capped at MAX_JSON_LINE_BYTES: an oversized line sheds its
+      largest fields (named in `dropped_fields`, flagged with `line_truncated` +
+      `original_size_bytes`) and keeps the rest, so Loki (default max_line_size
+      256KB) never rejects it and the event stays attributable.
 
     NOTE: must NOT be used as loguru's `format=` parameter — loguru treats
     callable formats as template generators and calls str.format_map() on the
@@ -329,9 +408,59 @@ def _worker_name_patcher(record: Record) -> None:
         record["extra"]["worker"] = name[:5]
 
 
+class _InterceptHandler(logging.Handler):
+    """Re-emit a stdlib logging record through loguru.
+
+    Installed on the ROOT logger, so it is the single exit for every library
+    that uses ``logging`` — there is no namespace it can be registered under
+    that escapes the sink.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None:
+        level: str | int
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        frame, depth = logging.currentframe(), 2
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        if record.name.startswith("app."):
+            display_name = record.name.split(".")[-1].upper()[:7]
+        else:
+            display_name = _LOGGER_DISPLAY_NAMES.get(
+                record.name, record.name.split(".")[0].upper()[:7]
+            )
+
+        logger.bind(logger_name=display_name).opt(depth=depth, exception=record.exc_info).log(
+            level, record.getMessage()
+        )
+
+
+def _route_through_root(logger_name: str, level: str) -> None:
+    """Drop a logger's own handlers so its records reach the root interceptor.
+
+    uvicorn ships its own stdout/stderr StreamHandlers and sets
+    ``propagate = False``; leaving them attached under LOG_FORMAT=json would put
+    colourised text on the descriptor that is supposed to be pure NDJSON.
+    """
+    stdlib_logger = logging.getLogger(logger_name)
+    stdlib_logger.handlers.clear()
+    stdlib_logger.propagate = True
+    stdlib_logger.setLevel(level)
+
+
 def configure_loguru():
     """
     Configure console logging with standard library interception.
+
+    Every ``logging`` record in the process — GAIA's, the framework's, and any
+    library's — is routed through loguru, so the configured sink is the only
+    writer on the descriptor. GAIA's namespaces log at LOG_LEVEL; everything
+    else at THIRD_PARTY_LOG_LEVEL.
 
     Safe to call multiple times — only configures once.
 
@@ -386,71 +515,35 @@ def configure_loguru():
     logger.level("AUDIT", no=28, color="<blue>", icon="📊")
     logger.level("SECURITY", no=38, color="<red>", icon="🔒")
 
-    # Intercept standard library logging to route through Loguru
-    class InterceptHandler(logging.Handler):
-        def emit(self, record: logging.LogRecord) -> None:
-            app_namespaces = [
-                "app.",
-                "uvicorn",
-                "fastapi",
-                "gunicorn",
-                "livekit",
-                "gaia_shared",
-            ]
+    # Route the ENTIRE stdlib logging tree into loguru. force=True closes and
+    # removes whatever handlers a library already put on the root logger —
+    # composio calls logging.basicConfig() on import, which is how 86 aiormq
+    # broker failures escaped as unstructured "[<date>][ERROR] ..." text — and
+    # captureWarnings redirects warnings.warn, which otherwise prints its own
+    # two-line "file:line: Category" block straight to stderr.
+    #
+    # This replaces a namespace allowlist inside the handler. That allowlist was
+    # the only thing keeping third-party volume down, since it was the sole
+    # filter on what became a log line; the floor is now a level
+    # (THIRD_PARTY_LOG_LEVEL) instead of a list of names, so a library can be
+    # quiet without being invisible. Nothing is denied by name: every logger
+    # that was on the list is reachable from root, and no library can bypass the
+    # sink by picking a name we did not think of.
+    logging.captureWarnings(True)
+    logging.basicConfig(handlers=[_InterceptHandler()], level=THIRD_PARTY_LOG_LEVEL, force=True)
 
-            should_intercept = any(
-                record.name.startswith(namespace) or record.name == namespace.rstrip(".")
-                for namespace in app_namespaces
-            )
+    for logger_name in _OWNED_LOG_NAMESPACES:
+        _route_through_root(logger_name, LOG_CONFIG["level"])
 
-            if not should_intercept:
-                return
-
-            level: str | int
-            try:
-                level = logger.level(record.levelname).name
-            except ValueError:
-                level = record.levelno
-
-            frame, depth = logging.currentframe(), 2
-            while frame and frame.f_code.co_filename == logging.__file__:
-                frame = frame.f_back
-                depth += 1
-
-            logger_name_map = {
-                "uvicorn.access": "UVICORN",
-                "uvicorn.error": "UVICORN",
-                "uvicorn": "UVICORN",
-                "fastapi": "FASTAPI",
-                "gunicorn": "GUNICORN",
-                "livekit": "LIVEKIT",
-            }
-
-            if record.name.startswith("app."):
-                context_name = record.name.split(".")[-1].upper()[:7]
-            else:
-                context_name = logger_name_map.get(record.name, record.name.upper()[:7])
-
-            logger.bind(logger_name=context_name).opt(depth=depth, exception=record.exc_info).log(
-                level, record.getMessage()
-            )
-
-    intercept_loggers = [
-        "uvicorn",
-        "uvicorn.access",
-        "uvicorn.error",
-        "fastapi",
-        "gunicorn",
-        "livekit",
-        "app",
-    ]
-
-    for logger_name in intercept_loggers:
-        specific_logger = logging.getLogger(logger_name)
-        specific_logger.handlers = [InterceptHandler()]
-        specific_logger.propagate = False
-
-    logging.getLogger("app").setLevel(logging.DEBUG)
+    # uvicorn decides whether an access log exists at all, and re-checks that
+    # decision per connection with `uvicorn.access`.hasHandlers(): --no-access-log
+    # clears the handlers and stops propagation. Unconditionally re-attaching a
+    # handler here — as this did — silently switched the flag back on, emitting a
+    # second, trace-less line per request that duplicates the canonical
+    # http_request event and carries the raw query string the wide event drops.
+    # Only take the logger over when uvicorn left it enabled.
+    if logging.getLogger("uvicorn.access").hasHandlers():
+        _route_through_root("uvicorn.access", LOG_CONFIG["level"])
 
     return logger
 

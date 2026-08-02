@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import log
 
 
 def _as_utc(dt: datetime | None) -> datetime | None:
@@ -56,40 +56,39 @@ async def check_inactive_users(ctx: dict) -> str:
     Returns:
         Processing result message
     """
-    async with wide_task("check_inactive_users"):
-        from app.services.email import send_inactive_user_email
+    from app.services.email import send_inactive_user_email
 
-        now = datetime.now(UTC)
-        seven_days_ago = now - timedelta(days=7)
+    now = datetime.now(UTC)
+    seven_days_ago = now - timedelta(days=7)
 
-        # Convert to naive datetime for comparison with potentially naive database values
-        seven_days_ago_naive = seven_days_ago.replace(tzinfo=None)
+    # Convert to naive datetime for comparison with potentially naive database values
+    seven_days_ago_naive = seven_days_ago.replace(tzinfo=None)
 
-        # Find users inactive for 7+ days who haven't gotten email recently
-        inactive_users = await user_repository.find_inactive_email_candidates(seven_days_ago_naive)
+    # Find users inactive for 7+ days who haven't gotten email recently
+    inactive_users = await user_repository.find_inactive_email_candidates(seven_days_ago_naive)
 
-        log.set(inactive_users_detected=len(inactive_users))
+    log.set(inactive_users_detected=len(inactive_users))
 
-        email_count = 0
-        email_failures = 0
-        for user in inactive_users:
-            if not user.email or not _should_send_inactive_email(user):
-                continue
-            try:
-                await send_inactive_user_email(user.email, user.name)
-                await user_repository.record_inactive_email(
-                    user.id, _emails_sent_this_episode(user) + 1
-                )
-                email_count += 1
-            except Exception as e:
-                email_failures += 1
-                log.error(
-                    f"{LogTag.WORKER} Failed to send inactive email",
-                    user_id=user.id,
-                    email=user.email,
-                    error_type=type(e).__name__,
-                    error=str(e),
-                )
+    email_count = 0
+    email_failures = 0
+    for user in inactive_users:
+        if not user.email or not _should_send_inactive_email(user):
+            continue
+        try:
+            await send_inactive_user_email(user.email, user.name)
+            await user_repository.record_inactive_email(
+                user.id, _emails_sent_this_episode(user) + 1
+            )
+            email_count += 1
+        except Exception as e:
+            email_failures += 1
+            log.error(
+                f"{LogTag.WORKER} Failed to send inactive email",
+                user_id=user.id,
+                email=user.email,
+                error_type=type(e).__name__,
+                error=str(e),
+            )
 
-        log.set(emails_sent=email_count, email_failures=email_failures)
-        return f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
+    log.set(emails_sent=email_count, email_failures=email_failures)
+    return f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"

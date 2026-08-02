@@ -8,6 +8,9 @@ import typing as t
 
 import jsonref
 
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
+
 
 def to_std_dict(obj: t.Any) -> t.Any:
     """Recursively convert jsonref proxies to standard python dicts/lists"""
@@ -49,9 +52,16 @@ def apply():
         CustomTool._CustomTool__parse_info = _patched_parse_info
 
         _applied = True
-        print("[PATCH] Applied custom_tool schema inline patch using jsonref")
+        log.info(
+            f"{LogTag.PATCH} Applied custom_tool schema inline patch", patch="custom_tool_schema"
+        )
     except Exception as e:
-        print(f"[PATCH] Failed to apply custom_tool patch: {e}")
+        log.error(
+            f"{LogTag.PATCH} Failed to apply custom_tool patch",
+            patch="custom_tool_schema",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 # Apply patch
