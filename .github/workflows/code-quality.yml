@@ -534,14 +534,22 @@ jobs:
       # Node toolchain only for the bots scanner (TS compiler API needs
       # node_modules); the Python scanner stays stdlib-only.
       - uses: ./.github/actions/setup-node-pnpm
+      # Discovery floors. A perfect score over an empty map is still a perfect
+      # score, so a framework upgrade or refactor that breaks entry-point
+      # discovery reads as an *improvement* and every score gate waves it
+      # through. --min-entries asserts the surface is still visible before the
+      # score means anything. Floors are the counts at the time of writing —
+      # 308 scored Python entry points, 15 scored bot entry points (run the
+      # scanners to re-read them). Raise them as the surface grows; a drop is
+      # either a deliberate deletion (lower the floor in the same PR) or the
+      # bug this gate exists to catch.
       - name: Full observability score — API + voice-agent + bots (details in job summary)
         run: |
-          echo "::group::evlog map — python surface (apps/api + apps/voice-agent)"
-          python3 tools/evlog_map --github-summary --no-write | head -4
-          echo "::endgroup::"
-          echo "::group::evlog map — bots surface (apps/bots + libs/shared/ts)"
-          node scripts/ci/evlog-map-bots.mjs | head -4
-          echo "::endgroup::"
+          set -euo pipefail
+          echo "evlog map — python surface (apps/api + apps/voice-agent)"
+          python3 tools/evlog_map --github-summary --no-write --min-entries 308
+          echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
+          node scripts/ci/evlog-map-bots.mjs --min-entries 15
           echo "observability: full scores above; per-entry detail in the job summary only"
       - name: Changed-files regression gate (per-file, score must not drop)
         if: github.event_name == 'pull_request'
@@ -616,11 +624,13 @@ jobs:
             exit 0
           fi
           # The bots surface is small and already at 100 — hold it there
-          # outright rather than baselining per file.
+          # outright rather than baselining per file. --min-entries is the
+          # companion gate: 100 over a surface the scanner stopped seeing is
+          # not a pass (floor = today's 15 scored entry points).
           echo "::group::evlog map — bots surface gate"
-          node scripts/ci/evlog-map-bots.mjs --min-score 100
+          node scripts/ci/evlog-map-bots.mjs --min-score 100 --min-entries 15
           echo "::endgroup::"
-          echo "observability-bots: OK (surface held at 100)"
+          echo "observability-bots: OK (surface held at 100 over 15+ entry points)"
 
   # --- Dead code detection (knip + vulture) — enforced ---------------------
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the

@@ -13,6 +13,7 @@ python3 tools/evlog_map                  # full scan (apps/api/app + apps/voice-
 python3 tools/evlog_map --all            # per-entry check matrix
 python3 tools/evlog_map --json           # full map as JSON (the evlog.map.json contract)
 python3 tools/evlog_map --min-score 70   # exit 1 when the global score is below N
+python3 tools/evlog_map --min-entries 308 # exit 1 when discovery finds fewer entry points
 python3 tools/evlog_map --files-from -   # scan only listed files (CI diff mode)
 python3 tools/evlog_map --baseline base.json \
   --baseline-root /tmp/obs-merge-base \
@@ -25,16 +26,29 @@ entry (brand-new) must reach `--min-new-score` (default 70). Aggregates across
 asymmetric file sets would let a dark new file hide behind a well-instrumented
 touched file — and block PRs whose new files are merely below the average.
 `--rename-map` (tab-separated `old<TAB>new`) matches renamed files to their
-baseline entry so moving a legacy file is never punished as "new".
+baseline entry so moving a legacy file is never punished as "new". It also
+fails a **discovery collapse**: a file that had entry points at the baseline
+and has none at HEAD, whose score would otherwise read a vacuous 100.
 
 Every run writes `evlog.map.json` (gitignored) to the repo root unless
 `--no-write`.
+
+### Why `--min-entries` exists
+
+**A score gate cannot see what was never discovered.** An empty map scores
+100/100, so anything that breaks discovery — a FastAPI upgrade, a rewrite of
+the router wiring, a bad `--files-from` list, a typo in the scanner — reads as
+an *improvement* and every `--min-score` / `--baseline` gate waves it through.
+`--min-entries N` exits 1 when fewer than N scored entry points were found, and
+`--json` carries the same number as top-level `entryCount`. CI passes today's
+count as the floor; raise it as the surface grows, and lower it only in the
+same PR that deliberately deletes entry points.
 
 ## Entry points
 
 | Kind | Discovered by |
 |---|---|
-| `api` | `@router.<verb>` / `@app.<verb>` decorated functions |
+| `api` | `@router.<verb>` / `@app.<verb>` decorated functions, plus imperative `router.add_api_route(path, handler, methods=[...])` registration (FastAPI serves both identically, so both must be discoverable) |
 | `websocket` | `@router.websocket` handlers |
 | `worker` | ARQ tasks **registered in `app/worker.py`** (helpers in `workers/tasks/` are not entry points) |
 | `voice` | LiveKit callbacks wired in `apps/voice-agent/src/agent.py`'s `WorkerOptions` (`entrypoint_fnc`/`prewarm_fnc`), plus the per-turn coroutine the `LLM` subclass's `chat()` delegates to in `llm.py` (`voice.collect_voice_registry` parses both wirings) |
@@ -68,6 +82,19 @@ Sensitivity is classified from whole-word route/module terms (`payment`,
 `auth`, `login`, …), payment/auth imports (`razorpay`, `stripe`, `workos`), and
 PII field names next to write calls — same heuristics as upstream evlog.
 
+### The voice rule is stricter, on purpose
+
+`wide-event` accepts *either* a `log.set()` **or** a `wide_task()`/`log_context()`
+boundary for `api`, `websocket` and `worker` entry points — those all run under
+something that opens an event for them (`LoggingMiddleware`, or ARQ's registered
+task wrapper). **Voice entry points require the boundary itself.** The LiveKit
+worker has no middleware: with no boundary open, `log.set()` writes into a
+`ContextVar` nobody ever emits, and the fields are discarded with no error and
+no log line. So a bare `log.set()` in a voice callback proves nothing — it looks
+instrumented and produces zero telemetry, which is the worst of both. If you
+touch `apps/voice-agent/src`, check for the `async with log_context(...)` /
+`wide_task(...)`, not for the `log.set()`.
+
 ## Suppressions
 
 A finding you have consciously decided not to fix is waived with a comment —
@@ -85,6 +112,43 @@ the directive may sit directly above the `def` **or** above the handler's
 first decorator — both placements work. A directive naming a check id that
 doesn't exist is reported as a warning, never silently ignored.
 
+**The `--` reason is mandatory.** A directive without one waives nothing and is
+reported as a warning, so the check keeps failing — dropping a 40-point
+requirement is a decision that needs a name attached to it, not a bare comment.
+Every report (terminal and `--github-summary`) prints `N check(s) waived across
+M file(s)`, so waiver drift is visible on every run instead of accumulating
+quietly.
+
+## Extending the scanner
+
+The modules are a pipeline, and each extension point lives in exactly one of
+them: `facts.py` (one AST pass per file → the reduced facts every rule reads)
+→ `rules.py` (pure predicates over those facts) → `scan.py` (discovery,
+suppression, scoring) → `report.py` (terminal / JSON / step-summary) →
+`compare.py` (the per-file ratchet). Rules never walk the AST themselves.
+
+**Adding a rule.** Add the fact it needs to `HandlerFacts`/`FileFacts` and
+populate it in `_collect_handler_facts`, then append a `Rule` to `RULES` in
+`rules.py` with an `id`, `kinds`, a `check` returning `Finding | None`, and —
+for a requirement — a `weight`. The id is public API: it is what suppression
+comments name and what the JSON contract keys on, so renaming one silently
+invalidates every existing `evlog-map-disable` for it. Adding weight lowers
+scores repo-wide, so land the instrumentation first or the ratchet fails every
+open PR; re-run `python3 tools/evlog_map --all` to see what moved.
+
+**Adding a surface.** Discovery is deliberately parsed, never hardcoded — the
+worker registry from `app/worker.py`, the voice registry from `agent.py`'s
+`WorkerOptions` and `llm.py`, the field schema from `wide_events.py`. Follow
+that: write a `collect_*_registry` that reads the real wiring and raises when
+it finds nothing (a moved registry must fail loudly, not silently score zero
+entry points), give the new kind a name in `HANDLER_KINDS`, and decide which
+existing rules apply to it via each rule's `kinds`. Then raise the CI
+`--min-entries` floor by the number of entry points you just added. A surface
+on a different runtime (the TypeScript bots) gets its own port instead —
+`scripts/ci/evlog-map-bots.mjs` mirrors the ids, weights, grade bands and JSON
+schema so the two maps stay mergeable; any change to the contract here has to
+land there too.
+
 ## Relationship to `tools/lints`
 
 `route-contract` (pre-commit) is the hard floor: a handler with no `log.set` at
@@ -96,11 +160,13 @@ handlers with the same own-scope semantics, so they never disagree.
 
 The `observability` lane in `.github/workflows/code-quality.yml`:
 
-1. always posts the full-repo score to the job summary,
+1. always posts the full-repo score to the job summary, and fails if discovery
+   drops below the `--min-entries` floor on either surface,
 2. on PRs, scores the changed Python files at the merge-base and at HEAD with
    the same (HEAD) scanner and applies the per-file `--baseline` ratchet:
-   regressions fail, brand-new files must reach the 70 floor, renames compare
-   against their old path.
+   regressions fail, brand-new files must reach the 70 floor, a file that went
+   from having entry points to having none fails as a discovery collapse, and
+   renames compare against their old path.
 
 That makes the score a ratchet: legacy gaps don't block you, but the files you
 touch must leave the map at least as bright as you found them. The lane is

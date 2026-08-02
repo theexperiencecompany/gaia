@@ -67,6 +67,14 @@ Infisical is optional in dev, fatal-if-missing when `NODE_ENV=production`, and o
 
 **Field parity is a contract.** The emitted envelope uses the same key names and shapes as the Python services (`libs/shared/py/logging.py` + `wide_events.py`) so one LogQL query spans every surface: `time`, `level`, `service`, `logger`, `message`, `env`, `trace_id`, `duration_ms`, `outcome`, `final_level`, `commit`, and `errors[]` / `warnings[]` / `audit[]` (entries keyed by `msg`). Two consequences to respect when editing the logger: the **event name lands under `message`**, not `event`, and `level` uses **loguru names** (`WARNING`, not `WARN`). `service` intentionally differs per surface (`discord-bot` vs `gaia-backend`) and must keep matching the Promtail label.
 
+### Wide events at the boundary
+
+Every bot entry point — a platform handler registration (`client.on(...)`, `app.command(...)`, `bot.on(...)`, the WhatsApp webhook route) and the shared dispatch boundaries in `libs/shared/ts/src/bots/` — wraps its body in `withWideEvent(operation, { platform, component, ...context }, async () => { ... })` (`libs/shared/ts/src/bots/utils/wide-events.ts`). That boundary is what creates the event, the `trace_id`, and the `duration_ms`/`outcome` fields.
+
+Inside it, use the `wideLog` facade: `wideLog.set({ ... })` / `wideLog.setNs("ns", { ... })` to attach context, `wideLog.warning(...)` / `wideLog.error(...)` for real-time lines that also land in the event's `warnings[]`/`errors[]`, and `wideLog.audit(...)` on anything money-, auth-, or PII-shaped. **Outside a boundary every `wideLog.set()` is a silent no-op** — the fields go nowhere, and no error tells you. A handler that sets fields without a boundary is not instrumented, it is dark.
+
+**The bots surface is gated at 100/100.** `node scripts/ci/evlog-map-bots.mjs` (the TypeScript counterpart of `tools/evlog_map`) discovers every entry point above, scores it on boundary/context/audit/error-handling, and CI runs it as `--min-score 100 --min-entries 15` — the score gate blocks under-instrumented handlers, the entry-count gate blocks a refactor that makes the scanner stop finding them (an empty map scores a perfect 100). Run it locally before pushing. If a check genuinely does not apply, waive it with `// evlog-map-disable-next-line <check-id> -- <reason>`; the `--` reason is mandatory, and waivers are counted in every report.
+
 ## Platform gotchas
 
 | | Discord | Slack | Telegram | WhatsApp |

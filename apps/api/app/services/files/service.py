@@ -283,9 +283,7 @@ class FileService:
 
         file_data = await file_repository.get_by_file_id(file_id, user_id)
         if not file_data:
-            log.warning(
-                "[files] delete: file not found for user", file_id=file_id, user_id=user_id
-            )
+            log.warning("[files] delete: file not found for user", file_id=file_id, user_id=user_id)
             raise HTTPException(status_code=404, detail="File not found")
 
         if not await file_repository.delete_by_file_id(file_id, user_id):
