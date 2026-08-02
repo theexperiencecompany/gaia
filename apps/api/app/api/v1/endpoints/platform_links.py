@@ -67,12 +67,25 @@ async def link_platform(
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
 
+    # Resolved before the token is redeemed so a rejected redemption — the event
+    # worth seeing — still names the session that presented it.
+    user_id = _require_user_id(current_user)
+    log.set(user={"id": user_id}, operation="link_platform", platform=platform)
+
     # Look up and consume the token from Redis
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{body.token}"
 
     token_data = await redis_client.hgetall(token_key)
     if not token_data:
+        # Never log body.token — it is the credential. The actor, platform and
+        # outcome are what make a replayed or brute-forced link attempt findable.
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            provider=platform,
+            reason="unknown_or_expired_token",
+        )
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired link token. Please request a new link from the bot.",
@@ -85,17 +98,27 @@ async def link_platform(
     platform_user_id = token_data.get("platform_user_id", "")
 
     if not platform_user_id:
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            provider=platform,
+            reason="malformed_token_data",
+        )
         raise HTTPException(status_code=400, detail="Invalid token data")
 
     # Verify the platform in URL matches the platform in the token
     if token_platform != platform:
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            resource=platform_user_id,
+            provider=platform,
+            reason="platform_mismatch",
+        )
         raise HTTPException(
             status_code=400,
             detail="Platform mismatch. This token was not generated for this platform.",
         )
-
-    user_id = _require_user_id(current_user)
-    log.set(user={"id": user_id}, operation="link_platform", platform=platform)
 
     profile: dict = {}
     if token_data.get("username"):
@@ -103,16 +126,36 @@ async def link_platform(
     if token_data.get("display_name"):
         profile["display_name"] = token_data["display_name"]
 
+    # Only the state change is guarded: a ValueError out of the notification
+    # below is not a link conflict and must not be reported (or audited) as one.
     try:
         result = await PlatformLinkService.link_account(
             user_id, platform, platform_user_id, profile=profile or None
         )
-        if result.get("is_new_link"):
-            await notify_account_linked(platform, user_id)
-        log.set(outcome="success")
-        return LinkPlatformResponse(**result)
     except ValueError as e:
+        log.audit(
+            "platform account link rejected",
+            actor=user_id,
+            resource=platform_user_id,
+            provider=platform,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=409, detail=str(e)) from e
+
+    # Audited immediately after the link lands, before the notification — a
+    # failing notification must not erase the record of the state change.
+    log.audit(
+        "platform account linked",
+        actor=user_id,
+        resource=platform_user_id,
+        provider=platform,
+        is_new_link=bool(result.get("is_new_link")),
+    )
+    if result.get("is_new_link"):
+        await notify_account_linked(platform, user_id)
+    log.set(outcome="success")
+    return LinkPlatformResponse(**result)
 
 
 @router.delete("/{platform}", response_model=DisconnectPlatformResponse)
@@ -138,7 +181,21 @@ async def disconnect_platform(
     try:
         result = await PlatformLinkService.unlink_account(user_id, platform)
     except ValueError as e:
+        log.audit(
+            "platform account unlink rejected",
+            actor=user_id,
+            resource=platform_user_id,
+            provider=platform,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         raise HTTPException(status_code=404, detail=str(e)) from e
+    log.audit(
+        "platform account unlinked",
+        actor=user_id,
+        resource=platform_user_id,
+        provider=platform,
+    )
     log.set(outcome="success")
 
     if platform_user_id:

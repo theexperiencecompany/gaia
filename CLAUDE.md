@@ -302,6 +302,8 @@ Refer to `.env.example` files in each directory for required variables.
 
 To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout — use the `driving-gaia` skill (boot the stack, dev-bypass auth, drive API/browser/bots, verify in Mongo), `reading-gaia-logs` to debug a failing run, and `parallel-worktrees` to run branches in parallel.
 
+**On a machine with no Docker daemon** (cloud sandbox, CI runner, dev container), `mise dev` cannot start infra. Use `scripts/dev/sandbox-services.sh` + `scripts/dev/sandbox-env.sh` to run the same backing services natively — see the "No Docker daemon?" section of `driving-gaia`. Never conclude a change works because the test suite passed; boot it and drive it.
+
 ## Docker
 
 Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`.

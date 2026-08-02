@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
+from app.constants.auth import AUDIT_ACTOR_BOT_API, AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
 from app.constants.log_tags import LogTag
@@ -117,11 +118,25 @@ async def create_link_token(
     state_user_id = getattr(request.state, "bot_platform_user_id", None)
 
     if state_platform and state_platform != body.platform:
+        log.audit(
+            "platform link token rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=body.platform_user_id,
+            provider=body.platform,
+            reason="platform_header_mismatch",
+        )
         raise HTTPException(
             status_code=403,
             detail="Platform in body does not match X-Bot-Platform header",
         )
     if state_user_id and state_user_id != body.platform_user_id:
+        log.audit(
+            "platform link token rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=body.platform_user_id,
+            provider=body.platform,
+            reason="platform_user_id_header_mismatch",
+        )
         raise HTTPException(
             status_code=403,
             detail="platform_user_id in body does not match X-Bot-Platform-User-Id header",
@@ -145,6 +160,14 @@ async def create_link_token(
 
     auth_url = f"{settings.FRONTEND_URL}/auth/link-platform?platform={body.platform}&token={token}"
 
+    # `token` (and the auth_url embedding it) is the link credential — the record
+    # names the platform account it was minted for, never the token.
+    log.audit(
+        "platform link token issued",
+        actor=AUDIT_ACTOR_BOT_API,
+        resource=body.platform_user_id,
+        provider=body.platform,
+    )
     log.set(outcome="success")
     return CreateLinkTokenResponse(token=token, auth_url=auth_url)
 
@@ -167,8 +190,22 @@ async def get_link_token_info(token: str) -> dict:
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
     data = await redis_client.hgetall(token_key)
     if not data:
+        # The route is unauthenticated and the token in the path is the whole
+        # credential, so a miss is a probe against the link flow — recorded with
+        # the outcome, never with the token that was presented.
+        log.audit(
+            "platform link token lookup rejected",
+            actor=AUDIT_ACTOR_UNAUTHENTICATED,
+            reason="unknown_or_expired_token",
+        )
         raise HTTPException(status_code=404, detail="Token not found or expired")
     log.set(platform=data.get("platform"))
+    log.audit(
+        "platform link token presented",
+        actor=AUDIT_ACTOR_UNAUTHENTICATED,
+        resource=data.get("platform_user_id"),
+        provider=data.get("platform"),
+    )
     log.set(outcome="success")
     return {
         "platform": data.get("platform"),
@@ -558,10 +595,23 @@ async def unlink_account(request: Request) -> dict:
 
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
     if not user:
+        log.audit(
+            "platform account unlink rejected",
+            actor=AUDIT_ACTOR_BOT_API,
+            resource=platform_user_id,
+            provider=platform,
+            reason="account_not_linked",
+        )
         raise HTTPException(status_code=404, detail="Account not linked")
 
     user_id = str(user["_id"])
     await PlatformLinkService.unlink_account(user_id, platform)
+    log.audit(
+        "platform account unlinked",
+        actor=user_id,
+        resource=platform_user_id,
+        provider=platform,
+    )
 
     cache_key = f"bot_user:{platform}:{platform_user_id}"
     await redis_cache.client.delete(cache_key)

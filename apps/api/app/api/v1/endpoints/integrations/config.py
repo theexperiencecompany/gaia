@@ -7,6 +7,7 @@ from fastapi.responses import RedirectResponse
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
+from app.constants.auth import AUDIT_ACTOR_UNAUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.schemas.integrations.requests import ConnectIntegrationRequest
@@ -258,10 +259,24 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
             f"{LogTag.INTEGRATION} Connect link redemption rejected",
             failure="unknown_or_consumed_code",
         )
+        # The code IS the credential and it resolved to no binding — the record
+        # carries the outcome, never the code that was presented.
+        log.audit(
+            "connect link redemption rejected",
+            actor=AUDIT_ACTOR_UNAUTHENTICATED,
+            reason="unknown_or_consumed_code",
+        )
         return _connect_link_error("invalid_or_expired_link")
 
     user_id, integration_id = verified
     log.set(user={"id": user_id}, integration={"id": integration_id})
+    # The single-use code is spent here: this is the state change, and it grants
+    # the holder the bound user's OAuth flow without a session.
+    log.audit(
+        "connect link redeemed",
+        actor=user_id,
+        resource=integration_id,
+    )
 
     # Self-managed (Google) connectors use email as an OAuth login hint; others
     # ignore it. user_id is trusted (it came from a server-bound, single-use code).
@@ -276,6 +291,13 @@ async def connect_link_endpoint(request: Request, code: str) -> RedirectResponse
         log.warning(
             f"{LogTag.INTEGRATION} Connect link redemption rejected",
             failure="malformed_user_id",
+            error_type=type(e).__name__,
+        )
+        log.audit(
+            "connect link redemption rejected",
+            actor=user_id,
+            resource=integration_id,
+            reason="malformed_user_id",
             error_type=type(e).__name__,
         )
         return _connect_link_error("invalid_or_expired_link")

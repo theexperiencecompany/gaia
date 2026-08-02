@@ -282,6 +282,7 @@ async def _handle_platform_oauth_callback(
 
 
 @router.get("/discord/callback")
+# evlog-map-disable-next-line audit -- audited at the state change in _handle_platform_oauth_callback
 async def discord_oauth_callback(
     code: str | None = None,
     state: str | None = None,
@@ -293,6 +294,7 @@ async def discord_oauth_callback(
 
 
 @router.get("/slack/callback")
+# evlog-map-disable-next-line audit -- audited at the state change in _handle_platform_oauth_callback
 async def slack_oauth_callback(
     code: str | None = None,
     state: str | None = None,

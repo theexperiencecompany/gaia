@@ -149,6 +149,8 @@ const HIGH_TERMS = new Map([
 ]);
 const GENERIC_ERRORS = new Set(["Error", "TypeError", "RangeError"]);
 const LOGGING_CALL_NAMES = new Set(["error", "warn", "warning"]);
+/** `wideLog` methods that put the caught error on the wide event. */
+const WIDE_EVENT_RECORDERS = new Set(["set", "setNs", "audit"]);
 
 // ---------------------------------------------------------------------------
 // File utilities
@@ -290,25 +292,85 @@ function objectLiteralKeys(node) {
   return keys;
 }
 
-function subtreeContainsHandling(node) {
+/** The caught binding of `catch (err)`, or null for `catch {}` / a pattern. */
+function catchBinding(clause) {
+  const decl = clause.variableDeclaration;
+  if (decl && ts.isIdentifier(decl.name)) return decl.name.text;
+  return null;
+}
+
+/**
+ * Whether `throw <expr>` keeps the caught error alive.
+ *
+ * The JS analogue of tools/evlog_map's `_preserves_caught_error`. Python's
+ * `raise X from e` sets `__cause__`; JS's equivalent is the `cause` option —
+ * `throw new X(msg, { cause: err })` — which is what the log sink follows to
+ * report what actually failed. `throw err` is the rethrow shape (JS has no
+ * bare `throw`, so nothing maps to Python's bare `raise`). A `new X("...")`
+ * that drops the caught error destroys its type and message before anything
+ * reads them, exactly like `raise X(...)` with no `from`.
+ */
+function throwPreservesCause(expr, binding) {
+  if (binding === null) return false;
+  if (ts.isIdentifier(expr)) return expr.text === binding;
+  if (!ts.isNewExpression(expr)) return false;
+  // Scan every argument rather than assuming Error's 2nd-arg options bag:
+  // custom error classes put their options in other positions.
+  for (const arg of expr.arguments ?? []) {
+    if (!ts.isObjectLiteralExpression(arg)) continue;
+    for (const prop of arg.properties) {
+      if (
+        ts.isShorthandPropertyAssignment(prop) &&
+        prop.name.text === "cause" &&
+        binding === "cause"
+      ) {
+        return true;
+      }
+      if (
+        ts.isPropertyAssignment(prop) &&
+        ts.isIdentifier(prop.name) &&
+        prop.name.text === "cause" &&
+        ts.isIdentifier(prop.initializer) &&
+        prop.initializer.text === binding
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Whether a `catch` clause's body keeps the error it caught — it records it,
+ * or re-throws it with the cause intact. A `return` records nothing, so on its
+ * own it is a swallow: the handler reports failure with zero telemetry about
+ * what failed. Mirrors `_scope_contains_error_handling` in tools/evlog_map.
+ */
+function catchClauseHandled(clause, sf) {
+  const binding = catchBinding(clause);
   let handled = false;
   const visit = (child) => {
     if (handled) return;
-    if (ts.isThrowStatement(child) || ts.isReturnStatement(child)) {
-      handled = true;
-      return;
+    if (ts.isThrowStatement(child) && child.expression) {
+      if (throwPreservesCause(child.expression, binding)) {
+        handled = true;
+        return;
+      }
     }
-    if (
-      ts.isCallExpression(child) &&
-      ts.isPropertyAccessExpression(child.expression) &&
-      LOGGING_CALL_NAMES.has(child.expression.name.text)
-    ) {
-      handled = true;
-      return;
+    if (ts.isCallExpression(child) && ts.isPropertyAccessExpression(child.expression)) {
+      const method = child.expression.name.text;
+      const receiver = child.expression.expression.getText(sf);
+      if (
+        LOGGING_CALL_NAMES.has(method) ||
+        (receiver === "wideLog" && WIDE_EVENT_RECORDERS.has(method))
+      ) {
+        handled = true;
+        return;
+      }
     }
     ts.forEachChild(child, visit);
   };
-  visit(node);
+  visit(clause.block);
   return handled;
 }
 
@@ -369,7 +431,7 @@ function analyzeBody(node, sf) {
       facts.catches.push({
         line: lineOf(sf, child),
         isEmpty: child.block.statements.length === 0,
-        handled: subtreeContainsHandling(child.block),
+        handled: catchClauseHandled(child, sf),
       });
     }
     if (ts.isThrowStatement(child) && child.expression) {
@@ -600,8 +662,9 @@ function runRules(entry, ownFacts, reach, canonicalFields) {
       if (!clause.handled) {
         finding = {
           message:
-            "catch block neither records the error on the event " +
-            "(wideLog.error/warning) nor re-throws or returns",
+            "catch block loses the caught error — record it on the event " +
+            "(wideLog.error/warning, logger.error) or re-throw it (throw <caught>, " +
+            "or 'throw new X(..., { cause: <caught> })' so the cause survives)",
           line: clause.line,
         };
         break;

@@ -125,6 +125,12 @@ and message of the real exception are destroyed before anything reads them. A
 `return` is fine — but only alongside a record; on its own it is a swallow.
 This is stricter than upstream evlog, which counts any throw-or-return.
 
+`scripts/ci/evlog-map-bots.mjs` holds `catch` to the same bar. `raise ... from e`
+has no JS keyword, so the `cause` option carries it: `throw <caught>` is the
+rethrow (JS has no bare `throw`, so nothing maps to bare `raise`) and
+`throw new X(..., { cause: <caught> })` is the `from` — anything else drops the
+error, including `throw new X("…")` and a bare `return`.
+
 Sensitivity is classified from whole-word route/module terms (`payment`,
 `auth`, `login`, …), payment/auth imports (`razorpay`, `stripe`, `workos`), and
 PII field names next to write calls — upstream evlog's heuristics — plus
