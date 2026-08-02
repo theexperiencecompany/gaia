@@ -204,7 +204,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     # docstring. USER_ID is not a secret but we still scope it per-call so
     # there's no implicit reliance on sandbox-wide identity for security.
     log.info(
-        f"{LogTag.SANDBOX} creating fresh sandbox user= shard= template= domain",
+        f"{LogTag.SANDBOX} creating fresh sandbox",
         user_id=user_id,
         shard_id=shard_id,
         e2b_template_id=settings.E2B_TEMPLATE_ID,

@@ -19,6 +19,7 @@
  *   node scripts/ci/evlog-map-bots.mjs                # terminal report
  *   node scripts/ci/evlog-map-bots.mjs --json         # evlog.map.json schema on stdout
  *   node scripts/ci/evlog-map-bots.mjs --min-score 90 # exit 1 below N
+ *   node scripts/ci/evlog-map-bots.mjs --min-entries 15 # exit 1 below N entry points
  *   node scripts/ci/evlog-map-bots.mjs --files-from F # scan only listed files
  *
  * Suppressions (same contract as tools/evlog_map, `//` instead of `#`):
@@ -27,7 +28,8 @@
  *   // evlog-map-disable context, error-handling -- waive in this file
  * A suppressed check reports "n/a" (never "pass") so waived coverage stays
  * visible, and a directive naming an unknown check id is surfaced as a
- * warning.
+ * warning. The `--` reason is mandatory: a directive without one waives
+ * nothing and is reported, so no requirement is dropped anonymously.
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -196,7 +198,9 @@ function collectSuppressions(text) {
         : match.groups.scope === "-line"
           ? "line"
           : "file";
-    const reason = (match.groups.reason ?? "suppressed without a reason").trim();
+    // Empty when the directive omitted its `--` reason — such a directive
+    // suppresses nothing (see findSuppression) and is reported instead.
+    const reason = (match.groups.reason ?? "").trim();
     const ids = (match.groups.ids ?? "")
       .split(/[\s,]+/)
       .map((part) => part.trim())
@@ -210,6 +214,7 @@ function collectSuppressions(text) {
 
 function findSuppression(suppressions, checkId, anchorLines) {
   for (const s of suppressions) {
+    if (!s.reason) continue;
     if (s.checkId !== checkId && s.checkId !== ALL_CHECKS) continue;
     if (s.scope === "file") return s;
     const anchored = s.scope === "next-line" ? s.declaredAt + 1 : s.declaredAt;
@@ -631,7 +636,25 @@ function applySuppressions(entry, checks, suppressions, warnings, file) {
       const warning = `${file}:${s.declaredAt} disables '${s.checkId}', which is not a check evlog-map-bots runs`;
       if (!warnings.includes(warning)) warnings.push(warning);
     }
+    if (!s.reason) {
+      const warning = `${file}:${s.declaredAt} disables a check with no '-- <reason>' — rejected, the check still applies`;
+      if (!warnings.includes(warning)) warnings.push(warning);
+    }
   }
+}
+
+/** `[checks waived, files they sit in]` across the scan. */
+function waivedChecks(entries) {
+  let waived = 0;
+  const files = new Set();
+  for (const entry of entries) {
+    for (const result of Object.values(entry.checks)) {
+      if (!result.suppressed) continue;
+      waived += 1;
+      files.add(entry.file);
+    }
+  }
+  return [waived, files.size];
 }
 
 // ---------------------------------------------------------------------------
@@ -847,6 +870,10 @@ function renderTerminal(result) {
     `${scored.length} entry points: ${counts.instrumented} instrumented, ` +
       `${counts.partial} partial, ${counts.dark} dark (${counts.exempt} exempt)`,
   );
+  const [waived, waivedFiles] = waivedChecks(result.entries);
+  if (waived > 0) {
+    lines.push(`${waived} check(s) waived across ${waivedFiles} file(s)`);
+  }
   if (result.unparsable.length > 0) {
     lines.push(`warning: ${result.unparsable.length} file(s) failed to parse`);
   }
@@ -906,6 +933,9 @@ function toJson(result) {
     score: result.score,
     grade: result.grade,
     framework: "bots-ts",
+    // How much surface the scan actually found. A 100/100 over an empty map
+    // is not a pass — consumers gate on this too (`--min-entries`).
+    entryCount: result.entries.filter((entry) => !entry.exempt).length,
     entries: result.entries.map((entry) => ({
       file: entry.file,
       line: entry.line,
@@ -943,11 +973,17 @@ function toJson(result) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { json: false, minScore: null, filesFrom: null };
+  const args = {
+    json: false,
+    minScore: null,
+    minEntries: null,
+    filesFrom: null,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--json") args.json = true;
     else if (arg === "--min-score") args.minScore = Number(argv[++i]);
+    else if (arg === "--min-entries") args.minEntries = Number(argv[++i]);
     else if (arg === "--files-from") args.filesFrom = argv[++i];
     else {
       console.error(`unknown argument: ${arg}`);
@@ -956,6 +992,10 @@ function parseArgs(argv) {
   }
   if (args.minScore !== null && Number.isNaN(args.minScore)) {
     console.error("--min-score requires a number");
+    process.exit(2);
+  }
+  if (args.minEntries !== null && Number.isNaN(args.minEntries)) {
+    console.error("--min-entries requires a number");
     process.exit(2);
   }
   return args;
@@ -982,9 +1022,24 @@ if (args.json) {
   console.log(renderTerminal(result));
 }
 
+let failed = false;
 if (args.minScore !== null && result.score < args.minScore) {
   console.error(
     `\nobservability score ${result.score} is below the required minimum ${args.minScore}`,
   );
-  process.exit(1);
+  failed = true;
 }
+if (args.minEntries !== null) {
+  // The score says nothing about what was never discovered: a refactor that
+  // hides bot registrations reads as a perfect run, because an empty map
+  // scores 100. Assert the surface is still there before trusting the number.
+  const entryCount = result.entries.filter((entry) => !entry.exempt).length;
+  if (entryCount < args.minEntries) {
+    console.error(
+      `\ndiscovery found ${entryCount} scored entry point(s), below --min-entries ` +
+        `${args.minEntries} — the scan is not seeing the surface`,
+    );
+    failed = true;
+  }
+}
+if (failed) process.exit(1);

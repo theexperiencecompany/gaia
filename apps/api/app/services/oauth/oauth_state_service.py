@@ -67,7 +67,7 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
     log.info(
-        f"{LogTag.OAUTH} Created OAuth state token for user , integration",
+        f"{LogTag.OAUTH} Created OAuth state token",
         user_id=user_id,
         integration_id=integration_id,
     )
@@ -121,7 +121,7 @@ async def validate_and_consume_oauth_state(
         await redis_client.delete(state_key)
 
         log.info(
-            f"{LogTag.OAUTH} OAuth state validated and consumed for user , integration",
+            f"{LogTag.OAUTH} OAuth state validated and consumed",
             user_id=result["user_id"],
             integration_id=result["integration_id"],
         )

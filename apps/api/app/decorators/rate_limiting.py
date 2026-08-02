@@ -103,7 +103,7 @@ def with_rate_limiting(
                         )
 
                         log.debug(
-                            f"{LogTag.API} Rate limit check passed for user , feature",
+                            f"{LogTag.API} Rate limit check passed",
                             user_id=user_id,
                             actual_feature_key=actual_feature_key,
                         )
@@ -111,7 +111,7 @@ def with_rate_limiting(
                     except RateLimitExceededException as e:
                         # Convert to agent-friendly exception
                         log.warning(
-                            f"{LogTag.API} Rate limit exceeded for user , feature",
+                            f"{LogTag.API} Rate limit exceeded",
                             user_id=user_id,
                             actual_feature_key=actual_feature_key,
                             error=str(e),
@@ -160,7 +160,7 @@ def with_rate_limiting(
                         )
                     except Exception as e:
                         log.error(
-                            f"{LogTag.API} Rate limiting failed for user , feature",
+                            f"{LogTag.API} Rate limiting failed",
                             user_id=user_id,
                             actual_feature_key=actual_feature_key,
                             error=str(e),
@@ -169,7 +169,7 @@ def with_rate_limiting(
                         raise
             else:
                 log.warning(
-                    f"{LogTag.API} No user context for , skipping rate limiting",
+                    f"{LogTag.API} No user context, skipping rate limiting",
                     actual_feature_key=actual_feature_key,
                 )
 

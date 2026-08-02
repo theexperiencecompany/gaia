@@ -130,7 +130,7 @@ async def fetch_provider_user_info(user_id: str, integration_id: str) -> dict[st
 
         if not response:
             log.warning(
-                "Failed to fetch for , skipping",
+                "Failed to fetch provider metadata, skipping",
                 tool=tool_config.tool,
                 integration_id=integration_id,
                 user_id=user_id,

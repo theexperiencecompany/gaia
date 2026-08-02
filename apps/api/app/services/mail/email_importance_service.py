@@ -56,7 +56,7 @@ async def get_single_email_importance_summary(
         return {"status": "success", "email": _mail_dict(summary)}
     except Exception as e:
         log.error(
-            f"{LogTag.MAIL} Error retrieving email summary for user , message",
+            f"{LogTag.MAIL} Error retrieving email summary",
             user_id=user_id,
             message_id=message_id,
             error=str(e),

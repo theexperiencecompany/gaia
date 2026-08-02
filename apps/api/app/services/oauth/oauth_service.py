@@ -390,7 +390,7 @@ async def handle_oauth_connection(
                 if current_bio_status in [BioStatus.NO_GMAIL, "no_gmail"]:
                     await user_repository.set_bio_status(user_id, BioStatus.PROCESSING)
                     log.info(
-                        f"{LogTag.OAUTH} Updated bio_status to processing for user (was )",
+                        f"{LogTag.OAUTH} Updated bio_status to processing",
                         user_id=user_id,
                         current_bio_status=current_bio_status,
                     )
@@ -477,7 +477,7 @@ async def handle_oauth_connection(
             integration_display_name=integration_config.name,
         )
         log.info(
-            f"{LogTag.OAUTH} Queued system workflow provisioning for user , integration",
+            f"{LogTag.OAUTH} Queued system workflow provisioning",
             user_id=user_id,
             id=integration_config.id,
         )

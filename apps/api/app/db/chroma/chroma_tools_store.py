@@ -148,7 +148,7 @@ async def _get_existing_tools_from_chroma(
                     }
     except Exception as e:
         log.warning(
-            f"{LogTag.CHROMA} Error fetching existing tools: , will register all tools",
+            f"{LogTag.CHROMA} Error fetching existing tools, will register all tools",
             error=str(e),
             error_type=type(e).__name__,
         )
@@ -288,7 +288,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
         )
     )
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store called: namespace= input_tools",
+        f"{LogTag.CHROMA} index_tools_to_store called",
         namespace=namespace,
         input_count=input_count,
     )
@@ -330,7 +330,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     cached_hash = await get_cache(cache_key)
     if cached_hash == tools_hash:
         log.info(
-            f"{LogTag.CHROMA} index_tools_to_store: namespace Redis cache HIT (hash=), skipping reindex of tools",
+            f"{LogTag.CHROMA} index_tools_to_store: namespace Redis cache HIT, skipping reindex of tools",
             namespace=namespace,
             tools_hash=tools_hash,
             input_count=input_count,
@@ -340,7 +340,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     store = await providers.aget("chroma_tools_store")
     if store is None:
         log.warning(
-            f"{LogTag.CHROMA} index_tools_to_store: chroma_tools_store provider returned None for namespace , skipping tools",
+            f"{LogTag.CHROMA} index_tools_to_store: provider returned None for namespace, skipping tools",
             namespace=namespace,
             input_count=input_count,
         )
@@ -358,7 +358,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
             "tool": tool,
         }
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: built current_tools dict for : unique composite keys from inputs",
+        f"{LogTag.CHROMA} index_tools_to_store: built current_tools dict of unique composite keys",
         namespace=namespace,
         current_tools_count=len(current_tools),
         input_count=input_count,
@@ -397,7 +397,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     # Cache the hash after successful indexing (24 hour TTL)
     await set_cache(cache_key, tools_hash, ttl=86400)
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: completed namespace , cache key set",
+        f"{LogTag.CHROMA} index_tools_to_store: completed namespace, cache key set",
         namespace=namespace,
     )
 

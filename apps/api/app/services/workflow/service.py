@@ -129,7 +129,7 @@ class WorkflowService:
         # Only handle integration type triggers
         if trigger_config.type != TriggerType.INTEGRATION:
             log.debug(
-                f"{LogTag.WORKFLOW} Skipping trigger registration: type= is not INTEGRATION",
+                f"{LogTag.WORKFLOW} Skipping trigger registration: trigger type is not INTEGRATION",
                 type=trigger_config.type,
             )
             return [], True
@@ -743,7 +743,7 @@ class WorkflowService:
                         )
                     else:
                         log.warning(
-                            f"{LogTag.WORKFLOW} No trigger_name found for workflow , cannot unregister triggers",
+                            f"{LogTag.WORKFLOW} No trigger_name found for workflow, cannot unregister triggers",
                             workflow_id=workflow_id,
                             user_id=user_id,
                         )
@@ -1033,7 +1033,7 @@ class WorkflowService:
                     )
                 else:
                     log.warning(
-                        f"{LogTag.WORKFLOW} No trigger_name found for workflow , cannot unregister triggers",
+                        f"{LogTag.WORKFLOW} No trigger_name found for workflow, cannot unregister triggers",
                         workflow_id=workflow_id,
                         user_id=user_id,
                     )

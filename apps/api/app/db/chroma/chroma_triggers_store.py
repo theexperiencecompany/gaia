@@ -127,7 +127,7 @@ async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
                     }
     except Exception as e:
         log.warning(
-            f"{LogTag.CHROMA} Error fetching existing triggers: , will register all triggers",
+            f"{LogTag.CHROMA} Error fetching existing triggers, will register all triggers",
             error=str(e),
             error_type=type(e).__name__,
         )

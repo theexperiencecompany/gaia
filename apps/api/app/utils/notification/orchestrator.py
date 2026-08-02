@@ -130,7 +130,7 @@ class NotificationOrchestrator:
             for platform in ALL_AUTO_INJECTED_CHANNELS:
                 if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(platform, True):
                     log.info(
-                        f"{LogTag.NOTIFICATION} Skipping delivery for : disabled by preference",
+                        f"{LogTag.NOTIFICATION} Skipping delivery: disabled by preference",
                         platform=platform,
                         user_id=notification.user_id,
                     )
@@ -212,7 +212,7 @@ class NotificationOrchestrator:
             return await fetch_channel_preferences(user_id)
         except Exception as e:
             log.warning(
-                f"{LogTag.NOTIFICATION} Failed to fetch channel prefs for , using defaults",
+                f"{LogTag.NOTIFICATION} Failed to fetch channel prefs, using defaults",
                 user_id=user_id,
                 error=str(e),
                 error_type=type(e).__name__,

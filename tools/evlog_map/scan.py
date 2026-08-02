@@ -15,7 +15,7 @@ import ast
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from directives import collect_suppressions, unknown_ids
+from directives import collect_suppressions, missing_reason, unknown_ids
 from facts import FileFacts, HandlerFacts, collect_file_facts
 from rules import REQUIREMENTS, RULE_IDS, CheckResult, RuleContext, run_rules
 from sensitivity import Sensitivity, classify
@@ -109,6 +109,21 @@ def weighted_score(items: list[tuple[int, str, bool]]) -> int:
     return round(weighted_sum / total_weight)
 
 
+def scored_entries(entries: list[RouteEntry]) -> list[RouteEntry]:
+    """The entry points the score is computed over — exempt ones are not scored.
+
+    The single definition of "how much surface did discovery actually find",
+    shared by the report, the JSON contract, and the ``--min-entries`` gate.
+    """
+    return [entry for entry in entries if not entry.exempt]
+
+
+def waived_checks(entries: list[RouteEntry]) -> tuple[int, int]:
+    """``(checks waived, files they sit in)`` across the scan."""
+    waived = [entry for entry in entries for result in entry.checks.values() if result.suppressed]
+    return len(waived), len({entry.file for entry in waived})
+
+
 def score_global(entries: list[RouteEntry]) -> int:
     """Weighted average of entry scores — high-sensitivity entries count double."""
     return weighted_score(
@@ -190,6 +205,11 @@ def scan(
             warnings.append(
                 f"{file}:{bad.declared_at} disables {bad.check_id!r}, "
                 "which is not a check evlog map runs"
+            )
+        for reasonless in missing_reason(suppressions):
+            warnings.append(
+                f"{file}:{reasonless.declared_at} disables a check with no "
+                "'-- <reason>' — rejected, the check still applies"
             )
         for handler in file_facts.handlers:
             if handler.kind == "worker" and handler.name not in worker_registry:

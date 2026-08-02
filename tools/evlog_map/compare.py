@@ -8,6 +8,9 @@ average. The ratchet is therefore per file:
 
 - a file present in both runs must score at least what it scored at base;
 - a file absent from the baseline (brand-new) must meet the new-file floor;
+- a file whose entry points were all discovered at base and none at HEAD is a
+  discovery collapse — the score would read 100 because there is nothing left
+  to score, so it is failed outright;
 - renames are matched via an explicit old→new map so a moved legacy file is
   compared against itself, not treated as new.
 
@@ -22,19 +25,22 @@ from pathlib import Path
 from facts import repo_relative
 from scan import MapResult, weighted_score
 
+# One discovered entry point: ``(score, sensitivity level, exempt)``.
+EntryStat = tuple[int, str, bool]
 
-def head_file_scores(result: MapResult) -> dict[str, int]:
-    """Per-file weighted scores for a scan, keyed by repo-anchored path."""
-    by_file: dict[str, list[tuple[int, str, bool]]] = {}
+
+def head_file_entries(result: MapResult) -> dict[str, list[EntryStat]]:
+    """Per-file discovered entry points for a scan, keyed by repo-anchored path."""
+    by_file: dict[str, list[EntryStat]] = {}
     for entry in result.entries:
         key = repo_relative(entry.file)
         by_file.setdefault(key, []).append((entry.score, entry.sensitivity.level, entry.exempt))
-    return {key: weighted_score(items) for key, items in by_file.items()}
+    return by_file
 
 
-def baseline_file_scores(baseline: dict[str, object]) -> dict[str, int]:
-    """Per-file weighted scores reconstructed from a ``--json`` baseline."""
-    by_file: dict[str, list[tuple[int, str, bool]]] = {}
+def baseline_file_entries(baseline: dict[str, object]) -> dict[str, list[EntryStat]]:
+    """Per-file discovered entry points reconstructed from a ``--json`` baseline."""
+    by_file: dict[str, list[EntryStat]] = {}
     entries = baseline.get("entries")
     if not isinstance(entries, list):
         raise ValueError("baseline is not an evlog map --json output (no entries array)")
@@ -48,7 +54,7 @@ def baseline_file_scores(baseline: dict[str, object]) -> dict[str, int]:
                 bool(entry.get("exempt", False)),
             )
         )
-    return {key: weighted_score(items) for key, items in by_file.items()}
+    return by_file
 
 
 def load_rename_map(path: Path) -> dict[str, str]:
@@ -65,24 +71,33 @@ def load_rename_map(path: Path) -> dict[str, str]:
 
 
 def compare_to_baseline(
-    head_scores: dict[str, int],
-    base_scores: dict[str, int],
+    head_entries: dict[str, list[EntryStat]],
+    base_entries: dict[str, list[EntryStat]],
     renames: dict[str, str],
     min_new_score: int,
 ) -> list[str]:
-    """Failure messages for every file that regressed or missed the new-file floor."""
-    rebased = {renames.get(key, key): score for key, score in base_scores.items()}
+    """Failure messages for every file that regressed, went dark, or missed the floor."""
+    rebased = {renames.get(key, key): items for key, items in base_entries.items()}
     failures: list[str] = []
-    for key in sorted(head_scores):
-        head = head_scores[key]
-        base = rebased.get(key)
-        if base is None:
+    for key in sorted(rebased):
+        if rebased[key] and not head_entries.get(key):
+            failures.append(
+                f"discovery collapse: {key} had {len(rebased[key])} entry point(s) at the "
+                "baseline and none at HEAD — the scanner can no longer see them, so its "
+                "score is vacuous"
+            )
+    for key in sorted(head_entries):
+        head = weighted_score(head_entries[key])
+        base_items = rebased.get(key)
+        if base_items is None:
             if head < min_new_score:
                 failures.append(
                     f"new file {key} scores {head} — below the {min_new_score} floor "
                     "for files with no baseline"
                 )
-        elif head < base:
+            continue
+        base = weighted_score(base_items)
+        if head < base:
             failures.append(
                 f"observability regression: {key} scores {head} at HEAD vs {base} at the baseline"
             )

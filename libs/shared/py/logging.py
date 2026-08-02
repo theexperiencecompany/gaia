@@ -10,7 +10,8 @@ This module provides a comprehensive, production-ready logging system featuring:
 - Custom log levels for different operational concerns
 
 File logging is opt-in — call configure_file_logging(log_dir) explicitly from
-apps that need it (e.g. the API). Console logging is always enabled on import.
+apps that need it (e.g. the API). It no-ops under LOG_FORMAT=json, so callers
+never repeat that check. Console logging is always enabled on import.
 
 Environment variables:
 - LOG_LEVEL: Minimum log level (default: INFO)
@@ -423,11 +424,18 @@ def configure_file_logging(log_dir: str | Path | None = None) -> None:
     Creates separate files for general, error, structured JSON, and critical
     logs — all with automatic rotation and compression.
 
+    No-ops under ``LOG_FORMAT=json`` (the container setting): there, stdout NDJSON
+    is captured by the Docker daemon and shipped to Loki via Promtail, so file
+    sinks would only fill an ephemeral filesystem. Owning that rule here — rather
+    than at each call site — keeps it a single decision every app inherits.
+
     Safe to call multiple times — only configures once.
 
     Args:
         log_dir: Directory to write log files into (default: ./logs)
     """
+    if LOG_CONFIG["format_mode"] == "json":
+        return
     if log_dir is None:
         log_dir = LOG_CONFIG["log_dir"]
     global _FILE_LOGGING_CONFIGURED

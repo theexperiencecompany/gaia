@@ -83,7 +83,7 @@ class TokenRepository:
             return datetime.now(UTC) + timedelta(seconds=expires_in)
         except (ValueError, TypeError):
             log.warning(
-                f"{LogTag.STARTUP} Invalid expires_in: , using default", expires_in=expires_in
+                f"{LogTag.STARTUP} Invalid expires_in, using default", expires_in=expires_in
             )
             return datetime.now(UTC) + timedelta(seconds=3600)
 

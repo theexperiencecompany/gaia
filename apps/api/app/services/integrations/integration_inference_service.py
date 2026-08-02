@@ -92,7 +92,7 @@ async def infer_integration_category(
     category = response.text.strip().lower()
     if category not in INTEGRATION_CATEGORIES:
         log.warning(
-            f"{LogTag.INTEGRATION} LLM returned invalid category for integration , falling back to",
+            f"{LogTag.INTEGRATION} LLM returned an invalid category for integration, falling back",
             category=category,
             name=name,
             _fallback_category=_FALLBACK_CATEGORY,

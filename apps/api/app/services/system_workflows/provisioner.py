@@ -79,7 +79,7 @@ async def provision_system_workflows(
         return
 
     log.info(
-        f"{LogTag.WORKFLOW} Provisioning system workflow(s) for user , integration",
+        f"{LogTag.WORKFLOW} Provisioning system workflow(s)",
         entries_count=len(entries),
         user_id=user_id,
         integration_id=integration_id,
@@ -93,7 +93,7 @@ async def provision_system_workflows(
         existing = await workflow_repository.find_system_workflow(user_id, key)
         if existing:
             log.info(
-                f"{LogTag.WORKFLOW} System workflow already exists for user , skipping",
+                f"{LogTag.WORKFLOW} System workflow already exists, skipping",
                 key=key,
                 user_id=user_id,
             )
@@ -255,7 +255,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
 
         if not new_trigger_ids:
             log.error(
-                f"{LogTag.WORKFLOW} New trigger registration returned empty result for , aborting reset to avoid leaving workflow without triggers",
+                f"{LogTag.WORKFLOW} New trigger registration returned an empty result, aborting reset to avoid leaving the workflow without triggers",
                 workflow_id=workflow_id,
                 user_id=user_id,
             )

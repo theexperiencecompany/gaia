@@ -149,7 +149,7 @@ class LangchainProvider(
                     )
                     if looks_like_dead_account:
                         log.warning(
-                            f"{LogTag.COMPOSIO} composio tool (toolkit=) likely dead account for user=: error",
+                            f"{LogTag.COMPOSIO} composio tool failed — likely a dead connected account",
                             tool=tool,
                             toolkit=toolkit,
                             user_id=user_id,
@@ -157,7 +157,7 @@ class LangchainProvider(
                         )
                     else:
                         log.info(
-                            f"{LogTag.COMPOSIO} composio tool (toolkit=) returned successful=False for user=: error",
+                            f"{LogTag.COMPOSIO} composio tool returned successful=False",
                             tool=tool,
                             toolkit=toolkit,
                             user_id=user_id,

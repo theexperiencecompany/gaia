@@ -553,7 +553,7 @@ class ChromaStore(BaseStore):
         ]
         succeeded = len(results) - len(failures)
         log.info(
-            f"{LogTag.CHROMA} _apply_put_ops completed: total= succeeded= failed",
+            f"{LogTag.CHROMA} _apply_put_ops completed",
             results_count=len(results),
             succeeded=succeeded,
             failures_count=len(failures),

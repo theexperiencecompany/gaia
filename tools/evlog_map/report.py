@@ -7,7 +7,13 @@ import os
 from pathlib import Path
 
 from rules import REQUIREMENTS
-from scan import MapResult, RouteEntry, classify_observability
+from scan import (
+    MapResult,
+    RouteEntry,
+    classify_observability,
+    scored_entries,
+    waived_checks,
+)
 
 _BADGES = {"money": "$", "auth": "A", "pii": "@"}
 _FIX_FIRST_COUNT = 3
@@ -55,13 +61,16 @@ def render_terminal(result: MapResult, *, show_all: bool) -> str:
     for entry in result.entries:
         counts[classify_observability(entry)] += 1
 
-    scored = [e for e in result.entries if not e.exempt]
+    scored = scored_entries(result.entries)
     lines.append(f"evlog map — observability score: {result.score}/100 ({result.grade})")
     lines.append(
         f"{len(scored)} entry points: {counts['instrumented']} instrumented, "
         f"{counts['partial']} partial, {counts['dark']} dark "
         f"({counts['exempt']} exempt)"
     )
+    waived, waived_files = waived_checks(result.entries)
+    if waived:
+        lines.append(f"{waived} check(s) waived across {waived_files} file(s)")
     if result.unparsable:
         lines.append(f"warning: {len(result.unparsable)} file(s) failed to parse")
     lines.extend(f"warning: {warning}" for warning in result.warnings)
@@ -120,6 +129,9 @@ def to_json(result: MapResult) -> dict[str, object]:
         "score": result.score,
         "grade": result.grade,
         "framework": "fastapi",
+        # How much surface the scan actually found. A 100/100 over an empty
+        # map is not a pass — consumers gate on this too (``--min-entries``).
+        "entryCount": len(scored_entries(result.entries)),
         "entries": [
             {
                 "file": _display(entry.file),
@@ -157,17 +169,20 @@ def render_github_summary(result: MapResult) -> str:
     counts = {"instrumented": 0, "partial": 0, "dark": 0, "exempt": 0}
     for entry in result.entries:
         counts[classify_observability(entry)] += 1
-    scored = [e for e in result.entries if not e.exempt]
+    scored = scored_entries(result.entries)
     failing = sorted(
         (e for e in scored if e.score < 100),
         key=lambda e: (e.sensitivity.level != "high", e.score),
     )
+    waived, waived_files = waived_checks(result.entries)
     lines = [
         f"## Observability score: {result.score}/100 ({result.grade})",
         "",
         f"{len(scored)} entry points — {counts['instrumented']} instrumented, "
         f"{counts['partial']} partial, {counts['dark']} dark, {counts['exempt']} exempt",
     ]
+    if waived:
+        lines += ["", f"{waived} check(s) waived across {waived_files} file(s)"]
     if failing:
         lines += ["", "| Score | Entry point | Top issue |", "|---|---|---|"]
         for entry in failing[:10]:

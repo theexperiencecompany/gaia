@@ -78,7 +78,7 @@ async def try_refresh_token(
 
         if not client_id:
             log.warning(
-                f"{LogTag.MCP} try_refresh_token: no client_id resolved for user= (no pre-configured creds, no DCR registration); user must re-authorize",
+                f"{LogTag.MCP} try_refresh_token: no client_id resolved (no pre-configured creds, no DCR registration); user must re-authorize",
                 integration_id=integration_id,
                 user_id=token_store.user_id,
             )

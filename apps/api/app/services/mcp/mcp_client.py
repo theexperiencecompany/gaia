@@ -310,7 +310,7 @@ class MCPClient:
             )
             if updated:
                 log.info(
-                    f"{LogTag.MCP} Updated auth status for : requires_auth=, auth_type",
+                    f"{LogTag.MCP} Updated auth status",
                     integration_id=integration_id,
                     requires_auth=requires_auth,
                     auth_type=auth_type,
@@ -370,7 +370,7 @@ class MCPClient:
             # Check if OAuth token is expiring soon and try to refresh
             if await self.token_store.is_token_expiring_soon(integration_id):
                 log.info(
-                    f"{LogTag.MCP} Token expiring soon for , attempting refresh",
+                    f"{LogTag.MCP} Token expiring soon, attempting refresh",
                     integration_id=integration_id,
                 )
                 await self._try_refresh_token(integration_id, mcp_config)
@@ -577,7 +577,7 @@ class MCPClient:
 
         latency_ms = int((time.monotonic() - start) * 1000)
         log.info(
-            f"{LogTag.MCP} transparent reconnect succeeded for tool (latency_ms=)",
+            f"{LogTag.MCP} transparent reconnect succeeded for tool",
             integration_id=integration_id,
             tool_name=tool_name,
             latency_ms=latency_ms,
@@ -804,7 +804,7 @@ class MCPClient:
                 success=True,
             )
             log.info(
-                f"{LogTag.MCP} Connected to MCP, got tools for user (is_custom=, sample_names=)",
+                f"{LogTag.MCP} Connected to MCP, got tools for user",
                 integration_id=integration_id,
                 tools_count=len(tools),
                 user_id=self.user_id,
@@ -915,7 +915,7 @@ class MCPClient:
                 if scope_match:
                     required_scopes = scope_match.group(1).split()
                 log.info(
-                    f"{LogTag.MCP} Step-up auth required for , scopes",
+                    f"{LogTag.MCP} Step-up auth required",
                     integration_id=integration_id,
                     required_scopes=required_scopes,
                 )
@@ -1039,7 +1039,7 @@ class MCPClient:
             tool_count=len(tools),
         )
         log.info(
-            f"{LogTag.MCP} _handle_custom_integration_connect: namespace= tools",
+            f"{LogTag.MCP} _handle_custom_integration_connect: indexed namespace tools",
             integration_id=integration_id,
             namespace=namespace,
             tools_count=len(tools),

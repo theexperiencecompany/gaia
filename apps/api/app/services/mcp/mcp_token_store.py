@@ -99,7 +99,7 @@ class MCPTokenStore:
 
         if cred.status != MCPCredentialStatus.CONNECTED:
             log.debug(
-                f"{LogTag.MCP} Credential status is , expected 'connected'",
+                f"{LogTag.MCP} Credential status is not 'connected'",
                 integration_id=integration_id,
                 status=cred.status,
             )

@@ -379,7 +379,7 @@ class ComposioService:
 
             if not active_accounts:
                 log.info(
-                    f"{LogTag.COMPOSIO} No active connected account found for and user , nothing to delete",
+                    f"{LogTag.COMPOSIO} No active connected account found, nothing to delete",
                     provider=provider,
                     user_id=user_id,
                 )

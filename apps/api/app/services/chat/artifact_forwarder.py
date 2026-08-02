@@ -132,7 +132,7 @@ class ArtifactForwarder:
             await pubsub.subscribe(channel)
             self._signal_subscribed()
             log.info(
-                "subscribed (conv=, registry=)",
+                "subscribed",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,
                 conversation_id=self.conversation_id,
                 registry_mtimes_count=len(self.registry_mtimes),
@@ -142,7 +142,7 @@ class ArtifactForwarder:
             raise
         except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
             log.warning(
-                "forwarder error (conv=)",
+                "forwarder error",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,
                 conversation_id=self.conversation_id,
                 error=str(e),
@@ -176,7 +176,7 @@ class ArtifactForwarder:
                 raise
             except Exception as e:  # noqa: BLE001 — one bad event must not kill the turn
                 log.warning(
-                    "event failed (conv=)",
+                    "event failed",
                     artifact_log_prefix=ARTIFACT_LOG_PREFIX,
                     conversation_id=self.conversation_id,
                     error=str(e),
@@ -261,7 +261,7 @@ class ArtifactForwarder:
                     return
                 await asyncio.sleep(ARTIFACT_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
             log.warning(
-                "persist matched no bot message after retries (conv=, msg=)",
+                "persist matched no bot message after retries",
                 artifact_log_prefix=ARTIFACT_LOG_PREFIX,
                 conversation_id=self.conversation_id,
                 bot_message_id=self.bot_message_id,
@@ -333,7 +333,7 @@ class ArtifactForwarder:
         s = self.stats
         log.set(artifacts=s.as_wide_event(self.conversation_id))
         log.info(
-            "closed (conv=, upserts=, removes=, unchanged=, delivered=)",
+            "closed",
             artifact_log_prefix=ARTIFACT_LOG_PREFIX,
             conversation_id=self.conversation_id,
             upserts=s.upserts,

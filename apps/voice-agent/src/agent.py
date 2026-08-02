@@ -41,7 +41,8 @@ from src.constants import (
 from src.llm import CustomLLM
 from src.utils import extract_meta_data, ms_since, user_id_from_room
 
-# Use an absolute path so logs land in the right place regardless of CWD
+# Absolute path so logs land in the right place regardless of CWD. A no-op
+# under LOG_FORMAT=json (containers), where stdout NDJSON goes to Loki instead.
 configure_file_logging(Path(__file__).parent.parent / "logs")
 
 

@@ -343,7 +343,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 await self.reschedule_task(workflow_id, next_run)
 
             log.warning(
-                f"{LogTag.WORKFLOW} Reaped workflow stuck in EXECUTING for s; reset to SCHEDULED (next run )",
+                f"{LogTag.WORKFLOW} Reaped workflow stuck in EXECUTING; reset to SCHEDULED",
                 workflow_id=workflow_id,
                 stuck_seconds=stuck_seconds,
                 next_run=next_run,

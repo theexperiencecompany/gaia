@@ -79,7 +79,7 @@ class BaseSchedulerService(ABC):
             return TaskExecutionResult(success=False, message=f"Task {task_id} not found")
 
         if task.status != ScheduledTaskStatus.SCHEDULED:
-            log.warning("Task is not scheduled (status: )", task_id=task_id, status=task.status)
+            log.warning("Task is not scheduled", task_id=task_id, status=task.status)
             return TaskExecutionResult(
                 success=False, message=f"Task {task_id} is not in scheduled status"
             )

@@ -109,7 +109,7 @@ async def complete_execution(
         }
     )
     log.info(
-        f"{LogTag.WORKFLOW} Completed execution with status , duration s",
+        f"{LogTag.WORKFLOW} Completed execution",
         execution_id=execution_id,
         status=status,
         duration_seconds=duration_seconds,

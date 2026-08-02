@@ -125,7 +125,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
             for acc in accounts.items[:5]
         ]
         log.warning(
-            f"{LogTag.COMPOSIO} composio: no ACTIVE account for user= toolkit= (total_accounts=, sample=)",
+            f"{LogTag.COMPOSIO} composio: no ACTIVE account for this user and toolkit",
             user_id=user_id,
             toolkit=toolkit,
             total_accounts=total_accounts,
@@ -149,7 +149,7 @@ def _resolve_connected_account_id(user_id: str, toolkit: str) -> str:
         )
 
     log.info(
-        f"{LogTag.COMPOSIO} composio: resolved connected_account_id for user= toolkit= -> (cached for s)",
+        f"{LogTag.COMPOSIO} composio: resolved connected_account_id and cached it",
         user_id=user_id,
         toolkit=toolkit,
         id=active.id,

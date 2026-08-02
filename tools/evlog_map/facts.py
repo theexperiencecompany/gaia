@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 HTTP_METHODS = frozenset({"get", "post", "put", "patch", "delete", "head", "options"})
+# FastAPI's imperative registration — the exact equivalent of the decorators.
+ROUTE_REGISTRARS = frozenset({"add_api_route", "add_api_websocket_route"})
+DEFAULT_REGISTRAR_METHOD = "get"  # FastAPI's default when `methods=` is omitted
 WIDE_EVENT_SETTERS = frozenset({"set", "set_ns"})
 EVENT_RECORDING_METHODS = frozenset({"warning", "error", "exception", "critical", "audit"})
 BOUNDARY_CALLS = frozenset({"wide_task", "log_context"})
@@ -116,6 +119,42 @@ def _route_decorators(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tupl
                 if isinstance(call.args[0].value, str):
                     path = call.args[0].value
             routes.append((target.attr, path))
+    return routes
+
+
+def _registered_routes(tree: ast.Module) -> dict[str, list[tuple[str, str]]]:
+    """``(method, path)`` per endpoint function registered imperatively.
+
+    ``router.add_api_route("/x", handler, methods=["POST"])`` is exactly what
+    ``@router.post("/x")`` compiles down to, and FastAPI serves the two
+    identically — so discovery must see both. Otherwise rewriting a route into
+    the imperative form deletes it from the map, and losing an unscored entry
+    point *raises* the score: the refactor reads as an improvement.
+    """
+    routes: dict[str, list[tuple[str, str]]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        target = node.func
+        if not (isinstance(target, ast.Attribute) and target.attr in ROUTE_REGISTRARS):
+            continue
+        if len(node.args) < 2 or not isinstance(node.args[1], ast.Name):
+            continue
+        path = ""
+        if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+            path = node.args[0].value
+        if target.attr == "add_api_websocket_route":
+            methods = ["websocket"]
+        else:
+            methods = [DEFAULT_REGISTRAR_METHOD]
+            for kw in node.keywords:
+                if kw.arg == "methods" and isinstance(kw.value, (ast.List, ast.Tuple, ast.Set)):
+                    methods = [
+                        elt.value.lower()
+                        for elt in kw.value.elts
+                        if isinstance(elt, ast.Constant) and isinstance(elt.value, str)
+                    ]
+        routes.setdefault(node.args[1].id, []).extend((method, path) for method in methods)
     return routes
 
 
@@ -308,6 +347,7 @@ def collect_file_facts(
     facts = FileFacts(path=path)
     facts.router_prefix = _router_prefix(tree)
     log_aliases = _wide_event_log_aliases(tree)
+    imperative_routes = _registered_routes(tree)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -324,7 +364,7 @@ def collect_file_facts(
     for node in ast.walk(tree):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        routes = _route_decorators(node)
+        routes = _route_decorators(node) or imperative_routes.get(node.name, [])
         if routes:
             kind = "websocket" if any(m == "websocket" for m, _ in routes) else "api"
             methods = tuple(dict.fromkeys(m for m, _ in routes if m != "websocket"))

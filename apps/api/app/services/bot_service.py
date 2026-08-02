@@ -54,7 +54,7 @@ class BotService:
             # acceptable because bot rate limiting is a nice-to-have feature that should
             # not block legitimate users when infrastructure is degraded.
             log.warning(
-                "Rate limit check failed for :, failing open",
+                "Rate limit check failed, failing open",
                 platform=platform,
                 platform_user_id=platform_user_id,
                 error=str(e),

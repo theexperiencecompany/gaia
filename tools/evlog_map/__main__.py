@@ -4,6 +4,7 @@ Usage:
     python3 tools/evlog_map [paths ...]           # full scan (apps/api/app + apps/voice-agent/src)
     python3 tools/evlog_map --all                 # per-entry check matrix
     python3 tools/evlog_map --min-score 70        # exit 1 below the threshold
+    python3 tools/evlog_map --min-entries 300     # exit 1 when discovery finds fewer
     python3 tools/evlog_map --files-from -        # scan only listed files (CI diff mode)
     python3 tools/evlog_map --json                # full map as JSON on stdout
     python3 tools/evlog_map --github-summary      # append report to $GITHUB_STEP_SUMMARY
@@ -22,13 +23,13 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from compare import (  # noqa: E402
-    baseline_file_scores,
+    baseline_file_entries,
     compare_to_baseline,
-    head_file_scores,
+    head_file_entries,
     load_rename_map,
 )
 from report import render_github_summary, render_terminal, to_json, write_map_json  # noqa: E402
-from scan import collect_worker_registry, scan  # noqa: E402
+from scan import collect_worker_registry, scan, scored_entries  # noqa: E402
 from schema import canonical_fields  # noqa: E402
 from voice import collect_voice_registry  # noqa: E402
 
@@ -54,6 +55,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--min-score", type=int, metavar="N", help="exit 1 when the score falls below N"
+    )
+    parser.add_argument(
+        "--min-entries",
+        type=int,
+        metavar="N",
+        help=(
+            "exit 1 when discovery finds fewer than N scored entry points — a broken "
+            "scanner sees nothing and reports a perfect 100"
+        ),
     )
     parser.add_argument(
         "--baseline",
@@ -138,11 +148,23 @@ def main(argv: list[str]) -> int:
             file=sys.stderr,
         )
         failed = True
+    if args.min_entries is not None:
+        # The score says nothing about what was never discovered: a framework
+        # upgrade or refactor that hides entry points reads as a perfect run.
+        # Assert the surface is still there before trusting the number.
+        entry_count = len(scored_entries(result.entries))
+        if entry_count < args.min_entries:
+            print(
+                f"\ndiscovery found {entry_count} scored entry point(s), below "
+                f"--min-entries {args.min_entries} — the scan is not seeing the surface",
+                file=sys.stderr,
+            )
+            failed = True
     if args.baseline:
         baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
         failures = compare_to_baseline(
-            head_file_scores(result),
-            baseline_file_scores(baseline),
+            head_file_entries(result),
+            baseline_file_entries(baseline),
             load_rename_map(Path(args.rename_map)) if args.rename_map else {},
             args.min_new_score,
         )

@@ -7,15 +7,13 @@ import os
 
 from shared.py.logging import configure_file_logging
 
-# Only write rotating log files when running outside Docker (LOG_FORMAT != json).
-# In Docker, stdout JSON is captured by the Docker daemon and shipped to Loki
-# via Promtail — writing to the container's ephemeral filesystem wastes disk.
+# Rotating log files for local development; a no-op under LOG_FORMAT=json,
+# where stdout NDJSON is shipped to Loki instead (see configure_file_logging).
 # Must be called before any app imports — provider_registration transitively
 # imports app.api.v1.middleware.__init__ → loggers.py, which calls
 # configure_file_logging("./logs") and sets _FILE_LOGGING_CONFIGURED=True,
 # making any subsequent call with a different path a no-op.
-if os.getenv("LOG_FORMAT", "console") != "json":
-    configure_file_logging("./logs/worker")
+configure_file_logging("./logs/worker")
 
 from app.constants.log_tags import LogTag  # noqa: E402
 from app.core.provider_registration import (  # noqa: E402

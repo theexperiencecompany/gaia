@@ -75,7 +75,7 @@ class WorkflowQueueService:
                 # A job with this id is already queued or running — the duplicate
                 # enqueue was deduped. That's the intended outcome, not a failure.
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow execution already queued for ; deduped duplicate enqueue (job ID )",
+                    f"{LogTag.WORKFLOW} Workflow execution already queued; deduped duplicate enqueue",
                     workflow_id=workflow_id,
                     job_id=job_id,
                 )

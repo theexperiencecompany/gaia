@@ -84,7 +84,7 @@ def wrap_tool_with_null_filter(
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         log.set(operation="mcp_tool_call", tool_name=tool.name)
         log.debug(
-            f"{LogTag.MCP} MCP tool : original args=, filtered",
+            f"{LogTag.MCP} MCP tool call args filtered",
             name=tool.name,
             kwargs=kwargs,
             filtered_kwargs=filtered_kwargs,

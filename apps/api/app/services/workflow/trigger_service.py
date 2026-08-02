@@ -140,7 +140,7 @@ class TriggerService:
         except Exception as e:
             error_msg = f"Error registering triggers: {type(e).__name__}: {e!s}"
             log.error(f"{LogTag.WORKFLOW} Error registering triggers", error_type=type(e).__name__)
-            log.exception(f"{LogTag.WORKFLOW} Full traceback:")
+            log.exception(f"{LogTag.WORKFLOW} Full traceback")
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)
             return []

@@ -284,7 +284,7 @@ class FileService:
         file_data = await file_repository.get_by_file_id(file_id, user_id)
         if not file_data:
             log.warning(
-                "[files] delete: file_id= not found for user", file_id=file_id, user_id=user_id
+                "[files] delete: file not found for user", file_id=file_id, user_id=user_id
             )
             raise HTTPException(status_code=404, detail="File not found")
 
@@ -296,7 +296,7 @@ class FileService:
             destroy_in_cloudinary(public_id)
         else:
             log.warning(
-                "[files] delete: file_id= has no public_id; skipping blob delete",
+                "[files] delete: file has no public_id; skipping blob delete",
                 file_id=file_id,
                 user_id=user_id,
             )
@@ -469,7 +469,7 @@ class FileService:
             safe_name = safe_upload_filename(file.filename)
         except ValueError:
             log.warning(
-                "[files] seed: skipping , unsafe after sanitize",
+                "[files] seed: skipping file, unsafe after sanitize",
                 filename=file.filename,
                 user_id=user_id,
                 conversation_id=conversation_id,

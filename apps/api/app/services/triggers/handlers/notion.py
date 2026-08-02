@@ -84,7 +84,7 @@ class NotionTriggerHandler(TriggerHandler):
                 fetch_type = "pages"
             else:
                 log.warning(
-                    f"{LogTag.TRIGGER} Unknown Notion field , fetching all",
+                    f"{LogTag.TRIGGER} Unknown Notion field, fetching all",
                     field_name=field_name,
                     user_id=user_id,
                     integration_id=integration_id,
