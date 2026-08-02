@@ -40,7 +40,7 @@ async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:
     """Core tools + the tools of the user's workspace integrations, each tagged
     with `locked`. Anonymous callers (warmup) get core tools only. Per-user
     results are cached; the anonymous build is coalesced."""
-    log.set(service="tools_service", operation="get_available_tools", user_id=user_id)
+    log.set(component="tools_service", operation="get_available_tools", user_id=user_id)
     if user_id is None:
         return await coalesce_request("global_tools", _build_tools_response)
     return await _get_user_tools_catalog(user_id)

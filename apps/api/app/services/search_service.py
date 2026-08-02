@@ -35,7 +35,7 @@ async def search_messages(query: str, user_id: str) -> dict:
             "sources": ["messages", "conversations", "notes"],
         },
         user_id=user_id,
-        service="search_service",
+        component="search_service",
     )
     search_start = time.monotonic()
     escaped_query = re.escape(query)

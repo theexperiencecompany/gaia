@@ -20,7 +20,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
     updated in a single write.
     """
     log.set(
-        service="todo_bulk_service",
+        component="todo_bulk_service",
         operation="bulk_complete_todos",
         user_id=user_id,
         todo_count=len(todo_ids),
@@ -76,7 +76,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
 async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) -> list[TodoResponse]:
     """Move multiple todos to a different project using a bulk operation."""
     log.set(
-        service="todo_bulk_service",
+        component="todo_bulk_service",
         operation="bulk_move_todos",
         user_id=user_id,
         target_project_id=project_id,
@@ -125,7 +125,7 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
 async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
     """Delete multiple todos using a bulk operation."""
     log.set(
-        service="todo_bulk_service",
+        component="todo_bulk_service",
         operation="bulk_delete_todos",
         user_id=user_id,
         todo_count=len(todo_ids),

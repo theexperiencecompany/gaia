@@ -64,7 +64,7 @@ async def provision_system_workflows(
     onboarding UI surfaces the workflows itself).
     """
     log.set(
-        service="system_workflow_provisioner",
+        component="system_workflow_provisioner",
         operation="provision_system_workflows",
         user_id=user_id,
         integration_id=integration_id,
@@ -206,7 +206,7 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     Returns False if the workflow is not found or not resettable.
     """
     log.set(
-        service="system_workflow_provisioner",
+        component="system_workflow_provisioner",
         operation="reset_system_workflow_to_default",
         user_id=user_id,
         workflow_id=workflow_id,

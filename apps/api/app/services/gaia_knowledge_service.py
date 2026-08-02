@@ -49,7 +49,7 @@ class GaiaKnowledgeService:
     async def search_knowledge(self, query: str, limit: int = 5) -> list[KnowledgeResult]:
         """Search the GAIA knowledge base using semantic similarity."""
         log.set(
-            service="gaia_knowledge_service",
+            component="gaia_knowledge_service",
             operation="search_knowledge",
             query_preview=query[:50],
             limit=limit,
@@ -83,7 +83,7 @@ class GaiaKnowledgeService:
     async def add_knowledge_batch(self, items: list[KnowledgeItem]) -> int:
         """Add multiple knowledge items in batch. Returns the number added."""
         log.set(
-            service="gaia_knowledge_service",
+            component="gaia_knowledge_service",
             operation="add_knowledge_batch",
             item_count=len(items),
         )

@@ -108,7 +108,7 @@ class TodoService:
     async def create_todo(cls, todo: TodoModel, user_id: str) -> TodoResponse:
         """Create a new todo with automatic inbox assignment."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="create_todo",
             user_id=user_id,
             todo={
@@ -180,7 +180,7 @@ class TodoService:
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
         """Get a single todo by ID."""
-        log.set(service="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
+        log.set(component="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
         todo = await todo_repository.get(todo_id, user_id=user_id)
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
@@ -233,7 +233,7 @@ class TodoService:
     ) -> TodoResponse:
         """Update a todo."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="update_todo",
             user_id=user_id,
             todo={
@@ -305,7 +305,7 @@ class TodoService:
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
         """Delete a todo."""
-        log.set(service="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
+        log.set(component="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             raise ValueError(f"Todo {todo_id} not found")
@@ -480,7 +480,7 @@ class ProjectService:
     async def create_project(project: ProjectCreate, user_id: str) -> ProjectResponse:
         """Create a new project."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="create_project",
             user_id=user_id,
             project_name=project.name,
@@ -512,7 +512,7 @@ class ProjectService:
     ) -> ProjectResponse:
         """Update a project."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="update_project",
             user_id=user_id,
             project_id=project_id,
@@ -537,7 +537,7 @@ class ProjectService:
     async def delete_project(project_id: str, user_id: str) -> None:
         """Delete a project and move its todos to inbox."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="delete_project",
             user_id=user_id,
             project_id=project_id,

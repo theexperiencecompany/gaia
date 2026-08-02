@@ -27,7 +27,7 @@ def upload_file_to_cloudinary(
     Raises:
         HTTPException: If the upload fails or invalid parameters are provided.
     """
-    log.set(service="upload_service", public_id=public_id)
+    log.set(component="upload_service", public_id=public_id)
     # Validate input parameters
     if not file_data and not file_path:
         log.error("Either file_data or file_path must be provided")

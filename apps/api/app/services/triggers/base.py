@@ -125,7 +125,7 @@ class TriggerHandler(ABC):
             True if all triggers were unregistered successfully
         """
         log.set(
-            service="trigger_handler",
+            component="trigger_handler",
             operation="unregister",
             user_id=user_id,
             trigger_count=len(trigger_ids),
@@ -328,7 +328,7 @@ class TriggerHandler(ABC):
         if trigger_id:
             trigger_ctx["trigger_id"] = trigger_id
         log.set(
-            service="trigger_handler",
+            component="trigger_handler",
             operation="process_event",
             event_type=event_type,
             trigger_id=trigger_id,

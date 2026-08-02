@@ -50,7 +50,23 @@ _EMIT_METHODS = frozenset({"debug", "info", "warning", "error", "exception", "cr
 # The one interpolation a message may carry: a leading `{LogTag.X}` prefix.
 _LOG_TAG_NAME = "LogTag"
 # The JSON sink's top-level keys (see _CORE_KEYS in libs/shared/py/logging.py).
-_RESERVED_EVENT_KEYS = frozenset({"time", "level", "message", "logger", "module", "line", "worker"})
+_RESERVED_EVENT_KEYS = frozenset(
+    {
+        # Core keys of the emitted JSON line (see shared.py.logging).
+        "time",
+        "level",
+        "message",
+        "logger",
+        "module",
+        "line",
+        "worker",
+        # Infra identity stamped by env_context(); `service` must equal the
+        # Promtail label for the process, so app code may not set it.
+        "env",
+        "service",
+        "commit",
+    }
+)
 
 # Ratchet allowlist of path suffixes that legitimately use loguru/logging
 # directly. Remove an entry when it is migrated; never add one.

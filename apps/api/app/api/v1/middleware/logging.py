@@ -188,8 +188,9 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 else request.headers.get("x-forwarded-for", "unknown")
             )
             context = {
-                **env_context(),
                 **wide_event_context,
+                # Authoritative — must not be overridable by app fields.
+                **env_context(),
                 "method": request.method,
                 "path": request.url.path,
                 "status_code": 500,
@@ -225,11 +226,13 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         wide_event_context = wide_log.get()
 
         context = {
-            # --- Environment characteristics (on every event) ---
-            **env_context(),
             # --- Business context accumulated by handlers/services ---
-            # Spread before HTTP fields so authoritative HTTP values always win.
+            # Spread first so the authoritative env/HTTP values below always win.
             **wide_event_context,
+            # --- Environment characteristics (on every event, authoritative) ---
+            # Last, so app code that sets `service` cannot contradict the
+            # Promtail label for this process.
+            **env_context(),
             # --- HTTP request characteristics (always authoritative) ---
             "method": request.method,
             "path": request.url.path,

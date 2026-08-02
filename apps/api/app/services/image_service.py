@@ -37,7 +37,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
         HTTPException: If an error occurs during image generation or upload.
     """
     log.set(
-        service="image_service",
+        component="image_service",
         operation="generate_image",
         improve_prompt=improve_prompt,
     )
@@ -111,7 +111,7 @@ async def api_generate_image(message: str, improve_prompt=True) -> dict:
 
 async def image_to_text_endpoint(message: str, file: UploadFile) -> dict:
     """Describe an uploaded image, answering ``message`` about it."""
-    log.set(service="image_service", operation="image_to_text")
+    log.set(component="image_service", operation="image_to_text")
     try:
         response = await convert_image_to_text(file, message)
         log.set(outcome="success")

@@ -537,6 +537,10 @@ class WideEventFields(TypedDict, total=False):
     operation: str
     outcome: str
     platform: str
+    # Which module/service-layer function produced the context. Named to match
+    # the bots' `component` field so one query reads both surfaces; distinct
+    # from the reserved `service`, which is the process's Promtail identity.
+    component: str
     result_count: int
     profile_fields_extracted: list[str]
     file_id: str
@@ -735,7 +739,6 @@ async def _wide_event_boundary(
     if trace_id:
         log.set(trace_id=trace_id)
         _trace_id.set(trace_id)
-    log.set(**env_context())
     log.set(task=task_name, **initial_context)
     start = time.monotonic()
     try:
@@ -754,7 +757,10 @@ async def _wide_event_boundary(
         log.set(duration_ms=duration_ms)
         level = log.get_max_level()
         log.set(final_level=level)
-        event = log.get()
+        # env_context() is spread LAST so the infra identity (env/service/
+        # commit) is authoritative: app code that happens to set `service`
+        # must not be able to contradict the Promtail label for this process.
+        event = {**log.get(), **env_context()}
         _loguru.bind(logger_name=logger_name, **event).log(level, event_name)
 
 

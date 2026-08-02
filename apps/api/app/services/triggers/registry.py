@@ -26,7 +26,7 @@ class TriggerRegistry:
     def register(self, handler: TriggerHandler) -> None:
         """Register a trigger handler."""
         log.set(
-            service="trigger_registry",
+            component="trigger_registry",
             operation="register",
             handler=type(handler).__name__,
             trigger_names=list(handler.trigger_names),

@@ -19,7 +19,7 @@ async def warmup_tools_cache() -> None:
     lazily per provider when a subagent is first created. Non-fatal: on failure the
     catalog is indexed on first use instead.
     """
-    log.set(service="tools_warmup", operation="warmup_tools_cache")
+    log.set(component="tools_warmup", operation="warmup_tools_cache")
     log.info(f"{LogTag.TOOL} Warming up tools cache...")
     try:
         tool_registry = await get_tool_registry()

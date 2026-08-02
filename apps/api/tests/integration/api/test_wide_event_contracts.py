@@ -23,7 +23,13 @@ from app.api.v1.middleware.logging import LoggingMiddleware
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.core.middleware import configure_middleware
 from shared.py.logging import MAX_JSON_LINE_BYTES, _json_stdout_sink
-from shared.py.wide_events import _event_state, log, spawn_logged_task, wide_task
+from shared.py.wide_events import (
+    _event_state,
+    env_context,
+    log,
+    spawn_logged_task,
+    wide_task,
+)
 
 
 class _EmitRecorder:
@@ -52,6 +58,28 @@ def _app_with_logging() -> FastAPI:
     app = FastAPI()
     app.add_middleware(LoggingMiddleware)
     return app
+
+
+def test_app_code_cannot_clobber_the_service_identity(emitted):
+    """`service` must equal this process's Promtail label, always.
+
+    The shipped bug: env fields were merged BEFORE handler fields, so 16
+    service-layer callers doing log.set(service="notes_service") overwrote the
+    infra identity — `{service="gaia-backend"} | json | service="gaia-backend"`
+    stopped agreeing with itself and dashboards under-counted silently.
+    """
+    app = _app_with_logging()
+
+    @app.get("/t")
+    async def handler():
+        log.set(service="HIJACKED", env="HIJACKED", commit="HIJACKED")
+        return {}
+
+    TestClient(app).get("/t")
+    (event,) = emitted
+    assert event["service"] == env_context()["service"]
+    assert event["env"] == env_context()["env"]
+    assert event["commit"] == env_context()["commit"]
 
 
 def test_handler_fields_reach_the_emitted_event(emitted):

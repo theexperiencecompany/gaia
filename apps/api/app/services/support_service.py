@@ -139,7 +139,7 @@ async def create_support_request(
 
     Atomic: if email sending fails, the support request is deleted.
     """
-    log.set(service="support_service", user_id=user_id, user_email=user_email)
+    log.set(component="support_service", user_id=user_id, user_email=user_email)
     request_id = None
     try:
         # Generate unique IDs
@@ -282,7 +282,7 @@ async def create_support_request_with_attachments(
     Atomic: if email sending fails, the support request and uploaded files are deleted.
     """
     log.set(
-        service="support_service",
+        component="support_service",
         user_id=user_id,
         user_email=user_email,
         attachment_count=len(attachments),

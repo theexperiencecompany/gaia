@@ -8,7 +8,7 @@ from shared.py.wide_events import log
 
 async def get_user_by_id(user_id: str) -> dict | None:
     """Get user by ID from database."""
-    log.set(service="user_service", user_id=user_id)
+    log.set(component="user_service", user_id=user_id)
     try:
         user = await user_repository.get(user_id)
         return user_to_legacy_dict(user) if user else None
@@ -24,7 +24,7 @@ async def update_user_profile(
 ) -> dict:
     """Update user profile information."""
     log.set(
-        service="user_service",
+        component="user_service",
         user_id=user_id,
         operation="update_profile",
         has_picture=picture_data is not None,

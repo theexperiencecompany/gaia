@@ -14,7 +14,7 @@ from shared.py.wide_events import log
 
 async def get_note(note_id: str, user_id: str) -> NoteResponse:
     """Retrieve a single note by its ID for the user."""
-    log.set(service="notes_service", operation="get_note", note_id=note_id, user_id=user_id)
+    log.set(component="notes_service", operation="get_note", note_id=note_id, user_id=user_id)
     note = await note_repository.get(note_id, user_id=user_id)
     if note is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Note not found")
@@ -23,14 +23,14 @@ async def get_note(note_id: str, user_id: str) -> NoteResponse:
 
 async def get_all_notes(user_id: str) -> list[NoteResponse]:
     """Retrieve all notes for the user."""
-    log.set(service="notes_service", operation="get_all_notes", user_id=user_id)
+    log.set(component="notes_service", operation="get_all_notes", user_id=user_id)
     notes = await note_repository.list_notes(user_id=user_id)
     return [NoteResponse.model_validate(note.model_dump()) for note in notes]
 
 
 async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteResponse:
     """Update an existing note by its ID for the user."""
-    log.set(service="notes_service", operation="update_note", note_id=note_id, user_id=user_id)
+    log.set(component="notes_service", operation="update_note", note_id=note_id, user_id=user_id)
 
     updated = await note_repository.update(
         note_id,
@@ -62,7 +62,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
 
 async def delete_note(note_id: str, user_id: str) -> None:
     """Delete a note by its ID for the user."""
-    log.set(service="notes_service", operation="delete_note", note_id=note_id, user_id=user_id)
+    log.set(component="notes_service", operation="delete_note", note_id=note_id, user_id=user_id)
 
     deleted = await note_repository.delete(note_id, user_id=user_id)
     if not deleted:
