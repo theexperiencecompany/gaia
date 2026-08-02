@@ -229,9 +229,6 @@
       "includes": ["**/types.ts", "**/types/**", "**/*.types.ts", "**/*.d.ts"],
       "linter": {
         "rules": {
-          "performance": {
-            "noReExportAll": "off"
-          },
           "correctness": {
             "noUnusedVariables": "off"
           }
