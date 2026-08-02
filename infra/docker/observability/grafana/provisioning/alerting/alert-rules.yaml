@@ -16,7 +16,7 @@ apiVersion: 1
 # `description` What breaks for users, and the first thing to check. Both
 #               annotations render in Slack and email, summary first.
 #
-# Templating rules (both were violated here before and fail *silently*):
+# Templating rules (all three were violated here before and fail *silently*):
 #
 #   1. Always use `$values.<ref>.Value`, never bare `$values.<ref>`.
 #      `$values.B` is a struct; piping it into humanize*/printf either errors
@@ -28,10 +28,23 @@ apiVersion: 1
 #      `humanizePercentage` for 0..1 ratios (it multiplies by 100 — do not use
 #      it on a value the PromQL already scaled by 100), `humanize1024` for
 #      bytes, `humanizeDuration` for seconds.
+#   3. Guard every `$values` reference with
+#      `{{ if $values.B }}…{{ else }}…{{ end }}`. On DatasourceError and NoData
+#      there is no `$values` at all, so `printf "%.2f"` renders the literal Go
+#      error `%!f(<nil>)` and `| humanizeDuration` fails outright, leaving the
+#      raw `{{ ... }}` in the Slack message — the summary breaks exactly when
+#      monitoring breaks. The guard is safe at a measured value of 0
+#      (`$values.B` is a struct, which Go templates always treat as true); it is
+#      falsy only when the ref is genuinely absent, because Grafana expands
+#      annotations with `missingkey=invalid`. The else-branch must say the rule
+#      could not be evaluated, not restate the threshold.
 #
-# `dashboardUid` + `panelId` are top-level rule fields, NOT annotations.
-# Grafana turns them into the Dashboard/Panel links in the notification. Both
-# are required — `panelId` alone is inert.
+# `__dashboardUid__` + `__panelId__` are ANNOTATIONS, not top-level rule fields.
+# Grafana turns them into the Dashboard/Panel links in the notification. Written
+# as top-level `dashboardUid:`/`panelId:` they are silently dropped by file
+# provisioning and no link is ever rendered. Both are required: `__panelId__`
+# alone is inert, and `__dashboardUid__` alone aborts the whole alerting
+# provisioner at startup. `__panelId__` must be a quoted string.
 #
 # Only `sum(...)`-free expressions carry per-series labels. Rules that
 # aggregate with `sum()` collapse to a single unlabeled series, so
@@ -47,8 +60,6 @@ groups:
       - uid: gaia-api-5xx
         title: API is returning server errors
         condition: C
-        dashboardUid: gaia-api-prometheus
-        panelId: 2
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -81,13 +92,20 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: '{{ printf "%.2f" $values.B.Value }}% of API requests are failing with 5xx errors over the last 5 minutes (threshold 1%)'
+          summary: >-
+            {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}% of API requests are
+            failing with 5xx errors over the last 5 minutes (threshold
+            1%){{ else }}Unable to read the API 5xx error rate — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
             Every product surface goes through this API — web and desktop chat,
             mobile, all four bots, and the voice agent. Users are seeing failed
             sends, blank conversations and broken integrations. Check the API
             Logs dashboard to find which handler is erroring, then the
             application logs for the exception behind it.
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "2"
         labels:
           severity: critical
           service: api
@@ -96,8 +114,6 @@ groups:
       - uid: gaia-api-p95-latency
         title: API responses are slow
         condition: C
-        dashboardUid: gaia-api-prometheus
-        panelId: 6
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -125,12 +141,18 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'API p95 response time is {{ printf "%.2f" $values.B.Value }}s (threshold 1s)'
+          summary: >-
+            {{ if $values.B }}API p95 response time is
+            {{ printf "%.2f" $values.B.Value }}s (threshold 1s){{ else }}Unable to read
+            the API p95 response time — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
           description: >-
             One request in twenty is taking over a second, so chat feels stalled
             and the first SSE token arrives late. Use the "Slowest Endpoints
             (p95)" and "P95 Latency by Endpoint" panels to find which handler is
             responsible before looking at database or LLM latency.
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "6"
         labels:
           severity: warning
           service: api
@@ -139,8 +161,6 @@ groups:
       - uid: gaia-rabbitmq-backlog
         title: Bot replies are piling up undelivered
         condition: C
-        dashboardUid: gaia-rabbitmq
-        panelId: 4
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -168,7 +188,11 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: '{{ printf "%.0f" $values.B.Value }} messages are queued in RabbitMQ waiting to be delivered (threshold 1000)'
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} messages are queued in
+            RabbitMQ waiting to be delivered (threshold 1000){{ else }}Unable to read
+            the RabbitMQ queue depth — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
           description: >-
             RabbitMQ carries outbound bot delivery on the durable
             outbound.discord/slack/telegram/whatsapp queues. Assistant replies
@@ -176,6 +200,8 @@ groups:
             This total is aggregated across queues — open the "Queue Depth by
             Queue" panel to see which platform is stuck, then check whether that
             bot's consumer is still connected.
+          __dashboardUid__: gaia-rabbitmq
+          __panelId__: "4"
         labels:
           severity: warning
           service: rabbitmq
@@ -184,8 +210,6 @@ groups:
       - uid: gaia-arq-failures
         title: Background jobs are failing
         condition: C
-        dashboardUid: gaia-arq-worker
-        panelId: 2
         data:
           - refId: A
             relativeTimeRange: { from: 900, to: 0 }
@@ -213,13 +237,19 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
-          summary: '{{ printf "%.0f" $values.B.Value }} background tasks raised errors in the last 15 minutes (threshold 5)'
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} background tasks
+            raised errors in the last 15 minutes (threshold 5){{ else }}Unable to read
+            the background task error count — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
           description: >-
             These are the jobs that make GAIA proactive — reminder delivery,
             workflow generation and execution, tracked-todo runs, Gmail-to-memory
             ingestion and the housekeeping crons. Failures here are invisible to
             users until something they scheduled never happens. The
             "Task Rate by Name" panel breaks failures down by task_name.
+          __dashboardUid__: gaia-arq-worker
+          __panelId__: "2"
         labels:
           severity: warning
           service: arq_worker
@@ -228,8 +258,6 @@ groups:
       - uid: gaia-postgres-connections
         title: Postgres is running out of connections
         condition: C
-        dashboardUid: gaia-databases
-        panelId: 1
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -257,13 +285,20 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: 'Postgres is using {{ $values.B.Value | humanizePercentage }} of its connection limit (threshold 80%)'
+          summary: >-
+            {{ if $values.B }}Postgres is using
+            {{ $values.B.Value | humanizePercentage }} of its connection limit
+            (threshold 80%){{ else }}Unable to read Postgres connection usage — this
+            rule could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
             The langgraph database is the LangGraph checkpointer — it holds
             conversation thread state. Once connections are exhausted new chat
             turns cannot check one out and fall back to in-memory state, which
             loses thread continuity. Check "Connections by State" for idle or
             idle-in-transaction connections that are not being released.
+          __dashboardUid__: gaia-databases
+          __panelId__: "1"
         labels:
           severity: warning
           service: postgres
@@ -272,8 +307,6 @@ groups:
       - uid: gaia-chromadb-down
         title: ChromaDB is not responding
         condition: C
-        dashboardUid: gaia-databases
-        panelId: 19
         data:
           - refId: A
             relativeTimeRange: { from: 120, to: 0 }
@@ -309,6 +342,8 @@ groups:
             inference time, so complex requests silently degrade to plain
             answers with no tools. Chroma exposes no metrics of its own, so this
             probe against /api/v2/heartbeat is the only signal.
+          __dashboardUid__: gaia-databases
+          __panelId__: "19"
         labels:
           severity: critical
           service: chromadb
@@ -317,8 +352,6 @@ groups:
       - uid: gaia-host-disk
         title: Host disk is nearly full
         condition: C
-        dashboardUid: gaia-host
-        panelId: 3
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -346,7 +379,11 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: 'Host root filesystem is {{ printf "%.1f" $values.B.Value }}% full (threshold 85%)'
+          summary: >-
+            {{ if $values.B }}Host root filesystem is
+            {{ printf "%.1f" $values.B.Value }}% full (threshold 85%){{ else }}Unable to
+            read host root filesystem usage — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
           description: >-
             Every stateful volume shares this one disk — Postgres data, Redis,
             RabbitMQ, Chroma, 30 days of Prometheus history, Loki logs and the
@@ -354,6 +391,8 @@ groups:
             writes, RabbitMQ persistence and log ingestion at the same time.
             Prometheus retention and Loki are usually the largest reclaimable
             consumers.
+          __dashboardUid__: gaia-host
+          __panelId__: "3"
         labels:
           severity: warning
           service: host
@@ -362,8 +401,6 @@ groups:
       - uid: gaia-host-memory
         title: Host is running out of memory
         condition: C
-        dashboardUid: gaia-host
-        panelId: 2
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -391,13 +428,19 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'Host memory is {{ printf "%.1f" $values.B.Value }}% used (threshold 90%)'
+          summary: >-
+            {{ if $values.B }}Host memory is {{ printf "%.1f" $values.B.Value }}% used
+            (threshold 90%){{ else }}Unable to read host memory usage — this rule could
+            not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
             Sustained memory pressure on the single production node is what
             precedes kernel OOM kills and the Swarm restarts that follow them.
             The largest limits on this box are the API at 4G, the embedding
             sidecar at 3G, and the ARQ worker and voice agent at 2G each — check
             "Memory Usage per Container" to see which one is growing.
+          __dashboardUid__: gaia-host
+          __panelId__: "2"
         labels:
           severity: warning
           service: host
@@ -406,8 +449,6 @@ groups:
       - uid: gaia-api-external-down
         title: Public API is unreachable
         condition: C
-        dashboardUid: gaia-api-prometheus
-        panelId: 10
         data:
           - refId: A
             relativeTimeRange: { from: 120, to: 0 }
@@ -444,6 +485,8 @@ groups:
             lag exceeded 2000ms. Compare against the "Internal Uptime" panel —
             internal healthy plus external down means the edge is at fault, not
             the app.
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "10"
         labels:
           severity: critical
           service: api
@@ -463,7 +506,6 @@ groups:
       - uid: gaia-target-down
         title: A monitored service stopped responding
         condition: C
-        dashboardUid: gaia-overview
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -500,6 +542,8 @@ groups:
             that postgres and redis scrape their exporter sidecars, not the
             databases, so those two mean the exporter died and say nothing about
             whether the database is healthy.
+          __dashboardUid__: gaia-overview
+          __panelId__: "5"
         labels:
           severity: critical
           service: availability
@@ -511,8 +555,6 @@ groups:
       - uid: gaia-arq-worker-down
         title: Background worker is down
         condition: C
-        dashboardUid: gaia-arq-worker
-        panelId: 1
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -549,6 +591,8 @@ groups:
             see silence rather than an error, which is why this is critical. The
             worker also disappears here if its poll loop wedges, not only if the
             container dies.
+          __dashboardUid__: gaia-arq-worker
+          __panelId__: "1"
         labels:
           severity: critical
           service: arq_worker
@@ -560,8 +604,6 @@ groups:
       - uid: gaia-container-restarts
         title: A container is restarting repeatedly
         condition: C
-        dashboardUid: gaia-containers
-        panelId: 1
         data:
           - refId: A
             relativeTimeRange: { from: 900, to: 0 }
@@ -589,13 +631,20 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
-          summary: '{{ $labels.name }} restarted {{ printf "%.0f" $values.B.Value }} times in the last 15 minutes (threshold 3)'
+          summary: >-
+            {{ if $values.B }}{{ $labels.name }} restarted
+            {{ printf "%.0f" $values.B.Value }} times in the last 15 minutes (threshold
+            3){{ else }}Unable to read container restart counts — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
             A crash-looping container is being replaced by Swarm faster than it
             can serve traffic, so the service flaps rather than staying cleanly
             down. Check that container's logs for the startup exception — a
             failing dependency, a bad migration or a missing secret at boot are
             the usual causes.
+          __dashboardUid__: gaia-containers
+          __panelId__: "1"
         labels:
           severity: warning
           service: availability
@@ -608,7 +657,6 @@ groups:
       - uid: gaia-internal-service-down
         title: A bot or the embedding sidecar is down
         condition: C
-        dashboardUid: gaia-containers
         data:
           - refId: A
             relativeTimeRange: { from: 120, to: 0 }
@@ -645,6 +693,8 @@ groups:
             the worker cannot fit the models in its memory limit. If it is one of
             the discord, slack, telegram or whatsapp bots, that platform's users
             get no replies even though the API itself is healthy.
+          __dashboardUid__: gaia-containers
+          __panelId__: "1"
         labels:
           severity: critical
           service: availability
@@ -655,8 +705,6 @@ groups:
       - uid: gaia-api-p95-latency-critical
         title: API responses are critically slow
         condition: C
-        dashboardUid: gaia-api-prometheus
-        panelId: 6
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -684,13 +732,19 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: 'API p95 response time is {{ printf "%.2f" $values.B.Value }}s (critical threshold 3s)'
+          summary: >-
+            {{ if $values.B }}API p95 response time is
+            {{ printf "%.2f" $values.B.Value }}s (critical threshold 3s){{ else }}Unable
+            to read the API p95 response time — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
           description: >-
             Same signal as the warning-tier latency rule, at the point where the
             product is effectively unusable rather than merely slow. This tier
             also pages email. Treat it as an incident — check whether the API is
             saturated, a downstream database is slow, or an upstream LLM provider
             is degraded.
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "6"
         labels:
           severity: critical
           service: api
@@ -707,8 +761,6 @@ groups:
       - uid: gaia-ssl-cert-expiry
         title: TLS certificate is expiring soon
         condition: C
-        dashboardUid: gaia-api-prometheus
-        panelId: 13
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -732,13 +784,20 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: 'The api.heygaia.io TLS certificate expires in {{ $values.B.Value | humanizeDuration }} (threshold 14 days)'
+          summary: >-
+            {{ if $values.B }}The api.heygaia.io TLS certificate expires in
+            {{ $values.B.Value | humanizeDuration }} (threshold 14 days){{ else }}Unable
+            to read the api.heygaia.io TLS certificate expiry — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
           description: >-
             When this certificate expires every HTTPS client fails at the TLS
             handshake — web, desktop, mobile and any external integration — with
             no graceful degradation. Renewal is normally automatic, so this
             firing means the renewal path itself is broken and needs a look
             before the deadline.
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "13"
         labels:
           severity: critical
           service: api
@@ -747,8 +806,6 @@ groups:
       - uid: gaia-container-oom
         title: A container was killed for using too much memory
         condition: C
-        dashboardUid: gaia-containers
-        panelId: 7
         data:
           - refId: A
             relativeTimeRange: { from: 900, to: 0 }
@@ -772,7 +829,11 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
-          summary: '{{ printf "%.0f" $values.B.Value }} container OOM-kill event(s) in the last 15 minutes'
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} container OOM-kill
+            event(s) in the last 15 minutes{{ else }}Unable to read container OOM-kill
+            events — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
           description: >-
             The kernel killed a container for exceeding its memory limit. Swarm
             silently replaces the task, so without this alert an OOM loop looks
@@ -780,6 +841,8 @@ groups:
             at 3G against roughly 2.4G of resident models, and the ARQ worker and
             voice agent at 2G each. Check "Memory Usage % of Limit" to see which
             one is at its ceiling.
+          __dashboardUid__: gaia-containers
+          __panelId__: "7"
         labels:
           severity: critical
           service: host
@@ -788,8 +851,6 @@ groups:
       - uid: gaia-redis-memory
         title: Redis is close to its memory limit
         condition: C
-        dashboardUid: gaia-databases
-        panelId: 8
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -813,13 +874,19 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: 'Redis is using {{ $values.B.Value | humanizePercentage }} of its 2GB memory limit (threshold 85%)'
+          summary: >-
+            {{ if $values.B }}Redis is using {{ $values.B.Value | humanizePercentage }}
+            of its 2GB memory limit (threshold 85%){{ else }}Unable to read Redis memory
+            usage — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
           description: >-
             Redis holds more than a cache here — it is the ARQ job queue itself,
             the SSE chat stream channels, stream-cancellation flags, response
             caching and rate-limit counters. The eviction policy is allkeys-lru,
             so crossing the limit starts dropping any of those at random. This is
             the warning before that happens.
+          __dashboardUid__: gaia-databases
+          __panelId__: "8"
         labels:
           severity: warning
           service: redis
@@ -828,8 +895,6 @@ groups:
       - uid: gaia-redis-evictions
         title: Redis is dropping keys to free memory
         condition: C
-        dashboardUid: gaia-databases
-        panelId: 12
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -853,13 +918,19 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: 'Redis evicted {{ printf "%.0f" $values.B.Value }} keys in the last 10 minutes because memory is full'
+          summary: >-
+            {{ if $values.B }}Redis evicted {{ printf "%.0f" $values.B.Value }} keys in
+            the last 10 minutes because memory is full{{ else }}Unable to read the Redis
+            eviction count — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
           description: >-
             Data loss is happening now, not merely threatened. Enqueued ARQ jobs
             can vanish so reminders and workflows silently never run, in-flight
             SSE buffers can be evicted mid-response so chat replies truncate, and
             rate-limit counters reset. This is the companion to the Redis memory
             warning — that one predicts, this one confirms.
+          __dashboardUid__: gaia-databases
+          __panelId__: "12"
         labels:
           severity: warning
           service: redis
@@ -868,8 +939,6 @@ groups:
       - uid: gaia-rabbitmq-no-consumers
         title: Bot messages are queued with nothing consuming them
         condition: C
-        dashboardUid: gaia-rabbitmq
-        panelId: 7
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -893,7 +962,11 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: '{{ printf "%.0f" $values.B.Value }} messages are queued and no consumer is attached to drain them'
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} messages are queued
+            and no consumer is attached to drain them{{ else }}Unable to read the
+            RabbitMQ queue and consumer counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
           description: >-
             Every bot consumer has died or lost its connection while the API kept
             publishing, so all four platforms have stopped delivering. Messages
@@ -901,6 +974,8 @@ groups:
             its own once a consumer reconnects — but until then users are getting
             silence. Check whether the bot containers are running before
             restarting anything.
+          __dashboardUid__: gaia-rabbitmq
+          __panelId__: "7"
         labels:
           severity: critical
           service: rabbitmq

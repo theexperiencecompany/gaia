@@ -230,6 +230,7 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 - **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
 - **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
 - **Bots** (TypeScript): `apps/bots/CLAUDE.md`
+- **Observability** (Prometheus scrape config, Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md`
 - **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
 - **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
 - **Chat bubbles & tool cards**: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`
