@@ -20,6 +20,7 @@ set -euo pipefail
 MONGO_VERSION="8.0.4"
 MONGO_DATA="${MONGO_DATA:-/var/lib/gaia-mongo}"
 CHROMA_DATA="${CHROMA_DATA:-/var/lib/gaia-chroma}"
+REDIS_DATA="${REDIS_DATA:-/var/lib/gaia-redis}"
 RUN_DIR="${RUN_DIR:-/var/log/gaia-sandbox}"
 API_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../apps/api" && pwd)"
 
@@ -74,7 +75,14 @@ start_all() {
   }
   wait_for_port 27017 mongod
 
-  port_open 6379 || { log "starting redis"; redis-server --port 6379 --daemonize yes; }
+  # --dir matters: redis snapshots to $PWD/dump.rdb by default, so starting it
+  # from a checkout drops a binary dump into the working tree that a careless
+  # `git add -A` will happily commit.
+  port_open 6379 || {
+    log "starting redis"
+    mkdir -p "$REDIS_DATA"
+    redis-server --port 6379 --daemonize yes --dir "$REDIS_DATA"
+  }
   wait_for_port 6379 redis
 
   # RabbitMQ must NOT run as root: the server refuses a root-owned

@@ -170,3 +170,6 @@ apps/api/scripts/_gaia_system.tar.gz
 
 # evlog map output (tools/evlog_map)
 evlog.map.json
+
+# Redis snapshot — created if a local redis-server is started from the repo root.
+dump.rdb
