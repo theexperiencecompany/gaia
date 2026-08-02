@@ -37,11 +37,16 @@ _LEVEL_ORDER: dict[str, int] = {
     "CRITICAL": 4,
 }
 
-# Loki/Promtail labels every backend log line with service="gaia-backend"
-# (see infra/docker/observability/promtail-config.yaml). The in-event `service`
-# field must match that label so `{service="gaia-backend"} | json` and
-# `... | json | service="gaia-backend"` agree.
-_SERVICE_NAME = "gaia-backend"
+# Promtail labels every line with the service it came from (see
+# infra/docker/observability/promtail-config.yaml). The in-event `service`
+# field MUST match that label, so `{service="X"}` and `| json | service="X"`
+# agree — a query that mixes the two must not silently return nothing.
+#
+# Three Python services share this module, so the name cannot be a constant:
+# GAIA_SERVICE_NAME is set per service (compose/Dockerfile/mise task) and must
+# equal the Promtail label for that service. The API keeps the historical
+# default so an unset var is still correct for the most common process.
+_DEFAULT_SERVICE_NAME = "gaia-backend"
 
 
 @functools.lru_cache(maxsize=1)
@@ -54,11 +59,12 @@ def env_context() -> dict[str, str]:
     as one emitted inside it. Resolved once and cached.
 
     ``commit`` reads GIT_COMMIT_SHA (or COMMIT_SHA), set in the Docker image /
-    CI, and falls back to "local" during development.
+    CI, and falls back to "local" during development. ``service`` reads
+    GAIA_SERVICE_NAME, which each service sets to its own Promtail label.
     """
     return {
         "env": os.getenv("ENV", "production"),
-        "service": _SERVICE_NAME,
+        "service": os.getenv("GAIA_SERVICE_NAME") or _DEFAULT_SERVICE_NAME,
         # `or`-chained so a set-but-empty var (a Docker ARG default baked as
         # ENV GIT_COMMIT_SHA="") still falls back to "local".
         "commit": (os.getenv("GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA") or "local")[:8],
