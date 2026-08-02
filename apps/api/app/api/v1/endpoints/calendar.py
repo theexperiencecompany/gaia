@@ -56,7 +56,7 @@ async def get_calendar_list(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/calendar/events/query", summary="Query Events from Selected Calendars")
@@ -78,20 +78,20 @@ async def query_events(
             try:
                 start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 time_min = start_dt.isoformat()
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
-                )
+                ) from e
 
         if request.end_date:
             try:
                 end_dt = datetime.strptime(request.end_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 end_dt = end_dt + timedelta(days=1)
                 time_max = end_dt.isoformat()
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
-                )
+                ) from e
 
         time_range_days = None
         if time_min and time_max:
@@ -132,7 +132,7 @@ async def query_events(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/calendar/events", summary="Get Calendar Events (Simple Queries)")
@@ -158,20 +158,20 @@ async def get_events(
             try:
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 time_min = start_dt.isoformat()
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
-                )
+                ) from e
 
         if end_date:
             try:
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 end_dt = end_dt + timedelta(days=1)
                 time_max = end_dt.isoformat()
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
-                )
+                ) from e
 
         time_range_days = None
         if time_min and time_max:
@@ -212,7 +212,7 @@ async def get_events(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/calendar/{calendar_id}/events", summary="Get Events by Calendar ID")
@@ -236,20 +236,20 @@ async def get_events_by_calendar(
             try:
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 time_min = start_dt.isoformat()
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
-                )
+                ) from e
 
         if end_date:
             try:
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=UTC)
                 end_dt = end_dt + timedelta(days=1)
                 time_max = end_dt.isoformat()
-            except ValueError:
+            except ValueError as e:
                 raise HTTPException(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
-                )
+                ) from e
 
         time_range_days = None
         if time_min and time_max:
@@ -288,7 +288,7 @@ async def get_events_by_calendar(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/calendar/event", summary="Create a Calendar Event")
@@ -315,7 +315,7 @@ async def create_event(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/calendar/preferences", summary="Get User Calendar Preferences")
@@ -330,7 +330,7 @@ async def get_calendar_preferences(
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/calendar/preferences", summary="Update User Calendar Preferences")
@@ -347,7 +347,7 @@ async def update_calendar_preferences(
             str(user_id), preferences.selected_calendars
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/calendar/event", summary="Delete a Calendar Event")
@@ -368,7 +368,7 @@ async def delete_event(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/calendar/event", summary="Update a Calendar Event")
@@ -389,7 +389,7 @@ async def update_event(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/calendar/events/batch", summary="Create Multiple Calendar Events")
@@ -429,7 +429,7 @@ async def create_events_batch(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/calendar/events/batch", summary="Update Multiple Calendar Events")
@@ -470,7 +470,7 @@ async def update_events_batch(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.delete("/calendar/events/batch", summary="Delete Multiple Calendar Events")
@@ -516,4 +516,4 @@ async def delete_events_batch(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

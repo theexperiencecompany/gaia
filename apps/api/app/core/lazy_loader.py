@@ -378,7 +378,7 @@ class LazyLoader(Generic[T]):
 
     def _log_warning(self, message: str):
         """Log warning message."""
-        log.warning(f"{LogTag.STARTUP} [LazyLoader]", message=message)
+        log.warning(f"{LogTag.STARTUP} [LazyLoader]", reason=message)
 
     def is_available(self) -> bool:
         """Check if the provider is available without initializing it."""

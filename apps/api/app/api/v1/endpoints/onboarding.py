@@ -99,7 +99,7 @@ async def complete_user_onboarding(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+        raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
 
 
 @router.post(
@@ -131,7 +131,7 @@ async def submit_integrations(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to submit integrations")
+        raise HTTPException(status_code=500, detail="Failed to submit integrations") from e
 
 
 class ClarifyQuestionsRequest(BaseModel):
@@ -181,7 +181,7 @@ async def reset_user_onboarding(user: Annotated[dict, Depends(get_current_user)]
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to reset onboarding")
+        raise HTTPException(status_code=500, detail="Failed to reset onboarding") from e
 
 
 @router.get("/status", response_model=dict)
@@ -206,7 +206,7 @@ async def get_onboarding_status(user: Annotated[dict, Depends(get_current_user)]
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to get onboarding status")
+        raise HTTPException(status_code=500, detail="Failed to get onboarding status") from e
 
 
 @router.post("/phase", response_model=dict)
@@ -279,7 +279,7 @@ async def update_onboarding_phase(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to update onboarding phase")
+        raise HTTPException(status_code=500, detail="Failed to update onboarding phase") from e
 
 
 @router.patch("/preferences", response_model=dict)
@@ -314,7 +314,7 @@ async def update_user_preferences(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to update preferences")
+        raise HTTPException(status_code=500, detail="Failed to update preferences") from e
 
 
 @router.get("/personalization")
@@ -487,7 +487,7 @@ async def get_onboarding_personalization(user: Annotated[dict, Depends(get_curre
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
+        raise HTTPException(status_code=500, detail="Failed to fetch personalization data") from e
 
 
 class WritingStyleEditRequest(BaseModel):
@@ -522,7 +522,7 @@ async def save_writing_style(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to save writing style")
+        raise HTTPException(status_code=500, detail="Failed to save writing style") from e
 
 
 @router.post(
@@ -554,7 +554,9 @@ async def regenerate_writing_style_example(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to regenerate writing style example")
+        raise HTTPException(
+            status_code=500, detail="Failed to regenerate writing style example"
+        ) from e
 
 
 class SocialProfileItem(BaseModel):
@@ -590,4 +592,4 @@ async def confirm_social_profiles(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to save social profiles")
+        raise HTTPException(status_code=500, detail="Failed to save social profiles") from e

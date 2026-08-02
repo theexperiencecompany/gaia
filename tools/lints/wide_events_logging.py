@@ -37,7 +37,9 @@ RULE = "wide-events-logging"
 WHY = (
     "stdlib logging / bare loguru bypasses the wide-event wrapper, so those lines never join "
     "the per-request canonical event; reserved keys passed to log.set()/set_ns()/bind() collide "
-    "with the JSON line's core fields and are re-emitted as ctx_<key> instead of where expected; "
+    "with the JSON line's core fields and are re-emitted as ctx_<key> instead of where expected, "
+    "and passing one to an emit call (log.warning(message=...)) is a TypeError that kills the "
+    "process the moment that branch runs; "
     "data interpolated into a message shards one event into thousands of unqueryable strings"
 )
 DOC = "tools/lints/README.md#wide-events-logging"
@@ -46,7 +48,7 @@ _BANNED_MODULES = frozenset({"logging", "loguru"})
 
 _WIDE_EVENTS_MODULE = "shared.py.wide_events"
 _EVENT_SETTER_METHODS = frozenset({"set", "set_ns", "bind"})
-_EMIT_METHODS = frozenset({"debug", "info", "warning", "error", "exception", "critical"})
+_EMIT_METHODS = frozenset({"debug", "info", "warning", "error", "exception", "critical", "audit"})
 # The one interpolation a message may carry: a leading `{LogTag.X}` prefix.
 _LOG_TAG_NAME = "LogTag"
 # The JSON sink's top-level keys (see _CORE_KEYS in libs/shared/py/logging.py).
@@ -115,7 +117,12 @@ def _reserved_key_calls(tree: ast.Module) -> list[tuple[int, str]]:
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
             continue
         func = node.func
-        if func.attr not in _EVENT_SETTER_METHODS:
+        # Emit methods are checked too, and for a harsher reason than setters:
+        # `message` is their first positional parameter, so `log.warning(tag,
+        # message=...)` is not a silent collision but a TypeError that takes the
+        # process down when that branch runs. Two of these shipped and broke
+        # startup while the whole test suite stayed green.
+        if func.attr not in _EVENT_SETTER_METHODS | _EMIT_METHODS:
             continue
         if not (isinstance(func.value, ast.Name) and func.value.id in aliases):
             continue

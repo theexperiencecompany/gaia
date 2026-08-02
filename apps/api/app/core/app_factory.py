@@ -128,9 +128,10 @@ def create_app() -> FastAPI:
 
         Starlette's ExceptionMiddleware converts an HTTPException into a
         response INSIDE call_next, so LoggingMiddleware's except path never
-        sees it: every `raise HTTPException(500, ...)` produced a wide event
-        with `errors` absent, and the Grafana `errors != "[]"` query missed all
-        of them.
+        sees it: every `raise HTTPException(500, ...)` emitted a wide event
+        whose `errors` key was absent entirely. The status said 500 but the
+        event carried no record of what failed, and the exception the handler
+        had caught was nowhere in the telemetry.
 
         The response is delegated verbatim rather than rebuilt because the
         default handler is what preserves `exc.headers` (WWW-Authenticate on

@@ -121,7 +121,9 @@ class BaseSchedulerService(ABC):
                 ScheduledTaskStatus.FAILED,
                 {"occurrence_count": occurrence_count, "updated_at": datetime.now(UTC)},
             )
-            log.warning("One-time task failed", task_id=task_id, message=execution_result.message)
+            log.warning(
+                "One-time task failed", task_id=task_id, failure_reason=execution_result.message
+            )
 
         return execution_result
 

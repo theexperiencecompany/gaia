@@ -82,7 +82,7 @@ async def get_notifications(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/notifications/preferences/channels", response_model=ChannelPreferences)
@@ -112,7 +112,7 @@ async def get_channel_preferences(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.put("/notifications/preferences/channels", response_model=ChannelPreferences)
@@ -154,7 +154,7 @@ async def update_channel_preferences(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/notifications/{notification_id}/actions/{action_id}/execute")
@@ -201,7 +201,7 @@ async def execute_action(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/notifications/{notification_id}/read")
@@ -243,7 +243,7 @@ async def mark_as_read(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/notifications/bulk-actions")
@@ -294,7 +294,7 @@ async def bulk_actions(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/notifications/register-device", response_model=DeviceTokenResponse)
@@ -356,7 +356,7 @@ async def register_device_token(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.post("/notifications/unregister-device", response_model=DeviceTokenResponse)
@@ -394,7 +394,7 @@ async def unregister_device_token(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @router.get("/notifications/{notification_id}")
@@ -436,4 +436,4 @@ async def get_notification(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

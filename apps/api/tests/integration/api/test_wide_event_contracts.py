@@ -8,12 +8,13 @@ telemetry is silently broken in a way no per-function test can see.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 import json
 from typing import Any
 from unittest.mock import patch
 
 import anyio
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -21,12 +22,15 @@ from starlette.testclient import TestClient
 
 from app.api.v1.middleware.logging import LoggingMiddleware
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
+from app.core.app_factory import create_app
 from app.core.middleware import configure_middleware
 from shared.py.logging import MAX_JSON_LINE_BYTES, _json_stdout_sink
 from shared.py.wide_events import (
     _event_state,
     env_context,
+    get_trace_id,
     log,
+    log_context,
     spawn_logged_task,
     wide_task,
 )
@@ -168,6 +172,47 @@ def test_rejections_by_inner_middleware_are_logged(emitted):
     (event,) = emitted
     assert event["status_code"] == 401
     assert event["auth_failure"] == "invalid_session"
+
+
+def test_raised_http_exception_lands_in_errors_with_its_cause(emitted):
+    """`raise HTTPException(500, ...) from e` must reach errors[] with the real cause.
+
+    The shipped bug: Starlette's ExceptionMiddleware turns an HTTPException
+    into a response INSIDE call_next, so the boundary's except path never sees
+    it. Every one of the ~428 `raise HTTPException` sites emitted an event with
+    final_level=ERROR but no `errors` key at all — the real failure (the
+    exception the handler caught) was nowhere in the telemetry.
+    """
+
+    @asynccontextmanager
+    async def _noop_lifespan(app: FastAPI):
+        yield
+
+    with (
+        patch("app.core.app_factory.lifespan", _noop_lifespan),
+        patch(
+            "app.core.app_factory.configure_middleware",
+            lambda app: app.add_middleware(LoggingMiddleware),
+        ),
+    ):
+        app = create_app()
+
+    @app.get("/boom")
+    async def boom():
+        raise HTTPException(status_code=500, detail="Failed to create todo") from RuntimeError(
+            "db down"
+        )
+
+    response = TestClient(app, raise_server_exceptions=False).get("/boom")
+    assert response.status_code == 500
+    (event,) = emitted
+    assert event["final_level"] == "ERROR"
+    (error,) = event["errors"]
+    assert error["status_code"] == 500
+    assert error["detail"] == "Failed to create todo"
+    assert error["path"] == "/boom"
+    assert error["error_type"] == "RuntimeError"
+    assert error["error_message"] == "db down"
 
 
 def test_production_middleware_order_keeps_logging_outermost():
@@ -333,3 +378,80 @@ async def test_interleaved_wide_tasks_stay_isolated():
     assert by_name["job_a"]["todo"] == {"op": "job_a"}
     assert by_name["job_b"]["todo"] == {"op": "job_b"}
     assert by_name["job_a"]["trace_id"] != by_name["job_b"]["trace_id"]
+
+
+class _EventRecorder:
+    """Captures every wide event a boundary flushes through the loguru sink."""
+
+    def __init__(self) -> None:
+        self.events: list[dict[str, Any]] = []
+
+    def bind(self, **kwargs: Any) -> "_EventRecorder":
+        self._ctx = kwargs
+        return self
+
+    def log(self, level: str, message: str) -> None:
+        self.events.append(dict(self._ctx))
+
+    def opt(self, **kwargs: Any) -> "_EventRecorder":
+        return self
+
+    def __getattr__(self, name: str) -> Any:
+        return lambda *a, **k: None
+
+
+async def test_a_nested_boundary_does_not_steal_the_outer_event():
+    """An inner boundary must not consume the event the outer one owes.
+
+    The shipped bug: `_wide_event_boundary` called `log.reset()` without
+    restoring the caller's accumulator, and an `asynccontextmanager` body runs
+    in the caller's context (no task copy). So an inner `log_context` left the
+    ContextVar pointed at its own state — the outer boundary then emitted the
+    INNER's fields a second time and silently lost every field of its own,
+    including anything set after the inner block. This is what makes a
+    per-iteration boundary inside a long-lived listener loop usable at all.
+    """
+    recorder = _EventRecorder()
+
+    with patch("shared.py.wide_events._loguru", recorder):
+        async with log_context("outer", outer_before=True):
+            outer_trace = log.get_trace_id()
+            async with log_context("inner", inner_only=True):
+                inner_trace = log.get_trace_id()
+            # The outer accumulator and trace_id must be back.
+            assert log.get_trace_id() == outer_trace
+            log.set(outer_after=True)
+
+    inner, outer = recorder.events
+    assert inner["task"] == "inner" and outer["task"] == "outer"
+    # Each event keeps only its own fields — no theft, no duplication.
+    assert inner["inner_only"] is True
+    assert "outer_before" not in inner
+    assert outer["outer_before"] is True and outer["outer_after"] is True
+    assert "inner_only" not in outer
+    assert outer["trace_id"] == outer_trace != inner_trace
+
+
+async def test_adopted_trace_id_reaches_spawned_child_work():
+    """`log.set(trace_id=...)` must move the ContextVar, not just the field.
+
+    The shipped bug: adopting an upstream `x-trace-id` wrote the FIELD only,
+    while `get_trace_id()` (and therefore every `spawn_logged_task` child) kept
+    returning the boundary's generated id — the parent event and its background
+    work landed under two different traces and could not be joined.
+    """
+    upstream = "cafebabedeadbeef"
+    recorder = _EventRecorder()
+
+    async def child() -> None:
+        log.set(child_ran=True)
+
+    with patch("shared.py.wide_events._loguru", recorder):
+        async with wide_task("parent"):
+            log.set(trace_id=upstream)  # what the middleware does per request
+            assert get_trace_id() == upstream
+            await spawn_logged_task("child_work", child())
+
+    by_task = {e["task"]: e for e in recorder.events}
+    assert by_task["child_work"]["child_ran"] is True
+    assert by_task["parent"]["trace_id"] == by_task["child_work"]["trace_id"] == upstream
