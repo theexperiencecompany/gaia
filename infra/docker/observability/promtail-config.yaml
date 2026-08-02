@@ -67,7 +67,7 @@ scrape_configs:
         target_label: "__tmp_service"
       # Only keep application containers — drop infra (postgres, redis, loki, etc.)
       - source_labels: ["__tmp_service"]
-        regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|voice-agent-worker"
+        regex: "gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|whatsapp-bot|voice-agent-worker|embedding-sidecar"
         action: keep
       # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
       - source_labels: ["__meta_docker_container_name"]
