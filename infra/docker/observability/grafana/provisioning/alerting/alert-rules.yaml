@@ -643,10 +643,51 @@ groups:
           service: arq_worker
           incident: availability
 
-      # 12. A container in the stack is restarting repeatedly (crash loop). cadvisor
-      # exports container_start_time_seconds; `changes()` over 15m counts how many
-      # times a container's start time moved = its restart count. >3 in 15m flags a
-      # flapping service before it settles (or while it crash-loops like arq did).
+      # 12. A container in the stack is restarting repeatedly (crash loop).
+      #
+      # This rule previously read `changes(container_start_time_seconds{...}[15m])`
+      # and could never fire. Swarm does not restart a container in place — it
+      # creates a replacement task with a new id, so cadvisor's `name` label
+      # changes and every incarnation is a *separate* time series. Within one
+      # series `container_start_time_seconds` is a constant, so `changes()` over it
+      # is always 0. A crash loop produced N short-lived series each reporting 0,
+      # never one series reporting N: verified against Prometheus 3.1.0 with
+      # synthetic Swarm-named series, where a 5-restart loop returned 0 for all
+      # five. The rule written to catch the arq_worker crash loop would have
+      # stayed silent through it.
+      #
+      # The fix counts distinct container incarnations per service instead of
+      # value changes per container: `last_over_time` materialises every series
+      # that existed anywhere in the window (not just the one alive right now),
+      # `label_replace` derives the stable Swarm service name from `name`
+      # (`<stack>_<service>.<slot>.<taskid>`), and `count by` collapses the
+      # incarnations onto it.
+      #
+      # `name` is used deliberately rather than
+      # `container_label_com_docker_swarm_service_name`. cadvisor v0.54.1 does
+      # default `--store_container_labels` to true, so that label is in fact
+      # exported today — but it disappears the moment anyone sets that flag to
+      # false, which is the standard fix for the container_env_* cardinality and
+      # secret-exposure problem the same default causes. The selector would then
+      # match nothing and, with noDataState OK, this rule would go silently blind
+      # again. `name` is cadvisor's own container alias, cannot be switched off,
+      # and is what every containers dashboard panel already keys on.
+      #
+      # The derived label must NOT be called `service`: this rule already carries
+      # `service: availability` in its labels block, Grafana lets rule labels win
+      # that collision, and the two crash-looping services would then produce
+      # label-identical instances and collapse into a single alert. Verified on
+      # Grafana 11.4.0 — `service` yields 1 alert instance for 2 failing services,
+      # `swarm_service` yields 2. The annotation's `$labels` comes from the query
+      # result, so `$labels.swarm_service` resolves either way.
+      #
+      # Threshold: measured baselines are 1 for a steady replicas:1 service, 2 for
+      # a normal `order: start-first` deploy (old and new task overlap in the
+      # window) and 3 for a deploy that Swarm then rolls back. >3 clears all
+      # three and still catches the 5-incarnation crash loop. Every service in
+      # docker-compose.prod.yml is replicas:1, so no service has a baseline above
+      # 1 — a multi-replica service would need this threshold revisited, because
+      # its baseline is its replica count.
       - uid: gaia-container-restarts
         title: A container is restarting repeatedly
         condition: C
@@ -656,7 +697,13 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: changes(container_start_time_seconds{name=~"gaia-prod_.*"}[15m])
+              expr: |
+                count by (swarm_service) (
+                  label_replace(
+                    last_over_time(container_start_time_seconds{name=~"gaia-prod_.*"}[15m]),
+                    "swarm_service", "$1", "name", "(gaia-prod_[^.]+).*"
+                  )
+                )
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -678,17 +725,18 @@ groups:
         for: 0m
         annotations:
           summary: >-
-            {{ if $values.B }}{{ $labels.name }} restarted
-            {{ printf "%.0f" $values.B.Value }} times in the last 15 minutes (threshold
-            3){{ else }}Unable to read container restart counts — this rule could not be
-            evaluated, which almost always means Prometheus is down or
-            unreachable.{{ end }}
+            {{ if $values.B }}{{ $labels.swarm_service }} has run as
+            {{ printf "%.0f" $values.B.Value }} different containers in the last 15
+            minutes, so Swarm is replacing it repeatedly (threshold 3){{ else }}Unable to
+            read container restart counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
           description: >-
             A crash-looping container is being replaced by Swarm faster than it
             can serve traffic, so the service flaps rather than staying cleanly
-            down. Check that container's logs for the startup exception — a
-            failing dependency, a bad migration or a missing secret at boot are
-            the usual causes.
+            down. The count is distinct container incarnations, not restarts, so
+            a healthy service reads 1 and a service mid-deploy reads 2. Check
+            that service's logs for the startup exception — a failing dependency,
+            a bad migration or a missing secret at boot are the usual causes.
           runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-restarts
           __dashboardUid__: gaia-containers
           __panelId__: "1"
