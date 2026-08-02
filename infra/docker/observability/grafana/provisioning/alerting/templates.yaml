@@ -1,0 +1,37 @@
+apiVersion: 1
+
+# Notification templates for GAIA alerting.
+#
+# These exist because Alertmanager's built-in `slack.default.text` is defined as
+# the EMPTY STRING — it is a stub upstream expects operators to override, and
+# Grafana's own default template set never redefines it. Pointing a Slack
+# receiver at it produces a message with a title and no body at all: no summary,
+# no description, no links. The contact points reference the templates below
+# instead.
+#
+# Note that notification templates run through Alertmanager's engine, whose
+# function map is much smaller than the one available in rule annotations —
+# there is no humanize*, no query. Format values in the rule's annotations, not
+# here. See alert-rules.yaml for those conventions.
+
+templates:
+  - orgId: 1
+    name: gaia.slack.title
+    template: |
+      {{ define "gaia.slack.title" }}[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ .CommonLabels.alertname }}{{ end }}
+
+  - orgId: 1
+    name: gaia.slack.message
+    template: |
+      {{ define "gaia.slack.message" }}
+      {{- range .Alerts.Firing }}
+      *{{ .Annotations.summary }}*
+
+      {{ .Annotations.description }}
+
+      {{ .Labels.severity | toUpper }} | {{ .Labels.service }} | {{ if .PanelURL }}<{{ .PanelURL }}|View panel>{{ else if .DashboardURL }}<{{ .DashboardURL }}|View dashboard>{{ end }} | <{{ .SilenceURL }}|Silence>
+      {{ end }}
+      {{- range .Alerts.Resolved }}
+      *Resolved* — {{ .Annotations.summary }}
+      {{ end }}
+      {{- end }}

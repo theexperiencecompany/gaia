@@ -6,6 +6,36 @@ apiVersion: 1
 # All rules use the Prometheus datasource (uid: prometheus) with a reduce step
 # that compares the instant query result against the threshold. Conditions are
 # expressed with a math expression on the reduced value.
+#
+# ---------------------------------------------------------------------------
+# Authoring conventions — read before editing an annotation
+# ---------------------------------------------------------------------------
+# `title`       Plain-language name of what is wrong, not the metric. This is
+#               the Slack message title and the on-call's first read.
+# `summary`     One line: the measured value and the threshold it crossed.
+# `description` What breaks for users, and the first thing to check. Both
+#               annotations render in Slack and email, summary first.
+#
+# Templating rules (both were violated here before and fail *silently*):
+#
+#   1. Always use `$values.<ref>.Value`, never bare `$values.<ref>`.
+#      `$values.B` is a struct; piping it into humanize*/printf either errors
+#      or prints garbage. When an annotation template errors, Grafana keeps the
+#      raw `{{ ... }}` text as the annotation value — the broken template is
+#      what lands in Slack, with no error surfaced anywhere.
+#   2. Format every number. `{{ $values.B.Value }}` prints full float64
+#      precision (`1.3333333333333333`). Use `printf "%.2f"` for plain numbers,
+#      `humanizePercentage` for 0..1 ratios (it multiplies by 100 — do not use
+#      it on a value the PromQL already scaled by 100), `humanize1024` for
+#      bytes, `humanizeDuration` for seconds.
+#
+# `dashboardUid` + `panelId` are top-level rule fields, NOT annotations.
+# Grafana turns them into the Dashboard/Panel links in the notification. Both
+# are required — `panelId` alone is inert.
+#
+# Only `sum(...)`-free expressions carry per-series labels. Rules that
+# aggregate with `sum()` collapse to a single unlabeled series, so
+# `$labels.instance` is empty there and must not be referenced.
 
 groups:
   - orgId: 1
@@ -15,8 +45,10 @@ groups:
     rules:
       # 1. API 5xx rate >1% for 5m
       - uid: gaia-api-5xx
-        title: API 5xx error rate high
+        title: API is returning server errors
         condition: C
+        dashboardUid: gaia-api-prometheus
+        panelId: 2
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -49,15 +81,23 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: API 5xx error rate is {{ $values.B }}% over the last 5 minutes
+          summary: '{{ printf "%.2f" $values.B.Value }}% of API requests are failing with 5xx errors over the last 5 minutes (threshold 1%)'
+          description: >-
+            Every product surface goes through this API — web and desktop chat,
+            mobile, all four bots, and the voice agent. Users are seeing failed
+            sends, blank conversations and broken integrations. Check the API
+            Logs dashboard to find which handler is erroring, then the
+            application logs for the exception behind it.
         labels:
           severity: critical
           service: api
 
       # 2. API p95 latency >1s for 10m
       - uid: gaia-api-p95-latency
-        title: API p95 latency high
+        title: API responses are slow
         condition: C
+        dashboardUid: gaia-api-prometheus
+        panelId: 6
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -85,15 +125,22 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: API p95 latency is {{ $values.B }}s
+          summary: 'API p95 response time is {{ printf "%.2f" $values.B.Value }}s (threshold 1s)'
+          description: >-
+            One request in twenty is taking over a second, so chat feels stalled
+            and the first SSE token arrives late. Use the "Slowest Endpoints
+            (p95)" and "P95 Latency by Endpoint" panels to find which handler is
+            responsible before looking at database or LLM latency.
         labels:
           severity: warning
           service: api
 
       # 3. RabbitMQ ready messages backlog >1000 for 5m
       - uid: gaia-rabbitmq-backlog
-        title: RabbitMQ queue backlog
+        title: Bot replies are piling up undelivered
         condition: C
+        dashboardUid: gaia-rabbitmq
+        panelId: 4
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -121,15 +168,24 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: "{{ $values.B }} messages ready in RabbitMQ queues"
+          summary: '{{ printf "%.0f" $values.B.Value }} messages are queued in RabbitMQ waiting to be delivered (threshold 1000)'
+          description: >-
+            RabbitMQ carries outbound bot delivery on the durable
+            outbound.discord/slack/telegram/whatsapp queues. Assistant replies
+            have been generated but are not reaching users on those platforms.
+            This total is aggregated across queues — open the "Queue Depth by
+            Queue" panel to see which platform is stuck, then check whether that
+            bot's consumer is still connected.
         labels:
           severity: warning
           service: rabbitmq
 
       # 4. ARQ failed tasks >5 in 15m
       - uid: gaia-arq-failures
-        title: ARQ worker failed tasks
+        title: Background jobs are failing
         condition: C
+        dashboardUid: gaia-arq-worker
+        panelId: 2
         data:
           - refId: A
             relativeTimeRange: { from: 900, to: 0 }
@@ -157,15 +213,23 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
-          summary: "{{ $values.B }} ARQ tasks failed in the last 15 minutes"
+          summary: '{{ printf "%.0f" $values.B.Value }} background tasks raised errors in the last 15 minutes (threshold 5)'
+          description: >-
+            These are the jobs that make GAIA proactive — reminder delivery,
+            workflow generation and execution, tracked-todo runs, Gmail-to-memory
+            ingestion and the housekeeping crons. Failures here are invisible to
+            users until something they scheduled never happens. The
+            "Task Rate by Name" panel breaks failures down by task_name.
         labels:
           severity: warning
           service: arq_worker
 
       # 5. Postgres connections >80% of max
       - uid: gaia-postgres-connections
-        title: Postgres connection pool saturation
+        title: Postgres is running out of connections
         condition: C
+        dashboardUid: gaia-databases
+        panelId: 1
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -193,15 +257,23 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: Postgres is using {{ $values.B | humanizePercentage }} of max connections
+          summary: 'Postgres is using {{ $values.B.Value | humanizePercentage }} of its connection limit (threshold 80%)'
+          description: >-
+            The langgraph database is the LangGraph checkpointer — it holds
+            conversation thread state. Once connections are exhausted new chat
+            turns cannot check one out and fall back to in-memory state, which
+            loses thread continuity. Check "Connections by State" for idle or
+            idle-in-transaction connections that are not being released.
         labels:
           severity: warning
           service: postgres
 
       # 6. ChromaDB probe failing for 2m
       - uid: gaia-chromadb-down
-        title: ChromaDB probe failing
+        title: ChromaDB is not responding
         condition: C
+        dashboardUid: gaia-databases
+        panelId: 19
         data:
           - refId: A
             relativeTimeRange: { from: 120, to: 0 }
@@ -229,15 +301,24 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
-          summary: ChromaDB HTTP probe is failing
+          summary: ChromaDB has been failing its heartbeat probe for 2 minutes
+          description: >-
+            ChromaDB is the vector store behind executor-agent tool retrieval,
+            workflow trigger matching, and search over notes, files and
+            knowledge. While it is down the agent cannot retrieve its tool set at
+            inference time, so complex requests silently degrade to plain
+            answers with no tools. Chroma exposes no metrics of its own, so this
+            probe against /api/v2/heartbeat is the only signal.
         labels:
           severity: critical
           service: chromadb
 
       # 7. Host disk root >85%
       - uid: gaia-host-disk
-        title: Host disk usage high
+        title: Host disk is nearly full
         condition: C
+        dashboardUid: gaia-host
+        panelId: 3
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -265,15 +346,24 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: Host root disk is {{ $values.B }}% full
+          summary: 'Host root filesystem is {{ printf "%.1f" $values.B.Value }}% full (threshold 85%)'
+          description: >-
+            Every stateful volume shares this one disk — Postgres data, Redis,
+            RabbitMQ, Chroma, 30 days of Prometheus history, Loki logs and the
+            cached embedding and voice models. Filling it takes down Postgres
+            writes, RabbitMQ persistence and log ingestion at the same time.
+            Prometheus retention and Loki are usually the largest reclaimable
+            consumers.
         labels:
           severity: warning
           service: host
 
       # 8. Host memory >90% for 10m
       - uid: gaia-host-memory
-        title: Host memory usage high
+        title: Host is running out of memory
         condition: C
+        dashboardUid: gaia-host
+        panelId: 2
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -301,15 +391,23 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: Host memory is {{ $values.B }}% used
+          summary: 'Host memory is {{ printf "%.1f" $values.B.Value }}% used (threshold 90%)'
+          description: >-
+            Sustained memory pressure on the single production node is what
+            precedes kernel OOM kills and the Swarm restarts that follow them.
+            The largest limits on this box are the API at 4G, the embedding
+            sidecar at 3G, and the ARQ worker and voice agent at 2G each — check
+            "Memory Usage per Container" to see which one is growing.
         labels:
           severity: warning
           service: host
 
       # 9. External API uptime (blackbox probe) failing for 2m
       - uid: gaia-api-external-down
-        title: External API uptime probe failing
+        title: Public API is unreachable
         condition: C
+        dashboardUid: gaia-api-prometheus
+        panelId: 10
         data:
           - refId: A
             relativeTimeRange: { from: 120, to: 0 }
@@ -337,7 +435,15 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
-          summary: api.heygaia.io /health probe is failing
+          summary: https://api.heygaia.io/health has not returned 200 for 2 minutes
+          description: >-
+            This is the public entry point, so this is a full outage for web,
+            desktop, mobile, bots and voice. It fires for three different causes:
+            the API container being gone, TLS or the host nginx failing in front
+            of a healthy container, or the app returning 503 because event-loop
+            lag exceeded 2000ms. Compare against the "Internal Uptime" panel —
+            internal healthy plus external down means the edge is at fault, not
+            the app.
         labels:
           severity: critical
           service: api
@@ -355,8 +461,9 @@ groups:
       # instance per failing job). voice_agent is intentionally excluded — it is
       # scaled to 0 by default, so its target is legitimately down.
       - uid: gaia-target-down
-        title: Service target down
+        title: A monitored service stopped responding
         condition: C
+        dashboardUid: gaia-overview
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -384,7 +491,15 @@ groups:
         execErrState: Alerting
         for: 2m
         annotations:
-          summary: "Target {{ $labels.job }} ({{ $labels.instance }}) is DOWN — container or metrics endpoint unreachable"
+          summary: 'Prometheus can no longer scrape {{ $labels.job }} at {{ $labels.instance }}'
+          description: >-
+            The container is gone or its metrics endpoint is unreachable. What
+            this means depends on the job — gaia-api means the API container is
+            down or /metrics is rejecting the bearer token; arq_worker means
+            background jobs have stopped; rabbitmq is the broker itself. Note
+            that postgres and redis scrape their exporter sidecars, not the
+            databases, so those two mean the exporter died and say nothing about
+            whether the database is healthy.
         labels:
           severity: critical
           service: availability
@@ -394,8 +509,10 @@ groups:
       # are not processing" signal. Kept separate from rule 10 so it carries a
       # worker-specific summary even if the regex above is ever narrowed.
       - uid: gaia-arq-worker-down
-        title: ARQ worker down
+        title: Background worker is down
         condition: C
+        dashboardUid: gaia-arq-worker
+        panelId: 1
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -423,7 +540,15 @@ groups:
         execErrState: Alerting
         for: 2m
         annotations:
-          summary: ARQ worker is not reporting metrics — background tasks (reminders, workflows, memory) are not processing
+          summary: No ARQ worker replica has reported metrics for 2 minutes
+          description: >-
+            Nothing scheduled is running. Reminders will not fire, workflows will
+            not execute, tracked todos will not advance, Gmail-to-memory
+            ingestion has stopped, and the housekeeping crons are no longer
+            reclaiming idle sandboxes, stale sessions or checkpoint bloat. Users
+            see silence rather than an error, which is why this is critical. The
+            worker also disappears here if its poll loop wedges, not only if the
+            container dies.
         labels:
           severity: critical
           service: arq_worker
@@ -433,8 +558,10 @@ groups:
       # times a container's start time moved = its restart count. >3 in 15m flags a
       # flapping service before it settles (or while it crash-loops like arq did).
       - uid: gaia-container-restarts
-        title: Container restart loop
+        title: A container is restarting repeatedly
         condition: C
+        dashboardUid: gaia-containers
+        panelId: 1
         data:
           - refId: A
             relativeTimeRange: { from: 900, to: 0 }
@@ -462,7 +589,13 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
-          summary: "Container {{ $labels.name }} appears to be restarting repeatedly"
+          summary: '{{ $labels.name }} restarted {{ printf "%.0f" $values.B.Value }} times in the last 15 minutes (threshold 3)'
+          description: >-
+            A crash-looping container is being replaced by Swarm faster than it
+            can serve traffic, so the service flaps rather than staying cleanly
+            down. Check that container's logs for the startup exception — a
+            failing dependency, a bad migration or a missing secret at boot are
+            the usual causes.
         labels:
           severity: warning
           service: availability
@@ -473,8 +606,9 @@ groups:
       # HTTP health endpoint is unreachable. Multi-dimensional: one instance per
       # failing target, with the URL in $labels.instance.
       - uid: gaia-internal-service-down
-        title: Bot or sidecar down
+        title: A bot or the embedding sidecar is down
         condition: C
+        dashboardUid: gaia-containers
         data:
           - refId: A
             relativeTimeRange: { from: 120, to: 0 }
@@ -502,7 +636,15 @@ groups:
         execErrState: Alerting
         for: 2m
         annotations:
-          summary: "{{ $labels.instance }} is DOWN — container or /health endpoint unreachable"
+          summary: '{{ $labels.instance }} has been failing its health check for 2 minutes'
+          description: >-
+            These five targets have no metrics of their own and are health-probed
+            instead. If this is embedding-sidecar:8200, both the API and the ARQ
+            worker lose embedding and reranking, so memory storage and semantic
+            memory search break product-wide — there is no in-process fallback,
+            the worker cannot fit the models in its memory limit. If it is one of
+            the discord, slack, telegram or whatsapp bots, that platform's users
+            get no replies even though the API itself is healthy.
         labels:
           severity: critical
           service: availability
@@ -511,8 +653,10 @@ groups:
       # (gaia-api-p95-latency, >1s) goes to Slack only; this critical tier also
       # pages email so a real latency incident isn't missed.
       - uid: gaia-api-p95-latency-critical
-        title: API p95 latency critical
+        title: API responses are critically slow
         condition: C
+        dashboardUid: gaia-api-prometheus
+        panelId: 6
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -540,7 +684,13 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: API p95 latency is {{ $values.B }}s (critical threshold 3s)
+          summary: 'API p95 response time is {{ printf "%.2f" $values.B.Value }}s (critical threshold 3s)'
+          description: >-
+            Same signal as the warning-tier latency rule, at the point where the
+            product is effectively unusable rather than merely slow. This tier
+            also pages email. Treat it as an incident — check whether the API is
+            saturated, a downstream database is slow, or an upstream LLM provider
+            is degraded.
         labels:
           severity: critical
           service: api
@@ -555,8 +705,10 @@ groups:
     rules:
       # 15. TLS cert for api.heygaia.io expires in < 14 days
       - uid: gaia-ssl-cert-expiry
-        title: TLS certificate expiring soon
+        title: TLS certificate is expiring soon
         condition: C
+        dashboardUid: gaia-api-prometheus
+        panelId: 13
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -580,15 +732,23 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: "api.heygaia.io TLS cert expires in < 14 days ({{ $values.B }}s left)"
+          summary: 'The api.heygaia.io TLS certificate expires in {{ $values.B.Value | humanizeDuration }} (threshold 14 days)'
+          description: >-
+            When this certificate expires every HTTPS client fails at the TLS
+            handshake — web, desktop, mobile and any external integration — with
+            no graceful degradation. Renewal is normally automatic, so this
+            firing means the renewal path itself is broken and needs a look
+            before the deadline.
         labels:
           severity: critical
           service: api
 
       # 16. A container was OOM-killed in the last 15m
       - uid: gaia-container-oom
-        title: Container OOM killed
+        title: A container was killed for using too much memory
         condition: C
+        dashboardUid: gaia-containers
+        panelId: 7
         data:
           - refId: A
             relativeTimeRange: { from: 900, to: 0 }
@@ -612,15 +772,24 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
-          summary: "{{ $values.B }} container OOM-kill event(s) in the last 15m"
+          summary: '{{ printf "%.0f" $values.B.Value }} container OOM-kill event(s) in the last 15 minutes'
+          description: >-
+            The kernel killed a container for exceeding its memory limit. Swarm
+            silently replaces the task, so without this alert an OOM loop looks
+            like nothing at all. The tightest limits are the embedding sidecar
+            at 3G against roughly 2.4G of resident models, and the ARQ worker and
+            voice agent at 2G each. Check "Memory Usage % of Limit" to see which
+            one is at its ceiling.
         labels:
           severity: critical
           service: host
 
       # 17. Redis memory > 85% of maxmemory (eviction risk for SSE/cache/rate-limit)
       - uid: gaia-redis-memory
-        title: Redis memory pressure
+        title: Redis is close to its memory limit
         condition: C
+        dashboardUid: gaia-databases
+        panelId: 8
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -644,15 +813,23 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: Redis is using {{ $values.B | humanizePercentage }} of maxmemory
+          summary: 'Redis is using {{ $values.B.Value | humanizePercentage }} of its 2GB memory limit (threshold 85%)'
+          description: >-
+            Redis holds more than a cache here — it is the ARQ job queue itself,
+            the SSE chat stream channels, stream-cancellation flags, response
+            caching and rate-limit counters. The eviction policy is allkeys-lru,
+            so crossing the limit starts dropping any of those at random. This is
+            the warning before that happens.
         labels:
           severity: warning
           service: redis
 
       # 18. Redis evicting keys (memory full — data being dropped)
       - uid: gaia-redis-evictions
-        title: Redis evicting keys
+        title: Redis is dropping keys to free memory
         condition: C
+        dashboardUid: gaia-databases
+        panelId: 12
         data:
           - refId: A
             relativeTimeRange: { from: 600, to: 0 }
@@ -676,15 +853,23 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: "Redis evicted {{ $values.B }} keys in 10m — memory full"
+          summary: 'Redis evicted {{ printf "%.0f" $values.B.Value }} keys in the last 10 minutes because memory is full'
+          description: >-
+            Data loss is happening now, not merely threatened. Enqueued ARQ jobs
+            can vanish so reminders and workflows silently never run, in-flight
+            SSE buffers can be evicted mid-response so chat replies truncate, and
+            rate-limit counters reset. This is the companion to the Redis memory
+            warning — that one predicts, this one confirms.
         labels:
           severity: warning
           service: redis
 
       # 19. RabbitMQ backlog with NO consumers (a consumer died; work stuck)
       - uid: gaia-rabbitmq-no-consumers
-        title: RabbitMQ backlog with no consumers
+        title: Bot messages are queued with nothing consuming them
         condition: C
+        dashboardUid: gaia-rabbitmq
+        panelId: 7
         data:
           - refId: A
             relativeTimeRange: { from: 300, to: 0 }
@@ -708,7 +893,14 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: "RabbitMQ has {{ $values.B }} ready messages but zero consumers"
+          summary: '{{ printf "%.0f" $values.B.Value }} messages are queued and no consumer is attached to drain them'
+          description: >-
+            Every bot consumer has died or lost its connection while the API kept
+            publishing, so all four platforms have stopped delivering. Messages
+            are persistent with a dead-letter exchange, so the backlog drains on
+            its own once a consumer reconnects — but until then users are getting
+            silence. Check whether the bot containers are running before
+            restarting anything.
         labels:
           severity: critical
           service: rabbitmq
