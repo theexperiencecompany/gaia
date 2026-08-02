@@ -36,6 +36,28 @@ export interface BotLogger {
   error: (event: string, fields?: BotLogFields, error?: unknown) => void;
 }
 
+/**
+ * Loki drops any line over its `max_line_size` (256 KB by default), silently —
+ * the log is simply never queryable. Cap below it, matching
+ * MAX_JSON_LINE_BYTES / _truncated_entry in `libs/shared/py/logging.py` so an
+ * oversized line degrades to a minimal, still-ingestible record on every GAIA
+ * surface instead of vanishing on one of them.
+ */
+const MAX_JSON_LINE_BYTES = 200_000;
+const TRUNCATED_MESSAGE_MAX_CHARS = 10_000;
+
+/** Envelope keys `buildRecord` always sets — kept when a line has to be shrunk. */
+const ENVELOPE_KEYS = [
+  "time",
+  "level",
+  "env",
+  "service",
+  "logger",
+  "platform",
+  "component",
+  "message",
+] as const;
+
 const RESERVED_LOG_KEYS = new Set([
   "time",
   "level",
@@ -209,6 +231,28 @@ function buildRecord(
 }
 
 /**
+ * Replaces an over-cap line with a minimal record carrying the envelope, a
+ * truncated message and `trace_id`, plus `line_truncated`/`original_size_bytes`
+ * so the loss is visible in Loki rather than silent. Mirrors `_truncated_entry`
+ * in `libs/shared/py/logging.py`.
+ */
+function capLineSize(record: Record<string, JsonValue>, line: string): string {
+  const originalSizeBytes = Buffer.byteLength(line, "utf8");
+  if (originalSizeBytes <= MAX_JSON_LINE_BYTES) return line;
+
+  const truncated: Record<string, JsonValue> = {};
+  for (const key of ENVELOPE_KEYS) truncated[key] = record[key];
+  truncated.message = String(record.message).slice(
+    0,
+    TRUNCATED_MESSAGE_MAX_CHARS,
+  );
+  if (record.trace_id !== undefined) truncated.trace_id = record.trace_id;
+  truncated.line_truncated = true;
+  truncated.original_size_bytes = originalSizeBytes;
+  return JSON.stringify(truncated);
+}
+
+/**
  * Serializes and writes one canonical JSON log line. The single low-level
  * emitter shared by {@link createBotLogger} and the wide-event runtime
  * (`wide-events.ts`), so every line carries the same envelope
@@ -236,7 +280,7 @@ export function emitBotLogLine(
     fields,
     error,
   );
-  const line = JSON.stringify(record);
+  const line = capLineSize(record, JSON.stringify(record));
   write(level, line);
   appendStructuredLogLine(time, line);
 }

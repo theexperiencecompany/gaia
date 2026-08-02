@@ -79,7 +79,13 @@ export class OutboundConsumer {
     try {
       this.conn = await connect(this.url);
       this.conn.on("close", () => this.scheduleReconnect());
-      this.conn.on("error", () => undefined); // 'close' drives reconnect
+      // 'close' still drives the reconnect — this handler exists to keep the
+      // reason diagnosable (and to stop an unhandled 'error' killing the
+      // process). Without it the only trace of a broker restart, revoked
+      // credentials or heartbeat timeout is a bare `outbound_consumer_reconnecting`.
+      this.conn.on("error", (err) =>
+        this.logger.error("outbound_consumer_connection_error", undefined, err),
+      );
       this.channel = await this.conn.createChannel();
 
       const queue = OUTBOUND_QUEUES[this.platform];

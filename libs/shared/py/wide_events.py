@@ -644,38 +644,38 @@ class WideEventLogger:
     # the log call — masking the real error and skipping the code after it.
     # bind() delivers the same fields to record["extra"] without formatting.
 
-    def debug(self, message: str, **kwargs: Any) -> None:
+    def debug(self, message: str, /, **kwargs: Any) -> None:
         """Emit a debug log line; not recorded in the wide event."""
         _loguru.opt(depth=1).bind(**kwargs).debug(message)
 
-    def info(self, message: str, **kwargs: Any) -> None:
+    def info(self, message: str, /, **kwargs: Any) -> None:
         """Emit an info log line; not recorded in the wide event (info is noise there)."""
         # Emit real-time Loguru line for visibility.
         # Does NOT add to wide event — info messages are noise there.
         _loguru.opt(depth=1).bind(**kwargs).info(message)
 
-    def warning(self, message: str, **kwargs: Any) -> None:
+    def warning(self, message: str, /, **kwargs: Any) -> None:
         """Log a warning, append it to the event's ``warnings`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).warning(message)
         self._append("warnings", message, **kwargs)
         self._bump("WARNING")
 
-    def error(self, message: str, **kwargs: Any) -> None:
+    def error(self, message: str, /, **kwargs: Any) -> None:
         """Log an error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 
-    def critical(self, message: str, **kwargs: Any) -> None:
+    def critical(self, message: str, /, **kwargs: Any) -> None:
         """Log a critical error, append it to the event's ``errors`` and raise its max level."""
         exc_info = kwargs.pop("exc_info", False)
         _loguru.opt(depth=1, exception=exc_info).bind(**kwargs).critical(message)
         self._append("errors", message, **kwargs)
         self._bump("CRITICAL")
 
-    def audit(self, message: str, **kwargs: Any) -> None:
+    def audit(self, message: str, /, **kwargs: Any) -> None:
         """Record an audit-trail entry for a sensitive operation (auth, money, PII).
 
         Emits a real-time AUDIT-level line (level registered in
@@ -700,7 +700,7 @@ class WideEventLogger:
         self.set(**kwargs)
         return self
 
-    def exception(self, message: str, **kwargs: Any) -> None:
+    def exception(self, message: str, /, **kwargs: Any) -> None:
         """Log exception with traceback — same as .error() but includes stack trace."""
         _loguru.opt(depth=1, exception=True).error(message, **kwargs)
         self._append("errors", message, **kwargs)
@@ -728,10 +728,15 @@ class WideEventLogger:
 
     # --- Private helpers ---
 
-    def _append(self, category: str, message: str, **kwargs: Any) -> None:
-        # NB: the first parameter is `category` (not `key`) on purpose — callers
-        # routinely pass a `key=` field (e.g. redis ops log the cache key), and a
-        # parameter named `key` would collide with it ("multiple values for 'key'").
+    def _append(self, category: str, message: str, /, **kwargs: Any) -> None:
+        # Both parameters are positional-only, and the first is `category` (not
+        # `key`), for the same reason: callers pass arbitrary field names as
+        # kwargs, and any of them colliding with a parameter name raises
+        # "multiple values for X" — a crash, not a mislabelled field. `key=` is
+        # routine (redis ops log the cache key) and `message=` shipped twice and
+        # took startup down. The `/` makes the whole class impossible: a
+        # colliding kwarg lands in **kwargs, the sink renames it ctx_<key>, and
+        # tools/lints/wide_events_logging.py flags it.
         fields = self._state().fields
         entry: dict[str, Any] = {"msg": message, **kwargs}
         fields.setdefault(category, []).append(entry)
