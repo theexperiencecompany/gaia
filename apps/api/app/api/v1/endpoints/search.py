@@ -64,7 +64,7 @@ async def search_messages_endpoint(query: str, user: dict = Depends(get_current_
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Search failed",
-        )
+        ) from e
 
 
 def extract_emails(text: str) -> list:

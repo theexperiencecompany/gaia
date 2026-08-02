@@ -77,7 +77,7 @@ async def proxy_mcp_tool_call(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Tool call failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -124,7 +124,7 @@ async def proxy_mcp_resources_list(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/list failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +180,7 @@ async def proxy_mcp_resource_templates_list(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/templates/list failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ async def proxy_mcp_resource_read(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/read failed: {e!s}",
-        )
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -278,4 +278,4 @@ async def proxy_mcp_prompts_list(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"prompts/list failed: {e!s}",
-        )
+        ) from e

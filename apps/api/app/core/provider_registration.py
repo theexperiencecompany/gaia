@@ -75,7 +75,7 @@ from app.services.startup_validation import validate_startup_requirements
 from app.services.storage.bootstrap import init_juicefs_mount
 from app.services.tools.tools_warmup import warmup_tools_cache
 from app.services.workspace_sync import init_system_subtree, resync_stale_user_workspaces
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 
 def setup_warnings() -> None:
@@ -88,39 +88,10 @@ def setup_warnings() -> None:
 setup_warnings()
 
 
+# Warmup tasks are tracked so shutdown can cancel them. `spawn_logged_task`
+# already keeps its own strong reference for GC safety and gives each task a
+# wide-event boundary; this list exists purely for the cancel-on-shutdown pass.
 _background_tasks: list[asyncio.Task] = []
-
-
-def _spawn_background_task(
-    name: str,
-    coro_factory: Callable[[], Awaitable[object]],
-) -> None:
-    """Schedule a background init task without blocking startup.
-
-    Implementation detail:
-    - We create an `asyncio.Task` immediately. Task execution only progresses
-      once the event loop gets control again, so this does not block startup.
-    - We track created tasks so shutdown can cancel them.
-    """
-
-    async def _runner() -> None:
-        log.info(f"{LogTag.STARTUP} Background init started", name=name)
-        try:
-            await coro_factory()
-            log.info(f"{LogTag.STARTUP} Background init finished", name=name)
-        except asyncio.CancelledError:
-            log.info(f"{LogTag.STARTUP} Background init cancelled", name=name)
-            raise
-        except Exception as e:
-            log.error(
-                f"{LogTag.STARTUP} Background init failed",
-                name=name,
-                error=str(e),
-                error_type=type(e).__name__,
-            )
-
-    task = asyncio.create_task(_runner(), name=f"warmup:{name}")
-    _background_tasks.append(task)
 
 
 def _spawn_background_services(
@@ -183,7 +154,7 @@ def _spawn_background_services(
                     error_type=type(e).__name__,
                 )
 
-    _spawn_background_task(name, _run_all)
+    _background_tasks.append(spawn_logged_task(name, _run_all()))
 
 
 def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
@@ -286,7 +257,9 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         )
         # Re-sync active users whose skill catalog is stale (deploy shipped new
         # skills). Detached so it never blocks boot; runs only in the web app.
-        _spawn_background_task("workspace_stale_resync", resync_stale_user_workspaces)
+        _background_tasks.append(
+            spawn_logged_task("workspace_stale_resync", resync_stale_user_workspaces())
+        )
 
     startup_services: list[StartupService] = list(eager_services)
     startup_services.append(

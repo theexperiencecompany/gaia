@@ -99,6 +99,6 @@ def require_integration(integration_short_name: str):
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify integration permissions",
-            )
+            ) from e
 
     return wrapper

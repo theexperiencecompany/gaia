@@ -57,7 +57,7 @@ from app.services.storage import (
     sessions_root_inode,
     stat_artifact,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context, spawn_logged_task
 
 SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
 # `.accesslog` is a JuiceFS *mount-root* virtual file. mount_juicefs.sh mounts

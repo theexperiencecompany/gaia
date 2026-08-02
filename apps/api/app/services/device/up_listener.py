@@ -22,7 +22,7 @@ from app.constants.device_bridge import DEVICE_LISTENER_RESUBSCRIBE_SECONDS
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.services.device.bridge import POD_ID, up_pod_channel
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context
 
 Frame = dict[str, Any]
 

@@ -146,7 +146,7 @@ async def update_user_name(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to update name")
+        raise HTTPException(status_code=500, detail="Failed to update name") from e
 
 
 @router.patch("/timezone", response_model=dict)
@@ -199,7 +199,7 @@ async def update_user_timezone(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to update timezone")
+        raise HTTPException(status_code=500, detail="Failed to update timezone") from e
 
 
 @router.get("/holo-card/{card_id}")
@@ -266,7 +266,7 @@ async def get_public_holo_card(card_id: str):
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
+        raise HTTPException(status_code=500, detail="Failed to fetch holo card data") from e
 
 
 @router.patch("/holo-card/colors")
@@ -324,7 +324,7 @@ async def update_holo_card_colors(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to update holo card colors")
+        raise HTTPException(status_code=500, detail="Failed to update holo card colors") from e
 
 
 @router.post("/logout")
@@ -391,4 +391,4 @@ async def logout(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Logout failed")
+        raise HTTPException(status_code=500, detail="Logout failed") from e

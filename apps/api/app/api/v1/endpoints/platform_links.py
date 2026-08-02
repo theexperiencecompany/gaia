@@ -112,7 +112,7 @@ async def link_platform(
         log.set(outcome="success")
         return LinkPlatformResponse(**result)
     except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=409, detail=str(e)) from e
 
 
 @router.delete("/{platform}", response_model=DisconnectPlatformResponse)
@@ -138,7 +138,7 @@ async def disconnect_platform(
     try:
         result = await PlatformLinkService.unlink_account(user_id, platform)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     log.set(outcome="success")
 
     if platform_user_id:

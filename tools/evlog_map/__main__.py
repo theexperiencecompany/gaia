@@ -29,12 +29,15 @@ from compare import (  # noqa: E402
     load_rename_map,
 )
 from report import render_github_summary, render_terminal, to_json, write_map_json  # noqa: E402
+from routers import collect_router_mounts  # noqa: E402
 from scan import collect_worker_registry, scan, scored_entries  # noqa: E402
 from schema import canonical_fields  # noqa: E402
 from voice import collect_voice_registry  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SCAN_PATHS = (REPO_ROOT / "apps/api/app", REPO_ROOT / "apps/voice-agent/src")
+API_PACKAGE_ROOT = REPO_ROOT / "apps/api"
+APP_FACTORY_MODULE = REPO_ROOT / "apps/api/app/core/app_factory.py"
 WORKER_REGISTRY_MODULE = REPO_ROOT / "apps/api/app/worker.py"
 VOICE_AGENT_MODULE = REPO_ROOT / "apps/voice-agent/src/agent.py"
 VOICE_LLM_MODULE = REPO_ROOT / "apps/voice-agent/src/llm.py"
@@ -125,7 +128,8 @@ def main(argv: list[str]) -> int:
     fields = canonical_fields(REPO_ROOT)
     worker_registry = collect_worker_registry(WORKER_REGISTRY_MODULE)
     voice_registry = collect_voice_registry(VOICE_AGENT_MODULE, VOICE_LLM_MODULE)
-    result = scan(paths, fields, worker_registry, voice_registry)
+    router_mounts = collect_router_mounts(APP_FACTORY_MODULE, API_PACKAGE_ROOT)
+    result = scan(paths, fields, worker_registry, voice_registry, router_mounts)
 
     if not args.no_write:
         write_map_json(result, MAP_JSON)

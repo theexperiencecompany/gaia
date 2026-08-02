@@ -32,4 +32,4 @@ async def list_community_integrations(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch community integrations")
+        raise HTTPException(status_code=500, detail="Failed to fetch community integrations") from e

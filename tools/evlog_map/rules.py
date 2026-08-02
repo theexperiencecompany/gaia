@@ -7,7 +7,7 @@ each check re-expressed in this repo's idiom:
 - context       → a canonical ``WideEventFields`` key, so dashboards can query it
 - structured errors → ``AppError`` / ``create_error`` / ``HTTPException(detail=...)``
 - audit         → ``log.audit(...)`` on money/auth routes
-- error handling → every ``except`` logs or re-raises
+- error handling → every ``except`` logs the error or re-raises it intact
 
 Every rule is a requirement: a failed check costs its weight from the entry
 point's 100. Error context and info noise used to be non-scoring nudges; the
@@ -164,8 +164,9 @@ def _check_error_handling(ctx: RuleContext) -> Finding | None:
         if not clause.handled:
             return Finding(
                 message=(
-                    "except block neither records the error on the event "
-                    "(log.error/warning) nor re-raises or returns"
+                    "except block loses the caught error — record it on the event "
+                    "(log.error/warning) or re-raise it (bare raise, or "
+                    "'raise ... from <caught>' so __cause__ survives)"
                 ),
                 line=clause.line,
             )
@@ -248,7 +249,7 @@ RULES: tuple[Rule, ...] = (
         id="error-handling",
         category="requirement",
         title="catch",
-        question="Is every caught error logged or re-raised?",
+        question="Does every caught error survive its except block?",
         kinds=HANDLER_KINDS,
         weight=15,
         when=lambda ctx: bool(ctx.handler.excepts),

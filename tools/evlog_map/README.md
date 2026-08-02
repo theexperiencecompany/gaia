@@ -56,6 +56,26 @@ same PR that deliberately deletes entry points.
 Infra routes (`/health`, `/metrics`, `/favicon.ico`) are exempt — nothing to
 instrument, excluded from the score.
 
+### Route paths are the ones the server actually serves
+
+A decorator's path is only the last third of a served path: FastAPI also
+prepends every `include_router(prefix=…)` on the way down from the app and the
+module's own `APIRouter(prefix=…)`. `routers.collect_router_mounts` walks that
+chain — `app/core/app_factory.py` → `app/api/v1/routes.py` → the two-level
+nesting under `app/api/v1/endpoints/integrations/` — and hands each module its
+mount prefix, so `endpoints/memory.py` reports `/api/v1/memory` instead of `""`.
+
+This matters because everything path-based is judged on it: sensitivity
+classification, `CREDENTIAL_ROUTES`, the infra exemption, and every path a
+report prints. Like the worker and voice registries the wiring is parsed, never
+hardcoded, and anything unresolvable (a moved app factory, a non-literal
+prefix, a router included at two different prefixes) **raises** — silently
+dropping a branch would hand ~90 handlers a path the server never serves and
+nothing would say so. A module the app never includes keeps no prefix:
+`services/embedding_sidecar/server.py` is its own ASGI app, not a branch of
+this one. Mounts are keyed by repo-relative path so the CI merge-base worktree
+resolves them identically to the working tree.
+
 ## Requirements (score-bearing)
 
 | Check | Weight | Passes when |
@@ -64,7 +84,7 @@ instrument, excluded from the score.
 | `audit` | 25 | *high-sensitivity routes only:* handler calls `log.audit(...)` |
 | `structured-errors` | 20 | raises are `AppError`/`create_error`/`HTTPException(detail=...)` — not bare `ValueError("...")` |
 | `context` | 15 | `log.set()` uses at least one canonical `WideEventFields` key (schema is parsed live from `wide_events.py`) |
-| `error-handling` | 15 | every `except` clause logs or re-raises — no silent swallows |
+| `error-handling` | 15 | every `except` clause keeps the caught error: it records it (`log.error`/`warning`/`audit`/`set`) **or** re-raises it intact — see below |
 | `error-context` | 15 | every `log.error`/`log.warning` carries structured kwargs (`error_type=`, ids) instead of data interpolated into prose |
 | `info-noise` | 10 | fewer than three `log.info()` lines per entry point — info never reaches the wide event, so narration belongs in `log.set()` fields |
 
@@ -78,9 +98,49 @@ Per entry point: 100 minus failed weights. Global score: weighted average —
 **money/auth routes count double**. Grades: ≥90 excellent, ≥70 good,
 ≥50 needs-work, else at-risk.
 
+### What `error-handling` counts as handled
+
+An `except` clause passes only when the error it caught survives it — one of:
+
+- it **records** it: a `log.error`/`warning`/`exception`/`critical`/`audit`, or
+  a `log.set`/`set_ns` that puts it on the wide event;
+- a bare **`raise`**, which re-raises the caught exception;
+- **`raise <name>`**, where `<name>` is the clause's own `except X as <name>`;
+- **`raise Something(...) from <name>`**, same binding — `__cause__` survives,
+  and the app's exception handler reads it.
+
+Everything else fails, including three shapes that *look* handled:
+
+```python
+except Exception:
+    raise HTTPException(status_code=500, detail="Failed to create todo")  # fail: original error gone
+except Exception as e:
+    raise HTTPException(status_code=500, detail="…") from None            # fail: cause deleted on purpose
+except Exception:
+    return {"ok": False}                                                  # fail: records nothing
+```
+
+Each of those produces a 500 with zero telemetry about *what* failed: the type
+and message of the real exception are destroyed before anything reads them. A
+`return` is fine — but only alongside a record; on its own it is a swallow.
+This is stricter than upstream evlog, which counts any throw-or-return.
+
 Sensitivity is classified from whole-word route/module terms (`payment`,
 `auth`, `login`, …), payment/auth imports (`razorpay`, `stripe`, `workos`), and
-PII field names next to write calls — same heuristics as upstream evlog.
+PII field names next to write calls — upstream evlog's heuristics — plus
+`sensitivity.CREDENTIAL_ROUTES`, an explicit list of mounted paths.
+
+The term list deliberately drops `token`, `session` and `register`: here those
+words name chat sessions, LiveKit media tokens and device registration far more
+often than credentials, and adding them back mislabels dozens of routes. But a
+handful of genuine account-takeover surfaces contain no auth word at all —
+refresh-token rotation (`POST /api/v1/device/token`), device pairing, the
+one-time connect-code redemption (`GET /api/v1/integrations/connect-link`), and
+binding a chat account to a GAIA account (`/api/v1/platform-links/{platform}`,
+`/api/v1/bot/*link*`). Naming those paths one at a time is the honest
+mechanism: it is exact, it is reviewable, and it costs no false positives.
+Because it matches the **mounted** path, it depends on the router mount
+registry below.
 
 ### The voice rule is stricter, on purpose
 
@@ -122,10 +182,12 @@ quietly.
 ## Extending the scanner
 
 The modules are a pipeline, and each extension point lives in exactly one of
-them: `facts.py` (one AST pass per file → the reduced facts every rule reads)
-→ `rules.py` (pure predicates over those facts) → `scan.py` (discovery,
-suppression, scoring) → `report.py` (terminal / JSON / step-summary) →
-`compare.py` (the per-file ratchet). Rules never walk the AST themselves.
+them: the registries (`routers.py` mount prefixes, `voice.py` LiveKit entry
+points, `schema.py` canonical fields) → `facts.py` (one AST pass per file → the
+reduced facts every rule reads) → `rules.py` (pure predicates over those facts)
+→ `scan.py` (discovery, suppression, scoring) → `report.py` (terminal / JSON /
+step-summary) → `compare.py` (the per-file ratchet). Rules never walk the AST
+themselves.
 
 **Adding a rule.** Add the fact it needs to `HandlerFacts`/`FileFacts` and
 populate it in `_collect_handler_facts`, then append a `Rule` to `RULES` in
@@ -138,7 +200,8 @@ open PR; re-run `python3 tools/evlog_map --all` to see what moved.
 
 **Adding a surface.** Discovery is deliberately parsed, never hardcoded — the
 worker registry from `app/worker.py`, the voice registry from `agent.py`'s
-`WorkerOptions` and `llm.py`, the field schema from `wide_events.py`. Follow
+`WorkerOptions` and `llm.py`, the router mounts from `app_factory.py`'s
+`include_router` chain, the field schema from `wide_events.py`. Follow
 that: write a `collect_*_registry` that reads the real wiring and raises when
 it finds nothing (a moved registry must fail loudly, not silently score zero
 entry points), give the new kind a name in `HANDLER_KINDS`, and decide which
@@ -179,7 +242,7 @@ The adapter observes the entire Python surface: every decorator-registered
 FastAPI route/websocket (multi-decorator stacks collapse to one entry point),
 every ARQ task registered in `app/worker.py`, and the LiveKit voice worker
 (`apps/voice-agent/src`) — its session entrypoint runs inside a
-`log_context("voice_session")` boundary and each turn inside `wide_task`;
+`log_context("voice_session_start")` boundary and each turn inside `wide_task`;
 `prewarm` is waived with a reason (sync per-fork bootstrap, no event loop for
 a boundary), and the `start`/`download-files` CLI wrappers are not LiveKit
 entry points, so they carry no runtime instrumentation to score. The
@@ -194,6 +257,7 @@ handler whose `log.set` lives in the service layer needs the call (or a
 suppression) in the handler itself, exactly like the `route-contract` lint.
 The PR gate scans only changed files, so a change to
 `libs/shared/py/wide_events.py` (the schema), `app/worker.py` (the task
-registry) or the voice wiring (`agent.py`/`llm.py`) can move *unchanged*
-files' scores — the full-repo scan in the same lane is where that shows up.
-Schema and registries are always read from HEAD, for the base scan too.
+registry), the router wiring (`app_factory.py`/`routes.py`) or the voice wiring
+(`agent.py`/`llm.py`) can move *unchanged* files' scores — the full-repo scan
+in the same lane is where that shows up. Schema and registries are always read
+from HEAD, for the base scan too.

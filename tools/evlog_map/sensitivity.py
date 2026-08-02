@@ -10,7 +10,8 @@ and ``token`` are dropped (here they name chat sessions, device registration
 and LiveKit media tokens — pure false positives), and ``usage`` is added on
 the money side (usage endpoints are plan-quota/billing adjacent). Genuine
 auth surfaces still match via ``auth``/``login``/``oauth``/… or the ``workos``
-import.
+import — except the handful that carry no such word at all, which
+``CREDENTIAL_ROUTES`` names one mounted path at a time.
 """
 
 from __future__ import annotations
@@ -47,6 +48,27 @@ AUTH_TERMS = (
 )
 
 _PII_FIELDS = re.compile(r"email|phone|address|ssn|iban", re.IGNORECASE)
+
+# Credential and account-takeover surfaces no term list can see: none of them
+# contains an auth word, and the words that *would* catch them (``token``,
+# ``session``, ``register``) name chat sessions and LiveKit media tokens far
+# more often than credentials here — re-adding them would mislabel dozens of
+# routes. Enumerating the real ones by their mounted path is the honest
+# mechanism: refresh-token rotation, device pairing, the one-time connect-code
+# redemption, and binding a chat account to a GAIA account.
+CREDENTIAL_ROUTES = frozenset(
+    {
+        "/api/v1/device/token",
+        "/api/v1/device/pair/start",
+        "/api/v1/device/pair/poll",
+        "/api/v1/device/pair/approve",
+        "/api/v1/integrations/connect-link",
+        "/api/v1/platform-links/{platform}",
+        "/api/v1/bot/create-link-token",
+        "/api/v1/bot/unlink",
+        "/api/v1/bot/link-token-info/{token}",
+    }
+)
 
 
 def _compile_terms(terms: tuple[str, ...]) -> tuple[tuple[str, re.Pattern[str]], ...]:
@@ -101,6 +123,8 @@ def classify(handler: HandlerFacts, file_facts: FileFacts) -> Sensitivity:
     auth_term = _match_term(haystack, _AUTH_PATTERNS)
     if auth_term:
         reasons.append(f'auth: path says "{auth_term}"')
+    for route in sorted(set(handler.route_paths) & CREDENTIAL_ROUTES):
+        reasons.append(f"auth: {route} issues or redeems a credential")
 
     touches_pii = any(_PII_FIELDS.search(name) for name in file_facts.names)
     if touches_pii and file_facts.has_write_calls:

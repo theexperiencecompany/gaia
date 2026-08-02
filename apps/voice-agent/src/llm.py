@@ -320,11 +320,6 @@ class _VoiceTurn:
         # Set when the stream fully ended ([DONE]) within the comms turn — then
         # there's nothing left to drain.
         self.stream_done = False
-        # The trace id this turn's wide event is actually emitted with. Tracked
-        # explicitly because adopting the backend's id below rewrites the event
-        # FIELD only — get_trace_id() keeps returning the boundary's generated
-        # id, so work spawned from here must be handed this value to correlate.
-        self.trace_id = ""
 
     async def run(self) -> AsyncGenerator[ChatChunk, None]:
         """Drive the whole turn; yields sanitized TTS chunks as they flush."""
@@ -335,7 +330,6 @@ class _VoiceTurn:
             user_id=self.llm.user_id,
             conversation_id=self.llm.conversation_id,
         ):
-            self.trace_id = get_trace_id()
             log.set(
                 voice=VoiceContext(
                     operation="turn",
@@ -379,8 +373,9 @@ class _VoiceTurn:
         # 1:1 with the backend's http_request event for the same turn.
         backend_trace_id = resp.headers.get(TRACE_ID_HEADER)
         if backend_trace_id:
+            # Rebinds the field AND the ContextVar, so get_trace_id() below
+            # hands the drain task the backend's id rather than this turn's.
             log.set(trace_id=backend_trace_id)
-            self.trace_id = backend_trace_id
         handed_off = False
         try:
             if resp.status >= 400:
@@ -402,7 +397,7 @@ class _VoiceTurn:
             # a background reader (which forwards tool cards and speaks each
             # answer) and end this turn now, so the ack plays immediately.
             if self.comms_complete and not self.stream_done:
-                self.llm.spawn_drain(resp, trace_id=self.trace_id, turn_index=self.turn_index)
+                self.llm.spawn_drain(resp, trace_id=get_trace_id(), turn_index=self.turn_index)
                 handed_off = True
 
             log.info(

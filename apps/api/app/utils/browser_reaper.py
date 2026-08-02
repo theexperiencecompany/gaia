@@ -25,7 +25,7 @@ from app.constants.search import (
     BROWSER_REAPER_INTERVAL_SECONDS,
     BROWSER_REAPER_MAX_AGE_SECONDS,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context
 
 # patchright is the stealth fork of playwright pulled in by crawl4ai; both
 # drivers present the same leak surface.

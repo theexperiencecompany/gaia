@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from directives import collect_suppressions, missing_reason, unknown_ids
-from facts import FileFacts, HandlerFacts, collect_file_facts
+from facts import FileFacts, HandlerFacts, collect_file_facts, repo_relative
 from rules import REQUIREMENTS, RULE_IDS, CheckResult, RuleContext, run_rules
 from sensitivity import Sensitivity, classify
 
@@ -180,6 +180,7 @@ def scan(
     canonical_fields: frozenset[str],
     worker_registry: frozenset[str],
     voice_registry: dict[str, frozenset[str]],
+    router_mounts: dict[str, str],
 ) -> MapResult:
     """Discover, classify, and score every entry point under ``paths``."""
     entries: list[RouteEntry] = []
@@ -194,6 +195,7 @@ def scan(
             source,
             is_worker_module=is_worker,
             voice_entries=voice_registry.get(file.as_posix(), frozenset()),
+            mount_prefix=router_mounts.get(repo_relative(file), ""),
         )
         if file_facts is None:
             unparsable.append(file)

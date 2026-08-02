@@ -27,7 +27,7 @@ async def list_marketplace_integrations(category: str | None = None):
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch integrations")
+        raise HTTPException(status_code=500, detail="Failed to fetch integrations") from e
 
 
 @router.get("/{integration_id}", response_model=IntegrationResponse)

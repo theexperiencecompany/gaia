@@ -102,9 +102,9 @@ async def create_workflow(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error creating workflow",
@@ -115,7 +115,7 @@ async def create_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow",
-        )
+        ) from e
 
 
 @router.get("/workflows", response_model=WorkflowListResponse)
@@ -146,7 +146,7 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list workflows",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/execute", response_model=WorkflowExecutionResponse)
@@ -175,7 +175,7 @@ async def execute_workflow(
         return result
 
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error executing workflow",
@@ -187,7 +187,7 @@ async def execute_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute workflow",
-        )
+        ) from e
 
 
 @router.get("/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse)
@@ -234,7 +234,7 @@ async def get_workflow_executions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow executions",
-        )
+        ) from e
 
 
 @router.get("/workflows/{workflow_id}/status", response_model=WorkflowStatusResponse)
@@ -258,7 +258,7 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
         return status_response
 
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error getting workflow status",
@@ -270,7 +270,7 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow status",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/activate", response_model=WorkflowResponse)
@@ -303,13 +303,13 @@ async def activate_workflow(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except ValueError as e:
         # Missing step integrations or other validation failures
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -323,7 +323,7 @@ async def activate_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate workflow",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/deactivate", response_model=WorkflowResponse)
@@ -364,7 +364,7 @@ async def deactivate_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate workflow",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/regenerate-steps", response_model=WorkflowResponse)
@@ -397,7 +397,7 @@ async def regenerate_workflow_steps(
         return WorkflowResponse(workflow=workflow, message="Workflow regeneration started")
 
     except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     except Exception as e:
         log.error(
             f"{LogTag.WORKFLOW} Error regenerating workflow steps",
@@ -409,7 +409,7 @@ async def regenerate_workflow_steps(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to regenerate workflow steps",
-        )
+        ) from e
 
 
 @router.post("/workflows/from-todo", response_model=WorkflowResponse)
@@ -473,7 +473,7 @@ async def create_workflow_from_todo(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow from todo",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/publish", response_model=PublishWorkflowResponse)
@@ -546,7 +546,7 @@ async def publish_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to publish workflow",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/unpublish")
@@ -594,7 +594,7 @@ async def unpublish_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to unpublish workflow",
-        )
+        ) from e
 
 
 @router.get("/workflows/explore", response_model=PublicWorkflowsResponse)
@@ -620,7 +620,7 @@ async def get_explore_workflows(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch explore workflows",
-        )
+        ) from e
 
 
 @router.get("/workflows/community", response_model=PublicWorkflowsResponse)
@@ -648,7 +648,7 @@ async def get_public_workflows(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch public workflows",
-        )
+        ) from e
 
 
 @router.get("/workflows/public/{workflow_ref}", response_model=WorkflowResponse)
@@ -704,7 +704,7 @@ async def get_public_workflow(request: Request, workflow_ref: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
-        )
+        ) from e
 
 
 @router.post("/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse)
@@ -737,7 +737,7 @@ async def generate_workflow_prompt_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate workflow prompt",
-        )
+        ) from e
 
 
 @router.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
@@ -782,7 +782,7 @@ async def get_workflow(request: Request, workflow_id: str, user: dict = Depends(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
-        )
+        ) from e
 
 
 @router.put("/workflows/{workflow_id}")
@@ -816,7 +816,7 @@ async def update_workflow(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except HTTPException:
         raise
     except Exception as e:
@@ -830,7 +830,7 @@ async def update_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update workflow",
-        )
+        ) from e
 
 
 @router.post("/workflows/{workflow_id}/reset-to-default")
@@ -874,7 +874,7 @@ async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_c
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reset workflow",
-        )
+        ) from e
 
 
 @router.delete("/workflows/{workflow_id}")
@@ -909,4 +909,4 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete workflow",
-        )
+        ) from e

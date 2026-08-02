@@ -608,7 +608,19 @@ class WideEventLogger:
         return state
 
     def set(self, **kwargs: Any) -> None:
-        """Merge structured context into the current request's wide event."""
+        """Merge structured context into the current request's wide event.
+
+        ``trace_id`` is the one field that also lives outside the event: it
+        backs the ``_trace_id`` ContextVar that ``get_trace_id()`` returns and
+        that ``spawn_logged_task`` hands to child work. Setting only the field
+        (which is what adopting an upstream ``x-trace-id`` header does) would
+        emit an event under one id while every task spawned from it correlates
+        under another, so the write is routed through both here — there is no
+        second, easy-to-forget way to adopt a trace id.
+        """
+        trace_id = kwargs.get("trace_id")
+        if trace_id:
+            _trace_id.set(trace_id)
         self._state().fields.update(kwargs)
 
     def set_ns(self, namespace: str, **kwargs: Any) -> None:
@@ -765,8 +777,7 @@ async def _wide_event_boundary(
     outer_trace_id = _trace_id.get()
     log.reset()
     if trace_id:
-        log.set(trace_id=trace_id)
-        _trace_id.set(trace_id)
+        log.set(trace_id=trace_id)  # keeps the field and the ContextVar in sync
     log.set(task=task_name, **initial_context)
     start = time.monotonic()
     try:

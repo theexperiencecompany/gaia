@@ -155,7 +155,7 @@ async def discover_skills_from_github(
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         log.error(
             f"{LogTag.SKILLS} Error discovering skills from repo",
@@ -166,7 +166,7 @@ async def discover_skills_from_github(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to discover skills from repository",
-        )
+        ) from e
 
 
 @router.post(

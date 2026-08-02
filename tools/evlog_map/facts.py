@@ -28,7 +28,7 @@ class ExceptFact:
 
     line: int
     is_empty: bool
-    handled: bool  # logs the error or re-raises
+    handled: bool  # records the error on the event, or re-raises it intact
 
 
 @dataclass(frozen=True)
@@ -80,6 +80,8 @@ class FileFacts:
 
     path: Path
     imports: set[str] = field(default_factory=set)  # top-level module names
+    # Everything in front of a decorator's path: where the app mounts this
+    # file's router plus the router's own ``APIRouter(prefix=…)``.
     router_prefix: str = ""
     handlers: list[HandlerFacts] = field(default_factory=list)
     names: set[str] = field(default_factory=set)  # identifiers/attributes seen
@@ -208,10 +210,34 @@ def _call_name(node: ast.expr) -> str | None:
     return None
 
 
+def _preserves_caught_error(node: ast.Raise, bound_name: str | None) -> bool:
+    """Whether a ``raise`` inside an except clause keeps the caught exception.
+
+    A bare ``raise`` re-raises it; ``raise <name>`` re-raises the same object;
+    ``raise New(...) from <name>`` sets ``__cause__``, which the app's exception
+    handler reads. ``raise New(...)`` with no ``from`` — and ``from None``,
+    which deletes the cause on purpose — destroy the type and message of what
+    actually failed, so nothing about the real error reaches the wide event.
+    """
+    if node.exc is None:
+        return True
+    if bound_name is None:
+        return False
+    for expr in (node.exc, node.cause):
+        if isinstance(expr, ast.Name) and expr.id == bound_name:
+            return True
+    return False
+
+
 def _scope_contains_error_handling(
-    body: list[ast.stmt], log_aliases: frozenset[str]
+    body: list[ast.stmt], log_aliases: frozenset[str], bound_name: str | None
 ) -> tuple[bool, bool]:
-    """``(is_empty, handled)`` for one except clause's body."""
+    """``(is_empty, handled)`` for one except clause's body.
+
+    ``bound_name`` is the handler's ``except X as <name>`` binding, needed to
+    tell a re-raise that carries the original error from a fresh exception that
+    silently replaces it.
+    """
     real = [stmt for stmt in body if not isinstance(stmt, ast.Pass)]
     if not real:
         return True, False
@@ -219,9 +245,7 @@ def _scope_contains_error_handling(
     if all(isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant) for stmt in real):
         return True, False
     for stmt in ast.walk(ast.Module(body=body, type_ignores=[])):
-        # `return <error response>` handles the error just as much as a
-        # re-raise does (upstream parity: Throw OR Return counts as handled).
-        if isinstance(stmt, (ast.Raise, ast.Return)):
+        if isinstance(stmt, ast.Raise) and _preserves_caught_error(stmt, bound_name):
             return False, True
         if isinstance(stmt, ast.Call):
             method = _log_attr(stmt, log_aliases)
@@ -293,12 +317,13 @@ def _collect_handler_facts(
                 )
             )
     for clause in except_clauses:
-        is_empty, handled = _scope_contains_error_handling(clause.body, log_aliases)
+        is_empty, handled = _scope_contains_error_handling(clause.body, log_aliases, clause.name)
         facts.excepts.append(ExceptFact(line=clause.lineno, is_empty=is_empty, handled=handled))
     return facts
 
 
-def _router_prefix(tree: ast.Module) -> str:
+def _own_router_prefix(tree: ast.Module) -> str:
+    """The ``APIRouter(prefix=…)`` this file declares, before it is mounted."""
     for node in tree.body:
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
             continue
@@ -333,11 +358,14 @@ def collect_file_facts(
     *,
     is_worker_module: bool,
     voice_entries: frozenset[str] = frozenset(),
+    mount_prefix: str = "",
 ) -> FileFacts | None:
     """Parse one file into facts. Returns None when the file fails to parse.
 
     ``voice_entries`` are the qualified names the voice registry declared as
     LiveKit entry points in this file (see ``voice.collect_voice_registry``).
+    ``mount_prefix`` is where the app includes this file's router (see
+    ``routers.collect_router_mounts``); a file the app never includes has none.
     """
     try:
         tree = ast.parse(source)
@@ -345,7 +373,7 @@ def collect_file_facts(
         return None
 
     facts = FileFacts(path=path)
-    facts.router_prefix = _router_prefix(tree)
+    facts.router_prefix = mount_prefix + _own_router_prefix(tree)
     log_aliases = _wide_event_log_aliases(tree)
     imperative_routes = _registered_routes(tree)
 

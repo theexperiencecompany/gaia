@@ -57,7 +57,7 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> dict[str,
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to get usage summary")
+        raise HTTPException(status_code=500, detail="Failed to get usage summary") from e
 
 
 @router.get("/history")
@@ -118,7 +118,7 @@ async def get_usage_history(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to get usage history")
+        raise HTTPException(status_code=500, detail="Failed to get usage history") from e
 
 
 async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Any]:

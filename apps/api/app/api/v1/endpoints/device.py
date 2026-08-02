@@ -70,7 +70,7 @@ async def pair_start(payload: StartPairingRequest) -> StartPairingResponse:
     try:
         result = await start_pairing(payload.name, payload.platform, payload.daemon_version)
     except PairingError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     return StartPairingResponse(**result)  # type: ignore[arg-type]
 
 
@@ -92,7 +92,7 @@ async def pair_approve(
     try:
         device_id, name = await approve_pairing(user_id, payload.user_code)
     except PairingError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return {"device_id": device_id, "name": name}
 
 
@@ -102,7 +102,7 @@ async def device_token(payload: DeviceTokenRequest) -> DeviceTokenResponse:
     try:
         device_id, user_id, new_refresh = await rotate_refresh_token(payload.refresh_token)
     except PairingError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e)) from e
     access_token, expires_in = create_device_token(device_id, user_id)
     log.set(device={"operation": "token_exchange", "device_id": device_id})
     return DeviceTokenResponse(

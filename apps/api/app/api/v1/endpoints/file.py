@@ -85,7 +85,7 @@ async def upload_file_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to upload file",
-        )
+        ) from e
 
 
 @router.put("/{file_id}", status_code=status.HTTP_200_OK)
@@ -119,7 +119,7 @@ async def update_file_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update file",
-        )
+        ) from e
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_200_OK)
@@ -152,4 +152,4 @@ async def delete_file_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete file",
-        )
+        ) from e

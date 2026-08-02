@@ -105,7 +105,7 @@ async def create_reminder_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create reminder",
-        )
+        ) from e
 
 
 @router.get("/{reminder_id}", response_model=ReminderResponse)
@@ -167,7 +167,7 @@ async def get_reminder_endpoint(reminder_id: str, user: dict = Depends(get_curre
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve reminder",
-        )
+        ) from e
 
 
 @router.put("/{reminder_id}", response_model=ReminderResponse)
@@ -250,7 +250,7 @@ async def update_reminder_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update reminder",
-        )
+        ) from e
 
 
 @router.delete("/{reminder_id}", status_code=http_status.HTTP_204_NO_CONTENT)
@@ -300,7 +300,7 @@ async def cancel_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cu
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to cancel reminder",
-        )
+        ) from e
 
 
 @router.get("", response_model=list[ReminderResponse])
@@ -364,7 +364,7 @@ async def list_reminders_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list reminders",
-        )
+        ) from e
 
 
 @router.post("/{reminder_id}/pause", response_model=ReminderResponse)
@@ -425,7 +425,7 @@ async def pause_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cur
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to pause reminder",
-        )
+        ) from e
 
 
 @router.post("/{reminder_id}/resume", response_model=ReminderResponse)
@@ -507,7 +507,7 @@ async def resume_reminder_endpoint(reminder_id: str, user: dict = Depends(get_cu
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to resume reminder",
-        )
+        ) from e
 
 
 @router.get("/cron/validate")

@@ -209,18 +209,28 @@ async def _handle_platform_oauth_callback(
             link_result = await PlatformLinkService.link_account(
                 user_id, config.platform, platform_user_id, profile=profile or None
             )
+            # Audited immediately after the link lands, before the notification —
+            # a failing notification must not erase the record of the state change.
+            log.audit(
+                "platform account linked",
+                actor=user_id,
+                resource=platform_user_id,
+                provider=config.platform,
+                is_new_link=bool(link_result.get("is_new_link")),
+            )
             if link_result.get("is_new_link"):
                 await notify_account_linked(config.platform, user_id)
-            log.info(
-                f"{LogTag.API} Platform account linked via OAuth",
-                platform=config.platform,
-                platform_user_id=platform_user_id,
-                user_id=user_id,
-            )
         except ValueError as e:
             error_msg = str(e)
             if "already linked" in error_msg:
                 log.set(outcome="already_linked")
+                log.audit(
+                    "platform account link rejected",
+                    actor=user_id,
+                    resource=platform_user_id,
+                    provider=config.platform,
+                    reason="already_linked",
+                )
                 return RedirectResponse(
                     url=_redirect_url(
                         settings.FRONTEND_URL,
@@ -234,6 +244,13 @@ async def _handle_platform_oauth_callback(
                 user_id=user_id,
                 error_type=type(e).__name__,
                 error=error_msg,
+            )
+            log.audit(
+                "platform account link failed",
+                actor=user_id,
+                resource=platform_user_id,
+                provider=config.platform,
+                error_type=type(e).__name__,
             )
             return RedirectResponse(
                 url=_redirect_url(settings.FRONTEND_URL, redirect_path, oauth_error="failed")
@@ -272,7 +289,6 @@ async def discord_oauth_callback(
 ):
     """Handle Discord OAuth callback."""
     log.set(oauth={"operation": "callback", "provider": "discord", "error_type": error})
-    log.audit("platform oauth callback", provider="discord", oauth_error=error)
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
 
@@ -284,5 +300,4 @@ async def slack_oauth_callback(
 ):
     """Handle Slack OAuth callback."""
     log.set(oauth={"operation": "callback", "provider": "slack", "error_type": error})
-    log.audit("platform oauth callback", provider="slack", oauth_error=error)
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["slack"])

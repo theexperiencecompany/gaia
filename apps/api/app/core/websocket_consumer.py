@@ -10,7 +10,7 @@ from aio_pika.abc import AbstractIncomingMessage
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import websocket_manager
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context
 
 
 class WebSocketEventConsumer:
@@ -75,7 +75,10 @@ class WebSocketEventConsumer:
         and runs with no middleware behind it — without a boundary per message
         the delivery outcome and all four error paths below are discarded.
         """
-        async with log_context("websocket_event", operation="websocket_broadcast"):
+        # No `operation=` kwarg: log_context's own first parameter is named
+        # `operation`, so passing one collides. The boundary's `task` field
+        # already carries the operation name.
+        async with log_context("websocket_event"):
             async with message.process():
                 try:
                     # Parse message data

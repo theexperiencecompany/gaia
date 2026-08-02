@@ -80,7 +80,9 @@ async def submit_support_request(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit support request: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to submit support request: {e!s}"
+        ) from e
 
 
 @router.post(
@@ -131,11 +133,11 @@ async def submit_support_request_with_attachments(
         # Validate request type
         try:
             request_type = SupportRequestType(type)
-        except ValueError:
+        except ValueError as e:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid request type. Must be one of: {', '.join([t.value for t in SupportRequestType])}",
-            )
+            ) from e
 
         # Create request data
         request_data = SupportRequestCreate(
@@ -158,7 +160,9 @@ async def submit_support_request_with_attachments(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to submit support request: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to submit support request: {e!s}"
+        ) from e
 
 
 @router.get(
@@ -201,7 +205,9 @@ async def get_my_support_requests(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch support requests: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to fetch support requests: {e!s}"
+        ) from e
 
 
 @router.get(
@@ -232,4 +238,6 @@ async def get_support_rate_limit_status(
         log.set(outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get rate limit status: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get rate limit status: {e!s}"
+        ) from e

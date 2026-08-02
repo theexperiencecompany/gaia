@@ -108,7 +108,7 @@ async def get_public_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch integration")
+        raise HTTPException(status_code=500, detail="Failed to fetch integration") from e
 
 
 @router.post("/public/{integration_id}/add", response_model=AddIntegrationResponse)
@@ -215,7 +215,7 @@ async def add_public_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to add integration")
+        raise HTTPException(status_code=500, detail="Failed to add integration") from e
 
 
 @router.get("/search", response_model=SearchIntegrationsResponse)
@@ -276,7 +276,7 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to search integrations")
+        raise HTTPException(status_code=500, detail="Failed to search integrations") from e
 
 
 @router.get(
@@ -342,4 +342,4 @@ async def get_related_workflows(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to fetch related workflows")
+        raise HTTPException(status_code=500, detail="Failed to fetch related workflows") from e

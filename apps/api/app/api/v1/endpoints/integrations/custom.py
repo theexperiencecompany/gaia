@@ -76,7 +76,7 @@ async def create_custom_mcp_integration(
             ),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Error creating custom integration",
@@ -84,7 +84,7 @@ async def create_custom_mcp_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to create integration")
+        raise HTTPException(status_code=500, detail="Failed to create integration") from e
 
 
 @router.patch("/{integration_id}", response_model=IntegrationSuccessResponse)
@@ -132,7 +132,7 @@ async def update_custom_mcp_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to update integration")
+        raise HTTPException(status_code=500, detail="Failed to update integration") from e
 
 
 @router.delete("/{integration_id}", response_model=IntegrationSuccessResponse)
@@ -167,7 +167,7 @@ async def delete_custom_mcp_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to delete integration")
+        raise HTTPException(status_code=500, detail="Failed to delete integration") from e
 
 
 @router.post("/{integration_id}/publish", response_model=PublishIntegrationResponse)
@@ -190,7 +190,7 @@ async def publish_integration(
             public_url=result["public_url"],
         )
     except PublishError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Error publishing integration",
@@ -199,7 +199,7 @@ async def publish_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to publish integration")
+        raise HTTPException(status_code=500, detail="Failed to publish integration") from e
 
 
 @router.post("/{integration_id}/unpublish", response_model=UnpublishIntegrationResponse)
@@ -221,7 +221,7 @@ async def unpublish_integration(
             integration_id=result["integration_id"],
         )
     except PublishError as e:
-        raise HTTPException(status_code=e.status_code, detail=e.message)
+        raise HTTPException(status_code=e.status_code, detail=e.message) from e
     except Exception as e:
         log.error(
             f"{LogTag.INTEGRATION} Error unpublishing integration",
@@ -230,4 +230,4 @@ async def unpublish_integration(
             error_type=type(e).__name__,
             error=str(e),
         )
-        raise HTTPException(status_code=500, detail="Failed to unpublish integration")
+        raise HTTPException(status_code=500, detail="Failed to unpublish integration") from e

@@ -43,7 +43,7 @@ async def list_available_tools(
         log.set(result_count=result.total_count, outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {e!s}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve tools: {e!s}") from e
 
 
 @router.get("/tools/categories")
@@ -64,7 +64,9 @@ async def list_tool_categories(
         log.set(outcome="success")
         return result
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve tool categories: {e!s}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to retrieve tool categories: {e!s}"
+        ) from e
 
 
 @router.get("/tools/category/{category_name}", response_model=ToolsCategoryResponse)
@@ -96,4 +98,4 @@ async def get_tools_in_category(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to retrieve tools for category '{category_name}': {e!s}",
-        )
+        ) from e

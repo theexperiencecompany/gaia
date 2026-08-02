@@ -612,9 +612,9 @@ async def transcribe_bot_audio(
     try:
         normalized = validate_audio_payload(content_type=file.content_type, size=len(audio_bytes))
     except AudioTooLargeError as e:
-        raise HTTPException(status_code=413, detail=str(e))
+        raise HTTPException(status_code=413, detail=str(e)) from e
     except UnsupportedAudioFormatError as e:
-        raise HTTPException(status_code=415, detail=str(e))
+        raise HTTPException(status_code=415, detail=str(e)) from e
 
     filename = file.filename or "voice-note"
     try:
@@ -631,6 +631,6 @@ async def transcribe_bot_audio(
             error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=502, detail="Transcription failed")
+        raise HTTPException(status_code=502, detail="Transcription failed") from e
 
     return {"text": text}

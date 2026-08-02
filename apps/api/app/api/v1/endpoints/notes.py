@@ -55,7 +55,7 @@ async def create_note_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create note",
-        )
+        ) from e
 
 
 @router.get("/notes/{note_id}", response_model=NoteResponse)
@@ -89,7 +89,7 @@ async def get_note_endpoint(note_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve note",
-        )
+        ) from e
 
 
 @router.get("/notes", response_model=list[NoteResponse])
@@ -121,7 +121,7 @@ async def get_all_notes_endpoint(user: dict = Depends(get_current_user)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve notes",
-        )
+        ) from e
 
 
 @router.put("/notes/{note_id}", response_model=NoteResponse)
@@ -161,7 +161,7 @@ async def update_note_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update note",
-        )
+        ) from e
 
 
 @router.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -195,4 +195,4 @@ async def delete_note_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete note",
-        )
+        ) from e
