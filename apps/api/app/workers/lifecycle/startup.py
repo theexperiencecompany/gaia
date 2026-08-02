@@ -13,6 +13,11 @@ from shared.py.logging import configure_file_logging
 # imports app.api.v1.middleware.__init__ → loggers.py, which calls
 # configure_file_logging("./logs") and sets _FILE_LOGGING_CONFIGURED=True,
 # making any subsequent call with a different path a no-op.
+# This process is the ARQ worker, not the API. GAIA_SERVICE_NAME must equal
+# its Promtail label so the in-event `service` field and {service="arq_worker"}
+# agree; setdefault so an explicit env var still wins.
+os.environ.setdefault("GAIA_SERVICE_NAME", "arq_worker")
+
 configure_file_logging("./logs/worker")
 
 from app.constants.log_tags import LogTag  # noqa: E402

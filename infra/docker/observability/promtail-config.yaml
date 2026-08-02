@@ -36,9 +36,9 @@ scrape_configs:
       - targets:
           - localhost
         labels:
-          service: voice-agent
-          service_name: voice-agent
-          container: voice-agent
+          service: voice-agent-worker
+          service_name: voice-agent-worker
+          container: voice-agent-worker
           __path__: /var/log/gaia-voice-agent/structured-*.json
     pipeline_stages:
       - json:

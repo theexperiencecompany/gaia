@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Coroutine
 from functools import partial
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -43,6 +44,11 @@ from src.utils import extract_meta_data, ms_since, user_id_from_room
 
 # Absolute path so logs land in the right place regardless of CWD. A no-op
 # under LOG_FORMAT=json (containers), where stdout NDJSON goes to Loki instead.
+# Promtail labels this container by its compose service name; keep the
+# in-event `service` field equal to it so {service="voice-agent-worker"}
+# and | json | service=... agree.
+os.environ.setdefault("GAIA_SERVICE_NAME", "voice-agent-worker")
+
 configure_file_logging(Path(__file__).parent.parent / "logs")
 
 
