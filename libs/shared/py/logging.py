@@ -34,6 +34,7 @@ from collections.abc import Callable
 from datetime import date, timedelta
 import json as _json
 import logging
+from math import isfinite
 import os
 from pathlib import Path
 import sys
@@ -116,6 +117,43 @@ def _core_fields(entry: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _finite(value: object) -> object:
+    """Recursively replace non-finite floats with ``None``.
+
+    Only called after a non-finite value has already been detected, so the
+    common path never pays for this walk.
+    """
+    if isinstance(value, float):
+        # bool is not a float, and int cannot be non-finite, so this is total.
+        return value if isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _finite(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_finite(item) for item in value]
+    return value
+
+
+def _dumps(entry: object) -> str:
+    """Serialize one log line as RFC-8259 JSON.
+
+    ``json.dumps`` emits bare ``NaN``/``Infinity`` by default. Python reads
+    those back happily, so the defect is invisible locally — but they are not
+    valid JSON, and Loki's ``| json`` (Go) rejects the whole line. The event is
+    still ingested as raw text, so it silently disappears from every structured
+    query instead of failing loudly. A single ``x / 0`` behind an average (say a
+    latency mean over zero samples) is enough to lose the event.
+
+    ``allow_nan=False`` turns that into a ValueError we can catch, so the fast
+    path stays the C encoder and only a line that actually contains a
+    non-finite float pays for the scrub. Non-finite becomes ``null``, matching
+    what the TypeScript bots emit for the same values.
+    """
+    try:
+        return _json.dumps(entry, default=str, allow_nan=False)
+    except ValueError:
+        return _json.dumps(_finite(entry), default=str, allow_nan=False)
+
+
 def _sanitized_entry(entry: dict[str, object], exc: Exception) -> dict[str, object]:
     """Fallback entry when the full record cannot be serialized.
 
@@ -192,13 +230,13 @@ def _build_json_entry(record: Record) -> str:
         }
 
     try:
-        line = _json.dumps(entry, default=str)
+        line = _dumps(entry)
     except (TypeError, ValueError) as serialization_exc:
-        line = _json.dumps(_sanitized_entry(entry, serialization_exc), default=str)
+        line = _dumps(_sanitized_entry(entry, serialization_exc))
 
     original_size_bytes = len(line.encode("utf-8"))
     if original_size_bytes > MAX_JSON_LINE_BYTES:
-        line = _json.dumps(_truncated_entry(entry, original_size_bytes), default=str)
+        line = _dumps(_truncated_entry(entry, original_size_bytes))
 
     return line + "\n"
 

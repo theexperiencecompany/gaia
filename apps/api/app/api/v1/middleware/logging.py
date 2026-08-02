@@ -97,21 +97,29 @@ def log_function_call(func):
 class LoggingMiddleware(BaseHTTPMiddleware):
     """Middleware that emits one structured wide event per HTTP request.
 
-    Every field is available for LogQL filtering in Grafana without any
-    pre-processing — just add `| json` to any query.
+    Every scalar field is available for LogQL filtering in Grafana without any
+    pre-processing — just add `| json` to any query. The `errors`/`warnings`
+    arrays are the exception: bare `| json` drops arrays outright, and they are
+    absent (not empty) when nothing was recorded, so `| errors != "[]"` matches
+    every line. Reach into them with an explicit JSON expression instead.
 
     LogQL examples:
         # Requests that had any warning (even if 200 OK)
-        {service="gaia-backend"} | json | warnings != "[]"
+        {service="gaia-backend"} | json first_warning="warnings[0].msg" | first_warning != ""
 
         # Requests that had any error logged mid-flight
-        {service="gaia-backend"} | json | errors != "[]"
+        {service="gaia-backend"} | json first_error="errors[0].msg" | first_error != ""
+
+        # Every failed request — final_level folds in the HTTP status, so this
+        # also catches a 5xx that logged nothing
+        {service="gaia-backend"} | json | message="http_request" | final_level =~ "ERROR|CRITICAL"
 
         # All chat requests by duration
         {service="gaia-backend"} | json | path =~ "/api/v1/chat.*" | unwrap duration_ms
 
         # Errors on a specific commit
-        {service="gaia-backend"} | json | commit="abc1234" | errors != "[]"
+        {service="gaia-backend"} | json | commit="abc1234"
+            | json first_error="errors[0].msg" | first_error != ""
 
         # Requests by specific user
         {service="gaia-backend"} | json | user_id="<id>"

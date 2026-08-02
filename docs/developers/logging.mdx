@@ -98,7 +98,8 @@ LogQL reads like `grep` piped through `jq`. A query has two halves:
 
 **1. Stream selector — labels, in braces.** Labels are the only indexed
 fields. GAIA ships exactly these: `service`, `service_name`, `container`,
-`stack`, `compose_project`, `stream`, `level`, `logger_name`.
+`level`, `logger_name`, plus `stack` / `compose_project` / `stream` from the
+Docker scrape job and `filename` from the local-file one.
 
 ```logql
 {service="gaia-backend"}                  # all API logs
@@ -125,8 +126,25 @@ contains), `|~` (regex). Use these first; they're the cheapest operation.
 {service="gaia-backend"} | json | user_id = "abc123" | path =~ "/api/v1/todos.*"
 ```
 
-Nested fields flatten with underscores: `user.id` → `user_id`,
+Nested **objects** flatten with underscores: `user.id` → `user_id`,
 `chat.conversation_id` → `chat_conversation_id`.
+
+<Warning>
+Bare `| json` **drops every array**. `errors[]`, `warnings[]` and `audit[]`
+produce no field at all — not an empty one — so `| errors != "[]"` matches
+*every* line (an absent field compares as `""`, and `"" != "[]"` is true).
+Reach into an array with an explicit JSON expression instead:
+
+```logql
+| json first_error="errors[0].msg"   # the message of the first error
+| json all_errors="errors"           # the whole array as a JSON string
+```
+
+Also: when a parsed field collides with a stream label, the **label wins** and
+the parsed value is renamed with an `_extracted` suffix. After `| json`,
+`service` and `level` still mean the Promtail label; the values from the log
+body are `service_extracted` and `level_extracted`.
+</Warning>
 
 **4. Metrics — turn logs into graphs.** Wrap a query in a range function:
 
@@ -134,8 +152,9 @@ Nested fields flatten with underscores: `user.id` → `user_id`,
 # requests per second, by path
 sum by (path) (count_over_time({service="gaia-backend"} | json | message="http_request" [1m]))
 
-# p95 latency
-quantile_over_time(0.95, {service="gaia-backend"} | json | message="http_request" | unwrap duration_ms [5m])
+# p95 latency — the `by (...)` clause is required: `| json` promotes every
+# field to a label, so without it you get one series per request, not a p95
+quantile_over_time(0.95, {service="gaia-backend"} | json | message="http_request" | unwrap duration_ms [5m]) by (path)
 
 # error ratio
 sum(count_over_time({service="gaia-backend", level="ERROR"} [5m]))
@@ -165,16 +184,37 @@ sum(count_over_time({service="gaia-backend"} [5m]))
 {service="gaia-backend"} | json | message = "http_request" | user_id = "<USER_ID>"
 ```
 
-**Requests that logged an error mid-flight but still returned 200:**
+**Every request that failed** — `final_level` is the worst of the HTTP status
+and any `log.warning/error` call, so this also catches a 5xx that logged
+nothing:
 
 ```logql
-{service="gaia-backend"} | json | message = "http_request" | status_code = 200 | errors != "[]"
+{service="gaia-backend"} | json | message = "http_request" | final_level =~ "ERROR|CRITICAL"
 ```
+
+**Requests that logged an error mid-flight but still returned 200** — note the
+second `| json`: the first one parses the flat fields, the second reaches into
+the `errors[]` array (which bare `| json` drops):
+
+```logql
+{service="gaia-backend"} | json | message = "http_request" | status_code = 200
+  | json first_error="errors[0].msg" | first_error != ""
+```
+
+`first_error` is worth keeping in the pipeline even when you don't filter on
+it — it turns the result list into a triage summary.
 
 **Audit trail (auth/payment operations):**
 
 ```logql
-{service="gaia-backend"} | json | audit != "[]"
+{service="gaia-backend"} | json | json first_audit="audit[0].msg" | first_audit != ""
+```
+
+Or, for just the real-time audit lines, a pure label selector (cheapest — no
+parsing at all):
+
+```logql
+{service="gaia-backend", level="AUDIT"}
 ```
 
 **Slow chat requests:**
@@ -187,7 +227,8 @@ sum(count_over_time({service="gaia-backend"} [5m]))
 `GIT_COMMIT_SHA` at image build):
 
 ```logql
-{service="gaia-backend"} | json | commit = "<SHORT_SHA>" | errors != "[]"
+{service="gaia-backend"} | json | commit = "<SHORT_SHA>"
+  | json first_error="errors[0].msg" | first_error != ""
 ```
 
 **Failed worker tasks, by task name:**

@@ -680,9 +680,12 @@ class WideEventLogger:
 
         Emits a real-time AUDIT-level line (level registered in
         ``shared.py.logging``) and appends ``{"msg": message, **kwargs}`` to the
-        event's ``audit`` array, so `{...} | json | audit != "[]"` finds every
-        request that performed an audited operation. Does not bump the event's
-        severity — an audit entry is a record, not a problem.
+        event's ``audit`` array. The key is absent when nothing was audited, and
+        bare ``| json`` drops arrays anyway, so the query that finds every
+        request that performed an audited operation is
+        `{...} | json first_audit="audit[0].msg" | first_audit != ""`
+        (or just `{..., level="AUDIT"}` for the real-time lines). Does not bump
+        the event's severity — an audit entry is a record, not a problem.
 
         Usage:
             log.audit("subscription cancelled", actor=user_id, resource=sub_id)

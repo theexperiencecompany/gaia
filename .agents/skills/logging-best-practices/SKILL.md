@@ -103,3 +103,16 @@ live).
 See `docs/developers/logging.mdx` (LogQL primer + recipes) and the
 `reading-gaia-logs` skill. The one-liner: labels select the stream
 (`{service="gaia-backend"}`), everything else is `| json | field = "value"`.
+
+**The arrays are the exception.** `errors[]` / `warnings[]` / `audit[]` are
+absent (not empty) when nothing was recorded, and bare `| json` **drops arrays
+entirely** — so `| errors != "[]"` matches every line, including clean 200s.
+Use an explicit JSON expression:
+
+```logql
+{service="gaia-backend"} | json | message="http_request"
+  | json first_error="errors[0].msg" | first_error != ""
+```
+
+For "show me failed requests" prefer `| final_level =~ "ERROR|CRITICAL"` — it
+folds in the HTTP status, so it also catches a 5xx that logged nothing.
