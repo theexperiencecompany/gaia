@@ -3,7 +3,7 @@ from typing import cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 import httpx
 from workos import WorkOSClient
 
@@ -36,8 +36,8 @@ http_async_client = httpx.AsyncClient()
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-@router.get("/client-metadata.json", response_model=OAuthClientMetadataResponse)
-async def get_client_metadata() -> JSONResponse:
+@router.get("/client-metadata.json")
+async def get_client_metadata() -> OAuthClientMetadataResponse:
     """
     OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
 
@@ -50,18 +50,15 @@ async def get_client_metadata() -> JSONResponse:
     base_url = get_api_base_url()  # e.g., https://api.heygaia.com
     metadata_url = f"{base_url}/api/v1/oauth/client-metadata.json"
 
-    return JSONResponse(
-        content=OAuthClientMetadataResponse(
-            # MUST match this document's URL exactly per spec Section 4.1
-            client_id=metadata_url,
-            client_name="GAIA",
-            client_uri="https://heygaia.com",
-            logo_uri=f"{base_url}/static/logo.png",
-            redirect_uris=[f"{base_url}/api/v1/mcp/oauth/callback"],
-            grant_types=["authorization_code", "refresh_token"],
-            response_types=["code"],
-        ).model_dump(),
-        media_type="application/json",
+    return OAuthClientMetadataResponse(
+        # MUST match this document's URL exactly per spec Section 4.1
+        client_id=metadata_url,
+        client_name="GAIA",
+        client_uri="https://heygaia.com",
+        logo_uri=f"{base_url}/static/logo.png",
+        redirect_uris=[f"{base_url}/api/v1/mcp/oauth/callback"],
+        grant_types=["authorization_code", "refresh_token"],
+        response_types=["code"],
     )
 
 

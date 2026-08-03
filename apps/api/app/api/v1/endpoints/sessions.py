@@ -7,7 +7,6 @@ artifact stream missed. All listing is host-side JuiceFS (zero R2 ops).
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -120,11 +119,11 @@ async def _resolve_file(
     return host_path
 
 
-@router.get("/{conv_id}/artifacts", response_model=list[ArtifactInfo])
+@router.get("/{conv_id}/artifacts")
 @tiered_rate_limit("session_files")
 async def list_session_artifacts(
     conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
-) -> JSONResponse:
+) -> list[ArtifactInfo]:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
     await _assert_owns(user_id, conv_id)
@@ -132,7 +131,7 @@ async def list_session_artifacts(
         items = await list_artifacts(user_id, conv_id)
     except JuiceFSUnavailable:
         items = []
-    return JSONResponse(content=[asdict(i) for i in items])
+    return items
 
 
 @router.get(
@@ -154,11 +153,11 @@ async def get_artifact_file(
     return _serve(host_path, is_artifact=True, filename=path.rsplit("/", 1)[-1])
 
 
-@router.get("/{conv_id}/uploads", response_model=list[ArtifactInfo])
+@router.get("/{conv_id}/uploads")
 @tiered_rate_limit("session_files")
 async def list_uploads(
     conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
-) -> JSONResponse:
+) -> list[ArtifactInfo]:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
     await _assert_owns(user_id, conv_id)
@@ -166,7 +165,7 @@ async def list_uploads(
         items = await list_user_uploaded(user_id, conv_id)
     except JuiceFSUnavailable:
         items = []
-    return JSONResponse(content=[asdict(i) for i in items])
+    return items
 
 
 @router.get(

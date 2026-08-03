@@ -3,7 +3,7 @@ Router module for image generation and image-to-text endpoints.
 """
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
@@ -21,25 +21,25 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 
-@router.post("/image/generate", response_model=ImageData)
+@router.post("/image/generate")
 @tiered_rate_limit("generate_image")
 async def image(
     request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)
-) -> JSONResponse:
+) -> ImageData:
     """Generate an image based on the text prompt."""
     log.set(operation="generate", prompt_length=len(request.message))
     response = await api_generate_image(request.message)
     log.set(outcome="success")
-    return JSONResponse(content=response.model_dump(mode="json"))
+    return response
 
 
-@router.post("/image/text", response_model=ImageToTextResponse)
+@router.post("/image/text")
 @tiered_rate_limit("file_analysis", count_tokens=True)
 async def image_to_text(
     message: str = Form(...),
     file: UploadFile = File(...),
     _user: AuthenticatedUser = Depends(get_current_user),
-) -> JSONResponse:
+) -> ImageToTextResponse:
     """Extract text from an image using OCR."""
     log.set(
         operation="image_to_text",
@@ -49,7 +49,7 @@ async def image_to_text(
     )
     response = await image_to_text_endpoint(message, file)
     log.set(outcome="success")
-    return JSONResponse(content=response.model_dump(mode="json"))
+    return response
 
 
 @router.post("/image/generate/stream")

@@ -39,10 +39,13 @@ router = APIRouter()
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-@router.get("/me", response_model=AuthenticatedUserResponse)
+# exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
+# and the optional profile fields are only meaningful when set — the response has
+# always omitted them rather than sending nulls, and clients rely on that.
+@router.get("/me", response_model_exclude_none=True)
 async def get_me(
     user: AuthenticatedUser = Depends(get_current_user),
-) -> JSONResponse:
+) -> AuthenticatedUserResponse:
     """
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
@@ -60,7 +63,7 @@ async def get_me(
     )
 
     log.set(outcome="success")
-    return JSONResponse(content=response.model_dump(mode="json", exclude_none=True))
+    return response
 
 
 @router.patch("/me", response_model=UserUpdateResponse)

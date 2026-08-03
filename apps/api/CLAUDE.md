@@ -131,22 +131,26 @@ One `APIRouter` per domain with `prefix` and `tags`. Every handler follows the s
 
 1. `log.set()` with everything known at the start (user, operation, IDs). Presence of this step is enforced by the `route-contract` lint (`tools/lints/README`).
 2. Delegate all work to a service function.
-3. `log.set()` again with result IDs, then return `JSONResponse`.
+3. `log.set()` again with result IDs, then return the Pydantic response model.
 
 ```python
-@router.post("/todos", response_model=TodoResponse, status_code=201)
+@router.post("/todos", status_code=201)
 async def create_todo(
     payload: CreateTodoRequest,
     user: dict = Depends(get_current_user),
-) -> JSONResponse:
+) -> TodoResponse:
     log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
     result = await create_todo_service(payload, user)
-    log.set(todo={"id": result["_id"]})
-    return JSONResponse(content=result)
+    log.set(todo={"id": result.id})
+    return result
 ```
 
-- Set `response_model=` when the handler returns `JSONResponse` (per step 3) so the schema is still documented. When a handler returns a Pydantic model directly, its return annotation already defines the schema — don't duplicate it with `response_model=` (SonarQube S8409). Use correct status codes (`201` create, `204` delete, `404` not found).
-- Never return raw dicts — always `JSONResponse` or a Pydantic response model.
+- The return annotation defines the response schema. Don't also pass `response_model=` — it is redundant and trips SonarQube S8409.
+- **Never return a `JSONResponse` from a route that sets `response_model=`.** FastAPI skips response-model validation and serialization entirely for any `Response` instance a handler returns, so the declared schema is never enforced: the documented shape and the shipped payload drift apart silently and permanently. Returning the model is what keeps them inseparable.
+- Never return raw dicts — return a Pydantic response model.
+- Use correct status codes (`201` create, `204` delete, `404` not found).
+- Decorator serializer options still apply, e.g. `response_model_exclude_none=True` when the payload must omit unset optional fields instead of sending nulls.
+- A handler that genuinely cannot return a model — streaming, file download, redirect, a deliberately non-JSON body — returns the `Response` subclass and declares **no** `response_model`; a wrong schema is worse than no schema. To return a different body under a non-200 status, annotate the union and set the status on an injected `Response` (see `endpoints/health.py`) rather than reaching for `JSONResponse`.
 
 ## Service Layer
 
@@ -237,7 +241,7 @@ async def get_todo_summary(todo_id: str) -> TodoSummary:
     return TodoSummary(id=doc.id, title=doc.title, status=doc.status)
 ```
 
-Endpoints follow the same rule: never `-> dict[str, Any]`. Return a Pydantic model, or `JSONResponse` with `response_model=` set (see FastAPI — Route Handlers above). If a lower layer already returns a real model, return it (or build the response from it) directly — don't call `.model_dump()` just to downgrade it back to a dict.
+Endpoints follow the same rule: never `-> dict[str, Any]`. Return a Pydantic model (see FastAPI — Route Handlers above). If a lower layer already returns a real model, return it (or build the response from it) directly — don't call `.model_dump()` just to downgrade it back to a dict.
 
 ### 4. Once something is a real model, use attribute access — `.get("key")` on it is the same guessing game as `dict[str, Any]`
 

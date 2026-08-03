@@ -6,7 +6,7 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.settings import settings
@@ -433,12 +433,11 @@ async def check_auth_status(
 
 @router.get(
     "/linked-users/{platform}",
-    response_model=LinkedUsersResponse,
     status_code=200,
     summary="List Linked Platform Users",
     description="List platform_user_ids of accounts linked to a platform (bots use this to pre-warm DM caches).",
 )
-async def list_linked_users(request: Request, platform: str) -> JSONResponse:
+async def list_linked_users(request: Request, platform: str) -> LinkedUsersResponse:
     """Return the platform_user_ids linked on the given platform."""
     await require_bot_api_key(request)
     log.set(operation="list_linked_users", platform=platform)
@@ -446,7 +445,7 @@ async def list_linked_users(request: Request, platform: str) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Invalid platform")
     ids = await PlatformLinkService.list_platform_user_ids(platform)
     log.set(outcome="success", linked_count=len(ids))
-    return JSONResponse(content=LinkedUsersResponse(platform_user_ids=ids).model_dump())
+    return LinkedUsersResponse(platform_user_ids=ids)
 
 
 @router.get(
