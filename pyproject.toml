@@ -187,9 +187,10 @@ ignore = [
   "G201",    # logging-exc-info
   # RUF059: unused tuple unpack — common in test helpers.
   "RUF059",
-  # Blanket type:ignore / noqa — sometimes the only practical option.
+  # PGH003 (blanket `# type: ignore`) stays for now — 21 sites still to migrate
+  # to `# type: ignore[code]`. PGH004 is NOT ignored: a bare `# noqa` hides which
+  # rule was silenced, and there are zero in the tree, so barring it costs nothing.
   "PGH003",
-  "PGH004",
   # SIM117 / SIM102 — nested with/if can be more readable than combined.
   "SIM117",
   "SIM102",
@@ -279,7 +280,10 @@ ignore = [
   "RUF001",
   "RUF002",
   "RUF043",
-  # noqa hygiene — unused noqa is a minor issue.
+  # RUF100 (unused noqa) stays off until BLE001 is enabled. All 60 of its current
+  # findings are `# noqa: BLE001` markers on deliberate blind excepts — redundant
+  # only because BLE001 is ignored below. Removing them would delete the intent
+  # they document and have to be undone the moment BLE001 is turned on.
   "RUF100",
   # Other naming / misc.
   "N803",   # arg name should be snake_case (pydantic-camelCase passthroughs)
