@@ -630,13 +630,13 @@ class TestMultiStepWorkflowExecution:
         enriched = enrich_steps(generated)
 
         assert len(enriched) == 3
-        assert enriched[0]["id"] == "step_0"
-        assert enriched[1]["id"] == "step_1"
-        assert enriched[2]["id"] == "step_2"
-        assert enriched[0]["title"] == "Fetch data"
-        assert enriched[1]["title"] == "Process data"
-        assert enriched[2]["title"] == "Send report"
-        assert enriched[2]["category"] == "gmail"
+        assert enriched[0].id == "step_0"
+        assert enriched[1].id == "step_1"
+        assert enriched[2].id == "step_2"
+        assert enriched[0].title == "Fetch data"
+        assert enriched[1].title == "Process data"
+        assert enriched[2].title == "Send report"
+        assert enriched[2].category == "gmail"
 
 
 # ---------------------------------------------------------------------------
