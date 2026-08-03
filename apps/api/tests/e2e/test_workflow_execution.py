@@ -599,11 +599,6 @@ class TestWorkflowExecutionFailurePropagation:
         monkeypatch.setattr(
             tiered_rate_limiter.tiered_limiter, "check_and_increment", AsyncMock(return_value={})
         )
-        monkeypatch.setattr(
-            tiered_rate_limiter.payment_service,
-            "get_user_subscription_status",
-            AsyncMock(return_value=MagicMock(plan_type=None)),
-        )
 
         return {
             "records": records,

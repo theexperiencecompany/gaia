@@ -50,6 +50,14 @@ os.environ["LANGSMITH_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING"] = "false"
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
+# Same reasoning for Langfuse, which activates only when all three of these are
+# set (app/config/langfuse.py) — so blanking one disables it. A developer's .env
+# supplies them, and the exporter then blocks on shutdown retrying spans against
+# a host the suite has no business contacting.
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
+os.environ["LANGFUSE_HOST"] = ""
+
 # Imported AFTER the env setup above, not with the top-level imports: document
 # models now extend MongoDocument, so importing any of them pulls in
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
