@@ -44,7 +44,7 @@ FINISH_NODE = "finish_task"
 #: Compiled graphs are third-party objects that reject stray attributes, so the
 #: harness keeps the scripted model beside the graph rather than on it. Lets
 #: ``run_graph`` surface prompts without every test having to thread the model.
-_SCRIPTED_MODELS: dict[int, "RecordingFakeModel"] = {}
+_SCRIPTED_MODELS: dict[int, RecordingFakeModel] = {}
 
 
 class RecordingStore(InMemoryStore):
