@@ -1,11 +1,14 @@
 """Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
 import inspect
-from typing import Any, cast
+from typing import Any, ParamSpec, TypeVar, cast
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 from fastapi import HTTPException
 from langgraph.config import get_stream_writer
@@ -17,8 +20,8 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 from app.constants.log_tags import LogTag
 from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
-from app.models.user_models import AuthenticatedUser
 from app.models.usage_models import UsageInfo
+from app.models.user_models import AuthenticatedUser
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -33,7 +36,7 @@ def with_rate_limiting(
     feature_key: str | None = None,
     count_tokens: bool = False,
     bypass_for_system: bool = False,
-) -> Callable[[Callable], Callable]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator stackable with LangChain's @tool.
 
     Args:
@@ -44,7 +47,7 @@ def with_rate_limiting(
     Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
     """
 
-    def rate_limit_decorator(func: Callable) -> Callable:
+    def rate_limit_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         # 🚨 VALIDATE AT DECORATION TIME - Error happens when decorator is applied!
         sig = inspect.signature(func)
         if "config" not in sig.parameters:
@@ -54,14 +57,16 @@ def with_rate_limiting(
             )
 
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             """Enforce the feature's rate limit before running the wrapped call."""
             # Auto-derive feature key from function name if not provided
             actual_feature_key = feature_key or func.__name__
 
             # Get user context from context variable (avoid parameter pollution)
             context = user_context.get()
-            config = kwargs.get("config")
+            # Decoration-time validation above guarantees a `config` parameter; it
+            # carries LangGraph's RunnableConfig mapping.
+            config = cast(Mapping[str, Any] | None, kwargs.get("config"))
 
             if not context and config:
                 # Extract from RunnableConfig
@@ -212,12 +217,12 @@ def with_rate_limiting(
 
 def tiered_rate_limit(
     feature_key: str, count_tokens: bool = False
-) -> Callable[[Callable], Callable]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             """Enforce the tiered rate limit before running the wrapped endpoint."""
             # The authenticated user comes from `request.state.user` (mirrored into
             # a ContextVar by WorkOSAuthMiddleware), NOT from the handler's
@@ -229,7 +234,7 @@ def tiered_rate_limit(
             if not user:
                 # Direct invocation outside the HTTP middleware stack (tests,
                 # internal callers) can still pass the auth dict explicitly.
-                user = kwargs.get("user")
+                user = cast(AuthenticatedUser | None, kwargs.get("user"))
                 for arg in args:
                     if isinstance(arg, dict) and "user_id" in arg:
                         user = cast(AuthenticatedUser, arg)
@@ -318,7 +323,7 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
-def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: Any) -> dict[str, Any]:
+def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: object) -> dict[str, Any]:
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)

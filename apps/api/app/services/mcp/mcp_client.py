@@ -482,8 +482,8 @@ class MCPClient:
                 event.set()
 
     async def reconnect_and_call(
-        self, integration_id: str, tool_name: str, kwargs: dict[str, Any]
-    ) -> Any:
+        self, integration_id: str, tool_name: str, kwargs: dict[str, object]
+    ) -> object:
         """Force a fresh connect for `integration_id` then call `tool_name` once.
 
         Invoked by the tool wrapper when a call hits a dead connector — the
@@ -566,16 +566,16 @@ class MCPClient:
 
         # Bypass our wrapper to avoid recursion if this call also fails — the
         # wrapper already retried once by invoking this method.
-        # LangChain declares BaseTool._arun as `-> Any` and the wrapper stashes
-        # the original behind a dynamic attribute, so the result genuinely has no
-        # narrower type here; it is handed straight back to the tool wrapper's
-        # `Callable[[str, dict], Awaitable[Any]]` contract (Type Safety item 14).
+        # LangChain declares BaseTool._arun as `-> Any` and the wrapper stashes the
+        # original behind a dynamic attribute, so nothing narrower than `object` is
+        # knowable here. `object` is what the sole consumer already wants: the tool
+        # wrapper's `filtered_arun` returns `object` and hands this straight back.
         underlying = getattr(fresh_tool, "_original_arun", None)
         if underlying is None:
             underlying = fresh_tool._arun
 
         try:
-            result = await underlying(**kwargs)
+            result: object = await underlying(**kwargs)
         except Exception as e:
             log.set_ns(
                 "mcp",
@@ -754,8 +754,8 @@ class MCPClient:
 
             def _make_reconnect_callback(
                 iid: str,
-            ) -> Callable[[str, dict[str, Any]], Awaitable[Any]]:
-                async def _reconnect_and_retry(tool_name: str, kwargs: dict[str, Any]) -> Any:
+            ) -> Callable[[str, dict[str, object]], Awaitable[object]]:
+                async def _reconnect_and_retry(tool_name: str, kwargs: dict[str, object]) -> object:
                     return await self.reconnect_and_call(iid, tool_name, kwargs)
 
                 return _reconnect_and_retry

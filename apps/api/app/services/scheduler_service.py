@@ -4,7 +4,7 @@ Base scheduler service for managing scheduled tasks.
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
@@ -19,6 +19,20 @@ from app.models.scheduler_models import (
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
+
+
+class TriggerConfigLike(Protocol):
+    """The only two fields the base scheduler reads off a task's trigger_config.
+
+    Structural rather than an import of ``workflow_models.TriggerConfig``: this
+    scheduler serves both the reminder and the workflow domain, so it must not
+    depend on either one's concrete model. Naming the fields is what stops a
+    dict-shaped trigger_config from reaching here — on a dict, the timezone read
+    silently yields None and the recurrence re-arms at the wrong wall-clock hour.
+    """
+
+    timezone: str | None
+    next_run: datetime | None
 
 
 class BaseSchedulerService(ABC):
@@ -183,12 +197,10 @@ class BaseSchedulerService(ABC):
         # the task itself; workflows store it on trigger_config (the zone the cron
         # was authored against) which therefore wins. Neither set => UTC.
         # Both are read off the BaseScheduledTask by name because only some
-        # subclasses declare them, so `object` is the honest static type here.
+        # subclasses declare them.
         user_timezone: str | None = getattr(task, "timezone", None)
-        trigger_config: object | None = getattr(task, "trigger_config", None)
-        trigger_timezone: str | None = (
-            getattr(trigger_config, "timezone", None) if trigger_config else None
-        )
+        trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+        trigger_timezone: str | None = trigger_config.timezone if trigger_config else None
         if trigger_timezone:
             user_timezone = trigger_timezone
         log.set(scheduler_recurrence_timezone=user_timezone)
@@ -233,7 +245,7 @@ class BaseSchedulerService(ABC):
         task: BaseScheduledTask,
         occurrence_count: int,
         next_run: datetime,
-        trigger_config: object | None,
+        trigger_config: TriggerConfigLike | None,
     ) -> None:
         """Persist the next occurrence and re-enqueue the recurring task."""
         # Store scheduled_at as a native datetime so the `$lte` scan can match it.
@@ -241,6 +253,10 @@ class BaseSchedulerService(ABC):
             "scheduled_at": next_run,
             "occurrence_count": occurrence_count,
         }
+        # The hasattr stays despite the Protocol: this write decides what the next
+        # scheduled run fires with, and trigger_config arrives via getattr (i.e.
+        # unchecked at runtime). A task whose config genuinely has no next_run must
+        # not get a phantom `trigger_config.next_run` key written into Mongo.
         if trigger_config is not None and hasattr(trigger_config, "next_run"):
             update_fields["trigger_config.next_run"] = next_run
         await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)

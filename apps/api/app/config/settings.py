@@ -660,6 +660,16 @@ def get_settings() -> Any:
 
     This function uses LRU cache to ensure settings are instantiated only once,
     avoiding expensive Pydantic validation on every import.
+
+    The return stays `Any`. Measured, don't re-litigate: annotating it
+    `-> CommonSettings` produced **129 new mypy errors** — the concrete keys live
+    on ProductionSettings/DevelopmentSettings or arrive via `extra="allow"`, so
+    every `settings.TAVILY_API_KEY` / `R2_*` / `JUICEFS_*` read across the
+    storage, search-provider and sandbox layers becomes `has no attribute`.
+    Narrowing means hoisting those declarations onto the common base, which is a
+    settings-model redesign, not a typing fix (Type Safety item 14). The same run
+    showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
+    per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
     """
     log.set(service={"name": "gaia-api"})
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")

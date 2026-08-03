@@ -389,13 +389,11 @@ unfixable = [
 # parameter with real keyword callers elsewhere (image.py, tiered_rate_limiter.py)
 # -- cannot rename/delete. Its enforcement body is separately known to be
 # dead code (a no-op today), tracked as a follow-up, not fixed here.
-"apps/api/app/decorators/rate_limiting.py" = ["ARG001", "ANN401"]
+"apps/api/app/decorators/rate_limiting.py" = ["ARG001"]
 # ANN401: generic decorator/proxy/settings surfaces that genuinely accept or
 # return arbitrary data -- Any is the correct type here, not a shortcut.
 "apps/api/app/db/redis.py" = ["ANN401"]
 "apps/api/app/config/settings.py" = ["ANN401"]
-"apps/api/app/decorators/caching.py" = ["ANN401"]
-"apps/api/app/decorators/integration.py" = ["ANN401"]
 # ANN401: StructuredTool.run overrides LangChain BaseTool.run and forwards
 # *args/**kwargs straight through (BaseTool.run itself returns Any); the wrapped
 # action fn takes the tool-argument bag, whose signature is synthesized at
@@ -406,24 +404,18 @@ unfixable = [
 # design -- get()/aget() are keyed by name, so the concrete type is only
 # knowable at the call site (callers narrow with cast()).
 "apps/api/app/core/lazy_loader.py" = ["ANN401"]
-# ANN401: Pydantic "before" validators receive unvalidated raw input by
-# definition -- the whole point is to normalize whatever was given.
-"apps/api/app/models/webhook_models.py" = ["ANN401"]
+# ANN401: WorkflowModel.__init__ forwards **data to BaseScheduledTask's
+# per-field typed __init__ (str / datetime / ScheduledTaskStatus / int), so the
+# bag cannot be object -- measured at 4 errors. Its "before" validators were
+# narrowed to object and no longer need the ignore.
 "apps/api/app/models/workflow_models.py" = ["ANN401"]
 # ANN401: overrides/mirrors third-party base-class methods typed Any upstream
 # (LangChain Runnable, LangGraph Runtime/ToolNode/hooks, MCP adapters) --
 # verified against each library's real signature, not assumed.
 "apps/api/app/agents/llm/client.py" = ["ANN401"]
-"apps/api/app/agents/middleware/runtime_adapter.py" = ["ANN401"]
 "apps/api/app/agents/middleware/summarization.py" = ["ANN401"]
 "apps/api/app/override/langgraph_bigtool/dynamic_tool_node.py" = ["ANN401"]
 "apps/api/app/services/mcp/langchain_adapter.py" = ["ANN401"]
-# ANN401: generic decorated-function key/cache helpers forwarding *args/**kwargs
-# to an arbitrary wrapped callable (Cacheable decorator contract).
-"apps/api/app/memory/retrieval.py" = ["ANN401"]
-# ANN401: general-purpose error constructor called from dozens of files with
-# heterogeneous metadata; stored as dict[str, Any] by design.
-"apps/api/app/utils/errors.py" = ["ANN401"]
 # ARG002: overrides abstract ActionHandler.execute / ChannelAdapter.can_handle,
 # dispatched polymorphically from one call site -- every implementation keeps
 # the full interface signature even where it only needs a subset.
@@ -451,10 +443,6 @@ unfixable = [
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]
-# ANN401: trigger_config is inconsistently dict vs. TriggerConfig-model shaped
-# across the workflow/scheduler codebase (pre-existing, predates this ratchet) --
-# tracked as a follow-up to unify, not resolved here.
-"apps/api/app/services/scheduler_service.py" = ["ANN401"]
 # PLC0415 (no inline imports) ratchet: enforced everywhere; the files below are
 # grandfathered legacy offenders. SHRINK this list when you touch a file — never
 # add to it. Tests defer app imports by design (root conftest env-ordering).
@@ -482,12 +470,7 @@ unfixable = [
 "apps/api/app/services/composio/proxy_client.py" = ["PLC0415", "ANN401"]
 "apps/api/app/services/device_token_service.py" = ["PLC0415"]
 "apps/api/app/services/mcp/mcp_client_pool.py" = ["PLC0415"]
-# ANN401: reconnect_and_call returns whatever the wrapped LangChain tool's
-# _arun yields. Two different callables reach it -- the MCP adapter's _arun and
-# the null-filter wrapper's filtered_arun -- and it is handed straight back to
-# wrap_tools_with_null_filter's `Callable[[str, dict], Awaitable[Any]]` contract,
-# so narrowing gains nothing downstream. Every other Any in this file is gone.
-"apps/api/app/services/mcp/mcp_client.py" = ["PLC0415", "ANN401"]
+"apps/api/app/services/mcp/mcp_client.py" = ["PLC0415"]
 "apps/api/app/services/mcp/mcp_token_store.py" = ["PLC0415"]
 "apps/api/app/services/reminder_service.py" = ["PLC0415"]
 "apps/api/app/services/storage/sessions/lifecycle.py" = ["PLC0415"]
@@ -495,7 +478,7 @@ unfixable = [
 "apps/api/app/services/todos/todo_service.py" = ["PLC0415"]
 "apps/api/app/services/triggers/handlers/calendar.py" = ["PLC0415"]
 "apps/api/app/services/workflow/context_extractor.py" = ["PLC0415"]
-"apps/api/app/services/workflow/generation_service.py" = ["PLC0415", "ANN401"]
+"apps/api/app/services/workflow/generation_service.py" = ["PLC0415"]
 "apps/api/app/services/workflow/integration_requirements.py" = ["PLC0415"]
 "apps/api/app/services/workflow/scheduler.py" = ["PLC0415"]
 "apps/api/app/services/workflow/service.py" = ["PLC0415"]

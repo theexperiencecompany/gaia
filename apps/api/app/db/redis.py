@@ -42,6 +42,17 @@ CACHE_TTL = DEFAULT_CACHE_TTL
 # annotation on an ``Any`` — so a mismatched model went unnoticed.
 T = TypeVar("T")
 
+# The four remaining ``Any`` returns are the *no-model* overload stubs
+# (deserialize_any / RedisCache.get / get_cache / get_and_delete_cache). Measured,
+# don't re-litigate: narrowing them to ``object`` produced **31 new mypy errors
+# across 14 files** — stream_manager, bot_auth_middleware, tiered_rate_limiter,
+# payment_service, mcp_token_store and memory/consolidation all subscript,
+# ``.get()`` or ``int()`` the untyped cache read directly. Callers that want a
+# real type already pass ``model=`` and get it; the model-less overload is the
+# genuinely dynamic one. The three input params (serialize_any's ``data``,
+# ``set``/``set_cache``'s ``value``) and the overload *implementation* returns do
+# narrow to ``object`` at zero cost — a follow-up, not an ANN401 unblock.
+
 
 def serialize_any(data: Any, model: type[Any] | None = None) -> str:
     """

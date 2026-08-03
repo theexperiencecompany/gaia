@@ -1,5 +1,7 @@
 """Constants for integration tools."""
 
+from typing import Final
+
 # Limits for LLM context to prevent overwhelming responses
 MAX_CONNECTED_FOR_LLM = 20
 MAX_AVAILABLE_FOR_LLM = 15
@@ -16,8 +18,9 @@ MAX_INTEGRATION_TOOLS_FOR_LLM = 40
 # number of custom integrations can truncate at all.
 MAX_MY_INTEGRATIONS_RESULTS = 100
 
-# Integration connection status values
-INTEGRATION_STATUS_CONNECTED = "connected"
+# Integration connection status values. `Final` keeps the literal type so this
+# still satisfies update_user_integration_status's Literal["created", "connected"].
+INTEGRATION_STATUS_CONNECTED: Final = "connected"
 
 # Integration managed_by provider identifiers
 MANAGED_BY_MCP = "mcp"

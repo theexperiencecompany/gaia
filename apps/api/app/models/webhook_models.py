@@ -170,7 +170,7 @@ class ComposioWebhookEvent(BaseModel):
 
     @field_validator("type", mode="before")
     @classmethod
-    def normalize_trigger_type(cls, v: Any) -> Any:
+    def normalize_trigger_type(cls, v: object) -> object:
         """Convert trigger type to uppercase to match TRIGGER_TYPES definition."""
         if isinstance(v, str):
             return v.upper()

@@ -40,6 +40,7 @@ class ProxyResponse(TypedDict):
     data: Any
     headers: dict[str, Any]
 
+
 _CONNECTED_ACCOUNT_CACHE_TTL_SECONDS = 600
 
 _connected_account_cache: dict[tuple[str, str], tuple[str, float]] = {}
@@ -304,6 +305,13 @@ def proxy_request_sync(
     codebase and each answers a different JSON shape, so the concrete type
     only exists at the call site. Callers validate what they receive into a
     real model there.
+
+    Measured, don't re-litigate: annotating this and `proxy_request` as
+    `-> object` (the honest type of parsed JSON) produced **47 new mypy errors
+    across 16 files** — 40 of them `"object" has no attribute "get"` in the
+    integration tools (linkedin 11, instagram 9, teams 5, twitter 3, ...), the
+    rest assignment/index errors. Every one would need a per-call-site cast or
+    model, which is the cross-file ripple Type Safety item 14 rules out.
     """
     return _proxy_call(
         user_id=user_id,

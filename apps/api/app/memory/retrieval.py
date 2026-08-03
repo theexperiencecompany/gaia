@@ -19,7 +19,7 @@ import hashlib
 import math
 import re
 import time
-from typing import Any
+from typing import cast
 
 from app.constants.memory import (
     ANN_CANDIDATES,
@@ -71,7 +71,7 @@ class EpisodeHit:
     score: float | None = None
 
 
-def _recall_cache_key(_func_name: str, *args: Any, **kwargs: Any) -> str:
+def _recall_cache_key(_func_name: str, *args: object, **kwargs: object) -> str:
     """Cache key for ``recall``: user:{id}:memories:{digest}.
 
     The ``user:{user_id}:memories:*`` prefix must match
@@ -86,7 +86,7 @@ def _recall_cache_key(_func_name: str, *args: Any, **kwargs: Any) -> str:
     query = args[1] if len(args) > 1 else kwargs["query"]
     limit = kwargs.get("limit", DEFAULT_RECALL_LIMIT)
     category_prefix = kwargs.get("category_prefix")
-    kinds = kwargs.get("kinds")
+    kinds = cast(list[MemoryKind] | None, kwargs.get("kinds"))
     include_graph_expansion = kwargs.get("include_graph_expansion", True)
 
     kinds_part = ",".join(sorted(kind.value for kind in kinds)) if kinds else ""

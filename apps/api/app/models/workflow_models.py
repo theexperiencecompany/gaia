@@ -152,6 +152,19 @@ class TriggerConfig(BaseModel):
         return v
 
 
+class WorkflowCreator(TypedDict):
+    """The public-facing creator card built by ``format_creator``.
+
+    A ``TypedDict``, not a model: it rides inside the untyped card dicts of
+    ``PublicWorkflowsResponse.workflows`` as well as ``Workflow.creator``, so it
+    has to stay a plain dict on the wire for both.
+    """
+
+    id: str | None
+    name: str
+    avatar: str | None
+
+
 class Workflow(BaseScheduledTask):
     """Main workflow model extending BaseScheduledTask for scheduling capabilities."""
 
@@ -258,16 +271,21 @@ class Workflow(BaseScheduledTask):
         ),
     )
 
-    # Shaped by `format_creator` (app/utils/creator.py), which is shared with the
-    # public-integrations endpoint and still returns a dict; typing this field
-    # means typing that helper's return for both consumers at once.
-    creator: dict[str, Any] | None = Field(
+    creator: WorkflowCreator | None = Field(
         default=None,
         description="Creator info hydrated for public workflow lookups.",
     )
 
     def __init__(self, **data: Any) -> None:
-        """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
+        """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields.
+
+        ``**data`` stays ``Any``. Measured, don't re-litigate: ``**data: object``
+        produces 4 errors on the ``super().__init__(**data)`` below, because
+        BaseScheduledTask's generated ``__init__`` declares per-field types
+        (``str``, ``datetime``, ``ScheduledTaskStatus``, ``int``) that a
+        ``dict[str, object]`` bag cannot satisfy. The two "before" validators in
+        this module were narrowed to ``object`` and did not need it.
+        """
         # Ensure user_id is provided (it's required by BaseScheduledTask)
         if "user_id" not in data:
             raise ValueError("user_id is required for workflow creation")

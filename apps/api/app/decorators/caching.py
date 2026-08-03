@@ -25,16 +25,26 @@ Key Features:
 """
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Coroutine
 import functools
 import inspect
-from typing import Any
+from typing import Any, ParamSpec, TypeVar, cast, overload
 
 from app.constants.cache import ONE_YEAR_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.utils.cache_utils import create_cache_key_hash
 from shared.py.wide_events import log
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+# Both decorators accept a sync OR an async function and always hand back an
+# async one. A single `Callable[P, R]` would bind R to the *coroutine* for an
+# already-async callee, so every `await cached_fn()` would type as a Coroutine
+# instead of its value (measured: 105 errors across 45 files). The overload pair
+# splits the two cases so R is the awaited value in both.
+_SyncOrAsync = Callable[P, Coroutine[Any, Any, R]] | Callable[P, R]
 
 
 class Cacheable:
@@ -158,7 +168,13 @@ class Cacheable:
         self.deserializer = deserializer
         self.model = model
 
-    def __call__(self, func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+    @overload
+    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
+
+    @overload
+    def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
+
+    def __call__(self, func: _SyncOrAsync[P, R]) -> Callable[P, Awaitable[R]]:
         """
         Apply the cache decorator to a function.
 
@@ -170,7 +186,7 @@ class Cacheable:
         """
 
         @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Generate the cache key
             if self.key:
                 cache_key = self.key
@@ -200,13 +216,15 @@ class Cacheable:
                 log.debug(f"{LogTag.API} Cache hit for key: {cache_key}")
                 if self.deserializer:
                     cached_value = self.deserializer(cached_value)
-                return cached_value
+                # What went into the cache came out of this same `func`.
+                return cast(R, cached_value)
 
             # Call the original function - handle both sync and async
+            result: R
             if asyncio.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
-                result = func(*args, **kwargs)
+                result = cast(R, func(*args, **kwargs))
 
             if result is None and self.ignore_none:
                 return result
@@ -290,7 +308,13 @@ class CacheInvalidator:
         if not key and not key_patterns and not key_generator:
             raise ValueError("Either key, key_patterns, or key_generator must be provided.")
 
-    def __call__(self, func: Callable[..., Any]) -> Callable[..., Awaitable[Any]]:
+    @overload
+    def __call__(self, func: Callable[P, Coroutine[Any, Any, R]]) -> Callable[P, Awaitable[R]]: ...
+
+    @overload
+    def __call__(self, func: Callable[P, R]) -> Callable[P, Awaitable[R]]: ...
+
+    def __call__(self, func: _SyncOrAsync[P, R]) -> Callable[P, Awaitable[R]]:
         """
         Apply the cache invalidator to a function.
 
@@ -302,7 +326,7 @@ class CacheInvalidator:
         """
 
         @functools.wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             # Generate the cache key
             cache_keys: list[str] = []
             if self.key:
@@ -335,8 +359,8 @@ class CacheInvalidator:
 
             # Call the original function - handle both sync and async
             if asyncio.iscoroutinefunction(func):
-                return await func(*args, **kwargs)
-            return func(*args, **kwargs)
+                return cast(R, await func(*args, **kwargs))
+            return cast(R, func(*args, **kwargs))
 
         return wrapper
 

@@ -4,19 +4,22 @@ Integration Connection Decorator
 This module provides a decorator to check integration requirements before tool execution.
 """
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Mapping
 from functools import wraps
-from typing import Any
+from typing import ParamSpec, TypeVar, cast
 
 from app.constants.log_tags import LogTag
 from app.utils.integration_checker import check_and_prompt_integration
 from app.utils.oauth_utils import get_tokens_by_user_id
 from shared.py.wide_events import log
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
 
 def require_integration(
     tool_category: str, tool_name: str | None = None
-) -> Callable[[Callable], Callable]:
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R | str]]]:
     """
     Decorator to check if user has required integration before executing a tool.
 
@@ -31,21 +34,23 @@ def require_integration(
             # Tool implementation
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R | str]]:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
-            # Extract config from args or kwargs
-            config = None
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | str:
+            # Extract config from args or kwargs. The RunnableConfig is identified
+            # structurally (LangGraph passes a plain mapping), so it is matched by
+            # duck-typing and cast rather than isinstance-checked.
+            config: Mapping[str, object] | None = None
 
             # Look for RunnableConfig in args
             for arg in args:
                 if hasattr(arg, "get") and hasattr(arg, "keys"):
-                    config = arg
+                    config = cast(Mapping[str, object], arg)
                     break
 
             # Look for RunnableConfig in kwargs
             if not config:
-                config = kwargs.get("config")
+                config = cast(Mapping[str, object] | None, kwargs.get("config"))
 
             if not config:
                 log.warning(
@@ -54,10 +59,9 @@ def require_integration(
                 return "Configuration error: Unable to verify integration permissions."
 
             # Extract access token from config
-            configurable = config.get("configurable", {})
-            access_token, refresh_token, _ = await get_tokens_by_user_id(
-                configurable.get("user_id")
-            )
+            configurable = cast(Mapping[str, object], config.get("configurable", {}))
+            user_id = cast(str, configurable.get("user_id"))
+            access_token, refresh_token, _ = await get_tokens_by_user_id(user_id)
 
             if not access_token:
                 log.warning(
