@@ -72,7 +72,7 @@ async def initialize_new_conversation(
 
     init_frame = ConversationInitializedFrame(
         conversation_id=conversation_id,
-        conversation_description=conversation.get("description"),
+        conversation_description=conversation.description,
         user_message_id=user_message_id,
         user_message_content=user_message_content_from(body),
         bot_message_id=bot_message_id,

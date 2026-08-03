@@ -50,7 +50,11 @@ from app.services.chat.artifacts_registry import (
 )
 from app.services.outbound_delivery import publish_outbound_file
 from app.services.storage import resolve_session_path
-from app.utils.artifact_utils import build_artifact_full_entry, build_artifact_ref_entry
+from app.utils.artifact_utils import (
+    ArtifactDataEntry,
+    build_artifact_full_entry,
+    build_artifact_ref_entry,
+)
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
@@ -245,12 +249,12 @@ class ArtifactForwarder:
 
     # ── Pipeline steps ─────────────────────────────────────────────────────
 
-    async def _stream_entry(self, entry: dict[str, Any]) -> None:
+    async def _stream_entry(self, entry: ArtifactDataEntry) -> None:
         """Publish one ``artifact_data`` chunk to the live SSE stream."""
         chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
         await stream_manager.publish_chunk(self.stream_id, chunk)
 
-    async def _persist_entry(self, entry: dict[str, Any]) -> None:
+    async def _persist_entry(self, entry: ArtifactDataEntry) -> None:
         """``$push`` one ``artifact_data`` reference onto the turn's bot message.
 
         Best-effort: the live stream already delivered the card, so a failed
