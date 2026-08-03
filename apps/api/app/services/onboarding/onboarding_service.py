@@ -10,6 +10,7 @@ from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.models.onboarding_models import (
+    ClarifyAnswerRecord,
     OnboardingResetCounts,
     OnboardingStatusResponse,
 )
@@ -69,9 +70,9 @@ async def complete_onboarding(
             custom_instructions=None,
         )
 
-        clarify_answers: list[dict[str, object]] | None = None
+        clarify_answers: list[ClarifyAnswerRecord] | None = None
         if onboarding_data.clarify_answers:
-            kept: list[dict[str, object]] = [
+            kept: list[ClarifyAnswerRecord] = [
                 {
                     "id": a.id,
                     "kind": a.kind,
@@ -98,7 +99,7 @@ async def complete_onboarding(
             phase=OnboardingPhase.PERSONALIZATION_PENDING,
             bio_status=BioStatus.PENDING,
             pipeline_mode="split" if onboarding_data.defer_workflows else "full",
-            preferences=preferences.model_dump(),
+            preferences=preferences,
             focus=focus,
             clarify_answers=clarify_answers,
             selected_integrations=(
@@ -247,20 +248,13 @@ async def update_onboarding_preferences(
         HTTPException: If user not found or update fails
     """
     try:
-        # PATCH semantics: write only the fields the caller actually sent, each at
-        # its own dotted path. Different settings surfaces (Preferences vs. Custom
-        # Instructions) own disjoint fields, so a partial save from one can no
-        # longer clobber a field owned by the other. Values are already normalized
-        # by the OnboardingPreferences validators (empty string -> None, length
-        # capped), so they can be persisted as-is.
-        provided = preferences.model_dump(exclude_unset=True)
-        patch: dict[str, object] = {
-            field: getattr(preferences, field)
-            for field in ("profession", "response_style", "custom_instructions")
-            if field in provided
-        }
-
-        updated_user = await user_repository.update_onboarding_preferences(user_id, patch)
+        # PATCH semantics (applied by the repository, which writes only the fields
+        # the caller actually set, each at its own dotted path): different settings
+        # surfaces (Preferences vs. Custom Instructions) own disjoint fields, so a
+        # partial save from one cannot clobber a field owned by the other. Values
+        # are already normalized by the OnboardingPreferences validators (empty
+        # string -> None, length capped), so they are persisted as-is.
+        updated_user = await user_repository.update_onboarding_preferences(user_id, preferences)
         if updated_user is None:
             raise HTTPException(status_code=404, detail="User not found")
 

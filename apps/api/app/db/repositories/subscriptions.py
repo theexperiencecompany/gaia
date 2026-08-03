@@ -35,15 +35,19 @@ class SubscriptionsRepository(MongoRepository[SubscriptionDocument, Subscription
         subscription = await self._find_one({"dodo_subscription_id": dodo_subscription_id})
         return subscription.user_id if subscription is not None else None
 
-    async def apply_update_by_dodo_id(self, dodo_subscription_id: str, **fields: object) -> bool:
+    async def apply_update_by_dodo_id(
+        self, dodo_subscription_id: str, update: SubscriptionUpdate
+    ) -> bool:
         """Apply a ``$set`` patch to the subscription with this Dodo id, returning
-        whether one matched. ``updated_at`` is auto-stamped by the base, so callers
-        pass only the fields that actually change."""
-        if not fields:
+        whether one matched. Only the fields the caller actually set are written
+        (``exclude_unset``), so an untouched field is never overwritten with its
+        default. ``updated_at`` is auto-stamped by the base."""
+        set_fields = update.model_dump(exclude_unset=True)
+        if not set_fields:
             return False
         updated = await self._apply_raw_update(
             {"dodo_subscription_id": dodo_subscription_id},
-            {"$set": dict(fields)},
+            {"$set": set_fields},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

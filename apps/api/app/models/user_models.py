@@ -302,6 +302,22 @@ class AuthenticatedUser(TypedDict, total=False):
     inactive_email_count: int | None
 
 
+class PlatformLinkRecord(TypedDict, total=False):
+    """One ``users.platform_links.{platform}`` entry — the bot-account link.
+
+    A ``TypedDict``, not a model (Type Safety item 6): it is written and read
+    in-process against an already-persisted subdocument, and the read path has to
+    keep tolerating legacy rows that stored a bare id instead of this mapping, so
+    validating it would add a failure mode without adding safety. ``total=False``
+    because only ``id`` is always written — ``username``/``display_name`` are
+    stored only when the platform's profile supplied them.
+    """
+
+    id: str
+    username: str
+    display_name: str
+
+
 class UserDocument(MongoDocument):
     """A user as stored in MongoDB.
 

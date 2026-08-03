@@ -263,8 +263,10 @@ class TestUpdateOnboardingPreferences:
         prefs = OnboardingPreferences(custom_instructions="Focus on email")
         await update_onboarding_preferences(sample_user_id, prefs)
 
+        # The repository writes model_dump(exclude_unset=True) as the $set, so the
+        # unsent fields must be absent from the model's set-fields, not merely None.
         patch_arg = mock_repo.update_onboarding_preferences.call_args[0][1]
-        assert patch_arg == {"custom_instructions": "Focus on email"}
+        assert patch_arg.model_dump(exclude_unset=True) == {"custom_instructions": "Focus on email"}
 
     async def test_generic_exception_returns_500(self, mock_repo, sample_user_id):
         mock_repo.update_onboarding_preferences.side_effect = RuntimeError("Unexpected")

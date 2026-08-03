@@ -490,7 +490,7 @@ class TestSaveConfirmedProfiles:
             await save_confirmed_profiles("user-1", profiles)
 
         set_profiles.assert_awaited_once_with(
-            "user-1", [{"platform": "twitter", "url": "https://twitter.com/bob"}]
+            "user-1", [SocialProfile(platform="twitter", url="https://twitter.com/bob")]
         )
 
     async def test_persists_an_empty_list_to_clear_profiles(self):

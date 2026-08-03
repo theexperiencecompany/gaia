@@ -328,5 +328,5 @@ def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProf
 
 async def save_confirmed_profiles(user_id: str, profiles: list[SocialProfile]) -> None:
     """Persist user-confirmed social profiles, overwriting extracted ones."""
-    await user_repository.set_social_profiles(user_id, [p.model_dump() for p in profiles])
+    await user_repository.set_social_profiles(user_id, profiles)
     log.info(f"{LogTag.ONBOARDING} Saved {len(profiles)} confirmed social profiles for {user_id}")

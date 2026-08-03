@@ -13,7 +13,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
-from app.models.payment_models import SubscriptionDocument
+from app.models.payment_models import SubscriptionDocument, SubscriptionUpdate
 from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
@@ -388,9 +388,11 @@ class PaymentWebhookService:
         # Update subscription billing dates
         matched = await subscription_repository.apply_update_by_dodo_id(
             sub_data.subscription_id,
-            status="active",
-            next_billing_date=sub_data.next_billing_date,
-            previous_billing_date=sub_data.previous_billing_date,
+            SubscriptionUpdate(
+                status="active",
+                next_billing_date=sub_data.next_billing_date,
+                previous_billing_date=sub_data.previous_billing_date,
+            ),
         )
 
         if not matched:
@@ -423,11 +425,13 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        fields: dict[str, object] = {"status": "cancelled"}
+        # cancelled_at is only set when Dodo supplied one — leaving it unset keeps
+        # it out of the $set rather than writing null over a stored value.
+        update = SubscriptionUpdate(status="cancelled")
         if sub_data.cancelled_at:
-            fields["cancelled_at"] = sub_data.cancelled_at
+            update.cancelled_at = sub_data.cancelled_at
 
-        await subscription_repository.apply_update_by_dodo_id(sub_data.subscription_id, **fields)
+        await subscription_repository.apply_update_by_dodo_id(sub_data.subscription_id, update)
 
         # Track subscription cancellation in PostHog
         user_email = sub_data.customer.email if sub_data.customer else None
@@ -454,7 +458,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id, status="expired"
+            sub_data.subscription_id, SubscriptionUpdate(status="expired")
         )
 
         # Track subscription expiration in PostHog
@@ -482,7 +486,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id, status="failed"
+            sub_data.subscription_id, SubscriptionUpdate(status="failed")
         )
 
         return DodoWebhookProcessingResult(
@@ -501,7 +505,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id, status="on_hold"
+            sub_data.subscription_id, SubscriptionUpdate(status="on_hold")
         )
 
         return DodoWebhookProcessingResult(
@@ -521,9 +525,11 @@ class PaymentWebhookService:
 
         await subscription_repository.apply_update_by_dodo_id(
             sub_data.subscription_id,
-            product_id=sub_data.product_id,
-            quantity=sub_data.quantity,
-            recurring_pre_tax_amount=sub_data.recurring_pre_tax_amount,
+            SubscriptionUpdate(
+                product_id=sub_data.product_id,
+                quantity=sub_data.quantity,
+                recurring_pre_tax_amount=sub_data.recurring_pre_tax_amount,
+            ),
         )
 
         return DodoWebhookProcessingResult(

@@ -165,7 +165,5 @@ async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
-    await user_repository.set_writing_style_and_triage(
-        user_id, writing_style_example=example.model_dump()
-    )
+    await user_repository.set_writing_style_and_triage(user_id, writing_style_example=example)
     log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")

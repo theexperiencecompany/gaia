@@ -1193,9 +1193,7 @@ async def _persist_social_profiles(user_id: str, social_profiles: list[SocialPro
     if not social_profiles:
         return
     try:
-        await user_repository.set_social_profiles_if_unset(
-            user_id, [p.model_dump() for p in social_profiles]
-        )
+        await user_repository.set_social_profiles_if_unset(user_id, social_profiles)
     except Exception as e:
         log.error(f"{LogTag.ONBOARDING} persist social_profiles failed: {e}", exc_info=True)
 
@@ -1223,10 +1221,8 @@ async def _persist_profiles(
             await user_repository.set_writing_style_and_triage(
                 user_id,
                 writing_style_summary=writing_style.summary if writing_style else None,
-                writing_style_example=(
-                    writing_style.example.model_dump() if writing_style else None
-                ),
-                triage_summary=triage_summary.model_dump() if triage_summary else None,
+                writing_style_example=(writing_style.example if writing_style else None),
+                triage_summary=triage_summary,
             )
         except Exception as e:
             log.error(f"{LogTag.ONBOARDING} persist update_fields failed: {e}", exc_info=True)

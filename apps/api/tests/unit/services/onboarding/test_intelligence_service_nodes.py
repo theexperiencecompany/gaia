@@ -948,7 +948,8 @@ class TestSeedConversation:
 
 
 class TestPersistSocialProfiles:
-    async def test_writes_profiles_as_plain_dicts(self) -> None:
+    async def test_writes_profiles_as_models(self) -> None:
+        # The repository takes SocialProfile models and does the model_dump itself.
         profiles = [SocialProfile(platform="x", url="u1")]
         with patch(f"{MODULE}.user_repository") as repo:
             repo.set_social_profiles_if_unset = AsyncMock()
@@ -956,7 +957,7 @@ class TestPersistSocialProfiles:
 
         assert repo.set_social_profiles_if_unset.await_args.args == (
             USER,
-            [{"platform": "x", "url": "u1"}],
+            [SocialProfile(platform="x", url="u1")],
         )
 
     async def test_an_empty_list_is_not_written(self) -> None:
@@ -981,8 +982,8 @@ class TestPersistProfiles:
 
         kwargs = repo.set_writing_style_and_triage.await_args.kwargs
         assert kwargs["writing_style_summary"] == "Terse"
-        assert kwargs["triage_summary"]["total_scanned"] == 100
-        assert kwargs["triage_summary"]["important_emails"] == [
+        assert kwargs["triage_summary"].total_scanned == 100
+        assert [e.model_dump() for e in kwargs["triage_summary"].important_emails] == [
             {"sender": "a@x.com", "subject": "Contract", "why_important": "deadline"}
         ]
 
@@ -997,7 +998,7 @@ class TestPersistProfiles:
             await _persist_profiles(USER, None, triage)
 
         kwargs = repo.set_writing_style_and_triage.await_args.kwargs
-        assert len(kwargs["triage_summary"]["important_emails"]) == 5
+        assert len(kwargs["triage_summary"].important_emails) == 5
 
     async def test_nothing_is_written_when_both_are_absent(self) -> None:
         with patch(f"{MODULE}.user_repository") as repo:

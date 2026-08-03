@@ -133,11 +133,23 @@ class SubscriptionDocument(MongoDocument):
 
 
 class SubscriptionUpdate(BaseModel):
-    """Typed ``$set`` fields for a subscription (the common status transition)."""
+    """Typed ``$set`` fields for a subscription.
+
+    Covers every field the Dodo subscription webhooks write. Types mirror
+    ``DodoSubscriptionData`` (``app/models/webhook_models.py``), which is where
+    these values come from — the billing dates are the ISO **strings** Dodo
+    sends and are stored verbatim, not parsed to ``datetime``.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     status: str | None = None
+    product_id: str | None = None
+    quantity: int | None = None
+    recurring_pre_tax_amount: int | None = None
+    next_billing_date: str | None = None
+    previous_billing_date: str | None = None
+    cancelled_at: str | None = None
 
 
 class ProcessedWebhookDocument(MongoDocument):

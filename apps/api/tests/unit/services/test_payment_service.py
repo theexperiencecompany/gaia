@@ -1421,7 +1421,7 @@ class TestHandleSubscriptionRenewed:
         assert "renewed" in result.message.lower()
         mock_webhook_subscription_repository.apply_update_by_dodo_id.assert_awaited_once()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "active"
         assert "next_billing_date" in set_data
         assert "previous_billing_date" in set_data
@@ -1476,7 +1476,7 @@ class TestHandleSubscriptionCancelled:
         assert result.status == "processed"
         assert "cancelled" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "cancelled"
 
     async def test_includes_cancelled_at_when_present(
@@ -1495,7 +1495,7 @@ class TestHandleSubscriptionCancelled:
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_002")
 
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["cancelled_at"] == "2025-06-15T00:00:00Z"
 
     async def test_no_cancelled_at_when_absent(
@@ -1511,7 +1511,7 @@ class TestHandleSubscriptionCancelled:
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_003")
 
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert "cancelled_at" not in set_data
 
     async def test_tracks_cancellation_analytics(
@@ -1546,7 +1546,7 @@ class TestHandleSubscriptionExpired:
         assert result.status == "processed"
         assert "expired" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "expired"
 
     async def test_tracks_expiry_analytics(
@@ -1580,7 +1580,7 @@ class TestHandleSubscriptionFailed:
         assert result.status == "processed"
         assert "failed" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "failed"
 
 
@@ -1600,7 +1600,7 @@ class TestHandleSubscriptionOnHold:
         assert result.status == "processed"
         assert "on hold" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "on_hold"
 
 
@@ -1620,7 +1620,7 @@ class TestHandleSubscriptionPlanChanged:
         assert result.status == "processed"
         assert "plan changed" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["product_id"] == "prod_abc123"
         assert set_data["quantity"] == 1
         assert set_data["recurring_pre_tax_amount"] == 999

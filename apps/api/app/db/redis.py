@@ -19,7 +19,7 @@ Pattern deletion:
     await delete_cache("user:*")  # Delete all user keys
 """
 
-from typing import Any
+from typing import Any, TypeVar, overload
 
 from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
@@ -36,8 +36,14 @@ from shared.py.wide_events import log
 # Re-export for backwards compatibility
 CACHE_TTL = DEFAULT_CACHE_TTL
 
+# The cached value's type, carried from the ``model=`` argument through to the
+# return type: ``get_cache(key, model=User)`` is ``User | None``, not ``Any``.
+# Without it a caller's annotation on the result is unchecked — mypy accepts any
+# annotation on an ``Any`` — so a mismatched model went unnoticed.
+T = TypeVar("T")
 
-def serialize_any(data: Any, model: type | None = None) -> str:
+
+def serialize_any(data: Any, model: type[Any] | None = None) -> str:
     """
     Serialize Python objects to JSON string using Pydantic TypeAdapter.
 
@@ -63,7 +69,15 @@ def serialize_any(data: Any, model: type | None = None) -> str:
     return adapter.dump_json(data).decode()
 
 
-def deserialize_any(json_str: str, model: type | None = None) -> Any:
+@overload
+def deserialize_any(json_str: str, model: type[T]) -> T: ...
+
+
+@overload
+def deserialize_any(json_str: str, model: type[Any] | None = None) -> Any: ...
+
+
+def deserialize_any(json_str: str, model: type[T] | None = None) -> Any:
     """
     Deserialize JSON string back to Python objects with optional type validation.
 
@@ -149,7 +163,13 @@ class RedisCache:
             if settings.ENV == "production":
                 raise ConnectionError(message) from e
 
-    async def get(self, key: str, model: type | None = None) -> Any:
+    @overload
+    async def get(self, key: str, model: type[T]) -> T | None: ...
+
+    @overload
+    async def get(self, key: str, model: type[Any] | None = None) -> Any: ...
+
+    async def get(self, key: str, model: type[T] | None = None) -> Any:
         """
         Retrieve cached value by key with optional type validation.
 
@@ -188,7 +208,9 @@ class RedisCache:
             )
             return None
 
-    async def set(self, key: str, value: Any, ttl: int = 3600, model: type | None = None) -> bool:
+    async def set(
+        self, key: str, value: Any, ttl: int = 3600, model: type[Any] | None = None
+    ) -> bool:
         """
         Store value in cache with TTL and optional type validation.
 
@@ -268,7 +290,15 @@ redis_cache = RedisCache()
 
 
 # Wrappers for RedisCache instance methods
-async def get_cache(key: str, model: type | None = None) -> Any:
+@overload
+async def get_cache(key: str, model: type[T]) -> T | None: ...
+
+
+@overload
+async def get_cache(key: str, model: type[Any] | None = None) -> Any: ...
+
+
+async def get_cache(key: str, model: type[T] | None = None) -> Any:
     """
     Convenience wrapper for retrieving cached values.
 
@@ -286,7 +316,7 @@ async def get_cache(key: str, model: type | None = None) -> Any:
 
 
 async def set_cache(
-    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type | None = None
+    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type[Any] | None = None
 ) -> bool:
     """
     Convenience wrapper for storing cached values.
@@ -318,7 +348,15 @@ async def delete_cache(key: str) -> None:
     await redis_cache.delete(key)
 
 
-async def get_and_delete_cache(key: str) -> Any | None:
+@overload
+async def get_and_delete_cache(key: str, model: type[T]) -> T | None: ...
+
+
+@overload
+async def get_and_delete_cache(key: str, model: type[Any] | None = None) -> Any: ...
+
+
+async def get_and_delete_cache(key: str, model: type[T] | None = None) -> Any:
     """
     Atomically get and delete a cached value using Redis GETDEL.
 
@@ -327,6 +365,10 @@ async def get_and_delete_cache(key: str) -> Any | None:
 
     Args:
         key: Cache key to get and delete
+        model: Optional type to validate the stored value into. Passing it makes
+            the return type that model rather than ``Any``; omitting it keeps the
+            untyped behaviour, since the one-time payloads here have no single
+            shape.
 
     Returns:
         Cached value (deserialized from JSON) or None if not found
@@ -340,7 +382,7 @@ async def get_and_delete_cache(key: str) -> Any | None:
     try:
         value = await redis_cache.redis.getdel(key)
         if value:
-            return deserialize_any(value)
+            return deserialize_any(value, model)
         return None
     except Exception as e:
         log.error(f"{LogTag.STORAGE} Error in get_and_delete for key {key}: {e}")
