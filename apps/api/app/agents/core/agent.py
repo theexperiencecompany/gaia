@@ -9,7 +9,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 import asyncio
 from collections.abc import AsyncGenerator
 import json
-from typing import Literal, cast
+from typing import Any, Literal, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -33,22 +33,24 @@ from app.helpers.agent_helpers import (
     execute_graph_streaming,
     recent_user_messages,
 )
+from app.models.agent_models import AgentRunnableConfig
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
 
 async def _core_agent_logic(
     request: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
     user_model_config: ModelConfig | None = None,
-    trigger_context: dict | None = None,
+    trigger_context: dict[str, Any] | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     source: str | None = None,
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
-) -> tuple[CompiledAgentGraph, dict, dict]:
+) -> tuple[CompiledAgentGraph, dict[str, Any], AgentRunnableConfig]:
     """Shared setup for streaming and silent execution.
 
     Constructs messages, initializes the graph, builds state, and kicks off
@@ -168,7 +170,7 @@ async def _core_agent_logic(
 async def call_agent(
     request: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     stream_id: str | None = None,
@@ -230,12 +232,12 @@ async def call_agent(
 async def call_agent_silent(
     request: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     user_model_config: ModelConfig | None = None,
-    trigger_context: dict | None = None,
+    trigger_context: dict[str, Any] | None = None,
     source: str | None = None,
-) -> tuple[str, dict]:
+) -> tuple[str, dict[str, Any]]:
     """
     Execute agent in silent mode for background processing.
 

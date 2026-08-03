@@ -3,14 +3,14 @@
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import json
-from typing import Any, cast
+from typing import Any, TypedDict, cast
 
 from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.config.langfuse import build_langfuse_callback
@@ -30,6 +30,7 @@ from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
 from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
+from app.models.agent_models import AgentRunnableConfig, AgentUserContext
 from app.models.chat_models import ConversationSource, SourceCategory
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.models_models import ModelConfig
@@ -47,7 +48,15 @@ from app.utils.multimodal import extract_text_content, has_media_blocks
 from shared.py.wide_events import log
 
 
-async def get_handoff_metadata(subagent_id: str) -> dict:
+class HandoffMetadata(TypedDict, total=False):
+    """Display metadata for a handoff subagent's tool card. Empty when unresolvable."""
+
+    icon_url: str | None
+    integration_id: str
+    integration_name: str
+
+
+async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
     """Look up icon_url, integration_id, integration_name for handoff subagents.
 
     Checks platform integrations (in-memory) and custom MCPs (MongoDB, Redis-cached).
@@ -71,7 +80,9 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
     cache_key = f"{HANDOFF_METADATA_CACHE_PREFIX}:{clean_id}"
     cached = await get_cache(cache_key)
     if cached is not None:
-        return cached if cached else {}
+        # Written below by this same function, so the cached shape is ours by
+        # construction — cast, not isinstance (Type Safety item 12).
+        return cast(HandoffMetadata, cached) if cached else {}
 
     # Find the integration by ID or name.
     # No source filter - we need to find ANY integration (custom OR public).
@@ -84,7 +95,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return {}
 
-        metadata = {
+        metadata: HandoffMetadata = {
             "icon_url": custom.icon_url,
             "integration_id": custom.integration_id,
             "integration_name": custom.name,
@@ -101,7 +112,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
 
 def _build_agent_callbacks(
     conversation_id: str,
-    user: dict,
+    user: AgentUserContext,
     agent_name: str,
     usage_metadata_callback: UsageMetadataCallbackHandler | None,
 ) -> list[BaseCallbackHandler]:
@@ -160,9 +171,9 @@ _PARENT_FALLBACK_FIELDS: tuple[tuple[str, str], ...] = (
 
 
 def _inherit_from_parent_configurable(
-    base_configurable: dict | None,
-    current: dict,
-) -> dict:
+    base_configurable: dict[str, Any] | None,
+    current: dict[str, Any],
+) -> dict[str, Any]:
     """Merge `current` with optional inheritance from a parent agent's configurable.
 
     - Model fields (provider/max_tokens/model_name): parent overrides child.
@@ -240,12 +251,12 @@ def recent_user_messages(history: list[MessageDict], current: str) -> list[str]:
 # caller already passes them as explicit keyword args.
 def build_agent_config(  # NOSONAR python:S107
     conversation_id: str,
-    user: dict,
+    user: AgentUserContext,
     agent_name: str,
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     thread_id: str | None = None,
-    base_configurable: dict | None = None,
+    base_configurable: dict[str, Any] | None = None,
     selected_tool: str | None = None,
     tool_category: str | None = None,
     subagent_id: str | None = None,
@@ -257,7 +268,7 @@ def build_agent_config(  # NOSONAR python:S107
     langfuse_trace_id: str | None = None,
     langfuse_tags: list[str] | None = None,
     recursion_limit: int = AGENT_RECURSION_LIMIT,
-) -> dict:
+) -> AgentRunnableConfig:
     """Build the LangGraph execution config (user context, model, auth, execution params).
 
     Notable args:
@@ -322,7 +333,7 @@ def build_agent_config(  # NOSONAR python:S107
     if not home_timezone:
         home_timezone = "UTC"
 
-    configurable = {
+    configurable: dict[str, Any] = {
         "thread_id": thread_id or conversation_id,
         # The TRUE conversation id (parent-overrides inheritance; see
         # _inherit_from_parent_configurable). NOT recoverable from ``thread_id`` —
@@ -368,7 +379,7 @@ def build_agent_config(  # NOSONAR python:S107
     if resolved.get("model_kwargs"):
         configurable["model_kwargs"] = resolved["model_kwargs"]
 
-    metadata: dict = {
+    metadata: dict[str, Any] = {
         "user_id": user.get("user_id"),
         "source_category": source_category,
         "source_channel": source_channel,
@@ -381,13 +392,14 @@ def build_agent_config(  # NOSONAR python:S107
         if effective_tags:
             metadata["langfuse_tags"] = effective_tags
 
-    return {
+    config: AgentRunnableConfig = {
         "configurable": configurable,
         "recursion_limit": recursion_limit,
         "metadata": metadata,
         "callbacks": callbacks,
         "agent_name": agent_name,
     }
+    return config
 
 
 def build_initial_state(
@@ -395,10 +407,13 @@ def build_initial_state(
     user_id: str,
     conversation_id: str,
     history: list[AnyMessage],
-    trigger_context: dict | None = None,
-) -> dict:
+    # The trigger payload merged with the agent's own keys (active_todo_id,
+    # execution_mode, workflow_*). Genuinely open: schedulers spread arbitrary
+    # provider trigger data through it, so there is no fixed key set to model.
+    trigger_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Construct the initial LangGraph state (query, history, tool selections, trigger context)."""
-    state = {
+    state: dict[str, Any] = {
         "query": request.message,
         "intent": request.message,
         "messages": history,
@@ -428,10 +443,10 @@ def build_initial_state(
 
 @traceable(run_type="llm", name="Call Agent Silent")
 async def execute_graph_silent(
-    graph: Any,
-    initial_state: dict,
-    config: dict,
-) -> tuple[str, dict]:
+    graph: CompiledAgentGraph,
+    initial_state: dict[str, Any],
+    config: AgentRunnableConfig,
+) -> tuple[str, dict[str, Any]]:
     """Execute LangGraph in silent mode, accumulating the full message and tool data.
 
     Used for background processing and workflow triggers that don't need streaming.
@@ -439,8 +454,8 @@ async def execute_graph_silent(
     Returns (complete_message, tool_data).
     """
     complete_message = ""
-    tool_data: dict = {"tool_data": []}
-    todo_progress_accumulated: dict = {}  # Accumulate todo_progress by source
+    tool_data: dict[str, Any] = {"tool_data": []}
+    todo_progress_accumulated: dict[str, Any] = {}  # Accumulate todo_progress by source
 
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = set()
@@ -448,12 +463,19 @@ async def execute_graph_silent(
     # Get user_id for metadata lookup (not for storage - caller handles that)
     user_id = config.get("configurable", {}).get("user_id")
 
-    async for event in graph.astream(
-        initial_state,
-        stream_mode=["messages", "custom", "updates"],
-        config=config,
-        subgraphs=True,
-    ):
+    # A list `stream_mode` plus `subgraphs=True` makes astream yield
+    # (namespace, mode, payload) triples, which langgraph's own overload return
+    # type does not express (same cast as subagent_runner's driver).
+    silent_stream = cast(
+        AsyncGenerator[tuple[tuple[str, ...], str, Any], None],
+        graph.astream(
+            initial_state,
+            stream_mode=["messages", "custom", "updates"],
+            config=config,
+            subgraphs=True,
+        ),
+    )
+    async for event in silent_stream:
         ns, stream_mode, payload = event
 
         # Process "updates" events - same logic as execute_graph_streaming
@@ -474,7 +496,7 @@ async def execute_graph_silent(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata: dict = {}
+                            tool_metadata: HandoffMetadata = {}
 
                             # Todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
@@ -567,9 +589,9 @@ def _json_safe_tool_result(content: Any) -> Any:
 
 @traceable(run_type="llm", name="Call Agent")
 async def execute_graph_streaming(
-    graph: Any,
-    initial_state: dict,
-    config: dict,
+    graph: CompiledAgentGraph,
+    initial_state: dict[str, Any],
+    config: AgentRunnableConfig,
 ) -> AsyncGenerator[str, None]:
     """Execute LangGraph in streaming mode, yielding SSE-formatted updates.
 
@@ -592,14 +614,20 @@ async def execute_graph_streaming(
     # Buffer MCP App UI metadata by tool_call_id for deferred emission
     # We detect UI metadata in "updates" but emit the mcp_app event in "messages"
     # when the ToolMessage arrives with the actual result.
-    pending_mcp_apps: dict[str, dict] = {}
+    pending_mcp_apps: dict[str, dict[str, Any]] = {}
 
     cancelled = False
-    stream = graph.astream(
-        initial_state,
-        stream_mode=["messages", "custom", "updates"],
-        config=config,
-        subgraphs=True,
+    # Yields (namespace, mode, payload) triples — occasionally (mode, payload)
+    # pairs, handled below — and is a real async generator, so it supports
+    # aclose(); langgraph's astream overloads express neither.
+    stream = cast(
+        AsyncGenerator[tuple[Any, ...], None],
+        graph.astream(
+            initial_state,
+            stream_mode=["messages", "custom", "updates"],
+            config=config,
+            subgraphs=True,
+        ),
     )
     async for event in stream:
         # Check for cancellation at each event
@@ -652,7 +680,7 @@ async def execute_graph_streaming(
 
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
-                            tool_metadata: dict = {}
+                            tool_metadata: HandoffMetadata = {}
 
                             # Handoff metadata stays pre-resolved here (it's a special
                             # subagent-display path). MCP tool metadata is now resolved
@@ -859,7 +887,7 @@ async def execute_graph_streaming(
         # record_interruption is then the run's final state.
         await stream.aclose()
         try:
-            await record_interruption(graph, cast(RunnableConfig, config))
+            await record_interruption(graph, config)
         except Exception as e:  # noqa: BLE001 — the cancel ack must still reach the client
             log.error(f"{LogTag.AGENT} Failed to record interruption: {e}")
         yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"

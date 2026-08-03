@@ -10,6 +10,7 @@ message emitted alongside the static prompt — not inside the static prompt.
 """
 
 import asyncio
+from typing import Any
 
 from langchain_core.messages import SystemMessage
 
@@ -92,7 +93,7 @@ def _mark_dynamic(msg: SystemMessage) -> SystemMessage:
 async def _fetch_provider_metadata_block(
     integration_id: str | None,
     user_id: str | None,
-    metadata: dict | None = None,
+    metadata: dict[str, str] | None = None,
 ) -> str:
     """Return the provider-metadata lines for the dynamic context, or ''.
 
@@ -144,14 +145,14 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
 
 
 async def create_agent_context_message(
-    configurable: dict,
+    configurable: dict[str, Any],
     user_id: str | None = None,
     query: str | None = None,
     subagent_id: str | None = None,
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
-    provider_metadata: dict | None = None,
+    provider_metadata: dict[str, str] | None = None,
     include_connected_integrations: bool = False,
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.

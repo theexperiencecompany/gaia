@@ -14,6 +14,7 @@ import json
 import os
 import re
 import time
+from typing import Any, TypedDict
 
 from bs4 import BeautifulSoup  # For HTML cleaning
 import ftfy
@@ -27,7 +28,25 @@ from app.constants.general import (
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
-PLATFORM_CONFIG = {
+
+class PlatformConfig(TypedDict):
+    """How one platform is recognised in email and turned into a profile URL.
+
+    A TypedDict rather than a model: this is a hardcoded in-process table, so it
+    crosses no validation boundary. Naming it is what lets ``url_template`` and
+    ``regex_pattern`` read back as ``str`` — inferred, the table's value type
+    collapses to ``str | list[str]`` and every read of it needs a cast.
+    """
+
+    #: Sender domains whose mail identifies this platform (e.g. "notify.twitter.com").
+    sender_domains: list[str]
+    #: Profile URL with a single ``{username}`` placeholder.
+    url_template: str
+    #: Anchored pattern a candidate username must match to be accepted.
+    regex_pattern: str
+
+
+PLATFORM_CONFIG: dict[str, PlatformConfig] = {
     "twitter": {
         "sender_domains": [
             "twitter.com",
@@ -238,7 +257,7 @@ def validate_username(username: str, platform: str) -> bool:
     if platform not in PLATFORM_CONFIG:
         return False
 
-    pattern: str = PLATFORM_CONFIG[platform]["regex_pattern"]  # type: ignore
+    pattern = PLATFORM_CONFIG[platform]["regex_pattern"]
     return bool(re.match(pattern, username.strip()))
 
 
@@ -247,7 +266,7 @@ def build_profile_url(username: str, platform: str) -> str:
     if platform not in PLATFORM_CONFIG:
         return ""
 
-    template: str = PLATFORM_CONFIG[platform]["url_template"]  # type: ignore
+    template = PLATFORM_CONFIG[platform]["url_template"]
     return template.format(username=username)
 
 
@@ -274,7 +293,7 @@ def _filter_garbage_content(text: str) -> str:
     return text
 
 
-def _deduplicate_emails(emails: list[dict]) -> list[dict]:
+def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Remove near-duplicate emails by comparing normalized body similarity,
     before sending to the LLM. No count limit, just dedup."""
     if not emails:
@@ -340,7 +359,7 @@ def _deduplicate_emails(emails: list[dict]) -> list[dict]:
 
 
 async def extract_username_with_llm(
-    platform: str, emails: list[dict], user_name: str | None = None
+    platform: str, emails: list[dict[str, Any]], user_name: str | None = None
 ) -> str:
     """Use an LLM with structured output to extract the user's username from
     platform emails. Returns the username or "NOT_FOUND"."""

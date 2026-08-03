@@ -18,7 +18,7 @@ import time
 from typing import Any
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_config
 from langgraph.runtime import Runtime
@@ -84,7 +84,7 @@ def _extract_usage(message: AIMessage) -> dict[str, int]:
     }
 
 
-def _latest_ai_message(messages: list[Any]) -> AIMessage | None:
+def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
     for msg in reversed(messages or []):
         if isinstance(msg, AIMessage):
             return msg

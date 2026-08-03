@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import re
 import time
-from typing import Any
+from typing import Any, TypedDict
 
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
@@ -58,6 +58,51 @@ from app.helpers.email_helpers import (
 from app.memory.engine import memory_engine
 from app.services.mail.mail_service import search_messages
 from shared.py.wide_events import log
+
+
+class ExtractedProfile(TypedDict):
+    """One social profile the extraction track resolved and stored."""
+
+    platform: str
+    url: str
+
+
+class PlatformProcessResult(TypedDict, total=False):
+    """Outcome of processing one platform.
+
+    ``total=False`` because the two outcomes are disjoint: success carries
+    ``platform``/``url``/``discovery_task``, every skip carries only ``error``.
+    """
+
+    success: bool
+    platform: str
+    url: str
+    #: Follow-up crawl of profiles linked from this one; resolves to the count stored.
+    discovery_task: asyncio.Task[int]
+    error: str
+
+
+class ProfileExtractionResult(TypedDict, total=False):
+    """Stats from the parallel profile-extraction track (TRACK B)."""
+
+    profiles_stored: int
+    extracted_profiles: list[ExtractedProfile]
+
+
+class GmailProcessingStats(TypedDict, total=False):
+    """Stats returned by :func:`process_gmail_to_memory`.
+
+    ``total=False`` because the already-processed short-circuit returns only
+    ``already_processed``/``processing_complete`` and the zeroed counters.
+    """
+
+    total: int
+    successful: int
+    failed: int
+    profiles_stored: int
+    processing_complete: bool
+    already_processed: bool
+    extracted_profiles: list[ExtractedProfile]
 
 
 @dataclass
@@ -245,7 +290,7 @@ async def fetch_emails_for_onboarding(
     return all_emails
 
 
-async def process_gmail_to_memory(user_id: str) -> dict:
+async def process_gmail_to_memory(user_id: str) -> GmailProcessingStats:
     """
     Process user's Gmail emails into memories.
 
@@ -375,7 +420,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     log.info(
         f"{LogTag.MEMORY} Awaiting {len(email_storage_tasks)} memory storage tasks ({total_parsed} emails total)..."
     )
-    storage_results: list[Any] = []
+    storage_results: list[BaseException | None] = []
     storage_errors = 0
     if email_storage_tasks:
         try:
@@ -390,10 +435,12 @@ async def process_gmail_to_memory(user_id: str) -> dict:
                 f"{LogTag.MEMORY} Memory email storage tasks dispatched in {storage_elapsed:.1f}s"
             )
 
-            for idx, result in enumerate(storage_results):
-                if isinstance(result, Exception):
+            for idx, storage_result in enumerate(storage_results):
+                if isinstance(storage_result, Exception):
                     storage_errors += 1
-                    log.warning(f"{LogTag.MEMORY} Email storage task {idx + 1} failed: {result}")
+                    log.warning(
+                        f"{LogTag.MEMORY} Email storage task {idx + 1} failed: {storage_result}"
+                    )
 
             successful_batches = len(storage_results) - storage_errors
             log.info(
@@ -406,10 +453,10 @@ async def process_gmail_to_memory(user_id: str) -> dict:
 
     # Wait for profile extraction task (also with error handling)
     profiles_stored = 0
-    extracted_profiles: list[dict] = []
+    extracted_profiles: list[ExtractedProfile] = []
     try:
         t0_profile = time.monotonic()
-        profile_result: dict = await profile_extraction_task
+        profile_result = await profile_extraction_task
         profile_elapsed = time.monotonic() - t0_profile
         timer.record("Profile extraction track (wait for completion)", profile_elapsed)
         log.info(f"{LogTag.MEMORY} Profile extraction track finished: {profile_elapsed:.1f}s")
@@ -463,7 +510,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     }
 
 
-async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
+async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtractionResult:
     """
     Extract and store profiles using parallel Gmail searches for each platform.
 
@@ -531,7 +578,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
 
         # Step 3: Count successful profiles, collect pairs and discovery tasks
         profiles_stored = 0
-        extracted_profiles: list[dict] = []
+        extracted_profiles: list[ExtractedProfile] = []
         for (platform, _), result in zip(platform_tasks, results):
             if isinstance(result, Exception):
                 log.error(f"{LogTag.MEMORY} Platform {platform} extraction failed: {result}")
@@ -551,11 +598,12 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
             log.info(
                 f"{LogTag.MEMORY} asyncio.gather discovered_profile_tasks: {time.monotonic() - t0_discovery:.1f}s"
             )
-            for result in discovery_results:
-                if isinstance(result, int):  # Discovery task returns count of profiles stored
-                    discovered_count += result
-                elif isinstance(result, Exception):
-                    log.error(f"{LogTag.MEMORY} Discovery task failed: {result}")
+            for discovery_result in discovery_results:
+                # Discovery task returns count of profiles stored
+                if isinstance(discovery_result, int):
+                    discovered_count += discovery_result
+                elif isinstance(discovery_result, Exception):
+                    log.error(f"{LogTag.MEMORY} Discovery task failed: {discovery_result}")
 
         elapsed = time.time() - extraction_start
         log.info(
@@ -576,11 +624,11 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
 async def _process_single_platform(
     user_id: str,
     platform: str,
-    emails: list[dict],
+    emails: list[dict[str, Any]],
     semaphore: asyncio.Semaphore,
     user_name: str | None = None,
-    crawled_urls: set | None = None,
-) -> dict:
+    crawled_urls: set[str] | None = None,
+) -> PlatformProcessResult:
     """
     Process a single platform: Extract -> Crawl -> Return content.
     Returns dict with profile content or error.
@@ -677,7 +725,7 @@ async def _discover_and_store_linked_profiles(
     profile_content: str,
     source_platform: str,
     semaphore: asyncio.Semaphore,
-    crawled_urls: set | None = None,
+    crawled_urls: set[str] | None = None,
 ) -> int:
     """
     Parse profile content for other social media links and store them.

@@ -50,7 +50,7 @@ def _build_scoped_tool_dict(
     mcp_tools: list[BaseTool] | None,
     include_finish_task: bool,
     authoring_only: bool = False,
-) -> tuple[dict, list[str]]:
+) -> tuple[dict[str, BaseTool], list[str]]:
     """Assemble the scoped tool dict + initial tool IDs for a subagent.
 
     Split out of `create_provider_subagent` to keep that function's cognitive
@@ -61,7 +61,7 @@ def _build_scoped_tool_dict(
     execution tools (coding/FS, web, research, memory), so it cannot try to
     *do* the work instead of describe it.
     """
-    scoped_tool_dict: dict = {}
+    scoped_tool_dict: dict[str, BaseTool] = {}
     initial_tool_ids: list[str] = []
 
     if mcp_tools is not None:

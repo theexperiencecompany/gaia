@@ -7,9 +7,9 @@ the HIL gate, so a gated tool inside a spawn pauses for the user's approval and
 bubbles that pause up to the parent, exactly as ``handoff`` does.
 """
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -47,6 +47,7 @@ from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.models.agent_models import AnyAgentMiddleware
 from app.utils.agent_utils import (
     StreamWriterCallable,
     format_subagent_end_event,
@@ -54,7 +55,26 @@ from app.utils.agent_utils import (
 )
 from shared.py.wide_events import log
 
-SpawnGraphProvider = Callable[..., Awaitable[CompiledStateGraph]]
+
+class SpawnGraphProvider(Protocol):
+    """Compiles the graph a spawn runs on.
+
+    A Protocol rather than ``Callable[..., ...]`` because this is an injection
+    seam: every call site passes these six by keyword, and an erased signature
+    turns a renamed or dropped argument into a runtime ``TypeError`` instead of a
+    type error. Satisfied by ``core.subagents.spawn_agent.get_spawn_graph``,
+    which is injected rather than imported (see :meth:`set_spawn_graph_provider`).
+    """
+
+    async def __call__(
+        self,
+        llm: LanguageModelLike,
+        registry: Mapping[str, BaseTool],
+        excluded_tool_names: set[str],
+        tool_space: str,
+        runtime: ToolRuntimeConfig,
+        middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
+    ) -> CompiledStateGraph: ...
 
 
 class SubagentState(AgentState[Any]):
@@ -79,8 +99,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         tool_space: str = "general",
         store: BaseStore | None = None,
         tool_runtime_config: ToolRuntimeConfig | None = None,
-        spawn_middleware_factory: Callable[[str], Sequence[Any]] | None = None,
-    ):
+        spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None,
+    ) -> None:
         super().__init__()
         self._llm = llm
         self._spawn_middleware_factory = spawn_middleware_factory

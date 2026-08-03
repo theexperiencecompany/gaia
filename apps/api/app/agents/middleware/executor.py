@@ -23,7 +23,7 @@ from langchain.agents.middleware.types import (
     ToolCallRequest,
 )
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from langgraph.errors import GraphBubbleUp
@@ -38,6 +38,7 @@ from app.agents.middleware.runtime_adapter import (
     to_agent_state,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentMiddlewareStack
 from app.override.langgraph_bigtool.utils import State
 from shared.py.wide_events import log
 
@@ -96,7 +97,7 @@ class MiddlewareExecutor:
         result = await executor.wrap_tool_invocation(tool_call, tool, state, config, store, handler)
     """
 
-    def __init__(self, middleware: list[AgentMiddleware] | None = None):
+    def __init__(self, middleware: AgentMiddlewareStack | None = None) -> None:
         """
         Initialize with a list of middleware instances.
 
@@ -260,7 +261,7 @@ class MiddlewareExecutor:
         async def final_handler(req: ModelRequest) -> ModelResponse:
             """Innermost handler - actually calls the model."""
             # Build messages list: prepend system_message if present, then messages
-            messages_to_send: list = []
+            messages_to_send: list[AnyMessage] = []
             if req.system_message:
                 messages_to_send.append(req.system_message)
             messages_to_send.extend(req.messages)

@@ -85,7 +85,7 @@ async def _preferred_bot_platforms(user_id: str) -> list[tuple[ConversationSourc
     targets: list[tuple[ConversationSource, str]] = []
     for platform_value, info in linked.items():
         source = ConversationSource.coerce(platform_value)
-        platform_user_id = info.get("platformUserId")
+        platform_user_id = info["platformUserId"]
         if (
             source is not None
             and source in BOT_CONVERSATION_SOURCES

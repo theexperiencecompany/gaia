@@ -25,7 +25,7 @@ from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langgraph.types import Command
 
 from app.agents.workspace.offload import (
@@ -48,7 +48,7 @@ from app.utils.multimodal import (
 from shared.py.wide_events import log
 
 
-def estimate_context_usage(messages: Sequence[Any], context_window: int) -> float:
+def estimate_context_usage(messages: Sequence[AnyMessage], context_window: int) -> float:
     """Estimate the fraction of the context window consumed by ``messages``.
 
     Uses the same 4-chars-per-token heuristic as the rest of the agent stack.

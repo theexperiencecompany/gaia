@@ -57,6 +57,7 @@ from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.models.agent_models import AgentUserContext
 from app.models.hil_models import HILApprovalRecord
 from app.models.subagent_models import Subagent
 from app.services.connect_link_service import build_connect_link_url
@@ -80,7 +81,7 @@ from shared.py.wide_events import log
 SUBAGENTS_NAMESPACE = ("subagents",)
 
 
-def _extract_service_username(metadata: dict | None) -> str | None:
+def _extract_service_username(metadata: dict[str, Any] | None) -> str | None:
     if not metadata:
         return None
     for key in ("username", "login", "handle"):
@@ -430,7 +431,7 @@ def _resolve_display_metadata(
 async def prepare_subagent_execution(
     subagent_id: str,
     task: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, IntegrationMetadata | None, str | None]:
     """Resolve a subagent and build everything needed to execute it.
@@ -466,7 +467,7 @@ async def prepare_subagent_execution(
     thread_id = configurable.get("thread_id", "")
     subagent_thread_id = f"{integration_id}_{thread_id}"
 
-    user = {
+    user: AgentUserContext = {
         "user_id": user_id,
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
@@ -657,7 +658,7 @@ async def resume_parked_subagent(
             text=f"Error resuming {agent_ref}: {int_id_or_error or 'subagent not resolvable'}"
         )
 
-    user = {
+    user: AgentUserContext = {
         "user_id": record.user_id,
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),

@@ -382,6 +382,21 @@ async def ainvoke_llm(
     ``TimeoutError`` is the point: the alternative is catching it as a fallback trigger
     (``TimeoutError`` is in ``LLM_FALLBACK_EXCEPTIONS``) and starting a second,
     unbounded attempt — which is exactly the stall this exists to prevent.
+
+    The return stays ``Any``, deliberately (Type Safety item 14). The obvious fix —
+    ``primary: Runnable[LanguageModelInput, _ResultT] -> _ResultT`` — was tried and
+    measured, and it does not hold at either end:
+
+    - The fallback path resolves through ``LLMFallback``/``_resolve_fallback``, which
+      are plain unparametrized ``Runnable``, so every return trips ``warn_return_any``
+      unless those are made generic too.
+    - Callers pass both plain chat models (yielding a ``BaseMessage``) and
+      ``with_structured_output(...)`` runnables, which LangChain types as
+      ``dict[str, Any] | BaseModel`` — so the type var binds to that union and the
+      structured call sites stop type-checking against their real schema.
+
+    Callers that know their shape narrow it themselves: ``ainvoke_structured`` casts
+    to its ``schema``, and the chat-model call sites cast to ``BaseMessage``.
     """
     async with asyncio.timeout(timeout):
         try:

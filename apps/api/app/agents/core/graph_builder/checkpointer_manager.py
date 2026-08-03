@@ -18,7 +18,7 @@ from langgraph.checkpoint.postgres.aio import (
 )
 from langgraph.store.postgres import AsyncPostgresStore
 from psycopg import AsyncConnection
-from psycopg.rows import DictRow
+from psycopg.rows import DictRow, TupleRow
 from psycopg_pool import AsyncConnectionPool
 
 from app.config.settings import settings
@@ -30,10 +30,11 @@ class CheckpointerManager:
     A manager class to handle checkpointer initialization and lifecycle.
     """
 
-    def __init__(self, conninfo: str, max_pool_size: int = 20):
+    def __init__(self, conninfo: str, max_pool_size: int = 20) -> None:
         self.conninfo = conninfo
         self.max_pool_size = max_pool_size
-        self.pool: AsyncConnectionPool | None = None
+        # Tuple rows, deliberately — see the note in setup() on the dict_row cast.
+        self.pool: AsyncConnectionPool[AsyncConnection[TupleRow]] | None = None
         self.checkpointer: AsyncPostgresSaver | None = None
 
     async def setup(self) -> "CheckpointerManager":

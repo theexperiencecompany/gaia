@@ -6,7 +6,6 @@ handed to the comms agent as internal context (a HumanMessage with an
 persona. This module owns that single invocation.
 """
 
-from typing import Any, cast
 
 from langchain_core.messages import HumanMessage
 
@@ -70,13 +69,7 @@ async def narrate_executor_result(
     try:
         config = build_agent_config(
             conversation_id=conversation_id,
-            # `build_agent_config` still declares its user as a bare `dict` and its
-            # nine call sites each carry their own unmigrated chain (workers,
-            # subagents, handoffs); typing that layer is a separate wave, so this
-            # cast marks the boundary rather than widening it here (Type Safety
-            # item 14). Correct by construction — an `AuthenticatedUser` IS this
-            # dict at runtime, and the config builder only reads from it.
-            user=cast(dict[str, Any], user),
+            user=user,
             agent_name="comms_agent",
         )
         initial_state = {

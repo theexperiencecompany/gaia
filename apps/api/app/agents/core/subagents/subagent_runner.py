@@ -11,6 +11,8 @@ from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langchain_core.messages import (
     AIMessageChunk,
+    AnyMessage,
+    BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
@@ -43,6 +45,7 @@ from app.helpers.message_helpers import (
     create_system_message,
     format_files_list,
 )
+from app.models.agent_models import AgentRunnableConfig, AgentUserContext
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
@@ -158,10 +161,10 @@ class SubagentExecutionContext:
         self,
         subagent_graph: CompiledAgentGraph,
         agent_name: str,
-        config: dict,
-        configurable: dict,
+        config: AgentRunnableConfig,
+        configurable: dict[str, Any],
         integration_id: str,
-        initial_state: dict,
+        initial_state: dict[str, Any],
         user_id: str | None = None,
         stream_id: str | None = None,
     ) -> None:
@@ -178,7 +181,7 @@ class SubagentExecutionContext:
 async def build_initial_messages(
     system_message: SystemMessage,
     agent_name: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     task: str,
     user_id: str | None = None,
     subagent_id: str | None = None,
@@ -186,9 +189,9 @@ async def build_initial_messages(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
-    provider_metadata: dict | None = None,
+    provider_metadata: dict[str, str] | None = None,
     include_connected_integrations: bool = False,
-) -> list:
+) -> list[AnyMessage]:
     """Build the [static_prompt, dynamic_context, human_task] triplet.
 
     The static system prompt is byte-identical across users/channels. The
@@ -273,7 +276,9 @@ def _with_current_time(resume: Command, configurable: dict[str, Any]) -> Command
 
 
 def _process_messages_payload(
-    payload: tuple,
+    # "messages"-mode payloads are always (message chunk, metadata); the driver
+    # above holds them as `Any` only because the shape varies per stream mode.
+    payload: tuple[BaseMessage, dict[str, Any]],
     complete_message: str,
     stream_writer: StreamWriterCallable | None,
     subagent_id: str | None,
@@ -406,7 +411,7 @@ async def execute_subagent_stream(
                 )
                 for tc_id, tool_entry in entries:
                     if stream_writer:
-                        chunk_data: dict = {"tool_data": tool_entry}
+                        chunk_data: dict[str, Any] = {"tool_data": tool_entry}
                         if subagent_id:
                             chunk_data["tool_data"] = {**tool_entry, "subagent_id": subagent_id}
                         stream_writer(chunk_data)
@@ -452,7 +457,7 @@ async def execute_subagent_stream(
     return SubagentOutcome(text=final_message)
 
 
-def _snapshot_messages(snapshot: StateSnapshot) -> list[Any]:
+def _snapshot_messages(snapshot: StateSnapshot) -> list[AnyMessage]:
     """The messages a checkpoint holds. Empty means the thread has never run."""
     values = getattr(snapshot, "values", None) or {}
     messages = values.get("messages") if isinstance(values, dict) else None
@@ -505,7 +510,7 @@ def interrupt_payload(raw: object) -> dict[str, Any]:
 
 async def prepare_executor_execution(
     task: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
     """Prepare execution context for the executor agent.
@@ -543,7 +548,7 @@ async def prepare_executor_execution(
         return None, "Executor agent not available"
 
     # Build user dict for config
-    user = {
+    user: AgentUserContext = {
         "user_id": user_id,
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),

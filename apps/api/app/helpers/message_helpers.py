@@ -1,6 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
-from typing import Literal, NamedTuple
+from typing import Any, Literal, NamedTuple
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -376,8 +376,8 @@ async def build_dynamic_context_messages(
     query: str | None,
     user_name: str | None = None,
     user_timezone: str | None = None,
-    user_preferences: dict | None = None,
-    writing_style: dict | None = None,
+    user_preferences: dict[str, Any] | None = None,
+    writing_style: dict[str, Any] | None = None,
     source: str | None = None,
     include_openui: bool = False,
     memories_text: str | None = None,
@@ -582,7 +582,9 @@ Execute immediately without asking for clarification."""
 async def format_workflow_execution_message(
     selected_workflow: SelectedWorkflowData,
     user_id: str | None = None,
-    trigger_context: dict | None = None,
+    # Open by construction: schedulers spread arbitrary provider trigger data
+    # through this alongside the agent's own keys, so there is no fixed shape.
+    trigger_context: dict[str, Any] | None = None,
     existing_content: str = "",
 ) -> str:
     """Format workflow execution message, handling both manual and automated triggers."""
@@ -725,7 +727,7 @@ async def get_onboarding_system_prompt_if_applicable(
         if is_tagged_onboarding:
             message_count = probe.message_count if probe else 0
             if message_count >= 7:
-                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED.value)
+                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
                 log.info(
                     f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
                 )
