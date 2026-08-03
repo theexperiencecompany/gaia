@@ -352,3 +352,84 @@ class TestSpawnSubagentTool:
         ctx = h.execute.await_args.kwargs["ctx"]
         assert ctx.config["configurable"]["thread_id"] == "spawn_conv-9_call_abc"
         assert ctx.initial_state["selected_tool_ids"] == ["read"]
+
+
+# ---------------------------------------------------------------------------
+# Nesting: which row a spawned subagent renders inside
+# ---------------------------------------------------------------------------
+
+
+class TestSpawnNesting:
+    """A spawn inherits its parent's row id so the UI can nest it.
+
+    ``subagent_start`` carries ``parent_subagent_id``, read straight off the
+    running config. The client builds its subagent tree from that field alone
+    (``stream_utils.reconstruct_subagent_groups``), so a spawn that loses it does
+    not render in the wrong place — it renders at the top level, as a sibling of
+    the very subagent that started it.
+    """
+
+    def _start_event(self, writer: MagicMock) -> dict:
+        return next(
+            c.args[0]["subagent_start"]
+            for c in writer.call_args_list
+            if "subagent_start" in c.args[0]
+        )
+
+    async def test_a_spawn_inside_a_subagent_is_nested_under_it(self):
+        mw = _ready_middleware()
+        with _spawn_harness(outcomes=[_done("done")]) as h:
+            await mw.tools[0].coroutine(
+                task="read the attachment",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(subagent_id="parent-row-1"),
+            )
+
+        assert self._start_event(h.writer)["parent_subagent_id"] == "parent-row-1"
+
+    async def test_a_spawn_from_the_executor_has_no_parent(self):
+        """The executor is not a subagent and owns no row, so its spawns belong
+        at the top level. A fabricated parent id would target a group that does
+        not exist and the row would be dropped."""
+        mw = _ready_middleware()
+        with _spawn_harness(outcomes=[_done("done")]) as h:
+            await mw.tools[0].coroutine(
+                task="read the attachment",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(),
+            )
+
+        assert "parent_subagent_id" not in self._start_event(h.writer)
+
+    async def test_a_spawn_gets_its_own_row_distinct_from_its_parent(self):
+        mw = _ready_middleware()
+        with _spawn_harness(outcomes=[_done("done")]) as h:
+            await mw.tools[0].coroutine(
+                task="read the attachment",
+                tool_call_id="call_1",
+                selected_tool_ids=[],
+                config=_make_spawn_config(subagent_id="parent-row-1"),
+            )
+
+        event = self._start_event(h.writer)
+        assert event["subagent_id"] != event["parent_subagent_id"]
+        assert event["agent_type"] == "spawned"
+
+    async def test_the_row_id_is_stable_across_replays_of_one_call(self):
+        """An approval pause replays the spawn. A fresh row id each time would
+        orphan the paused row and open a duplicate on resume."""
+        mw = _ready_middleware()
+        ids = []
+        for _ in range(2):
+            with _spawn_harness(outcomes=[_done("done")]) as h:
+                await mw.tools[0].coroutine(
+                    task="read the attachment",
+                    tool_call_id="call_same",
+                    selected_tool_ids=[],
+                    config=_make_spawn_config(subagent_id="parent-row-1"),
+                )
+            ids.append(self._start_event(h.writer)["subagent_id"])
+
+        assert ids[0] == ids[1]
