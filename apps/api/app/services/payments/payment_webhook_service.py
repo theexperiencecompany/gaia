@@ -385,14 +385,18 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        # Update subscription billing dates
+        # Set each billing date only when the event carries one. Passing it
+        # marks the field in model_fields_set even when None, and the repository
+        # applies model_dump(exclude_unset=True) as $set — so an event that omits
+        # a date would otherwise write null over the stored value.
+        update = SubscriptionUpdate(status="active")
+        if sub_data.next_billing_date is not None:
+            update.next_billing_date = sub_data.next_billing_date
+        if sub_data.previous_billing_date is not None:
+            update.previous_billing_date = sub_data.previous_billing_date
+
         matched = await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id,
-            SubscriptionUpdate(
-                status="active",
-                next_billing_date=sub_data.next_billing_date,
-                previous_billing_date=sub_data.previous_billing_date,
-            ),
+            sub_data.subscription_id, update
         )
 
         if not matched:

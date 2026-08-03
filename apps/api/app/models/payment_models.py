@@ -139,9 +139,14 @@ class SubscriptionUpdate(BaseModel):
     ``DodoSubscriptionData`` (``app/models/webhook_models.py``), which is where
     these values come from — the billing dates are the ISO **strings** Dodo
     sends and are stored verbatim, not parsed to ``datetime``.
+
+    ``validate_assignment`` because the renewal handler sets the billing dates by
+    assignment, only when the event carries them. Without it assignment neither
+    validates nor coerces, so a wrong-typed value would reach Mongo's ``$set``
+    unchecked — the same gap ``ReminderUpdate`` carries a flag for.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     status: str | None = None
     product_id: str | None = None

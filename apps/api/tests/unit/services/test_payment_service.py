@@ -1426,6 +1426,36 @@ class TestHandleSubscriptionRenewed:
         assert "next_billing_date" in set_data
         assert "previous_billing_date" in set_data
 
+    async def test_omitted_billing_dates_are_not_written_as_null(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+    ):
+        """A renewal that omits the billing dates must leave the stored ones alone.
+
+        Passing them to SubscriptionUpdate marks them in model_fields_set even
+        when None, so the repository's model_dump(exclude_unset=True) emits
+        ``next_billing_date: None`` and the $set overwrites good stored values
+        with null.
+        """
+        payload = {
+            **SUBSCRIPTION_DATA_PAYLOAD,
+            "next_billing_date": None,
+            "previous_billing_date": None,
+        }
+        event_data = _make_webhook_event("subscription.renewed", payload)
+
+        result = await webhook_service.process_webhook(event_data, "wh_renew_nulls")
+
+        assert result.status == "processed"
+        update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        assert set_data["status"] == "active"
+        assert "next_billing_date" not in set_data
+        assert "previous_billing_date" not in set_data
+
     async def test_warns_when_subscription_not_found(
         self,
         webhook_service,
