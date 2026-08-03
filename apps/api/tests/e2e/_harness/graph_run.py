@@ -17,11 +17,18 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langgraph.store.memory import InMemoryStore
+from pydantic import PrivateAttr
 
 from app.agents.core.graph_builder import build_graph as _build_graph
-from tests.helpers import BindableToolsFakeModel, create_fake_llm_with_tool_calls
+from tests.helpers import BindableToolsFakeModel
 
 #: The node that runs the LLM. Only its updates carry the model's own decisions.
 AGENT_NODE = "agent"
@@ -33,6 +40,11 @@ SELECT_NODE = "select_tools"
 TOOLS_NODE = "tools"
 #: Terminal node for ``finish_task``.
 FINISH_NODE = "finish_task"
+
+#: Compiled graphs are third-party objects that reject stray attributes, so the
+#: harness keeps the scripted model beside the graph rather than on it. Lets
+#: ``run_graph`` surface prompts without every test having to thread the model.
+_SCRIPTED_MODELS: dict[int, "RecordingFakeModel"] = {}
 
 
 class RecordingStore(InMemoryStore):
@@ -66,7 +78,21 @@ class GraphRun:
     events: list[NodeMessage] = field(default_factory=list)
     selected: list[list[str]] = field(default_factory=list)
     todos: list[dict[str, Any]] = field(default_factory=list)
+    #: The message list handed to the model on each call. Pre-model hooks rewrite
+    #: it on the way in and that rewrite never reaches the checkpoint, so this is
+    #: the only place a hook's effect is observable.
+    prompts: list[list[BaseMessage]] = field(default_factory=list)
     error: BaseException | None = None
+
+    def last_prompt(self) -> list[BaseMessage]:
+        return self.prompts[-1] if self.prompts else []
+
+    def system_slot(self, kwarg: str) -> str | None:
+        """Text of the system message a pre-model hook tagged with ``kwarg``."""
+        for message in self.last_prompt():
+            if isinstance(message, SystemMessage) and message.additional_kwargs.get(kwarg):
+                return str(message.content)
+        return None
 
     # -- what the model asked for -------------------------------------------
 
@@ -142,6 +168,55 @@ class GraphRun:
         return ""
 
 
+class RecordingFakeModel(BindableToolsFakeModel):
+    """A scripted model that also remembers what it was shown.
+
+    Pre-model hooks (todo context, system-prompt management, message filtering)
+    rewrite the message list on its way to the model and that rewrite is
+    ephemeral — it never lands in the checkpoint. So the only way to assert on a
+    hook's effect is to record the prompt the model actually received.
+    """
+
+    _prompts: list[list[BaseMessage]] = PrivateAttr(default_factory=list)
+
+    @property
+    def prompts(self) -> list[list[BaseMessage]]:
+        return self._prompts
+
+    def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> Any:
+        self._prompts.append(list(messages))
+        return super()._generate(messages, *args, **kwargs)
+
+    async def _agenerate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> Any:
+        self._prompts.append(list(messages))
+        return super()._generate(messages, *args, **kwargs)
+
+
+def scripted_model(script: Sequence[Any]) -> RecordingFakeModel:
+    """A fake model that replays ``script``, one entry per model call.
+
+    Four entry shapes, because a turn is not always one tool call:
+
+    * ``str`` — a plain assistant reply
+    * ``dict`` — a single tool call
+    * ``list[dict]`` — several tool calls in ONE turn, which is how a model
+      emits parallel work and the only way to reach the routing that picks
+      between them
+    * ``BaseMessage`` — used as-is, for shapes the others cannot express
+    """
+    responses: list[BaseMessage] = []
+    for item in script:
+        if isinstance(item, BaseMessage):
+            responses.append(item)
+        elif isinstance(item, dict):
+            responses.append(AIMessage(content="", tool_calls=[item]))
+        elif isinstance(item, list):
+            responses.append(AIMessage(content="", tool_calls=list(item)))
+        else:
+            responses.append(AIMessage(content=str(item)))
+    return RecordingFakeModel(responses=responses)
+
+
 @asynccontextmanager
 async def executor_graph(
     script: Sequence[dict[str, Any] | str],
@@ -176,7 +251,7 @@ async def executor_graph(
     if not providers.is_initialized("tool_registry"):
         init_tool_registry()
 
-    llm: BindableToolsFakeModel = create_fake_llm_with_tool_calls(list(script))
+    llm = scripted_model(script)
     with (
         patch.object(
             _build_graph, "get_tools_store", AsyncMock(return_value=store or InMemoryStore())
@@ -186,7 +261,11 @@ async def executor_graph(
         async with _build_graph.build_executor_graph(
             chat_llm=llm, in_memory_checkpointer=True
         ) as graph:
-            yield graph
+            _SCRIPTED_MODELS[id(graph)] = llm
+            try:
+                yield graph
+            finally:
+                _SCRIPTED_MODELS.pop(id(graph), None)
 
 
 async def run_graph(
@@ -226,4 +305,16 @@ async def run_graph(
                     run.events.append(NodeMessage(node=node, message=message))
     except GraphRecursionError as exc:
         run.error = exc
+
+    model = _SCRIPTED_MODELS.get(id(graph))
+    if model is not None:
+        run.prompts = list(model.prompts)
+
+    # `todos` is written by a tool returning a Command, which does not always
+    # surface as a node update. The checkpoint is the authoritative copy of the
+    # channel, so read it from there rather than from the event stream.
+    snapshot = await graph.aget_state(config)
+    values = snapshot.values if snapshot else {}
+    if isinstance(values, dict) and isinstance(values.get("todos"), list):
+        run.todos = list(values["todos"])
     return run

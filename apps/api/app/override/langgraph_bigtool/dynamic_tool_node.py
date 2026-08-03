@@ -332,7 +332,7 @@ class DynamicToolNode(ToolNode):
         MiddlewareExecutor.wrap_tool_invocation.
         """
 
-        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage:
+        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command:
             resolved_tool = self._get_tool(tc.get("name", ""))
             if resolved_tool is None:
                 return ToolMessage(
@@ -371,7 +371,15 @@ class DynamicToolNode(ToolNode):
                     status="error",
                 )
 
-            if isinstance(result, ToolMessage):
+            # A state-mutating tool (plan_tasks, and any tool whose effect IS a
+            # graph update) returns a Command. Pass it through untouched: the
+            # caller separates Commands from ToolMessages so LangGraph applies
+            # the update. Falling through to the str() below would render the
+            # Command's repr into the model's context and drop the state change
+            # silently -- the tool looks like it worked and nothing it wrote
+            # survives. The parent-routing path already handles this; only tools
+            # without InjectedState reach here.
+            if isinstance(result, (ToolMessage, Command)):
                 return result
 
             # A self-offloading tool (returns a dict) can't set additional_kwargs
