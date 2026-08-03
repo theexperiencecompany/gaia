@@ -67,6 +67,7 @@ from app.utils.linear_utils import (
     format_issue_summary,
     fuzzy_match,
     graphql_request,
+    history_label_names,
     priority_to_int,
     priority_to_str,
 )
@@ -378,12 +379,12 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
                     entry["change"] = "assignee"
                     entry["from"] = (h.get("fromAssignee") or {}).get("name")
                     entry["to"] = (h.get("toAssignee") or {}).get("name")
-                elif (h.get("addedLabels") or {}).get("nodes"):
+                elif history_label_names(h.get("addedLabels")):
                     entry["change"] = "labels_added"
-                    entry["labels"] = [label.get("name") for label in h["addedLabels"]["nodes"]]
-                elif (h.get("removedLabels") or {}).get("nodes"):
+                    entry["labels"] = history_label_names(h.get("addedLabels"))
+                elif history_label_names(h.get("removedLabels")):
                     entry["change"] = "labels_removed"
-                    entry["labels"] = [label.get("name") for label in h["removedLabels"]["nodes"]]
+                    entry["labels"] = history_label_names(h.get("removedLabels"))
                 else:
                     continue
                 result["activity"].append(entry)
@@ -667,12 +668,12 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
                 entry["change_type"] = "priority"
                 entry["from"] = priority_to_str(h.get("fromPriority", 0))
                 entry["to"] = priority_to_str(h.get("toPriority", 0))
-            elif (h.get("addedLabels") or {}).get("nodes"):
+            elif history_label_names(h.get("addedLabels")):
                 entry["change_type"] = "labels_added"
-                entry["labels"] = [label.get("name") for label in h["addedLabels"]["nodes"]]
-            elif (h.get("removedLabels") or {}).get("nodes"):
+                entry["labels"] = history_label_names(h.get("addedLabels"))
+            elif history_label_names(h.get("removedLabels")):
                 entry["change_type"] = "labels_removed"
-                entry["labels"] = [label.get("name") for label in h["removedLabels"]["nodes"]]
+                entry["labels"] = history_label_names(h.get("removedLabels"))
             else:
                 continue
             activities.append(entry)
