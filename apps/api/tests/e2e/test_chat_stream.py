@@ -13,23 +13,15 @@ replays last turn's tool calls into this turn's stream.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager
 from typing import Any
-from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 import pytest
 
-from app.agents.core.graph_builder.build_graph import build_comms_graph
 from app.helpers.agent_helpers import build_agent_config, execute_graph_streaming
 from tests.e2e._harness import Transcript
-from tests.helpers import BindableToolsFakeModel, create_fake_llm_with_tool_calls
-from tests.integration.agents.test_comms_agent_flow import (
-    _common_patches,
-    _make_chroma_store_mock,
-)
+from tests.e2e._harness.graph_run import comms_graph
 
 pytestmark = pytest.mark.e2e
 
@@ -37,47 +29,6 @@ pytestmark = pytest.mark.e2e
 @pytest.fixture(autouse=True)
 def _registry(real_tool_registry):
     """Tool categories and display labels come from the real global registry."""
-
-
-@asynccontextmanager
-async def comms_graph(script: Sequence[dict[str, Any] | str]) -> AsyncIterator[Any]:
-    """The production comms graph, with only the model replaced.
-
-    ``script`` is consumed one entry per model call: a dict becomes a tool call,
-    a string becomes the assistant's reply.
-
-    The shared patch set's first entry replaces ``providers.aget`` wholesale, so
-    *every* provider lookup — including ``get_tool_registry()``, which
-    ``format_tool_call_entry`` uses to resolve a streamed tool's category —
-    returns the ChromaDB store mock. That is harmless for graph-shape tests but
-    fatal here: the category must be a real string. Swapping in the narrower
-    seam (the store accessor the graph builder actually calls) keeps the
-    intended isolation and leaves the provider registry working.
-    """
-    store_mock = _make_chroma_store_mock()
-    fake_llm: BindableToolsFakeModel = create_fake_llm_with_tool_calls(list(script))
-    patches = _common_patches(store_mock)
-    patches[0] = patch(
-        "app.agents.core.graph_builder.build_graph.get_tools_store",
-        new_callable=AsyncMock,
-        return_value=store_mock,
-    )
-    no_langfuse = patch(
-        "app.helpers.agent_helpers.build_langfuse_callback",
-        return_value=None,
-    )
-    with (
-        no_langfuse,
-        patches[0],
-        patches[1],
-        patches[2],
-        patches[3],
-        patches[4],
-        patches[5],
-        patches[6],
-    ):
-        async with build_comms_graph(chat_llm=fake_llm, in_memory_checkpointer=True) as graph:
-            yield graph
 
 
 async def stream_turn(graph: Any, prompt: str, thread_id: str, user_id: str) -> Transcript:

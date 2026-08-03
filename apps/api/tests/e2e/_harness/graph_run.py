@@ -288,9 +288,21 @@ async def comms_graph(
     # module the collaborators live on.
     node_module = "app.agents.core.nodes.follow_up_actions_node"
 
+    from app.constants.memory import ReconcileOutcome
+    from app.memory.ingestion import RetainedMemory
+    from app.models.memory_models import MemoryEntry
+
     llm = scripted_model(script)
+    # Typed to the engine's real return shape, not a bare MagicMock: the memory
+    # tools read `.entry.category_path` and `.outcome` off it, so a loose double
+    # turns a tool result into an AttributeError string the test then asserts on.
     memory = MagicMock()
-    memory.retain_single = AsyncMock(return_value=None)
+    memory.retain_single = AsyncMock(
+        return_value=RetainedMemory(
+            entry=MemoryEntry(id="mem-test-001", content="test memory", category_path="general"),
+            outcome=ReconcileOutcome.NEW,
+        )
+    )
     memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
 
     with (
