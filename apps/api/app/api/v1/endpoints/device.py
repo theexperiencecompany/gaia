@@ -66,22 +66,20 @@ async def _current_device(authorization: str = Header(default="")) -> DeviceToke
     return info
 
 
-@router.post("/pair/start", response_model=StartPairingResponse)
+@router.post("/pair/start")
 async def pair_start(payload: StartPairingRequest) -> StartPairingResponse:
     """Start a device pairing request (RFC 8628); returns the codes for the daemon."""
     log.set(device={"operation": "pair_start", "name": payload.name})
     try:
-        result = await start_pairing(payload.name, payload.platform, payload.daemon_version)
+        return await start_pairing(payload.name, payload.platform, payload.daemon_version)
     except PairingError as e:
         raise HTTPException(status_code=503, detail=str(e))
-    return StartPairingResponse(**result)  # type: ignore[arg-type]
 
 
-@router.post("/pair/poll", response_model=PollPairingResponse)
+@router.post("/pair/poll")
 async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
     """Daemon polls for the user's browser approval of a pending pairing."""
-    result = await poll_pairing(payload.device_code)
-    return PollPairingResponse(**result)  # type: ignore[arg-type]
+    return await poll_pairing(payload.device_code)
 
 
 @router.post("/pair/approve", status_code=200)
@@ -97,7 +95,7 @@ async def pair_approve(
     return DevicePairApproveResponse(device_id=device_id, name=name)
 
 
-@router.post("/token", response_model=DeviceTokenResponse)
+@router.post("/token")
 async def device_token(payload: DeviceTokenRequest) -> DeviceTokenResponse:
     """Exchange (and rotate) the refresh credential for a short-lived connect JWT."""
     try:
@@ -113,7 +111,7 @@ async def device_token(payload: DeviceTokenRequest) -> DeviceTokenResponse:
     )
 
 
-@router.post("/servers", response_model=RegisterServerResponse)
+@router.post("/servers")
 async def register_server(
     payload: RegisterServerRequest, device: DeviceTokenClaims = Depends(_current_device)
 ) -> RegisterServerResponse:
@@ -130,7 +128,7 @@ async def register_server(
     )
 
 
-@router.get("/list", response_model=DeviceListResponse)
+@router.get("/list")
 async def list_user_devices(user_id: str = Depends(get_user_id)) -> DeviceListResponse:
     """List the current user's active devices with their online status and servers."""
     devices = await list_devices(user_id)

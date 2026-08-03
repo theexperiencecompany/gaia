@@ -6,10 +6,12 @@ This module provides routes for checking the health and status of the API.
 
 import asyncio
 import time
+from typing import Any
 
 from fastapi import APIRouter
 from fastapi.responses import FileResponse, JSONResponse
 
+from app.models.health_models import DegradedHealthResponse, HealthResponse
 from app.utils.general_utils import get_project_info
 
 router = APIRouter()
@@ -24,18 +26,21 @@ async def measure_event_loop_lag() -> float:
     return (time.monotonic() - start) * 1000
 
 
-@router.get("/")
-@router.get("/ping")
-@router.get("/health")
-@router.get("/api/v1/")
-@router.get("/api/v1/ping")
-async def health_check() -> JSONResponse:
-    """
-    Health check endpoint for the API.
+# Typed as FastAPI declares the `responses=` parameter — the open dict[str, Any]
+# is its own contract (an entry may carry description/headers/content too), not
+# a loose annotation of ours.
+_DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, Any]] = {
+    503: {"model": DegradedHealthResponse}
+}
 
-    Returns:
-        JSONResponse: Status information about the API
-    """
+
+@router.get("/", response_model=HealthResponse, responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/ping", response_model=HealthResponse, responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/health", response_model=HealthResponse, responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/api/v1/", response_model=HealthResponse, responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/api/v1/ping", response_model=HealthResponse, responses=_DEGRADED_RESPONSE_SCHEMA)
+async def health_check() -> JSONResponse:
+    """Report API liveness, build identity, and current event-loop responsiveness."""
     # Lazy import to avoid loading settings during module import
     from app.config.settings import settings
 
@@ -43,25 +48,23 @@ async def health_check() -> JSONResponse:
     if lag_ms > EVENT_LOOP_LAG_THRESHOLD_MS:
         return JSONResponse(
             status_code=503,
-            content={
-                "status": "degraded",
-                "event_loop_lag_ms": round(lag_ms, 2),
-                "detail": "Event loop is severely lagged",
-            },
+            content=DegradedHealthResponse(
+                event_loop_lag_ms=round(lag_ms, 2),
+                detail="Event loop is severely lagged",
+            ).model_dump(),
         )
 
     project_info = get_project_info()
 
     return JSONResponse(
-        content={
-            "status": "online",
-            "message": "Welcome to the GAIA API!",
-            "name": project_info["name"],
-            "version": project_info["version"],
-            "description": project_info["description"],
-            "environment": settings.ENV,
-            "event_loop_lag_ms": round(lag_ms, 2),
-        }
+        content=HealthResponse(
+            message="Welcome to the GAIA API!",
+            name=project_info["name"],
+            version=project_info["version"],
+            description=project_info["description"],
+            environment=settings.ENV,
+            event_loop_lag_ms=round(lag_ms, 2),
+        ).model_dump()
     )
 
 

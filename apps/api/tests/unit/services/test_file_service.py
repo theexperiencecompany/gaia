@@ -182,12 +182,12 @@ class TestFileServiceUpload:
                 conversation_id="conv-1",
             )
 
-        assert result["url"] == "https://res.cloudinary.com/test/uploaded.pdf"
-        assert result["filename"] == "report.pdf"
-        assert result["description"] == "This is a summary"
-        assert result["type"] == "application/pdf"
-        assert result["sandbox_path"] == "/workspace/user-uploaded/report.pdf"
-        assert "file_id" in result
+        assert result.url == "https://res.cloudinary.com/test/uploaded.pdf"
+        assert result.filename == "report.pdf"
+        assert result.description == "This is a summary"
+        assert result.type == "application/pdf"
+        assert result.sandbox_path == "/workspace/user-uploaded/report.pdf"
+        assert result.file_id
         mock_mirror.assert_awaited_once()
         mock_sidecar.assert_awaited_once()
 
@@ -263,7 +263,7 @@ class TestFileServiceUpload:
 
         with _summary("summary"):
             result = await FileService.upload(file=file, user_id="user-abc")
-        assert "file_id" in result
+        assert result.file_id
 
     @patch(PATCH_DELETE_CACHE, new_callable=AsyncMock)
     async def test_cloudinary_missing_secure_url_raises_500(
@@ -333,9 +333,9 @@ class TestFileServiceUpload:
                 conversation_id=None,
             )
 
-        assert result["filename"] == "report.pdf"
-        assert result["sandbox_path"] is None
-        assert "file_id" in result
+        assert result.filename == "report.pdf"
+        assert result.sandbox_path is None
+        assert result.file_id
         mock_mirror.assert_not_awaited()
         mock_sidecar.assert_not_awaited()
 
@@ -356,8 +356,9 @@ class TestFileServiceUpload:
         with _summary(sample_document_summary_list):
             result = await FileService.upload(file=file, user_id="user-abc")
 
-        assert "Summary of page 1" in result["description"]
-        assert "Summary of page 2" in result["description"]
+        assert result.description is not None
+        assert "Summary of page 1" in result.description
+        assert "Summary of page 2" in result.description
 
 
 # ---------------------------------------------------------------------------

@@ -65,8 +65,8 @@ async def _upload_single_attachment(
     current_time: datetime,
     allowed_types: list[str],
     max_file_size: int,
-) -> tuple[str, dict]:
-    """Upload a single attachment and return (file_url, attachment_metadata_dict)."""
+) -> tuple[str, SupportAttachment]:
+    """Upload a single attachment and return (file_url, attachment metadata)."""
     # Validate file type
     if attachment.content_type not in allowed_types:
         raise HTTPException(
@@ -105,7 +105,7 @@ async def _upload_single_attachment(
             uploaded_at=current_time,
         )
 
-        return file_url, attachment_info.dict()
+        return file_url, attachment_info
 
     except Exception as e:
         log.error(f"Failed to upload image {attachment.filename}: {e!s}")
@@ -238,7 +238,7 @@ async def create_support_request_with_attachments(
         attachment_count=len(attachments),
     )
     request_id = None
-    attachment_urls = []
+    attachment_urls: list[str] = []
     ticket_id = None
 
     try:
@@ -249,7 +249,7 @@ async def create_support_request_with_attachments(
         current_time = datetime.now(UTC)
 
         # Process attachments
-        processed_attachments = []
+        processed_attachments: list[SupportAttachment] = []
 
         if attachments:
             # Validate file constraints
@@ -316,7 +316,7 @@ async def create_support_request_with_attachments(
             description=request_data.description,
             priority=SupportRequestPriority.MEDIUM,
             created_at=current_time,
-            attachments=[SupportAttachment(**att) for att in processed_attachments],
+            attachments=processed_attachments,
             metadata={
                 "source": "web_form_with_images",
                 "user_agent": None,
@@ -340,7 +340,7 @@ async def create_support_request_with_attachments(
                 description=request_data.description,
                 created_at=current_time,
                 support_emails=SUPPORT_EMAILS,
-                attachments=[SupportAttachment(**att) for att in processed_attachments],
+                attachments=processed_attachments,
             )
 
             await _send_support_email_notifications(notification_data)

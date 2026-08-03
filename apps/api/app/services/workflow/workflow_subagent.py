@@ -34,6 +34,7 @@ from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.models.agent_models import AgentUserContext
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.utils.workflow_utils import unknown_integration_ids
@@ -147,14 +148,14 @@ class WorkflowSubagentRunner:
         # Build config
         subagent_thread_id = f"workflow_{thread_id}"
 
-        user: dict[str, str | None] = {
+        user: AgentUserContext = {
             "user_id": user_id,
             "email": None,
             "name": user_name,
             "timezone": user_timezone,
         }
 
-        config: RunnableConfig = build_agent_config(  # type: ignore[assignment]
+        config = build_agent_config(
             conversation_id=thread_id,
             user=user,
             thread_id=subagent_thread_id,

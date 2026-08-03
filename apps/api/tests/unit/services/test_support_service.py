@@ -255,10 +255,10 @@ class TestUploadSingleAttachment:
         )
 
         assert file_url == mock_upload_file_to_cloudinary.return_value
-        assert attachment_meta["filename"] == "screenshot.png"
-        assert attachment_meta["file_size"] == 100
-        assert attachment_meta["content_type"] == "image/png"
-        assert attachment_meta["file_url"] == file_url
+        assert attachment_meta.filename == "screenshot.png"
+        assert attachment_meta.file_size == 100
+        assert attachment_meta.content_type == "image/png"
+        assert attachment_meta.file_url == file_url
 
     async def test_wrong_content_type_raises_400(self):
         """Non-image content type raises 400."""

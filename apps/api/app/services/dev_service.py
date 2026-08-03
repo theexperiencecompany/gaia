@@ -23,6 +23,11 @@ from app.models.user_models import (
     OnboardingPreferences,
     UserDocument,
 )
+from app.schemas.dev_schemas import (
+    DeleteDevUserResponse,
+    DevDeletedCounts,
+    SeedDevDataResponse,
+)
 from app.services.conversation_service import create_conversation_service
 from app.services.oauth.oauth_service import store_user_info
 from app.services.platform_link_service import Platform, PlatformLinkService
@@ -44,7 +49,7 @@ async def require_dev_user(email: str) -> UserDocument:
     return user
 
 
-async def mint_dev_user(email: str, name: str | None = None) -> dict:
+async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
     """Idempotently find-or-create a dev user via the real signup path."""
     resolved_name = name or email.split("@", 1)[0]
     user_id, is_new = await store_user_info(
@@ -63,7 +68,7 @@ async def mint_dev_user(email: str, name: str | None = None) -> dict:
             why="store_user_info returned an id with no matching document",
             status_code=500,
         )
-    return user_doc.model_dump(mode="json")
+    return user_doc
 
 
 async def seed_dev_data(
@@ -71,7 +76,7 @@ async def seed_dev_data(
     todos: int,
     conversations: int,
     platform_links: list[str],
-) -> dict:
+) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
     for platform in platform_links:
         if not Platform.is_valid(platform):
@@ -98,7 +103,7 @@ async def seed_dev_data(
             profession="Developer",
             response_style="casual",
             custom_instructions=None,
-        ).model_dump(),
+        ),
     )
 
     # The seeded platform_user_id is part of the seed CONTRACT (harness clients
@@ -141,17 +146,17 @@ async def seed_dev_data(
         conversations=conversations,
         platforms=platform_links,
     )
-    return {
-        "email": email,
-        "user_id": user_id,
-        "todos_created": todos,
-        "conversations_created": conversations,
-        "platforms_linked": platform_links,
-        "platform_user_ids": platform_user_ids,
-    }
+    return SeedDevDataResponse(
+        email=email,
+        user_id=user_id,
+        todos_created=todos,
+        conversations_created=conversations,
+        platforms_linked=platform_links,
+        platform_user_ids=platform_user_ids,
+    )
 
 
-async def delete_dev_user(email: str) -> dict:
+async def delete_dev_user(email: str) -> DeleteDevUserResponse:
     """Remove a dev user and the todos/conversations/projects it owns."""
     user = await require_dev_user(email)
     user_id = user.id
@@ -169,13 +174,13 @@ async def delete_dev_user(email: str) -> dict:
         conversations=conversations_deleted,
         projects=projects_deleted,
     )
-    return {
-        "email": email,
-        "user_id": user_id,
-        "deleted": {
-            "todos": todos_deleted,
-            "conversations": conversations_deleted,
-            "projects": projects_deleted,
-            "user": user_deleted,
-        },
-    }
+    return DeleteDevUserResponse(
+        email=email,
+        user_id=user_id,
+        deleted=DevDeletedCounts(
+            todos=todos_deleted,
+            conversations=conversations_deleted,
+            projects=projects_deleted,
+            user=user_deleted,
+        ),
+    )

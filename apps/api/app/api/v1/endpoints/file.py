@@ -18,6 +18,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.files_models import FileDocument
 from app.models.message_models import FileData
+from app.models.user_models import AuthenticatedUser
 from app.schemas.file import FileDeletedResponse, UpdateFileRequest
 from app.services.files import FileService
 from app.services.storage import SAFE_PATH_ID_PATTERN
@@ -32,7 +33,7 @@ async def upload_file_endpoint(
     file: UploadFile = File(...),
     conversation_id: str | None = Form(default=None, pattern=SAFE_PATH_ID_PATTERN),
     content_length: int | None = Header(default=None, alias="content-length"),
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> FileData:
     """Upload a file, persist metadata, and generate embeddings for images."""
     user_id = user.get("user_id")
@@ -52,28 +53,33 @@ async def upload_file_endpoint(
             )
 
     try:
-        result = await FileService.upload(
-            file=file,
-            user_id=user_id,
-            conversation_id=conversation_id,
-            content_length=content_length,
+        # CacheInvalidator erases the wrapped function's return type; FileService.upload
+        # is declared -> FileDocument, so this is correct by construction.
+        uploaded = cast(
+            FileDocument,
+            await FileService.upload(
+                file=file,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                content_length=content_length,
+            ),
         )
 
         log.set(
             user={"id": user_id},
             operation="upload",
-            file_id=result["file_id"],
-            file_name=result["filename"],
-            mime_type=result.get("type", "file"),
+            file_id=uploaded.file_id,
+            file_name=uploaded.filename,
+            mime_type=uploaded.type,
             outcome="success",
         )
         return FileData(
-            fileId=result["file_id"],
-            url=result["url"],
-            filename=result["filename"],
+            fileId=uploaded.file_id,
+            url=uploaded.url,
+            filename=uploaded.filename,
             message="File uploaded successfully",
-            type=result.get("type", "file"),
-            description=result.get("description"),
+            type=uploaded.type,
+            description=uploaded.description,
         )
     except HTTPException:
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).

@@ -45,12 +45,12 @@ class TestUploadFile:
         new_callable=AsyncMock,
     )
     async def test_upload_file_returns_201(self, mock_upload: AsyncMock, client: AsyncClient):
-        mock_upload.return_value = {
-            "file_id": "file-001",
-            "url": "https://cdn.example.com/file.png",
-            "filename": "test.png",
-            "type": "image",
-        }
+        mock_upload.return_value = _file_doc(
+            file_id="file-001",
+            url="https://cdn.example.com/file.png",
+            filename="test.png",
+            type="image",
+        )
         file_content = BytesIO(b"fake image data")
         response = await client.post(
             f"{FILE_BASE}/upload",
@@ -74,12 +74,12 @@ class TestUploadFile:
     async def test_upload_file_with_conversation_id(
         self, mock_upload: AsyncMock, mock_convs, client: AsyncClient
     ):
-        mock_upload.return_value = {
-            "file_id": "file-002",
-            "url": "https://cdn.example.com/doc.pdf",
-            "filename": "doc.pdf",
-            "type": "file",
-        }
+        mock_upload.return_value = _file_doc(
+            file_id="file-002",
+            url="https://cdn.example.com/doc.pdf",
+            filename="doc.pdf",
+            type="file",
+        )
         # Simulate that the conversation is owned by the authenticated user.
         mock_convs.exists = AsyncMock(return_value=True)
         file_content = BytesIO(b"fake pdf data")
@@ -137,14 +137,16 @@ class TestUploadFile:
         "app.api.v1.endpoints.file.FileService.upload",
         new_callable=AsyncMock,
     )
-    async def test_upload_file_default_type_is_file(
+    async def test_upload_file_reports_the_stored_content_type(
         self, mock_upload: AsyncMock, client: AsyncClient
     ):
-        mock_upload.return_value = {
-            "file_id": "file-003",
-            "url": "https://cdn.example.com/data.csv",
-            "filename": "data.csv",
-        }
+        """The response's ``type`` mirrors the MIME type persisted on the document."""
+        mock_upload.return_value = _file_doc(
+            file_id="file-003",
+            url="https://cdn.example.com/data.csv",
+            filename="data.csv",
+            type="text/csv",
+        )
         file_content = BytesIO(b"col1,col2\na,b")
         response = await client.post(
             f"{FILE_BASE}/upload",
@@ -152,7 +154,7 @@ class TestUploadFile:
         )
         assert response.status_code == 201
         data = response.json()
-        assert data["type"] == "file"
+        assert data["type"] == "text/csv"
 
 
 @pytest.mark.unit

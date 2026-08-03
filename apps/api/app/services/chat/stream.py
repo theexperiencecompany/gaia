@@ -14,7 +14,7 @@ import asyncio
 import contextlib
 from datetime import UTC, datetime
 import json
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -476,14 +476,7 @@ async def _consume_agent_stream(
     """
     async for chunk in await call_agent(
         request=body,
-        # The agent-config layer (`call_agent` -> `_core_agent_logic` ->
-        # `build_agent_config` / `construct_langchain_messages`) still declares its
-        # user as a bare `dict`, and its nine other call sites each carry their own
-        # unmigrated chain (workers, subagents, handoffs). Typing it is a separate
-        # wave; this cast marks the boundary rather than widening it here (Type
-        # Safety item 14). Correct by construction — an `AuthenticatedUser` IS this
-        # dict at runtime; nothing downstream mutates it.
-        user=cast(dict[str, Any], user),
+        user=user,
         conversation_id=conversation_id,
         usage_metadata_callback=usage_callback,
         stream_id=stream_id,

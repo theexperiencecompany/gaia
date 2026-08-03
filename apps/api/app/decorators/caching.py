@@ -107,7 +107,7 @@ class Cacheable:
         ttl: int = ONE_YEAR_TTL,
         serializer: Callable[[Any], Any] | None = None,
         deserializer: Callable[[Any], Any] | None = None,
-        model: type | None = None,
+        model: type[Any] | None = None,
         smart_hash: bool = False,
         namespace: str = "api",
         ignore_none: bool = False,

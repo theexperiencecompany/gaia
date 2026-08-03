@@ -3,6 +3,8 @@
 Pydantic models for platform account linking and authentication.
 """
 
+from typing import TypedDict
+
 from pydantic import BaseModel, Field
 
 
@@ -22,6 +24,25 @@ class PlatformLinkEntry(BaseModel):
     connectedAt: str | None = Field(None, description="ISO timestamp when linked")
 
 
+class PlatformLinkView(TypedDict):
+    """One entry of ``PlatformLinkService.get_linked_platforms``'s mapping.
+
+    A ``TypedDict`` mirroring :class:`PlatformLinkEntry`, not that model (Type
+    Safety item 6): the value is assembled in-process from an already-loaded
+    ``UserDocument`` and is consumed by the outbound-delivery paths, which
+    tolerate a legacy non-string ``platformUserId`` (Telegram stores chat_id as
+    an int) and coerce it themselves at the envelope. Validating here instead
+    would start raising on those rows — a behaviour change (item 13). The HTTP
+    boundary still validates, via ``GetPlatformLinksResponse`` below.
+    """
+
+    platform: str
+    platformUserId: str
+    username: str | None
+    displayName: str | None
+    connectedAt: str | None
+
+
 class GetPlatformLinksResponse(BaseModel):
     """Response wrapper for user's linked platforms."""
 
@@ -29,6 +50,21 @@ class GetPlatformLinksResponse(BaseModel):
         default_factory=dict,
         description="Map of platform name to link details",
     )
+
+
+class PlatformLinkResult(BaseModel):
+    """What ``PlatformLinkService.link_account`` reports back to its callers.
+
+    Mirrors :class:`LinkPlatformResponse` plus ``is_new_link``, which is
+    deliberately internal: it tells a caller whether to fire the one-off
+    "connected" greeting and is not part of the HTTP payload.
+    """
+
+    status: str
+    platform: str
+    platform_user_id: str
+    connected_at: str
+    is_new_link: bool
 
 
 class LinkPlatformResponse(BaseModel):

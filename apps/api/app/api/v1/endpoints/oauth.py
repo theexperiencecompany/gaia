@@ -21,7 +21,7 @@ from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
-from app.models.oauth_models import MobileLoginUrlResponse
+from app.models.oauth_models import MobileLoginUrlResponse, OAuthClientMetadataResponse
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth.oauth_state_service import (
@@ -36,7 +36,7 @@ http_async_client = httpx.AsyncClient()
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-@router.get("/client-metadata.json")
+@router.get("/client-metadata.json", response_model=OAuthClientMetadataResponse)
 async def get_client_metadata() -> JSONResponse:
     """
     OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
@@ -51,18 +51,16 @@ async def get_client_metadata() -> JSONResponse:
     metadata_url = f"{base_url}/api/v1/oauth/client-metadata.json"
 
     return JSONResponse(
-        content={
+        content=OAuthClientMetadataResponse(
             # MUST match this document's URL exactly per spec Section 4.1
-            "client_id": metadata_url,
-            "client_name": "GAIA",
-            "client_uri": "https://heygaia.com",
-            "logo_uri": f"{base_url}/static/logo.png",
-            "redirect_uris": [f"{base_url}/api/v1/mcp/oauth/callback"],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-            # MUST be "none" - no client secrets allowed per spec Section 4.1
-            "token_endpoint_auth_method": "none",  # nosec B105 - OAuth spec requires literal "none"
-        },
+            client_id=metadata_url,
+            client_name="GAIA",
+            client_uri="https://heygaia.com",
+            logo_uri=f"{base_url}/static/logo.png",
+            redirect_uris=[f"{base_url}/api/v1/mcp/oauth/callback"],
+            grant_types=["authorization_code", "refresh_token"],
+            response_types=["code"],
+        ).model_dump(),
         media_type="application/json",
     )
 
@@ -475,7 +473,7 @@ async def composio_callback(
 
         # Extract essential information
         config_id = connected_account.auth_config.id
-        user_id = connected_account.user_id  # type: ignore
+        user_id = connected_account.user_id
 
         if not user_id:
             log.error(f"{LogTag.OAUTH} User ID missing for account: {connectedAccountId}")

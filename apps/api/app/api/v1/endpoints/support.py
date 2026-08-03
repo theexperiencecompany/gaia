@@ -1,7 +1,5 @@
 """Support API router for handling support requests."""
 
-from typing import Any
-
 from fastapi import (
     APIRouter,
     Depends,
@@ -25,6 +23,7 @@ from app.models.support_models import (
     SupportRequestSubmissionResponse,
     SupportRequestType,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.support_service import (
     create_support_request,
     create_support_request_with_attachments,
@@ -46,7 +45,7 @@ router = APIRouter()
 async def submit_support_request(
     request: Request,
     request_data: SupportRequestCreate,
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SupportRequestSubmissionResponse:
     """
     Submit a new support or feature request.
@@ -79,7 +78,7 @@ async def submit_support_request(
             user_email=user_email,
             user_name=user_name,
         )
-        log.set(ticket_id=result.ticket_id if hasattr(result, "ticket_id") else None)
+        log.set(ticket_id=result.ticket_id)
         log.set(outcome="success")
         return result
 
@@ -103,7 +102,7 @@ async def submit_support_request_with_attachments(
     title: str = Form(...),
     description: str = Form(...),
     attachments: list[UploadFile] = File(default=[]),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SupportRequestSubmissionResponse:
     """
     Submit a new support or feature request with image attachments.
@@ -157,7 +156,7 @@ async def submit_support_request_with_attachments(
             user_email=user_email,
             user_name=user_name,
         )
-        log.set(ticket_id=result.ticket_id if hasattr(result, "ticket_id") else None)
+        log.set(ticket_id=result.ticket_id)
         log.set(outcome="success")
         return result
 
@@ -202,7 +201,7 @@ async def get_my_support_requests(
 )
 async def get_support_rate_limit_status(
     request: Request,
-    current_user: dict[str, Any] = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> SupportRateLimitStatusResponse:
     """
     Get the current rate limit status for support requests.

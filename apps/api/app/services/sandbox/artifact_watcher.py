@@ -373,6 +373,8 @@ class ArtifactWatcher:
                     self._inode_conv[info.inode] = conv
                 if prev.get(info.path) != (info.size_bytes, info.mtime):
                     await publish_artifact_event(self.user_id, upsert_event(conv, info))
+            for gone in prev.keys() - current.keys():
+                await publish_artifact_event(self.user_id, remove_event(conv, gone))
             self._snapshots[conv] = current
 
 

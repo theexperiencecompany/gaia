@@ -1,13 +1,21 @@
+from typing import Any
+
 from fastapi import HTTPException
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, user_to_legacy_dict
+from app.models.user_models import UserUpdate, UserUpdateResponse, user_to_legacy_dict
 from app.utils.oauth_utils import upload_user_picture
 from shared.py.wide_events import log
 
 
-async def get_user_by_id(user_id: str) -> dict | None:
-    """Get user by ID from database."""
+async def get_user_by_id(user_id: str) -> dict[str, Any] | None:
+    """Get user by ID from database.
+
+    Returns the ``user_to_legacy_dict`` bridge shape — a raw-style dict with a
+    string ``_id`` — because its consumers (agent tools, workflow/todo workers)
+    mutate it and pass it on as a plain dict. Typing it as ``UserDocument`` is
+    the real fix and belongs with retiring that bridge, not here.
+    """
     log.set(service="user_service", user_id=user_id)
     try:
         user = await user_repository.get(user_id)
@@ -21,7 +29,7 @@ async def update_user_profile(
     user_id: str,
     name: str | None = None,
     picture_data: bytes | None = None,
-) -> dict:
+) -> UserUpdateResponse:
     """Update user profile information."""
     log.set(
         service="user_service",
@@ -64,13 +72,13 @@ async def update_user_profile(
         if not updated_user:
             raise HTTPException(status_code=404, detail="User not found after update")
 
-        return {
-            "user_id": updated_user.id,
-            "name": updated_user.name,
-            "email": updated_user.email,
-            "picture": updated_user.picture,
-            "updated_at": updated_user.updated_at,
-        }
+        return UserUpdateResponse(
+            user_id=updated_user.id,
+            name=updated_user.name,
+            email=updated_user.email,
+            picture=updated_user.picture,
+            updated_at=updated_user.updated_at,
+        )
 
     except HTTPException:
         raise

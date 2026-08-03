@@ -231,7 +231,7 @@ async def update_onboarding_phase(
 
         log.info(f"{LogTag.ONBOARDING} Updating phase to {phase} for user {user_id}")
 
-        matched = await user_repository.set_onboarding_phase(user_id, request.phase.value)
+        matched = await user_repository.set_onboarding_phase(user_id, request.phase)
 
         if not matched:
             log.warning(f"{LogTag.ONBOARDING} No document found for user {user_id}")

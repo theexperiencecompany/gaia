@@ -128,7 +128,7 @@ class FileService:
         user_id: str,
         conversation_id: str | None = None,
         content_length: int | None = None,
-    ) -> dict:
+    ) -> FileDocument:
         """Validate, store, summarize, and mirror an upload into the session.
 
         Cloudinary (blob) + Mongo (metadata) always persist. The summary, the
@@ -178,18 +178,17 @@ class FileService:
             )
 
             # 3. Persist authoritative metadata (Mongo) + vector index (Chroma).
+            metadata = _build_file_metadata(
+                upload,
+                user_id=user_id,
+                url=blob_url,
+                description=description,
+                page_wise_summary=page_wise_summary,
+                sandbox_path=sandbox_path,
+                conversation_id=conversation_id,
+            )
             await asyncio.gather(
-                insert_metadata(
-                    _build_file_metadata(
-                        upload,
-                        user_id=user_id,
-                        url=blob_url,
-                        description=description,
-                        page_wise_summary=page_wise_summary,
-                        sandbox_path=sandbox_path,
-                        conversation_id=conversation_id,
-                    )
-                ),
+                insert_metadata(metadata),
                 index_file(
                     file_id=upload.file_id,
                     user_id=user_id,
@@ -201,14 +200,7 @@ class FileService:
             )
             log.info(f"[files] upload complete file_id={upload.file_id}")
 
-            return {
-                "file_id": upload.file_id,
-                "url": blob_url,
-                "filename": upload.filename,
-                "description": description,
-                "type": content_type,
-                "sandbox_path": sandbox_path,
-            }
+            return metadata
         except HTTPException:
             raise
         except Exception as e:

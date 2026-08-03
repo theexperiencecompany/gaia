@@ -19,6 +19,7 @@ from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import (
+    AuthenticatedUser,
     AuthenticatedUserResponse,
     HoloCardOnboardingFields,
     PublicHoloCardResponse,
@@ -40,7 +41,7 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 
 @router.get("/me", response_model=AuthenticatedUserResponse)
 async def get_me(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Returns the current authenticated user's details.
@@ -50,11 +51,7 @@ async def get_me(
     onboarding_status = await get_user_onboarding_status(user["user_id"])
 
     log.set(
-        user={
-            "id": user["user_id"],
-            "email": user.get("email"),
-            "plan": user.get("plan") or user.get("subscription_plan"),
-        },
+        user={"id": user["user_id"], "email": user.get("email")},
         operation="get_me",
     )
 
@@ -70,7 +67,7 @@ async def get_me(
 async def update_me(
     name: str | None = Form(None),
     picture: UploadFile | None = File(None),
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> UserUpdateResponse:
     """
     Update the current user's profile information.
@@ -78,11 +75,7 @@ async def update_me(
     """
     user_id = user.get("user_id")
     log.set(
-        user={
-            "id": user_id,
-            "email": user.get("email"),
-            "plan": user.get("plan") or user.get("subscription_plan"),
-        },
+        user={"id": user_id, "email": user.get("email")},
         operation="update_me",
         has_picture_upload=bool(picture and picture.size and picture.size > 0),
     )
@@ -113,13 +106,13 @@ async def update_me(
     updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
     log.set(outcome="success")
-    return UserUpdateResponse(**updated_user)
+    return updated_user
 
 
 @router.patch("/name", response_model=UserUpdateResponse)
 async def update_user_name(
     name: str = Form(...),
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> UserUpdateResponse:
     """
     Update the user's name. This is the consolidated endpoint for name updates.
@@ -133,7 +126,7 @@ async def update_user_name(
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
         log.set(outcome="success")
-        return UserUpdateResponse(**updated_user)
+        return updated_user
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -291,7 +284,7 @@ async def update_holo_card_colors(
 @router.post("/logout")
 async def logout(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> JSONResponse:
     """
     Logout user and return logout URL for frontend redirection.

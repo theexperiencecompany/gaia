@@ -11,6 +11,7 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -110,7 +111,7 @@ async def disconnect_integration_endpoint(
 async def connect_integration_endpoint(
     integration_id: str,
     request: ConnectIntegrationRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConnectIntegrationResponse:
     """Connect an integration for the current user, returning the next-step action."""
     user_id = user.get("user_id")

@@ -5,7 +5,7 @@ Provides REST API for installing, creating, listing, and managing
 installable agent skills (Agent Skills open standard).
 """
 
-from typing import Annotated, cast
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status
 
@@ -45,20 +45,21 @@ from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
 from app.constants.skills import EXECUTOR_SUBAGENT_ID, EXECUTOR_TARGET_LABEL
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 from app.services.integrations.user_integrations import get_connected_integration_ids
 from shared.py.wide_events import log
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
 
-def _get_user_id(user: dict = Depends(get_current_user)) -> str:
+def _get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(
             status_code=http_status.HTTP_401_UNAUTHORIZED,
             detail="User not authenticated",
         )
-    return cast(str, user_id)
+    return user_id
 
 
 async def _validate_target(user_id: str, target: str) -> None:
