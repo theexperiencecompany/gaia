@@ -648,6 +648,7 @@ async def _persist_turn(
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
         error=state.error or None,
+        follow_up_actions=state.follow_up_actions or None,
     )
     state.saved = True
 
@@ -683,12 +684,24 @@ async def _attach_executor_tool_data(
     if not executor_td:
         return
     try:
-        await conversation_repository.append_message_tool_data(
+        matched = await conversation_repository.append_message_tool_data(
             conversation_id,
             user_id=user.get("user_id", ""),
             message_id=state.bot_message_id,
             entries=executor_td,
         )
+        if not matched:
+            # A False return means the message_id filter matched nothing, so the
+            # write silently did not happen — every executor card the user
+            # watched live is absent from the saved turn. Nothing raises, so
+            # without this the loss is invisible (see the same check in
+            # result_delivery._persist_follow_up_actions).
+            log.error(
+                f"{LogTag.CHAT} Executor tool_data attach matched no message, dropping cards",
+                conversation_id=conversation_id,
+                message_id=state.bot_message_id,
+                entries=len(executor_td),
+            )
     except Exception as e:  # executor tool_data attach is best-effort
         log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
 

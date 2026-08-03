@@ -117,6 +117,7 @@ async def save_conversation_async(
     bot_message_id: str,
     bot_timestamp: datetime | None = None,
     error: str | None = None,
+    follow_up_actions: list[str] | None = None,
 ) -> None:
     """Persist the finished turn to Mongo and bill token usage.
 
@@ -163,6 +164,10 @@ async def save_conversation_async(
         fileIds=body.fileIds,
         metadata=metadata,
         error=error,
+        # Persisted here rather than patched in afterwards: the chips are part
+        # of the turn the user saw, so a reload, a sync, or a second device must
+        # rebuild them from the saved message alone.
+        follow_up_actions=follow_up_actions,
     )
     bot_message.message_id = bot_message_id
 
