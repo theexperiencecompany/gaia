@@ -15,7 +15,7 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import (
     AIMessage,
@@ -259,6 +259,61 @@ async def executor_graph(
         patch.object(_build_graph, "get_checkpointer_manager", AsyncMock(return_value=None)),
     ):
         async with _build_graph.build_executor_graph(
+            chat_llm=llm, in_memory_checkpointer=True
+        ) as graph:
+            _SCRIPTED_MODELS[id(graph)] = llm
+            try:
+                yield graph
+            finally:
+                _SCRIPTED_MODELS.pop(id(graph), None)
+
+
+@asynccontextmanager
+async def comms_graph(
+    script: Sequence[Any],
+    store: InMemoryStore | None = None,
+) -> AsyncIterator[Any]:
+    """The REAL comms graph, with only the model and the external edges replaced.
+
+    Comms is the front door: three tools (``call_executor``, ``cancel_executor``,
+    the memory pair), the filter/system-prompt/executor-status pre-model hooks,
+    and two end-graph hooks. The end hooks are where the external edges are —
+    follow-up generation calls a structured LLM and memory ingestion writes to
+    the memory engine — so those are doubled; everything between is real.
+    """
+    from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
+
+    # Patched by path, not by attribute: ``app.agents.core.nodes`` re-exports the
+    # NODE FUNCTION under this name, so importing it gives a function, not the
+    # module the collaborators live on.
+    node_module = "app.agents.core.nodes.follow_up_actions_node"
+
+    llm = scripted_model(script)
+    memory = MagicMock()
+    memory.retain_single = AsyncMock(return_value=None)
+    memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
+
+    with (
+        patch.object(
+            _build_graph, "get_tools_store", AsyncMock(return_value=store or InMemoryStore())
+        ),
+        patch.object(_build_graph, "get_checkpointer_manager", AsyncMock(return_value=None)),
+        patch(
+            f"{node_module}.ainvoke_structured",
+            new=AsyncMock(return_value=FollowUpActions(actions=[])),
+        ),
+        patch(
+            f"{node_module}.get_user_integration_capabilities",
+            new=AsyncMock(return_value={"tool_names": []}),
+        ),
+        patch(f"{node_module}.get_stream_writer", return_value=lambda _: None),
+        patch("app.agents.tools.memory_tools.memory_engine", memory),
+        patch(
+            "app.agents.core.background.executor_runner.prepare_executor_execution",
+            new=AsyncMock(return_value=(None, "executor not available in tests")),
+        ),
+    ):
+        async with _build_graph.build_comms_graph(
             chat_llm=llm, in_memory_checkpointer=True
         ) as graph:
             _SCRIPTED_MODELS[id(graph)] = llm
