@@ -166,13 +166,13 @@ async def fetch_url_metadata(url: str) -> URLResponse:
         return URLResponse(**stored.model_dump())
 
     metadata = await scrape_url_metadata(url)
-    await search_url_repository.create(SearchUrlDocument(**metadata))
-    await set_cache(cache_key, metadata, 864000)
+    await search_url_repository.create(SearchUrlDocument(**metadata.model_dump()))
+    await set_cache(cache_key, metadata.model_dump(), 864000)
 
-    return URLResponse(**metadata)
+    return metadata
 
 
-async def scrape_url_metadata(url: str) -> dict:
+async def scrape_url_metadata(url: str) -> URLResponse:
     try:
         current_url = url
         response: httpx.Response | None = None
@@ -258,14 +258,14 @@ async def scrape_url_metadata(url: str) -> dict:
         if not website_image:
             website_image = og_image
 
-        return {
-            "title": title,
-            "description": description,
-            "favicon": favicon or og_image,
-            "website_name": website_name,
-            "website_image": website_image,
-            "url": url,
-        }
+        return URLResponse(
+            title=title,
+            description=description,
+            favicon=favicon or og_image,
+            website_name=website_name,
+            website_image=website_image,
+            url=url,
+        )
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
         log.debug(f"Error fetching URL metadata: {exc}")
@@ -278,12 +278,5 @@ async def scrape_url_metadata(url: str) -> dict:
     return _empty_metadata(url)
 
 
-def _empty_metadata(url: str) -> dict:
-    return {
-        "title": None,
-        "description": None,
-        "favicon": None,
-        "website_name": None,
-        "website_image": None,
-        "url": url,
-    }
+def _empty_metadata(url: str) -> URLResponse:
+    return URLResponse(url=url)

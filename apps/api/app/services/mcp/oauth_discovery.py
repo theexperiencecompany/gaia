@@ -6,7 +6,6 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 - RFC 8414 Authorization Server Metadata discovery
 """
 
-from typing import cast
 
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
@@ -61,9 +60,7 @@ async def discover_oauth_config(
     except OAuthSecurityError as e:
         log.warning(f"{LogTag.MCP} Server URL security warning for {integration_id}: {e}")
 
-    # extract_auth_challenge lives in app/utils and is still annotated `-> dict`;
-    # it builds exactly the McpAuthChallenge keys (verified in its body).
-    challenge = challenge_data or cast(McpAuthChallenge, await extract_auth_challenge(server_url))
+    challenge = challenge_data or await extract_auth_challenge(server_url)
     initial_scope = challenge.get("scope")
 
     # Try RFC 9728 Protected Resource Metadata
@@ -143,7 +140,7 @@ async def probe_mcp_connection(server_url: str) -> McpProbeResult:
         # ValueError is caught below and surfaced through the existing error dict.
         await assert_public_http_url(server_url)
 
-        challenge = cast(McpAuthChallenge, await extract_auth_challenge(server_url))
+        challenge = await extract_auth_challenge(server_url)
 
         # Empty dict => the probe got a non-401 response: no auth required.
         if not challenge:

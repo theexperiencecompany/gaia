@@ -38,10 +38,12 @@ _OPS = frozenset(
     {"contains", "equals", "not_equals", "is_true", "is_false", "exists", "gt", "lt", "in"}
 )
 
-# A parsed JSON value: bare `dict`/`list` (not parameterized) match this file's
-# existing style for JSON record types (e.g. `_match_condition`'s `record: dict`).
 JSONScalar = str | int | float | bool | None
-JSONValue = JSONScalar | dict | list
+# Recursive, because a parsed JSON value nests arbitrarily deep.
+JSONValue = JSONScalar | dict[str, "JSONValue"] | list["JSONValue"]
+# One record from the queried file. The keys are the user's data, not a schema we
+# control, so the value type stays JSONValue rather than a named shape.
+JSONRecord = dict[str, JSONValue]
 
 
 def _hashable(value: JSONValue) -> JSONScalar:
@@ -71,7 +73,10 @@ async def query_json(
     config: RunnableConfig,
     path: Annotated[str, "JSON/JSONL file inside the workspace (relative = session scratch)"],
     where: Annotated[
-        list[dict] | None,
+        # An LLM-supplied filter bag, so the condition shape stays an unnamed dict:
+        # naming it would publish a per-property JSON schema to the model and change
+        # the tool contract. `op` is validated against _OPS below.
+        list[dict[str, Any]] | None,
         "Filters: [{field, op, value}]; op in contains|equals|not_equals|is_true|is_false|exists|gt|lt|in",
     ] = None,
     match: Annotated[str, "Combine filters with 'all' (AND) or 'any' (OR)"] = "all",
@@ -127,7 +132,7 @@ async def query_json(
     return _format_result(result, dropped=dropped, truncated=truncated)
 
 
-def _load_records(target: Path) -> tuple[list[dict], int, bool]:
+def _load_records(target: Path) -> tuple[list[JSONRecord], int, bool]:
     """Read a JSON-array or JSONL file into a list of dict records (bounded).
 
     Reads AT MOST ``MAX_QUERY_INPUT_BYTES`` (never the whole file — a multi-GB file
@@ -173,7 +178,7 @@ def _load_records(target: Path) -> tuple[list[dict], int, bool]:
     return records, dropped, truncated
 
 
-def _match_condition(record: dict, cond: dict) -> bool:
+def _match_condition(record: JSONRecord, cond: dict[str, Any]) -> bool:
     field = cond.get("field")
     op = cond.get("op")
     value = cond.get("value")
@@ -205,7 +210,7 @@ def _match_condition(record: dict, cond: dict) -> bool:
     return False
 
 
-def _match_record(record: dict, where: list[dict], match: str) -> bool:
+def _match_record(record: JSONRecord, where: list[dict[str, Any]], match: str) -> bool:
     if not where:
         return True
     results = (_match_condition(record, c) for c in where)
@@ -213,9 +218,9 @@ def _match_record(record: dict, where: list[dict], match: str) -> bool:
 
 
 def _apply_query(
-    records: list[dict],
+    records: list[JSONRecord],
     *,
-    where: list[dict],
+    where: list[dict[str, Any]],
     match: str,
     fields: list[str] | None,
     sort_by: str | None,
@@ -224,7 +229,7 @@ def _apply_query(
     count_only: bool,
     unique_by: str | None,
     group_count_by: str | None,
-) -> dict[str, int] | list[dict]:
+) -> dict[str, int] | list[JSONRecord]:
     matched = [r for r in records if _match_record(r, where, match)]
 
     if count_only:
@@ -262,7 +267,9 @@ def _apply_query(
     return matched
 
 
-def _format_result(result: dict[str, int] | list[dict], *, dropped: int, truncated: bool) -> str:
+def _format_result(
+    result: dict[str, int] | list[JSONRecord], *, dropped: int, truncated: bool
+) -> str:
     if isinstance(result, dict):  # count_only
         body = json.dumps(result)
     elif not result:

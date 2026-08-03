@@ -43,7 +43,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         workos_client: AsyncWorkOSClient | None = None,
         exclude_paths: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(app)
         self.workos = workos_client or AsyncWorkOSClient(
             api_key=settings.WORKOS_API_KEY,

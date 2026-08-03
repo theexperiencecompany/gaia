@@ -32,7 +32,7 @@ class SettingsGroup:
         all_required: bool = True,
         docs_url: str | None = None,
         alternative_group: str | None = None,
-    ):
+    ) -> None:
         """
         Initialize a settings group.
 

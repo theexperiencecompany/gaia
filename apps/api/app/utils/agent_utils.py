@@ -109,7 +109,7 @@ def format_subagent_start_event(
     icon_url: str | None = None,
     tool_category: str | None = None,
     parent_subagent_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Format a subagent_start SSE payload."""
     return SubagentStartPayload(
         subagent_id=subagent_id,
@@ -126,7 +126,7 @@ def format_subagent_end_event(
     subagent_id: str,
     duration_ms: int,
     token_count: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Format a subagent_end SSE payload."""
     return SubagentEndPayload(
         subagent_id=subagent_id,
@@ -141,7 +141,7 @@ async def format_tool_call_entry(
     integration_id: str | None = None,
     integration_name: str | None = None,
     user_id: str | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Format a tool call as a tool_data entry for frontend streaming.
 
     Emitted once per tool call from the 'updates' stream when complete args
@@ -232,7 +232,7 @@ async def format_tool_call_entry(
 
     # Look up mcp_ui metadata. Try the global registry first (covers platform
     # tools); fall back to MCPClient._tools for per-user MCP tools.
-    mcp_ui: dict | None = None
+    mcp_ui: dict[str, Any] | None = None
     mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
@@ -292,7 +292,9 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
         return None
 
 
-async def _resolve_mcp_ui_metadata(tool_name: str, user_id: str) -> tuple[dict | None, str | None]:
+async def _resolve_mcp_ui_metadata(
+    tool_name: str, user_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
     from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415
 
@@ -328,7 +330,7 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
         if not integration:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return None, None
-        metadata = {
+        metadata: dict[str, str | None] = {
             "icon_url": integration.icon_url,
             "integration_id": integration_id,
             "integration_name": integration.name,
@@ -345,7 +347,7 @@ def format_sse_response(content: str) -> str:
     return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
-def format_sse_data(data: dict) -> str:
+def format_sse_data(data: dict[str, Any]) -> str:
     """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps(data)}\n\n"
 

@@ -208,7 +208,7 @@ async def cancel_stream_endpoint(
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> StreamingResponse:
     """
     Subscribe to a background executor SSE stream by stream_id.

@@ -64,7 +64,7 @@ class LazyLoader(Generic[T]):
         is_global_context: bool = False,
         auto_initialize: bool = False,
         dependencies: list[str] | None = None,
-    ):
+    ) -> None:
         """
         Initialize lazy loader.
 

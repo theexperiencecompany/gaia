@@ -57,7 +57,7 @@ class RateLimitExceededException(HTTPException):
         feature: str,
         plan_required: str | None = None,
         reset_time: datetime | None = None,
-    ):
+    ) -> None:
         detail = {
             "error": "rate_limit_exceeded",
             "feature": feature,

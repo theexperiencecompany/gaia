@@ -60,7 +60,7 @@ async def create_conversation(
     generate_description: bool = True,
     conversation_id: str | None = None,
     is_onboarding_demo: bool = False,
-) -> dict:
+) -> ConversationModel:
     """
     Create a new conversation with optional description generation.
 
@@ -71,9 +71,6 @@ async def create_conversation(
         selectedWorkflow: Optional workflow selection
         generate_description: If False, uses "New Chat" as placeholder
         conversation_id: Optional pre-generated conversation ID (for background streaming)
-
-    Returns:
-        dict with conversation_id and conversation_description
     """
     log.set(user_id=user.get("user_id"), selected_tool=selectedTool)
     # Use provided ID or generate new one
@@ -93,10 +90,7 @@ async def create_conversation(
 
     await create_conversation_service(conversation, user)
 
-    return {
-        "conversation_id": conversation.conversation_id,
-        "conversation_description": conversation.description,
-    }
+    return conversation
 
 
 @traceable(name="Generate Conversation Description")

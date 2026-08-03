@@ -1074,7 +1074,7 @@ async def send_draft_route(
 async def get_email_importance_summaries(
     limit: int = 50,
     important_only: bool = False,
-    current_user: dict = Depends(require_integration("gmail")),
+    current_user: dict[str, Any] = Depends(require_integration("gmail")),
 ) -> EmailImportanceSummariesResponse:
     """
     Get email importance summaries for the current user.
@@ -1106,7 +1106,7 @@ async def get_email_importance_summaries(
     summary="Get single email importance summary",
 )
 async def get_single_email_importance_summary(
-    message_id: str, current_user: dict = Depends(require_integration("gmail"))
+    message_id: str, current_user: dict[str, Any] = Depends(require_integration("gmail"))
 ) -> EmailImportanceSummaryResponse:
     """
     Get importance summary for a specific email.
@@ -1141,7 +1141,7 @@ async def get_single_email_importance_summary(
 @router.post("/gmail/importance-summaries/bulk", summary="Get bulk email importance summaries")
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
-    current_user: dict = Depends(require_integration("gmail")),
+    current_user: dict[str, Any] = Depends(require_integration("gmail")),
 ) -> BulkEmailImportanceSummariesResponse:
     """
     Get importance summaries for multiple emails in bulk.

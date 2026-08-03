@@ -65,7 +65,7 @@ class TokenRepository:
                 f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
             )
 
-    def _get_token_expiration(self, token_data: dict) -> datetime:
+    def _get_token_expiration(self, token_data: dict[str, Any]) -> datetime:
         """Get token expiration time with fallback logic."""
 
         # Try expires_at first (epoch seconds are UTC).

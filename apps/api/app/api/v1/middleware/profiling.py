@@ -6,6 +6,7 @@ Profiling is completely optional and must be explicitly enabled via environment 
 """
 
 import random
+from typing import Protocol
 
 from fastapi.responses import HTMLResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -17,9 +18,25 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
+
+class SupportsProfiling(Protocol):
+    """Just the pyinstrument ``Profiler`` surface this middleware uses.
+
+    A local protocol, rather than the imported class, because pyinstrument is
+    optional at runtime — naming the concrete type here would need an import that
+    the ``except ImportError`` below exists to survive. ``stop`` returns ``object``
+    because the real one returns a ``Session`` this middleware discards.
+    """
+
+    def start(self) -> None: ...
+    def stop(self) -> object: ...
+    def output_html(self) -> str: ...
+    def output_text(self) -> str: ...
+
+
 # Import pyinstrument with fallback
 PYINSTRUMENT_AVAILABLE = False
-Profiler: type | None = None
+Profiler: type[SupportsProfiling] | None = None
 try:
     from pyinstrument import Profiler as _Profiler
 

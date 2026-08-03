@@ -32,6 +32,7 @@ from app.models.bot_models import (
     UnlinkAccountResponse,
 )
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.audio_transcription_service import (
     MAX_AUDIO_BYTES,
     AudioTooLargeError,
@@ -58,7 +59,7 @@ async def require_bot_api_key(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid or missing bot API key")
 
 
-def _bot_rate_limit_notice(chunk: dict) -> str | None:
+def _bot_rate_limit_notice(chunk: dict[str, Any]) -> str | None:
     """Render a web-only rate-limit card as a plain-text notice for bots.
 
     Rate limits are streamed as a ``tool_data`` card for the web UI to render.
@@ -137,7 +138,9 @@ async def create_link_token(
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
 
-    mapping: dict = {
+    # Key type is `str | bytes` to match redis-py's hset signature, whose Mapping
+    # key parameter is invariant; every key written here is in fact a str.
+    mapping: dict[str | bytes, str] = {
         "platform": body.platform,
         "platform_user_id": body.platform_user_id,
     }
@@ -576,7 +579,7 @@ async def transcribe_bot_audio(
     # FastAPI injects and pulling "user_id" off it, so this stays the full auth
     # dict rather than a `get_user_id` string — narrowing it would silently skip
     # rate limiting for this route.
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     content_length: Annotated[int | None, Header(alias="content-length")] = None,
 ) -> TranscribeAudioResponse:
     """Convert audio bytes into a transcript for bot adapters."""

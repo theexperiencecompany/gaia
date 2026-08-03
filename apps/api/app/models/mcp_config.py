@@ -43,6 +43,20 @@ class McpProbeResult(TypedDict, total=False):
     error: str
 
 
+class OAuthErrorResponse(TypedDict):
+    """An OAuth error body parsed per RFC 6749 Section 5.2.
+
+    A ``TypedDict``, not a model: ``parse_oauth_error_response`` fills every key
+    itself (falling back to the raw response text when the body is not JSON), so
+    there is nothing left to validate.
+    """
+
+    error: str
+    error_description: str | None
+    error_uri: str | None
+    status_code: int
+
+
 class DCRClientRegistration(TypedDict, total=False):
     """The two RFC 7591 registration fields GAIA reads back from storage.
 

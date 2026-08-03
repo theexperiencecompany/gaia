@@ -175,7 +175,7 @@ def get_user_timezone(
 
 
 async def get_user_timezone_from_preferences(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     x_timezone: str = Header(
         default="", alias="x-timezone", description="Browser timezone fallback"
     ),

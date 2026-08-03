@@ -169,11 +169,11 @@ def create_todo_tools(source: str = "executor", source_label: str | None = None)
     async def update_tasks(
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
-        todos: Annotated[list, InjectedState("todos")],
+        todos: Annotated[list[Todo], InjectedState("todos")],
     ) -> Command[Any]:
         """Update task statuses and/or add new tasks in a single call."""
         now = datetime.now(UTC).isoformat()
-        updated_todos: list[Todo] = [dict(t) for t in todos]  # type: ignore[misc]
+        updated_todos: list[Todo] = [t.copy() for t in todos]
         todo_map = {t["id"]: t for t in updated_todos}
 
         summary_parts: list[str] = []

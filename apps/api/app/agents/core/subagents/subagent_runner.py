@@ -364,7 +364,8 @@ async def execute_subagent_stream(
     async for event in ctx.subagent_graph.astream(
         _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
-        # build_agent_config returns a plain dict; it is RunnableConfig-shaped.
+        # build_agent_config returns an AgentRunnableConfig, but run_config may be
+        # rebuilt above as a dict spread, which mypy widens back to a plain dict.
         config=cast(RunnableConfig, run_config),
         # Persist checkpoints only when this executor/subagent run exits, not
         # after every step (langgraph's default durability="async"). The

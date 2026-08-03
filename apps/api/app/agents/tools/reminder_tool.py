@@ -206,7 +206,7 @@ async def update_reminder_tool(
         str | None,
         "Timezone offset for stop_after in (+|-)HH:MM format. Only use if user explicitly mentions a timezone.",
     ] = None,
-    payload: Annotated[dict | None, "Additional data for the reminder task (optional)"] = None,
+    payload: Annotated[dict[str, Any] | None, "Additional data for the reminder task (optional)"] = None,
 ) -> dict[str, str]:
     """Update attributes of an existing reminder"""
     try:

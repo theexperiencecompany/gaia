@@ -8,7 +8,7 @@ run_executor_background.
 
 import asyncio
 import json
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -156,7 +156,7 @@ async def _dispatch_executor(
     *,
     task: str,
     task_id: str,
-    configurable: dict,
+    configurable: dict[str, Any],
     conversation_id: str,
 ) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""

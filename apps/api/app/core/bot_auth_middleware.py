@@ -12,7 +12,7 @@ allowing bot requests to use the same endpoints as normal web auth.
 
 from collections.abc import Awaitable, Callable
 import secrets
-from typing import Any, cast
+from typing import cast
 
 from fastapi import Request, Response
 from jose import JWTError
@@ -43,7 +43,7 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
         self,
         app: ASGIApp,
         exclude_paths: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(app)
         self.exclude_paths = exclude_paths or [
             "/docs",

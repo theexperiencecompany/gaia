@@ -8,10 +8,36 @@ This module provides helpers for Google Sheets and Drive API interactions:
 """
 
 import re
-from typing import cast
+from typing import NotRequired, TypedDict, cast
 
 from app.services.composio.proxy_client import proxy_request_sync
 from shared.py.wide_events import log
+
+
+class SheetsColor(TypedDict):
+    """A Google Sheets API ``Color`` — channels as 0-1 floats."""
+
+    red: float
+    green: float
+    blue: float
+
+
+class SheetsGridRange(TypedDict):
+    """A Google Sheets API ``GridRange``.
+
+    Every key is ``NotRequired``: an A1 reference may leave rows or columns open
+    ('A:C'), and Sheets reads an absent bound as unbounded — omitting it is what
+    keeps a column range from collapsing onto row 1. ``parse_a1_range`` never
+    sets ``sheetId`` (A1 notation carries a sheet *name*); callers resolve the id
+    and add it to the range they build.
+    """
+
+    sheetId: NotRequired[int]
+    startRowIndex: NotRequired[int]
+    endRowIndex: NotRequired[int]
+    startColumnIndex: NotRequired[int]
+    endColumnIndex: NotRequired[int]
+
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -21,7 +47,7 @@ SHEETS_TOOLKIT = "GOOGLESHEETS"
 _HEX_COLOR_RE = re.compile(r"^[0-9A-Fa-f]{6}$")
 
 
-def hex_to_rgb(hex_color: str) -> dict[str, float]:
+def hex_to_rgb(hex_color: str) -> SheetsColor:
     """Convert hex color (#RRGGBB) to Google API RGB format (0-1 floats)."""
     digits = hex_color.lstrip("#")
     if not _HEX_COLOR_RE.match(digits):
@@ -55,7 +81,7 @@ def _parse_cell(cell: str) -> tuple[int | None, int | None]:
     return row, col
 
 
-def parse_a1_range(range_str: str) -> dict[str, int]:
+def parse_a1_range(range_str: str) -> SheetsGridRange:
     """Parse A1 notation (e.g. 'A1:B10', 'Sheet1!A:C') into a Google GridRange.
 
     Bounds that the reference leaves open are omitted rather than defaulted, so
@@ -81,7 +107,7 @@ def parse_a1_range(range_str: str) -> dict[str, int]:
     if start_col is not None and end_col is not None and start_col > end_col:
         start_col, end_col = end_col, start_col
 
-    grid: dict[str, int] = {}
+    grid: SheetsGridRange = {}
     if start_row is not None:
         grid["startRowIndex"] = start_row
     if end_row is not None:
