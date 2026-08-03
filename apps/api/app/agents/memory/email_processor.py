@@ -605,6 +605,8 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
                 elif isinstance(discovery_result, Exception):
                     log.error(f"{LogTag.MEMORY} Discovery task failed: {discovery_result}")
 
+        profiles_stored += discovered_count
+
         elapsed = time.time() - extraction_start
         log.info(
             f"{LogTag.MEMORY} Profile extraction completed in {elapsed:.2f}s: "
