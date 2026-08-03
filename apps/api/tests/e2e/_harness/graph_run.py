@@ -41,6 +41,10 @@ TOOLS_NODE = "tools"
 #: Terminal node for ``finish_task``.
 FINISH_NODE = "finish_task"
 
+#: The memory engine double a comms graph was built with, so a test can assert
+#: passive ingestion actually ran.
+_MEMORY_DOUBLES: dict[int, Any] = {}
+
 #: Compiled graphs are third-party objects that reject stray attributes, so the
 #: harness keeps the scripted model beside the graph rather than on it. Lets
 #: ``run_graph`` surface prompts without every test having to thread the model.
@@ -329,10 +333,17 @@ async def comms_graph(
             chat_llm=llm, in_memory_checkpointer=True
         ) as graph:
             _SCRIPTED_MODELS[id(graph)] = llm
+            _MEMORY_DOUBLES[id(graph)] = memory
             try:
                 yield graph
             finally:
                 _SCRIPTED_MODELS.pop(id(graph), None)
+                _MEMORY_DOUBLES.pop(id(graph), None)
+
+
+def memory_engine_of(graph: Any) -> Any:
+    """The memory double a comms graph was built with."""
+    return _MEMORY_DOUBLES[id(graph)]
 
 
 async def run_graph(
@@ -352,8 +363,15 @@ async def run_graph(
     from langgraph.errors import GraphRecursionError
 
     run = GraphRun()
+    # user_id goes in BOTH places on purpose, exactly as build_agent_config does:
+    # the graph and retrieval read `configurable`, but every @tool reads
+    # `config["metadata"]["user_id"]` (get_user_id_from_config). Setting only the
+    # first makes tools return "Error: user_id not found in config" while still
+    # looking like they ran — a test asserting the tool produced *something*
+    # passes on the error string.
     config = {
         "configurable": {"thread_id": thread_id, "user_id": user_id},
+        "metadata": {"user_id": user_id},
         "recursion_limit": recursion_limit,
     }
     initial = (

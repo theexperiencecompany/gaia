@@ -53,16 +53,23 @@ class TestToolsBoundFromTurnOne:
 
         assert REJECT_NODE not in run.nodes(), f"{tool} was treated as unbound"
 
-    async def test_a_provider_tool_is_not_bound_by_default(self):
-        """Provider tools live in their own tool_space and must be reached
-        through a subagent, not called directly by the executor. If one leaked
-        into the initial set the executor would call it without the integration
-        ever being checked."""
-        async with executor_graph([call("GMAIL_FETCH_MESSAGES", {}, id="c1"), "ok"]) as graph:
-            run = await run_graph(graph, "read my mail")
+    @pytest.mark.parametrize("tool", ["take_screenshot", "create_reminder_tool", "create_todo"])
+    async def test_a_tool_outside_the_general_space_is_not_bound_by_default(self, tool: str):
+        """Delegated and desktop tools are REGISTERED but live in their own
+        tool_space, so the executor must retrieve them rather than call them
+        outright — that is what routes them through the right owner.
+
+        Registered on purpose: an unregistered name (a Composio tool whose
+        category has not been provisioned) is rejected for simply not existing,
+        which proves nothing about scoping. Adding one of these to
+        ``initial_tool_ids`` turns this test red; adding an unregistered name
+        does not, because the binder skips ids the registry does not know.
+        """
+        async with executor_graph([call(tool, {}, id="c1"), "ok"]) as graph:
+            run = await run_graph(graph, "do the thing")
 
         assert REJECT_NODE in run.nodes()
-        assert not run.ran("GMAIL_FETCH_MESSAGES")
+        assert not run.ran(tool)
 
 
 class TestTodoState:

@@ -198,11 +198,27 @@ class TestRetrievalContract:
         assert REJECT_NODE not in run.nodes()
         assert run.bound_tools() == [RETRIEVABLE]
 
-    async def test_calling_retrieve_tools_with_no_names_does_not_bind(self):
-        """A no-arg call is a model mistake; it must be corrected, not treated
-        as "bind everything" or "bind nothing silently and continue"."""
+    async def test_calling_retrieve_tools_with_no_names_is_corrected(self):
+        """A no-arg call is a model mistake. Asserting the response is merely
+        non-empty is not enough — "Available tools: []" is non-empty and tells
+        the model nothing, so the corrective text that retrieval actually
+        produces must survive the trip back."""
         async with executor_graph([call("retrieve_tools", {}, id="r1"), "ok"]) as graph:
             run = await run_graph(graph, "find me a tool")
 
         assert run.bound_tools() == []
-        assert run.results_from(SELECT_NODE), "the model got no response at all"
+        response = " ".join(run.results_from(SELECT_NODE)).lower()
+        assert "query" in response or "exact_tool_names" in response, (
+            f"the correction never reached the model: {response!r}"
+        )
+
+    async def test_asking_for_a_subagent_by_name_explains_how_to_reach_it(self):
+        """Subagents are not bindable tools. Retrieval knows this and returns
+        guidance naming ``handoff``; if only the (empty) bind list came back the
+        model would read it as "no such thing" and give up."""
+        async with executor_graph([retrieve("subagent:gmail"), "ok"]) as graph:
+            run = await run_graph(graph, "check my mail")
+
+        assert run.bound_tools() == []
+        response = " ".join(run.results_from(SELECT_NODE))
+        assert "handoff" in response, f"no route to the subagent was offered: {response!r}"

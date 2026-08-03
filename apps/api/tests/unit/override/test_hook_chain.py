@@ -92,7 +92,7 @@ class TestDeclaredChains:
     """
 
     @staticmethod
-    async def _hooks_for(builder: str) -> list[Any]:
+    async def _captured(builder: str) -> dict[str, Any]:
         from app.agents.core.graph_builder import build_graph as bg
         from tests.e2e._harness.graph_run import scripted_model
 
@@ -119,7 +119,11 @@ class TestDeclaredChains:
                 chat_llm=scripted_model(["hi"]), in_memory_checkpointer=True
             ):
                 pass
-        return list(captured["pre_model_hooks"])
+        return captured
+
+    @classmethod
+    async def _hooks_for(cls, builder: str) -> list[Any]:
+        return list((await cls._captured(builder))["pre_model_hooks"])
 
     async def test_the_executor_filters_before_it_manages_prompts(self):
         """``filter_messages_node`` must run first. After the prompt manager, a
@@ -166,3 +170,31 @@ class TestDeclaredChains:
 
         assert adapt_media_node not in hooks
         assert len(hooks) == 3
+
+
+class TestEndGraphHooks:
+    """What runs after the model, and in what order.
+
+    Both comms end hooks are invisible to a route assertion: the node name
+    appears as long as *either* is wired, so dropping one silently keeps the
+    graph looking correct. Asserted by identity for that reason.
+    """
+
+    async def test_comms_generates_follow_ups_and_learns_from_the_turn(self):
+        """Passive ingestion is how a fact mentioned in passing is retained.
+        Without it, only what the agent explicitly saves via add_memory
+        persists, and conversational disclosures are lost."""
+        from app.agents.core.nodes import memory_node
+        from app.agents.core.nodes.follow_up_actions_node import follow_up_actions_node
+
+        captured = await TestDeclaredChains._captured("build_comms_graph")
+
+        assert list(captured["end_graph_hooks"]) == [follow_up_actions_node, memory_node]
+
+    async def test_the_executor_has_no_end_graph_hooks(self):
+        """The executor's output is not user-facing, so follow-up chips and
+        conversational ingestion would both be wrong there — and its runs are
+        long, so the cost would be paid on every delegation."""
+        captured = await TestDeclaredChains._captured("build_executor_graph")
+
+        assert not captured.get("end_graph_hooks")

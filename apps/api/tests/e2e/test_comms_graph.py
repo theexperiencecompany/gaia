@@ -26,6 +26,7 @@ from tests.e2e._harness.graph_run import (
     SELECT_NODE,
     TOOLS_NODE,
     comms_graph,
+    memory_engine_of,
     run_graph,
 )
 
@@ -46,6 +47,20 @@ class TestCommsToolSurface:
             run = await run_graph(graph, "hello")
 
         assert REJECT_NODE not in run.nodes(), f"{tool} was not bound to comms"
+
+    async def test_delegating_to_the_executor_actually_dispatches(self):
+        """Being bound is not the same as working. The "bound" test above stays
+        green whatever the tool returns, so this pins the one thing the user
+        depends on: asking for real work hands it off and says so. Without it,
+        comms answers "on it" and nothing is ever dispatched."""
+        async with comms_graph(
+            [call("call_executor", {"task": "book a table"}, id="c1"), "On it."]
+        ) as graph:
+            run = await run_graph(graph, "book me a table")
+
+        result = run.result_for("call_executor") or ""
+        assert not result.startswith("Error"), result
+        assert "task_id" in result, f"the handoff was never dispatched: {result!r}"
 
     @pytest.mark.parametrize("tool", ["plan_tasks", "handoff", "read", "bash", "deep_research"])
     async def test_an_executor_tool_is_not_reachable_from_comms(self, tool: str):
@@ -88,14 +103,21 @@ class TestCommsToolSurface:
 
 
 class TestMemoryTools:
-    async def test_recall_runs_and_answers_the_model(self):
+    async def test_recall_reaches_the_memory_engine_and_answers_the_model(self):
+        """``ran()`` and "not None" are both satisfied by an error string — the
+        memory tools resolve the user from ``config["metadata"]``, and a config
+        missing it returns "Error: user_id not found in config" while still
+        looking like a completed tool call. Assert the real result."""
         async with comms_graph(
             [call("search_memory", {"query": "coffee"}, id="m1"), "You like oat milk."]
         ) as graph:
             run = await run_graph(graph, "what do I drink?")
+            engine = memory_engine_of(graph)
 
-        assert run.ran("search_memory")
-        assert run.result_for("search_memory") is not None
+        result = run.result_for("search_memory") or ""
+        assert not result.startswith("Error"), result
+        assert "memories" in result
+        engine.recall.assert_awaited()
 
 
 class TestReplyShape:
