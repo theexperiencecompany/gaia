@@ -54,7 +54,7 @@ T = TypeVar("T")
 # narrow to ``object`` at zero cost — a follow-up, not an ANN401 unblock.
 
 
-def serialize_any(data: Any, model: type[Any] | None = None) -> str:
+def serialize_any(data: object, model: type[Any] | None = None) -> str:
     """
     Serialize Python objects to JSON string using Pydantic TypeAdapter.
 
@@ -220,7 +220,7 @@ class RedisCache:
             return None
 
     async def set(
-        self, key: str, value: Any, ttl: int = 3600, model: type[Any] | None = None
+        self, key: str, value: object, ttl: int = 3600, model: type[Any] | None = None
     ) -> bool:
         """
         Store value in cache with TTL and optional type validation.
@@ -327,7 +327,7 @@ async def get_cache(key: str, model: type[T] | None = None) -> Any:
 
 
 async def set_cache(
-    key: str, value: Any, ttl: int = ONE_YEAR_TTL, model: type[Any] | None = None
+    key: str, value: object, ttl: int = ONE_YEAR_TTL, model: type[Any] | None = None
 ) -> bool:
     """
     Convenience wrapper for storing cached values.
