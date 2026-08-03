@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import Request
 
@@ -36,6 +37,7 @@ from app.utils.notification.channels import (
     DiscordChannelAdapter,
     InAppChannelAdapter,
     SlackChannelAdapter,
+    TContent,
     TelegramChannelAdapter,
     WhatsAppChannelAdapter,
 )
@@ -51,7 +53,10 @@ class NotificationOrchestrator:
 
     def __init__(self, storage: MongoDBNotificationStorage | None = None) -> None:
         self.storage = storage or MongoDBNotificationStorage()
-        self.channel_adapters: dict[str, ChannelAdapter] = {}
+        # Erased element type: the registry is heterogeneous by design (each
+        # adapter has its own payload shape). ``_deliver_via_channel`` rebinds
+        # the real one per adapter, so transform → deliver stays checked.
+        self.channel_adapters: dict[str, ChannelAdapter[Any]] = {}
         self.action_handlers: dict[str, ActionHandler] = {}
 
         # Register default components
@@ -72,7 +77,7 @@ class NotificationOrchestrator:
         self.register_action_handler(RedirectActionHandler())
         self.register_action_handler(ModalActionHandler())
 
-    def register_channel_adapter(self, adapter: ChannelAdapter) -> None:
+    def register_channel_adapter(self, adapter: ChannelAdapter[Any]) -> None:
         """Register a new channel adapter"""
         self.channel_adapters[adapter.channel_type] = adapter
         log.info(f"{LogTag.NOTIFICATION} Registered channel adapter: {adapter.channel_type}")
@@ -195,7 +200,7 @@ class NotificationOrchestrator:
                 },
             )
 
-    async def _get_channel_prefs(self, user_id: str) -> dict:
+    async def _get_channel_prefs(self, user_id: str) -> dict[str, bool]:
         """Fetch user's notification channel preferences from DB.
 
         On a transient read failure, fall back to the SAME defaults a user with
@@ -216,9 +221,14 @@ class NotificationOrchestrator:
             return dict(DEFAULT_CHANNEL_PREFERENCES)
 
     async def _deliver_via_channel(
-        self, notification: NotificationRecord, adapter: ChannelAdapter
+        self, notification: NotificationRecord, adapter: ChannelAdapter[TContent]
     ) -> ChannelDeliveryStatus:
-        """Deliver a notification via a specific channel adapter."""
+        """Deliver a notification via a specific channel adapter.
+
+        ``TContent`` binds to this adapter's own payload type, so the value
+        flowing from ``transform`` into ``deliver`` is checked per adapter even
+        though the registry itself is erased.
+        """
         try:
             content = await adapter.transform(notification.original_request)
             return await adapter.deliver(content, notification.user_id)

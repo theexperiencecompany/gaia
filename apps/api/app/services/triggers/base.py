@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 import asyncio
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from app.constants.log_tags import LogTag
 from app.models.trigger_config import TriggerOption, TriggerOptionGroup
@@ -18,6 +18,19 @@ from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
 from shared.py.wide_events import TriggerContext, log
+
+
+class TriggerEventResult(TypedDict):
+    """What dispatching one webhook event reported.
+
+    ``status`` is ``Literal["success"]`` because the dispatch genuinely has no
+    failure return: a workflow that cannot be queued is logged and counted out of
+    ``message``, never surfaced here. The webhook endpoint discards this value
+    (the call is fire-and-forget), so it is an in-process contract, not a wire one.
+    """
+
+    status: Literal["success"]
+    message: str
 
 
 def _parse_event_start_utc(data: dict[str, Any]) -> datetime | None:
@@ -295,7 +308,7 @@ class TriggerHandler(ABC):
         trigger_id: str | None,
         user_id: str | None,
         data: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> TriggerEventResult:
         """Process an incoming webhook event and queue matching workflows.
 
         Default implementation:
@@ -344,7 +357,7 @@ class TriggerHandler(ABC):
                 event_type=event_type,
                 trigger_id=trigger_id,
             )
-            return {"status": "success", "message": "No matching workflows"}
+            return TriggerEventResult(status="success", message="No matching workflows")
 
         # Queue execution for each matching workflow.
         # Tracked-todo signal context is identical for a given user, so compute
@@ -360,10 +373,7 @@ class TriggerHandler(ABC):
 
         log.set_ns("trigger", fired=queued_count > 0, result_count=queued_count)
 
-        return {
-            "status": "success",
-            "message": f"Queued {queued_count} workflows",
-        }
+        return TriggerEventResult(status="success", message=f"Queued {queued_count} workflows")
 
     async def _queue_one_workflow(
         self,

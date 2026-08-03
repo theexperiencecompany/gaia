@@ -28,6 +28,7 @@ from app.constants.hil import (
 )
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.approvals_store import (
     clear_resume_item,
     get_approval,
@@ -112,7 +113,7 @@ async def resolve_approval(
 
 async def resolve_approvals_batch(
     user_id: str, decisions: list[tuple[str, DecisionKind, str | None]]
-) -> list[dict[str, Any]]:
+) -> list[BatchDecisionOutcome]:
     """Apply several decisions in one submission — the web batch review's backend.
 
     Each approval still transitions exactly once; the per-conversation resume slot
@@ -120,26 +121,34 @@ async def resolve_approvals_batch(
     round it wakes collects the rest. One failed item never blocks the others —
     its outcome is reported instead.
     """
-    outcomes: list[dict[str, Any]] = []
+    outcomes: list[BatchDecisionOutcome] = []
     for approval_id, kind, feedback in decisions:
         try:
             await resolve_approval(
                 approval_id=approval_id, user_id=user_id, kind=kind, feedback=feedback
             )
-            outcomes.append({"approval_id": approval_id, "resolved": True, "reason": None})
+            outcomes.append(BatchDecisionOutcome(approval_id=approval_id, resolved=True))
         except ApprovalRequestNotFound:
-            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "not_found"})
+            outcomes.append(
+                BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="not_found")
+            )
         except ApprovalRequestForbidden:
-            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "forbidden"})
+            outcomes.append(
+                BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="forbidden")
+            )
         except ApprovalNotResumable:
             outcomes.append(
-                {"approval_id": approval_id, "resolved": False, "reason": "not_resumable"}
+                BatchDecisionOutcome(
+                    approval_id=approval_id, resolved=False, reason="not_resumable"
+                )
             )
         except Exception as e:  # noqa: BLE001 — one item's infra failure must not strand the rest
             # The item stays pending (nothing transitioned), so the sweep retries it; the
             # rest of the batch still processes. Reported, not swallowed.
             log.error(f"{LogTag.HIL} Batch decision failed for {approval_id}: {e}")
-            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "error"})
+            outcomes.append(
+                BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="error")
+            )
     return outcomes
 
 

@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.resolution import (
     CANCELLED_FEEDBACK,
     ApprovalNotResumable,
@@ -263,8 +264,8 @@ class TestBatchDecisions:
             )
 
         assert outcomes == [
-            {"approval_id": "a-good", "resolved": True, "reason": None},
-            {"approval_id": "a-gone", "resolved": False, "reason": "not_found"},
+            BatchDecisionOutcome(approval_id="a-good", resolved=True, reason=None),
+            BatchDecisionOutcome(approval_id="a-gone", resolved=False, reason="not_found"),
         ]
         assert resume.prepare.await_count == 1  # only the real transition dispatched
 

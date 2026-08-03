@@ -2,7 +2,7 @@ import base64
 from datetime import datetime
 from pathlib import Path
 import tomllib
-from typing import Any
+from typing import Any, TypedDict
 
 ELLIPSIS = "…"
 
@@ -156,7 +156,15 @@ def decode_message_body(msg: dict[str, Any]) -> str | None:
     return html_body or plain_body
 
 
-def get_project_info() -> dict:
+class ProjectInfo(TypedDict):
+    """The pyproject.toml metadata the health endpoint reports."""
+
+    name: str
+    version: str
+    description: str
+
+
+def get_project_info() -> ProjectInfo:
     """Get project info from pyproject.toml file."""
     try:
         # Path to pyproject.toml from this file location
@@ -164,13 +172,13 @@ def get_project_info() -> dict:
         with open(pyproject_path, "rb") as f:
             pyproject_data = tomllib.load(f)
             project = pyproject_data.get("project", {})
-            return {
-                "name": project.get("name", "GAIA API"),
-                "version": project.get("version", "dev"),
-                "description": project.get("description", "Backend for GAIA"),
-            }
+            return ProjectInfo(
+                name=project.get("name", "GAIA API"),
+                version=project.get("version", "dev"),
+                description=project.get("description", "Backend for GAIA"),
+            )
     except Exception:
-        return {"name": "GAIA API", "version": "dev", "description": "Backend for GAIA"}
+        return ProjectInfo(name="GAIA API", version="dev", description="Backend for GAIA")
 
 
 def describe_structure(obj: object, parent: str = "") -> list[str]:

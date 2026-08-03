@@ -11,6 +11,7 @@ Handles:
 
 from datetime import UTC, datetime, timedelta
 import random
+from typing import Any, cast
 from uuid import uuid4
 
 from arq.connections import ArqRedis
@@ -26,6 +27,7 @@ from app.models.notification.notification_models import (
     NotificationType,
 )
 from app.models.todo_models import TodoDocument, TodoUpdate
+from app.models.user_models import AuthenticatedUser
 from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import read_canvas
@@ -41,7 +43,7 @@ RETRY_BACKOFF = [timedelta(hours=1), timedelta(hours=4)]
 LOCK_TTL_SECONDS = 1800
 
 
-async def _load_user_with_tz(user_id: str) -> tuple[dict, Timezone]:
+async def _load_user_with_tz(user_id: str) -> tuple[AuthenticatedUser, Timezone]:
     """Fetch user record once and resolve their home timezone.
 
     Returns (user_data with user_id populated, Timezone). Uses the canonical
@@ -52,14 +54,19 @@ async def _load_user_with_tz(user_id: str) -> tuple[dict, Timezone]:
         user_data = await get_user_by_id(user_id)
         if user_data:
             user_data["user_id"] = user_id
-            return user_data, Timezone.parse(user_data.get("timezone"))
+            # The legacy bridge dict is a spread of a validated UserDocument plus
+            # the user_id stamped above, which is exactly AuthenticatedUser's
+            # shape — cast, not isinstance (Type Safety item 12). Narrowing it to
+            # the fields the agent reads would drop `onboarding`, which
+            # construct_langchain_messages needs for custom instructions.
+            return cast(AuthenticatedUser, user_data), Timezone.parse(user_data.get("timezone"))
         return {"user_id": user_id}, Timezone.utc()
     except Exception as e:
         log.warning("tracked_todo.load_user_failed", user_id=user_id, error=str(e))
         return {"user_id": user_id}, Timezone.utc()
 
 
-async def execute_tracked_todo(_ctx: dict, todo_id: str) -> str:
+async def execute_tracked_todo(_ctx: dict[str, Any], todo_id: str) -> str:
     """
     ARQ task: execute a single scheduled tracked todo.
 
@@ -196,7 +203,7 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: dict) -> None:
+async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser) -> None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow.
@@ -266,7 +273,7 @@ def _build_execution_prompt(
     return "\n\n".join(prompt_parts)
 
 
-async def _execute_via_agent(doc: TodoDocument, user_id: str, *, user_data: dict) -> str:
+async def _execute_via_agent(doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 
@@ -473,7 +480,7 @@ def _compute_next_run(
         return None
 
 
-async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
+async def safety_net_check_orphaned_todos(_ctx: dict[str, Any]) -> str:
     """
     Cron safety net: find scheduled tracked todos that should have run but
     were never picked up (e.g. worker was down, job was lost).

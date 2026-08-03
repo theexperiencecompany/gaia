@@ -45,6 +45,7 @@ from uuid import UUID
 
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg import AsyncCursor
+from psycopg.rows import TupleRow
 from psycopg_pool import AsyncConnectionPool
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
@@ -133,7 +134,7 @@ def _prune_ids_for_chain(
 
 
 async def _prune_thread_versions(
-    cur: AsyncCursor[Any], thread_id: str, ns: str, prune_ids: list[str]
+    cur: AsyncCursor[TupleRow], thread_id: str, ns: str, prune_ids: list[str]
 ) -> dict[str, int]:
     """Delete superseded ancestor checkpoints + their writes + orphaned blobs."""
     await cur.execute(

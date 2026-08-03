@@ -100,7 +100,7 @@ import contextlib
 import contextvars
 from dataclasses import dataclass, field
 import time
-from typing import Any, Final, TypeVar, cast
+from typing import Any, Final, NotRequired, TypedDict, TypeVar, cast
 
 from prometheus_client import (  # noqa: F401  # Gauge used via lambda factories below
     REGISTRY,
@@ -241,6 +241,22 @@ def set_sandbox_pool_size(kind: str, shard: str, n: int) -> None:
         )
 
 
+class OpStatsSnapshot(TypedDict):
+    """One op's counters as they appear under ``fs.<op>`` on the wide event.
+
+    The ``NotRequired`` keys are the conditionally-emitted ones documented in the
+    module's wire contract — absent, not zero, when the op never reported them.
+    """
+
+    count: int
+    total_ms: float
+    max_ms: float
+    errors: int
+    bytes: NotRequired[int]
+    last_error_type: NotRequired[str]
+    labels: NotRequired[dict[str, str]]
+
+
 @dataclass(slots=True)
 class _OpStats:
     count: int = 0
@@ -249,10 +265,11 @@ class _OpStats:
     errors: int = 0
     bytes: int = 0
     last_error_type: str | None = None
-    labels: dict[str, Any] = field(default_factory=dict)
+    # ``record_fs_op`` is the only writer and declares ``**labels: str``.
+    labels: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {
+    def to_dict(self) -> OpStatsSnapshot:
+        out: OpStatsSnapshot = {
             "count": self.count,
             "total_ms": round(self.total_ms, 3),
             "max_ms": round(self.max_ms, 3),
@@ -462,7 +479,7 @@ async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
         record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))
 
 
-def flush_fs_metrics() -> dict[str, dict[str, Any]]:
+def flush_fs_metrics() -> dict[str, OpStatsSnapshot]:
     """Return the accumulated metrics as a serializable dict, and clear the bucket.
 
     Call from inside a ``wide_task`` / request middleware just before emitting
@@ -483,7 +500,7 @@ def flush_fs_metrics() -> dict[str, dict[str, Any]]:
     return snapshot
 
 
-def peek_fs_metrics() -> dict[str, dict[str, Any]]:
+def peek_fs_metrics() -> dict[str, OpStatsSnapshot]:
     """Read the bucket without clearing it — for in-flight debugging only."""
     bucket = _metrics_var.get()
     if not bucket:

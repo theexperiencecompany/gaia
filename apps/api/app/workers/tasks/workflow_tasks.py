@@ -4,7 +4,7 @@ Contains all workflow-related background tasks and execution logic.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from app.agents.prompts.workflow_prompts import (
@@ -33,6 +33,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.todo_models import TodoUpdate
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -52,7 +53,7 @@ from shared.py.wide_events import WorkflowContext, log, wide_task
 
 
 async def process_workflow_generation_task(
-    ctx: dict, todo_id: str, user_id: str, title: str, description: str = ""
+    ctx: dict[str, Any], todo_id: str, user_id: str, title: str, description: str = ""
 ) -> str:
     """
     Process workflow generation task for todos.
@@ -177,7 +178,7 @@ async def process_workflow_generation_task(
 
 
 async def _rearm_if_scheduled(
-    scheduler: WorkflowScheduler, workflow: Workflow | None, context: dict | None
+    scheduler: WorkflowScheduler, workflow: Workflow | None, context: dict[str, Any] | None
 ) -> None:
     """Arm the next occurrence for cron-scheduled recurring workflows.
 
@@ -194,7 +195,9 @@ async def _rearm_if_scheduled(
     await scheduler.handle_recurring_task(workflow, (workflow.occurrence_count or 0) + 1)
 
 
-async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | None = None) -> str:
+async def execute_workflow_by_id(
+    ctx: dict[str, Any], workflow_id: str, context: dict[str, Any] | None = None
+) -> str:
     """
     Execute a workflow by ID with proper execution count tracking.
     """
@@ -434,7 +437,7 @@ async def execute_workflow_by_id(ctx: dict, workflow_id: str, context: dict | No
 
 @tiered_rate_limit("trigger_workflow_executions")
 async def execute_workflow_as_chat(
-    workflow: Workflow, user: dict[str, Any], context: dict[str, Any]
+    workflow: Workflow, user: AuthenticatedUser, context: dict[str, Any]
 ) -> str:
     """Run a workflow as a silent chat turn and return its conversation id.
 
@@ -463,7 +466,10 @@ async def execute_workflow_as_chat(
         # doesn't silently run the agent hours off in UTC. build_agent_config
         # reads it off user_data["timezone"].
         try:
-            user_data = await get_user_by_id(user_id) or {}
+            # The legacy bridge dict is a spread of a validated UserDocument plus
+            # the user_id stamped below — AuthenticatedUser's shape by construction
+            # (Type Safety item 12).
+            user_data = cast(AuthenticatedUser, await get_user_by_id(user_id) or {})
             user_data["user_id"] = user_id
 
             profile_tz = (user_data.get("timezone") or "").strip()
@@ -567,7 +573,7 @@ async def execute_workflow_as_chat(
 
 
 async def regenerate_workflow_steps(
-    ctx: dict,
+    ctx: dict[str, Any],
     workflow_id: str,
     user_id: str,
     regeneration_reason: str,
@@ -607,7 +613,7 @@ async def regenerate_workflow_steps(
         return result
 
 
-async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> str:
+async def generate_workflow_steps(ctx: dict[str, Any], workflow_id: str, user_id: str) -> str:
     """
     Generate workflow steps for a workflow.
     Broadcasts WebSocket event when complete if it's a todo workflow.

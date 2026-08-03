@@ -1,4 +1,4 @@
-from typing import Any
+from collections.abc import Mapping
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.notifications import notification_repository
@@ -64,7 +64,9 @@ class MongoDBNotificationStorage:
         """Retrieve a notification by ID with optional user validation"""
         return await notification_repository.get_for_user(notification_id, user_id)
 
-    async def update_notification(self, notification_id: str, updates: dict[str, Any]) -> None:
+    async def update_notification(
+        self, notification_id: str, updates: Mapping[str, object]
+    ) -> None:
         """Update a notification's fields"""
         log.set_ns("notification", notification_id=notification_id)
         log.info(
