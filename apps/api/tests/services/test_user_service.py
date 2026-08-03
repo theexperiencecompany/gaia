@@ -79,7 +79,7 @@ class TestUpdateUserProfile:
         ):
             result = await update_user_profile(FAKE_ID, name="New Name")
 
-        assert result["name"] == "New Name"
+        assert result.name == "New Name"
         update_arg = mock_update.call_args.args[1]
         assert update_arg.model_dump(exclude_unset=True) == {"name": "New Name"}
 
