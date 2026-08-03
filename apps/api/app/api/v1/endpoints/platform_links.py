@@ -12,7 +12,6 @@ from app.models.platform_models import (
     InitiatePlatformConnectResponse,
     LinkPlatformRequest,
     LinkPlatformResponse,
-    PlatformLinkEntry,
 )
 from app.models.user_models import AuthenticatedUser
 from app.services.oauth.oauth_state_service import create_oauth_state
@@ -38,13 +37,9 @@ async def get_platform_links(
     platform_links = await PlatformLinkService.get_linked_platforms(user_id)
     log.set(outcome="success", result_count=len(platform_links))
 
-    # This is the validation boundary for the service's in-process view — see
-    # PlatformLinkView on why that stays an unvalidated TypedDict.
-    return GetPlatformLinksResponse(
-        platform_links={
-            platform: PlatformLinkEntry(**entry) for platform, entry in platform_links.items()
-        }
-    )
+    # Constructing the response is the validation boundary — see PlatformLinkEntry
+    # on why the service hands these over unvalidated.
+    return GetPlatformLinksResponse(platform_links=platform_links)
 
 
 @router.post("/{platform}")

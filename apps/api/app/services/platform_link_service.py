@@ -16,8 +16,8 @@ from typing import Any
 from app.db.repositories.users import user_repository
 from app.models.platform_models import (
     DisconnectPlatformResponse,
+    PlatformLinkEntry,
     PlatformLinkResult,
-    PlatformLinkView,
 )
 from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
 
@@ -143,7 +143,7 @@ class PlatformLinkService:
         return DisconnectPlatformResponse(status="disconnected", platform=platform)
 
     @staticmethod
-    async def get_linked_platforms(user_id: str) -> dict[str, PlatformLinkView]:
+    async def get_linked_platforms(user_id: str) -> dict[str, PlatformLinkEntry]:
         """Get all linked platforms for a user, mapping platform name to connection details.
 
         Only platforms stored as a dict with a non-empty "id" are returned;
@@ -156,7 +156,7 @@ class PlatformLinkService:
         platform_links = user.platform_links or {}
         connected_at = user.platform_links_connected_at or {}
 
-        result: dict[str, PlatformLinkView] = {}
+        result: dict[str, PlatformLinkEntry] = {}
         for platform in Platform.values():
             stored = platform_links.get(platform)
             if isinstance(stored, dict) and stored.get("id"):
