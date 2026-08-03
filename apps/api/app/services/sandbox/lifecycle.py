@@ -27,7 +27,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 import time
 from typing import Any, cast
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
 
@@ -106,7 +106,9 @@ def _split_meta_url(url: str) -> tuple[str, str]:
     if not url:
         return "", ""
     parts = urlsplit(url)
-    password = parts.password or ""
+    # urlsplit() does not decode userinfo, and JuiceFS treats META_PASSWORD as
+    # literal — so a password with a reserved char must be decoded here.
+    password = unquote(parts.password) if parts.password else ""
     if not password:
         return url, ""
     # Rebuild netloc without the password but with the username intact.
@@ -523,6 +525,21 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
     sbx: AsyncSandbox | None = None
     workspace_version = 0
     source = "create"
+
+    if doc is not None and doc.shard_id != shard_id:
+        # An existing user is pinned to the shard their workspace actually lives
+        # on. `shard_for` recomputes from the CURRENT JUICEFS_NUM_SHARDS, so
+        # raising the shard count would otherwise silently route them at a
+        # different meta DB and their workspace would read as empty. This is the
+        # read site shard_router's docstring promises ("we never re-shard a user
+        # without an explicit migration") and previously did not exist.
+        log.info(
+            f"{LogTag.SANDBOX} honouring recorded shard user={user_id} "
+            f"recorded={doc.shard_id} computed={shard_id}"
+        )
+        shard_id = doc.shard_id
+        _record(shard_id=shard_id)
+        mount_env = _mount_env(user_id, shard_id)
 
     if doc is not None and doc.sandbox_id:
         sbx = await _resume_existing_sandbox(doc, mount_env)

@@ -69,8 +69,13 @@ def slugify(title: str | None) -> str:
 
 
 def short_id(doc_id: str) -> str:
-    """First 8 hex chars of the ObjectId — sufficient within a user's set."""
-    return doc_id[:SHORTID_LEN]
+    """Last 8 hex chars of the ObjectId — the tail, not the timestamp head.
+
+    An ObjectId opens with a 4-byte timestamp, so the head is identical for
+    every doc minted in the same second and two same-second docs with alike
+    titles collapsed into one folder.
+    """
+    return doc_id[-SHORTID_LEN:]
 
 
 def folder_name(doc_id: str, title: str | None) -> str:
