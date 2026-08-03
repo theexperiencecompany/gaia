@@ -5,6 +5,7 @@ from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.db.repositories.base import MongoDocument
 
 HILApprovalStatus = Literal[
@@ -114,7 +115,11 @@ class HILApprovalUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    resume_item: dict[str, Any] | None = None
+    # Typed on the write side only. set_resume_item is the sole writer and takes
+    # an ExecutorRunItem, so every write is controlled. HILApprovalRecord keeps
+    # `dict[str, Any]` on the read side deliberately — narrowing a persisted
+    # field would start rejecting rows written before this type existed.
+    resume_item: ExecutorRunItem | None = None
     resumed_at: datetime | None = None
     subagent_thread_id: str | None = None
     subagent_agent_name: str | None = None

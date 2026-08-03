@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_UNRESUMED_SWEEP_STATUSES
 from app.db.repositories.hil import hil_approval_repository
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HILApprovalUpdate
@@ -129,7 +130,7 @@ async def mark_decided(
     )
 
 
-async def set_resume_item(approval_id: str, item: dict[str, Any]) -> None:
+async def set_resume_item(approval_id: str, item: ExecutorRunItem) -> None:
     """Attach the paused run's re-dispatch context to its approval record."""
     await hil_approval_repository.update(approval_id, HILApprovalUpdate(resume_item=item))
 

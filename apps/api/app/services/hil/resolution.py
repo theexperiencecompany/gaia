@@ -17,11 +17,15 @@ Two guarantees:
 
 import asyncio
 from http import HTTPStatus
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from langgraph.types import Command
 
-from app.agents.core.background.executor_queue import is_executor_busy, prepare_run_from_item
+from app.agents.core.background.executor_queue import (
+    ExecutorRunItem,
+    is_executor_busy,
+    prepare_run_from_item,
+)
 from app.agents.core.background.executor_runner import run_executor_background
 from app.constants.hil import (
     HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
@@ -332,7 +336,13 @@ async def _dispatch_resume(
         )
         return
 
-    prepared = await prepare_run_from_item(record.conversation_id, record.resume_item or {})
+    # set_resume_item is the only writer of this field and now takes an
+    # ExecutorRunItem, so the stored shape is correct by construction; Mongo just
+    # hands it back as a plain dict. cast rather than isinstance (item 12) —
+    # ExecutorRunItem is total=False, so {} is a valid empty item.
+    prepared = await prepare_run_from_item(
+        record.conversation_id, cast(ExecutorRunItem, record.resume_item or {})
+    )
     if prepared is None:
         log.error(f"{LogTag.HIL} Could not prepare resume run", approval_id=record.approval_id)
         await release_resume_dispatch(record.conversation_id)
