@@ -10,46 +10,6 @@ from app.models.notification.notification_models import (
 )
 from shared.py.wide_events import log
 
-# class NotificationStorage(ABC):
-#     """Abstract storage interface"""
-
-#     @abstractmethod
-#     async def save_notification(self, notification: NotificationRecord) -> None:
-#         pass
-
-#     @abstractmethod
-#     async def get_notification(
-#         self, notification_id: str, user_id: str | None
-#     ) -> Optional[NotificationRecord]:
-#         pass
-
-#     @abstractmethod
-#     async def update_notification(
-#         self, notification_id: str, updates: Dict[str, Any]
-#     ) -> None:
-#         pass
-
-#     @abstractmethod
-#     async def get_user_notifications(
-#         self,
-#         user_id: str,
-#         status: Optional[NotificationStatus] = None,
-#         limit: int = 50,
-#         offset: int = 0,
-#         channel_type: Optional[str] = None,
-#     ) -> List[NotificationRecord]:
-#         pass
-
-#     @abstractmethod
-#     async def get_notification_count(
-#         self,
-#         user_id: str,
-#         status: Optional[NotificationStatus] = None,
-#         channel_type: Optional[str] = None,
-#     ) -> int:
-#         """Get count of notifications for a user with optional status filtering"""
-#         pass
-
 
 class MongoDBNotificationStorage:
     """Notification storage — delegates persistence to notification_repository."""
