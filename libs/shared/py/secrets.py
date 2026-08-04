@@ -30,7 +30,7 @@ _INFISICAL_VARS = (
 )
 
 
-def inject_infisical_secrets():
+def inject_infisical_secrets() -> None:
     """
     Load secrets from Infisical and inject into environment.
 

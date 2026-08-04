@@ -386,7 +386,9 @@ cat << EOF
     orbctl delete $VM_NAME
 
   Note: app services (gaia-backend, bots) will be in a restart loop with placeholder
-  Infisical creds — that is expected.  Pass real env vars to test full auth:
-    INFISICAL_MACHINE_IDENTITY_CLIENT_ID=... bash scripts/swarm/lab-rehearsal.sh --skip-launch --skip-secrets
+  Infisical creds — that is expected.  To test full auth, remove the placeholder
+  secrets first (secret creation skips existing ones), then re-run with real creds:
+    INFISICAL_MACHINE_IDENTITY_CLIENT_ID=... INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=... \\
+    INFISICAL_PROJECT_ID=... bash scripts/swarm/lab-rehearsal.sh --skip-launch
 
 EOF
