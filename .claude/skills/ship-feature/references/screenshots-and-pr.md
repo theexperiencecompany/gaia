@@ -38,8 +38,10 @@ travel on a dedicated branch so they never touch the PR diff:
 
 Title: `<type>(<optional scope>): <description>` — a CI check validates the
 type against the allowed list in `pr-naming-conventions.yml` (read the list
-there; it drifts). Base: `develop`. Use the repo's PR template
-if one exists; otherwise this body structure:
+there; it drifts). Base: `develop`. If a repo PR template exists, fill it in
+— but the `## Before / After`, `## Verification`, and `## Not verified`
+sections below are mandatory evidence and always appear, template or not.
+With no template, use this body structure:
 
 ```markdown
 ## What & why
