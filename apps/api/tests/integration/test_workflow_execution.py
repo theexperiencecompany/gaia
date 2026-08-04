@@ -46,6 +46,7 @@ from app.services.workflow.service import (
 )
 from app.services.workflow.validators import WorkflowValidator
 from app.utils.exceptions import TriggerRegistrationError
+from shared.py.wide_events import get_trace_id, wide_task
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -779,7 +780,13 @@ class TestQueueService:
     """Enqueue workflow -> verify it appears in queue with correct params."""
 
     async def test_queue_workflow_generation(self):
-        """queue_workflow_generation enqueues with correct function name and args."""
+        """queue_workflow_generation enqueues with correct function name and args.
+
+        Production always enqueues from inside a wide-event boundary, so the run
+        happens in one here: enqueue_worker_job stamps the caller's trace id onto
+        the payload only when a trace is in scope. Asserting the exact call
+        outside a boundary would silently depend on whatever ran before it.
+        """
         mock_pool = AsyncMock()
         mock_job = MagicMock()
         mock_job.job_id = "job_gen_123"
@@ -790,13 +797,19 @@ class TestQueueService:
             new_callable=AsyncMock,
             return_value=mock_pool,
         ):
-            result = await WorkflowQueueService.queue_workflow_generation(
-                FAKE_WORKFLOW_ID, FAKE_USER_ID
-            )
+            async with wide_task("test_queue_workflow_generation"):
+                trace_id = get_trace_id()
+                result = await WorkflowQueueService.queue_workflow_generation(
+                    FAKE_WORKFLOW_ID, FAKE_USER_ID
+                )
 
         assert result is True
+        assert trace_id
         mock_pool.enqueue_job.assert_awaited_once_with(
-            "generate_workflow_steps", FAKE_WORKFLOW_ID, FAKE_USER_ID
+            "generate_workflow_steps",
+            FAKE_WORKFLOW_ID,
+            FAKE_USER_ID,
+            _gaia_trace_id=trace_id,
         )
 
     async def test_queue_workflow_execution(self):
