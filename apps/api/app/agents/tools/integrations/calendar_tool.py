@@ -243,8 +243,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
                     duration = (end_dt - start_dt).total_seconds() / 60
                     busy_minutes += duration
-                except Exception:  # nosec B110
-                    pass
+                except (ValueError, TypeError) as e:
+                    log.debug(
+                        f"{LogTag.TOOL} Excluding event from busy-hours total, "
+                        f"unparseable times {start_time!r}..{end_time!r}: {e}"
+                    )
 
         next_event: dict[str, Any] | None = None
         if day_start.date() == now.date():
@@ -256,8 +259,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                         if event_start > now:
                             next_event = event.model_dump()
                             break
-                    except Exception:  # nosec B110
-                        pass
+                    except (ValueError, TypeError) as e:
+                        log.debug(
+                            f"{LogTag.TOOL} Skipping event when resolving next_event, "
+                            f"unparseable start time {start_time!r}: {e}"
+                        )
 
         result_data = {
             "date": day_start.strftime("%Y-%m-%d"),

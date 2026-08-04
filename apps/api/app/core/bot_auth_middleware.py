@@ -21,11 +21,13 @@ from starlette.types import ASGIApp
 
 from app.config.settings import settings
 from app.constants.cache import TEN_MINUTES_TTL
+from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from app.models.user_models import AuthenticatedUser
 from app.services.bot_token_service import verify_bot_session_token
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.auth_utils import build_user_context
+from shared.py.wide_events import log
 
 
 class BotAuthMiddleware(BaseHTTPMiddleware):
@@ -74,9 +76,12 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
                     request.state.user = user_info
                     request.state.authenticated = True
                     authenticated = True
-            except (JWTError, Exception):
-                # JWT failed - will try API key below
-                pass
+            except JWTError as e:
+                log.debug(f"{LogTag.API} Bot JWT rejected, trying API key: {e}")
+            except Exception as e:
+                # Not a token problem — Redis/Mongo lookups can fail here. Still
+                # falls through to API key auth, but never silently.
+                log.warning(f"{LogTag.API} Bot JWT authentication errored, trying API key: {e}")
 
         # 2. Fall back to API key + platform headers
         if not authenticated:

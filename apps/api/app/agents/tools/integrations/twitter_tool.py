@@ -19,6 +19,7 @@ from composio import Composio
 from composio.types import ExecuteRequestFn
 from langgraph.config import get_stream_writer
 
+from app.constants.log_tags import LogTag
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
 from app.models.twitter_models import (
@@ -46,6 +47,7 @@ from app.utils.twitter_utils import (
     search_tweets,
     unfollow_user,
 )
+from shared.py.wide_events import log
 
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
@@ -470,8 +472,13 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
                     }
                     for t in (items if isinstance(items, list) else [])
                 ]
-            except Exception:  # nosec B110
-                pass
+            except Exception as e:
+                # Profile context is still useful without recent tweets, so this
+                # returns a partial result rather than failing the whole tool.
+                log.warning(
+                    f"{LogTag.TOOL} Failed to fetch recent tweets for {twitter_user_id}, "
+                    f"returning profile without them: {e}"
+                )
 
         return {
             "user": {

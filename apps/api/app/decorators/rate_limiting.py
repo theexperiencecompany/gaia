@@ -155,8 +155,13 @@ def with_rate_limiting(
                                     }
                                 }
                             )
-                        except Exception:  # nosec B110
-                            pass  # Not in a streaming context (e.g. workflows, background tasks)
+                        except Exception as stream_error:
+                            # Usually just "not in a streaming context" (workflows,
+                            # background tasks); the card is decoration, the
+                            # LangChainRateLimitException below is the real outcome.
+                            log.debug(
+                                f"{LogTag.API} Rate limit card not streamed for {actual_feature_key}: {stream_error}"
+                            )
 
                         raise LangChainRateLimitException(
                             feature=actual_feature_key,

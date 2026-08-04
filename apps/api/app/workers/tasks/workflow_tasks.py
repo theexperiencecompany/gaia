@@ -154,8 +154,11 @@ async def process_workflow_generation_task(
                 from app.services.workflow.queue_service import WorkflowQueueService
 
                 await WorkflowQueueService.clear_workflow_generating_flag(todo_id)
-            except Exception:  # nosec B110 - Intentional: cleanup should not raise
-                pass
+            except Exception as cleanup_error:
+                # Cleanup must not mask the original failure re-raised below.
+                log.warning(
+                    f"{LogTag.WORKER} Failed to clear workflow generating flag for todo {todo_id}: {cleanup_error}"
+                )
 
             # Broadcast failure WebSocket event so frontend can handle it
             try:
