@@ -31,6 +31,8 @@ travel on a dedicated branch so they never touch the PR diff:
 3. Embed via the **commit SHA** from the upload response — immutable, and
    unambiguous even with slashes in the branch name:
    `https://raw.githubusercontent.com/theexperiencecompany/gaia/<sha>/<path>.png`
+4. Leave the branch in place after merge — the SHA-pinned URLs stay valid
+   only while the commit is reachable.
 
 ## The PR
 

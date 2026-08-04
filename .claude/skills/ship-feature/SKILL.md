@@ -11,7 +11,9 @@ description: >
   complete feature with PR, screenshots, and passing CI — even if they don't
   name this skill. Also use it when a cloud session is handed a feature
   request and expected to deliver a finished, verified PR without a human in
-  the loop.
+  the loop. Do not use it when the user just wants code written or an
+  ordinary PR without the full verified-shipping pipeline (live E2E,
+  screenshots, drive-to-green).
 ---
 
 # Ship Feature
@@ -31,8 +33,16 @@ mechanics:
 | Browser driving + screenshots | agent-browser (per driving-gaia §6) |
 | A misbehaving run | `reading-gaia-logs` skill |
 | The implementation plan | `writing-plans` skill, into `.agents/plans/` |
+| UI design brief, building UI, design iteration | `shape` → `impeccable` → `critique`/`polish` (see Frontend Craft) |
 | CI lanes, local repro, CodeRabbit loop | [references/ci-and-review.md](references/ci-and-review.md) |
 | Screenshot protocol + PR format | [references/screenshots-and-pr.md](references/screenshots-and-pr.md) |
+
+**Subagent economy.** A team of agents is not a license to burn tokens.
+Match the model to the job: wide mechanical fan-outs (exploration, claim
+verification, lane repro) run on a small model; judgment-heavy singletons
+(plan attack, review lenses, design critique) use the session's model.
+Spawn the agents the task needs, no more — parallelism is for wall-clock,
+not volume.
 
 ## Non-Negotiables
 
@@ -63,7 +73,7 @@ questions nobody is there to answer.
 ### 1. Bootstrap (start first, runs while you plan)
 
 `git fetch origin develop` and branch from it. Then `pnpm install` and
-`uv sync --project apps/api --group backend --group dev`, create env files
+`pnpm exec nx run api:sync`, create env files
 (`cp -f apps/api/.env.example apps/api/.env` first — `mise setup:env` errors
 without it, and only auto-copies the others; dummy WorkOS values are fine —
 the dev bypass never calls WorkOS). Boot per
@@ -89,11 +99,11 @@ survives. A plan flaw costs minutes here and hours in phase 9.
 
 ### 3. BEFORE screenshots
 
-With the stack running **clean base-branch code**, walk the journey script
-and capture every surface the feature will change
-([references/screenshots-and-pr.md](references/screenshots-and-pr.md)). For a
-brand-new surface, "before" is whatever exists today. Never reconstruct a
-before-state from memory after the fact — `git stash` if you must.
+Valid only while the fresh branch is still byte-identical to `develop` —
+capture before your first edit (`git stash` around the capture if you
+already edited). Walk the journey script and shoot every surface the
+feature will change, per the protocol in
+[references/screenshots-and-pr.md](references/screenshots-and-pr.md).
 
 ### 4. Implement
 
@@ -101,9 +111,9 @@ Execute the plan task by task on the feature branch. Write to CI's structural
 bars from the start rather than remediating after — the Code Quality lanes
 enforce limits on file size, components per file, type placement, complexity,
 docstring coverage, duplication, and dead code (current thresholds live in
-the lane scripts/configs, see the CI reference). HeroUI first, icons from
-`@icons`, Sileo toasts. Commit in Conventional-Commit increments. Do not
-write new test files unless the user asked (repo rule).
+the lane scripts/configs, see the CI reference). UI-touching work follows
+Frontend Craft (below). Commit in Conventional-Commit increments; no new
+test files unless the user asked (repo Testing rule).
 
 ### 5. Local gates
 
@@ -119,24 +129,32 @@ races), architecture/debt (duplication, wrong-layer logic, missed
 `libs/shared` reuse, dead code), design-system compliance vs DESIGN.md (UI
 diffs only), security (only when the diff adds surface). Each returns
 findings with file:line and a concrete failure scenario. Then adversarially
-verify: a fresh subagent per finding tries to refute it against the code. Fix
-what survives, drop what doesn't — single-pass reviewers confidently report
-plausible non-bugs. Re-run affected gates after fixes.
+verify: a fresh skeptic subagent takes the batched findings and tries to
+refute each against the code. Fix what survives, drop what doesn't —
+single-pass reviewers confidently report plausible non-bugs. Re-run affected
+gates after fixes.
 
 ### 7. E2E as a user + AFTER screenshots
 
-Drive the running app through the full journey script with agent-browser
-(driving-gaia §6) as the seeded dev user — hot reload has your changes. On
-every page: act like the user, exercise the unhappy paths (empty states,
-invalid input, the second submit), and check for console errors and failed
-network requests (chrome-devtools MCP when you need that introspection; a
-feature that renders but errors underneath is not done). Verify data landed
-in Mongo, not stdout (driving-gaia §4). Run the existing Playwright smoke
-(`mise e2e:web`, `E2E_SIM=1` under sim). Fix → re-drive until clean, then
-capture the AFTER shot-list.
+Run the existing Playwright smoke first (`mise e2e:web`, `E2E_SIM=1` under
+sim) — its global setup **resets and re-seeds the dev user**, wiping
+anything driven before it; smoke first, journey second. Then drive the app
+through the full journey script with agent-browser (driving-gaia §6) as the
+seeded dev user. Hot reload covers code edits only — after dependency, env,
+or settings changes, re-sync and restart the stack. On every page: act like
+the user, exercise the unhappy paths (empty states, invalid input, the
+second submit), and check for console errors and failed network requests
+(chrome-devtools MCP when you need that introspection; a feature that
+renders but errors underneath is not done). Verify data landed in Mongo, not
+stdout (driving-gaia §4). If the journey needs state the dev seed cannot
+create (OAuth integrations, external data), fabricate it under `--sim`
+directives or verify that layer directly via the dev routes (driving-gaia
+§5) — and name the un-exercised surface under Not verified. Fix → re-drive
+until clean, then capture the AFTER shot-list.
 
 ### 8. Ship the PR
 
+Push the branch first (`git push -u origin <branch>`), then open the PR:
 Conventional-Commit title, base `develop`, body with the before/after table
 and an honest verification section
 ([references/screenshots-and-pr.md](references/screenshots-and-pr.md)).
@@ -145,18 +163,37 @@ Subscribe to PR activity immediately.
 ### 9. Drive to green, then stop
 
 Remediate CI failures at the root, answer every CodeRabbit thread — fix or
-reasoned pushback, never silence — and keep the branch mergeable with plain
-`git merge origin/develop` (rebase is banned)
+reasoned pushback, never silence — and keep the branch mergeable
 ([references/ci-and-review.md](references/ci-and-review.md)). When both
 required gates are green and all threads are resolved, post one final status
 comment and stop. Do not merge.
+
+## Frontend Craft (UI features)
+
+Unattended AI-generated UI defaults to slop — generic layouts, timid
+typography, no hierarchy, elements added because sections like them usually
+exist. Design is a gate in this pipeline, not a coat of paint:
+
+- **Before UI code:** run `shape` for the design brief — direction,
+  hierarchy, what to leave out — grounded in `DESIGN.md` tokens. Every
+  element must have a reason to exist; if it's there "for completeness",
+  cut it.
+- **While building:** use the `impeccable` skill. Typography scale, spacing
+  rhythm, and visual hierarchy are decisions made from principles — the bar
+  is Linear/Notion/Apple-level consideration — never framework defaults.
+- **After it renders:** iterate. Screenshot → critique with the design
+  skills (`critique`, `polish`, `make-interfaces-feel-better`) → refine →
+  re-drive. Expect several rounds; one-pass UI is how slop ships. The
+  phase-6 design lens and the AFTER screenshots are the exit gate, not the
+  first render.
 
 ## Definition of Done
 
 - [ ] Every acceptance criterion verified against the running app; anything
       not exercised is named in the PR
-- [ ] BEFORE and AFTER screenshots captured live, published, rendering in the
-      PR body
+- [ ] BEFORE and AFTER screenshots captured live and rendering in the PR for
+      every changed UI surface; features with no UI surface substitute
+      equivalent live evidence (bot transcript, curl + Mongo output) and say so
 - [ ] Local gates green for every touched language; review findings fixed or
       refuted
 - [ ] PR open against `develop`, both CI gates green, CodeRabbit threads all

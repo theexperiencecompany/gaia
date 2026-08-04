@@ -76,3 +76,6 @@ CodeRabbit auto-reviews PRs; its comments arrive as PR activity events. Apply
   repo wins; say so in one line.
 - After pushing a batch of fixes, comment `@coderabbitai review` to trigger a
   re-review, and confirm no thread remains unanswered.
+- If no CodeRabbit review has arrived by the time CI is green plus one
+  check-in cycle, it may not be installed on the repo — note its absence in
+  the final status comment and finish without it.
