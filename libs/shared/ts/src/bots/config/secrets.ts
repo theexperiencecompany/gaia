@@ -11,13 +11,11 @@
  */
 
 import { InfisicalSDK } from "@infisical/sdk";
-import { createBotLogger } from "../utils/logger";
-
-const logger = createBotLogger("shared", "secrets");
+import { wideLog } from "../utils/wide-events";
 
 class InfisicalConfigError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = "InfisicalConfigError";
   }
 }
@@ -45,7 +43,7 @@ export async function injectInfisicalSecrets(): Promise<void> {
           `Missing: ${INFISICAL_VARS.join(", ")}`,
       );
     }
-    logger.info("infisical_skipped", { reason: "no_config_vars_set" });
+    wideLog.setNs("infisical", { skipped: "no_config_vars_set" });
     return;
   }
 
@@ -57,9 +55,9 @@ export async function injectInfisicalSecrets(): Promise<void> {
     if (isProduction) {
       throw new InfisicalConfigError(msg);
     }
-    logger.warn("infisical_config_incomplete", {
-      missing: missing,
-      present: present,
+    wideLog.warning("infisical_config_incomplete", {
+      missing,
+      present,
     });
     return;
   }
@@ -71,13 +69,11 @@ export async function injectInfisicalSecrets(): Promise<void> {
 
   try {
     const start = Date.now();
-    logger.info("infisical_connecting");
-
     const client = new InfisicalSDK({
       siteUrl: "https://app.infisical.com",
     });
     await client.auth().universalAuth.login({ clientId, clientSecret });
-    logger.info("infisical_authenticated", { duration_ms: Date.now() - start });
+    wideLog.setNs("infisical", { auth_ms: Date.now() - start });
 
     const secretsStart = Date.now();
     const result = await client.secrets().listSecrets({
@@ -99,16 +95,16 @@ export async function injectInfisicalSecrets(): Promise<void> {
       }
     }
 
-    logger.info("infisical_secrets_loaded", {
+    wideLog.setNs("infisical", {
       total: result.secrets.length,
       injected,
       skipped,
-      duration_ms: Date.now() - secretsStart,
+      fetch_ms: Date.now() - secretsStart,
     });
   } catch (error) {
     if (error instanceof InfisicalConfigError) throw error;
-    throw new InfisicalConfigError(
-      `Failed to fetch secrets from Infisical: ${error}`,
-    );
+    // `cause` keeps the original failure's type and message alive for the log
+    // sink; interpolating it into the message destroys both.
+    throw new InfisicalConfigError("infisical_fetch_failed", { cause: error });
   }
 }

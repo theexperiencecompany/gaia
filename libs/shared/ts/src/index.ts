@@ -188,6 +188,7 @@ export {
   processBotMedia,
   renderForPlatform,
   richMessageToMarkdown,
+  runBotProcess,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   settingsCommand,

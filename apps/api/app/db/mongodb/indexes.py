@@ -90,7 +90,7 @@ async def create_all_indexes():
         for i, (collection_name, result) in enumerate(zip(collection_names, results)):
             if isinstance(result, Exception):
                 log.error(
-                    f"{LogTag.MONGO} Failed to create indexes for",
+                    f"{LogTag.MONGO} Failed to create indexes for collection",
                     collection_name=collection_name,
                     result=result,
                 )
@@ -103,7 +103,7 @@ async def create_all_indexes():
         total = len(index_results)
 
         log.info(
-            f"{LogTag.MONGO} Database index creation completed: / collections successful",
+            f"{LogTag.MONGO} Database index creation completed",
             successful=successful,
             total=total,
         )

@@ -27,9 +27,13 @@ The rest of this skill covers the Python facade; the bots use the TS analogue
 (`wideLog.set`/`setNs`/`warning`/`error`/`audit`) with the same semantics and
 its own scanner, `scripts/ci/evlog-map-bots.mjs`.
 
-`env`/`service`/`commit`, `trace_id`, `duration_ms`, status and `final_level`
-are stamped automatically. The middleware also attaches `user.id`/`user.email`
-from the authenticated request.
+`trace_id`, `task`, `duration_ms`, `outcome` and `final_level` are stamped by
+the boundary; `env`/`service`/`commit` by the JSON sink, on every line. The
+middleware also attaches `user.id`/`user.email` from the authenticated request.
+
+Setting any of those keys yourself does not work and is not silent: the sink
+re-emits a colliding field as `ctx_<key>`, and the `wide-events-logging` lint
+rejects it at commit time.
 
 ## The API (`from shared.py.wide_events import log`)
 
@@ -40,7 +44,9 @@ log.set_ns("todo", id=result_id)      # merge INTO a namespace (see trap 2)
 
 # Record problems — these land on the event AND emit a real-time line:
 log.warning("rate limited", provider="google", retry_in_s=30)  # -> warnings[]
-log.error("sync failed", error_type=type(e).__name__, account_id=aid)  # -> errors[]
+log.error("sync failed", error_type=type(e).__name__, error=str(e),  # -> errors[]
+          account_id=aid)   # error_type + error is THE exception vocabulary,
+                            # identical on the TypeScript bots (contract.json)
 
 # Audit trail for sensitive ACTIONS (auth, payments, PII writes) — required
 # by the evlog-map `audit` check on money/auth routes:

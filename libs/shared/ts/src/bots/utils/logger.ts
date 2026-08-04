@@ -1,3 +1,36 @@
+/**
+ * ╔════════════════════════════════════════════════════════════════════════╗
+ * ║ CROSS-RUNTIME CONTRACT — MIRROR EVERY SHAPE CHANGE IN PYTHON           ║
+ * ║                                                                        ║
+ * ║ This file is ONE HALF of GAIA's log envelope. The other half is        ║
+ * ║   libs/shared/py/logging.py  (function `_build_json_entry`)            ║
+ * ║ and it MUST emit the same key names, the same value types and the      ║
+ * ║ same timestamp format, because one LogQL query (`| json | ...`) has    ║
+ * ║ to span the TypeScript bots and the Python services at once. A field   ║
+ * ║ that exists here and not there — or exists on both with a different    ║
+ * ║ type — silently breaks every dashboard that joins the two surfaces.    ║
+ * ║                                                                        ║
+ * ║ If you are an agent editing ONLY this file, before you finish:         ║
+ * ║  1. Open libs/shared/py/logging.py and make the matching change in     ║
+ * ║     `_build_json_entry` / `_CORE_KEYS` / `_COLLIDING_KEY_PREFIX` /     ║
+ * ║     `env_context`.                                                     ║
+ * ║  2. Update the shared contract both sides are checked against:         ║
+ * ║     scripts/ci/wide-event-conformance/contract.json                    ║
+ * ║  3. Run the conformance check — it emits real lines from BOTH          ║
+ * ║     runtimes and diffs their shapes:                                   ║
+ * ║       python3 scripts/ci/wide-event-conformance/run.py                 ║
+ * ║     It fails if the two runtimes disagree, so skipping step 1 or 2 is  ║
+ * ║     a red CI lane, not a silent drift.                                 ║
+ * ║                                                                        ║
+ * ║ Envelope keys stamped on EVERY line by both runtimes:                  ║
+ * ║   time, level, env, service, commit, logger, message                   ║
+ * ║ TS-only envelope: platform, component (Python carries both as          ║
+ * ║   ordinary optional wide-event fields with the same names and types)   ║
+ * ║ Python-only provenance: module, line, worker (loguru record data with  ║
+ * ║   no TS equivalent — declared as Python-only in the contract, do NOT   ║
+ * ║   invent stack-parsed stand-ins for them here)                         ║
+ * ╚════════════════════════════════════════════════════════════════════════╝
+ */
 import { createHash, createHmac } from "node:crypto";
 import type { PlatformName } from "../types";
 import { appendStructuredLogLine } from "./log-file-sink";
@@ -46,29 +79,39 @@ export interface BotLogger {
 const MAX_JSON_LINE_BYTES = 200_000;
 const TRUNCATED_MESSAGE_MAX_CHARS = 10_000;
 
-/** Envelope keys `buildRecord` always sets — kept when a line has to be shrunk. */
+/**
+ * Envelope keys `buildRecord` always sets — kept when a line has to be shrunk.
+ * Same order as `_CORE_KEY_ORDER` in libs/shared/py/logging.py, minus the
+ * loguru-only provenance (module/line/worker) that has no TS equivalent.
+ */
 const ENVELOPE_KEYS = [
   "time",
   "level",
   "env",
   "service",
+  "commit",
   "logger",
   "platform",
   "component",
   "message",
 ] as const;
 
-const RESERVED_LOG_KEYS = new Set([
-  "time",
-  "level",
-  "env",
-  "service",
-  "logger",
-  "platform",
-  "component",
-  "message",
-  "error",
-]);
+/**
+ * A caller field named like an envelope key would corrupt the line's identity,
+ * so it is re-emitted under {@link COLLIDING_KEY_PREFIX} instead. `error` is
+ * deliberately NOT here: an exception is described by the flat scalars
+ * `error_type` + `error` (see {@link sanitizeErrorForLog}), exactly as in
+ * Python, so `error` is ordinary payload on both surfaces.
+ */
+const RESERVED_LOG_KEYS: ReadonlySet<string> = new Set(ENVELOPE_KEYS);
+
+/**
+ * Prefix for a caller field that collided with an envelope key. Must equal
+ * `_COLLIDING_KEY_PREFIX` in libs/shared/py/logging.py — `ctx_` is the spelling
+ * the wide-events lint quotes to app authors (tools/lints/README.md), so a
+ * second prefix would mean two things to grep for after the same mistake.
+ */
+const COLLIDING_KEY_PREFIX = "ctx_";
 
 /**
  * The `service` value stamped on every log line. Must match the Promtail label
@@ -84,6 +127,27 @@ function resolveServiceName(platform: PlatformName | "shared"): string {
   if (platform !== "shared") return `${platform}-bot`;
   const botName = process.env.BOT_NAME;
   return botName ? `${botName}-bot` : "gaia-bots";
+}
+
+/**
+ * Deployment environment, resolved exactly as `env_context()` does in
+ * libs/shared/py/logging.py: `ENV` (GAIA's own variable, set by
+ * apps/api/Dockerfile) → `NODE_ENV` (the Node spelling, set by
+ * apps/bots/Dockerfile) → "development". Reading only `NODE_ENV` made `env` a
+ * build-mode flag on one surface and a deployment label on the other, so
+ * `| json | env="production"` meant two different things.
+ */
+function resolveEnv(): string {
+  return process.env.ENV || process.env.NODE_ENV || "development";
+}
+
+/** Short commit sha stamped on every line — parity with Python's env_context(). */
+function resolveCommit(): string {
+  return (
+    process.env.GIT_COMMIT_SHA ||
+    process.env.COMMIT_SHA ||
+    "local"
+  ).slice(0, 8);
 }
 
 export function hashLogIdentifier(
@@ -111,18 +175,29 @@ export function getHttpStatus(error: unknown): number | undefined {
   return (error as { response?: { status?: number } } | null)?.response?.status;
 }
 
+/**
+ * Describe a thrown value with the two flat scalars every GAIA surface uses:
+ * `error_type` (the exception's class/name) and `error` (its message).
+ *
+ * These names are the contract, not a preference. Python's `log.error(...,
+ * error=str(exc), error_type=type(exc).__name__)` is the vocabulary of ~900 call
+ * sites, the wide-events lint and the observability scanner. Nesting the pair
+ * under a single `error: {...}` object — as this used to — put a string on one
+ * surface and an object on the other under the SAME key, which is the one shape
+ * `| json` cannot cope with: the label is dropped and the line silently falls
+ * out of every error dashboard.
+ */
 export function sanitizeErrorForLog(error: unknown): BotLogFields {
   if (error instanceof Error) {
     return {
-      error_name: error.name,
-      error_message: error.message,
+      error_type: error.name,
+      error: error.message,
     };
   }
 
   return {
-    error_name: "Unknown",
-    error_message:
-      typeof error === "string" ? error : "Unknown non-Error thrown",
+    error_type: "Unknown",
+    error: typeof error === "string" ? error : "Unknown non-Error thrown",
   };
 }
 
@@ -188,10 +263,10 @@ function write(level: BotLogLevel, line: string): void {
 /**
  * Builds the canonical envelope. The key names are deliberately identical to
  * the ones `_build_json_entry` emits in `libs/shared/py/logging.py` — `time`,
- * `level`, `service`, `logger`, `message`, plus the wide-event fields
- * (`trace_id`, `duration_ms`, `outcome`, `errors`, `warnings`, `audit`, `env`)
- * — so a single LogQL query spans the Python services and the bots. The event
- * name lands under `message`, not `event`, for exactly that reason.
+ * `level`, `env`, `service`, `commit`, `logger`, `message`, plus the wide-event
+ * fields (`task`, `trace_id`, `duration_ms`, `outcome`, `errors`, `warnings`,
+ * `audit`) — so a single LogQL query spans the Python services and the bots.
+ * The event name lands under `message`, not `event`, for exactly that reason.
  */
 function buildRecord(
   time: string,
@@ -205,8 +280,9 @@ function buildRecord(
   const record: Record<string, JsonValue> = {
     time,
     level: LOG_LEVEL_NAMES[level],
-    env: process.env.NODE_ENV ?? "development",
+    env: resolveEnv(),
     service: resolveServiceName(platform),
+    commit: resolveCommit(),
     // Promtail extracts `logger` into the logger_name label (see
     // infra/docker/observability/promtail-config.yaml pipeline_stages).
     logger: component,
@@ -215,16 +291,24 @@ function buildRecord(
     message: event,
   };
 
-  if (fields) {
-    for (const [key, value] of Object.entries(fields)) {
-      if (value === undefined) continue;
-      const safeKey = RESERVED_LOG_KEYS.has(key) ? `field_${key}` : key;
-      record[safeKey] = toJsonValue(value);
+  // Derived-from-the-throwable first, caller fields second: an explicit
+  // `error_type` passed by the call site describes the failure better than the
+  // JS `Error.name` it would otherwise be overwritten by, and Python — where
+  // every one of these fields is explicit — has no derived value to lose.
+  if (error !== undefined) {
+    for (const [key, value] of Object.entries(sanitizeErrorForLog(error))) {
+      record[key] = toJsonValue(value);
     }
   }
 
-  if (error !== undefined) {
-    record.error = toJsonValue(sanitizeErrorForLog(error));
+  if (fields) {
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === undefined) continue;
+      const safeKey = RESERVED_LOG_KEYS.has(key)
+        ? `${COLLIDING_KEY_PREFIX}${key}`
+        : key;
+      record[safeKey] = toJsonValue(value);
+    }
   }
 
   return record;

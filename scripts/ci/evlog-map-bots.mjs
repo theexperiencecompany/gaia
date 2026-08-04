@@ -56,6 +56,12 @@ const BOT_SRC_DIRS = [
   "apps/bots/slack/src",
   "apps/bots/telegram/src",
   "apps/bots/whatsapp/src",
+  // The shared library is scanned for registrations too, not just for the
+  // named boundaries below: the process signal/fault handlers, the AMQP
+  // consumer and the shared HTTP routes all live here, and a scan that only
+  // knew about per-bot adapters would call that whole surface "not an entry
+  // point" and score a perfect 100 over it.
+  "libs/shared/ts/src/bots",
 ];
 
 /** Canonical field schema, parsed live so a new field is recognized on landing. */
@@ -63,12 +69,16 @@ const SCHEMA_FILE = "libs/shared/ts/src/bots/utils/wide-events.ts";
 const SCHEMA_INTERFACE = "BotWideEventFields";
 
 /**
- * The shared dispatch boundaries wrapped in withWideEvent(). A platform
- * handler that routes through one of these runs inside a wide-event boundary
- * with canonical context attached (command/user_hash/... in base.ts, the full
- * chat context in streaming.ts) — this is the one piece of cross-file
- * knowledge the per-file scan encodes, mirroring how tools/evlog_map knows
- * about wide_task()/the HTTP middleware.
+ * Named shared boundaries: functions that are entry points in their own right
+ * (a unit of work with several independent callers) rather than an SDK
+ * registration a regex can find. Each is scored like any other entry, and the
+ * set of them that PASSES the wide-event check becomes the cross-file
+ * knowledge the per-file scan uses — a platform handler that calls one of these
+ * is running inside a boundary with canonical context attached.
+ *
+ * That derivation is the point: nothing here is asserted to be instrumented.
+ * Delete the boundary from `shutdown()` and it stops counting as one for the
+ * signal handlers that call it, instead of silently vouching for them forever.
  */
 const SHARED_ENTRY_POINTS = [
   {
@@ -77,20 +87,26 @@ const SHARED_ENTRY_POINTS = [
     kind: "dispatch",
   },
   {
+    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    name: "boot",
+    kind: "lifecycle",
+  },
+  {
+    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    name: "shutdown",
+    kind: "lifecycle",
+  },
+  {
+    file: "libs/shared/ts/src/bots/adapter/base.ts",
+    name: "resolveIncomingMedia",
+    kind: "dispatch",
+  },
+  {
     file: "libs/shared/ts/src/bots/utils/streaming.ts",
     name: "handleStreamingChat",
     kind: "dispatch",
   },
-  {
-    file: "libs/shared/ts/src/bots/consumer/outbound-consumer.ts",
-    name: "handle",
-    kind: "worker",
-  },
 ];
-const WRAPPED_DISPATCH_CALLS = new Set([
-  "dispatchCommand",
-  "handleStreamingChat",
-]);
 
 /** SDK registration methods → entry-point kind. */
 const REGISTRATION_METHODS = new Map([
@@ -101,12 +117,47 @@ const REGISTRATION_METHODS = new Map([
   ["once", "event"],
   ["post", "webhook"],
   ["get", "webhook"],
+  // Terminal error handlers: grammY's `bot.catch`, Bolt's `app.error`. Whatever
+  // a middleware throws and nobody caught arrives here and nowhere else.
+  ["catch", "error-handler"],
+  ["error", "error-handler"],
+  // AMQP: `channel.consume(queue, handler)` is the outbound worker's real
+  // registration — the same shape as a platform handler, one layer down.
+  ["consume", "worker"],
 ]);
 /** Receivers (with a leading `this.` stripped) whose registrations count. */
-const REGISTRATION_RECEIVERS = new Set(["client", "app", "bot", "botServer.app"]);
+const REGISTRATION_RECEIVERS = new Set([
+  "client",
+  "app",
+  "bot",
+  "botServer.app",
+  "channel",
+  "process",
+]);
 
-/** Connection-lifecycle events have nothing to instrument — the bots' /health. */
-const LIFECYCLE_EVENTS = new Set(["ClientReady", "ready"]);
+/**
+ * `process.on(...)` names, and the kind each registers. These are the handlers
+ * of last resort: without them Node prints a raw multi-line V8 stack and exits,
+ * which is not JSON, not one line, and not attributable to any service — so a
+ * crash is invisible to every dashboard AND breaks NDJSON framing for the
+ * shipper. They are entry points exactly like a webhook is.
+ */
+const PROCESS_EVENT_KINDS = new Map([
+  ["SIGINT", "signal"],
+  ["SIGTERM", "signal"],
+  ["SIGHUP", "signal"],
+  ["unhandledRejection", "fault"],
+  ["uncaughtException", "fault"],
+  ["beforeExit", "signal"],
+  ["exit", "signal"],
+]);
+
+/**
+ * Routes with nothing to observe. `/health` answers a liveness probe with a
+ * constant; a wide event per probe would be one event every few seconds per
+ * bot, for a handler that cannot fail in an interesting way.
+ */
+const EXEMPT_ROUTES = new Set(["/health"]);
 
 // ---------------------------------------------------------------------------
 // Rules — evlog's ids and weights
@@ -378,6 +429,10 @@ function catchClauseHandled(clause, sf) {
 function analyzeBody(node, sf) {
   const facts = {
     calls: new Set(),
+    // Method names of calls on a non-`this` receiver (`adapter.shutdown()`).
+    // Kept apart from `calls` because `calls` also drives same-file traversal,
+    // where a bare method name would resolve against unrelated functions.
+    methodCalls: new Set(),
     hasBoundary: false,
     fieldKeys: new Set(),
     callsAudit: false,
@@ -413,6 +468,7 @@ function analyzeBody(node, sf) {
         const method = callee.name.text;
         const receiver = callee.expression.getText(sf);
         if (receiver === "this") facts.calls.add(method);
+        else facts.methodCalls.add(method);
         if (receiver === "wideLog") {
           if (method === "set") {
             for (const key of objectLiteralKeys(child.arguments[0])) {
@@ -470,6 +526,7 @@ function analyzeBody(node, sf) {
 function reachableFacts(entryNode, fileIndex, sf) {
   const merged = {
     calls: new Set(),
+    methodCalls: new Set(),
     hasBoundary: false,
     fieldKeys: new Set(),
     callsAudit: false,
@@ -482,6 +539,7 @@ function reachableFacts(entryNode, fileIndex, sf) {
     merged.hasBoundary ||= facts.hasBoundary;
     merged.callsAudit ||= facts.callsAudit;
     for (const call of facts.calls) merged.calls.add(call);
+    for (const call of facts.methodCalls) merged.methodCalls.add(call);
     for (const key of facts.fieldKeys) merged.fieldKeys.add(key);
     for (const call of facts.calls) {
       if (seen.has(call)) continue;
@@ -503,6 +561,10 @@ function registrationLabel(arg, sf) {
     return arg.text;
   }
   if (ts.isPropertyAccessExpression(arg)) return arg.name.text;
+  // A registration driven by a variable (`for (const signal of …) process.on(signal, …)`,
+  // `bot.command(commandName, …)`) still has to be reported by something more
+  // useful than "<dynamic>", or a loop is how an entry point stops being named.
+  if (ts.isIdentifier(arg)) return arg.text;
   if (ts.isArrayLiteralExpression(arg)) {
     const first = arg.elements[0];
     const head =
@@ -522,7 +584,7 @@ function handlerArgument(call) {
   return null;
 }
 
-/** Platform SDK registrations in one adapter file. */
+/** Platform SDK, process and AMQP registrations in one file. */
 function discoverRegistrations(sf) {
   const entries = [];
   const visit = (node) => {
@@ -531,14 +593,21 @@ function discoverRegistrations(sf) {
       ts.isPropertyAccessExpression(node.expression)
     ) {
       const method = node.expression.name.text;
-      const kind = REGISTRATION_METHODS.get(method);
       const receiver = node.expression.expression
         .getText(sf)
         .replace(/^this\./, "");
+      const label = registrationLabel(node.arguments[0], sf);
+      // Everything registered on `process` is a process-level handler, never a
+      // platform "event". The map names the two classes apart; a registration
+      // the map cannot resolve — including one driven by a loop variable —
+      // still counts, because a loop must not be a way to leave the map.
+      const kind =
+        receiver === "process"
+          ? (PROCESS_EVENT_KINDS.get(label) ?? "signal")
+          : REGISTRATION_METHODS.get(method);
       if (kind && REGISTRATION_RECEIVERS.has(receiver)) {
         const handler = handlerArgument(node);
         if (handler) {
-          const label = registrationLabel(node.arguments[0], sf);
           entries.push({
             name: `${method}(${label})`,
             kind,
@@ -546,7 +615,7 @@ function discoverRegistrations(sf) {
             methods: kind === "webhook" ? [method.toUpperCase()] : [],
             line: lineOf(sf, node),
             node: handler,
-            exempt: LIFECYCLE_EVENTS.has(label),
+            exempt: kind === "webhook" && EXEMPT_ROUTES.has(label),
           });
         }
       }
@@ -583,10 +652,10 @@ function classifySensitivity(entry, ownFacts) {
     : { level: "low", label: "", reasons: [] };
 }
 
-function runRules(entry, ownFacts, reach, canonicalFields) {
+function runRules(entry, ownFacts, reach, canonicalFields, wrappedSharedCalls) {
   const checks = {};
-  const viaDispatch = [...reach.calls].some((name) =>
-    WRAPPED_DISPATCH_CALLS.has(name),
+  const viaDispatch = [...reach.calls, ...reach.methodCalls].some((name) =>
+    wrappedSharedCalls.has(name),
   );
   const wideEventOk = reach.hasBoundary || viaDispatch;
 
@@ -596,7 +665,7 @@ function runRules(entry, ownFacts, reach, canonicalFields) {
         status: "fail",
         message:
           "handler never enters a wide-event boundary — wrap it in " +
-          "withWideEvent() or route through dispatchCommand/handleStreamingChat",
+          `withWideEvent() or route through one of: ${[...wrappedSharedCalls].sort().join(", ")}`,
         line: entry.line,
       };
 
@@ -816,11 +885,39 @@ function findSharedEntryNode(sf, name) {
   return found;
 }
 
+/**
+ * The subset of {@link SHARED_ENTRY_POINTS} that actually opens a wide-event
+ * boundary today. Deliberately computed over the whole repo, ignoring
+ * `--files-from`: a per-file scan still has to know that `dispatchCommand` is
+ * instrumented, or every handler routing through it would read as dark.
+ *
+ * Suppressions are ignored on purpose — a waived boundary is a boundary the
+ * scan agreed not to check, which is not the same as one that exists, and it
+ * must not vouch for someone else.
+ */
+function verifiedSharedCalls(warnings) {
+  const verified = new Set();
+  for (const shared of SHARED_ENTRY_POINTS) {
+    const { sf } = parseFile(path.join(REPO_ROOT, shared.file));
+    const node = findSharedEntryNode(sf, shared.name);
+    if (!node) {
+      const warning = `${shared.file}: shared entry point '${shared.name}' not found — dispatch registry moved?`;
+      if (!warnings.includes(warning)) warnings.push(warning);
+      continue;
+    }
+    if (reachableFacts(node, indexFunctions(sf), sf).hasBoundary) {
+      verified.add(shared.name);
+    }
+  }
+  return verified;
+}
+
 function scan(fileFilter) {
   const entries = [];
   const warnings = [];
   const unparsable = [];
   const canonical = canonicalFieldNames();
+  const wrappedSharedCalls = verifiedSharedCalls(warnings);
 
   const scoreFile = (relFile, discover) => {
     if (fileFilter && !fileFilter.has(relFile)) return;
@@ -855,18 +952,18 @@ function scan(fileFilter) {
       const ownFacts = analyzeBody(entry.node, sf);
       record.sensitivity = classifySensitivity(record, ownFacts);
       const reach = reachableFacts(entry.node, fileIndex, sf);
-      record.checks = runRules(record, ownFacts, reach, canonical);
+      record.checks = runRules(
+        record,
+        ownFacts,
+        reach,
+        canonical,
+        wrappedSharedCalls,
+      );
       applySuppressions(record, record.checks, suppressions, warnings, relFile);
       record.score = scoreEntry(record.checks);
       entries.push(record);
     }
   };
-
-  for (const dir of BOT_SRC_DIRS) {
-    for (const absFile of listTsFiles(path.join(REPO_ROOT, dir))) {
-      scoreFile(path.relative(REPO_ROOT, absFile), discoverRegistrations);
-    }
-  }
 
   for (const shared of SHARED_ENTRY_POINTS) {
     scoreFile(shared.file, (sf) => {
@@ -889,6 +986,12 @@ function scan(fileFilter) {
         },
       ];
     });
+  }
+
+  for (const dir of BOT_SRC_DIRS) {
+    for (const absFile of listTsFiles(path.join(REPO_ROOT, dir))) {
+      scoreFile(path.relative(REPO_ROOT, absFile), discoverRegistrations);
+    }
   }
 
   const score = scoreGlobal(entries);

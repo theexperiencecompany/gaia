@@ -145,76 +145,99 @@ export abstract class BaseBotAdapter {
    * 4. {@link registerEvents} — register event listeners
    * 5. {@link start} — connect to the platform
    *
+   * Emits one canonical `bot_boot` wide event covering the whole sequence, so a
+   * bot that dies during startup says why — with a duration and an outcome —
+   * instead of leaving a "boot_started" line and silence.
+   *
    * @param commands - Array of unified {@link BotCommand} definitions to register.
    */
   async boot(commands: BotCommand[]): Promise<void> {
     this.logger = createBotLogger(this.platform, "base-adapter");
-    this.logger.info("boot_started", { command_count: commands.length });
 
-    this.config = await loadConfig();
-    this.gaia = new GaiaClient(
-      this.config.gaiaApiUrl,
-      this.config.gaiaApiKey,
-      this.config.gaiaFrontendUrl,
+    await withWideEvent(
+      "bot_boot",
+      {
+        platform: this.platform,
+        component: "base-adapter",
+        command_count: commands.length,
+      },
+      async () => {
+        this.config = await loadConfig();
+        this.gaia = new GaiaClient(
+          this.config.gaiaApiUrl,
+          this.config.gaiaApiKey,
+          this.config.gaiaFrontendUrl,
+        );
+        this.analytics = new Analytics(this.config.posthogApiKey);
+
+        for (const cmd of commands) {
+          this.commands.set(cmd.name, cmd);
+        }
+        // Create the shared HTTP server before registerEvents() so subclasses
+        // can mount custom routes (e.g. WhatsApp /webhook) on this.botServer.app.
+        const serverPort =
+          Number(process.env.BOT_SERVER_PORT) || this.defaultServerPort;
+        this._botServer = new BotServer(this.platform, serverPort);
+        wideLog.set({ server_port: serverPort });
+
+        let platformStarted = false;
+        try {
+          await this.initialize();
+          await this.registerCommands(commands);
+          await this.registerEvents();
+          await this.start();
+          platformStarted = true;
+
+          // Consume backend-originated outbound messages (executor replies,
+          // reminders) and deliver them via this platform's send primitive.
+          this.startOutboundConsumer();
+
+          // Start the server after registerEvents() so all routes are mounted.
+          await this._botServer.start();
+        } catch (error) {
+          wideLog.set({
+            boot_stage: platformStarted ? "serving" : "connecting",
+          });
+          if (platformStarted) {
+            await this.stop().catch(() => undefined);
+          }
+          await this._outboundConsumer?.stop().catch(() => undefined);
+          this._outboundConsumer = null;
+          await this._botServer?.stop().catch(() => undefined);
+          this._botServer = null;
+          throw error;
+        }
+      },
     );
-    this.analytics = new Analytics(this.config.posthogApiKey);
-
-    for (const cmd of commands) {
-      this.commands.set(cmd.name, cmd);
-    }
-    // Create the shared HTTP server before registerEvents() so subclasses
-    // can mount custom routes (e.g. WhatsApp /webhook) on this.botServer.app.
-    const serverPort =
-      Number(process.env.BOT_SERVER_PORT) || this.defaultServerPort;
-    this._botServer = new BotServer(this.platform, serverPort);
-
-    let platformStarted = false;
-    try {
-      await this.initialize();
-      await this.registerCommands(commands);
-      await this.registerEvents();
-      await this.start();
-      platformStarted = true;
-
-      // Consume backend-originated outbound messages (executor replies,
-      // reminders) and deliver them via this platform's send primitive.
-      this.startOutboundConsumer();
-
-      // Start the server after registerEvents() so all routes are mounted.
-      await this._botServer.start();
-    } catch (error) {
-      if (platformStarted) {
-        await this.stop().catch(() => undefined);
-      }
-      await this._outboundConsumer?.stop().catch(() => undefined);
-      this._outboundConsumer = null;
-      await this._botServer?.stop().catch(() => undefined);
-      this._botServer = null;
-      throw error;
-    }
-
-    this.logger.info("boot_completed", { gaia_api_configured: true });
   }
 
   /**
    * Gracefully shuts down the adapter.
    *
-   * Called from process signal handlers (SIGINT, SIGTERM).
-   * Delegates to the platform-specific {@link stop} implementation.
+   * Called from the process signal handlers wired by `runBotProcess`, and from
+   * any adapter that decides it cannot keep running. Delegates to the
+   * platform-specific {@link stop} implementation and emits one canonical
+   * `bot_shutdown` wide event naming what triggered it.
+   *
+   * @param trigger - What asked for the shutdown (`"SIGTERM"`, `"long_poll_fatal"`, …).
    */
-  async shutdown(): Promise<void> {
-    this.logger.info("shutdown_started");
-    if (this._outboundConsumer) {
-      await this._outboundConsumer.stop();
-      this._outboundConsumer = null;
-    }
-    await this.stop();
-    if (this._botServer) {
-      await this._botServer.stop();
-      this._botServer = null;
-    }
-    await this.analytics.shutdown();
-    this.logger.info("shutdown_completed");
+  async shutdown(trigger: string): Promise<void> {
+    await withWideEvent(
+      "bot_shutdown",
+      { platform: this.platform, component: "base-adapter", trigger },
+      async () => {
+        if (this._outboundConsumer) {
+          await this._outboundConsumer.stop();
+          this._outboundConsumer = null;
+        }
+        await this.stop();
+        if (this._botServer) {
+          await this._botServer.stop();
+          this._botServer = null;
+        }
+        await this.analytics.shutdown();
+      },
+    );
   }
 
   /**
@@ -226,12 +249,9 @@ export abstract class BaseBotAdapter {
    */
   private startOutboundConsumer(): void {
     const url = this.config.rabbitmqUrl;
-    if (!url) {
-      this.logger.warn("outbound_consumer_disabled", {
-        reason: "RABBITMQ_URL not set",
-      });
-      return;
-    }
+    // loadConfig() already warned (config_optional_missing / RABBITMQ_URL) on
+    // this same boot event — saying it twice does not make it truer.
+    if (!url) return;
     this._outboundConsumer = new OutboundConsumer(
       this.platform,
       url,
@@ -316,9 +336,10 @@ export abstract class BaseBotAdapter {
     );
     const limit = OUTBOUND_FILE_LIMITS[this.platform];
     if (artifact.data.length > limit) {
-      this.logger.warn("outbound_file_too_large", {
-        platform: this.platform,
-        filename: attachment.filename,
+      // `platform` is already on every line's envelope — repeating it as a
+      // field collides with the reserved key and lands as `ctx_platform`.
+      wideLog.warning("outbound_file_too_large", {
+        attachment_filename: attachment.filename,
         bytes: artifact.data.length,
         limit,
       });
@@ -344,9 +365,8 @@ export abstract class BaseBotAdapter {
     destinationId: string,
     attachment: OutboundAttachment,
   ): Promise<void> {
-    this.logger.warn("outbound_file_fallback_text", {
-      platform: this.platform,
-      filename: attachment.filename,
+    wideLog.warning("outbound_file_fallback_text", {
+      attachment_filename: attachment.filename,
     });
     await this.deliverOutbound(
       destinationId,
@@ -424,11 +444,6 @@ export abstract class BaseBotAdapter {
 
         const startMs = Date.now();
         try {
-          this.logger.info("command_dispatch_started", {
-            command: name,
-            user_hash: userHash,
-            channel_hash: channelHash,
-          });
           await command.execute({
             gaia: this.gaia,
             target,
@@ -441,12 +456,6 @@ export abstract class BaseBotAdapter {
             duration_ms: Date.now() - startMs,
             success: true,
             channel_id: target.channelId,
-          });
-          this.logger.info("command_dispatch_completed", {
-            command: name,
-            user_hash: userHash,
-            channel_hash: channelHash,
-            duration_ms: Date.now() - startMs,
           });
         } catch (error) {
           const durationMs = Date.now() - startMs;
@@ -541,7 +550,7 @@ export abstract class BaseBotAdapter {
       this.welcomedUsers.delete(userId);
       this.logger.error(
         "welcome_auth_check_failed",
-        { user_id: userId },
+        { user_hash: hashLogIdentifier(userId) },
         error,
       );
       return false;
@@ -579,6 +588,10 @@ export abstract class BaseBotAdapter {
    * method injects the shared GAIA client and builds the user context so every
    * adapter calls one inherited method and stays byte-for-byte consistent.
    * `download` is a thunk so unsupported kinds never incur a download.
+   *
+   * Owns the media pipeline's wide-event boundary: the download, the Whisper
+   * transcription and the upload all happen before any chat boundary exists, so
+   * without this every attachment's latency and rejection reason was dark.
    */
   protected resolveIncomingMedia(
     media: IncomingMedia,
@@ -586,11 +599,23 @@ export abstract class BaseBotAdapter {
     userId: string,
     channelId?: string,
   ): Promise<MediaOutcome> {
-    return processBotMedia(
-      this.gaia,
-      media,
-      download,
-      this.buildContext(userId, channelId),
+    return withWideEvent(
+      "media_intake",
+      {
+        platform: this.platform,
+        component: "base-adapter",
+        user_hash: hashLogIdentifier(userId),
+        channel_hash: hashLogIdentifier(channelId),
+        media_kind: media.kind,
+        is_voice_note: media.isVoiceNote,
+      },
+      () =>
+        processBotMedia(
+          this.gaia,
+          media,
+          download,
+          this.buildContext(userId, channelId),
+        ),
     );
   }
 }

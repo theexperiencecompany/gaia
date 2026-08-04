@@ -530,10 +530,26 @@ services:
       # promtail re-ingests every retained structured-*.json from byte 0.
       - promtail_positions:/var/lib/promtail
       # Mount local log files so promtail can ship them even when services
-      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent).
+      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent,
+      # nx dev bot-<platform>). These back the file jobs in
+      # observability/promtail-config.yaml — a __path__ whose directory is not
+      # mounted here reads nothing, forever, silently.
+      #
+      # The bots need this for the SAME reason the Python services do, and only
+      # for the same case: a bot started with `nx dev bot-<platform>` runs on
+      # the host with cwd apps/bots/<platform> and writes
+      # logs/structured-<date>.json (libs/shared/ts/src/bots/utils/log-file-sink.ts).
+      # A *dockered* bot writes no such file — the image's WORKDIR is /app so
+      # the sink never resolves a directory — and is scraped from container
+      # stdout by the `docker` job below instead, which explicitly keeps
+      # discord-bot|slack-bot|telegram-bot|whatsapp-bot.
       - ../../apps/api/logs:/var/log/gaia-api:ro
       - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
       - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
+      - ../../apps/bots/discord/logs:/var/log/gaia-discord-bot:ro
+      - ../../apps/bots/slack/logs:/var/log/gaia-slack-bot:ro
+      - ../../apps/bots/telegram/logs:/var/log/gaia-telegram-bot:ro
+      - ../../apps/bots/whatsapp/logs:/var/log/gaia-whatsapp-bot:ro
     command: -config.file=/etc/promtail/config.yaml
     restart: unless-stopped
     depends_on:

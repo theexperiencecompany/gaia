@@ -218,17 +218,39 @@ on a different runtime (the TypeScript bots) gets its own port instead —
 schema so the two maps stay mergeable; any change to the contract here has to
 land there too.
 
-## Relationship to `tools/lints`
+## Relationship to `tools/lints` and `tools/logcheck`
 
 `route-contract` (pre-commit) is the hard floor: a handler with no `log.set` at
 all cannot be committed. evlog map is the graded ceiling above it: how *well*
 instrumented each entry point is, weighted by how much it matters. The two read
 handlers with the same own-scope semantics, so they never disagree.
 
+Both read *source*. `tools/logcheck` closes the loop from the other end: it
+reads the NDJSON a running surface actually emitted and judges whether it is
+usable (framing, core keys, secrets, the byte cap, "a failing request must
+record why"). A file can score 100 here and still fail there — that is the
+point of having both.
+
+## Tests
+
+`test_evlog_map.py` — one test per rule that has been wrong or could invert
+silently, driven through the real scanner:
+
+```bash
+uv run --no-project --with pytest pytest tools/evlog_map -q
+```
+
+Every test is mutation-verified: inverting the rule it covers makes it fail. If
+you add a rule, add the test the same way — and check it fails when you break
+the rule on purpose, because a test that cannot fail is not a test.
+
 ## CI
 
 The `observability` lane in `.github/workflows/code-quality.yml`:
 
+0. runs this scanner's own test suite first (`pytest tools/evlog_map
+   tools/logcheck`) — a rule that inverts silently keeps printing a score, so
+   the tool is tested before it is trusted to gate anything,
 1. always posts the full-repo score to the job summary, and fails if discovery
    drops below the `--min-entries` floor on either surface,
 2. on PRs, scores the changed Python files at the merge-base and at HEAD with

@@ -520,7 +520,8 @@ jobs:
   # count double. Full-repo score goes to the job summary; on PRs the changed
   # files are scored at the merge-base and at HEAD with the same scanner and
   # the lane fails on regression (new files get a hard "good"-grade floor).
-  # Stdlib-only — no toolchain install.
+  # The scanners themselves are stdlib-only; uv is installed only to run their
+  # test suites (first step).
   observability:
     name: Observability score (evlog map)
     needs: [changes]
@@ -534,12 +535,29 @@ jobs:
       # Node toolchain only for the bots scanner (TS compiler API needs
       # node_modules); the Python scanner stays stdlib-only.
       - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      # This lane's verdict is only worth what its rules are worth, and those
+      # rules have been silently wrong: an `except` matrix that passed handlers
+      # which discarded the caught error, and route resolution that resolved 2
+      # of 283 paths. Both kept printing a score. So the tools are tested
+      # BEFORE they are trusted to gate anything — tools/evlog_map (static:
+      # can this code explain a failure?) and tools/logcheck (black-box: is the
+      # NDJSON it actually emitted usable?). Both suites run in ~1s and are
+      # deliberately un-grouped: on failure the traceback is the signal.
+      - name: Scanner self-tests — the observability tools are tested before they gate
+        run: |
+          set -euo pipefail
+          uv run --no-project --with pytest pytest tools/evlog_map tools/logcheck -q
+          echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
       # Discovery floors. A perfect score over an empty map is still a perfect
       # score, so a framework upgrade or refactor that breaks entry-point
       # discovery reads as an *improvement* and every score gate waves it
       # through. --min-entries asserts the surface is still visible before the
       # score means anything. Floors are the counts at the time of writing —
-      # 308 scored Python entry points, 15 scored bot entry points (run the
+      # 308 scored Python entry points, 23 scored bot entry points (run the
       # scanners to re-read them). Raise them as the surface grows; a drop is
       # either a deliberate deletion (lower the floor in the same PR) or the
       # bug this gate exists to catch.
@@ -549,7 +567,7 @@ jobs:
           echo "evlog map — python surface (apps/api + apps/voice-agent)"
           python3 tools/evlog_map --github-summary --no-write --min-entries 308
           echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
-          node scripts/ci/evlog-map-bots.mjs --min-entries 15
+          node scripts/ci/evlog-map-bots.mjs --min-entries 23
           echo "observability: full scores above; per-entry detail in the job summary only"
       - name: Changed-files regression gate (per-file, score must not drop)
         if: github.event_name == 'pull_request'
@@ -626,11 +644,38 @@ jobs:
           # The bots surface is small and already at 100 — hold it there
           # outright rather than baselining per file. --min-entries is the
           # companion gate: 100 over a surface the scanner stopped seeing is
-          # not a pass (floor = today's 15 scored entry points).
+          # not a pass (floor = today's 23 scored entry points).
           echo "::group::evlog map — bots surface gate"
-          node scripts/ci/evlog-map-bots.mjs --min-score 100 --min-entries 15
+          node scripts/ci/evlog-map-bots.mjs --min-score 100 --min-entries 23
           echo "::endgroup::"
-          echo "observability-bots: OK (surface held at 100 over 15+ entry points)"
+          echo "observability-bots: OK (surface held at 100 over 23+ entry points)"
+
+  # --- Wide-event cross-runtime conformance --------------------------------
+  # The Python services and the TypeScript bots must emit the SAME log shape,
+  # so one LogQL query spans both. This lane runs both logging stacks for real,
+  # captures the NDJSON each prints, and diffs the shapes against each other and
+  # against scripts/ci/wide-event-conformance/contract.json. A field renamed,
+  # retyped, or added on only one side fails here — which is the only thing that
+  # actually stops the two halves drifting apart between reviews.
+  wide-event-conformance:
+    name: Wide events have one shape across Python and TypeScript
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true' || needs.changes.outputs.has_typescript == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Emit real events from both runtimes and diff their shapes
+        run: |
+          echo "::group::wide-event conformance"
+          python3 scripts/ci/wide-event-conformance/run.py --show-capture
+          echo "::endgroup::"
+          echo "wide events: OK (Python and TypeScript emit one shape)"
 
   # --- Dead code detection (knip + vulture) — enforced ---------------------
   # Runs in --strict mode: any knip (TS) or vulture (Python) finding fails the
@@ -684,6 +729,7 @@ jobs:
       - python-xenon
       - python-security
       - observability
+      - wide-event-conformance
       - dead-code
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -709,6 +755,7 @@ jobs:
           PYTHON_XENON: ${{ needs.python-xenon.result }}
           PYTHON_SECURITY: ${{ needs.python-security.result }}
           OBSERVABILITY: ${{ needs.observability.result }}
+          WIDE_EVENT_CONFORMANCE: ${{ needs.wide-event-conformance.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
@@ -734,12 +781,13 @@ jobs:
             [python-xenon]="$PYTHON_XENON"
             [python-security]="$PYTHON_SECURITY"
             [observability]="$OBSERVABILITY"
+            [wide-event-conformance]="$WIDE_EVENT_CONFORMANCE"
             [dead-code]="$DEAD_CODE"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates type-coverage package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
-                 observability dead-code)
+                 observability wide-event-conformance dead-code)
 
           # ---------------------------------------------------------------
           # RATCHET: a lane is ENFORCED (can fail this gate) if the marker

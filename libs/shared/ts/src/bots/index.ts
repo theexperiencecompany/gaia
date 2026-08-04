@@ -24,7 +24,12 @@
  * 2. Extend BaseBotAdapter and implement the five lifecycle methods
  * 3. In index.ts: create adapter instance, call adapter.boot(allCommands)
  */
-export { BaseBotAdapter, BotServer, richMessageToMarkdown } from "./adapter";
+export {
+  BaseBotAdapter,
+  BotServer,
+  richMessageToMarkdown,
+  runBotProcess,
+} from "./adapter";
 export { GaiaApiError, GaiaClient } from "./api";
 export {
   allCommands,

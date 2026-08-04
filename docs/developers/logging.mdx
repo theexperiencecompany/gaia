@@ -19,8 +19,10 @@ event" / canonical log line) instead of scattering log lines through a request:
 - **WebSocket connections** — a `log_context()` boundary per connection emits
   one event per connection lifetime.
 
-Every event carries environment characteristics (`env`, `service`, `commit`),
-a `trace_id` (echoed on the `x-trace-id` response header), high-cardinality
+Every **line** — not just the boundary event — carries environment
+characteristics (`env`, `service`, `commit`), stamped by the JSON sink itself.
+Every **event** additionally carries `task` (the unit of work's name), a
+`trace_id` (echoed on the `x-trace-id` response header), high-cardinality
 identifiers (`user.id`, `chat.conversation_id`, …), and `warnings[]` /
 `errors[]` / `audit[]` arrays accumulated mid-flight.
 
@@ -31,7 +33,8 @@ from shared.py.wide_events import log
 
 log.set(user={"id": user_id}, todo={"operation": "create"})  # context → the event
 log.audit("subscription cancelled", actor=user_id)           # audit trail (auth/money)
-log.error("upstream failed", error_type=type(e).__name__)    # errors[] + real-time line
+log.error("upstream failed", error_type=type(e).__name__,     # errors[] + real-time line
+          error=str(e))                                      # the two exception fields
 ```
 
 The canonical field schema is `WideEventFields` in
@@ -61,18 +64,39 @@ locally or in Docker.
 
 ### One query, every surface
 
-The Python services and the TypeScript bots emit the **same key names for the
-same concepts**, so a single LogQL query spans both: `time`, `level` (loguru
-names — `WARNING`, not `WARN`), `service`, `logger`, `message`, `env`,
-`trace_id`, `duration_ms`, `outcome`, `final_level`, `commit`, and the
-`errors[]` / `warnings[]` / `audit[]` arrays (each entry keyed by `msg`).
+The Python services and the TypeScript bots emit the **same key names, with
+the same value types, for the same concepts**, so a single LogQL query spans
+both.
+
+On every line: `time` (UTC, milliseconds, `Z`), `level` (loguru names —
+`WARNING`, not `WARN`), `env`, `service`, `commit`, `logger`, `message`.
+On every boundary event: `task` (the unit of work's name), `trace_id`,
+`duration_ms`, `outcome`, `final_level`, and the `errors[]` / `warnings[]` /
+`audit[]` arrays (each entry keyed by `msg`).
+Describing a thrown value: `error_type` (its class) and `error` (its message) —
+two flat strings, never a nested object, on both surfaces.
 
 ```logql
 {service=~"gaia-backend|discord-bot"} | json | trace_id="<TRACE_ID>"
+sum by (task) (count_over_time({service=~"gaia-backend|discord-bot"} | json [5m]))
 ```
 
 The event name lives under `message` on both surfaces — `worker_task` /
-`http_request` for Python, `bot_event` for the bots.
+`background_task` / `http_request` for Python, `bot_event` for the bots.
+
+Two asymmetries are deliberate and written down: Python adds loguru provenance
+(`module`, `line`, `worker`) that has no TypeScript equivalent, and the bots
+stamp `platform`/`component` on every line while Python carries the same two
+keys as ordinary optional fields.
+
+**This is enforced, not just documented.** `scripts/ci/wide-event-conformance/`
+runs both logging stacks for real, captures what each prints, and diffs the
+shapes against each other and against `contract.json`. A field renamed,
+retyped, or added on only one side fails the `wide-event-conformance` lane:
+
+```bash
+python3 scripts/ci/wide-event-conformance/run.py
+```
 
 Start the stack:
 
@@ -231,10 +255,11 @@ parsing at all):
   | json first_error="errors[0].msg" | first_error != ""
 ```
 
-**Failed worker tasks, by task name:**
+**Failed units of work, by name — spans workers, background tasks and bots:**
 
 ```logql
-{service="arq_worker"} | json | message = "worker_task" | outcome = "failed"
+sum by (task) (count_over_time(
+  {service=~"arq_worker|gaia-backend|.*-bot"} | json | outcome = "failed" [5m]))
 ```
 
 **One chat streaming turn:**

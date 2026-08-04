@@ -1,6 +1,37 @@
 """
 Advanced logging configuration for GAIA applications.
 
+╔══════════════════════════════════════════════════════════════════════════╗
+║ CROSS-RUNTIME CONTRACT — MIRROR EVERY SHAPE CHANGE IN TYPESCRIPT         ║
+║                                                                          ║
+║ This file is ONE HALF of GAIA's log envelope. The other half is          ║
+║   libs/shared/ts/src/bots/utils/logger.ts  (function `buildRecord`)      ║
+║ and it MUST emit the same key names, the same value types and the same   ║
+║ timestamp format, because one LogQL query (`| json | ...`) has to span   ║
+║ the Python services and the TypeScript bots at once. A field that        ║
+║ exists here and not there — or exists on both with a different type —    ║
+║ silently breaks every dashboard that joins the two surfaces.             ║
+║                                                                          ║
+║ If you are an agent editing ONLY this file, before you finish:           ║
+║  1. Open libs/shared/ts/src/bots/utils/logger.ts and make the matching   ║
+║     change in `buildRecord` / `RESERVED_LOG_KEYS` / `COLLIDING_KEY_      ║
+║     PREFIX` / `sanitizeErrorForLog`.                                     ║
+║  2. Update the shared contract that both sides are checked against:      ║
+║     scripts/ci/wide-event-conformance/contract.json                      ║
+║  3. Run the conformance check — it emits real lines from BOTH runtimes   ║
+║     and diffs their shapes:                                              ║
+║       python3 scripts/ci/wide-event-conformance/run.py                   ║
+║     It fails if the two runtimes disagree, so skipping step 1 or 2 is    ║
+║     a red CI lane, not a silent drift.                                   ║
+║                                                                          ║
+║ Envelope keys stamped on EVERY line by both runtimes:                    ║
+║   time, level, env, service, commit, logger, message                     ║
+║ Python-only provenance (loguru record data with no TS equivalent, and    ║
+║ declared as such in the contract): module, line, worker                  ║
+║ TS-only envelope: platform, component (Python carries them as ordinary   ║
+║ optional wide-event fields with the same names and types)                ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
 This module provides a comprehensive, production-ready logging system featuring:
 - Beautiful console output with color coding and structured formatting
 - Optional file outputs with automatic rotation and compression
@@ -32,7 +63,8 @@ raw loguru logger outside the wide-event lifecycle.
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+import functools
 import json as _json
 import logging
 from math import isfinite
@@ -63,13 +95,45 @@ class _LogConfig(TypedDict):
     format: _LogFormats
 
 
-_ENV = os.getenv("ENV", "development")
 _LOGURU_CONFIGURED = False
 _FILE_LOGGING_CONFIGURED = False
 
+# Promtail labels every line with the service it came from (see
+# infra/docker/observability/promtail-config.yaml). The in-line `service` field
+# MUST match that label, so `{service="X"}` and `| json | service="X"` agree —
+# a query that mixes the two must not silently return nothing.
+#
+# Three Python services share this module, so the name cannot be a constant:
+# GAIA_SERVICE_NAME is set per service (compose/Dockerfile/mise task) and must
+# equal the Promtail label for that service. The API keeps the historical
+# default so an unset var is still correct for the most common process.
+_DEFAULT_SERVICE_NAME = "gaia-backend"
+# Deployment environment. `ENV` is GAIA's own variable (apps/api/Dockerfile sets
+# it); `NODE_ENV` is the Node-ecosystem spelling the bots' image sets. Both
+# runtimes resolve `env` from ENV → NODE_ENV → "development", so one value
+# vocabulary spans every surface and an unset var reads as "not a configured
+# deployment" rather than mislabelling a laptop as production.
+_DEFAULT_ENV = "development"
+
 # Top-level keys every JSON line is built from. Extra fields must never
 # overwrite them — a colliding key is re-emitted under _COLLIDING_KEY_PREFIX.
-_CORE_KEYS = frozenset({"time", "level", "logger", "message", "module", "line", "worker"})
+# env/service/commit are core precisely because they are the line's infra
+# identity: app code that sets `service` must not be able to contradict the
+# Promtail label for its own process.
+_CORE_KEYS = frozenset(
+    {
+        "time",
+        "level",
+        "env",
+        "service",
+        "commit",
+        "logger",
+        "message",
+        "module",
+        "line",
+        "worker",
+    }
+)
 _COLLIDING_KEY_PREFIX = "ctx_"
 # Extra keys consumed into the core entry (never re-emitted as extra fields).
 _CONSUMED_EXTRA_KEYS = frozenset({"logger_name", "worker"})
@@ -79,6 +143,27 @@ MAX_JSON_LINE_BYTES = 200_000
 # and the gaia-*.log sink, so local structured files age out at the same rate.
 STRUCTURED_LOG_RETENTION_DAYS = 30
 _TRUNCATED_MESSAGE_MAX_CHARS = 10_000
+
+
+@functools.lru_cache(maxsize=1)
+def env_context() -> dict[str, str]:
+    """Infra identity stamped on every emitted JSON line.
+
+    The Python half of the envelope's `env`/`service`/`commit` — mirrored by
+    `buildRecord` in libs/shared/ts/src/bots/utils/logger.ts, which resolves the
+    same three fields from the same variables. Resolved once and cached.
+
+    `commit` reads GIT_COMMIT_SHA (or COMMIT_SHA), set in the Docker image / CI,
+    and falls back to "local" during development. `service` reads
+    GAIA_SERVICE_NAME, which each service sets to its own Promtail label.
+    """
+    return {
+        # `or`-chained so a set-but-empty var still falls through to the default.
+        "env": os.getenv("ENV") or os.getenv("NODE_ENV") or _DEFAULT_ENV,
+        "service": os.getenv("GAIA_SERVICE_NAME") or _DEFAULT_SERVICE_NAME,
+        "commit": (os.getenv("GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA") or "local")[:8],
+    }
+
 
 LOG_CONFIG: _LogConfig = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
@@ -90,7 +175,8 @@ LOG_CONFIG: _LogConfig = {
     # everywhere, which meant the eight compose services that set it were the
     # only ones Promtail could parse — a ninth would have degraded silently to
     # colourised text with ANSI escapes, and nothing would have failed.
-    "format_mode": os.getenv("LOG_FORMAT") or ("json" if _ENV == "production" else "console"),
+    "format_mode": os.getenv("LOG_FORMAT")
+    or ("json" if env_context()["env"] == "production" else "console"),
     "diagnose": os.getenv("LOG_DIAGNOSE", "false").lower() == "true",
     "backtrace": os.getenv("LOG_BACKTRACE", "true").lower() == "true",
     "colorize": os.getenv("LOG_COLORIZE", "true").lower() == "true",
@@ -157,11 +243,37 @@ if LOG_CONFIG["format_mode"] == "json":
     os.environ.setdefault("TQDM_DISABLE", "1")
 
 
+# Emission order of the core entry. Same order as ENVELOPE_KEYS in
+# libs/shared/ts/src/bots/utils/logger.ts, minus the loguru-only provenance
+# (module/line/worker) that has no TypeScript equivalent.
+_CORE_KEY_ORDER = (
+    "time",
+    "level",
+    "env",
+    "service",
+    "commit",
+    "logger",
+    "message",
+    "module",
+    "line",
+    "worker",
+)
+
+
 def _core_fields(entry: dict[str, object]) -> dict[str, object]:
-    return {
-        key: entry[key]
-        for key in ("time", "level", "logger", "message", "module", "line", "worker")
-    }
+    return {key: entry[key] for key in _CORE_KEY_ORDER}
+
+
+def _iso_utc_millis(moment: datetime) -> str:
+    """Serialize a timestamp exactly as `new Date().toISOString()` does in TS.
+
+    Loguru records carry the *local* timezone, so the same instant serialized on
+    a laptop in UTC+05:30 and in a UTC container produced two different strings
+    — enough to break any query that compares or groups on the raw `time` value
+    across surfaces. Normalizing to UTC with millisecond precision and a `Z`
+    suffix makes both runtimes emit byte-identical timestamps for one instant.
+    """
+    return moment.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def _finite(value: object) -> object:
@@ -268,11 +380,18 @@ def _build_json_entry(record: Record) -> str:
 
     Produces one JSON object per line. Fields from `.bind()` calls are merged
     into the top-level object so that LogQL `| json` can filter on them directly.
+    The envelope — time/level/env/service/commit/logger/message — is stamped
+    HERE, on every line, exactly as `buildRecord` does for the TypeScript bots,
+    so `| json | env="production"` selects the same lines on both surfaces. It
+    is also the single place the infra identity is resolved: no caller adds
+    `env_context()` to its own payload.
+
     Three guarantees keep the sink total:
 
     - Core keys always win: an extra field colliding with a core key (e.g.
-      `log.set(level=...)`) is emitted as `ctx_<key>` instead of corrupting the
-      line's real level/message.
+      `log.set(level=...)` or a service-layer `log.set(service=...)`) is emitted
+      as `ctx_<key>` instead of corrupting the line's real level/message or
+      contradicting the Promtail label for this process.
     - Serialization never drops a record: unserializable extras (non-str dict
       keys, circular refs) fall back to a sanitized entry carrying the core
       fields, trace_id and `serialization_error`.
@@ -287,14 +406,19 @@ def _build_json_entry(record: Record) -> str:
     sink instead (see _json_stdout_sink).
 
     Example output:
-        {"time": "2024-01-01T12:00:00+00:00", "level": "INFO", "logger": "REQUEST",
+        {"time": "2024-01-01T12:00:00.123Z", "level": "INFO", "env": "production",
+         "service": "gaia-backend", "commit": "abc1234", "logger": "REQUEST",
          "message": "http_request", "method": "GET", "path": "/api/v1/chat",
          "status_code": 200, "duration_ms": 234.56, "client_ip": "1.2.3.4"}
     """
     extra = record["extra"]
+    identity = env_context()
     entry: dict[str, object] = {
-        "time": record["time"].isoformat(),
+        "time": _iso_utc_millis(record["time"]),
         "level": record["level"].name,
+        "env": identity["env"],
+        "service": identity["service"],
+        "commit": identity["commit"],
         "logger": extra.get("logger_name", "app"),
         "message": record["message"],
         "module": record["module"],
@@ -369,8 +493,11 @@ def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
 
     def _sink(message: Message) -> None:
         record = message.record
-        date_str = record["time"].strftime("%Y-%m-%d")
-        resolved = log_dir / f"structured-{date_str}.json"
+        # UTC, so the file a line lands in always agrees with the UTC `time` the
+        # line carries — the same rule appendStructuredLogLine follows in
+        # libs/shared/ts/src/bots/utils/log-file-sink.ts (`isoTime.slice(0, 10)`).
+        utc_day = record["time"].astimezone(UTC).date()
+        resolved = log_dir / f"structured-{utc_day.isoformat()}.json"
         key = str(resolved)
 
         fh = _handles.get(key)
@@ -388,7 +515,7 @@ def _json_file_sink_factory(log_dir: Path) -> Callable[[Message], None]:
                         sys.stderr.write(
                             f"[gaia-logging] failed to close stale log handle {old_key}: {exc}\n"
                         )
-            _prune_structured_logs(log_dir, record["time"].date())
+            _prune_structured_logs(log_dir, utc_day)
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
 
@@ -658,5 +785,6 @@ __all__ = [
     "logger",
     "configure_loguru",
     "configure_file_logging",
+    "env_context",
     "get_contextual_logger",
 ]

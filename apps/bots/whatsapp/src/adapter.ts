@@ -149,14 +149,12 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       baseUrl: "https://api.kapso.ai/meta/whatsapp",
       kapsoApiKey: this.waConfig.kapsoApiKey,
     });
-    this.adapterLogger.info("client_initialized", {
-      phone_number_id: this.waConfig.kapsoPhoneNumberId,
-    });
+    wideLog.set({ phone_number_id: this.waConfig.kapsoPhoneNumberId });
   }
 
   /** WhatsApp has no platform-level command registration step. */
   protected async registerCommands(_commands: BotCommand[]): Promise<void> {
-    this.adapterLogger.info("commands_registered");
+    // Nothing to register: WhatsApp matches commands by text prefix.
   }
 
   /**
@@ -297,7 +295,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const timestampSec = Number(event.message.timestamp);
     if (!Number.isFinite(timestampSec)) {
       this.adapterLogger.warn("webhook_invalid_timestamp", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: event.message.id,
       });
       return;
@@ -305,7 +303,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     const eventAgeMs = Date.now() - timestampSec * 1000;
     if (eventAgeMs < 0) {
       this.adapterLogger.warn("webhook_future_timestamp", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: event.message.id,
         age_ms: eventAgeMs,
       });
@@ -313,7 +311,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
     if (eventAgeMs > REPLAY_WINDOW_MS) {
       this.adapterLogger.warn("webhook_event_replayed", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: event.message.id,
         age_ms: eventAgeMs,
       });
@@ -321,7 +319,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     }
 
     this.adapterLogger.info("webhook_message_received", {
-      wa_hash: waIdHash,
+      user_hash: waIdHash,
       message_type: event.message.type,
       has_text: Boolean(text),
     });
@@ -333,7 +331,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       this.enqueueForUser(waId, () =>
         this.handleIncomingMessage(waId, text, msgId).catch((err) =>
           this.adapterLogger.error("incoming_message_processing_failed", {
-            wa_hash: waIdHash,
+            user_hash: waIdHash,
             message_id: msgId,
             ...sanitizeErrorForLog(err),
           }),
@@ -356,7 +354,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
           );
         } catch (err) {
           this.adapterLogger.error("unsupported_media_handling_failed", {
-            wa_hash: waIdHash,
+            user_hash: waIdHash,
             message_type: event.message.type,
             ...sanitizeErrorForLog(err),
           });
@@ -368,7 +366,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     this.enqueueForUser(waId, () =>
       this.handleMediaMessage(waId, media, msgId).catch((err) =>
         this.adapterLogger.error("media_message_processing_failed", {
-          wa_hash: waIdHash,
+          user_hash: waIdHash,
           message_id: msgId,
           media_kind: media.kind,
           ...sanitizeErrorForLog(err),
@@ -405,7 +403,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       emitCount += 1;
       const seq = emitCount;
       this.adapterLogger.debug("typing_indicator_emitted", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: messageId,
         seq,
         elapsed_ms: Date.now() - startedAt,
@@ -418,7 +416,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         })
         .catch((err: unknown) =>
           this.adapterLogger.error("typing_indicator_failed", {
-            wa_hash: waIdHash,
+            user_hash: waIdHash,
             message_id: messageId,
             seq,
             ...sanitizeErrorForLog(err),
@@ -486,7 +484,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       return status.authenticated;
     } catch (err) {
       this.adapterLogger.warn("welcome_auth_check_failed", {
-        wa_hash: hashLogIdentifier(waId),
+        user_hash: hashLogIdentifier(waId),
         ...sanitizeErrorForLog(err),
       });
       return false;
@@ -495,7 +493,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
 
   /** Nothing additional to start — base server is started by BaseBotAdapter.boot(). */
   protected async start(): Promise<void> {
-    this.adapterLogger.info("bot_started");
+    // The base server (which serves /webhook) is started by boot().
   }
 
   /** Nothing additional to stop — base server is stopped by BaseBotAdapter.shutdown(). */
@@ -547,7 +545,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("incoming_message_started", {
-      wa_hash: waIdHash,
+      user_hash: waIdHash,
       message_id: messageId,
       text_length: text.length,
       is_command: text.startsWith("/"),
@@ -677,7 +675,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       );
     } catch (err) {
       this.adapterLogger.error("streaming_failed", {
-        wa_hash: hashLogIdentifier(waId),
+        user_hash: hashLogIdentifier(waId),
         ...sanitizeErrorForLog(err),
       });
       try {
@@ -687,7 +685,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         );
       } catch (sendErr) {
         this.adapterLogger.error("streaming_error_message_send_failed", {
-          wa_hash: hashLogIdentifier(waId),
+          user_hash: hashLogIdentifier(waId),
           ...sanitizeErrorForLog(sendErr),
         });
       }
@@ -725,7 +723,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
     } catch (error) {
       this.adapterLogger.error(
         "welcome_send_failed",
-        { wa_hash: hashLogIdentifier(waId) },
+        { user_hash: hashLogIdentifier(waId) },
         error,
       );
     }
@@ -752,7 +750,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
   ): Promise<void> {
     const waIdHash = hashLogIdentifier(waId);
     this.adapterLogger.info("media_message_started", {
-      wa_hash: waIdHash,
+      user_hash: waIdHash,
       message_id: messageId,
       media_kind: media.kind,
       is_voice_note: media.isVoiceNote,
@@ -791,7 +789,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       }
     } catch (err) {
       this.adapterLogger.error("media_message_failed", {
-        wa_hash: waIdHash,
+        user_hash: waIdHash,
         message_id: messageId,
         media_kind: media.kind,
         ...sanitizeErrorForLog(err),
@@ -803,7 +801,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
         );
       } catch (sendErr) {
         this.adapterLogger.error("media_error_message_send_failed", {
-          wa_hash: waIdHash,
+          user_hash: waIdHash,
           ...sanitizeErrorForLog(sendErr),
         });
       }
@@ -917,7 +915,7 @@ export class WhatsAppAdapter extends BaseBotAdapter {
       // rethrows so the consumer dead-letters it. The original error is logged
       // so a non-window failure stays visible.
       this.adapterLogger.info("outbound_template_fallback", {
-        wa_hash: hashLogIdentifier(destinationId),
+        user_hash: hashLogIdentifier(destinationId),
         ...sanitizeErrorForLog(err),
       });
       await this.sendNotificationTemplate(destinationId, text);

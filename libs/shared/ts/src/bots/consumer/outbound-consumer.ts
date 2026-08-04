@@ -74,41 +74,62 @@ export class OutboundConsumer {
     this.conn = null;
   }
 
+  /**
+   * Connects, declares the topology and starts consuming — one unit of work,
+   * one canonical event. A bot that never delivers a backend message is almost
+   * always failing here, and a broker that is down at boot retries forever, so
+   * each attempt has to be individually visible (with its outcome and how long
+   * it took) rather than collapsing into a single line at the end.
+   */
   private async connect(): Promise<void> {
     if (this.stopped) return;
+    const queue = OUTBOUND_QUEUES[this.platform];
     try {
-      this.conn = await connect(this.url);
-      this.conn.on("close", () => this.scheduleReconnect());
-      // 'close' still drives the reconnect — this handler exists to keep the
-      // reason diagnosable (and to stop an unhandled 'error' killing the
-      // process). Without it the only trace of a broker restart, revoked
-      // credentials or heartbeat timeout is a bare `outbound_consumer_reconnecting`.
-      this.conn.on("error", (err) =>
-        this.logger.error("outbound_consumer_connection_error", undefined, err),
-      );
-      this.channel = await this.conn.createChannel();
+      await withWideEvent(
+        "outbound_connect",
+        {
+          platform: this.platform,
+          component: "outbound-consumer",
+          queue,
+        },
+        async () => {
+          this.conn = await connect(this.url);
+          this.conn.on("close", () => this.scheduleReconnect());
+          // 'close' still drives the reconnect — this handler exists to keep the
+          // reason diagnosable (and to stop an unhandled 'error' killing the
+          // process). Without it the only trace of a broker restart, revoked
+          // credentials or heartbeat timeout is a bare `outbound_consumer_reconnecting`.
+          this.conn.on("error", (err) =>
+            this.logger.error(
+              "outbound_consumer_connection_error",
+              undefined,
+              err,
+            ),
+          );
+          this.channel = await this.conn.createChannel();
 
-      const queue = OUTBOUND_QUEUES[this.platform];
-      await this.channel.assertExchange(OUTBOUND_DLX, "direct", {
-        durable: true,
-      });
-      await this.channel.assertQueue(dlqName(queue), { durable: true });
-      await this.channel.bindQueue(
-        dlqName(queue),
-        OUTBOUND_DLX,
-        dlqName(queue),
-      );
-      await this.channel.assertQueue(queue, {
-        durable: true,
-        arguments: workQueueArguments(queue),
-      });
-      await this.channel.prefetch(PREFETCH);
-      await this.channel.consume(queue, (msg) => void this.handle(msg));
+          await this.channel.assertExchange(OUTBOUND_DLX, "direct", {
+            durable: true,
+          });
+          await this.channel.assertQueue(dlqName(queue), { durable: true });
+          await this.channel.bindQueue(
+            dlqName(queue),
+            OUTBOUND_DLX,
+            dlqName(queue),
+          );
+          await this.channel.assertQueue(queue, {
+            durable: true,
+            arguments: workQueueArguments(queue),
+          });
+          await this.channel.prefetch(PREFETCH);
+          await this.channel.consume(queue, (msg) => void this.handle(msg));
 
-      this.reconnectDelayMs = RECONNECT_BASE_MS;
-      this.logger.info("outbound_consumer_started", { queue });
-    } catch (err) {
-      this.logger.error("outbound_consumer_connect_failed", undefined, err);
+          this.reconnectDelayMs = RECONNECT_BASE_MS;
+        },
+      );
+    } catch {
+      // withWideEvent already emitted the failure (outcome=failed, errors[]);
+      // re-logging it here would double every broker outage in Loki.
       this.scheduleReconnect();
     }
   }

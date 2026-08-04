@@ -1,6 +1,42 @@
 """
 Wide event logging — one context-rich structured event per request.
 
+╔══════════════════════════════════════════════════════════════════════════╗
+║ CROSS-RUNTIME CONTRACT — MIRROR EVERY SHAPE CHANGE IN TYPESCRIPT         ║
+║                                                                          ║
+║ This file is ONE HALF of GAIA's wide-event shape. The other half is      ║
+║   libs/shared/ts/src/bots/utils/wide-events.ts                           ║
+║ (`withWideEvent` / `wideLog` / `BotWideEventFields`), which the four      ║
+║ TypeScript bots use. One LogQL query has to span both surfaces, so the   ║
+║ two MUST agree on key names and value types. Today's shared contract:    ║
+║                                                                          ║
+║   task        the boundary's unit-of-work name (NOT `operation` —        ║
+║               `operation` is the domain verb app code sets, on both      ║
+║               sides, and would clobber the boundary identity)            ║
+║   trace_id    16 lowercase hex chars                                     ║
+║   duration_ms number, milliseconds, 2 decimals                           ║
+║   outcome     "success" | "failed" | "cancelled"                         ║
+║   final_level loguru level name — "WARNING", never "WARN"                ║
+║   errors[] / warnings[] / audit[]                                        ║
+║               entries shaped {msg, ...kwargs}; an exception contributes  ║
+║               error_type=<class name>, error=<str(exception)>. `error`   ║
+║               is a STRING on every surface — never a nested object.      ║
+║                                                                          ║
+║ If you are an agent editing ONLY this file, before you finish:           ║
+║  1. Open libs/shared/ts/src/bots/utils/wide-events.ts and make the       ║
+║     matching change (`emitWideEvent`, `record`, `BotWideEventFields`).   ║
+║  2. Update scripts/ci/wide-event-conformance/contract.json, the single   ║
+║     shared description both runtimes are checked against.                ║
+║  3. Run: python3 scripts/ci/wide-event-conformance/run.py                ║
+║     It emits real events from BOTH runtimes and diffs their shapes, so   ║
+║     skipping step 1 or 2 is a red CI lane, not a silent drift.           ║
+║                                                                          ║
+║ The line envelope (time/level/env/service/commit/logger/message) is NOT  ║
+║ this file's job — it is stamped by the sink, `_build_json_entry` in      ║
+║ libs/shared/py/logging.py, whose counterpart is `buildRecord` in         ║
+║ libs/shared/ts/src/bots/utils/logger.ts. Never re-add it here.           ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
 The canonical logging surface for all app code:
 
     from shared.py.wide_events import log
@@ -21,8 +57,6 @@ import asyncio
 from collections.abc import Coroutine
 import contextlib
 import contextvars
-import functools
-import os
 import time
 from typing import Any, TypedDict
 import uuid
@@ -36,39 +70,6 @@ _LEVEL_ORDER: dict[str, int] = {
     "ERROR": 3,
     "CRITICAL": 4,
 }
-
-# Promtail labels every line with the service it came from (see
-# infra/docker/observability/promtail-config.yaml). The in-event `service`
-# field MUST match that label, so `{service="X"}` and `| json | service="X"`
-# agree — a query that mixes the two must not silently return nothing.
-#
-# Three Python services share this module, so the name cannot be a constant:
-# GAIA_SERVICE_NAME is set per service (compose/Dockerfile/mise task) and must
-# equal the Promtail label for that service. The API keeps the historical
-# default so an unset var is still correct for the most common process.
-_DEFAULT_SERVICE_NAME = "gaia-backend"
-
-
-@functools.lru_cache(maxsize=1)
-def env_context() -> dict[str, str]:
-    """Environment characteristics stamped onto every emitted wide event.
-
-    Single source of truth for the HTTP middleware and every background
-    ``log_context`` / ``wide_task`` boundary, so a wide event emitted outside
-    an HTTP request carries the same ``env`` / ``service`` / ``commit`` fields
-    as one emitted inside it. Resolved once and cached.
-
-    ``commit`` reads GIT_COMMIT_SHA (or COMMIT_SHA), set in the Docker image /
-    CI, and falls back to "local" during development. ``service`` reads
-    GAIA_SERVICE_NAME, which each service sets to its own Promtail label.
-    """
-    return {
-        "env": os.getenv("ENV", "production"),
-        "service": os.getenv("GAIA_SERVICE_NAME") or _DEFAULT_SERVICE_NAME,
-        # `or`-chained so a set-but-empty var (a Docker ARG default baked as
-        # ENV GIT_COMMIT_SHA="") still falls back to "local".
-        "commit": (os.getenv("GIT_COMMIT_SHA") or os.getenv("COMMIT_SHA") or "local")[:8],
-    }
 
 
 class _EventState:
@@ -567,12 +568,18 @@ class WideEventFields(TypedDict, total=False):
     integration_id: str
     integration_name: str
     webhook: dict[str, Any]
-    # Internal wide-event metadata
+    # Internal wide-event metadata. `task` is the boundary's unit-of-work name
+    # (wide_task/log_context), matching the bots' boundary key in
+    # libs/shared/ts/src/bots/utils/wide-events.ts so `sum by (task)` spans both.
     task: str
     final_level: str
     trace_id: str
     duration_ms: float
-    error: dict[str, Any]
+    # An exception is described by exactly these two scalars on every surface —
+    # never a nested object, which `| json` cannot unwrap. Same names in the
+    # bots' sanitizeErrorForLog (libs/shared/ts/src/bots/utils/logger.ts).
+    error: str  # str(exception)
+    error_type: str  # exception class name
     errors: list[dict[str, Any]]
     warnings: list[dict[str, Any]]
     audit: list[dict[str, Any]]
@@ -810,11 +817,11 @@ async def _wide_event_boundary(
         log.set(duration_ms=duration_ms)
         level = log.get_max_level()
         log.set(final_level=level)
-        # env_context() is spread LAST so the infra identity (env/service/
-        # commit) is authoritative: app code that happens to set `service`
-        # must not be able to contradict the Promtail label for this process.
-        event = {**log.get(), **env_context()}
-        _loguru.bind(logger_name=logger_name, **event).log(level, event_name)
+        # env/service/commit are NOT added here: the sink stamps them on every
+        # line (shared.py.logging._build_json_entry) and re-emits a colliding
+        # app field as ctx_<key>, so the infra identity is authoritative for
+        # real-time lines too — not just for the boundary event.
+        _loguru.bind(logger_name=logger_name, **log.get()).log(level, event_name)
         _event_state.set(outer_state)
         _trace_id.set(outer_trace_id)
 
@@ -906,7 +913,6 @@ __all__ = [
     "wide_task",
     "log_context",
     "spawn_logged_task",
-    "env_context",
     "WideEventLogger",
     "WideEventFields",
     "UserContext",

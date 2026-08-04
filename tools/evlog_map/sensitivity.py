@@ -86,7 +86,11 @@ _AUTH_PATTERNS = _compile_terms(AUTH_TERMS)
 class Sensitivity:
     """How much an entry point matters: money/auth high, PII medium."""
 
-    level: str  # "high" | "medium" | "none"
+    # One ordered vocabulary across both scanners: "low" | "medium" | "high".
+    # scripts/ci/evlog-map-bots.mjs classifies binary (low/high) and has no PII
+    # tier; naming the floor "none" instead of "low" made the two reports
+    # incomparable on a field they both emit, for no gain.
+    level: str  # "high" | "medium" | "low"
     reasons: tuple[str, ...]
 
     @property
@@ -136,4 +140,4 @@ def classify(handler: HandlerFacts, file_facts: FileFacts) -> Sensitivity:
         return Sensitivity(level="high", reasons=tuple(reasons))
     if reasons:
         return Sensitivity(level="medium", reasons=tuple(reasons))
-    return Sensitivity(level="none", reasons=())
+    return Sensitivity(level="low", reasons=())

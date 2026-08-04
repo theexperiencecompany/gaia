@@ -151,10 +151,7 @@ async function _handleStream(
       // Transient: the live bubble may have been deleted or the interaction
       // expired. The next edit or finalizeDelivery recovers, so this is debug,
       // not a failure — but it is logged so a persistent edit problem is visible.
-      logger.debug("stream_edit_skipped", {
-        platform,
-        ...sanitizeErrorForLog(err),
-      });
+      logger.debug("stream_edit_skipped", sanitizeErrorForLog(err));
     }
   };
 
@@ -202,10 +199,10 @@ async function _handleStream(
       } catch (err) {
         // An overflow segment was dropped — the user is missing part of the
         // response, so surface it rather than swallowing silently.
-        logger.warn("stream_overflow_chunk_dropped", {
-          platform,
-          ...sanitizeErrorForLog(err),
-        });
+        wideLog.warning(
+          "stream_overflow_chunk_dropped",
+          sanitizeErrorForLog(err),
+        );
       }
     }
   };
@@ -412,15 +409,6 @@ async function runStreamingChat(
   let chunkCount = 0;
   let conversationId = "";
 
-  logger.info("chat_stream_started", {
-    platform: request.platform,
-    user_hash: userHash,
-    channel_hash: channelHash,
-    message_length: request.message.length,
-    has_files: Boolean(request.fileIds?.length || request.fileData?.length),
-    streaming_enabled: options.streaming,
-  });
-
   analytics?.capture(distinctId, BOT_EVENTS.MESSAGE_RECEIVED, {
     interaction_type: "chat",
     channel_id: request.channelId,
@@ -496,12 +484,6 @@ async function runStreamingChat(
         chunkCount++;
         if (firstChunkMs === null) {
           firstChunkMs = Date.now() - startMs;
-          logger.info("chat_stream_first_chunk", {
-            platform: request.platform,
-            user_hash: userHash,
-            channel_hash: channelHash,
-            ttfb_ms: firstChunkMs,
-          });
         }
         return onChunk(text);
       },
@@ -533,17 +515,6 @@ async function runStreamingChat(
       conversation_id: conversationId || undefined,
     });
     if (!hadError) {
-      logger.info("chat_stream_completed", {
-        platform: request.platform,
-        user_hash: userHash,
-        channel_hash: channelHash,
-        total_ms: Date.now() - startMs,
-        ttfb_ms: firstChunkMs,
-        response_length: responseLength,
-        chunk_count: chunkCount,
-        conversation_id: conversationId,
-        streaming_enabled: options.streaming,
-      });
       analytics?.capture(distinctId, BOT_EVENTS.CHAT_COMPLETED, {
         channel_id: request.channelId,
         duration_ms: Date.now() - startMs,

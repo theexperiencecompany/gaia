@@ -1,4 +1,41 @@
 /**
+ * ╔════════════════════════════════════════════════════════════════════════╗
+ * ║ CROSS-RUNTIME CONTRACT — MIRROR EVERY SHAPE CHANGE IN PYTHON           ║
+ * ║                                                                        ║
+ * ║ This file is ONE HALF of GAIA's wide-event shape. The other half is    ║
+ * ║   libs/shared/py/wide_events.py                                        ║
+ * ║ (`wide_task` / `log_context` / `log` / `WideEventFields`), used by the ║
+ * ║ API, the worker and the voice agent. One LogQL query has to span both  ║
+ * ║ surfaces, so the two MUST agree on key names and value types. Today's  ║
+ * ║ shared contract:                                                       ║
+ * ║                                                                        ║
+ * ║   task        the boundary's unit-of-work name (NOT `operation` —      ║
+ * ║               `operation` is the domain verb app code sets, on both    ║
+ * ║               sides, and would clobber the boundary identity)          ║
+ * ║   trace_id    16 lowercase hex chars                                   ║
+ * ║   duration_ms number, milliseconds, 2 decimals                         ║
+ * ║   outcome     "success" | "failed" | "cancelled"                       ║
+ * ║   final_level loguru level name — "WARNING", never "WARN"              ║
+ * ║   errors[] / warnings[] / audit[]                                      ║
+ * ║               entries shaped {msg, ...fields}; a thrown value          ║
+ * ║               contributes error_type=<name>, error=<message>. `error`  ║
+ * ║               is a STRING on every surface — never a nested object.    ║
+ * ║                                                                        ║
+ * ║ If you are an agent editing ONLY this file, before you finish:         ║
+ * ║  1. Open libs/shared/py/wide_events.py and make the matching change    ║
+ * ║     (`_wide_event_boundary`, `WideEventLogger._append`,                ║
+ * ║      `WideEventFields`).                                               ║
+ * ║  2. Update scripts/ci/wide-event-conformance/contract.json, the single ║
+ * ║     shared description both runtimes are checked against.              ║
+ * ║  3. Run: python3 scripts/ci/wide-event-conformance/run.py              ║
+ * ║     It emits real events from BOTH runtimes and diffs their shapes, so ║
+ * ║     skipping step 1 or 2 is a red CI lane, not a silent drift.         ║
+ * ║                                                                        ║
+ * ║ The line envelope (time/level/env/service/commit/logger/message) is    ║
+ * ║ NOT this file's job — `buildRecord` in ./logger.ts stamps it, mirroring║
+ * ║ `_build_json_entry` in libs/shared/py/logging.py. Never re-add it here.║
+ * ╚════════════════════════════════════════════════════════════════════════╝
+ *
  * Wide-event logging for the TypeScript bots — one context-rich structured
  * JSON event per handled interaction, mirroring the backend's
  * `libs/shared/py/wide_events.py` semantics:
@@ -45,6 +82,8 @@ export interface WideEventEntry {
  * interface live, so a new field is recognized the moment it lands here.
  */
 export interface BotWideEventFields {
+  /** Domain verb the handler is performing — the analogue of Python's
+   *  top-level `operation`. NOT the boundary's name; that is `task`. */
   operation?: string;
   outcome?: string;
   platform?: string;
@@ -70,12 +109,26 @@ export interface BotWideEventFields {
   event_count?: number;
   delivered_count?: number;
   attachment_filename?: string;
+  /** Exception class/name. Paired with `error` (its message) — never a nested
+   *  object; see sanitizeErrorForLog in ./logger.ts. */
   error_type?: string;
-  // Internal wide-event metadata stamped by the boundary itself.
+  error?: string;
+  // Process/adapter lifecycle.
+  command_count?: number;
+  server_port?: number;
+  boot_stage?: string;
+  trigger?: string;
+  fault?: string;
+  exit_code?: number;
+  linked_count?: number;
+  prewarmed_count?: number;
+  // Internal wide-event metadata stamped by the boundary itself. `task` is the
+  // unit-of-work name, matching `task` on Python's wide_task()/log_context()
+  // events so `sum by (task)` spans the bots and the workers alike.
+  task?: string;
   trace_id?: string;
   duration_ms?: number;
   final_level?: string;
-  commit?: string;
   errors?: WideEventEntry[];
   warnings?: WideEventEntry[];
   audit?: WideEventEntry[];
@@ -95,7 +148,7 @@ const LEVEL_ORDER: Record<string, number> = {
 };
 
 interface WideEventState {
-  operation: string;
+  task: string;
   platform: PlatformName | "shared";
   component: string;
   traceId: string;
@@ -112,15 +165,6 @@ const DEFAULT_COMPONENT = "wide-events";
 
 function generateTraceId(): string {
   return randomUUID().replaceAll("-", "").slice(0, 16);
-}
-
-/** Short commit sha stamped on every wide event — parity with Python's env_context(). */
-function commitSha(): string {
-  return (
-    process.env.GIT_COMMIT_SHA ||
-    process.env.COMMIT_SHA ||
-    "local"
-  ).slice(0, 8);
 }
 
 function mergeFields(
@@ -155,9 +199,11 @@ function record(
   const component = state?.component ?? DEFAULT_COMPONENT;
   emitBotLogLine(level, platform, component, message, fields, error);
   if (!state) return;
+  // Same precedence as buildRecord in ./logger.ts: the throwable's derived
+  // error_type/error go in first, an explicit caller field wins over them.
   const entry: WideEventEntry = { msg: message };
-  if (fields) mergeFields(entry, fields);
   if (error !== undefined) mergeFields(entry, sanitizeErrorForLog(error));
+  if (fields) mergeFields(entry, fields);
   state[category].push(entry);
   if (level === "warn") bump(state, "WARNING");
   if (level === "error") bump(state, "ERROR");
@@ -219,9 +265,11 @@ export const wideLog = {
 
 function emitWideEvent(state: WideEventState, durationMs: number): void {
   const event: BotLogFields = {
-    operation: state.operation,
+    // `task`, not `operation`: `operation` is the domain verb a handler sets
+    // via wideLog.set() on both runtimes, so naming the boundary after it made
+    // the two collide here and made `sum by (task)` blind to the bots.
+    task: state.task,
     trace_id: state.traceId,
-    commit: commitSha(),
     ...state.fields,
     duration_ms: durationMs,
     final_level: state.maxLevel,
@@ -250,15 +298,19 @@ function emitWideEvent(state: WideEventState, durationMs: number): void {
  * `wideLog.set()` inside `fn` (however deep in the async call tree) lands on
  * this event. On throw, the error is appended to errors[], `outcome` is
  * "failed", and the error is re-raised after the event is emitted.
+ *
+ * `task` names the unit of work ("command", "chat", "webhook") and is emitted
+ * under that key, matching `wide_task("<name>")` in
+ * libs/shared/py/wide_events.py.
  */
 export async function withWideEvent<T>(
-  operation: string,
+  task: string,
   fields: WideEventBoundaryFields,
   fn: () => Promise<T>,
 ): Promise<T> {
   const { platform, component, ...context } = fields;
   const state: WideEventState = {
-    operation,
+    task,
     platform,
     component: typeof component === "string" ? component : DEFAULT_COMPONENT,
     traceId: generateTraceId(),

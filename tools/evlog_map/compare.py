@@ -50,7 +50,7 @@ def baseline_file_entries(baseline: dict[str, object]) -> dict[str, list[EntrySt
         by_file.setdefault(key, []).append(
             (
                 int(entry["score"]),
-                str(sensitivity.get("level", "none")),
+                str(sensitivity.get("level", "low")),
                 bool(entry.get("exempt", False)),
             )
         )
