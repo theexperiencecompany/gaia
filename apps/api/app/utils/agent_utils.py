@@ -244,8 +244,14 @@ async def format_tool_call_entry(
                     mcp_ui = tool_meta.get("mcp_ui")
                     mcp_server_url = tool_meta.get("mcp_server_url")
                 break
-    except Exception:  # nosec B110
-        pass
+    except Exception as registry_error:
+        # A registry miss is recoverable — the per-user MCPClient lookup below is
+        # the fallback — but it must not be silent: an outage here strips the UI
+        # metadata from every platform tool at once, and the card just renders
+        # plain with nothing to explain why.
+        log.debug(
+            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata: {registry_error}"
+        )
 
     if mcp_ui is None and user_id:
         mcp_ui, mcp_server_url = await _resolve_mcp_ui_metadata(tool_name_raw, user_id)

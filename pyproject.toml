@@ -214,7 +214,10 @@ ignore = [
   "PTH122", # os.path.splitext
   # Bandit rules that fire on legitimate patterns.
   "S311",   # random module for non-crypto
-  "S110",   # try-except-pass — used for "best effort" lookups
+  # S110 (try-except-pass) is enforced. A "best effort" lookup still has to say
+  # when it failed — a silently swallowed exception is how notification search
+  # returned an empty list for a total failure and looked like an empty inbox.
+  # log.debug is enough; `pass` is not.
   "S112",   # try-except-continue
   "S603",   # subprocess input
   "S607",   # partial-path subprocess
