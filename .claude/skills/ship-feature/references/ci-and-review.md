@@ -48,7 +48,7 @@ diff are not yours to fix in this PR.
 ## The drive-to-green loop
 
 1. `subscribe_pr_activity` right after opening the PR. Where `send_later`
-   exists, arm a ~1h fallback self check-in in case events don't arrive;
+   exists, arm a ~1h fallback self-check-in in case events don't arrive;
    re-arm silently until the PR is done.
 2. **CI failure** → pull the job log, find the lane's command in the
    workflow, reproduce locally, fix at the root, re-run, push. Never push a

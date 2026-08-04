@@ -99,9 +99,10 @@ survives. A plan flaw costs minutes here and hours in phase 9.
 
 ### 3. BEFORE screenshots
 
-Valid only while the fresh branch is still byte-identical to `develop` —
-capture before your first edit (`git stash` around the capture if you
-already edited). Walk the journey script and shoot every surface the
+Valid only while the branch's tracked tree still matches `develop` —
+untracked bootstrap artifacts (`.env` files, installed deps) don't count.
+Capture before your first source edit (`git stash` around the capture if
+you already edited). Walk the journey script and shoot every surface the
 feature will change, per the protocol in
 [references/screenshots-and-pr.md](references/screenshots-and-pr.md).
 
@@ -127,7 +128,9 @@ Spawn reviewer subagents in parallel on the full diff vs `origin/develop`,
 one lens each — correctness (real user-reachable failures, not theoretical
 races), architecture/debt (duplication, wrong-layer logic, missed
 `libs/shared` reuse, dead code), design-system compliance vs DESIGN.md (UI
-diffs only), security (only when the diff adds surface). Each returns
+diffs only), security (when the diff adds surface — endpoints, queries, file
+handling, external calls — or touches security-sensitive code: authz,
+validation, secrets, dependencies, infra). Each returns
 findings with file:line and a concrete failure scenario. Then adversarially
 verify: a fresh skeptic subagent takes the batched findings and tries to
 refute each against the code. Fix what survives, drop what doesn't —
