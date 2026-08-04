@@ -5,7 +5,10 @@ Clean webhook models for Dodo Payments based on actual webhook format.
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
 
 
 class DodoWebhookEventType(str, Enum):
@@ -114,7 +117,11 @@ class DodoWebhookEvent(BaseModel):
         if self.type.value.startswith("payment."):
             try:
                 return DodoPaymentData(**self.data)
-            except Exception:
+            except ValidationError as exc:
+                # Loud on purpose: returning None here is indistinguishable from
+                # "not a payment event", so a provider schema change would silently
+                # stop payment data reaching billing with nothing in the logs.
+                log.error(f"{LogTag.PAYMENT} Dodo payment webhook payload did not validate: {exc}")
                 return None
         return None
 
@@ -123,7 +130,13 @@ class DodoWebhookEvent(BaseModel):
         if self.type.value.startswith("subscription."):
             try:
                 return DodoSubscriptionData(**self.data)
-            except Exception:
+            except ValidationError as exc:
+                # Loud on purpose: returning None here is indistinguishable from
+                # "not a subscription event", so a provider schema change would silently
+                # stop subscription data reaching billing with nothing in the logs.
+                log.error(
+                    f"{LogTag.PAYMENT} Dodo subscription webhook payload did not validate: {exc}"
+                )
                 return None
         return None
 

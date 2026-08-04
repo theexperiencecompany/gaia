@@ -351,5 +351,8 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             if state is None:
                 return 0.0
             return estimate_context_usage(state.get("messages", []), self.context_window)
-        except Exception:
+        except Exception as exc:
+            # 0.0 reads as "context is empty", which is the one value that stops
+            # compaction from ever triggering — never let that happen quietly.
+            log.warning(f"{LogTag.AGENT} Context-usage estimate failed, treating as 0%: {exc}")
             return 0.0

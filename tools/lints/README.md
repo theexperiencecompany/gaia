@@ -174,3 +174,33 @@ escape hatch on its own line for a reviewer to accept or reject.
 removed and suggests `--update` to lock the win in; until someone does, the
 baseline stays at the old high-water mark, so a removed entry can be re-added
 without failing. Running `--update` as part of the cleanup closes that window.
+
+---
+
+## no-silent-fallback
+
+**Rule:** a broad `except` (`Exception` / `BaseException` / bare) may not both stay
+silent *and* hand back a falsy stand-in — `None`, `False`, `0`, `""`, `[]`, `{}`,
+or falling out of the handler.
+
+**Why:** it makes a total failure indistinguishable from a real empty result at
+every call site. This has shipped here more than once: notification search
+returned an empty list when the backend was down and rendered as an empty inbox,
+and a swallowed `AttributeError` did the same thing one layer below it. The
+caller has no way to tell "nothing matched" from "the query never ran".
+
+**Scope** is deliberately narrower than ruff's `BLE001` (1001 findings, mostly
+benign top-level safety nets). Three things must all be true to be reported: the
+except is broad, nothing in the handler logs or re-raises, and it substitutes a
+falsy value. A handler that logs is fine. A handler that re-raises is fine. A
+handler that returns a real value is fine.
+
+**Fix:** log why it failed before returning the fallback, or let the exception
+propagate. If the empty value genuinely *is* the right answer, catch the specific
+exception that means that — `except ValueError` is a decision; `except Exception`
+is a blanket.
+
+**Allowlist:** keyed `<path>::<enclosing function>`, so an unrelated edit above a
+handler does not shift it and fire a false alarm. It grandfathers ten probe/parse
+sites that predate the rule. Like the `no-service-classes` allowlist it is a
+ratchet — remove an entry when the site is fixed, never add one.

@@ -94,7 +94,7 @@ Default to **less**. The code is the documentation — docstrings and comments e
 - **Docstrings** belong on public API surface — exported services, route handlers, shared utilities, and functions whose behavior is genuinely non-obvious. Skip them on private/internal helpers, obvious wrappers, and anything whose name + signature already says everything.
 - **One line** is the default. A summary sentence is enough. Add an `Args:`/`Returns:`/`Raises:` body only when a parameter, return value, or failure mode is non-obvious — never to mechanically mirror the signature. Document *why* and the non-obvious *what*, never the obvious what.
 - **Never** document params/returns/raises that don't exist or no longer match the signature. A stale or hallucinated docstring is worse than none.
-- **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code (ruff `ERA` will reject it).
+- **Comments** explain non-obvious decisions — a tricky invariant, a workaround and its cause, a "why this and not the obvious thing." A comment that restates what the line plainly does is noise; delete it. Never leave commented-out code — git already has it. `ERA001` is *not* currently enforced (213 findings in `app/`, concentrated in `models/calendar_models.py`, `agents/tools/webpage_tool.py` and the deliberately-parked `utils/calendar_utils.py`), so this one is on you rather than the linter until that backlog is cleared.
 - When editing AI-generated code, treat trimming its redundant docstrings/comments as part of the change, not a separate cleanup.
 
 ### Tooling and the autofix hook

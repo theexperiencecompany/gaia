@@ -140,7 +140,11 @@ class WorkflowQueueService:
             pool = await RedisPoolManager.get_pool()
             result = await pool.get(f"todo_workflow_generating:{todo_id}")
             return result is not None
-        except Exception:
+        except Exception as exc:
+            # False means "nothing in flight", so a Redis outage here lets a second
+            # generation start for the same todo. Cheap to recover from, but not
+            # something to discover without a log line.
+            log.warning(f"{LogTag.WORKFLOW} Could not read workflow-generating flag: {exc}")
             return False
 
     @staticmethod
