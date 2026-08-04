@@ -63,6 +63,7 @@ class _LogConfig(TypedDict):
     format: _LogFormats
 
 
+_ENV = os.getenv("ENV", "development")
 _LOGURU_CONFIGURED = False
 _FILE_LOGGING_CONFIGURED = False
 
@@ -84,7 +85,12 @@ LOG_CONFIG: _LogConfig = {
     # Set LOG_FORMAT=json in production Docker to emit newline-delimited JSON to
     # stdout. Promtail picks this up and ships it to Loki with zero parsing issues.
     # Default is "console" which keeps the colourised format for local development.
-    "format_mode": os.getenv("LOG_FORMAT", "console"),
+    # Defaults to NDJSON in production so a service that forgets to set
+    # LOG_FORMAT still ships parseable logs. It was previously "console"
+    # everywhere, which meant the eight compose services that set it were the
+    # only ones Promtail could parse — a ninth would have degraded silently to
+    # colourised text with ANSI escapes, and nothing would have failed.
+    "format_mode": os.getenv("LOG_FORMAT") or ("json" if _ENV == "production" else "console"),
     "diagnose": os.getenv("LOG_DIAGNOSE", "false").lower() == "true",
     "backtrace": os.getenv("LOG_BACKTRACE", "true").lower() == "true",
     "colorize": os.getenv("LOG_COLORIZE", "true").lower() == "true",

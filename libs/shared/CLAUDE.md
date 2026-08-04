@@ -64,7 +64,7 @@ If you find duplicated logic across apps, consolidate it here. Update all import
 ## Gotchas
 
 - **Console logging is configured on import** — just importing `shared.py.logging` activates loguru. Apps that need file logging must call `configure_file_logging(log_dir)` explicitly (the API does this; do not add it to shared itself).
-- **`LOG_FORMAT=json`** must be set in Docker environments so Promtail can parse NDJSON. Console mode (`LOG_FORMAT=console`) is the default for local development.
+- **`LOG_FORMAT` defaults by environment**: `json` when `ENV=production` (so a service that forgets to set it still ships Promtail-parseable NDJSON), `console` otherwise. Set it explicitly to override either way. `configure_file_logging()` no-ops under `json` — stdout is the stream Promtail scrapes, so an empty `logs/` dir there is correct, not a broken sink.
 - **Wide events use `ContextVar`** — each async task/request gets its own isolated event. HTTP middleware calls `log.reset()` at request start; ARQ workers must use the `wide_task()` context manager instead.
 - **Custom log levels**: `AUDIT` (28), `SECURITY` (38). App code emits AUDIT via `log.audit(...)` (the wide-event facade). SECURITY requires raw loguru (`logger.log("SECURITY", ...)`), which the `wide-events-logging` lint bans in `app/` — it is reachable only from shared/infra code. `log.bind(...)` on the wide-event facade merges into the event and does NOT tag subsequent real-time lines.
 - **Infisical is not required for local dev** — missing Infisical env vars log a warning and return in non-production. In production (`ENV=production`) they raise `InfisicalConfigError`.
