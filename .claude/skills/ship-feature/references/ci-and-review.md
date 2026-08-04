@@ -2,75 +2,56 @@
 
 ## What runs on a PR to develop
 
-- **Quality Checks** (`main.yml`) — affected-project build (TS), full pytest
-  suite vs live services (`uv run --frozen pytest -n auto -m 'not composio'`
-  from `apps/api`), vitest for affected TS projects, and harness-tool tests
-  (`tools/lints` + `tools/llm-stub`, always on). Required check:
-  **`quality-gate`** (skipped jobs pass).
-- **Code Quality** (`code-quality.yml`) — 16 lanes, all enforced via marker
-  files in `.github/quality-gate/enforced/`. Required check:
-  **`Quality gate (required)`** — here a skipped enforced lane **fails**,
-  unlike the other gate.
-- **Validate PR Title** — Conventional Commit type from: `feat fix docs style
-  refactor test chore ci build revert perf release deps infra security env
-  i18n ux config assets meta`.
-- **Desktop PR Build** — only when `apps/desktop/**` or `libs/shared/ts/**`
-  changed.
+Source of truth: `.github/workflows/` — read the workflow when you need a
+lane's exact command; don't trust memory or this file for specifics.
 
-Non-blocking noise — never remediate: `changelog-sync` (self-heals via its
-own PR and still exits 1; excluded from the gate), `trivy-scan`, `pip-audit`.
+- **Quality Checks** (`main.yml`) — build + test jobs over affected projects
+  (Python tests run the full suite against live services). Required check:
+  **`quality-gate`**; skipped jobs pass it.
+- **Code Quality** (`code-quality.yml`) — many independent lint/analysis
+  lanes. A lane is enforced iff a marker file exists in
+  `.github/quality-gate/enforced/`. Required check:
+  **`Quality gate (required)`**. In both gates a skipped lane passes (skipped
+  = your diff didn't touch that lane's language).
+- **PR title check** (`pr-naming-conventions.yml`) — Conventional Commit
+  title; the allowed type list lives in that workflow.
+- **Desktop PR Build** — only when its path filters match (desktop app +
+  shared TS).
+
+Jobs that are red by design or advisory (e.g. changelog-sync, security
+scanners marked `continue-on-error`) are excluded from the gates — check the
+gate job's `needs` list before remediating anything, and never "fix" a check
+the gate ignores.
 
 ## Run the gates locally BEFORE pushing
 
-Typical web+api feature sweep:
+Mirror what CI will run, scoped to what you touched:
 
-```bash
-pnpm exec nx run-many -t lint type-check --projects=web,api --parallel=3
-pnpm exec nx build web
-(cd apps/api && uv run pytest tests/unit --tb=short -q)   # full suite needs live infra
+- Per-project basics: `pnpm exec nx run-many -t lint type-check build
+  --projects=<touched>` and the project's test target. `nx run
+  <proj>:lint:fix` first where a fixer exists.
+- Code-quality lanes: each lane maps to a root `quality:*` script in
+  `package.json` — run the ones for your languages (`pnpm run` with no args
+  lists them). Lanes without a fixer (file size, components-per-file, type
+  placement, complexity, docstring coverage, duplication, dead code) are
+  design feedback: restructure the code, never suppress or split cosmetically.
+- `mise tasks` lists the aggregate runners if you want one command per area.
 
-pnpm run quality:circular
-pnpm run quality:size
-pnpm run quality:components        # tsx changed
-pnpm run quality:types-location    # ts/tsx changed
-pnpm run quality:type-coverage
-pnpm run quality:dead:strict
-pnpm run quality:py:interrogate    # py changed
-pnpm run quality:py:xenon          # py changed
-uvx bandit -c pyproject.toml -r apps/api/app libs/shared/py --severity-level low --confidence-level low   # py changed
-```
-
-Auto-fixers — reach for these first: `nx run <proj>:lint:fix` (biome/ruff),
-`pnpm run quality:deps:fix` (syncpack/manypkg), `uvx ruff format <files>`.
-
-No auto-fix — these are design feedback, fix the code: file-size (400-line
-target), components-per-file (max 2), types-location (> 3 exported types →
-`*.types.ts`), type-coverage, xenon complexity, interrogate docstrings, jscpd
-duplication, dead-code.
-
-**The diff-scoping trap:** most Code Quality lanes run only on files changed
-vs the PR base (`scripts/ci/changed-files.sh`). Locally that variable is
-unset, so the same command runs repo-wide and can fail on files you never
-touched. Reproduce a lane exactly as CI sees it:
-
-```bash
-git fetch origin develop
-GITHUB_BASE_REF=develop scripts/ci/changed-files.sh ts tsx   # prints CI's file list
-```
-
-Pre-existing repo-wide failures outside your diff are not yours to fix in
-this PR — confirm CI scopes them out rather than "fixing" half the codebase.
-
-Also: `nx affected` defaults to base `master` locally (`nx.json`); always
-pass `--base=origin/develop`.
+**The diff-scoping trap:** many Code Quality lanes run only on files changed
+vs the PR base (see `scripts/ci/changed-files.sh`). Locally the base-ref env
+var is unset, so the same command runs repo-wide and can fail on files you
+never touched. Reproduce a lane exactly as CI sees it by exporting the
+base-ref variable the script reads (with `develop` fetched), or by limiting
+the tool to your changed files. Pre-existing repo-wide failures outside your
+diff are not yours to fix in this PR.
 
 ## The drive-to-green loop
 
 1. `subscribe_pr_activity` right after opening the PR. Where `send_later`
    exists, arm a ~1h fallback self check-in in case events don't arrive;
    re-arm silently until the PR is done.
-2. **CI failure** → pull the job log, reproduce locally with the matching
-   command above, fix at the root, re-run the local gate, push. Never push a
+2. **CI failure** → pull the job log, find the lane's command in the
+   workflow, reproduce locally, fix at the root, re-run, push. Never push a
    blind retry. Every failure event ends in a pushed fix or a PR comment
    explaining precisely why not — no third option.
 3. **Merge conflict / base moved** → `git fetch origin && git merge
@@ -81,9 +62,8 @@ pass `--base=origin/develop`.
 
 ## CodeRabbit
 
-CodeRabbit auto-reviews PRs with default settings (the checked-in config at
-`config/.coderabbit.yaml` is not at repo root, so it is inert). Its comments
-arrive as PR activity events. Apply `receiving-code-review` discipline:
+CodeRabbit auto-reviews PRs; its comments arrive as PR activity events. Apply
+`receiving-code-review` discipline:
 
 - **Verify before implementing.** Read the referenced code and confirm the
   claim — CodeRabbit is confidently wrong at a meaningful rate, and blindly

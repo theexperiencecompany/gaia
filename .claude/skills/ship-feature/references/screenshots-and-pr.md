@@ -34,8 +34,9 @@ travel on a dedicated branch so they never touch the PR diff:
 
 ## The PR
 
-Title: Conventional Commit from the repo's allowed types — a CI check
-validates it. Base: `develop`. No PR template exists. Body structure:
+Title: Conventional Commit — a CI check validates the type against the list
+in `pr-naming-conventions.yml`. Base: `develop`. Use the repo's PR template
+if one exists; otherwise this body structure:
 
 ```markdown
 ## What & why

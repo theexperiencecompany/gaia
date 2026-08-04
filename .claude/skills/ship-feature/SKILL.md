@@ -64,8 +64,9 @@ questions nobody is there to answer.
 
 `git fetch origin develop` and branch from it. Then `pnpm install` and
 `uv sync --project apps/api --group backend --group dev`, create env files
-(`mise setup:env`, then `cp -f apps/api/.env.example apps/api/.env`; dummy
-WorkOS values are fine — the dev bypass never calls WorkOS). Boot per
+(`cp -f apps/api/.env.example apps/api/.env` first — `mise setup:env` errors
+without it, and only auto-copies the others; dummy WorkOS values are fine —
+the dev bypass never calls WorkOS). Boot per
 driving-gaia §1: `mise dev --sim` for deterministic chat flows, `mise dev
 --agent` when judging real model behavior, then `mise seed`.
 
@@ -96,12 +97,13 @@ before-state from memory after the fact — `git stash` if you must.
 
 ### 4. Implement
 
-Execute the plan task by task on the feature branch. Write to CI's bars from
-the start rather than remediating after: files ≤ 400 lines, ≤ 2 React
-components per file, > 3 exported types → `*.types.ts`, xenon complexity
-caps, 80% Python docstring coverage, no copy-paste, strict dead-code. HeroUI
-first, icons from `@icons`, Sileo toasts. Commit in Conventional-Commit
-increments. Do not write new test files unless the user asked (repo rule).
+Execute the plan task by task on the feature branch. Write to CI's structural
+bars from the start rather than remediating after — the Code Quality lanes
+enforce limits on file size, components per file, type placement, complexity,
+docstring coverage, duplication, and dead code (current thresholds live in
+the lane scripts/configs, see the CI reference). HeroUI first, icons from
+`@icons`, Sileo toasts. Commit in Conventional-Commit increments. Do not
+write new test files unless the user asked (repo rule).
 
 ### 5. Local gates
 
