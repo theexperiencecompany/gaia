@@ -130,6 +130,12 @@ select = [
   "LOG",   # logging
   "G",     # logging-format
   "INP",   # implicit-namespace-package
+  "TID",   # tidy-imports (banned / relative imports)
+  "ICN",   # import conventions
+  "YTT",   # sys.version misuse
+  "FA",    # future-annotations correctness
+  "INT",   # gettext f-string misuse
+  "ASYNC", # blocking calls inside async functions
   "ANN401", # disallow explicit `Any` in type annotations
 ]
 ignore = [
@@ -147,13 +153,8 @@ ignore = [
   "PLR0913", # too many arguments
   "PLR0915", # too many statements
   "PLR2004", # magic-value-comparison (too noisy)
-  "PLR0904", # too many public methods
-  "PLR0916", # too many boolean expressions
-  "PLR0917", # too many positional arguments
   "PLW2901", # redefined loop name
   "PLW0603", # global statement (used intentionally for caches)
-  "PLW1641", # eq-without-hash
-  "PLC2701", # private-name-import
   # Allow assert (we use beartype + pydantic for runtime checks).
   "S101",
   # Allow `try/except Exception` — many legitimate top-level safety nets.
@@ -169,8 +170,6 @@ ignore = [
   "N815",    # mixed-case variable in class scope
   "N802",    # function name not snake_case (Pydantic config_dict overrides etc.)
   "N818",    # exception name should end with "Error"
-  # vulture_whitelist.py intentionally lists bare identifiers.
-  "B018",    # useless expression
   # FastAPI dependency-injection often has unused args. ARG001/ARG002 are enforced
   # globally (see per-file-ignores for route-handler modules where DI legitimately
   # injects unused params); the remaining categories are pragmatically left off.
@@ -199,16 +198,19 @@ ignore = [
   # Shadowing builtins (id, type, filter) — common in REST handlers.
   "A001",
   "A002",
-  "A003",
   # StrEnum migration — codebase is on Enum, migration is out of scope.
   "UP042",
+  # ASYNC230 (blocking open() in an async def) is enforced — it is the rule form
+  # of "all I/O must be async" in apps/api/CLAUDE.md. ASYNC109 is not: it objects
+  # to an async function *having* a `timeout` parameter, which would mean
+  # reworking 17 public signatures (bash_tool, wait_for_subagents, mcp oauth) to
+  # satisfy a style preference, with no bug behind it.
+  "ASYNC109",
   # Allow non-pathlib stdlib usage in legacy modules.
   "PTH123", # open() vs Path.open()
   "PTH103", # os.makedirs
   "PTH107", # os.remove
-  "PTH109", # os.getcwd
   "PTH110", # os.path.exists
-  "PTH113", # os.path.isfile
   "PTH118", # os.path.join
   "PTH120", # os.path.dirname
   "PTH122", # os.path.splitext
@@ -229,8 +231,6 @@ ignore = [
   "DTZ007",
   # Performance suggestions that hurt readability.
   "PERF401", # use list.extend
-  "PERF402", # use list/copy
-  "PERF203", # try-except in loop
   # Whitespace-only lines (mostly in docstrings/quotes).
   "W293",
   # Ruff misc.
@@ -239,25 +239,11 @@ ignore = [
   "RUF006",  # asyncio.create_task ref
   "RUF013",  # implicit Optional
   "RUF015",  # access first element via index
-  "RUF029",  # async function without await
-  "RUF052",  # used dummy variable
-  "RUF055",  # plain string regex
   # FURB — mostly readability improvements, leave for future PRs.
-  "FURB101", # read with mode 'r'
-  "FURB103", # write-whole-file
-  "FURB110", # if-exp-instead-of-or-operator
-  "FURB113", # repeated-append
-  "FURB118", # reimplemented-operator
-  "FURB152", # use math.pi
-  "FURB154", # repeated-global
-  "FURB169", # type-none-equality
-  "FURB171", # single-item-membership-test
   # UP rules that haven't been fully migrated yet.
-  "UP040",   # type alias
   "UP007",   # use X | Y (legacy Optional/Union allowed)
   "UP031",   # printf-style %-formatting (legacy logging patterns)
   # Pylint extras that aren't worth fixing repo-wide.
-  "PLW0108", # lambda re-assignment (used intentionally)
   # B905 — zip(strict=...) requires manual review per call.
   "B905",
   # B007 — unused-loop-control-variable; renaming to `_` is noisy.
@@ -292,11 +278,8 @@ ignore = [
   "N803",   # arg name should be snake_case (pydantic-camelCase passthroughs)
   "N806",   # variable in function should be snake_case
   "N817",   # CamelCase imported as constant
-  "N999",   # invalid module name (legacy dirs)
   # FURB163 / 167 / 168.
-  "FURB163",
   "FURB167",
-  "FURB168",
   # RSE102 — unnecessary parentheses on `raise`.
   "RSE102",
   # C408 — unnecessary dict() — legacy.
@@ -306,7 +289,6 @@ ignore = [
   "PERF403",
   # Whitespace at line end (formatter handles it).
   "W291",
-  "W292",
   # Pylint refactor-style suggestions.
   "PLR1714", # use `in` for multiple comparisons (readability is fine as-is)
   "PLC0206", # extract dict value via .items() (readability)
@@ -317,24 +299,18 @@ ignore = [
   "DTZ002",  # datetime.today()
   "DTZ003",  # datetime.utcnow()
   "DTZ011",  # date.today()
-  "DTZ012",  # date.fromtimestamp()
   # Comprehension micro-rules.
-  "C401",    # generator instead of comprehension
-  "C403",    # list comprehension instead of set
   "C414",    # list() in sorted()
   "C416",    # unnecessary comprehension
   # Function in loop captures variable.
-  "B023",
   # Module-level import not at top — guarded conditional imports.
   "E402",
   # Combine multiple isinstance calls.
-  "SIM101",
   "SIM222",  # bool simplification (`x or True`)
   # PLW0108 / N805 / RUF022 — minor.
   "N805",    # first method arg should be self (Pydantic validators use cls)
   "RUF022",  # __all__ unsorted
   # PGH005 mock-method-should-be-called.
-  "PGH005",
   # PTH100 os.path.abspath → Path.resolve.
   "PTH100",
 ]

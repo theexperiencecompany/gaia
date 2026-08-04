@@ -181,8 +181,13 @@ async def create_backup() -> str:
             model["_id"] = str(model["_id"])
             existing_models.append(model)
 
-        with open(backup_file, "w") as f:
-            json.dump(existing_models, f, indent=2, default=str)
+        # to_thread: this is an async def, so a bare open() would block the loop
+        # while the backup is serialised (ASYNC230).
+        await asyncio.to_thread(
+            Path(backup_file).write_text,
+            json.dumps(existing_models, indent=2, default=str),
+            encoding="utf-8",
+        )
 
         print(f"✅ Backup created: {backup_file}")
         return backup_file

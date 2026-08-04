@@ -9,9 +9,10 @@ Flow:
 6. Return validated profile URLs ready for crawling
 """
 
+import asyncio
 from difflib import SequenceMatcher
 import json
-import os
+from pathlib import Path
 import re
 import time
 from typing import Any, TypedDict
@@ -249,6 +250,26 @@ Here are recent emails RECEIVED by the user from {platform}:
 Extract the RECIPIENT's username/handle ONLY if explicitly written (not inferred):"""
 
 
+async def _write_debug_json(platform: str, kind: str, payload: dict[str, Any]) -> None:
+    """Dump a debug payload beside this module when DEBUG_EMAIL_PROCESSING is on.
+
+    The write runs in a worker thread: this is called from the async extraction
+    path, and a plain ``open()`` there blocks the event loop (ASYNC230). It was
+    also the same eight lines written three times, once per debug artefact.
+    """
+    if not settings.DEBUG_EMAIL_PROCESSING:
+        return
+
+    def _write() -> None:
+        debug_dir = Path(__file__).parent / "debug_logs"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        (debug_dir / f"{platform}_{kind}.json").write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
+    await asyncio.to_thread(_write)
+
+
 def validate_username(username: str, platform: str) -> bool:
     """Validate an extracted username against the platform's regex pattern."""
     if not username or username == "NOT_FOUND":
@@ -355,7 +376,7 @@ def _deduplicate_emails(emails: list[dict[str, Any]]) -> list[dict[str, Any]]:
             unique_emails.append(email)
             # NO LIMIT - just remove duplicates
 
-    return unique_emails if unique_emails else emails
+    return unique_emails or emails
 
 
 async def extract_username_with_llm(
@@ -374,26 +395,19 @@ async def extract_username_with_llm(
         f"{LogTag.MEMORY} Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
     )
 
-    # Debug: Log deduplication results
-    if settings.DEBUG_EMAIL_PROCESSING:
-        debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-        os.makedirs(debug_dir, exist_ok=True)
-        dedup_file = os.path.join(debug_dir, f"{platform}_deduplication.json")
-        with open(dedup_file, "w") as f:
-            json.dump(
-                {
-                    "platform": platform,
-                    "original_count": len(emails),
-                    "deduplicated_count": len(unique_emails),
-                    "removed_count": len(emails) - len(unique_emails),
-                    "unique_emails": [
-                        {"subject": e.get("subject"), "sender": e.get("sender")}
-                        for e in unique_emails
-                    ],
-                },
-                f,
-                indent=2,
-            )
+    await _write_debug_json(
+        platform,
+        "deduplication",
+        {
+            "platform": platform,
+            "original_count": len(emails),
+            "deduplicated_count": len(unique_emails),
+            "removed_count": len(emails) - len(unique_emails),
+            "unique_emails": [
+                {"subject": e.get("subject"), "sender": e.get("sender")} for e in unique_emails
+            ],
+        },
+    )
 
     # Build context from unique emails with better cleaning
     email_context = []
@@ -427,22 +441,16 @@ async def extract_username_with_llm(
     if user_name:
         user_context = f"The recipient's name is {user_name}. Look for usernames/handles associated with this person."
 
-    # Debug: Log what's being sent to LLM
-    debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-    if settings.DEBUG_EMAIL_PROCESSING:
-        os.makedirs(debug_dir, exist_ok=True)
-        llm_input_file = os.path.join(debug_dir, f"{platform}_llm_input.json")
-        with open(llm_input_file, "w") as f:
-            json.dump(
-                {
-                    "platform": platform,
-                    "num_emails_sent": len(unique_emails),
-                    "emails_text_length": len(emails_text),
-                    "emails_text": emails_text,
-                },
-                f,
-                indent=2,
-            )
+    await _write_debug_json(
+        platform,
+        "llm_input",
+        {
+            "platform": platform,
+            "num_emails_sent": len(unique_emails),
+            "emails_text_length": len(emails_text),
+            "emails_text": emails_text,
+        },
+    )
 
     try:
         prompt = EXTRACTION_PROMPT.format(
@@ -463,21 +471,17 @@ async def extract_username_with_llm(
             f"(confidence: {confidence}) in {elapsed:.2f}s"
         )
 
-        if settings.DEBUG_EMAIL_PROCESSING:
-            debug_dir = os.path.join(os.path.dirname(__file__), "debug_logs")
-            llm_output_file = os.path.join(debug_dir, f"{platform}_llm_output.json")
-            with open(llm_output_file, "w") as f:
-                json.dump(
-                    {
-                        "platform": platform,
-                        "username": username,
-                        "confidence": confidence,
-                        "elapsed_seconds": elapsed,
-                        "result": result.model_dump(),
-                    },
-                    f,
-                    indent=2,
-                )
+        await _write_debug_json(
+            platform,
+            "llm_output",
+            {
+                "platform": platform,
+                "username": username,
+                "confidence": confidence,
+                "elapsed_seconds": elapsed,
+                "result": result.model_dump(),
+            },
+        )
 
         return username
 
