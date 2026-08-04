@@ -65,6 +65,9 @@ ignore	PLR1714
 ignore	PLR2004
 ignore	PLW0603
 ignore	PLW2901
+ignore	PT006
+ignore	PT018
+ignore	PT019
 ignore	PTH100
 ignore	PTH103
 ignore	PTH107
@@ -191,6 +194,7 @@ per-file-ignores	apps/api/app/agents/tools/weather_tool.py	ARG001
 per-file-ignores	apps/api/app/agents/tools/webpage_tool.py	ARG001
 per-file-ignores	apps/api/app/api/v1/endpoints/health.py	PLC0415
 per-file-ignores	apps/api/app/api/v1/endpoints/integrations/config.py	ARG001
+per-file-ignores	apps/api/app/api/v1/endpoints/mcp.py	PT028
 per-file-ignores	apps/api/app/api/v1/endpoints/payments.py	ARG001
 per-file-ignores	apps/api/app/api/v1/endpoints/platform_auth.py	PLC0415
 per-file-ignores	apps/api/app/api/v1/endpoints/reminders.py	PLC0415

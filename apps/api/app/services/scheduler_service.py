@@ -330,12 +330,10 @@ class BaseSchedulerService(ABC):
     @abstractmethod
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         """Get a task by ID, or None if not found."""
-        pass
 
     @abstractmethod
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
         """Execute the actual task logic."""
-        pass
 
     @abstractmethod
     async def update_task_status(
@@ -346,14 +344,11 @@ class BaseSchedulerService(ABC):
         user_id: str | None = None,
     ) -> bool:
         """Update task status and any additional fields."""
-        pass
 
     @abstractmethod
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """Get all tasks that are due to be scheduled at current_time."""
-        pass
 
     @abstractmethod
     def get_job_name(self) -> str:
         """Get the ARQ job name for this scheduler."""
-        pass

@@ -86,13 +86,9 @@ def oauth_token_expiry(expires_in: int | None) -> datetime | None:
 class OAuthSecurityError(Exception):
     """Raised when OAuth security requirements are not met."""
 
-    pass
-
 
 class OAuthDiscoveryError(Exception):
     """Raised when OAuth discovery fails."""
-
-    pass
 
 
 def validate_https_url(url: str, allow_localhost: bool = True) -> None:

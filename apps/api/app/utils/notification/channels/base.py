@@ -34,12 +34,10 @@ class ChannelAdapter(ABC, Generic[TContent]):
     @abstractmethod
     async def transform(self, notification: NotificationRequest) -> TContent:
         """Transform notification content for this channel."""
-        pass
 
     @abstractmethod
     async def deliver(self, content: TContent, user_id: str) -> ChannelDeliveryStatus:
         """Deliver notification via this channel."""
-        pass
 
     # -- Status helpers -----------------------------------------------------
 

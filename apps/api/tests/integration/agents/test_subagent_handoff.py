@@ -1644,7 +1644,7 @@ async def gated_subagent(gated_tool):
             use_direct_tools=True,
             disable_retrieve_tools=True,
         )
-    yield SimpleNamespace(graph=graph, llm=llm)
+    return SimpleNamespace(graph=graph, llm=llm)
 
 
 @pytest.fixture

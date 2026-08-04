@@ -137,6 +137,8 @@ select = [
   "INT",   # gettext f-string misuse
   "ASYNC", # blocking calls inside async functions
   "T20",   # no print() — app code logs through wide events
+  "PT",    # pytest style (see the ignores below for the noisy half)
+  "PIE",   # unnecessary placeholders / dict kwargs / container lambdas
   "ANN401", # disallow explicit `Any` in type annotations
 ]
 ignore = [
@@ -207,6 +209,14 @@ ignore = [
   # reworking 17 public signatures (bash_tool, wait_for_subagents, mcp oauth) to
   # satisfy a style preference, with no bug behind it.
   "ASYNC109",
+  # PT is on for the rules that catch a real test defect (PT012 — extra
+  # statements inside a pytest.raises block can make the wrong line raise;
+  # PT022 useless yield fixture; PT028 default in a test parameter). The
+  # three below are style-only and would rewrite 300 assertions for nothing:
+  "PT018",  # composite assertion — splitting `assert a and b` is not clearer
+  "PT019",  # fixture param without value
+  "PT006",  # parametrize names as a string rather than a tuple (38 sites,
+            # only an unsafe autofix available — worth its own pass)
   # Allow non-pathlib stdlib usage in legacy modules.
   "PTH123", # open() vs Path.open()
   "PTH103", # os.makedirs
@@ -516,6 +526,11 @@ unfixable = [
   "PT011",
   "PT015",
 ]
+# PT028: test_mcp_connection is a FastAPI route ("Test connection to an MCP
+# server"), not a test. Its Depends() default is required by the framework,
+# and renaming it would change the generated OpenAPI operationId that
+# clients are built against.
+"apps/api/app/api/v1/endpoints/mcp.py" = ["PT028"]
 "**/conftest.py" = ["ANN", "INP001", "ARG", "S101", "PLC0415"]
 "**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607", "PLC0415"]
 # T20: developer-facing command line tools — printing to stdout is their output,

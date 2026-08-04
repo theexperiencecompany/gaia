@@ -93,7 +93,6 @@ class TriggerHandler(ABC):
 
         These are the values stored in trigger_data.trigger_name.
         """
-        pass
 
     @property
     @abstractmethod
@@ -102,7 +101,6 @@ class TriggerHandler(ABC):
 
         These are the webhook event types from Composio (e.g., 'GOOGLECALENDAR_...')
         """
-        pass
 
     @abstractmethod
     async def register(
@@ -123,7 +121,6 @@ class TriggerHandler(ABC):
         Returns:
             List of Composio trigger IDs that were registered
         """
-        pass
 
     async def unregister(self, user_id: str, trigger_ids: list[str]) -> bool:
         """Unregister triggers when workflow is deleted/deactivated.
@@ -267,7 +264,6 @@ class TriggerHandler(ABC):
         Returns:
             List of workflows to execute
         """
-        pass
 
     async def get_config_options(
         self,

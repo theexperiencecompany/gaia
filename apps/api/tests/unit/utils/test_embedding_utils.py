@@ -37,7 +37,7 @@ def _make_tool(
     # By default tools are callable; override when needed
     if not callable_self:
         tool.__call__ = None  # type: ignore[method-assign, assignment]
-        tool.configure_mock(**{"__call__": None})
+        tool.configure_mock(__call__=None)
     return tool
 
 
@@ -48,19 +48,19 @@ def _make_document(
     return Document(page_content=page_content, metadata=metadata)
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_redis() -> AsyncMock:
     return AsyncMock()
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_embeddings() -> MagicMock:
     emb = MagicMock()
     emb.embed_documents = MagicMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
     return emb
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_chroma_collection() -> AsyncMock:
     return AsyncMock()
 

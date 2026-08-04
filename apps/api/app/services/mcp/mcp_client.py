@@ -151,8 +151,6 @@ class _ClientBranding(TypedDict, total=False):
 class DCRNotSupportedException(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
 
-    pass
-
 
 class StepUpAuthRequired(Exception):
     """Raised when additional scopes are required (403 insufficient_scope).

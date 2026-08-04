@@ -109,7 +109,7 @@ def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture()
+@pytest.fixture
 async def comms_graph():
     """Real comms agent graph with a single plain-text fake LLM response."""
     fake_llm = create_fake_llm(["Hello! How can I help you today?"])

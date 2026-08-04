@@ -748,7 +748,6 @@ class EventCreateRequest(BaseCalendarEvent):
                 if "fromisoformat" not in str(e):
                     raise e
                 # This means the format validation failed, which is handled by the field validator
-                pass
 
         return self
 

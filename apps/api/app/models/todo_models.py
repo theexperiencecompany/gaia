@@ -152,8 +152,6 @@ class ProjectBase(BaseModel):
 class ProjectCreate(ProjectBase):
     """Model for creating projects"""
 
-    pass
-
 
 class UpdateProjectRequest(BaseModel):
     """Model for updating projects - all fields optional"""

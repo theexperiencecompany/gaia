@@ -133,25 +133,23 @@ class TestInstallFromGithubSuccess:
 
 class TestInstallFromGithubValidation:
     async def test_missing_skill_md_raises_value_error(self, storage_seams):
-        with (
-            respx.mock,
-            pytest.raises(ValueError, match="No SKILL.md found"),
-        ):
+        with respx.mock:
             respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/empty").mock(
                 return_value=httpx.Response(
                     200, json=[_contents_entry("README.md", "file", "skills/empty/README.md")]
                 )
             )
-            await install_from_github(user_id="u1", repo_url="org/repo/skills/empty")
+            # raises wraps only the call: with the mock setup inside it too, a
+            # ValueError from respx would have satisfied the assertion without
+            # install_from_github ever running.
+            with pytest.raises(ValueError, match="No SKILL.md found"):
+                await install_from_github(user_id="u1", repo_url="org/repo/skills/empty")
 
     async def test_disallowed_target_raises_value_error(self, storage_seams):
         """allowed_targets blocks installing a skill scoped to an integration
         the user hasn't connected — this is the REST endpoint's own guard,
         enforced here at the source so agent-tool callers get it too."""
-        with (
-            respx.mock,
-            pytest.raises(ValueError, match="not available"),
-        ):
+        with respx.mock:
             respx.get(f"{GITHUB_API_BASE}/repos/org/repo/contents/skills/my-skill").mock(
                 return_value=httpx.Response(
                     200,
@@ -162,11 +160,13 @@ class TestInstallFromGithubValidation:
                 "https://raw.githubusercontent.com/org/repo/main/skills/my-skill/SKILL.md"
             ).mock(return_value=httpx.Response(200, text=_SKILL_MD_CONTENT))
 
-            await install_from_github(
-                user_id="u1",
-                repo_url="org/repo/skills/my-skill",
-                allowed_targets={"some_other_agent"},
-            )
+            # See above: only the call under test belongs inside raises.
+            with pytest.raises(ValueError, match="not available"):
+                await install_from_github(
+                    user_id="u1",
+                    repo_url="org/repo/skills/my-skill",
+                    allowed_targets={"some_other_agent"},
+                )
 
     async def test_target_override_takes_precedence_over_frontmatter(self, storage_seams):
         write_mock, install_mock = storage_seams
