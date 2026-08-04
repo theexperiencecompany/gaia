@@ -1,8 +1,10 @@
 # Ruff escape-hatch ratchet baseline — see tools/lints/check_ignore_ratchet.py.
 #
-# One line per escape hatch, sorted. Two shapes:
-#   ignore<TAB><rule>                     -> [tool.ruff.lint] ignore
-#   per-file-ignores<TAB><glob><TAB><rule>  -> [tool.ruff.lint.per-file-ignores]
+# One line per escape hatch, sorted. Three shapes:
+#   ignore<TAB><rule>                        -> [tool.ruff.lint] ignore
+#   per-file-ignores<TAB><glob><TAB><rule>   -> [tool.ruff.lint.per-file-ignores]
+#   mypy-override<TAB><module><TAB><setting> -> a [[tool.mypy.overrides]] block
+#                                               that weakens checking
 #
 # This list may only shrink. Deleting lines is the ratchet turning and always
 # passes. Adding one is a deliberate loosening: it must arrive in its own commit
@@ -113,6 +115,27 @@ ignore	UP031
 ignore	UP042
 ignore	W291
 ignore	W293
+mypy-override	*.tests.*	check_untyped_defs
+mypy-override	*.tests.*	disallow_incomplete_defs
+mypy-override	*.tests.*	disallow_untyped_calls
+mypy-override	*.tests.*	disallow_untyped_defs
+mypy-override	*.tests.*	strict_optional
+mypy-override	*.tests.*	warn_return_any
+mypy-override	*.tests.*	warn_unreachable
+mypy-override	shared.*.tests.*	check_untyped_defs
+mypy-override	shared.*.tests.*	disallow_incomplete_defs
+mypy-override	shared.*.tests.*	disallow_untyped_calls
+mypy-override	shared.*.tests.*	disallow_untyped_defs
+mypy-override	shared.*.tests.*	strict_optional
+mypy-override	shared.*.tests.*	warn_return_any
+mypy-override	shared.*.tests.*	warn_unreachable
+mypy-override	tests.*	check_untyped_defs
+mypy-override	tests.*	disallow_incomplete_defs
+mypy-override	tests.*	disallow_untyped_calls
+mypy-override	tests.*	disallow_untyped_defs
+mypy-override	tests.*	strict_optional
+mypy-override	tests.*	warn_return_any
+mypy-override	tests.*	warn_unreachable
 per-file-ignores	**/__init__.py	F401
 per-file-ignores	**/conftest.py	ANN
 per-file-ignores	**/conftest.py	ARG

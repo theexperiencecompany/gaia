@@ -130,10 +130,23 @@ python3 tools/lints/check_ignore_ratchet.py           # check
 python3 tools/lints/check_ignore_ratchet.py --update  # record a deliberate change
 ```
 
-**Rule:** the two escape-hatch lists in the root `pyproject.toml` —
-`[tool.ruff.lint] ignore` and `[tool.ruff.lint.per-file-ignores]` — may only ever
-*shrink*. The check fails if a rule is added to the global list, a rule is added
-to an existing file's list, or a new file entry appears.
+**Rule:** the escape hatches in the root `pyproject.toml` may only ever *shrink*.
+Three kinds are tracked:
+
+| source | an escape hatch is |
+| --- | --- |
+| `[tool.ruff.lint] ignore` | a rule switched off everywhere |
+| `[tool.ruff.lint.per-file-ignores]` | a rule switched off for a path glob |
+| `[[tool.mypy.overrides]]` | a per-module setting that *weakens* checking |
+
+The check fails if a rule is added to either ruff list, a new file entry appears,
+or a mypy override starts weakening a check for a module it did not before.
+
+Only mypy *loosenings* count. The strict-island block that sets the same keys to
+`true` is a tightening and is deliberately untracked — this guards holes, not
+strictness. The edit it is really there to catch is widening an existing block's
+`module` list: dropping `"app.services.*"` in beside `"tests.*"` turns off type
+checking for every service and reads as a one-word diff.
 
 **Why:** both lists are the residue of a cleanup campaign. They are the only two
 places a ruff rule can be switched off wholesale, and editing them is invisible
@@ -144,7 +157,13 @@ reviewable decision.
 
 **Baseline:** `tools/lints/ignore_ratchet_baseline.txt`, one line per escape
 hatch, sorted, checked in. Compared as a **set**, not a count — a count check
-passes when someone removes one entry and adds another.
+passes when someone removes one entry and adds another. Line shapes:
+
+```
+ignore<TAB><rule>
+per-file-ignores<TAB><glob><TAB><rule>
+mypy-override<TAB><module><TAB><setting>
+```
 
 **Fix:** delete the offending rule from the list and fix the code it silences.
 If the exemption is genuinely warranted (a framework contract, a generated file),

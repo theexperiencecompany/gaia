@@ -37,7 +37,8 @@ from _common import Violation, report_rule  # noqa: E402
 
 RULE = "ignore-ratchet"
 WHY = (
-    "ruff's ignore / per-file-ignores lists are cleanup residue — they may only shrink, never grow"
+    "ruff's ignore lists and mypy's loosening overrides are cleanup residue — "
+    "they may only shrink, never grow"
 )
 DOC = "tools/lints/README.md#ignore-ratchet"
 
@@ -48,13 +49,38 @@ BASELINE = _HERE / "ignore_ratchet_baseline.txt"
 
 GLOBAL_SCOPE = "ignore"
 PER_FILE_SCOPE = "per-file-ignores"
+MYPY_SCOPE = "mypy-override"
+
+#: Per-module mypy settings that *weaken* checking when set to this value. A
+#: strict-island override that sets the same keys to True is a tightening and is
+#: deliberately not tracked — this ratchet guards holes, not strictness.
+_MYPY_LOOSENINGS: dict[str, bool] = {
+    "disallow_untyped_defs": False,
+    "disallow_incomplete_defs": False,
+    "disallow_untyped_calls": False,
+    "disallow_untyped_decorators": False,
+    "disallow_any_generics": False,
+    "disallow_subclassing_any": False,
+    "check_untyped_defs": False,
+    "strict_optional": False,
+    "strict_equality": False,
+    "warn_return_any": False,
+    "warn_unused_ignores": False,
+    "warn_unreachable": False,
+    "no_implicit_reexport": False,
+    "extra_checks": False,
+    "ignore_errors": True,
+    "ignore_missing_imports": True,
+}
 
 _BASELINE_HEADER = """\
 # Ruff escape-hatch ratchet baseline — see tools/lints/check_ignore_ratchet.py.
 #
-# One line per escape hatch, sorted. Two shapes:
-#   ignore<TAB><rule>                     -> [tool.ruff.lint] ignore
-#   per-file-ignores<TAB><glob><TAB><rule>  -> [tool.ruff.lint.per-file-ignores]
+# One line per escape hatch, sorted. Three shapes:
+#   ignore<TAB><rule>                        -> [tool.ruff.lint] ignore
+#   per-file-ignores<TAB><glob><TAB><rule>   -> [tool.ruff.lint.per-file-ignores]
+#   mypy-override<TAB><module><TAB><setting> -> a [[tool.mypy.overrides]] block
+#                                               that weakens checking
 #
 # This list may only shrink. Deleting lines is the ratchet turning and always
 # passes. Adding one is a deliberate loosening: it must arrive in its own commit
@@ -80,6 +106,8 @@ class Entry(NamedTuple):
     def describe(self) -> str:
         if self.scope == GLOBAL_SCOPE:
             return f"`{self.rule}` added to the global [tool.ruff.lint] ignore list"
+        if self.scope == MYPY_SCOPE:
+            return f"mypy checking weakened for `{self.key}` via `{self.rule}`"
         return f"`{self.rule}` added to per-file-ignores for `{self.key}`"
 
 
@@ -87,8 +115,8 @@ def _parse_entry(line: str, lineno: int) -> Entry:
     fields = line.split("\t")
     if len(fields) == 2 and fields[0] == GLOBAL_SCOPE:
         return Entry(GLOBAL_SCOPE, "", fields[1])
-    if len(fields) == 3 and fields[0] == PER_FILE_SCOPE:
-        return Entry(PER_FILE_SCOPE, fields[1], fields[2])
+    if len(fields) == 3 and fields[0] in (PER_FILE_SCOPE, MYPY_SCOPE):
+        return Entry(fields[0], fields[1], fields[2])
     raise ValueError(f"{BASELINE.name}:{lineno}: malformed entry {line!r}")
 
 
@@ -105,11 +133,36 @@ def read_baseline() -> set[Entry]:
 
 
 def read_current() -> set[Entry]:
-    """Flatten both ruff escape-hatch lists out of the root pyproject.toml."""
-    lint = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]["ruff"]["lint"]
+    """Flatten every escape hatch out of the root pyproject.toml."""
+    tool = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))["tool"]
+    lint = tool["ruff"]["lint"]
     entries = {Entry(GLOBAL_SCOPE, "", rule) for rule in lint.get(GLOBAL_SCOPE, ())}
     for glob, rules in lint.get(PER_FILE_SCOPE, {}).items():
         entries.update(Entry(PER_FILE_SCOPE, glob, rule) for rule in rules)
+    entries.update(_mypy_loosenings(tool.get("mypy", {})))
+    return entries
+
+
+def _mypy_loosenings(mypy_cfg: dict[str, object]) -> set[Entry]:
+    """Per-module mypy settings that switch a check off, one entry per module.
+
+    Widening an existing block's ``module`` list is the dangerous edit this
+    catches: adding ``"app.services.*"`` beside ``"tests.*"`` silently drops
+    type checking for every service, and reads as a one-word diff.
+    """
+    entries: set[Entry] = set()
+    overrides = mypy_cfg.get("overrides", [])
+    if not isinstance(overrides, list):
+        return entries
+    for block in overrides:
+        if not isinstance(block, dict):
+            continue
+        modules = block.get("module", [])
+        if isinstance(modules, str):
+            modules = [modules]
+        for setting, loosened_value in _MYPY_LOOSENINGS.items():
+            if setting in block and block[setting] == loosened_value:
+                entries.update(Entry(MYPY_SCOPE, str(m), setting) for m in modules)
     return entries
 
 
@@ -135,6 +188,12 @@ def _global_ignore_span(lines: list[str]) -> tuple[int, int]:
 
 def locate(entry: Entry, lines: list[str]) -> int:
     """1-based pyproject.toml line for an entry, so the failure is clickable."""
+    if entry.scope == MYPY_SCOPE:
+        needle = f'"{entry.key}"'
+        for i, raw in enumerate(lines):
+            if raw.strip().startswith(needle):
+                return i + 1
+        return 1
     if entry.scope == PER_FILE_SCOPE:
         needle = f'"{entry.key}"'
         for i, raw in enumerate(lines):
@@ -175,9 +234,9 @@ def main(argv: list[str]) -> int:
                 Violation(
                     path=PYPROJECT,
                     line=locate(entry, lines),
-                    detail=f"new ruff escape hatch: {entry.describe()}",
+                    detail=f"new escape hatch: {entry.describe()}",
                     fix=(
-                        f"delete `{entry.rule}` from that list and fix the code it silences. "
+                        f"delete `{entry.rule}` from that entry and fix the code it silences. "
                         "If the exemption is genuinely warranted, justify it in review and "
                         "record it with `python3 tools/lints/check_ignore_ratchet.py --update` "
                         "so the baseline diff shows it."
@@ -187,8 +246,8 @@ def main(argv: list[str]) -> int:
             ],
         )
         print(
-            f"\n{len(added)} escape hatch(es) added to ruff's ignore lists. These lists "
-            "may only shrink — see tools/lints/README.md#ignore-ratchet.",
+            f"\n{len(added)} escape hatch(es) added. These lists may only shrink — "
+            "see tools/lints/README.md#ignore-ratchet.",
             file=sys.stderr,
         )
         return 1
