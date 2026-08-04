@@ -576,7 +576,10 @@ strict_optional = false
 no_implicit_reexport = true
 check_untyped_defs = true
 disallow_untyped_defs = true
-disallow_incomplete_defs = false
+# A partially-annotated signature is the worst of both worlds: it reads as typed
+# and mypy checks the body, but the unannotated parameters are silently `Any`.
+# Enforced globally — the tree is already at zero violations.
+disallow_incomplete_defs = true
 disallow_untyped_calls = false
 disallow_untyped_decorators = false
 disallow_any_generics = false
