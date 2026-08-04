@@ -186,6 +186,9 @@ const GRADE_BANDS = [
 const SENSITIVE_WEIGHT = 2;
 
 /** Whole-word sensitivity terms (matched on camelCase-split identifiers). */
+// Counterpart of `_PII_FIELDS` in tools/evlog_map/sensitivity.py.
+const PII_TERMS = new Set(["email", "phone", "address", "ssn", "iban"]);
+
 const HIGH_TERMS = new Map([
   ["auth", "auth"],
   ["token", "auth"],
@@ -647,9 +650,28 @@ function classifySensitivity(entry, ownFacts) {
       if (!label || termLabel === "money") label = termLabel;
     }
   }
-  return reasons.length > 0
-    ? { level: "high", label, reasons }
-    : { level: "low", label: "", reasons: [] };
+  if (reasons.length > 0) {
+    return { level: "high", label, reasons };
+  }
+
+  // PII tier — mirrors tools/evlog_map/sensitivity.py's `_PII_FIELDS`, so both
+  // scanners report one ordered ladder ("low" | "medium" | "high") and their
+  // maps stay comparable. Keep the two term lists in step.
+  //
+  // The Python side additionally requires a write call next to the PII field;
+  // the bots have no equivalent database-write signal, so this tier is
+  // term-only here. That makes it slightly broader, which is the right
+  // direction for a tier that only raises attention.
+  const piiTerms = [...words].filter((word) => PII_TERMS.has(word));
+  if (piiTerms.length > 0) {
+    return {
+      level: "medium",
+      label: "pii",
+      reasons: piiTerms.map((term) => `pii: handler mentions "${term}"`),
+    };
+  }
+
+  return { level: "low", label: "", reasons: [] };
 }
 
 function runRules(entry, ownFacts, reach, canonicalFields, wrappedSharedCalls) {
