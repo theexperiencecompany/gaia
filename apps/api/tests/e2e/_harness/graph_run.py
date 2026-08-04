@@ -292,7 +292,10 @@ async def comms_graph(
     # module the collaborators live on.
     node_module = "app.agents.core.nodes.follow_up_actions_node"
 
+    import fakeredis.aioredis
+
     from app.constants.memory import ReconcileOutcome
+    from app.db.redis import redis_cache
     from app.memory.ingestion import RetainedMemory
     from app.models.memory_models import MemoryEntry
 
@@ -309,7 +312,15 @@ async def comms_graph(
     )
     memory.recall = AsyncMock(return_value=MagicMock(entries=[], episodes=[]))
 
+    # A real (fake) Redis rather than none: comms genuinely depends on it —
+    # call_executor takes a busy lock through it, and executor_status_hook reads
+    # that lock every turn. Without one the hook errors on every single comms
+    # test and delegation returns a ConnectionError string that a test asserting
+    # "the tool produced something" would happily accept.
+    redis_client = fakeredis.aioredis.FakeRedis(decode_responses=True)
+
     with (
+        patch.object(redis_cache, "redis", redis_client),
         patch.object(
             _build_graph, "get_tools_store", AsyncMock(return_value=store or InMemoryStore())
         ),

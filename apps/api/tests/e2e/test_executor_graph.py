@@ -72,6 +72,59 @@ class TestToolsBoundFromTurnOne:
         assert not run.ran(tool)
 
 
+class TestMixedTurns:
+    """A model turn is not all-or-nothing: it can emit one tool the graph has
+    bound and one it never retrieved. Every other test here uses a turn that is
+    entirely one or the other, which leaves the routing that has to do BOTH
+    completely unexercised.
+    """
+
+    async def test_a_bound_tool_still_runs_when_a_sibling_call_is_unbound(self):
+        """Routing must fan out. If the unbound branch short-circuited the rest,
+        the plan would silently never run while the model was told only about
+        the rejection — it would then retry the search and never notice."""
+        async with executor_graph(
+            [
+                [
+                    {
+                        "name": "plan_tasks",
+                        "args": {"tasks": [{"content": "step one"}]},
+                        "id": "p1",
+                    },
+                    {"name": "web_search_tool", "args": {"query": "cats"}, "id": "s1"},
+                ],
+                "Planned, and I will retrieve the search tool.",
+            ]
+        ) as graph:
+            run = await run_graph(graph, "plan and search")
+
+        assert run.ran("plan_tasks"), "the bound tool was dropped because a sibling was unbound"
+        assert [t["content"] for t in run.todos] == ["step one"]
+        assert REJECT_NODE in run.nodes()
+        assert not run.ran("web_search_tool")
+
+    async def test_both_outcomes_are_reported_back_to_the_model(self):
+        """The model needs the result AND the correction — with only one of
+        them it either redoes work it already did or never learns what failed."""
+        async with executor_graph(
+            [
+                [
+                    {
+                        "name": "plan_tasks",
+                        "args": {"tasks": [{"content": "step one"}]},
+                        "id": "p1",
+                    },
+                    {"name": "web_search_tool", "args": {"query": "cats"}, "id": "s1"},
+                ],
+                "Understood.",
+            ]
+        ) as graph:
+            run = await run_graph(graph, "plan and search")
+
+        assert run.result_for("plan_tasks")
+        assert "web_search_tool" in " ".join(run.results_from(REJECT_NODE))
+
+
 class TestTodoState:
     async def test_planning_writes_the_todos_channel(self):
         """``plan_tasks`` is a state-mutating tool: its whole effect is the

@@ -15,6 +15,7 @@ end-of-turn hooks, and how a turn carries into the next.
 from __future__ import annotations
 
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 import pytest
@@ -52,11 +53,18 @@ class TestCommsToolSurface:
         """Being bound is not the same as working. The "bound" test above stays
         green whatever the tool returns, so this pins the one thing the user
         depends on: asking for real work hands it off and says so. Without it,
-        comms answers "on it" and nothing is ever dispatched."""
+        comms answers "on it" and nothing is ever dispatched.
+
+        Its own conversation, deliberately: ``call_executor`` takes a busy lock
+        keyed on the thread (``executor:busy:{thread_id}``) with a 30-minute
+        TTL, and a lock left by any earlier dispatch queues this one instead of
+        starting it — which is a different, also-valid response and would make
+        the assertion order-dependent.
+        """
         async with comms_graph(
             [call("call_executor", {"task": "book a table"}, id="c1"), "On it."]
         ) as graph:
-            run = await run_graph(graph, "book me a table")
+            run = await run_graph(graph, "book me a table", thread_id=f"dispatch-{uuid4()}")
 
         result = run.result_for("call_executor") or ""
         assert not result.startswith("Error"), result
