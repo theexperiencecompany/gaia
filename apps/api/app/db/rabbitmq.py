@@ -185,7 +185,7 @@ async def init_rabbitmq_publisher() -> RabbitMQPublisher:
     """
     log.debug(f"{LogTag.STARTUP} Initializing RabbitMQ publisher")
 
-    rabbitmq_url: str = settings.RABBITMQ_URL  # type: ignore
+    rabbitmq_url: str = settings.RABBITMQ_URL
     publisher = RabbitMQPublisher(rabbitmq_url)
     await publisher.connect()
 

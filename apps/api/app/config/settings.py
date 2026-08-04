@@ -183,43 +183,43 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
 
     # OAuth Callback URLs
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def WORKOS_REDIRECT_URI(self) -> str:
         """WorkOS OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/workos/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def WORKOS_DESKTOP_REDIRECT_URI(self) -> str:
         """WorkOS OAuth callback URL for desktop app."""
         return f"{self.HOST}/api/v1/oauth/workos/desktop/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def WORKOS_MOBILE_REDIRECT_URI(self) -> str:
         """WorkOS OAuth callback URL for mobile app."""
         return f"{self.HOST}/api/v1/oauth/workos/mobile/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def COMPOSIO_REDIRECT_URI(self) -> str:
         """Composio OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/composio/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def GOOGLE_CALLBACK_URL(self) -> str:
         """Google OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/google/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def DISCORD_OAUTH_REDIRECT_URI(self) -> str:
         """Discord OAuth callback URL."""
         return f"{self.HOST}/api/v1/platform-auth/discord/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
         """Slack OAuth callback URL."""
@@ -626,7 +626,7 @@ class DevelopmentSettings(CommonSettings):
     BOT_SESSION_TOKEN_SECRET: str | None = None  # Falls back to GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
         """Slack OAuth callback URL using redirectmeto proxy for local development."""

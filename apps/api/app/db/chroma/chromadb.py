@@ -96,7 +96,7 @@ class ChromaClient:
                 raise RuntimeError(
                     f"Failed to retrieve existing Langchain client for collection '{collection_name}'"
                 )
-            return instance  # type: ignore
+            return cast(Chroma, instance)
 
         # Dynamically register a provider for this collection and auto-initialize it
         async def _loader() -> Chroma:
@@ -110,7 +110,7 @@ class ChromaClient:
             # Ensure the collection exists using the synchronous constructor client
             try:
                 collections = constructor_client.list_collections()  # type: ignore[attr-defined]
-                existing_names = [c.name for c in collections]  # type: ignore
+                existing_names = [c.name for c in collections]
             except Exception:
                 existing_names = []
 
@@ -160,8 +160,8 @@ async def init_chromadb_client() -> AsyncClientAPI:
     Returns:
         AsyncClientAPI: The ChromaDB async client
     """
-    host: str = settings.CHROMADB_HOST  # type: ignore
-    port: int = settings.CHROMADB_PORT  # type: ignore
+    host: str = settings.CHROMADB_HOST
+    port: int = settings.CHROMADB_PORT
 
     # Route telemetry to a no-op client (see NoopProductTelemetry): the bundled
     # posthog telemetry is incompatible with the installed posthog and errors on
@@ -186,7 +186,7 @@ async def init_chromadb_client() -> AsyncClientAPI:
 
     # Create default collections if they don't exist
     existing_collections = await client.list_collections()
-    existing_collection_names = [col.name for col in existing_collections]  # type: ignore
+    existing_collection_names = [col.name for col in existing_collections]
     collection_names = ["notes", "documents", "gaia_canvas"]
 
     # Create collections if they don't exist
@@ -221,8 +221,8 @@ def init_chromadb_constructor() -> ClientAPI:
     """
     log.debug(f"{LogTag.CHROMA} Initializing ChromaDB constructor client")
 
-    host: str = settings.CHROMADB_HOST  # type: ignore
-    port: int = settings.CHROMADB_PORT  # type: ignore
+    host: str = settings.CHROMADB_HOST
+    port: int = settings.CHROMADB_PORT
 
     # Initialize ChromaDB client for langchain (telemetry off, see init_chromadb_client)
     constructor_client = chromadb.Client(

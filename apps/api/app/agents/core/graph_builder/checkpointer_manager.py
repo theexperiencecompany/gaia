@@ -115,7 +115,7 @@ async def init_checkpointer_manager() -> CheckpointerManager:
     Returns:
         CheckpointerManager: The main checkpointer manager
     """
-    conninfo: str = settings.POSTGRES_URL  # type: ignore
+    conninfo: str = settings.POSTGRES_URL
     manager = CheckpointerManager(conninfo=conninfo)
     await manager.setup()
     return manager

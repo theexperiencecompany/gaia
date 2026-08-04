@@ -185,7 +185,9 @@ class LangchainProvider(
             name=tool,
             closure=function.__closure__,
         )
-        action_func.__signature__ = Signature(parameters=parameters)  # type: ignore
+        # typeshed does not declare __signature__ on FunctionType, but inspect.signature()
+        # honours it at runtime — that is how the tool's schema is advertised to LangChain.
+        action_func.__signature__ = Signature(parameters=parameters)  # type: ignore[attr-defined]
         action_func.__doc__ = description
 
         # Create __annotations__ only for __runnable_config__
