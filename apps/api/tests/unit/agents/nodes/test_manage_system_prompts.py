@@ -7,7 +7,7 @@ shatter the implicit-cache prefix, so older ones are dropped. The legacy
 for back-compat with older persisted state.
 """
 
-from typing import cast
+from typing import Any, ClassVar, cast
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import (
@@ -55,8 +55,8 @@ class TestIsDynamicContext:
 
     def test_marker_in_model_extra(self) -> None:
         class FakeMsg:
-            additional_kwargs: dict = {}
-            model_extra = {"dynamic_context": True}
+            additional_kwargs: ClassVar[dict[str, Any]] = {}
+            model_extra: ClassVar[dict[str, Any]] = {"dynamic_context": True}
 
         assert _is_dynamic_context(cast(AnyMessage, FakeMsg())) is True
 

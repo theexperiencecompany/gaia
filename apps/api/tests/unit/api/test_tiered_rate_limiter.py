@@ -10,8 +10,8 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     TieredRateLimiter,
 )
-from app.decorators import tiered_rate_limit
 from app.config.rate_limits import FeatureInfo, RateLimitPeriod
+from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 
 

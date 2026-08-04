@@ -14,6 +14,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -146,7 +147,7 @@ class TestFeatureLimits:
     """Tests for the FEATURE_LIMITS configuration dictionary."""
 
     # All feature keys that should be present (keep in sync with FEATURE_LIMITS in rate_limits.py)
-    EXPECTED_FEATURES = [
+    EXPECTED_FEATURES: ClassVar[list[str]] = [
         "chat_messages",
         "voice_mode",
         "file_upload",
@@ -223,7 +224,7 @@ class TestFeatureLimits:
             assert limits.info.description, f"{key} has empty description"
 
     # Features intentionally restricted to paid-only (free limits are 0).
-    PAID_ONLY_FEATURES = {"voice_mode"}
+    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode"}
 
     def test_free_limits_are_positive(self) -> None:
         """Non-paid-only features should have at least some free tier allowance."""

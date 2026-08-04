@@ -7,6 +7,7 @@ Covers three surfaces:
 """
 
 from contextlib import asynccontextmanager
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -106,7 +107,7 @@ class TestDevRouterMounting:
     # refactor that registers any of these on a router assembled outside the
     # ENV+bypass gate (e.g. a stray include_router at import time) fails here
     # instead of silently exposing account-takeover-grade endpoints.
-    HIGH_BLAST_RADIUS_ROUTES = [
+    HIGH_BLAST_RADIUS_ROUTES: ClassVar[list[tuple[str, str, dict[str, str] | None]]] = [
         ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
         ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
         ("GET", "/api/v1/dev/subagents", None),
