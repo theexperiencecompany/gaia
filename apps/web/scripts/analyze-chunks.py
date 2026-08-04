@@ -8,9 +8,10 @@ Usage: python3 scripts/analyze-chunks.py [chunk_path]
   If no path given, analyzes the top 10 largest chunks.
 """
 
-import re, sys, os
 from collections import defaultdict
 from pathlib import Path
+import re
+import sys
 
 chunks_dir = Path(".next/server/chunks")
 ssr_dir = chunks_dir / "ssr"
@@ -26,11 +27,11 @@ def analyze_chunk(filepath: str) -> str:
     # Also look for: "node_modules/pkg/..." patterns
     patterns = [
         # [project]/node_modules/...
-        re.compile(r'\[project\]/node_modules/((?:@[\w.-]+/)?[\w.-]+)'),
+        re.compile(r"\[project\]/node_modules/((?:@[\w.-]+/)?[\w.-]+)"),
         # [project]/apps/web/src/...
-        re.compile(r'\[project\]/apps/web/(src/[\w.-]+/[\w.-]+)'),
+        re.compile(r"\[project\]/apps/web/(src/[\w.-]+/[\w.-]+)"),
         # Plain node_modules references
-        re.compile(r'node_modules/((?:@[\w.-]+/)?[\w.-]+)/'),
+        re.compile(r"node_modules/((?:@[\w.-]+/)?[\w.-]+)/"),
     ]
 
     # Find all matches with positions
@@ -72,34 +73,34 @@ def main() -> None:
     grand_totals = defaultdict(int)
 
     for filepath in files:
-        name = os.path.basename(filepath)
-        parent = os.path.basename(os.path.dirname(filepath))
+        name = Path(filepath).name
+        parent = Path(filepath).parent.name
         label = f"{parent}/{name}" if parent != "chunks" else name
 
         size_kb, pkg_sizes = analyze_chunk(filepath)
 
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print(f"{label}  ({size_kb:.0f} KiB)")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
 
         if not pkg_sizes:
             print("  (no recognizable module paths found)")
             continue
 
         print(f"  {'Module/Package':<50} {'KiB':>8}")
-        print(f"  {'-'*60}")
+        print(f"  {'-' * 60}")
         for pkg, size in sorted(pkg_sizes.items(), key=lambda x: x[1], reverse=True)[:15]:
-            print(f"  {pkg:<50} {size/1024:>8.1f}")
+            print(f"  {pkg:<50} {size / 1024:>8.1f}")
             grand_totals[pkg] += size
 
     if len(files) > 1:
-        print(f"\n{'='*70}")
+        print(f"\n{'=' * 70}")
         print("GRAND TOTALS ACROSS ALL ANALYZED CHUNKS")
-        print(f"{'='*70}")
+        print(f"{'=' * 70}")
         print(f"  {'Module/Package':<50} {'KiB':>8}")
-        print(f"  {'-'*60}")
+        print(f"  {'-' * 60}")
         for pkg, size in sorted(grand_totals.items(), key=lambda x: x[1], reverse=True)[:30]:
-            print(f"  {pkg:<50} {size/1024:>8.1f}")
+            print(f"  {pkg:<50} {size / 1024:>8.1f}")
 
 
 if __name__ == "__main__":

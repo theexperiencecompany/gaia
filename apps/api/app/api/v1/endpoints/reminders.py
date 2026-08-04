@@ -332,10 +332,7 @@ async def list_reminders_endpoint(
         )
         log.set(outcome="success")
 
-        return [
-            ReminderResponse.model_validate(reminder)
-            for reminder in reminders
-        ]
+        return [ReminderResponse.model_validate(reminder) for reminder in reminders]
 
     except HTTPException:
         raise  # let a deliberate 404/4xx from the service through, not masked as 500

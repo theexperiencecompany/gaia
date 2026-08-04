@@ -2,6 +2,7 @@
 """
 Credential helper for DataForSEO API
 """
+
 import os
 
 

@@ -273,7 +273,9 @@ def _build_execution_prompt(
     return "\n\n".join(prompt_parts)
 
 
-async def _execute_via_agent(doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser) -> str:
+async def _execute_via_agent(
+    doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser
+) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 

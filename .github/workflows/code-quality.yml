@@ -341,8 +341,16 @@ jobs:
           echo "::group::ruff check + format --check"
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx --no-build ruff@0.14.13 check apps/api apps/voice-agent libs/shared/py
-            uvx --no-build ruff@0.14.13 format --check apps/api apps/voice-agent libs/shared/py
+            # Whole repo, not a list of roots. The old list was
+            # "apps/api apps/voice-agent libs/shared/py", which silently excluded
+            # tools/, .agents/skills/, apps/web/scripts/ and docs/scripts/ — and
+            # is how libs/shared/py went unlinted long enough to accumulate 15
+            # findings after a rule was switched on repo-wide. A new app or lib
+            # is now covered the moment it exists instead of when someone
+            # remembers to add it here. Exclusions live in [tool.ruff]
+            # extend-exclude, where they are visible and reviewable.
+            uvx --no-build ruff@0.14.13 check .
+            uvx --no-build ruff@0.14.13 format --check .
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else

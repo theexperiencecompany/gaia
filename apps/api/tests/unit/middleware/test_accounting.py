@@ -316,7 +316,12 @@ async def test_a_pricing_failure_is_logged_and_charged_as_zero() -> None:
 async def test_a_turn_with_no_model_response_emits_nothing() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
     with patch.object(accounting, "_current_config", lambda: CONFIG):
-        assert await mw.aafter_model(cast(AgentState[Any], {"messages": [HumanMessage(content="h")]}), None) is None
+        assert (
+            await mw.aafter_model(
+                cast(AgentState[Any], {"messages": [HumanMessage(content="h")]}), None
+            )
+            is None
+        )
     assert "model" not in log.get()
 
 

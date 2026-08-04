@@ -2,11 +2,13 @@
 """
 DataForSEO API wrapper
 """
-import urllib.request
-import urllib.parse
-import json
+
 import base64
+import json
 import sys
+import urllib.parse
+import urllib.request
+
 from credential import get_dataforseo_credentials
 
 API_BASE = "https://api.dataforseo.com/v3"
@@ -20,23 +22,19 @@ def api_post(endpoint: str, data: list) -> dict:
         print("Run: export DATAFORSEO_LOGIN=your_login", file=sys.stderr)
         print("     export DATAFORSEO_PASSWORD=your_password", file=sys.stderr)
         sys.exit(1)
-    
+
     url = f"{API_BASE}/{endpoint}"
     auth = base64.b64encode(f"{login}:{password}".encode()).decode()
-    headers = {
-        "Authorization": f"Basic {auth}",
-        "Content-Type": "application/json"
-    }
-    
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(data).encode(),
-        headers=headers,
-        method="POST"
+    headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
+
+    req = urllib.request.Request(  # noqa: S310
+        url, data=json.dumps(data).encode(), headers=headers, method="POST"
     )
-    
+
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        # S310: url is API_BASE (a hardcoded https:// constant) plus an endpoint
+        # path, never caller-supplied, so no file:/custom scheme can reach here.
+        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         error_body = e.read().decode()
@@ -53,11 +51,11 @@ def format_count(n) -> str:
         return "0"
     n = int(n)
     if n >= 1_000_000_000:
-        return f"{n/1_000_000_000:.1f}B"
+        return f"{n / 1_000_000_000:.1f}B"
     if n >= 1_000_000:
-        return f"{n/1_000_000:.1f}M"
+        return f"{n / 1_000_000:.1f}M"
     if n >= 1_000:
-        return f"{n/1_000:.1f}K"
+        return f"{n / 1_000:.1f}K"
     return str(n)
 
 

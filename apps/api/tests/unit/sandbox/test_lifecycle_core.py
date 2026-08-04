@@ -978,7 +978,6 @@ async def test_concurrent_acquisitions_for_one_user_do_not_overlap() -> None:
     )
 
 
-
 async def test_a_users_recorded_shard_is_honoured_instead_of_being_recomputed() -> None:
     # shard_router's docstring: the Mongo doc records the shard "so we never
     # re-shard a user without an explicit migration". But the shard was always

@@ -83,7 +83,9 @@ async def _compute_tool_hash(tool: IndexableTool) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-async def _get_current_tools_with_hashes(tool_registry: ToolRegistry) -> dict[str, IndexedToolEntry]:
+async def _get_current_tools_with_hashes(
+    tool_registry: ToolRegistry,
+) -> dict[str, IndexedToolEntry]:
     """Get all current tools with their hashes and namespaces.
 
     Args:
@@ -392,9 +394,7 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     for tool, space in tools_with_space:
         tool_hash = await _compute_tool_hash(tool)
         composite_key = f"{space}::{tool.name}"
-        current_tools[composite_key] = IndexedToolEntry(
-            hash=tool_hash, namespace=space, tool=tool
-        )
+        current_tools[composite_key] = IndexedToolEntry(hash=tool_hash, namespace=space, tool=tool)
     log.info(
         f"{LogTag.CHROMA} index_tools_to_store: built current_tools dict for '{namespace}': "
         f"{len(current_tools)} unique composite keys from {input_count} inputs"
