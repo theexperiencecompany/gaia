@@ -108,6 +108,7 @@ dev = [
   "pyyaml>=6.0.3",
   "fakeredis[aioredis]>=2.0.0",
   "pytest-xdist>=3.8.0",
+  "pika>=1.4.1",
 ]
 
 backend = [
