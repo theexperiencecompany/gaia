@@ -357,6 +357,14 @@ jobs:
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
           echo "Custom lints: OK (4 rules pass)"
+      - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        # Also a pre-commit hook, but that one is bypassable with --no-verify and
+        # the lists it guards are exactly what a red build tempts you to edit.
+        run: |
+          echo "::group::ignore ratchet"
+          python3 tools/lints/check_ignore_ratchet.py
+          echo "::endgroup::"
+          echo "ignore-ratchet: OK (no ruff rule was switched off)"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:

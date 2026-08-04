@@ -117,3 +117,41 @@ not allowlisted. Check 4's allowlist is the legitimate NON-entity caches
 (aggregate rollups, tokens, external-data / derived-display caches) — the ban is
 only on hand-caching a repository-managed *entity* behind the repo's back. Check 3
 has no allowlist (the layer is new — it starts clean).
+
+---
+
+## ignore-ratchet
+
+Not an AST rule — a config ratchet, so it runs as its own script/hook rather than
+through `run.py`:
+
+```bash
+python3 tools/lints/check_ignore_ratchet.py           # check
+python3 tools/lints/check_ignore_ratchet.py --update  # record a deliberate change
+```
+
+**Rule:** the two escape-hatch lists in the root `pyproject.toml` —
+`[tool.ruff.lint] ignore` and `[tool.ruff.lint.per-file-ignores]` — may only ever
+*shrink*. The check fails if a rule is added to the global list, a rule is added
+to an existing file's list, or a new file entry appears.
+
+**Why:** both lists are the residue of a cleanup campaign. They are the only two
+places a ruff rule can be switched off wholesale, and editing them is invisible
+in review in a way a failing check is not — a single line quietly re-opens
+exactly the hole the campaign closed. Comparing against the checked-in baseline
+turns "loosen the linter" from an unnoticed config edit into a conscious,
+reviewable decision.
+
+**Baseline:** `tools/lints/ignore_ratchet_baseline.txt`, one line per escape
+hatch, sorted, checked in. Compared as a **set**, not a count — a count check
+passes when someone removes one entry and adds another.
+
+**Fix:** delete the offending rule from the list and fix the code it silences.
+If the exemption is genuinely warranted (a framework contract, a generated file),
+justify it in review and run `--update`; the baseline diff then shows the new
+escape hatch on its own line for a reviewer to accept or reject.
+
+**Removals always pass** — that is the ratchet turning. The check prints what was
+removed and suggests `--update` to lock the win in; until someone does, the
+baseline stays at the old high-water mark, so a removed entry can be re-added
+without failing. Running `--update` as part of the cleanup closes that window.
