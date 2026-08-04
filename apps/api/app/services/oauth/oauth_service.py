@@ -271,7 +271,6 @@ async def check_multiple_integrations_status(
 async def handle_oauth_connection(
     user_id: str,
     integration_config: OAuthIntegration,
-    connected_account_id: str,
     background_tasks: BackgroundTasks,
 ) -> None:
     """
@@ -280,7 +279,6 @@ async def handle_oauth_connection(
     Args:
         user_id: The user ID
         integration_config: The integration configuration object
-        connected_account_id: The connected account ID from Composio
         background_tasks: FastAPI background tasks
     """
     log.set(auth={"user_id": user_id, "provider": integration_config.id})

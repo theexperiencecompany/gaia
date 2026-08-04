@@ -108,7 +108,6 @@ async def query_events(
 
         result = await calendar_service.get_calendar_events(
             user_id=user_id,
-            page_token=None,
             selected_calendars=request.selected_calendars,
             time_min=time_min,
             time_max=time_max,
@@ -130,7 +129,6 @@ async def query_events(
 
 @router.get("/calendar/events", summary="Get Calendar Events (Simple Queries)")
 async def get_events(
-    page_token: str | None = None,
     selected_calendars: list[str] | None = Query(None),
     start_date: str | None = None,
     end_date: str | None = None,
@@ -180,7 +178,6 @@ async def get_events(
 
         result = await calendar_service.get_calendar_events(
             user_id=user_id,
-            page_token=page_token,
             selected_calendars=selected_calendars,
             time_min=time_min,
             time_max=time_max,

@@ -505,7 +505,6 @@ async def composio_callback(
         await handle_oauth_connection(
             user_id=str(user_id),
             integration_config=integration_config,
-            connected_account_id=connectedAccountId,
             background_tasks=background_tasks,
         )
 

@@ -248,7 +248,6 @@ def _event_sort_key(event: GoogleCalendarEventResource) -> str:
 
 async def get_calendar_events(
     user_id: str,
-    page_token: str | None = None,
     selected_calendars: list[str] | None = None,
     time_min: str | None = None,
     time_max: str | None = None,

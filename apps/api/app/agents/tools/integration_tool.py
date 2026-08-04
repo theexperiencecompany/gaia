@@ -156,7 +156,6 @@ async def list_integrations(
                             "slug": generate_integration_slug(
                                 name=doc.name,
                                 category=doc.category,
-                                integration_id=iid,
                             ),
                         }
                     )

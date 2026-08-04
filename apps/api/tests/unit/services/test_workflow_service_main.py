@@ -1883,7 +1883,7 @@ class TestWorkflowScheduler:
 
         scheduled_at = datetime.now(UTC) + timedelta(hours=1)
         result = await scheduler.schedule_workflow_execution(
-            WORKFLOW_ID, USER_ID, scheduled_at, repeat="0 9 * * *"
+            WORKFLOW_ID, scheduled_at, repeat="0 9 * * *"
         )
         assert result is True
         scheduler.schedule_task.assert_awaited_once()
@@ -1893,7 +1893,7 @@ class TestWorkflowScheduler:
         scheduler.schedule_task = AsyncMock(return_value=False)
 
         scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-        result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, USER_ID, scheduled_at)
+        result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, scheduled_at)
         assert result is False
 
     async def test_schedule_workflow_execution_exception_returns_false(self):
@@ -1901,7 +1901,7 @@ class TestWorkflowScheduler:
         scheduler.schedule_task = AsyncMock(side_effect=Exception("Redis down"))
 
         scheduled_at = datetime.now(UTC) + timedelta(hours=1)
-        result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, USER_ID, scheduled_at)
+        result = await scheduler.schedule_workflow_execution(WORKFLOW_ID, scheduled_at)
         assert result is False
 
     async def test_reschedule_workflow_success(self):

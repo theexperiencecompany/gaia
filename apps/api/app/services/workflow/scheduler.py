@@ -190,7 +190,6 @@ class WorkflowScheduler(BaseSchedulerService):
     async def schedule_workflow_execution(
         self,
         workflow_id: str,
-        user_id: str,
         scheduled_at: datetime,
         repeat: str | None = None,
         max_occurrences: int | None = None,

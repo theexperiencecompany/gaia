@@ -343,7 +343,6 @@ class WorkflowService:
                 if trigger_config.type == "schedule" and trigger_config.next_run:
                     await workflow_scheduler.schedule_workflow_execution(
                         workflow.id,
-                        user_id,
                         trigger_config.next_run,
                         repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
                     )
@@ -880,7 +879,6 @@ class WorkflowService:
             ):
                 await workflow_scheduler.schedule_workflow_execution(
                     workflow_id,
-                    user_id,
                     updated_workflow.trigger_config.next_run,
                     repeat=updated_workflow.trigger_config.cron_expression,
                     max_occurrences=getattr(updated_workflow, "max_occurrences", None),

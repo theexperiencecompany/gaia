@@ -228,7 +228,6 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
             slug = generate_integration_slug(
                 name=integration.name,
                 category=integration.category,
-                integration_id=iid,
             )
 
             formatted.append(
