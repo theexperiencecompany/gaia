@@ -136,6 +136,7 @@ select = [
   "FA",    # future-annotations correctness
   "INT",   # gettext f-string misuse
   "ASYNC", # blocking calls inside async functions
+  "T20",   # no print() — app code logs through wide events
   "ANN401", # disallow explicit `Any` in type annotations
 ]
 ignore = [
@@ -492,7 +493,9 @@ unfixable = [
 "apps/api/app/workers/tasks/user_tasks.py" = ["PLC0415", "ARG001"]
 "apps/api/app/workers/tasks/workflow_tasks.py" = ["PLC0415", "ARG001"]
 # Lazy per-command CLI import (heavy agent module loaded only when needed).
-"apps/voice-agent/src/__main__.py" = ["PLC0415"]
+# T20: this is the CLI dispatcher — usage text and unknown-command errors belong
+# on stdout, before any logging sink is configured.
+"apps/voice-agent/src/__main__.py" = ["PLC0415", "T20"]
 # Optional-dependency import inside try (infisical_sdk not always installed).
 "libs/shared/py/secrets.py" = ["PLC0415"]
 "**/tests/**/*.py" = [
@@ -506,6 +509,7 @@ unfixable = [
   "S106",
   "S107",
   "SLF001",  # private-member access ok in tests
+  "T20",     # printed diagnostics (latency probes) are read via pytest -s
   "TRY003",
   "BLE001",
   "PT004",
@@ -514,6 +518,11 @@ unfixable = [
 ]
 "**/conftest.py" = ["ANN", "INP001", "ARG", "S101", "PLC0415"]
 "**/scripts/**/*.py" = ["T20", "INP001", "PLR2004", "S603", "S606", "S607", "PLC0415"]
+# T20: developer-facing command line tools — printing to stdout is their output,
+# not a debugging leftover. The lint rules and the llm-stub both run as CLIs, and
+# wake-word training is a standalone ML pipeline outside the app entirely.
+"tools/**/*.py" = ["T20"]
+"libs/wake-word/**/*.py" = ["T20"]
 "**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
 "**/__init__.py" = ["F401"]
 "**/patches.py" = ["F401", "PLC", "ANN", "ARG"]

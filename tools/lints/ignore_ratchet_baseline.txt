@@ -147,6 +147,7 @@ per-file-ignores	**/tests/**/*.py	S105
 per-file-ignores	**/tests/**/*.py	S106
 per-file-ignores	**/tests/**/*.py	S107
 per-file-ignores	**/tests/**/*.py	SLF001
+per-file-ignores	**/tests/**/*.py	T20
 per-file-ignores	**/tests/**/*.py	TRY003
 per-file-ignores	apps/api/app/agents/core/background/result_delivery.py	PLC0415
 per-file-ignores	apps/api/app/agents/core/nodes/adapt_media.py	ARG001
@@ -254,6 +255,9 @@ per-file-ignores	apps/api/app/workers/tasks/user_tasks.py	PLC0415
 per-file-ignores	apps/api/app/workers/tasks/workflow_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/workflow_tasks.py	PLC0415
 per-file-ignores	apps/voice-agent/src/__main__.py	PLC0415
+per-file-ignores	apps/voice-agent/src/__main__.py	T20
 per-file-ignores	libs/shared/py/secrets.py	PLC0415
 per-file-ignores	libs/shared/py/settings/base.py	ANN401
 per-file-ignores	libs/shared/py/wide_events.py	ANN401
+per-file-ignores	libs/wake-word/**/*.py	T20
+per-file-ignores	tools/**/*.py	T20

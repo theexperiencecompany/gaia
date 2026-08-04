@@ -1,5 +1,8 @@
 import typing as t
 
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
+
 
 def apply() -> None:
     try:
@@ -51,10 +54,15 @@ def apply() -> None:
 
         lc_base._handle_validation_error = patched_handle_validation_error
 
-        # Print success
-        print("[PATCH] Applied composio_langchain_patch for arrays and tool validation errors")
+        log.info(
+            f"{LogTag.STARTUP} Applied composio_langchain_patch "
+            "for arrays and tool validation errors"
+        )
     except Exception as e:
-        print(f"[PATCH] Failed to apply composio langchain patch: {e}")
+        # Not print: a monkey-patch that fails to apply changes runtime behaviour
+        # for every Composio tool call, and on stdout that never reaches Loki —
+        # the symptom would surface later as unexplained tool-validation errors.
+        log.error(f"{LogTag.STARTUP} Failed to apply composio langchain patch: {e}")
 
 
 # Call it directly on importing
