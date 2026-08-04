@@ -5,11 +5,36 @@
 # scripts/swarm/lab-rehearsal.sh.
 
 secrets:
-  gaia_infisical_token:
+  # Per-service Infisical machine identities (Universal Auth). Each service
+  # authenticates with its own identity, scoped in the Infisical dashboard to
+  # only the secret paths that service needs — a compromised container cannot
+  # read the rest of the project. Services attach these with the long secret
+  # syntax, mapping each per-service secret onto the canonical
+  # /run/secrets/gaia_infisical_machine_identity_* paths that
+  # scripts/docker-entrypoint.sh reads.
+  gaia_api_infisical_client_id:
     external: true
-  gaia_infisical_machine_identity_client_id:
+  gaia_api_infisical_client_secret:
     external: true
-  gaia_infisical_machine_identity_client_secret:
+  gaia_bot_discord_infisical_client_id:
+    external: true
+  gaia_bot_discord_infisical_client_secret:
+    external: true
+  gaia_bot_slack_infisical_client_id:
+    external: true
+  gaia_bot_slack_infisical_client_secret:
+    external: true
+  gaia_bot_telegram_infisical_client_id:
+    external: true
+  gaia_bot_telegram_infisical_client_secret:
+    external: true
+  gaia_bot_whatsapp_infisical_client_id:
+    external: true
+  gaia_bot_whatsapp_infisical_client_secret:
+    external: true
+  gaia_voice_agent_infisical_client_id:
+    external: true
+  gaia_voice_agent_infisical_client_secret:
     external: true
   gaia_infisical_project_id:
     external: true
@@ -59,15 +84,15 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
       # Use the shared embedding sidecar instead of loading models in-process.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_api_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_api_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
       - gaia_metrics_token
     ports:
@@ -138,16 +163,16 @@ services:
       LOG_COLORIZE: "false"
       ARQ_METRICS_PORT: "9100"
       ENV: production
-      INFISICAL_ENV: prod
       # Use the shared embedding sidecar — the worker's 2G limit can't hold the
       # ~1.85GB models in-process, so it must offload embed/rerank to the sidecar.
       MEMORY_EMBEDDING_SIDECAR_URL: http://embedding-sidecar:8200
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_api_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_api_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
       - gaia_metrics_token
     networks:
@@ -158,7 +183,7 @@ services:
       # Reads arq's own liveness key (arq:health — refreshed from the poll loop
       # with a ~31s TTL, so it's gone within ~31s if the loop wedges). This is
       # what `arq --check` asserts internally, but without importing the app:
-      # a healthcheck runs outside the entrypoint, so it has no INFISICAL_TOKEN
+      # a healthcheck runs outside the entrypoint, so it has no Infisical creds
       # and a full app import dies in settings bootstrap — which silently rolled
       # the worker back on every deploy. The probe touches only Redis.
       test: ["CMD", "python", "scripts/arq_healthcheck.py"]
@@ -203,7 +228,6 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
       # Persist the ~1.85GB fastembed weights so they download ONCE, not on every
       # restart/redeploy (measured ~148s cold-load). Mounted volume below.
       MEMORY_MODEL_CACHE_DIR: /models
@@ -212,9 +236,10 @@ services:
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_api_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_api_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     volumes:
       - embedding_models:/models
@@ -266,11 +291,11 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_bot_discord_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_bot_discord_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/discord/* from the public internet.
@@ -312,11 +337,11 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_bot_slack_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_bot_slack_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/slack/* from the public internet.
@@ -358,11 +383,11 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_bot_telegram_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_bot_telegram_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/telegram/* from the public internet.
@@ -404,11 +429,11 @@ services:
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       ENV: production
-      INFISICAL_ENV: prod
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_bot_whatsapp_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_bot_whatsapp_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /api/v1/webhook/whatsapp + /bots/whatsapp/*.
@@ -889,9 +914,10 @@ services:
       # SSE endpoint the agent's CustomLLM talks to).
       GAIA_BACKEND_URL: http://gaia-backend:80
     secrets:
-      - gaia_infisical_token
-      - gaia_infisical_machine_identity_client_id
-      - gaia_infisical_machine_identity_client_secret
+      - source: gaia_voice_agent_infisical_client_id
+        target: gaia_infisical_machine_identity_client_id
+      - source: gaia_voice_agent_infisical_client_secret
+        target: gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface

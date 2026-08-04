@@ -54,7 +54,7 @@ Required for every bot (process throws if missing): `GAIA_API_URL`, `GAIA_BOT_AP
 
 Platform-specific: Discord `DISCORD_BOT_TOKEN` + `DISCORD_CLIENT_ID`; Slack `SLACK_BOT_TOKEN` + `SLACK_SIGNING_SECRET` + `SLACK_APP_TOKEN`; Telegram `TELEGRAM_BOT_TOKEN`; WhatsApp `KAPSO_API_KEY` + `KAPSO_PHONE_NUMBER_ID` + `KAPSO_WEBHOOK_SECRET`.
 
-Infisical is optional in dev, fatal-if-missing when `NODE_ENV=production`, and only fills keys not already in `process.env`.
+Infisical is optional in dev, fatal-if-missing in production, and only fills keys not already in `process.env`. The environment slug comes from `ENV` (same as the Python apps), falling back to `NODE_ENV=production` → `production` in containers without an explicit `ENV`.
 
 ## Platform gotchas
 

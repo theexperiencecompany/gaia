@@ -273,6 +273,10 @@ fi
 nx run-many -t dev --projects=api,web --parallel=2
 '''
 
+[tasks."dev:infisical"]
+description = "Team members: `mise dev` with secrets injected from Infisical via the CLI. One-time setup: `brew install infisical/get-cli/infisical && infisical login`. Injected values win over .env for this task — use Infisical personal overrides for local tweaks. Self-hosters/contributors: use `mise dev` with plain .env files instead."
+run = "infisical run --env=development -- mise dev"
+
 [tasks."dev:api"]
 description = "Run ONLY API server natively + infra in Docker. Same JuiceFS caveat as `mise dev` — see `mise dev:vm` for the dockered-API variant."
 run = "nx run docker:docker:up && nx dev api"

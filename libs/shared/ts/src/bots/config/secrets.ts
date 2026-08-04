@@ -2,7 +2,7 @@
  * Infisical secrets management for GAIA bots.
  *
  * Resolution:
- * - If all 4 Infisical env vars are set → fetch remote secrets
+ * - If all Infisical env vars are set → fetch remote secrets
  * - If partially set → warn about incomplete config
  * - If none set in dev → skip (using local .env only)
  * - If none set in prod → throw (Infisical is required in production)
@@ -23,15 +23,18 @@ class InfisicalConfigError extends Error {
 }
 
 const INFISICAL_VARS = [
-  "INFISICAL_TOKEN",
   "INFISICAL_PROJECT_ID",
   "INFISICAL_MACHINE_IDENTITY_CLIENT_ID",
   "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
 ] as const;
 
 export async function injectInfisicalSecrets(): Promise<void> {
+  // ENV doubles as the Infisical environment slug (development/staging/
+  // production), same as the Python loader. NODE_ENV is only a fallback for
+  // containers that set NODE_ENV=production without an explicit ENV.
   const env =
-    process.env.NODE_ENV === "production" ? "production" : "development";
+    process.env.ENV ??
+    (process.env.NODE_ENV === "production" ? "production" : "development");
   const isProduction = env === "production";
 
   const present = INFISICAL_VARS.filter((k) => !!process.env[k]);
