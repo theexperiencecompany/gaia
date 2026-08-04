@@ -187,10 +187,10 @@ ignore = [
   "G201",    # logging-exc-info
   # RUF059: unused tuple unpack — common in test helpers.
   "RUF059",
-  # PGH003 (blanket `# type: ignore`) stays for now — 21 sites still to migrate
-  # to `# type: ignore[code]`. PGH004 is NOT ignored: a bare `# noqa` hides which
-  # rule was silenced, and there are zero in the tree, so barring it costs nothing.
-  "PGH003",
+  # PGH003/PGH004 are both enforced. A blanket `# type: ignore` silences every
+  # error on its line forever, including ones introduced later, and a bare
+  # `# noqa` hides which rule was suppressed — so neither can be reviewed for
+  # whether it still applies. Both are at zero.
   # SIM117 / SIM102 — nested with/if can be more readable than combined.
   "SIM117",
   "SIM102",
