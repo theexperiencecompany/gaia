@@ -327,7 +327,7 @@ class MiddlewareExecutor:
         state: State,
         config: RunnableConfig,
         store: BaseStore | None,
-        invoke_fn: Callable[..., Awaitable[ToolMessage]],
+        invoke_fn: Callable[..., Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
         """
         Wrap a tool invocation with all wrap_tool_call middleware.
@@ -354,10 +354,10 @@ class MiddlewareExecutor:
         # Holds the tool's own result once it has run, so the fallback below can
         # tell a middleware that failed *before* the tool from one that failed
         # after it — only the former is safe to retry.
-        tool_result: ToolMessage | None = None
+        tool_result: ToolMessage | Command[Any] | None = None
 
         # Build the handler chain from inside out
-        async def final_handler(req: ToolCallRequest) -> ToolMessage:
+        async def final_handler(req: ToolCallRequest) -> ToolMessage | Command[Any]:
             """Innermost handler - actually calls the tool."""
             nonlocal tool_result
             tool_result = await invoke_fn(req.tool_call)
