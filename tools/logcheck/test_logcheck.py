@@ -127,15 +127,16 @@ def test_a_real_bot_capture_passes_clean() -> None:
 
 def _boundary_event(**overrides: object) -> dict[str, object]:
     event = {
-        "time": "2026-08-02T11:00:00+00:00",
+        "time": "2026-08-02T11:00:00.000Z",
         "level": "INFO",
+        "env": "development",
+        "service": "gaia-backend",
+        "commit": "local",
         "logger": "REQUEST",
         "message": "http_request",
         "module": "m",
         "line": 1,
         "worker": "main",
-        "service": "gaia-backend",
-        "env": "development",
         "trace_id": "5555555555555555",
         "duration_ms": 3.0,
         "final_level": "INFO",
