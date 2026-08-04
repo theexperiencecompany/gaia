@@ -24,10 +24,9 @@ from app.api.v1.middleware.logging import LoggingMiddleware
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
 from app.core.app_factory import create_app
 from app.core.middleware import configure_middleware
-from shared.py.logging import MAX_JSON_LINE_BYTES, _json_stdout_sink
+from shared.py.logging import MAX_JSON_LINE_BYTES, _json_stdout_sink, env_context
 from shared.py.wide_events import (
     _event_state,
-    env_context,
     get_trace_id,
     log,
     log_context,
@@ -64,26 +63,30 @@ def _app_with_logging() -> FastAPI:
     return app
 
 
-def test_app_code_cannot_clobber_the_service_identity(emitted):
-    """`service` must equal this process's Promtail label, always.
+def test_app_code_cannot_clobber_the_service_identity(capsys):
+    """`env`/`service`/`commit` must equal this process's infra identity, always.
 
     The shipped bug: env fields were merged BEFORE handler fields, so 16
     service-layer callers doing log.set(service="notes_service") overwrote the
     infra identity — `{service="gaia-backend"} | json | service="gaia-backend"`
     stopped agreeing with itself and dashboards under-counted silently.
+
+    The guarantee now lives in the sink rather than in the middleware's dict
+    ordering: `_build_json_entry` stamps the identity on EVERY line (matching
+    what buildRecord does for the TypeScript bots) and re-emits a colliding app
+    field as ctx_<key>. So this asserts the sink, which also covers the
+    real-time lines the middleware never touched.
     """
-    app = _app_with_logging()
+    hijack = {"service": "HIJACKED", "env": "HIJACKED", "commit": "HIJACKED"}
+    _json_stdout_sink(type("M", (), {"record": _record(hijack)})())
+    line = json.loads(capsys.readouterr().out.strip())
 
-    @app.get("/t")
-    async def handler():
-        log.set(service="HIJACKED", env="HIJACKED", commit="HIJACKED")
-        return {}
-
-    TestClient(app).get("/t")
-    (event,) = emitted
-    assert event["service"] == env_context()["service"]
-    assert event["env"] == env_context()["env"]
-    assert event["commit"] == env_context()["commit"]
+    identity = env_context()
+    assert line["service"] == identity["service"]
+    assert line["env"] == identity["env"]
+    assert line["commit"] == identity["commit"]
+    # The attempt is preserved, just relocated — never silently dropped.
+    assert line["ctx_service"] == line["ctx_env"] == line["ctx_commit"] == "HIJACKED"
 
 
 def test_handler_fields_reach_the_emitted_event(emitted):
@@ -211,8 +214,10 @@ def test_raised_http_exception_lands_in_errors_with_its_cause(emitted):
     assert error["status_code"] == 500
     assert error["detail"] == "Failed to create todo"
     assert error["path"] == "/boom"
+    # error_type + error (a string) is the cross-runtime vocabulary for a
+    # thrown value — see scripts/ci/wide-event-conformance/contract.json.
     assert error["error_type"] == "RuntimeError"
-    assert error["error_message"] == "db down"
+    assert error["error"] == "db down"
 
 
 def test_production_middleware_order_keeps_logging_outermost():

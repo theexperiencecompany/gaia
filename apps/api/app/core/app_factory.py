@@ -150,7 +150,7 @@ def create_app() -> FastAPI:
         cause = exc.__cause__
         if cause is not None:
             failure["error_type"] = type(cause).__name__
-            failure["error_message"] = str(cause)
+            failure["error"] = str(cause)
 
         # Mirrors the status -> level mapping the logging middleware applies.
         record = wide_log.error if exc.status_code >= 500 else wide_log.warning

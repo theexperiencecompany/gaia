@@ -22,7 +22,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config.loggers import request_logger
-from shared.py.wide_events import env_context, log as wide_log
+from shared.py.wide_events import log as wide_log
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
 
@@ -182,7 +182,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             wide_log.error(
                 "unhandled_exception",
                 error_type=type(exc).__name__,
-                error_message=str(exc),
+                error=str(exc),
             )
             wide_log.set(outcome="failed")
             # Still emit the wide event before re-raising
@@ -197,8 +197,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             )
             context = {
                 **wide_event_context,
-                # Authoritative — must not be overridable by app fields.
-                **env_context(),
                 "method": request.method,
                 "path": request.url.path,
                 "status_code": 500,
@@ -235,12 +233,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
         context = {
             # --- Business context accumulated by handlers/services ---
-            # Spread first so the authoritative env/HTTP values below always win.
+            # Spread first so the authoritative HTTP values below always win.
+            # env/service/commit are NOT spread here: the JSON sink stamps them
+            # on every line (shared.py.logging._build_json_entry) and re-emits a
+            # colliding app field as ctx_<key>, so the infra identity is
+            # authoritative for real-time lines too, not just this one.
             **wide_event_context,
-            # --- Environment characteristics (on every event, authoritative) ---
-            # Last, so app code that sets `service` cannot contradict the
-            # Promtail label for this process.
-            **env_context(),
             # --- HTTP request characteristics (always authoritative) ---
             "method": request.method,
             "path": request.url.path,
