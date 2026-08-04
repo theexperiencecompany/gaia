@@ -289,3 +289,5 @@ per-file-ignores	apps/api/app/workers/tasks/workflow_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/workflow_tasks.py	PLC0415
 per-file-ignores	apps/voice-agent/src/__main__.py	PLC0415
 per-file-ignores	libs/shared/py/secrets.py	PLC0415
+per-file-ignores	libs/shared/py/settings/base.py	ANN401
+per-file-ignores	libs/shared/py/wide_events.py	ANN401

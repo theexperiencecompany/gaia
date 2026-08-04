@@ -20,6 +20,7 @@ The middleware calls log.reset() at the start of each request and merges
 log.get() into the final emitted event. For worker tasks use wide_task().
 """
 
+from collections.abc import AsyncIterator
 import contextlib
 import contextvars
 import functools
@@ -621,7 +622,7 @@ async def _wide_event_boundary(
     logger_name: str,
     trace_id: str | None = None,
     **initial_context: Any,
-):
+) -> AsyncIterator[WideEventLogger]:
     """Bind a fresh wide event for non-request work and flush one canonical line.
 
     Shared core for ``wide_task`` and ``log_context``. Mirrors the HTTP
@@ -644,7 +645,11 @@ async def _wide_event_boundary(
         yield log
         log.set(outcome="success")
     except Exception as exc:
-        log.error(
+        # TRY400 is suppressed below, not ignored: the rule exists because .error()
+        # inside `except` drops the traceback. Here the very next statement
+        # re-raises, so the traceback is not lost — it reaches whoever catches it.
+        # Switching to .exception() would emit it twice for every failed task.
+        log.error(  # noqa: TRY400
             "task failed",
             error=str(exc),
             error_type=type(exc).__name__,
@@ -660,7 +665,9 @@ async def _wide_event_boundary(
         _loguru.bind(logger_name=logger_name, **event).log(level, event_name)
 
 
-def wide_task(task_name: str, *, trace_id: str | None = None, **initial_context: Any):
+def wide_task(
+    task_name: str, *, trace_id: str | None = None, **initial_context: Any
+) -> contextlib.AbstractAsyncContextManager[WideEventLogger]:
     """
     Context manager for wide event logging in ARQ worker tasks.
 
@@ -682,7 +689,9 @@ def wide_task(task_name: str, *, trace_id: str | None = None, **initial_context:
     )
 
 
-def log_context(operation: str, *, trace_id: str | None = None, **initial_context: Any):
+def log_context(
+    operation: str, *, trace_id: str | None = None, **initial_context: Any
+) -> contextlib.AbstractAsyncContextManager[WideEventLogger]:
     """
     Context manager that establishes a wide event boundary for background work.
 

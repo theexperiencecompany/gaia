@@ -401,6 +401,16 @@ unfixable = [
 # return arbitrary data -- Any is the correct type here, not a shortcut.
 "apps/api/app/db/redis.py" = ["ANN401"]
 "apps/api/app/config/settings.py" = ["ANN401"]
+# ANN401: the same two shapes, in the shared package. wide_events is the
+# structured-logging sink -- log.set()/warning()/error() take an arbitrary bag of
+# JSON-serializable event fields that is only stored and serialized, never
+# operated on. `object` would be the honest type for the bag itself but forces a
+# cast on the exc_info that warning/error/critical pop back out of it, which buys
+# nothing. settings/base.py is the shared twin of config/settings.py above:
+# from_env() forwards **kwargs into pydantic's per-field typed __init__
+# (ENV is a Literal, SHOW_MISSING_KEY_WARNINGS a bool), so the bag cannot be object.
+"libs/shared/py/wide_events.py" = ["ANN401"]
+"libs/shared/py/settings/base.py" = ["ANN401"]
 # ANN401: StructuredTool.run overrides LangChain BaseTool.run and forwards
 # *args/**kwargs straight through (BaseTool.run itself returns Any); the wrapped
 # action fn takes the tool-argument bag, whose signature is synthesized at
@@ -663,8 +673,6 @@ module = [
   "tests.*",
   "shared.*.tests.*",
   "*.tests.*",
-  "test_*",
-  "*.test_*",
 ]
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
@@ -672,6 +680,11 @@ disallow_untyped_calls = false
 check_untyped_defs = false
 strict_optional = false
 warn_return_any = false
+# `with pytest.raises(X): raise X()` makes every following line "unreachable" to
+# mypy, though pytest.raises suppresses the exception and they all run. The
+# assertions after the block are the point of those tests — the warning is a
+# false positive here, and only here.
+warn_unreachable = false
 
 # ---------------------------------------------------------------------------
 # bandit — security linter. Strict mode: zero warnings policy.
