@@ -229,6 +229,43 @@ class TestUnboundToolHandling:
         assert run.nodes().count(REJECT_NODE) > 1
 
 
+class TestScopingAndNaming:
+    """Two filters that decide whether a name is bindable at all."""
+
+    async def test_a_desktop_tool_cannot_be_retrieved_into_a_web_conversation(self):
+        """Desktop tools execute on the user's machine through the desktop app.
+        Binding one in a web conversation gives the model a tool whose calls go
+        nowhere — it waits out the timeout and reports the desktop app is closed.
+
+        Distinct from the initial-set test: this is the only route by which a
+        model could ever obtain one, so it is the only one that matters."""
+        async with executor_graph([retrieve("take_screenshot"), "ok"]) as graph:
+            run = await run_graph(graph, "screenshot my screen")
+
+        assert run.bound_tools() == []
+        assert "take_screenshot" not in run.model_bound_tools()
+
+    async def test_a_dashed_tool_name_resolves_to_its_real_underscored_tool(self):
+        """MCP servers commonly expose dashed names and models echo them with
+        underscores (or the reverse). Without canonicalization the call is
+        rejected forever, the model retries, and the unbounded reject cycle ends
+        in a step-limit error instead of the tool running."""
+        async with executor_graph([retrieve("web-search-tool"), "ok"]) as graph:
+            run = await run_graph(graph, "search the web")
+
+        assert run.bound_tools() == [RETRIEVABLE]
+
+    async def test_a_dashed_call_of_a_bound_tool_is_routed_not_rejected(self):
+        """The same rewrite on the routing side. Binding it and then rejecting
+        the call is the worst of both — the model is told the tool exists and
+        cannot use it."""
+        async with executor_graph([call("plan-tasks", {"tasks": []}, id="c1"), "ok"]) as graph:
+            run = await run_graph(graph, "plan something")
+
+        assert REJECT_NODE not in run.nodes()
+        assert run.ran("plan_tasks")
+
+
 class TestUnknownToolNames:
     async def test_an_unknown_name_binds_nothing(self):
         async with executor_graph([retrieve("no_such_tool_xyz"), "gave up"]) as graph:

@@ -323,6 +323,33 @@ class TestTermination:
         assert run.results_from(FINISH_NODE) == ["Task completed."]
 
 
+class TestRecursionWrapup:
+    async def test_the_model_is_warned_before_it_runs_out_of_steps(self):
+        """A long run that hits the hard limit dies with a GraphRecursionError
+        and no partial answer. The wrap-up notice is the one chance the model
+        gets to summarise what it found — injected per call, never persisted, so
+        the only place it is observable is the prompt itself."""
+        async with executor_graph([call("plan_tasks", {"tasks": []}, id=f"c{i}") for i in range(30)]) as graph:
+            run = await run_graph(graph, "a long job", recursion_limit=10)
+
+        shown = " ".join(str(m.content) for m in run.last_prompt())
+
+        assert "almost out of steps" in shown, (
+            f"the model was never warned: {shown[-200:]!r}"
+        )
+        assert "summarize what you" in shown, "warned without being told what to do about it"
+
+    async def test_a_short_run_is_not_warned(self):
+        """Control: warning on every turn would waste tokens and push the model
+        to wrap up work it has plenty of budget for."""
+        async with executor_graph(["done"]) as graph:
+            run = await run_graph(graph, "a quick job", recursion_limit=50)
+
+        shown = " ".join(str(m.content) for m in run.last_prompt())
+
+        assert "almost out of steps" not in shown.lower()
+
+
 class TestThreadContinuity:
     async def test_a_second_run_on_the_same_thread_sees_the_first(self):
         """The executor thread is derived from the conversation
