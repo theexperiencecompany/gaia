@@ -395,17 +395,23 @@ jobs:
           uv sync --project apps/api --group backend --group dev
           echo "::endgroup::"
           echo "deps: OK"
-      - name: mypy across api + voice-agent + shared (staged-strict + shared.* strict override)
+      - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
         run: |
           echo "::group::mypy"
           # mypy needs the whole module graph per project, so it can't be scoped
-          # to individual changed files. On PRs we instead detect which Python
+          # to individual changed files.
+          #
+          # Still uncovered, deliberately and with the cost measured: apps/api/tests
+          # (759 errors even under the loosened tests override), apps/api/scripts
+          # (45) and tools/llm-stub (27, all missing annotations on a dev fixture).
+          # Named here so the gap stays a decision instead of quietly becoming the
+          # kind of blind spot that let libs/shared/py drift. On PRs we instead detect which Python
           # projects changed (from the .py diff) and check only those project
           # roots. libs/shared/py is a dependency of both apps, so any change
           # there pulls both apps in. On push we check everything.
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+            uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
           elif [ -z "$FILES" ]; then
             echo "No changed Python files — skipping."
           else
@@ -416,6 +422,7 @@ jobs:
               echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
               echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
             fi
+            echo "$FILES" | grep -q '^tools/lints/' && TARGETS="$TARGETS tools/lints"
             if [ -z "$TARGETS" ]; then
               echo "No tracked Python project changed — skipping."
             else
