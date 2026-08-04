@@ -100,6 +100,9 @@ class ScriptedGraph:
         self.astream_kwargs: dict[str, Any] = {}
         self.state_updates: list[dict[str, Any]] = []
         self.closed = False
+        #: How many state updates existed when aclose() was called; None if it
+        #: was never called at all.
+        self.updates_at_close: int | None = None
         #: How many events the consumer actually pulled. A cancelled run must
         #: stop pulling — draining the rest would let the graph keep working.
         self.yielded = 0
@@ -111,14 +114,36 @@ class ScriptedGraph:
         self.astream_kwargs = {"initial_state": initial_state, **kwargs}
 
         async def _gen() -> AsyncIterator[Event]:
-            try:
-                for event in self.events:
-                    self.yielded += 1
-                    yield event
-            finally:
-                self.closed = True
+            for event in self.events:
+                self.yielded += 1
+                yield event
 
-        return _gen()
+        gen = _gen()
+        outer = self
+
+        class _Tracked:
+            """Wraps the generator so an explicit ``aclose()`` is observable.
+
+            A ``finally:`` inside the generator is not: CPython runs it when the
+            generator is collected, whether or not production ever closed it. A
+            test asserting on a flag set there passes with the ``aclose()`` call
+            deleted — which is exactly what happened to the cancellation test.
+            """
+
+            def __aiter__(self) -> AsyncIterator[Event]:
+                return gen.__aiter__()
+
+            async def __anext__(self) -> Event:
+                return await gen.__anext__()
+
+            async def aclose(self) -> None:
+                outer.closed = True
+                # Captured at close time so a test can assert the run was
+                # stopped BEFORE the checkpoint was read and written.
+                outer.updates_at_close = len(outer.state_updates)
+                await gen.aclose()
+
+        return _Tracked()
 
     async def aget_state(self, config: Any) -> _Snapshot:
         return _Snapshot(self.state_values)

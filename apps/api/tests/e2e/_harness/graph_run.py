@@ -82,6 +82,10 @@ class GraphRun:
     events: list[NodeMessage] = field(default_factory=list)
     selected: list[list[str]] = field(default_factory=list)
     todos: list[dict[str, Any]] = field(default_factory=list)
+    #: The tool names actually bound to the model on each call — what the
+    #: provider receives as function declarations, as opposed to
+    #: ``selected_tool_ids``, which is only what retrieval decided.
+    bound: list[list[str]] = field(default_factory=list)
     #: The message list handed to the model on each call. Pre-model hooks rewrite
     #: it on the way in and that rewrite never reaches the checkpoint, so this is
     #: the only place a hook's effect is observable.
@@ -90,6 +94,10 @@ class GraphRun:
 
     def last_prompt(self) -> list[BaseMessage]:
         return self.prompts[-1] if self.prompts else []
+
+    def model_bound_tools(self) -> list[str]:
+        """Tool names bound on the most recent model call."""
+        return self.bound[-1] if self.bound else []
 
     def system_slot(self, kwarg: str) -> str | None:
         """Text of the system message a pre-model hook tagged with ``kwarg``."""
@@ -182,10 +190,27 @@ class RecordingFakeModel(BindableToolsFakeModel):
     """
 
     _prompts: list[list[BaseMessage]] = PrivateAttr(default_factory=list)
+    _bound: list[list[str]] = PrivateAttr(default_factory=list)
 
     @property
     def prompts(self) -> list[list[BaseMessage]]:
         return self._prompts
+
+    @property
+    def bound(self) -> list[list[str]]:
+        return self._bound
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> RecordingFakeModel:  # type: ignore[override]
+        """Record what the model was actually handed.
+
+        The base fake returns ``self`` and throws the tool list away, which
+        makes every binding assertion in the suite unfalsifiable: deleting the
+        whole of ``build_tools_to_bind`` leaves the model with nothing and no
+        test can tell, because the only thing observable is
+        ``selected_tool_ids`` — what retrieval *decided*, not what was *bound*.
+        """
+        self._bound.append([getattr(tool, "name", str(tool)) for tool in tools])
+        return self
 
     def _generate(self, messages: list[BaseMessage], *args: Any, **kwargs: Any) -> Any:
         self._prompts.append(list(messages))
@@ -405,6 +430,7 @@ async def run_graph(
     model = _SCRIPTED_MODELS.get(id(graph))
     if model is not None:
         run.prompts = list(model.prompts)
+        run.bound = list(model.bound)
 
     # `todos` is written by a tool returning a Command, which does not always
     # surface as a node update. The checkpoint is the authoritative copy of the

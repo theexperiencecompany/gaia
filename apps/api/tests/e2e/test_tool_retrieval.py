@@ -107,6 +107,78 @@ class TestExactBinding:
         assert REJECT_NODE not in run.nodes(), "the second call was treated as unbound"
 
 
+class TestWhatTheModelIsActuallyHanded:
+    """``selected_tool_ids`` is what retrieval decided; this is what the provider
+    received as function declarations. They are different things, and only the
+    second one determines whether the model can call anything.
+
+    Nothing asserted this before: the fake model returned ``self`` from
+    ``bind_tools`` and discarded the list, so deleting the whole of
+    ``build_tools_to_bind`` left every retrieval test green while the executor
+    silently degraded to a chatbot with no tools at all.
+    """
+
+    async def test_the_model_is_bound_its_starting_toolset(self):
+        async with executor_graph(["hi"]) as graph:
+            run = await run_graph(graph, "hello")
+
+        bound = run.model_bound_tools()
+
+        assert bound, "the model was handed no tools at all"
+        assert "handoff" in bound and "plan_tasks" in bound
+
+    async def test_retrieve_tools_is_bound_or_nothing_could_ever_be_retrieved(self):
+        async with executor_graph(["hi"]) as graph:
+            run = await run_graph(graph, "hello")
+
+        assert "retrieve_tools" in run.model_bound_tools()
+
+    async def test_a_retrieved_tool_is_bound_on_the_next_model_call(self):
+        """The claim the rest of this file makes indirectly. Retrieval updating
+        state is only half of it — the tool has to reach the provider before the
+        model can emit a call for it."""
+        async with executor_graph([retrieve(RETRIEVABLE), "ok"]) as graph:
+            run = await run_graph(graph, "search the web")
+
+        assert RETRIEVABLE not in run.bound[0], "bound before it was ever retrieved"
+        assert RETRIEVABLE in run.model_bound_tools()
+
+    async def test_no_tool_is_bound_twice(self):
+        """Providers reject duplicate function names outright — the whole turn
+        400s. Reachable: a model can retrieve a tool that is already in the
+        initial set, which puts it in the bind list twice."""
+        async with executor_graph([retrieve("read"), "ok"]) as graph:
+            run = await run_graph(graph, "read a file")
+
+        bound = run.model_bound_tools()
+
+        assert len(bound) == len(set(bound)), (
+            f"duplicate function declarations: {sorted(n for n in bound if bound.count(n) > 1)}"
+        )
+
+    async def test_the_binding_order_keeps_the_cacheable_prefix_stable(self):
+        """The provider caches on a prefix of the request. Retrieval-selected
+        tools are appended last precisely so the stable part does not shift each
+        time the model retrieves something new."""
+        async with executor_graph([retrieve(RETRIEVABLE), "ok"]) as graph:
+            run = await run_graph(graph, "search the web")
+
+        before, after = run.bound[0], run.model_bound_tools()
+
+        assert after[: len(before)] == before, (
+            "retrieval reordered the stable prefix instead of appending"
+        )
+
+    async def test_a_middleware_tool_is_bound_even_though_it_is_not_an_initial_id(self):
+        """``spawn_subagent`` comes from the middleware stack, not
+        ``initial_tool_ids`` — it is the only tool that depends on that branch,
+        and every tool the rest of the suite exercises is in both."""
+        async with executor_graph(["hi"]) as graph:
+            run = await run_graph(graph, "hello")
+
+        assert "spawn_subagent" in run.model_bound_tools()
+
+
 class TestUnboundToolHandling:
     async def test_calling_an_unretrieved_tool_is_corrected_not_executed(self):
         """The graph must not run a tool the model never bound, and must tell it

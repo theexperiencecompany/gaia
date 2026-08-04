@@ -46,7 +46,20 @@ class TestToolsBoundFromTurnOne:
     anything. A tool dropping out of that list is invisible until an agent
     stalls in production trying to use it."""
 
-    @pytest.mark.parametrize("tool", ["plan_tasks", "update_tasks", "handoff", "retrieve_tools"])
+    @pytest.mark.parametrize(
+        "tool",
+        [
+            "plan_tasks",
+            "update_tasks",
+            "handoff",
+            "retrieve_tools",
+            # spawn_subagent comes from the middleware stack rather than
+            # initial_tool_ids, so it is the ONLY tool here that depends on
+            # _get_bound_tool_names recognising middleware tools. Every other
+            # entry is in both lists and passes either way.
+            "spawn_subagent",
+        ],
+    )
     async def test_a_core_tool_needs_no_retrieval(self, tool: str):
         async with executor_graph([call(tool, {}, id="c1"), "ok"]) as graph:
             run = await run_graph(graph, "do the thing")

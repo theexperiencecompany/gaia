@@ -668,7 +668,11 @@ class TestCancellation:
             transcript = await run_stream([], graph=graph, stream_id="s-1")
 
         assert transcript.cancelled is True
-        assert graph.closed is True
+        assert graph.closed is True, "the run was never explicitly closed"
+        assert graph.updates_at_close == 0, (
+            "the checkpoint was written before the run was stopped, so it records "
+            "a state the run could still overwrite"
+        )
         assert graph.state_updates, "the interruption was never written to the checkpoint"
         assert graph.state_updates[0]["as_node"] == "tools"
 
