@@ -23,7 +23,7 @@ from pathlib import Path
 import re
 import time
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 import uuid
 
@@ -34,6 +34,7 @@ from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.sandbox import SANDBOX_LIFETIME_SECONDS
 from app.models.sandbox_models import E2bSandboxDocument, E2bSandboxState
 from app.services.sandbox import lifecycle
+from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage import JuiceFSUnavailable
@@ -64,8 +65,12 @@ def _fake_sandbox(sandbox_id: str = "sbx-1") -> AsyncMock:
     return sbx
 
 
-def _fake_watcher(alive: bool = True) -> SimpleNamespace:
-    return SimpleNamespace(is_alive=lambda: alive, stop=AsyncMock())
+def _fake_watcher(alive: bool = True, stop_error: Exception | None = None) -> ArtifactWatcher:
+    """Duck-typed stand-in: lifecycle only ever calls is_alive() and stop()."""
+    return cast(
+        ArtifactWatcher,
+        SimpleNamespace(is_alive=lambda: alive, stop=AsyncMock(side_effect=stop_error)),
+    )
 
 
 def _sandbox_class(sbx: AsyncMock) -> MagicMock:
@@ -561,7 +566,7 @@ async def test_a_live_watcher_is_not_restarted_on_every_acquire() -> None:
     # Restarting leaks the previous HTTP/2 stream to envd and duplicates every
     # artifact event in the chat UI.
     watcher = _fake_watcher(alive=True)
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=watcher)  # type: ignore[arg-type]
+    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=watcher)
     start = AsyncMock(return_value=_fake_watcher())
     with patch.object(lifecycle, "start_watcher_for", start):
         await lifecycle._ensure_watcher("u1", entry)
@@ -574,7 +579,7 @@ async def test_a_dead_watcher_is_replaced_so_artifacts_keep_surfacing() -> None:
     # keeping it means agent-written files never appear in the UI again.
     dead = _fake_watcher(alive=False)
     fresh = _fake_watcher(alive=True)
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=dead)  # type: ignore[arg-type]
+    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=dead)
     with patch.object(lifecycle, "start_watcher_for", AsyncMock(return_value=fresh)):
         await lifecycle._ensure_watcher("u1", entry)
     assert entry.watcher is fresh
@@ -583,9 +588,8 @@ async def test_a_dead_watcher_is_replaced_so_artifacts_keep_surfacing() -> None:
 async def test_stopping_a_watcher_clears_the_handle_even_when_stop_raises() -> None:
     # A stale handle left behind would make the next _ensure_watcher believe a
     # watcher is running (is_alive on a half-stopped watcher) and never reopen.
-    watcher = _fake_watcher()
-    watcher.stop = AsyncMock(side_effect=RuntimeError("stream already gone"))
-    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=watcher)  # type: ignore[arg-type]
+    watcher = _fake_watcher(stop_error=RuntimeError("stream already gone"))
+    entry = PooledSandbox(sandbox=_fake_sandbox(), last_canary_ts="x", watcher=watcher)
     await lifecycle._stop_watcher(entry)
     assert entry.watcher is None
 
@@ -892,7 +896,7 @@ async def test_a_manual_pause_stops_the_watcher_and_drops_the_pending_idle_pause
     uid = _uid()
     sbx = _fake_sandbox()
     watcher = _fake_watcher()
-    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", watcher=watcher)  # type: ignore[arg-type]
+    entry = PooledSandbox(sandbox=sbx, last_canary_ts="x", watcher=watcher)
     entry.pause_task = asyncio.create_task(asyncio.sleep(30))
     pending = entry.pause_task
     get_sandbox_pool().put(uid, entry)

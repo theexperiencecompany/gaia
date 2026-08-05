@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
+from e2b import AsyncSandbox
 import pytest
 
 from app.agents.workspace.paths import session_artifacts
@@ -41,6 +42,17 @@ def fs_event(name: str, etype: str = "WRITE") -> SimpleNamespace:
     return SimpleNamespace(name=name, type=SimpleNamespace(name=etype))
 
 
+def fake_sandbox(**files: Any) -> AsyncSandbox:
+    """A duck-typed stand-in for e2b's AsyncSandbox.
+
+    The watcher only ever reaches through ``.files``, so a namespace carrying the
+    methods under test is a complete double — constructing a real AsyncSandbox
+    would require a live E2B session. Stating that once here keeps the assumption
+    in one reviewable place instead of repeated at every construction site.
+    """
+    return cast(AsyncSandbox, SimpleNamespace(files=SimpleNamespace(**files)))
+
+
 @pytest.fixture
 def published(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Capture what reaches the Redis channel — the watcher's only real output."""
@@ -55,7 +67,7 @@ def published(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
 @pytest.fixture
 def watcher() -> ArtifactWatcher:
-    return ArtifactWatcher(USER, sandbox=SimpleNamespace())  # type: ignore[arg-type]
+    return ArtifactWatcher(USER, sandbox=fake_sandbox())
 
 
 @pytest.fixture
@@ -119,7 +131,7 @@ async def test_a_temp_file_write_publishes_nothing(
 ) -> None:
     # Atomic writes land as `<name>.gaia-tmp` then rename. Publishing the temp
     # file makes a half-written artifact flash in the user's panel.
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/report.md{aw.WORKSPACE_TMP_SUFFIX}"))
     assert published == []
 
@@ -130,7 +142,7 @@ async def test_writes_outside_the_artifacts_dir_publish_nothing(
 ) -> None:
     # Only `artifacts/` is user-visible. Scratch is the agent's working dir and
     # must never surface in the file panel.
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/{subdir}/secret.txt"))
     assert published == []
 
@@ -138,7 +150,7 @@ async def test_writes_outside_the_artifacts_dir_publish_nothing(
 async def test_a_directory_event_publishes_nothing(
     published: list[dict[str, Any]], stat_ok: None
 ) -> None:
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/"))
     assert published == []
 
@@ -152,7 +164,7 @@ async def test_an_unreadable_workspace_is_swallowed_rather_than_killing_the_stre
         raise JuiceFSUnavailable("mount gone")
 
     monkeypatch.setattr(aw, "stat_artifact", unavailable)
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/a.md"))
     assert published == []
 
@@ -166,7 +178,7 @@ async def test_a_file_deleted_between_the_event_and_the_stat_publishes_nothing(
         return None
 
     monkeypatch.setattr(aw, "stat_artifact", gone)
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/a.md"))
 
     assert published == []
@@ -185,7 +197,7 @@ async def test_a_written_artifact_is_published_as_an_upsert_for_its_conversation
         return info(rel, size=42, mtime=7.0)
 
     monkeypatch.setattr(aw, "stat_artifact", stat)
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/nested/a.md"))
 
     assert len(published) == 1
@@ -204,7 +216,7 @@ async def test_a_removed_artifact_is_published_without_being_stat_ed(
         raise AssertionError("stat_artifact must not be called for a removal")
 
     monkeypatch.setattr(aw, "stat_artifact", must_not_run)
-    w = ArtifactWatcher(USER, SimpleNamespace())  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, fake_sandbox())
     await w._on_fs_event(fs_event(f"{CONV}/artifacts/a.md", etype))
 
     assert len(published) == 1
@@ -502,19 +514,19 @@ class FakeHandle:
         self.stopped = True
 
 
-def sandbox_for_watch_dir(handle: FakeHandle) -> SimpleNamespace:
+def sandbox_for_watch_dir(handle: FakeHandle) -> AsyncSandbox:
     async def watch_dir(*_a: Any, **_k: Any) -> FakeHandle:
         return handle
 
     async def make_dir(*_a: Any, **_k: Any) -> None:
         return None
 
-    return SimpleNamespace(files=SimpleNamespace(watch_dir=watch_dir, make_dir=make_dir))
+    return fake_sandbox(watch_dir=watch_dir, make_dir=make_dir)
 
 
 async def test_a_started_watcher_reports_itself_alive() -> None:
     handle = FakeHandle()
-    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))
     await w.start()
     assert w.is_alive() is True
 
@@ -524,8 +536,8 @@ async def test_a_watcher_that_fails_to_start_stays_dead_instead_of_raising() -> 
     async def boom(*_a: Any, **_k: Any) -> None:
         raise RuntimeError("envd unavailable")
 
-    sandbox = SimpleNamespace(files=SimpleNamespace(watch_dir=boom, make_dir=boom))
-    w = ArtifactWatcher(USER, sandbox)  # type: ignore[arg-type]
+    sandbox = fake_sandbox(watch_dir=boom, make_dir=boom)
+    w = ArtifactWatcher(USER, sandbox)
     await w.start()
     assert w.is_alive() is False
 
@@ -540,8 +552,8 @@ async def test_starting_an_already_running_watcher_does_not_open_a_second_stream
     async def make_dir(*_a: Any, **_k: Any) -> None:
         return None
 
-    sandbox = SimpleNamespace(files=SimpleNamespace(watch_dir=watch_dir, make_dir=make_dir))
-    w = ArtifactWatcher(USER, sandbox)  # type: ignore[arg-type]
+    sandbox = fake_sandbox(watch_dir=watch_dir, make_dir=make_dir)
+    w = ArtifactWatcher(USER, sandbox)
     await w.start()
     await w.start()
     assert len(calls) == 1
@@ -549,7 +561,7 @@ async def test_starting_an_already_running_watcher_does_not_open_a_second_stream
 
 async def test_stopping_releases_the_handle_and_reports_not_alive() -> None:
     handle = FakeHandle()
-    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))
     await w.start()
     await w.stop()
     assert handle.stopped is True
@@ -560,7 +572,7 @@ async def test_stopping_cancels_a_pending_rescan_so_it_cannot_publish_afterwards
     published: list[dict[str, Any]],
 ) -> None:
     handle = FakeHandle()
-    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))
     await w.start()
     w._schedule_rescan()
     task = w._rescan_task
@@ -575,7 +587,7 @@ async def test_a_dead_watch_stream_marks_the_watcher_not_alive() -> None:
     # envd restart / sandbox pause kills the stream; the next acquire must be
     # able to tell so it can reopen it.
     handle = FakeHandle()
-    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))  # type: ignore[arg-type]
+    w = ArtifactWatcher(USER, sandbox_for_watch_dir(handle))
     await w.start()
     w._on_watch_exit(None)
     assert w.is_alive() is False
@@ -583,6 +595,6 @@ async def test_a_dead_watch_stream_marks_the_watcher_not_alive() -> None:
 
 async def test_start_watcher_for_returns_a_started_watcher() -> None:
     handle = FakeHandle()
-    w = await aw.start_watcher_for(USER, sandbox_for_watch_dir(handle))  # type: ignore[arg-type]
+    w = await aw.start_watcher_for(USER, sandbox_for_watch_dir(handle))
     assert isinstance(w, ArtifactWatcher)
     assert w.is_alive() is True
