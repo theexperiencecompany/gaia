@@ -423,6 +423,34 @@ class TestCommsToExecutor:
         assert "description: how a delegated turn flows" in result
         assert "direction: LR" in result
 
+    async def test_no_result_is_streamed_twice(self) -> None:
+        """One ``tool_output`` per call, at the executor tier as well.
+
+        Two drivers can see the same ``ToolMessage``: the executor's own
+        (``subagent_runner``) and the comms driver (``execute_graph_streaming``),
+        whose stream is still open while the detached executor task runs. Both
+        emit, and the client renders the card twice.
+
+        Every other assertion in this file is blind to it, which is why this one
+        exists: ``Transcript.result_for()`` returns the FIRST output matching a
+        ``tool_call_id`` and discards the rest, so a duplicate is invisible to
+        any content check. Compare the whole list, not a lookup.
+
+        Which result doubles is a race — it is whichever lands while the comms
+        stream is still open — so this asserts over every id rather than naming
+        one.
+        """
+        run = await run_chain(
+            "draw me a flowchart",
+            comms=comms_delegating_script(),
+            executor=executor_flowchart_script(),
+        )
+
+        ids = [output.tool_call_id for output in run.transcript.outputs()]
+        duplicated = sorted({tc_id for tc_id in ids if ids.count(tc_id) > 1})
+
+        assert duplicated == [], f"streamed twice: {duplicated} (all outputs: {ids})"
+
     async def test_the_retrieval_hop_the_executor_takes_is_visible_to_the_user(self) -> None:
         """The bind step is work the user is waiting on; it streams as its own
         card, from the same detached task."""
@@ -688,7 +716,12 @@ class TestIntegrationToolThroughTheChain:
         )
 
         assert "retrieve_tools" not in run.transcript.tool_names()
-        assert "is not bound" not in (run.transcript.result_for("fetch_webpages") or "")
+        # Positively, not "no rejection appeared": `result_for` returns None when
+        # nothing came back at all, and `not in (… or "")` reads that silence as
+        # success — so the suppression of every tool_output would satisfy it.
+        result = run.transcript.result_for("fetch_webpages")
+        assert result is not None, "the bound tool produced no result at all"
+        assert "The executor is GAIA's worker tier." in result
 
     async def test_the_tools_progress_events_reach_the_users_stream(self) -> None:
         """``fetch_webpages`` narrates itself over the custom stream. Those

@@ -10,6 +10,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, AnyMessage, ToolM
 from langsmith import traceable
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
+from app.agents.core.background.session import claim_tool_output
 from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.interruption import record_interruption
 from app.agents.core.subagents.registry import get_subagent_by_id
@@ -750,9 +751,16 @@ async def execute_graph_streaming(
                     tool_call_id=chunk.tool_call_id,
                     output=extract_text_content(chunk.content),
                 )
-                yield format_sse_data(
-                    {"tool_output": tool_output_payload.model_dump(exclude_none=True)}
-                )
+                # One emission per result per stream. The executor runs as a
+                # detached task whose own driver (subagent_runner) sees the same
+                # ToolMessage, and this comms stream is still open while it does
+                # — so an ungated second copy renders the card twice. Which
+                # result doubles is a race: whichever lands before the comms turn
+                # closes. See background.session.claim_tool_output.
+                if claim_tool_output(stream_id or "", chunk.tool_call_id):
+                    yield format_sse_data(
+                        {"tool_output": tool_output_payload.model_dump(exclude_none=True)}
+                    )
 
                 # Emit deferred mcp_app event now that tool result is available
                 app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
