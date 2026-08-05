@@ -59,6 +59,16 @@ class StreamSession:
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
     voice_mode: bool = False
+    # tool_call_ids whose result has already been streamed on this stream. A
+    # subagent handed off to from an executor tool is a *nested* run, and
+    # langgraph's "messages" mode replays its chunks into the outer run's stream
+    # carrying the inner run's metadata — same node, same checkpoint namespace —
+    # so neither the payload nor its metadata says which run it belongs to. Both
+    # drivers would emit a tool_output for it, and only the subagent's copy
+    # carries a subagent_id, so the client renders the second one outside the
+    # subagent's row. First emitter wins; a tool_call_id is unique per call, so
+    # a second sighting is always the echo.
+    streamed_tool_outputs: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -212,6 +222,23 @@ def decrement_pending_subagents(stream_id: str) -> int:
         return 0
     session.pending_subagents = max(0, session.pending_subagents - 1)
     return session.pending_subagents
+
+
+def claim_tool_output(stream_id: str, tool_call_id: str) -> bool:
+    """Claim the right to stream this tool result, once per stream.
+
+    Returns True for the first caller and False for every echo. Fails open when
+    the stream has no session (a bare driver run, or any caller outside the
+    background machinery): with nowhere to record the claim there is nothing to
+    echo it either, so suppressing would only drop the sole copy.
+    """
+    session = _sessions.get(stream_id)
+    if session is None or not tool_call_id:
+        return True
+    if tool_call_id in session.streamed_tool_outputs:
+        return False
+    session.streamed_tool_outputs.add(tool_call_id)
+    return True
 
 
 def get_pending_subagents(stream_id: str) -> int:

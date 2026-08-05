@@ -20,6 +20,7 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
+from app.agents.core.background.session import claim_tool_output
 from app.agents.core.graph_manager import (
     CompiledAgentGraph,
     GraphManager,
@@ -282,11 +283,23 @@ def _process_messages_payload(
     complete_message: str,
     stream_writer: StreamWriterCallable | None,
     subagent_id: str | None,
+    stream_id: str,
 ) -> str:
     """Handle one "messages"-mode stream event, returning the updated message.
 
     Accumulates AI content, streams reasoning deltas, and emits tool_output for
     ToolMessages — all gated on a non-silent payload and an available writer.
+
+    ``emitted_tool_calls`` scopes the tool_output to this run's own calls. A
+    subagent invoked from a tool of this graph is a nested run, and "messages"
+    mode carries its chunks up to this stream annotated with the *inner* run's
+    metadata — same ``langgraph_node``, same ``langgraph_checkpoint_ns`` — so
+    nothing about the payload distinguishes it from our own. Without this gate
+    the executor re-emits every result the subagent already reported, and the
+    second copy carries no ``subagent_id``, so the client renders it a second
+    time outside the subagent's row. The "updates" branch has the equivalent
+    protection in its ``node_name != "agent"`` gate, which is why tool_data
+    never doubled and only tool_output did.
     """
     chunk, metadata = payload
     if metadata.get("silent"):
@@ -315,7 +328,7 @@ def _process_messages_payload(
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = extract_text_content(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
-        if stream_writer:
+        if stream_writer and claim_tool_output(stream_id, chunk.tool_call_id):
             tool_output_payload = ToolOutputPayload(
                 tool_call_id=chunk.tool_call_id,
                 output=content_str,
@@ -420,7 +433,7 @@ async def execute_subagent_stream(
 
         if stream_mode == "messages":
             complete_message = _process_messages_payload(
-                payload, complete_message, stream_writer, subagent_id
+                payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
             )
             if isinstance(payload[0], ToolMessage):
                 tool_ran = True
@@ -446,7 +459,7 @@ async def execute_subagent_stream(
             "explicit instruction to perform the action."
         )
     else:
-        final_message = complete_message if complete_message else "Task completed"
+        final_message = complete_message or "Task completed"
     log.set(
         subagent={
             "name": ctx.agent_name,
