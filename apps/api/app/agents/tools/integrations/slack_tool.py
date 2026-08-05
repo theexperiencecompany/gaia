@@ -58,7 +58,12 @@ def register_slack_custom_tools(composio: Composio) -> list[str]:
         return {
             "messages": other_messages,
             "mentions": mentions,
-            "unread_count": len(messages),
+            # Both lists, because they are disjoint and either one alone
+            # under-reports: a day made entirely of @-mentions would otherwise
+            # come back as "nothing waiting". Not len(messages) either — the two
+            # searches page independently (20 vs 10), so a mention can arrive
+            # that the message page never returned.
+            "unread_count": len(other_messages) + len(mentions),
         }
 
     return ["SLACK_CUSTOM_GATHER_CONTEXT"]

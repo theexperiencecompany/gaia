@@ -979,6 +979,51 @@ class TestSlackGatherContext:
         assert [m["ts"] for m in result["mentions"]] == ["2"]
         assert result["unread_count"] == 2
 
+    def test_a_workspace_with_only_mentions_does_not_report_nothing_waiting(self, tools):
+        """``unread_count`` counts both lists it ships beside.
+
+        The two lists are disjoint by construction — a mention is removed from
+        ``messages`` — so counting either one alone under-reports. Counting only
+        the de-duplicated remainder is the worse half: a user whose entire day is
+        @-mentions gets ``unread_count: 0`` next to a populated ``mentions``
+        list, and the assistant tells them nothing is waiting while it is holding
+        the mentions that say otherwise.
+        """
+        tool = tools["SLACK_CUSTOM_GATHER_CONTEXT"]
+        mentions = [{"ts": str(i), "text": f"@you please look at this {i}"} for i in range(5)]
+
+        def fake_execute(name: str, params: dict[str, Any], user_id: str, *a: Any, **k: Any):
+            return {"messages": {"matches": list(mentions)}}
+
+        with (
+            stub_auth(tool),
+            patch("app.agents.tools.integrations.slack_tool.execute_tool", fake_execute),
+        ):
+            result = tool.invoke_trusted(user_id=USER, request_kwargs={})
+
+        assert result["messages"] == []
+        assert len(result["mentions"]) == 5
+        assert result["unread_count"] == 5
+
+    def test_a_mention_outside_the_message_page_is_still_counted(self, tools):
+        """The two searches are independent calls with different page sizes (20
+        and 10), so a mention can arrive that the message search never returned.
+        Counting the raw message page misses it."""
+        tool = tools["SLACK_CUSTOM_GATHER_CONTEXT"]
+
+        def fake_execute(name: str, params: dict[str, Any], user_id: str, *a: Any, **k: Any):
+            if "@me" in params["query"]:
+                return {"messages": {"matches": [{"ts": "99", "text": "@you, urgent"}]}}
+            return {"messages": {"matches": [{"ts": "1", "text": "deploy is green"}]}}
+
+        with (
+            stub_auth(tool),
+            patch("app.agents.tools.integrations.slack_tool.execute_tool", fake_execute),
+        ):
+            result = tool.invoke_trusted(user_id=USER, request_kwargs={})
+
+        assert result["unread_count"] == 2
+
     def test_the_workspace_search_is_scoped_to_today(self, tools):
         """An unscoped Slack search returns the whole workspace history — the
         snapshot stops being "what happened today" and the model drowns."""
