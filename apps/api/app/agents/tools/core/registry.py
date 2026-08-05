@@ -202,7 +202,7 @@ class ToolRegistry:
         # scanning every category.
         self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
-    async def setup(self) -> None:
+    def setup(self) -> None:
         self._initialize_categories()
 
     def _add_category(
@@ -754,5 +754,5 @@ async def get_tool_registry() -> ToolRegistry:
 )
 async def init_tool_registry() -> ToolRegistry:
     tool_registry = ToolRegistry()
-    await tool_registry.setup()
+    tool_registry.setup()
     return tool_registry

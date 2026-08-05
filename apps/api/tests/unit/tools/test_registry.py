@@ -361,7 +361,7 @@ class TestToolRegistryAsync:
         registry = ToolRegistry()
 
         with _patch_initialize_categories():
-            await registry.setup()
+            registry.setup()
 
         for name in _CORE_CATEGORY_NAMES:
             cat = registry.get_category(name)
@@ -374,12 +374,12 @@ class TestToolRegistryAsync:
         registry = ToolRegistry()
 
         with _patch_initialize_categories():
-            await registry.setup()
+            registry.setup()
             counts_after_first = {
                 name: len(registry.get_category(name).tools) for name in _CORE_CATEGORY_NAMES
             }
 
-            await registry.setup()
+            registry.setup()
             counts_after_second = {
                 name: len(registry.get_category(name).tools) for name in _CORE_CATEGORY_NAMES
             }

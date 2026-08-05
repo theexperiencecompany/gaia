@@ -34,7 +34,11 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
         log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
 
 
-async def get_current_user(request: Request) -> AuthenticatedUser:
+# NOSONAR justification: FastAPI dispatches a `def` dependency to a threadpool and
+# an `async def` one on the event loop. This reads request.state and nothing else,
+# so `async def` is deliberately the cheaper of the two — and it runs on every
+# authenticated request. Dropping `async` would add a threadpool hop per request.
+async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR python:S7503
     """
     Retrieves the current user from request state.
     Authentication is handled by the WorkOSAuthMiddleware.
@@ -83,7 +87,11 @@ async def get_current_user(request: Request) -> AuthenticatedUser:
     return cast(AuthenticatedUser, user)
 
 
-async def get_user_id(user: AuthenticatedUser = Depends(get_current_user)) -> str:
+# NOSONAR justification: same as get_current_user above — a FastAPI dependency that
+# only unwraps one field stays on the event loop rather than paying a threadpool hop.
+async def get_user_id(  # NOSONAR python:S7503
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> str:
     """Extract user_id from authenticated user or raise 400."""
     user_id = user.get("user_id")
     if not user_id:

@@ -374,10 +374,9 @@ class RecurrenceRule(BaseModel):
 
         if self.until:
             try:
-                if "T" in self.until:  # ISO datetime format
-                    datetime.fromisoformat(self.until)
-                else:  # Simple date format
-                    datetime.fromisoformat(self.until)
+                # Both a bare date and a full datetime (with or without a Z
+                # suffix) are ISO 8601, and fromisoformat parses all of them.
+                datetime.fromisoformat(self.until)
             except ValueError:
                 raise ValueError(
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"

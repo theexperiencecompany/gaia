@@ -114,7 +114,13 @@ def require_integration_user_id(
     """
     integration_dependency = require_integration(integration_short_name)
 
-    async def wrapper(user: dict[str, Any] = Depends(integration_dependency)) -> str:
+    # NOSONAR justification: the factory's return type commits this to a coroutine
+    # (Callable[..., Coroutine[Any, Any, str]]), and as a FastAPI dependency `async def`
+    # keeps it on the event loop instead of a threadpool. Dropping `async` would change
+    # both the declared contract and where every request runs it.
+    async def wrapper(  # NOSONAR python:S7503
+        user: dict[str, Any] = Depends(integration_dependency),
+    ) -> str:
         # require_integration has already rejected a missing/empty user_id with a 401.
         return str(user["user_id"])
 
