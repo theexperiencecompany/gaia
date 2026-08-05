@@ -375,7 +375,7 @@ class RecurrenceRule(BaseModel):
         if self.until:
             try:
                 if "T" in self.until:  # ISO datetime format
-                    datetime.fromisoformat(self.until.replace("Z", "+00:00"))
+                    datetime.fromisoformat(self.until)
                 else:  # Simple date format
                     datetime.fromisoformat(self.until)
             except ValueError:

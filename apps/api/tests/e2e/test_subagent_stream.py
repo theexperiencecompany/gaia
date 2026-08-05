@@ -413,11 +413,15 @@ class TestRunShape:
         """A subagent that pauses for approval and resumes must reuse its row.
         A fresh uuid per replay orphans the paused row — left spinning forever —
         and emits a duplicate for the resumed run."""
-        assert subagent_row_id("tc_abc") == subagent_row_id("tc_abc")
-        assert subagent_row_id("tc_abc") != subagent_row_id("tc_def")
+        first_replay = subagent_row_id("tc_abc")
+        second_replay = subagent_row_id("tc_abc")
+        assert first_replay == second_replay
+        assert first_replay != subagent_row_id("tc_def")
 
     async def test_a_blank_tool_call_id_still_yields_a_unique_row(self):
-        assert subagent_row_id("") != subagent_row_id("")
+        first_call = subagent_row_id("")
+        second_call = subagent_row_id("")
+        assert first_call != second_call
 
     async def test_the_run_subscribes_to_all_three_stream_modes(self):
         _, _, graph = await run_subagent([])

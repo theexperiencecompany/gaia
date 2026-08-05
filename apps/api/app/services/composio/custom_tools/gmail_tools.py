@@ -998,9 +998,7 @@ def _recent_inbox_ids(user_id: str, *, since: str | None, max_results: int) -> l
     messages_query: dict[str, Any] = {"labelIds": "INBOX", "maxResults": max_results}
     if since:
         try:
-            since_ts = int(
-                datetime.datetime.fromisoformat(since.replace("Z", "+00:00")).timestamp()
-            )
+            since_ts = int(datetime.datetime.fromisoformat(since).timestamp())
         except ValueError as exc:
             raise AppError(
                 message=f"Invalid 'since' value: {since!r}",

@@ -130,7 +130,7 @@ def _embed_query_sync(text: str) -> list[float]:
     for queries measurably degrades ANN recall on paraphrased questions.
     """
     model = _get_embedding_model()
-    return cast("list[float]", next(iter(model.query_embed([text]))).tolist())
+    return cast(list[float], next(iter(model.query_embed([text]))).tolist())
 
 
 def _rerank_sync(query: str, documents: list[str]) -> list[float]:
@@ -158,7 +158,7 @@ async def embed_query(text: str) -> list[float]:
         result = await _observed(
             "embed_query", "sidecar", 1, _sidecar_post("/embed_query", {"text": text})
         )
-        return cast("list[float]", result["vector"])
+        return cast(list[float], result["vector"])
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
 
 
@@ -170,7 +170,7 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
         result = await _observed(
             "embed", "sidecar", len(texts), _sidecar_post("/embed", {"texts": texts})
         )
-        return cast("list[list[float]]", result["vectors"])
+        return cast(list[list[float]], result["vectors"])
     return await _observed("embed", "local", len(texts), asyncio.to_thread(_embed_sync, texts))
 
 
@@ -185,7 +185,7 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
             len(documents),
             _sidecar_post("/rerank", {"query": query, "documents": documents}),
         )
-        return cast("list[float]", result["scores"])
+        return cast(list[float], result["scores"])
     return await _observed(
         "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)
     )

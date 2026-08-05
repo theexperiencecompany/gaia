@@ -50,6 +50,8 @@ from app.models.user_models import (
 )
 from shared.py.wide_events import log
 
+_SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
+
 
 class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     collection_name = "users"
@@ -384,13 +386,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Persist social profiles only if not already set (idempotent first-write)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.social_profiles": [p.model_dump() for p in profiles]}},
+            {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
             scope=REPO_GLOBAL_SCOPE,
             extra_filter={
                 "$or": [
-                    {"onboarding.social_profiles": {"$exists": False}},
-                    {"onboarding.social_profiles": None},
-                    {"onboarding.social_profiles": []},
+                    {_SOCIAL_PROFILES_FIELD: {"$exists": False}},
+                    {_SOCIAL_PROFILES_FIELD: None},
+                    {_SOCIAL_PROFILES_FIELD: []},
                 ]
             },
             return_document=False,
@@ -443,7 +445,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         """Overwrite the stored social profiles (user-confirmed selection)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.social_profiles": [p.model_dump() for p in profiles]}},
+            {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

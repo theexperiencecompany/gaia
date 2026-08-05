@@ -62,7 +62,7 @@ TS_HITS=$(check_added_lines '//[[:space:]]*biome-ignore\b' '*.ts' '*.tsx' '*.js'
 
 HITS="$(printf '%s\n%s\n' "$PY_HITS" "$TS_HITS" | sed '/^$/d')"
 
-if [ -n "$HITS" ]; then
+if [[ -n "$HITS" ]]; then
   echo "::error::New inline lint-suppression comment(s) introduced vs ${BASE}:" >&2
   echo "$HITS" >&2
   echo "" >&2

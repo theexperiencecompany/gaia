@@ -411,7 +411,7 @@ jobs:
           # there pulls both apps in. On push we check everything.
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
+            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
           elif [ -z "$FILES" ]; then
             echo "No changed Python files — skipping."
           else
@@ -426,7 +426,7 @@ jobs:
             if [ -z "$TARGETS" ]; then
               echo "No tracked Python project changed — skipping."
             else
-              uv run --project apps/api --group backend --group dev mypy $TARGETS --ignore-missing-imports
+              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
             fi
           fi
           echo "::endgroup::"
@@ -547,7 +547,10 @@ jobs:
           # bare `uvx pip-audit` tool environment, as a prior version of this
           # step did, silently audited pip-audit's own deps instead of GAIA's.)
           uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
-          uvx pip-audit --strict --skip-editable --disable-pip -r /tmp/gaia-requirements.txt
+          # Pinned + wheels-only: an unpinned `uvx` resolves the newest release at
+          # run time and builds sdists, so the audit tool itself is unreviewed code
+          # executing setup scripts in CI. Bump deliberately, like the ruff lane.
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip -r /tmp/gaia-requirements.txt
           echo "::endgroup::"
           echo "pip-audit: informational — review CVEs above (does not fail CI)"
 
@@ -635,7 +638,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Scan the PR diff for committed secrets
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

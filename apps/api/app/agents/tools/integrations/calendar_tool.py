@@ -239,8 +239,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
             end_time = event.end.dateTime if event.end else None
             if start_time and end_time:
                 try:
-                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                    end_dt = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+                    start_dt = datetime.fromisoformat(start_time)
+                    end_dt = datetime.fromisoformat(end_time)
                     duration = (end_dt - start_dt).total_seconds() / 60
                     busy_minutes += duration
                 except (ValueError, TypeError) as e:
@@ -255,7 +255,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                 start_time = event.start.dateTime if event.start else None
                 if start_time:
                     try:
-                        event_start = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        event_start = datetime.fromisoformat(start_time)
                         if event_start > now:
                             next_event = event.model_dump()
                             break

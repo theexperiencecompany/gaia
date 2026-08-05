@@ -182,7 +182,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             due_date = None
             if due_str:
                 with contextlib.suppress(ValueError):
-                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
+                    due_date = datetime.fromisoformat(due_str).date()
 
             priority = issue.get("priority", 0)
             state_type = issue.get("state", {}).get("type", "")
@@ -867,7 +867,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             due_str = issue.get("dueDate")
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
+                    due_date = datetime.fromisoformat(due_str).date()
                     if due_date < today:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:
@@ -942,7 +942,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             due_str = issue.get("dueDate")
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
+                    due_date = datetime.fromisoformat(due_str).date()
                     if due_date < today:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:

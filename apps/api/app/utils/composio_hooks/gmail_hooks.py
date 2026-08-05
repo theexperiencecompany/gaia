@@ -469,11 +469,9 @@ def gmail_send_draft_before_hook(
     """Handle draft sending progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
-
-        payload = {"progress": "Sending draft..."}
-        writer(payload)
+        if writer is not None:
+            payload = {"progress": "Sending draft..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_send_draft_before_hook: {e}")
@@ -488,13 +486,11 @@ def gmail_trash_before_hook(
     """Handle message trash/untrash progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
+        if writer is not None:
+            action = "Moving to trash" if tool == "GMAIL_TRASH_MESSAGE" else "Restoring from trash"
 
-        action = "Moving to trash" if tool == "GMAIL_TRASH_MESSAGE" else "Restoring from trash"
-
-        payload = {"progress": f"{action}..."}
-        writer(payload)
+            payload = {"progress": f"{action}..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_trash_before_hook for {tool}: {e}")
@@ -569,12 +565,10 @@ def gmail_draft_management_before_hook(
     """Handle draft management progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
-
-        action = "Updating" if tool == "GMAIL_UPDATE_DRAFT" else "Deleting"
-        payload = {"progress": f"{action} draft..."}
-        writer(payload)
+        if writer is not None:
+            action = "Updating" if tool == "GMAIL_UPDATE_DRAFT" else "Deleting"
+            payload = {"progress": f"{action} draft..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_draft_management_before_hook for {tool}: {e}")
@@ -611,11 +605,9 @@ def gmail_get_draft_before_hook(
     """Handle single draft fetching progress."""
     try:
         writer = get_stream_writer()
-        if writer is None:
-            return params
-
-        payload = {"progress": "Fetching draft details..."}
-        writer(payload)
+        if writer is not None:
+            payload = {"progress": "Fetching draft details..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_get_draft_before_hook: {e}")

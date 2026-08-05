@@ -163,7 +163,7 @@ export async function startNextServer(): Promise<void> {
         const match = message.match(/localhost:(\d+)/);
         const portStr = match?.[1];
         if (portStr) {
-          serverPort = parseInt(portStr, 10);
+          serverPort = Number.parseInt(portStr, 10);
           console.log(`[Main] Next.js bound to port ${serverPort}`);
         }
       }

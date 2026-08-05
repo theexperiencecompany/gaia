@@ -18,6 +18,9 @@ IntegrationSlug = Annotated[
     ),
 ]
 
+# Shared field doc for the `message` field on the success/message response models.
+_RESPONSE_MESSAGE_DESC = "Response message"
+
 
 class OnboardingPhase(str, Enum):
     """Tracks the current phase of user onboarding"""
@@ -48,7 +51,7 @@ class UserUpdateResponse(BaseModel):
 
 class UpdateTimezoneResponse(BaseModel):
     success: bool = Field(..., description="Whether the timezone update succeeded")
-    message: str = Field(..., description="Response message")
+    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     timezone: str = Field(..., description="The timezone that was set")
 
 
@@ -186,7 +189,7 @@ class OnboardingRequest(BaseModel):
 
 class OnboardingResponse(BaseModel):
     success: bool = Field(..., description="Whether onboarding was successful")
-    message: str = Field(..., description="Response message")
+    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     user: dict[str, Any] | None = Field(None, description="Updated user data")
 
 
@@ -449,7 +452,7 @@ class UpdateHoloCardColorsResponse(BaseModel):
     """Response for a holo-card overlay colour update, echoing the stored values."""
 
     success: bool = Field(..., description="Whether the update succeeded")
-    message: str = Field(..., description="Response message")
+    message: str = Field(..., description=_RESPONSE_MESSAGE_DESC)
     overlay_color: str = Field(..., description="Overlay color that was stored")
     overlay_opacity: int = Field(..., description="Overlay opacity that was stored (0-100)")
 

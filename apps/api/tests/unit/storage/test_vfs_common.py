@@ -184,7 +184,9 @@ def test_moving_text_from_the_canvas_into_the_log_changes_the_body_hash() -> Non
 
 def test_the_same_body_and_meta_hash_identically() -> None:
     meta: dict[str, Any] = {"title": "t"}
-    assert hash_body_with_meta("c", "l", meta) == hash_body_with_meta("c", "l", meta)
+    first = hash_body_with_meta("c", "l", meta)
+    second = hash_body_with_meta("c", "l", meta)
+    assert first == second
 
 
 def test_a_metadata_only_edit_still_changes_the_body_hash() -> None:
@@ -196,7 +198,9 @@ def test_a_metadata_only_edit_still_changes_the_body_hash() -> None:
 
 
 def test_the_body_hash_of_an_empty_task_is_still_stable() -> None:
-    assert hash_body_with_meta("", "", {}) == hash_body_with_meta("", "", {})
+    first = hash_body_with_meta("", "", {})
+    second = hash_body_with_meta("", "", {})
+    assert first == second
 
 
 # ── catalog_signature ────────────────────────────────────────────────
@@ -226,8 +230,10 @@ def test_removing_a_doc_changes_the_catalog_signature() -> None:
 def test_an_empty_catalog_has_a_stable_signature() -> None:
     # A user with zero active tasks must still get a comparable marker rather
     # than a crash on the first sync.
-    assert catalog_signature({}) == catalog_signature({})
-    assert len(catalog_signature({})) == 64
+    first = catalog_signature({})
+    second = catalog_signature({})
+    assert first == second
+    assert len(first) == 64
 
 
 # ── read_marker / write_marker ───────────────────────────────────────
