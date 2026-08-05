@@ -64,7 +64,7 @@ class RecordingStore(InMemoryStore):
         super().__init__()
         self.searches: list[tuple[Any, dict[str, Any]]] = []
 
-    async def asearch(self, namespace_prefix: Any, **kwargs: Any) -> Any:  # type: ignore[override]
+    async def asearch(self, namespace_prefix: Any, **kwargs: Any) -> Any:
         self.searches.append((namespace_prefix, kwargs))
         return await super().asearch(namespace_prefix, **kwargs)
 
@@ -200,7 +200,7 @@ class RecordingFakeModel(BindableToolsFakeModel):
     def bound(self) -> list[list[str]]:
         return self._bound
 
-    def bind_tools(self, tools: Any, **kwargs: Any) -> RecordingFakeModel:  # type: ignore[override]
+    def bind_tools(self, tools: Any, **kwargs: Any) -> RecordingFakeModel:
         """Record what the model was actually handed.
 
         The base fake returns ``self`` and throws the tool list away, which

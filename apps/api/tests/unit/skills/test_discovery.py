@@ -7,6 +7,7 @@ running for this test tier); each test uses a unique user_id so cache entries
 never collide across runs.
 """
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -22,7 +23,7 @@ _LOAD_BUILTIN_SKILLS = "app.agents.skills.discovery.load_builtin_skills"
 
 
 def _builtin(**overrides) -> BuiltinSkill:
-    base: dict[str, object] = {
+    base: dict[str, Any] = {
         "slug": "test-skill",
         "name": "Test Skill",
         "description": "does a thing",
@@ -31,7 +32,7 @@ def _builtin(**overrides) -> BuiltinSkill:
         "body": "# Test Skill\nDo the thing.",
     }
     base.update(overrides)
-    return BuiltinSkill(**base)  # type: ignore[arg-type]
+    return BuiltinSkill(**base)
 
 
 class TestMongoFailureFallback:

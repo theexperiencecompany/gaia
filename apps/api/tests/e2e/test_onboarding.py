@@ -151,9 +151,7 @@ class _UserStore:
 
     async def count_created_before(self, created_at: datetime) -> int:
         return sum(
-            1
-            for d in self.docs.values()
-            if d.get("created_at") and d["created_at"] < created_at  # noqa: SIM118
+            1 for d in self.docs.values() if d.get("created_at") and d["created_at"] < created_at
         )
 
     # -- onboarding lifecycle ---------------------------------------------

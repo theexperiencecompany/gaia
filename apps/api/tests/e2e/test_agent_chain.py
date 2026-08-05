@@ -33,7 +33,7 @@ import asyncio
 from collections.abc import AsyncIterator, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -350,7 +350,7 @@ async def run_chain(
                     messages=[{"role": "user", "content": prompt}],
                     conversation_id=conversation_id,
                 ),
-                user=USER,  # type: ignore[arg-type]
+                user=cast(Any, USER),
                 conversation_id=conversation_id,
             )
             await _drain_publishes()

@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 import re
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk
@@ -79,7 +79,7 @@ async def run_stream(
     if stream_id is not None:
         configurable["stream_id"] = stream_id
     config = {"configurable": configurable, "agent_name": agent_name}
-    chunks = [chunk async for chunk in execute_graph_streaming(scripted, {}, config)]  # type: ignore[arg-type]
+    chunks = [chunk async for chunk in execute_graph_streaming(scripted, {}, cast(Any, config))]
     return Transcript.from_chunks(chunks)
 
 

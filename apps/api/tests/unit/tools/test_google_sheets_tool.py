@@ -11,7 +11,7 @@ root in `google_sheets_tool.py`, `google_sheets_utils.py` and
 `google_sheets_models.py`; the tests pinning them down are marked "BUG:".
 """
 
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 from pydantic import ValidationError
@@ -394,7 +394,7 @@ class TestShareSpreadsheet:
 
     def test_role_must_be_a_drive_permission_role(self) -> None:
         with pytest.raises(ValidationError):
-            ShareRecipient(email="a@x.com", role="owner")  # type: ignore[arg-type]
+            ShareRecipient(email="a@x.com", role=cast(Any, "owner"))
 
 
 # ---------------------------------------------------------------------------
@@ -485,11 +485,11 @@ class TestCreatePivotTable:
     # required literal with a SUM default.
     def test_aggregation_cannot_be_null(self) -> None:
         with pytest.raises(ValidationError):
-            PivotValue(column="Revenue", aggregation=None)  # type: ignore[arg-type]
+            PivotValue(column="Revenue", aggregation=cast(Any, None))
 
     def test_aggregation_must_be_a_function_google_accepts(self) -> None:
         with pytest.raises(ValidationError):
-            PivotValue(column="Revenue", aggregation="TOTAL")  # type: ignore[arg-type]
+            PivotValue(column="Revenue", aggregation=cast(Any, "TOTAL"))
 
     def test_source_range_narrows_the_pivot_source(self, tools: Any, api: Any) -> None:
         _call(tools, "CUSTOM_CREATE_PIVOT_TABLE", _pivot(source_range="A1:C50"))

@@ -31,9 +31,7 @@ import sys
 import tomllib
 from typing import NamedTuple
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _common import Violation, report_rule  # noqa: E402
+from _common import Violation, report_rule
 
 RULE = "ignore-ratchet"
 WHY = (

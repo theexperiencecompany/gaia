@@ -21,7 +21,7 @@ Two contracts live here and nothing else covers either one:
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk, ToolMessage
@@ -61,9 +61,9 @@ def _tool_call(name: str, args: dict[str, Any] | None = None, id: str | None = "
 
 def _context(graph: ScriptedGraph) -> SubagentExecutionContext:
     return SubagentExecutionContext(
-        subagent_graph=graph,  # type: ignore[arg-type]
+        subagent_graph=cast(Any, graph),
         agent_name="gmail_agent",
-        config={"configurable": {"thread_id": "t-1"}, "agent_name": "gmail_agent"},  # type: ignore[typeddict-item]
+        config=cast(Any, {"configurable": {"thread_id": "t-1"}, "agent_name": "gmail_agent"}),
         configurable={"thread_id": "t-1"},
         integration_id="gmail",
         initial_state={"messages": []},

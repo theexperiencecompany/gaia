@@ -7,9 +7,10 @@ no error, just unlimited access. These tests drive real routes through the real
 ``WorkOSAuthMiddleware`` and assert the limiter actually fired.
 """
 
+from collections.abc import Awaitable, Callable
 from unittest.mock import AsyncMock, patch
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, Response
 from httpx import ASGITransport, AsyncClient
 import pytest
 
@@ -25,7 +26,9 @@ def _build_app() -> FastAPI:
     app = FastAPI()
 
     @app.middleware("http")
-    async def fake_auth(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def fake_auth(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         # Stands in for WorkOSAuthMiddleware: set request.state.user, then mirror
         # it into the ContextVar before call_next, exactly as the real one does.
         request.state.user = USER
@@ -135,7 +138,9 @@ async def test_route_without_an_auth_dependency_is_still_limited() -> None:
     app = FastAPI()
 
     @app.middleware("http")
-    async def fake_auth(request: Request, call_next):  # type: ignore[no-untyped-def]
+    async def fake_auth(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
         request.state.user = USER
         request.state.authenticated = True
         set_authenticated_user(USER)

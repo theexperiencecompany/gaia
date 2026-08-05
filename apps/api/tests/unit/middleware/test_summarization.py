@@ -12,7 +12,7 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 import json
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 from unittest.mock import patch
 
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -328,7 +328,7 @@ def test_serialization_omits_tool_call_keys_for_plain_messages() -> None:
 
 
 def test_serialization_falls_back_to_str_for_a_contentless_object() -> None:
-    entry = _middleware()._serialize_messages([SimpleNamespace()])[0]  # type: ignore[list-item]
+    entry = _middleware()._serialize_messages(cast(Any, [SimpleNamespace()]))[0]
     assert entry["type"] == "SimpleNamespace"
     assert entry["content"] == "namespace()"
 

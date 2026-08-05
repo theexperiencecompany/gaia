@@ -9,7 +9,7 @@ instead of silently making them lie.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain.tools import ToolRuntime
@@ -368,7 +368,7 @@ async def test_evicting_a_run_forgets_its_tally() -> None:
 async def test_attribute_style_tool_call_is_read_correctly() -> None:
     tool_call = SimpleNamespace(name="objtool", id="obj-1", args={"k": "v"})
     request = ToolCallRequest(
-        tool_call=tool_call,  # type: ignore[arg-type]
+        tool_call=cast(Any, tool_call),
         tool=None,
         state={},
         runtime=_runtime({"configurable": {"thread_id": "t"}}),

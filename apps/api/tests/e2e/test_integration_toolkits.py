@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
+import importlib
 import json
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
@@ -52,10 +53,13 @@ import pytest
 from typing_extensions import TypedDict
 
 from app.config.oauth_config import get_composio_social_configs
-import app.patches  # noqa: F401  — installs the custom-tool schema patches
 from app.services.composio.custom_tools.registry import CustomToolsRegistry
 from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.utils.errors import AppError
+
+# Imported for its side effect: app.patches installs the custom-tool schema
+# patches at import time, and the contracts asserted below depend on them.
+importlib.import_module("app.patches")
 
 pytestmark = pytest.mark.e2e
 

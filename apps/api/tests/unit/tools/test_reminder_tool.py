@@ -1,7 +1,7 @@
 """Unit tests for app.agents.tools.reminder_tool."""
 
 from datetime import timedelta
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -351,7 +351,7 @@ class TestUpdateReminderTool:
 
         from app.agents.tools.reminder_tool import update_reminder_tool
 
-        result = await update_reminder_tool.coroutine(  # type: ignore[attr-defined]
+        result = await cast(Any, update_reminder_tool).coroutine(
             config=_cfg(), reminder_id="rem-1", payload={"title": "New title"}
         )
         assert "body" in result["error"]

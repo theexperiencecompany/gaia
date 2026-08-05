@@ -198,7 +198,7 @@ def test_latest_ai_message_is_none_without_any_ai_message() -> None:
 
 def test_latest_ai_message_tolerates_empty_and_none_histories() -> None:
     assert _latest_ai_message([]) is None
-    assert _latest_ai_message(None) is None  # type: ignore[arg-type]
+    assert _latest_ai_message(cast(Any, None)) is None
 
 
 # --- _current_config ---------------------------------------------------------- #
@@ -332,7 +332,7 @@ async def test_state_exposed_as_an_object_is_read_through_its_attribute() -> Non
     mw = LLMAccountingMiddleware(agent_name="a")
     config_patch, cost_patch = _accounting_env()
     with config_patch, cost_patch:
-        await mw.aafter_model(ObjectState(), None)  # type: ignore[arg-type]
+        await mw.aafter_model(ObjectState(), cast(Any, None))
 
     assert log.get()["model"]["input_tokens"] == 7
 

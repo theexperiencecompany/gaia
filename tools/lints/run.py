@@ -15,14 +15,12 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from _common import iter_python_files, report_rule  # noqa: E402
-import no_service_classes  # noqa: E402
-import no_silent_fallback  # noqa: E402
-import repository_boundaries  # noqa: E402
-import route_contract  # noqa: E402
-import wide_events_logging  # noqa: E402
+from _common import iter_python_files, report_rule
+import no_service_classes
+import no_silent_fallback
+import repository_boundaries
+import route_contract
+import wide_events_logging
 
 RULES = (
     route_contract,

@@ -13,13 +13,17 @@ a throwaway key and the decorator only records the function.
 from __future__ import annotations
 
 import asyncio
+import importlib
 import inspect
 
 from composio import Composio
 import pytest
 
-import app.patches  # noqa: F401  — installs the custom-tool schema patches
 from app.services.composio.custom_tools.registry import CustomToolsRegistry
+
+# Imported for its side effect: app.patches installs the custom-tool schema
+# patches at import time, and the contracts asserted below depend on them.
+importlib.import_module("app.patches")
 
 pytestmark = pytest.mark.unit
 

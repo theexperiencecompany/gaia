@@ -14,7 +14,7 @@ Tests cover:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
@@ -51,7 +51,7 @@ _UPDATE_SKILL_INLINE = "app.api.v1.endpoints.skills.update_skill_inline"
 def _make_skill_mock(**overrides) -> Skill:
     from app.agents.skills.models import Skill
 
-    base: dict[str, object] = {
+    base: dict[str, Any] = {
         "id": "sk_abc123",
         "user_id": "507f1f77bcf86cd799439011",
         "name": "my-skill",
@@ -71,13 +71,13 @@ def _make_skill_mock(**overrides) -> Skill:
         "files": ["SKILL.md"],
     }
     base.update(overrides)
-    return Skill(**base)  # type: ignore[arg-type]
+    return Skill(**base)
 
 
 def _make_discovered_skill(**overrides) -> DiscoveredSkill:
     from app.agents.skills.github_discovery import DiscoveredSkill
 
-    base = {
+    base: dict[str, Any] = {
         "name": "my-skill",
         "description": "Discovered skill",
         "path": "skills/my-skill",
@@ -85,7 +85,7 @@ def _make_discovered_skill(**overrides) -> DiscoveredSkill:
         "subagent_id": "executor",
     }
     base.update(overrides)
-    return DiscoveredSkill(**base)  # type: ignore[arg-type]
+    return DiscoveredSkill(**base)
 
 
 # ---------------------------------------------------------------------------
@@ -697,7 +697,7 @@ class TestListBuiltinSkills:
     def _builtin(self, **overrides):
         from app.agents.workspace.skill_loader import BuiltinSkill
 
-        base: dict[str, object] = {
+        base: dict[str, Any] = {
             "slug": "test-skill",
             "name": "Test Skill",
             "description": "does a thing",
@@ -706,7 +706,7 @@ class TestListBuiltinSkills:
             "body": "# Test Skill\nDo the thing.",
         }
         base.update(overrides)
-        return BuiltinSkill(**base)  # type: ignore[arg-type]
+        return BuiltinSkill(**base)
 
     async def test_executor_skill_is_always_connected(self, client: AsyncClient):
         with (
