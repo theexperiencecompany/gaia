@@ -433,13 +433,76 @@ class TestClientDisconnect:
         replayed = [chunk async for chunk in stream_manager.subscribe_stream(stream_id)]
         assert Transcript.from_sse("".join(replayed)).final_text() == "Hello there, friend!"
 
+    async def test_the_generator_stops_reading_redis_at_the_disconnect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The disconnect must END the generator, not merely mute it.
+
+        Its sibling above proves no further frame reaches the client, which a
+        ``continue`` in place of the ``break`` satisfies just as well: the
+        generator goes on consuming Redis for a client that is gone, holding the
+        response open until the turn's own DONE — up to ``EXECUTOR_WAIT_TIMEOUT``
+        later. One leaked generator per abandoned connection.
+
+        Asserted on how much it *reads*, not on how long it takes. A drained
+        generator does still stop once the log ends, so waiting on
+        ``StopAsyncIteration`` passes either way (it just takes ten times as
+        long); and a timing bound would be flaky by construction. Counting the
+        reads is the difference itself.
+        """
+        stream_id = str(uuid4())
+        await stream_manager.start_stream(
+            stream_id=stream_id, conversation_id=str(uuid4()), user_id=OWNER_ID
+        )
+        reads = 0
+        real_subscribe = stream_manager.subscribe_stream
+
+        async def counting_subscribe(*args: Any, **kwargs: Any) -> AsyncIterator[str]:
+            nonlocal reads
+            async for chunk in real_subscribe(*args, **kwargs):
+                reads += 1
+                yield chunk
+
+        monkeypatch.setattr(stream_manager, "subscribe_stream", counting_subscribe)
+
+        disconnected = asyncio.Event()
+        await stream_manager.publish_chunk(stream_id, TURN_FRAMES[0])
+        generator = chat_endpoint._stream_from_redis(
+            stream_id, request_that_disconnects(disconnected)
+        )
+        first = await generator.__anext__()
+        # The frame arrives behind its replay ``id:`` line (see the reconnect
+        # tests), so this is the body, not a loose containment check.
+        assert first.endswith(TURN_FRAMES[0])
+
+        disconnected.set()
+        for frame in TURN_FRAMES[1:]:
+            await stream_manager.publish_chunk(stream_id, frame)
+        await stream_manager.complete_stream(stream_id)
+
+        with pytest.raises(StopAsyncIteration):
+            await generator.__anext__()
+
+        # The delivered frame, plus the one whose arrival surfaced the
+        # disconnect. Everything after it belongs to nobody.
+        assert reads == 2, f"kept draining the log for a departed client: {reads} reads"
+
     async def test_turn_completes_and_persists_after_the_client_is_gone(
         self,
         test_app: FastAPI,
         as_user: Callable[[dict[str, Any]], None],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """The architectural claim in ``apps/api/CLAUDE.md``, end to end.
+        """The turn outlives the connection — the claim in ``apps/api/CLAUDE.md``.
+
+        What it defends is the *detachment*: replacing the
+        ``asyncio.create_task(run_chat_stream_background(...))`` with a bare
+        ``await`` deadlocks this test and nothing else. It does not defend
+        GAIA's own ``is_disconnected()`` handling, which can be deleted outright
+        with this test still green — Starlette's ``StreamingResponse`` installs
+        its own disconnect listener and tears the response down on
+        ``http.disconnect`` regardless. That handling is pinned by
+        ``TestClientDisconnect`` above instead.
 
         Driven over raw ASGI rather than ``ASGITransport`` because httpx never
         emits ``http.disconnect`` — without a real disconnect message there is
