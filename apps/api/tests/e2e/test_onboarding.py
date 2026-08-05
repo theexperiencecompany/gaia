@@ -58,7 +58,6 @@ import pytest
 
 from app.constants.onboarding import (
     INTELLIGENCE_TASK,
-    ONBOARDING_DEFAULT_FIRST_MESSAGE,
     WORKFLOWS_TASK,
 )
 from app.models.onboarding_models import (
@@ -1082,10 +1081,15 @@ class TestTheFullPipelineDegrades:
     async def test_the_pipelines_own_default_copy_is_used_when_the_node_is_gone(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore
     ):
-        """``generate_first_message`` catches ``Exception`` itself and returns its
-        own copy, so the pipeline's ``_safe_run`` default is only reachable if the
-        node stops handling its own failures. Pinned here because that default is
-        the last thing standing between a model outage and an empty first chat."""
+        """One greeting, whichever layer catches the failure.
+
+        ``generate_first_message`` handles its own exceptions, so ``_safe_run``'s
+        default is only reachable if the node stops doing that — but it is the
+        last thing between a model outage and an empty first chat, so it stays.
+        What it must not be is *different* copy: the assertion below is the same
+        one ``test_a_failed_first_message_falls_back_to_copy_not_an_empty_chat``
+        makes, which is what keeps the two layers from drifting into two
+        different greetings for one failure mode."""
         await complete_submit(client)
         with patch.object(
             intelligence_service,
@@ -1094,7 +1098,8 @@ class TestTheFullPipelineDegrades:
         ):
             await run_queued_jobs(arq_pool, externals)
 
-        assert users.onboarding_of(USER_ID)["first_message"] == ONBOARDING_DEFAULT_FIRST_MESSAGE
+        first_message = users.onboarding_of(USER_ID)["first_message"]
+        assert first_message.startswith("Hey Test User, ok, you're all set up.")
 
     async def test_a_pipeline_crash_does_not_strand_the_user(
         self, client: AsyncClient, arq_pool: ArqRedis, externals: _Externals, users: _UserStore

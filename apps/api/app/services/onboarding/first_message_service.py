@@ -22,6 +22,20 @@ from app.services.onboarding.clarify_service import format_clarify_context
 from shared.py.wide_events import log
 
 
+def default_first_message(name: str) -> str:
+    """The greeting when generation fails, wherever the failure is caught.
+
+    Both this module's own ``except`` and the pipeline's ``_safe_run`` default
+    resolve here so one failure mode cannot produce two different greetings —
+    the chat opens on whichever fires, and the two had drifted apart.
+    """
+    return (
+        f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
+        "Lined up a few action items and set up some automations from what I found."
+        "<NEW_MESSAGE_BREAK>Oh, and I made you something."
+    )
+
+
 async def generate_first_message(
     user_id: str,
     name: str,
@@ -123,8 +137,4 @@ async def generate_first_message(
             duration_s=round(time.monotonic() - t0, 2),
             exc_info=True,
         )
-        return (
-            f"Hey {name}, ok, you're all set up.<NEW_MESSAGE_BREAK>"
-            "Lined up a few action items and set up some automations from what I found."
-            "<NEW_MESSAGE_BREAK>Oh, and I made you something."
-        )
+        return default_first_message(name)

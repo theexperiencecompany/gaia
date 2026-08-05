@@ -18,7 +18,6 @@ INTELLIGENCE_JOB_FIELD = "onboarding.intelligence_job_id"
 WORKFLOWS_JOB_FIELD = "onboarding.workflows_job_id"
 
 # Fallback first assistant message.
-ONBOARDING_DEFAULT_FIRST_MESSAGE = "Welcome to GAIA. I'm here to help — what's on your mind?"
 
 # Start triage once this many emails are buffered, without waiting for the full fetch.
 TRIAGE_EARLY_THRESHOLD = 100

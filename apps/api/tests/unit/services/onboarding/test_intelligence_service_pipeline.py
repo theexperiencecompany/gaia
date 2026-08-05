@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.constants.onboarding import ONBOARDING_DEFAULT_FIRST_MESSAGE
 from app.models.onboarding_models import (
     CompletePayload,
     EmailSummary,
@@ -25,6 +24,7 @@ from app.models.onboarding_models import (
     WritingStyleProfile,
 )
 from app.models.user_models import OnboardingPhase
+from app.services.onboarding.first_message_service import default_first_message
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
     OnboardingStage,
@@ -373,7 +373,7 @@ class TestFinalizeOnboarding:
         with patch(f"{MODULE}.generate_first_message", AsyncMock(side_effect=RuntimeError("llm"))):
             await _finalize_onboarding(USER, **_finalize_kwargs())
 
-        assert repo.set_first_message.await_args.args[1] == ONBOARDING_DEFAULT_FIRST_MESSAGE
+        assert repo.set_first_message.await_args.args[1] == default_first_message("Ann")
 
     async def test_concurrent_tasks_run_alongside_seeding(self, finalize_stack: Any) -> None:
         ran = asyncio.Event()

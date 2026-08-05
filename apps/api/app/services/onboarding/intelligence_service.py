@@ -41,7 +41,6 @@ from app.constants.onboarding import (
     EARLY_PHASE_WAIT_TIMEOUT_S,
     NOT_SPECIFIED,
     OAUTH_INTEGRATION_NAME_BY_ID,
-    ONBOARDING_DEFAULT_FIRST_MESSAGE,
     TRIAGE_EARLY_THRESHOLD,
 )
 from app.constants.todos import ONBOARDING_TODO_LIMIT
@@ -83,7 +82,10 @@ from app.models.workflow_models import (
 from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding import inbox_scan_cache
 from app.services.onboarding.clarify_service import format_clarify_context
-from app.services.onboarding.first_message_service import generate_first_message
+from app.services.onboarding.first_message_service import (
+    default_first_message,
+    generate_first_message,
+)
 from app.services.onboarding.inbox_triage_service import triage_inbox
 from app.services.onboarding.post_onboarding_service import (
     save_personalization_data,
@@ -331,7 +333,7 @@ async def _finalize_onboarding(
             focus=focus,
             clarify_answers=clarify_answers,
         ),
-        default=ONBOARDING_DEFAULT_FIRST_MESSAGE,
+        default=default_first_message(name),
     )
     log.info(
         f"{LogTag.ONBOARDING} first_message generated",

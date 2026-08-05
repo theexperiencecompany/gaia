@@ -290,16 +290,21 @@ def _process_messages_payload(
     Accumulates AI content, streams reasoning deltas, and emits tool_output for
     ToolMessages — all gated on a non-silent payload and an available writer.
 
-    ``emitted_tool_calls`` scopes the tool_output to this run's own calls. A
+    ``claim_tool_output`` keeps each result to one emission per stream. A
     subagent invoked from a tool of this graph is a nested run, and "messages"
     mode carries its chunks up to this stream annotated with the *inner* run's
     metadata — same ``langgraph_node``, same ``langgraph_checkpoint_ns`` — so
-    nothing about the payload distinguishes it from our own. Without this gate
-    the executor re-emits every result the subagent already reported, and the
-    second copy carries no ``subagent_id``, so the client renders it a second
-    time outside the subagent's row. The "updates" branch has the equivalent
+    nothing about the payload distinguishes it from our own. Ungated, the
+    executor re-emits every result the subagent already reported, and the second
+    copy carries no ``subagent_id``, so the client renders it a second time
+    outside the subagent's row. The "updates" branch has the equivalent
     protection in its ``node_name != "agent"`` gate, which is why tool_data
     never doubled and only tool_output did.
+
+    Claiming per stream rather than scoping to the calls this run announced is
+    deliberate: a run's announced set starts empty, so a HIL resume — where the
+    call was announced before the approval pause — would have its result
+    suppressed, trading a duplicate card for a missing one.
     """
     chunk, metadata = payload
     if metadata.get("silent"):
