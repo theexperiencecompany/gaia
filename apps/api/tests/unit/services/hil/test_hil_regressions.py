@@ -26,6 +26,7 @@ from app.constants.hil import (
 )
 from app.services.hil.approvals_store import clear_resume_item
 from app.services.hil.gate import gate_tool_call
+from app.services.hil.intent import IntentDecision
 from app.services.hil.policy import has_pausing_sibling
 from app.services.hil.resolution import (
     cancel_conversation_approvals,
@@ -204,6 +205,50 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
 
         assert await has_pausing_sibling(request, USER_ID, "call-1") is False
 
+    async def test_the_gate_actually_consults_the_sibling_guard_before_auto_running(
+        self,
+    ) -> None:
+        # The guard above is only worth having if the gate CALLS it. Every other test of
+        # the whole-gate journeys patches has_pausing_sibling to a constant, so the seam
+        # between _judge and the guard was never exercised — a tested component behind an
+        # untested wire. Nothing is patched here but the I/O edges: the real guard runs,
+        # sees the pausing `handoff` sibling, and must veto auto-approval even though the
+        # judge says yes. If the wire is cut, the send happens now and AGAIN when the
+        # sibling's pause re-runs the whole node ("one send became two").
+        handler = AsyncMock()
+        request = make_request(
+            call_id="call-1",
+            messages=[
+                ai_message_with_calls(
+                    {"id": "call-1", "name": "send_email", "args": {}},
+                    {"id": "call-2", "name": "handoff", "args": {}},
+                )
+            ],
+        )
+        with (
+            patch(f"{GATE}.log"),
+            patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")),
+            patch(f"{GATE}.recall_declined_call", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}.get_approval", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}.publish_approval_request", new=AsyncMock()) as card,
+            patch(f"{GATE}.publish_approval_outcome", new=AsyncMock()),
+            patch(f"{GATE}.publish_auto_approval", new=AsyncMock()) as receipt,
+            patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
+            patch(
+                f"{GATE}.judge_intent",
+                new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
+            ) as judge,
+            patch(f"{GATE}.interrupt", return_value={"status": "denied"}) as interrupt,
+        ):
+            await gate_tool_call(request, handler)
+
+        judge.assert_not_awaited()
+        receipt.assert_not_awaited()
+        handler.assert_not_awaited()
+        card.assert_awaited_once()
+        interrupt.assert_called_once()
+
 
 class TestAutoApprovedReplayNeverParks:
     """Bug: on a node replay the gate found the existing ``auto_approved`` record, skipped
@@ -263,9 +308,10 @@ class TestAutoApprovedReplayNeverParks:
         replay["receipt"].assert_not_awaited()
 
     async def test_a_pending_record_still_falls_through_to_the_pause(self) -> None:
-        # The short-circuit must be scoped to `auto_approved`. A PENDING record is the
-        # normal ask-mode replay and must reach interrupt(), or the resume value it is
-        # holding lands on the wrong call.
+        # The short-circuit must be scoped to `auto_approved`: a PENDING record is the
+        # normal ask-mode replay and must still reach interrupt(). Ask mode never
+        # consults the judge, so this pins the short-circuit's scope only — the guard
+        # inside _judge is what the auto-mode case below covers.
         with (
             patch(f"{GATE}.log"),
             patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="ask")),
@@ -280,6 +326,40 @@ class TestAutoApprovedReplayNeverParks:
             await gate_tool_call(make_request(), AsyncMock())
 
         interrupt.assert_called_once()
+
+    async def test_an_auto_mode_replay_does_not_re_run_the_judge_over_a_pending_record(
+        self,
+    ) -> None:
+        # A pending record means a prior pass already published a card and called
+        # interrupt(); this pass is the replay carrying the user's decision. The judge is
+        # a non-deterministic LLM call, so re-asking it here can return "aligned" and run
+        # the tool immediately — swallowing the resume value the waiting interrupt() is
+        # expecting and acting without the answer the user actually gave. It must fall
+        # through to the pause instead, judge unspent.
+        handler = AsyncMock()
+        with (
+            patch(f"{GATE}.log"),
+            patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")),
+            patch(f"{GATE}.recall_declined_call", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}.get_approval", new=AsyncMock(return_value=make_record())),
+            patch(f"{GATE}.publish_approval_request", new=AsyncMock()),
+            patch(f"{GATE}.publish_approval_outcome", new=AsyncMock()),
+            patch(f"{GATE}.publish_auto_approval", new=AsyncMock()) as receipt,
+            patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
+            # Aligned on purpose: if the guard is gone the gate auto-approves and runs.
+            patch(
+                f"{GATE}.judge_intent",
+                new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
+            ) as judge,
+            patch(f"{GATE}.interrupt", return_value={"status": "denied"}) as interrupt,
+        ):
+            await gate_tool_call(make_request(), handler)
+
+        judge.assert_not_awaited()
+        receipt.assert_not_awaited()
+        interrupt.assert_called_once()
+        handler.assert_not_awaited()
 
 
 async def drain_spawned_tasks() -> None:
@@ -420,3 +500,6 @@ class TestCancelledRunIsNotResurrectedByItsApproval:
 
         assert runner.await_count == 1
         assert runner.await_args.kwargs["resume"].resume["status"] == "approved"
+        # The id is what routes this decision to its own gate; a wrong one is discarded
+        # by the matcher and the approved action never runs.
+        assert runner.await_args.kwargs["resume"].resume["approval_id"] == "a1"

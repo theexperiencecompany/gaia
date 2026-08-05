@@ -106,6 +106,25 @@ class TestExactlyOnce:
         assert resume.runner.call_count == 1
         command = resume.runner.call_args.kwargs["resume"]
         assert command.resume["status"] == "approved"
+        assert command.resume["approval_id"] == "appr-1"
+
+    async def test_the_resume_names_the_approval_that_was_actually_decided(
+        self, resume: Any
+    ) -> None:
+        # The status alone is not enough. A synchronous spawn that gated several calls
+        # replays its resume list positionally, so the driver matches on approval_id to
+        # hand each gate its OWN decision (subagent_runner.resume_for_gate). Send the
+        # wrong id and a correct matcher discards a real decision: the gate never sees an
+        # answer and an APPROVED action silently never runs. Deciding the second of two
+        # catches both a hardcoded id and "always the first record".
+        second = make_record(approval_id="appr-2", tool_call_id="call-2")
+        with (
+            patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=second)),
+            patch(f"{MODULE}.mark_decided", new=AsyncMock(return_value=True)),
+        ):
+            await resolve_approval(approval_id="appr-2", user_id=USER_ID, kind="approve")
+
+        assert resume.runner.call_args.kwargs["resume"].resume["approval_id"] == "appr-2"
 
 
 class TestUnresumableRecords:
