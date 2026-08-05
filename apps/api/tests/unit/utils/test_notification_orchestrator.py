@@ -996,7 +996,7 @@ class TestSerializeNotification:
         ]
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = (await orch._serialize_notification(record)).model_dump(mode="json")
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["id"] == record.id
         assert data["user_id"] == record.user_id
@@ -1020,7 +1020,7 @@ class TestSerializeNotification:
         record.read_at = None
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = (await orch._serialize_notification(record)).model_dump(mode="json")
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["delivered_at"] is None
         assert data["read_at"] is None
@@ -1031,7 +1031,7 @@ class TestSerializeNotification:
         record = _make_record(request=request)
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = (await orch._serialize_notification(record)).model_dump(mode="json")
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["content"]["actions"] == []
 
@@ -1041,6 +1041,6 @@ class TestSerializeNotification:
         record.channels = []
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = (await orch._serialize_notification(record)).model_dump(mode="json")
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["channels"] == []

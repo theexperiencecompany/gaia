@@ -63,7 +63,7 @@ def _namespace_equals(namespace: str) -> Where:
     return cast(Where, {"namespace": {"$eq": namespace}})
 
 
-async def _compute_tool_hash(tool: IndexableTool) -> str:
+def _compute_tool_hash(tool: IndexableTool) -> str:
     """Compute hash for a tool based on description and source code."""
     try:
         # inspect.getsource's stub only accepts module/class/function/etc, not an
@@ -83,7 +83,7 @@ async def _compute_tool_hash(tool: IndexableTool) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-async def _get_current_tools_with_hashes(
+def _get_current_tools_with_hashes(
     tool_registry: ToolRegistry,
 ) -> dict[str, IndexedToolEntry]:
     """Get all current tools with their hashes and namespaces.
@@ -100,7 +100,7 @@ async def _get_current_tools_with_hashes(
 
     # Add regular tools
     for tool_name, tool in tool_dict.items():
-        tool_hash = await _compute_tool_hash(tool)
+        tool_hash = _compute_tool_hash(tool)
 
         tool_category = tool_registry.get_category(
             name=tool_registry.get_category_of_tool(tool.name)
@@ -112,13 +112,13 @@ async def _get_current_tools_with_hashes(
             )
 
     # Add subagent tools
-    subagent_tools = await _get_subagent_tools()
+    subagent_tools = _get_subagent_tools()
     current_tools.update(subagent_tools)
 
     return current_tools
 
 
-async def _get_subagent_tools() -> dict[str, IndexedToolEntry]:
+def _get_subagent_tools() -> dict[str, IndexedToolEntry]:
     """Get subagent tools with their hashes.
 
     Returns:
@@ -392,7 +392,7 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
 
     current_tools: dict[str, IndexedToolEntry] = {}
     for tool, space in tools_with_space:
-        tool_hash = await _compute_tool_hash(tool)
+        tool_hash = _compute_tool_hash(tool)
         composite_key = f"{space}::{tool.name}"
         current_tools[composite_key] = IndexedToolEntry(hash=tool_hash, namespace=space, tool=tool)
     log.info(
@@ -510,7 +510,7 @@ async def initialize_chroma_tools_store() -> ChromaStore:
 
     collection = await store._get_collection()
 
-    current_tools = await _get_current_tools_with_hashes(tool_registry)
+    current_tools = _get_current_tools_with_hashes(tool_registry)
 
     managed_namespaces = {tool_data["namespace"] for tool_data in current_tools.values()}
     log.set(vector=VectorContext(operation="upsert", collection="langgraph_tools_store"))

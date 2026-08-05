@@ -194,7 +194,7 @@ class NotificationOrchestrator:
                     "type": "notification.delivered",
                     # The socket frame is JSON, so the view is dumped in json mode —
                     # enums as their values, matching what REST clients receive.
-                    "notification": (await self._serialize_notification(notification)).model_dump(
+                    "notification": self._serialize_notification(notification).model_dump(
                         mode="json"
                     ),
                 },
@@ -389,14 +389,14 @@ class NotificationOrchestrator:
         notifications = await self.storage.get_user_notifications(
             user_id, status, limit, offset, channel_type, notification_type, source
         )
-        return [await self._serialize_notification(n) for n in notifications]
+        return [self._serialize_notification(n) for n in notifications]
 
     async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:
         """Get a specific notification by ID for a user."""
         notification = await self.storage.get_notification(notification_id, user_id)
         if not notification:
             return None
-        return await self._serialize_notification(notification)
+        return self._serialize_notification(notification)
 
     # BULK OPERATIONS
     async def bulk_actions(
@@ -421,7 +421,7 @@ class NotificationOrchestrator:
         return results
 
     # UTILITY & SERIALIZATION METHODS
-    async def _serialize_notification(self, notification: NotificationRecord) -> NotificationView:
+    def _serialize_notification(self, notification: NotificationRecord) -> NotificationView:
         """Flatten a stored record into the view API/tool consumers read.
 
         Timestamps are emitted as ISO strings because ``NotificationView`` publishes
