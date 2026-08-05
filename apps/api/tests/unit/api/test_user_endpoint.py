@@ -4,12 +4,19 @@ Tests the user endpoints with mocked service layer to verify
 routing, status codes, response bodies, auth, and validation.
 """
 
+from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
 
-from app.models.user_models import UserDocument
+from app.models.user_models import (
+    AuthenticatedUserResponse,
+    OnboardingPreferences,
+    OnboardingStatusResponse,
+    UserDocument,
+)
+from app.services.onboarding.onboarding_service import get_user_onboarding_status
 
 USER_BASE = "/api/v1/user"
 
@@ -35,7 +42,17 @@ class TestGetMe:
         new_callable=AsyncMock,
     )
     async def test_get_me_success(self, mock_onboarding: AsyncMock, client: AsyncClient):
-        mock_onboarding.return_value = {"completed": True}
+        # Must be the real return type, not a dict: get_user_onboarding_status was
+        # typed to return OnboardingStatusResponse while this mock still handed back
+        # the pre-refactor dict, so the endpoint 500'd in production on every page
+        # load while this test stayed green.
+        mock_onboarding.return_value = OnboardingStatusResponse(
+            completed=True,
+            completed_at=None,
+            phase=None,
+            preferences=OnboardingPreferences(),
+            first_message_conversation_id=None,
+        )
         response = await client.get(f"{USER_BASE}/me")
         assert response.status_code == 200
         data = response.json()
@@ -46,6 +63,20 @@ class TestGetMe:
     async def test_get_me_unauthed(self, unauthed_client: AsyncClient):
         response = await unauthed_client.get(f"{USER_BASE}/me")
         assert response.status_code == 401
+
+    def test_onboarding_field_type_tracks_the_service_return_type(self) -> None:
+        # The 500 above was a *drift* bug: get_user_onboarding_status was retyped to
+        # return OnboardingStatusResponse while this field stayed dict[str, Any].
+        # test_get_me_success can't catch a repeat on its own — it asserts against a
+        # hand-written mock, so correcting the mock is what makes it pass. This
+        # compares the declared field against the real annotation, with no mock in
+        # between, so retyping the service without updating the response fails here.
+        service_returns = get_type_hints(get_user_onboarding_status)["return"]
+        field_type = AuthenticatedUserResponse.model_fields["onboarding"].annotation
+        assert field_type is service_returns, (
+            f"GET /me declares onboarding as {field_type}, but "
+            f"get_user_onboarding_status returns {service_returns}"
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -12,7 +12,6 @@ from app.memory.engine import memory_engine
 from app.models.onboarding_models import (
     ClarifyAnswerRecord,
     OnboardingResetCounts,
-    OnboardingStatusResponse,
 )
 from app.models.user_models import (
     BioStatus,
@@ -21,6 +20,7 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
+    OnboardingStatusResponse,
     UserDocument,
 )
 from app.services.integrations.integration_connection_service import (

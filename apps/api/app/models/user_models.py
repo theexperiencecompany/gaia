@@ -373,6 +373,26 @@ class UserDocument(MongoDocument):
     inactive_email_count: int | None = None
 
 
+class OnboardingStatusResponse(BaseModel):
+    """``get_user_onboarding_status()``'s processed shape.
+
+    Lives here rather than in ``onboarding_models`` because it embeds
+    ``OnboardingPreferences`` (above) and is embedded by
+    ``AuthenticatedUserResponse`` (below) — defining it there would make
+    ``user_models`` import ``onboarding_models``, which already imports back.
+    """
+
+    completed: bool
+    completed_at: datetime | None
+    # `str`, not OnboardingPhase: this is whatever is persisted, and the only
+    # consumer (mobile) treats an error response as "onboarding complete" — so a
+    # validation failure on an unrecognised historical value would silently skip
+    # a user past onboarding. A loose string is the safer honest type here.
+    phase: str | None
+    preferences: OnboardingPreferences
+    first_message_conversation_id: str | None
+
+
 class AuthenticatedUserResponse(BaseModel):
     """The full ``GET /me`` payload.
 
@@ -400,7 +420,7 @@ class AuthenticatedUserResponse(BaseModel):
     impersonated: bool | None = None
     bot_authenticated: bool | None = None
     dev_bypass: bool | None = None
-    onboarding: dict[str, Any]
+    onboarding: OnboardingStatusResponse
 
     email: str | None = None
     name: str | None = None

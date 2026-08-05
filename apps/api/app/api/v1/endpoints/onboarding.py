@@ -19,7 +19,6 @@ from app.models.onboarding_models import (
     ClarifyQuestionsResponse,
     OnboardingPhaseUpdateResponse,
     OnboardingResetResponse,
-    OnboardingStatusResponse,
     PersistedTriageSummary,
     PersonalizationResponse,
     PersonalizationTodo,
@@ -40,6 +39,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingRequest,
     OnboardingResponse,
+    OnboardingStatusResponse,
     UserDocument,
 )
 from app.services.composio.composio_service import get_composio_service

@@ -1,9 +1,8 @@
-from datetime import datetime
 from typing import Any, ClassVar, Literal, TypedDict
 
 from pydantic import BaseModel, Field
 
-from app.models.user_models import OnboardingPhase, OnboardingPreferences
+from app.models.user_models import OnboardingPhase
 from app.models.workflow_models import IntegrationRef, TriggerType, WorkflowStep
 
 # The four holo-card houses. The frontend types the same closed set.
@@ -333,18 +332,6 @@ class OnboardingResetCounts(BaseModel):
 
 class OnboardingResetResponse(OnboardingResetCounts):
     success: bool
-
-
-class OnboardingStatusResponse(BaseModel):
-    completed: bool
-    completed_at: datetime | None
-    # `str`, not OnboardingPhase: this is whatever is persisted, and the only
-    # consumer (mobile) treats an error response as "onboarding complete" — so a
-    # validation failure on an unrecognised historical value would silently skip
-    # a user past onboarding. A loose string is the safer honest type here.
-    phase: str | None
-    preferences: OnboardingPreferences
-    first_message_conversation_id: str | None
 
 
 class OnboardingPhaseUpdateResponse(BaseModel):

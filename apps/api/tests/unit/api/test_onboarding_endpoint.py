@@ -13,8 +13,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.onboarding_models import OnboardingStatusResponse
-from app.models.user_models import OnboardingPreferences, UserDocument
+from app.models.user_models import (
+    OnboardingPreferences,
+    OnboardingStatusResponse,
+    UserDocument,
+)
 
 BASE_URL = "/api/v1/onboarding"
 STATUS_URL = f"{BASE_URL}/status"
