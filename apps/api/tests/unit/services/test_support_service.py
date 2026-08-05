@@ -1,6 +1,7 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
 from datetime import UTC, datetime
+import threading
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, UploadFile
@@ -228,6 +229,25 @@ class TestDeleteUploadedFiles:
         """An empty URL list results in no Cloudinary calls."""
         await _delete_uploaded_files([])
         mock_cloudinary.destroy.assert_not_called()
+
+    async def test_destroy_runs_off_the_event_loop(self, mock_cloudinary):
+        """Cloudinary's SDK is blocking HTTP. Called inline from a coroutine it
+        stalls the whole worker for the length of the round trip — every other
+        request on that process waits behind a support-ticket cleanup."""
+        loop_thread = threading.current_thread()
+        call_threads: list[threading.Thread] = []
+
+        def record_calling_thread(public_id: str) -> dict[str, str]:
+            call_threads.append(threading.current_thread())
+            return {"result": "ok"}
+
+        mock_cloudinary.destroy.side_effect = record_calling_thread
+
+        urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
+        await _delete_uploaded_files(urls)
+
+        assert call_threads, "destroy was never called"
+        assert call_threads[0] is not loop_thread
 
 
 # ===========================================================================

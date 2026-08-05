@@ -50,7 +50,9 @@ async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
                     # Remove file extension from public_id
                     public_id = f"support/{filename_with_ext.rsplit('.', 1)[0]}"
 
-                    result = cloudinary.uploader.destroy(public_id)
+                    # Cloudinary's SDK is blocking HTTP — off the loop, or every
+                    # other request on this worker waits out the round trip.
+                    result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
                     if result.get("result") != "ok":
                         log.warning(f"Failed to delete file from Cloudinary: {public_id}")
                     else:
