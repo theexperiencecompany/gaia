@@ -411,10 +411,14 @@ jobs:
           # there pulls both apps in. On push we check everything.
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            # --no-build is deliberately absent, not forgotten: cloudinary 1.41.0 is sdist-only
-            # and uv refuses it under --no-build ("has no binary distribution"). --frozen already
-            # pins every resolved version from uv.lock.
-            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports  # NOSONAR githubactions:S8541
+            # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+            # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+            # "Wheels are required for `pysher` because building from source is disabled".
+            # No pin of ours can change that — it is upstream's to publish. --frozen already
+            # locks every resolved version from uv.lock, which is the part we do control.
+            # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+            # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
           elif [ -z "$FILES" ]; then
             echo "No changed Python files — skipping."
           else
@@ -429,10 +433,14 @@ jobs:
             if [ -z "$TARGETS" ]; then
               echo "No tracked Python project changed — skipping."
             else
-              # --no-build is deliberately absent, not forgotten: cloudinary 1.41.0 is sdist-only
-              # and uv refuses it under --no-build ("has no binary distribution"). --frozen already
-              # pins every resolved version from uv.lock.
-              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports  # NOSONAR githubactions:S8541
+              # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+              # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+              # "Wheels are required for `pysher` because building from source is disabled".
+              # No pin of ours can change that — it is upstream's to publish. --frozen already
+              # locks every resolved version from uv.lock, which is the part we do control.
+              # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+              # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
             fi
           fi
           echo "::endgroup::"
