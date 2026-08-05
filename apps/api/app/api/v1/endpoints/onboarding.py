@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -40,6 +40,7 @@ from app.models.user_models import (
     OnboardingPreferences,
     OnboardingRequest,
     OnboardingResponse,
+    UserDocument,
 )
 from app.services.composio.composio_service import get_composio_service
 from app.services.onboarding.clarify_service import generate_clarify_questions
@@ -59,6 +60,11 @@ from app.services.onboarding.writing_style_service import (
 from shared.py.wide_events import log
 
 router = APIRouter()
+
+_BIO_PROCESSING_MESSAGE = "Processing your insights... Please check back in a moment."
+_MEMBER_SINCE_FORMAT = "%b %d, %Y"
+# Phases past which the personalization payload carries real, generated content.
+_PERSONALIZED_PHASES = ("personalization_complete", "getting_started", "completed")
 
 
 def _normalize_example_blocks(raw: object) -> WritingStyleExampleBlocks | None:
@@ -293,6 +299,98 @@ async def update_user_preferences(
         raise HTTPException(status_code=500, detail="Failed to update preferences")
 
 
+async def _resolve_account_identity(
+    user_doc: UserDocument, onboarding: dict[str, Any]
+) -> tuple[int, str]:
+    """The stored account number and join date, derived from ``created_at`` on
+    the first read (both are backfilled together or not at all)."""
+    account_number = onboarding.get("account_number")
+    member_since = onboarding.get("member_since")
+    if account_number and member_since:
+        return account_number, member_since
+
+    created_at = user_doc.created_at
+    if not created_at:
+        return 1, datetime.now(UTC).strftime(_MEMBER_SINCE_FORMAT)
+
+    return (
+        await user_repository.count_created_before(created_at) + 1,
+        created_at.strftime(_MEMBER_SINCE_FORMAT),
+    )
+
+
+async def _load_suggested_workflows(workflow_ids: list[str]) -> list[PersonalizationWorkflow]:
+    """The suggested workflows in stored order. Soft-fails to an empty list —
+    the reveal card renders without them rather than failing the whole read."""
+    if not workflow_ids:
+        return []
+    try:
+        wf_docs = {wf.id: wf for wf in await workflow_repository.find_by_ids(workflow_ids)}
+        return [
+            PersonalizationWorkflow(
+                id=wf.id, title=wf.title, description=wf.description, steps=wf.steps
+            )
+            for wf_id in workflow_ids
+            if (wf := wf_docs.get(wf_id))
+        ]
+    except Exception as e:
+        log.error(f"{LogTag.ONBOARDING} Error fetching workflows: {e!s}", exc_info=True)
+        return []
+
+
+async def _resolve_display_bio(onboarding: dict[str, Any], user_id: str) -> str:
+    """The bio to show now. While extraction is still pending we only promise a
+    bio if there is a Gmail connection to extract one from."""
+    bio_status = onboarding.get("bio_status", "pending")
+
+    if bio_status in ["processing", BioStatus.PROCESSING]:
+        return _BIO_PROCESSING_MESSAGE
+    if bio_status not in ["pending", BioStatus.PENDING]:
+        # onboarding is dict[str, Any] on the document; user_bio is stored as str.
+        stored_bio: str = onboarding.get("user_bio", "")
+        return stored_bio
+
+    connection_status = await get_composio_service().check_connection_status(["gmail"], user_id)
+    if connection_status.get("gmail", False):
+        return _BIO_PROCESSING_MESSAGE
+    return "Setting up your profile..."
+
+
+def _build_writing_style(
+    raw_writing_style: dict[str, Any] | None,
+) -> PersonalizationWritingStyle | None:
+    """Only surface writing_style if it has a usable summary; otherwise return
+    None so the frontend skips the reveal."""
+    if not raw_writing_style:
+        return None
+    resolved_summary = (
+        raw_writing_style.get("user_edited_summary") or raw_writing_style.get("summary") or ""
+    ).strip()
+    if not resolved_summary:
+        return None
+    return PersonalizationWritingStyle(
+        style_summary=resolved_summary,
+        example=_normalize_example_blocks(raw_writing_style.get("example")),
+    )
+
+
+async def _load_onboarding_todos(user_id: str) -> list[PersonalizationTodo]:
+    try:
+        todos = await todo_repository.list_onboarding_todos(user_id, limit=ONBOARDING_TODO_LIMIT)
+    except Exception as e:
+        log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
+        return []
+    return [
+        PersonalizationTodo(
+            id=t.id,
+            title=t.title or "",
+            description=t.description,
+            source_email=t.source_email,
+        )
+        for t in todos
+    ]
+
+
 @router.get("/personalization")
 async def get_onboarding_personalization(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
@@ -317,106 +415,22 @@ async def get_onboarding_personalization(
             raise HTTPException(status_code=404, detail="User not found")
 
         onboarding = user_doc.onboarding or {}
-        user_bio = onboarding.get("user_bio", "")
         phase = onboarding.get("phase", "initial")
         log.info(
             f"{LogTag.ONBOARDING} User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
         )
-        has_personalization = phase in [
-            "personalization_complete",
-            "getting_started",
-            "completed",
-        ]
 
-        account_number = onboarding.get("account_number")
-        member_since = onboarding.get("member_since")
+        account_number, member_since = await _resolve_account_identity(user_doc, onboarding)
+        display_bio = await _resolve_display_bio(onboarding, user_id)
+        workflows = await _load_suggested_workflows(onboarding.get("suggested_workflows", []))
+        onboarding_todos = await _load_onboarding_todos(user_id)
 
-        if not account_number or not member_since:
-            created_at = user_doc.created_at
-            if created_at:
-                account_number = await user_repository.count_created_before(created_at) + 1
-            else:
-                account_number = 1
-
-            member_since = (
-                created_at.strftime("%b %d, %Y")
-                if created_at
-                else datetime.now(UTC).strftime("%b %d, %Y")
-            )
-
-        workflow_ids: list[str] = onboarding.get("suggested_workflows", [])
-        workflows: list[PersonalizationWorkflow] = []
-        if workflow_ids:
-            try:
-                wf_docs = {wf.id: wf for wf in await workflow_repository.find_by_ids(workflow_ids)}
-                for wf_id in workflow_ids:
-                    wf = wf_docs.get(wf_id)
-                    if wf:
-                        workflows.append(
-                            PersonalizationWorkflow(
-                                id=wf.id,
-                                title=wf.title,
-                                description=wf.description,
-                                steps=wf.steps,
-                            )
-                        )
-            except Exception as e:
-                log.error(f"{LogTag.ONBOARDING} Error fetching workflows: {e!s}", exc_info=True)
-
-        bio_status = onboarding.get("bio_status", "pending")
-        display_bio = user_bio
-
-        if bio_status in ["processing", BioStatus.PROCESSING]:
-            display_bio = "Processing your insights... Please check back in a moment."
-        elif bio_status in ["pending", BioStatus.PENDING]:
-            composio_service = get_composio_service()
-            connection_status = await composio_service.check_connection_status(
-                ["gmail"], str(user_id)
-            )
-            has_gmail = connection_status.get("gmail", False)
-            if has_gmail:
-                display_bio = "Processing your insights... Please check back in a moment."
-            else:
-                display_bio = "Setting up your profile..."
-
-        raw_writing_style = onboarding.get("writing_style")
-        # Only surface writing_style if it has a usable summary; otherwise
-        # return null so the frontend skips the reveal.
-        writing_style_payload: PersonalizationWritingStyle | None = None
-        if raw_writing_style:
-            resolved_summary = (
-                raw_writing_style.get("user_edited_summary")
-                or raw_writing_style.get("summary")
-                or ""
-            ).strip()
-            if resolved_summary:
-                writing_style_payload = PersonalizationWritingStyle(
-                    style_summary=resolved_summary,
-                    example=_normalize_example_blocks(raw_writing_style.get("example")),
-                )
         raw_social_profiles = onboarding.get("social_profiles", [])
         raw_triage_summary = onboarding.get("triage_summary")
 
-        onboarding_todos: list[PersonalizationTodo] = []
-        try:
-            todos = await todo_repository.list_onboarding_todos(
-                user_id, limit=ONBOARDING_TODO_LIMIT
-            )
-            onboarding_todos = [
-                PersonalizationTodo(
-                    id=t.id,
-                    title=t.title or "",
-                    description=t.description,
-                    source_email=t.source_email,
-                )
-                for t in todos
-            ]
-        except Exception as e:
-            log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
-
         return PersonalizationResponse(
             phase=phase,
-            has_personalization=has_personalization,
+            has_personalization=phase in _PERSONALIZED_PHASES,
             house=onboarding.get("house", "Bluehaven"),
             personality_phrase=onboarding.get("personality_phrase", "Curious Adventurer"),
             user_bio=display_bio,
@@ -429,7 +443,7 @@ async def get_onboarding_personalization(
             holo_card_id=user_doc.id,
             first_message_conversation_id=onboarding.get("first_message_conversation_id"),
             first_message=onboarding.get("first_message"),
-            writing_style=writing_style_payload,
+            writing_style=_build_writing_style(onboarding.get("writing_style")),
             social_profiles=[
                 SocialProfile(platform=p.get("platform", ""), url=p.get("url", ""))
                 for p in raw_social_profiles
@@ -441,7 +455,7 @@ async def get_onboarding_personalization(
                 if raw_triage_summary
                 else None
             ),
-            onboarding_todos=onboarding_todos if onboarding_todos else None,
+            onboarding_todos=onboarding_todos or None,
         )
 
     except HTTPException:

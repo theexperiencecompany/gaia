@@ -24,6 +24,7 @@ from app.models.calendar_models import (
     GoogleCalendarEventResource,
     GoogleCalendarEventsPage,
     GoogleCalendarEventWrite,
+    GoogleCalendarListEntry,
     GoogleConferenceCreateRequest,
     GoogleConferenceData,
     GoogleConferenceSolutionKey,
@@ -34,6 +35,8 @@ from shared.py.wide_events import log
 
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
+_DATE_FORMAT = "%Y-%m-%d"
+_EVENT_NOT_FOUND_DETAIL = "Event not found or access denied"
 
 QueryParams = dict[str, str | int]
 
@@ -246,6 +249,43 @@ def _event_sort_key(event: GoogleCalendarEventResource) -> str:
     return event.start.dateTime or event.start.date or ""
 
 
+async def _resolve_selected_calendars(
+    user_id: str,
+    calendars: list[GoogleCalendarListEntry],
+    selected_calendars: list[str] | None,
+) -> list[str]:
+    """The calendar ids to read from. An explicit selection is persisted; absent
+    one, stored preferences win, and a user with neither gets all their calendars."""
+    if selected_calendars is not None:
+        await calendar_repository.set_selected_calendars(user_id, selected_calendars)
+        return selected_calendars
+
+    preferences = await calendar_repository.get_for_user(user_id)
+    if preferences is not None and preferences.selected_calendars:
+        return preferences.selected_calendars
+
+    all_calendar_ids = [cal.id for cal in calendars]
+    await calendar_repository.set_selected_calendars(user_id, all_calendar_ids)
+    return all_calendar_ids
+
+
+def _tag_with_source_calendar(
+    events: list[GoogleCalendarEventResource],
+    cal: GoogleCalendarListEntry,
+    seen_event_ids: set[str],
+) -> list[GoogleCalendarEventResource]:
+    """Stamp each event with the calendar it came from, skipping ids already
+    stamped by an earlier calendar (the same event can be on several)."""
+    for event in events:
+        if event.id and event.id in seen_event_ids:
+            continue
+        if event.id:
+            seen_event_ids.add(event.id)
+        event.calendarId = cal.id
+        event.calendarTitle = cal.summary or ""
+    return filter_events(events)
+
+
 async def get_calendar_events(
     user_id: str,
     selected_calendars: list[str] | None = None,
@@ -256,64 +296,37 @@ async def get_calendar_events(
 ) -> CalendarEventsResponse:
     """Get events from the user's selected calendars with date-based pagination."""
     calendars = (await list_calendars(user_id)).items
-
-    user_selected_calendars: list[str] = []
-    if selected_calendars is not None:
-        user_selected_calendars = selected_calendars
-        await calendar_repository.set_selected_calendars(user_id, user_selected_calendars)
-    else:
-        preferences = await calendar_repository.get_for_user(user_id)
-        if preferences is not None and preferences.selected_calendars:
-            user_selected_calendars = preferences.selected_calendars
-        else:
-            user_selected_calendars = [cal.id for cal in calendars]
-            await calendar_repository.set_selected_calendars(user_id, user_selected_calendars)
-
+    user_selected_calendars = await _resolve_selected_calendars(
+        user_id, calendars, selected_calendars
+    )
     selected_cal_objs = [cal for cal in calendars if cal.id in user_selected_calendars]
 
     all_events: list[GoogleCalendarEventResource] = []
     seen_event_ids: set[str] = set()
     calendars_truncated: list[str] = []
+    fetch_every_page = fetch_all or not max_results
 
-    if fetch_all or not max_results:
+    if fetch_every_page:
         log.info(f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range")
-        for cal in selected_cal_objs:
-            try:
+
+    for cal in selected_cal_objs:
+        try:
+            if fetch_every_page:
                 result = await fetch_all_calendar_events(cal.id, user_id, time_min, time_max)
                 events = result.items
-
                 if result.truncated:
                     calendars_truncated.append(cal.id)
                     log.warning(f"Calendar {cal.id} ({cal.summary or 'Unknown'}) was truncated")
+            else:
+                events = (
+                    await fetch_calendar_events(
+                        cal.id, user_id, None, time_min, time_max, max_results
+                    )
+                ).items
 
-                for event in events:
-                    if event.id and event.id in seen_event_ids:
-                        continue
-                    if event.id:
-                        seen_event_ids.add(event.id)
-                    event.calendarId = cal.id
-                    event.calendarTitle = cal.summary or ""
-                all_events.extend(filter_events(events))
-            except Exception as e:
-                log.error(f"Error fetching events for calendar {cal.id}: {e}")
-    else:
-        for cal in selected_cal_objs:
-            try:
-                page = await fetch_calendar_events(
-                    cal.id, user_id, None, time_min, time_max, max_results
-                )
-                events = page.items
-
-                for event in events:
-                    if event.id and event.id in seen_event_ids:
-                        continue
-                    if event.id:
-                        seen_event_ids.add(event.id)
-                    event.calendarId = cal.id
-                    event.calendarTitle = cal.summary or ""
-                all_events.extend(filter_events(events))
-            except Exception as e:
-                log.error(f"Error fetching events for calendar {cal.id}: {e}")
+            all_events.extend(_tag_with_source_calendar(events, cal, seen_event_ids))
+        except Exception as e:
+            log.error(f"Error fetching events for calendar {cal.id}: {e}")
 
     all_events.sort(key=_event_sort_key)
 
@@ -351,6 +364,86 @@ async def get_calendar_events_by_id(
     )
 
 
+def _date_part(timestamp: str) -> str:
+    """The date half of an ISO timestamp — Google's all-day events carry no time."""
+    return timestamp.split("T", maxsplit=1)[0]
+
+
+def _with_utc_suffix(timestamp: str) -> str:
+    """Google rejects a naive timestamp; a value with no offset is taken as UTC."""
+    if not timestamp or timestamp.endswith("Z") or "+" in timestamp or "-" in timestamp[-6:]:
+        return timestamp
+    return timestamp + "Z"
+
+
+def _all_day_bounds(
+    event: EventCreateRequest,
+) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
+    """All-day bounds, defaulting a missing end to the next day and a missing
+    start to today (Google's end date is exclusive)."""
+    if event.start and event.end:
+        start_date = _date_part(event.start)
+        end_date = _date_part(event.end)
+    elif event.start:
+        start_date = _date_part(event.start)
+        start_dt = datetime.strptime(start_date, _DATE_FORMAT)
+        end_date = (start_dt + timedelta(days=1)).strftime(_DATE_FORMAT)
+    else:
+        today = datetime.now()
+        start_date = today.strftime(_DATE_FORMAT)
+        end_date = (today + timedelta(days=1)).strftime(_DATE_FORMAT)
+
+    return (
+        GoogleCalendarEventDateTime(date=start_date),
+        GoogleCalendarEventDateTime(date=end_date),
+    )
+
+
+def _timed_bounds(
+    event: EventCreateRequest,
+) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
+    try:
+        if not event.start or not event.end:
+            raise HTTPException(
+                status_code=400,
+                detail="Start and end times are required for time-specific events",
+            )
+
+        timezone = event.timezone or "UTC"
+        return (
+            GoogleCalendarEventDateTime(dateTime=_with_utc_suffix(event.start), timeZone=timezone),
+            GoogleCalendarEventDateTime(dateTime=_with_utc_suffix(event.end), timeZone=timezone),
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
+
+
+def _create_recurrence_rules(
+    event: EventCreateRequest,
+    start_obj: GoogleCalendarEventDateTime,
+    end_obj: GoogleCalendarEventDateTime,
+) -> list[str] | None:
+    """Google's RRULE list, re-stamping the timezone onto both bounds — a
+    recurring series expands against it, so it has to be explicit."""
+    if not event.recurrence:
+        return None
+    try:
+        rules = event.recurrence.to_google_calendar_format()
+
+        if not event.is_all_day:
+            timezone = event.timezone or "UTC"
+            if start_obj.timeZone is not None:
+                start_obj.timeZone = timezone
+            if end_obj.timeZone is not None:
+                end_obj.timeZone = timezone
+
+        return rules
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+
+
 async def create_calendar_event(
     event: EventCreateRequest,
     user_id: str,
@@ -358,72 +451,8 @@ async def create_calendar_event(
     """Create a new calendar event using the Google Calendar API."""
     calendar_id = event.calendar_id or "primary"
 
-    start_obj: GoogleCalendarEventDateTime
-    end_obj: GoogleCalendarEventDateTime
-
-    if event.is_all_day:
-        if event.start and event.end:
-            start_date = event.start.split("T")[0] if "T" in event.start else event.start
-            end_date = event.end.split("T")[0] if "T" in event.end else event.end
-        elif event.start:
-            start_date = event.start.split("T")[0] if "T" in event.start else event.start
-            start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-            end_date = (start_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-        else:
-            today = datetime.now()
-            start_date = today.strftime("%Y-%m-%d")
-            end_date = (today + timedelta(days=1)).strftime("%Y-%m-%d")
-
-        start_obj = GoogleCalendarEventDateTime(date=start_date)
-        end_obj = GoogleCalendarEventDateTime(date=end_date)
-    else:
-        try:
-            if not event.start or not event.end:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Start and end times are required for time-specific events",
-                )
-
-            timezone = event.timezone or "UTC"
-            start_time = event.start
-            end_time = event.end
-
-            if (
-                start_time
-                and not start_time.endswith("Z")
-                and "+" not in start_time
-                and "-" not in start_time[-6:]
-            ):
-                start_time = start_time + "Z"
-            if (
-                end_time
-                and not end_time.endswith("Z")
-                and "+" not in end_time
-                and "-" not in end_time[-6:]
-            ):
-                end_time = end_time + "Z"
-
-            start_obj = GoogleCalendarEventDateTime(dateTime=start_time, timeZone=timezone)
-            end_obj = GoogleCalendarEventDateTime(dateTime=end_time, timeZone=timezone)
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
-
-    recurrence_rules: list[str] | None = None
-    if event.recurrence:
-        try:
-            recurrence_rules = event.recurrence.to_google_calendar_format()
-
-            if not event.is_all_day:
-                timezone = event.timezone or "UTC"
-                if start_obj.timeZone is not None:
-                    start_obj.timeZone = timezone
-                if end_obj.timeZone is not None:
-                    end_obj.timeZone = timezone
-
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+    start_obj, end_obj = _all_day_bounds(event) if event.is_all_day else _timed_bounds(event)
+    recurrence_rules = _create_recurrence_rules(event, start_obj, end_obj)
 
     query_params: QueryParams = {"sendUpdates": "all"} if event.attendees else {}
     conference_data: GoogleConferenceData | None = None
@@ -626,6 +655,68 @@ async def delete_calendar_event(
         raise
 
 
+def _update_recurrence_rules(
+    event: EventUpdateRequest, existing_event: GoogleCalendarEventResource
+) -> list[str] | None:
+    """The requested RRULE list, or the stored one when the update omits it."""
+    if event.recurrence is None:
+        return existing_event.recurrence
+    try:
+        return event.recurrence.to_google_calendar_format()
+    except Exception as e:
+        log.error(f"Error processing recurrence rules: {e}")
+        raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
+
+
+def _merged_all_day_bounds(
+    event: EventUpdateRequest,
+    existing_start: GoogleCalendarEventDateTime,
+    existing_end: GoogleCalendarEventDateTime,
+) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
+    start_date = _date_part(event.start) if event.start is not None else (existing_start.date or "")
+    end_date = _date_part(event.end) if event.end is not None else (existing_end.date or "")
+    return (
+        GoogleCalendarEventDateTime(date=start_date),
+        GoogleCalendarEventDateTime(date=end_date),
+    )
+
+
+def _merged_timed_bounds(
+    event: EventUpdateRequest,
+    existing_start: GoogleCalendarEventDateTime,
+    existing_end: GoogleCalendarEventDateTime,
+) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
+    try:
+        start_time = event.start if event.start is not None else (existing_start.dateTime or "")
+        end_time = event.end if event.end is not None else (existing_end.dateTime or "")
+        timezone = event.timezone or event.timezone_offset or existing_start.timeZone or None
+
+        return (
+            GoogleCalendarEventDateTime(dateTime=_with_utc_suffix(start_time), timeZone=timezone),
+            GoogleCalendarEventDateTime(dateTime=_with_utc_suffix(end_time), timeZone=timezone),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
+
+
+def _merge_event_bounds(
+    event: EventUpdateRequest,
+    existing_start: GoogleCalendarEventDateTime,
+    existing_end: GoogleCalendarEventDateTime,
+) -> tuple[GoogleCalendarEventDateTime, GoogleCalendarEventDateTime]:
+    """Overlay the requested start/end onto the stored ones. An update that
+    touches neither (nor all-day-ness) leaves the existing bounds alone."""
+    if event.start is None and event.end is None and event.is_all_day is None:
+        return existing_start, existing_end
+
+    is_all_day = (
+        event.is_all_day if event.is_all_day is not None else existing_start.date is not None
+    )
+    if is_all_day:
+        return _merged_all_day_bounds(event, existing_start, existing_end)
+    return _merged_timed_bounds(event, existing_start, existing_end)
+
+
 async def update_calendar_event(
     event: EventUpdateRequest,
     user_id: str,
@@ -640,80 +731,15 @@ async def update_calendar_event(
         )
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Event not found or access denied")
+            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL)
         raise
 
-    existing_start = existing_event.start or GoogleCalendarEventDateTime()
-    existing_end = existing_event.end or GoogleCalendarEventDateTime()
-
-    recurrence_rules: list[str] | None = None
-    if event.recurrence is not None:
-        try:
-            recurrence_rules = event.recurrence.to_google_calendar_format()
-        except Exception as e:
-            log.error(f"Error processing recurrence rules: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
-    elif existing_event.recurrence is not None:
-        recurrence_rules = existing_event.recurrence
-
-    start_obj: GoogleCalendarEventDateTime
-    end_obj: GoogleCalendarEventDateTime
-
-    if event.start is not None or event.end is not None or event.is_all_day is not None:
-        is_all_day = (
-            event.is_all_day if event.is_all_day is not None else existing_start.date is not None
-        )
-
-        if is_all_day:
-            if event.start is not None:
-                start_date = event.start.split("T")[0] if "T" in event.start else event.start
-            else:
-                start_date = existing_start.date or ""
-
-            if event.end is not None:
-                end_date = event.end.split("T")[0] if "T" in event.end else event.end
-            else:
-                end_date = existing_end.date or ""
-
-            start_obj = GoogleCalendarEventDateTime(date=start_date)
-            end_obj = GoogleCalendarEventDateTime(date=end_date)
-        else:
-            try:
-                start_time = (
-                    event.start if event.start is not None else (existing_start.dateTime or "")
-                )
-                end_time = event.end if event.end is not None else (existing_end.dateTime or "")
-
-                timezone: str | None = None
-                if event.timezone:
-                    timezone = event.timezone
-                elif event.timezone_offset:
-                    timezone = event.timezone_offset
-                elif existing_start.timeZone:
-                    timezone = existing_start.timeZone
-
-                if (
-                    start_time
-                    and not start_time.endswith("Z")
-                    and "+" not in start_time
-                    and "-" not in start_time[-6:]
-                ):
-                    start_time = start_time + "Z"
-                if (
-                    end_time
-                    and not end_time.endswith("Z")
-                    and "+" not in end_time
-                    and "-" not in end_time[-6:]
-                ):
-                    end_time = end_time + "Z"
-
-                start_obj = GoogleCalendarEventDateTime(dateTime=start_time, timeZone=timezone)
-                end_obj = GoogleCalendarEventDateTime(dateTime=end_time, timeZone=timezone)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Invalid datetime format: {e!s}")
-    else:
-        start_obj = existing_start
-        end_obj = existing_end
+    recurrence_rules = _update_recurrence_rules(event, existing_event)
+    start_obj, end_obj = _merge_event_bounds(
+        event,
+        existing_event.start or GoogleCalendarEventDateTime(),
+        existing_event.end or GoogleCalendarEventDateTime(),
+    )
 
     payload = GoogleCalendarEventWrite(
         summary=(event.summary if event.summary is not None else (existing_event.summary or "")),
@@ -733,7 +759,7 @@ async def update_calendar_event(
         )
     except HTTPException as exc:
         if exc.status_code == 404:
-            raise HTTPException(status_code=404, detail="Event not found or access denied")
+            raise HTTPException(status_code=404, detail=_EVENT_NOT_FOUND_DETAIL)
         raise
 
     updated_event.calendarId = calendar_id
