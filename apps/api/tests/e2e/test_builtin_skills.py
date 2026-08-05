@@ -146,9 +146,7 @@ class TestConnectedMarker:
     def test_an_unconnected_integration_is_not_marked(self, tmp_path: Path):
         materialize_skills(tmp_path, {"gmail"})
 
-        assert not (
-            tmp_path / "integrations" / "googlecalendar" / "agent" / ".connected"
-        ).exists()
+        assert not (tmp_path / "integrations" / "googlecalendar" / "agent" / ".connected").exists()
 
     def test_disconnecting_clears_a_previously_set_marker(self, tmp_path: Path):
         """Re-materialization is how a disconnect takes effect. A marker left

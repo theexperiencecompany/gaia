@@ -329,14 +329,14 @@ class TestRecursionWrapup:
         and no partial answer. The wrap-up notice is the one chance the model
         gets to summarise what it found — injected per call, never persisted, so
         the only place it is observable is the prompt itself."""
-        async with executor_graph([call("plan_tasks", {"tasks": []}, id=f"c{i}") for i in range(30)]) as graph:
+        async with executor_graph(
+            [call("plan_tasks", {"tasks": []}, id=f"c{i}") for i in range(30)]
+        ) as graph:
             run = await run_graph(graph, "a long job", recursion_limit=10)
 
         shown = " ".join(str(m.content) for m in run.last_prompt())
 
-        assert "almost out of steps" in shown, (
-            f"the model was never warned: {shown[-200:]!r}"
-        )
+        assert "almost out of steps" in shown, f"the model was never warned: {shown[-200:]!r}"
         assert "summarize what you" in shown, "warned without being told what to do about it"
 
     async def test_a_short_run_is_not_warned(self):

@@ -22,12 +22,6 @@ class ComposedEmailOutput(BaseModel):
     body: str = Field(description="Generated email body")
 
 
-class EmailSummaryRequest(BaseModel):
-    message_id: str
-    include_action_items: bool | None = None
-    max_length: int | None = None
-
-
 class SendEmailRequest(BaseModel):
     to: list[str]
     subject: str

@@ -140,10 +140,7 @@ async def request_desktop_action(
             await redis_cache.delete(request_key)
         with contextlib.suppress(Exception):
             await pubsub.unsubscribe(result_channel)
-            # redis-py's installed type stubs haven't caught up to the runtime
-            # library: aclose() exists and is the non-deprecated replacement
-            # for the stubbed close().
-            await pubsub.aclose()  # type: ignore[attr-defined]
+            await pubsub.aclose()
 
 
 async def _await_result(pubsub: PubSub) -> DesktopToolOutcome:

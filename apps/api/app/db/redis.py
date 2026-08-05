@@ -19,11 +19,13 @@ Pattern deletion:
     await delete_cache("user:*")  # Delete all user keys
 """
 
-from typing import Any, TypeVar, overload
+from collections.abc import Mapping
+from typing import Any, Protocol, TypeVar, cast, overload
 
 from pydantic import TypeAdapter
 from pydantic.type_adapter import TypeAdapter as TypeAdapterType
 import redis.asyncio as redis
+from redis.asyncio.client import Pipeline, PubSub
 
 from app.config.settings import settings
 from app.constants.cache import (
@@ -118,6 +120,96 @@ def deserialize_any(json_str: str, model: type[T] | None = None) -> Any:
     return adapter.validate_json(json_str)
 
 
+class AsyncRedisCommands(Protocol):
+    """The Redis commands this codebase issues, typed as the async client returns them.
+
+    redis-py declares each command once, on a mixin shared by the sync and async
+    clients, annotated ``Awaitable[T] | T``. That union is honest for the pair but
+    wrong for ``redis.asyncio.Redis``, where every command returns an awaitable —
+    so ``await client.llen(key)`` does not type-check against the library's own
+    annotations, and the ones declared ``ResponseT`` (an alias containing bare
+    ``Any``) type-check but return ``Any`` and check nothing downstream.
+
+    Restating the commands we actually use fixes both: awaits resolve, and results
+    arrive as real types (``hgetall`` is a ``dict[str, str]``, not ``dict[Any, Any]``).
+    Values are ``str`` rather than ``bytes`` because the client is constructed with
+    ``decode_responses=True``.
+
+    Adding a command here is the cost of using a new one — mypy will name it.
+    """
+
+    async def ping(self) -> bool: ...
+
+    async def get(self, name: str) -> str | None: ...
+
+    async def set(
+        self, name: str, value: str, *, ex: int | None = None, nx: bool = False
+    ) -> bool | None: ...
+
+    async def setex(self, name: str, time: int, value: str) -> bool: ...
+
+    async def getdel(self, name: str) -> str | None: ...
+
+    async def delete(self, *names: str) -> int: ...
+
+    async def exists(self, *names: str) -> int: ...
+
+    async def expire(self, name: str, time: int) -> bool: ...
+
+    async def keys(self, pattern: str = "*") -> list[str]: ...
+
+    async def incr(self, name: str, amount: int = 1) -> int: ...
+
+    async def llen(self, name: str) -> int: ...
+
+    async def lpop(self, name: str) -> str | None: ...
+
+    async def lrange(self, name: str, start: int, end: int) -> list[str]: ...
+
+    async def rpush(self, name: str, *values: str) -> int: ...
+
+    async def hset(self, name: str, *, mapping: Mapping[str, str]) -> int: ...
+
+    async def hgetall(self, name: str) -> dict[str, str]: ...
+
+    async def publish(self, channel: str, message: str) -> int: ...
+
+    async def xadd(
+        self,
+        name: str,
+        fields: Mapping[str, str],
+        *,
+        maxlen: int | None = None,
+        approximate: bool = True,
+    ) -> str: ...
+
+    async def xread(
+        self,
+        streams: Mapping[str, str],
+        *,
+        count: int | None = None,
+        block: int | None = None,
+    ) -> list[tuple[str, list[tuple[str, dict[str, str]]]]]: ...
+
+    # Lua's return type is whatever the script yields — genuinely dynamic, so the
+    # caller narrows it (the one call site coerces to bool).
+    async def eval(self, script: str, numkeys: int, *keys_and_args: str) -> Any: ...
+
+    def pubsub(self) -> PubSub: ...
+
+    def pipeline(self, transaction: bool = True) -> Pipeline: ...
+
+
+def _new_client(redis_url: str) -> AsyncRedisCommands:
+    """Build the async client, described by what it really returns.
+
+    The cast is the one place the library's sync/async-shared annotations are
+    traded for the async-accurate ones in ``AsyncRedisCommands``; see that
+    protocol for why they differ. ``from_url`` is lazy — this does not connect.
+    """
+    return cast(AsyncRedisCommands, redis.from_url(redis_url, decode_responses=True))
+
+
 class RedisCache:
     """Async Redis wrapper with type-safe (de)serialization and graceful degradation.
 
@@ -129,13 +221,13 @@ class RedisCache:
     def __init__(self, redis_url: str = "redis://localhost:6379", default_ttl: int = 3600) -> None:
         self.redis_url = settings.REDIS_URL or redis_url
         self.default_ttl = default_ttl
-        self.redis: redis.Redis | None = None
+        self.redis: AsyncRedisCommands | None = None
 
         if self.redis_url:
             try:
                 # NB: from_url is lazy — it does NOT connect here. Real
                 # connectivity is asserted by verify_connection() at startup.
-                self.redis = redis.from_url(self.redis_url, decode_responses=True)
+                self.redis = _new_client(self.redis_url)
                 log.set(db={"connection_status": "configured", "backend": "redis"})
                 log.info(
                     f"{LogTag.STORAGE} Redis client configured (connection verified at startup)."
@@ -285,12 +377,12 @@ class RedisCache:
             )
 
     @property
-    def client(self) -> redis.Redis:
+    def client(self) -> AsyncRedisCommands:
         """
         Get the Redis client instance.
         """
         if not self.redis:
-            self.redis = redis.from_url(self.redis_url, decode_responses=True)
+            self.redis = _new_client(self.redis_url)
             log.info(f"{LogTag.STORAGE} Re-initialized Redis connection.")
 
         return self.redis

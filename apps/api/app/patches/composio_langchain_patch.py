@@ -43,13 +43,16 @@ def apply() -> None:
             *,
             flag: t.Union[bool, str, t.Callable[[t.Any], str]],
         ) -> str:
-            if isinstance(flag, bool):
-                # Return real exception message
-                return f"Tool input validation error: {e!s}"
             if isinstance(flag, str):
                 return flag
-            if callable(flag):
+            # bool is not callable, but check it explicitly: `callable()` cannot
+            # narrow a bool out on its own, and True must fall through to the
+            # real message rather than be invoked.
+            if not isinstance(flag, bool) and callable(flag):
                 return flag(e)
+            # flag is True (langchain's "handle it" signal) or something outside
+            # the documented union — either way, surface the actual error, which
+            # is the whole point of this patch.
             return f"Tool input validation error: {e!s}"
 
         lc_base._handle_validation_error = patched_handle_validation_error

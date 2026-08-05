@@ -138,9 +138,7 @@ async def create_link_token(
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
 
-    # Key type is `str | bytes` to match redis-py's hset signature, whose Mapping
-    # key parameter is invariant; every key written here is in fact a str.
-    mapping: dict[str | bytes, str] = {
+    mapping: dict[str, str] = {
         "platform": body.platform,
         "platform_user_id": body.platform_user_id,
     }

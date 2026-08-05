@@ -36,11 +36,16 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
+
+# Imported from the defining module, as langgraph's own prebuilt/ package does.
+# langgraph.utils.runnable is a compat shim ("to be removed in v1" — we are on
+# 1.2.7) that re-exports without __all__, so it is both deprecated and invisible
+# to no_implicit_reexport.
+from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
-from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (

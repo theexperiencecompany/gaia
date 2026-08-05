@@ -376,10 +376,7 @@ async def _close_pubsub(pubsub: PubSub, channel: str) -> None:
     with contextlib.suppress(Exception):
         await pubsub.unsubscribe(channel)
     with contextlib.suppress(Exception):
-        # redis-py's installed type stubs haven't caught up to the runtime
-        # library: aclose() exists and is the non-deprecated replacement for
-        # the stubbed close().
-        await pubsub.aclose()  # type: ignore[attr-defined]
+        await pubsub.aclose()
 
 
 def _warm_artifact_blocks(host_path: Path) -> None:
