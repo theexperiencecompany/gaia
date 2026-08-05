@@ -27,6 +27,7 @@ from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
+    DEV_LLM_MAX_OUTPUT_TOKENS,
     LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
@@ -74,10 +75,14 @@ def is_default_model_config(configurable: Mapping[str, Any]) -> bool:
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
     "openrouter": DEFAULT_GROK_MODEL_NAME,
+    # The env-defined custom dev endpoint; empty when unset — the provider is
+    # only registered in development with all DEV_LLM_* settings present.
+    "custom": settings.DEV_LLM_MODEL or "",
 }
 PROVIDER_PRIORITY = {
     1: "gemini",
     2: "openrouter",
+    3: "custom",
 }
 
 
@@ -178,6 +183,49 @@ def init_openrouter_llm():
     )
 
 
+@lazy_provider(
+    name="custom_llm",
+    required_keys=[SIM_STUB_API_KEY]
+    if settings.GAIA_SIM_MODE
+    else [settings.DEV_LLM_BASE_URL, settings.DEV_LLM_API_KEY, settings.DEV_LLM_MODEL],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL not configured. The custom dev LLM endpoint will not work.",
+)
+def init_custom_llm():
+    """DEV-ONLY: the env-defined custom provider — any OpenRouter/OpenAI-compatible
+    endpoint, with base URL, key, and model all from the DEV_LLM_* settings. Routes
+    bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
+    models) without spending real credits. ChatOpenRouter works against such
+    endpoints unchanged, including reasoning parsing — only the base URL and key
+    differ. The configurable-field ids mirror the OpenRouter client's exactly;
+    alternatives share one namespace (prefix_keys=False), so ids must stay
+    consistent. Registered only when ENV=development (see register_llm_providers).
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    return ChatOpenRouter(
+        model=PROVIDER_MODELS["custom"],
+        temperature=DEFAULT_LLM_TEMPERATURE,
+        streaming=True,
+        stream_usage=True,
+        max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+        api_key=settings.DEV_LLM_API_KEY,
+        base_url=settings.DEV_LLM_BASE_URL,
+    ).configurable_fields(
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        reasoning=ConfigurableField(
+            id="reasoning",
+            name="Reasoning",
+            description="Reasoning effort (per-agent thinking budget)",
+        ),
+        model_kwargs=ConfigurableField(
+            id="model_kwargs",
+            name="Model kwargs",
+            description="Extra request params (e.g. provider routing pin)",
+        ),
+    )
+
+
 def init_llm(
     preferred_provider: str | None = None,
     fallback_enabled: bool = True,
@@ -233,6 +281,7 @@ def _get_available_providers() -> dict[str, Any]:
     provider_instance_mapping = {
         "gemini": "gemini_llm",
         "openrouter": "openrouter_llm",
+        "custom": "custom_llm",
     }
 
     available = {}
@@ -300,6 +349,11 @@ def register_llm_providers():
     """Register LLM providers in the lazy loader."""
     init_gemini_llm()
     init_openrouter_llm()
+    # The custom endpoint is a dev/testing-only lane — never registered in
+    # production, so DEV_LLM_* vars present in a prod environment can't route
+    # real traffic.
+    if settings.ENV == "development":
+        init_custom_llm()
 
 
 def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
