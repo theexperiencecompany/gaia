@@ -32,9 +32,16 @@ DONE_SENTINEL = "[DONE]"
 #: Every tool call rides a frame whose outer ``tool_name`` is this literal.
 TOOL_CALLS_DATA = "tool_calls_data"
 
-#: Synthetic kinds for the two frames that are not a single-key JSON object.
+#: Synthetic kinds for the frames that are not a single-key JSON object.
 DONE = "done"
 INIT = "conversation_initialized"
+#: A multi-key frame carrying no key the vocabulary recognises. Real: a tool
+#: whose native-card field is absent from ``tool_fields`` is passed through by
+#: ``normalize_custom_event`` untouched, siblings and all (``fetch_webpages``
+#: emits ``{"webpage_data": ..., "fetched_urls": [...]}``). The client does not
+#: reject those either — ``streaming.ts`` logs and yields ``{type:"unknown"}``,
+#: absorbing the payload into ``extras`` — so neither does this parser.
+UNKNOWN = "unknown"
 
 _INIT_KEYS = frozenset({"user_message_id", "bot_message_id", "stream_id"})
 
@@ -89,10 +96,13 @@ def _classify(payload: dict[str, Any]) -> str:
         return next(iter(payload))
     if payload.keys() >= _INIT_KEYS:
         return INIT
-    raise TranscriptError(
-        f"frame has no discriminator — expected one top-level key or the identity "
-        f"frame's {sorted(_INIT_KEYS)}, got {sorted(payload)}"
-    )
+    # A native card can carry sibling keys: ``normalize_custom_event`` wraps the
+    # recognised tool field into ``tool_data`` and deliberately preserves the
+    # rest of the tool's payload beside it (``nextPageToken`` next to
+    # ``email_fetch_data``). The envelope is still the discriminator.
+    if "tool_data" in payload:
+        return "tool_data"
+    return UNKNOWN
 
 
 class Transcript:
@@ -166,9 +176,10 @@ class Transcript:
             if not isinstance(payload, dict):
                 raise TranscriptError(f"frame payload is not a JSON object: {raw!r}")
             kind = _classify(payload)
-            frames.append(
-                Frame(kind=kind, data=payload.get(kind), payload=payload, event_id=event_id)
-            )
+            # An unrecognised frame has no field to unwrap, so its ``data`` is
+            # the whole payload — the same thing the client keeps in ``extras``.
+            data = payload if kind == UNKNOWN else payload.get(kind)
+            frames.append(Frame(kind=kind, data=data, payload=payload, event_id=event_id))
         return cls(frames, nostream, blocks)
 
     # -- frame-level queries ------------------------------------------------
