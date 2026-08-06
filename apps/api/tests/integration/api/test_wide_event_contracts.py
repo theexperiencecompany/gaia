@@ -9,6 +9,7 @@ telemetry is silently broken in a way no per-function test can see.
 
 import asyncio
 from contextlib import asynccontextmanager
+import datetime
 import json
 from typing import Any
 from unittest.mock import patch
@@ -114,7 +115,7 @@ def test_handler_fields_reach_the_emitted_event(emitted):
 
 
 def test_user_identity_attached_from_request_state(emitted):
-    """user.id/email auto-attach from auth state; handler-set fields win."""
+    """user.id auto-attaches from auth state (email stays out of the logs); handler-set fields win."""
 
     class FakeAuth(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
@@ -133,7 +134,7 @@ def test_user_identity_attached_from_request_state(emitted):
     inner_app.add_middleware(LoggingMiddleware)
     TestClient(inner_app).get("/t")
     (event,) = emitted
-    assert event["user"] == {"id": "u_state", "email": "s@x.com", "plan": "pro"}
+    assert event["user"] == {"id": "u_state", "plan": "pro"}
 
 
 def test_timed_out_request_emits_event_with_partial_context(emitted):
@@ -254,8 +255,6 @@ class _FakeRecord(dict):
 
 
 def _record(extra: dict[str, Any]) -> dict[str, Any]:
-    import datetime
-
     class _Level:
         name = "ERROR"
 
@@ -288,11 +287,13 @@ def test_json_sink_is_total(hostile_extra, capsys):
     """
     circular: dict[str, Any] = {}
     circular["self"] = circular
-    _json_stdout_sink(type("M", (), {"record": _record(hostile_extra)})())
+    _json_stdout_sink(
+        type("M", (), {"record": _record({**hostile_extra, "circular": circular})})()
+    )
     line = capsys.readouterr().out.strip()
     parsed = json.loads(line)
     assert parsed["level"] == "ERROR"
-    assert parsed["message"] in ("boom", parsed["message"])  # message present
+    assert parsed["message"] == "boom"
     assert len(line.encode()) <= MAX_JSON_LINE_BYTES
     if "level" in hostile_extra:
         assert parsed["ctx_level"] == "CLOBBER"

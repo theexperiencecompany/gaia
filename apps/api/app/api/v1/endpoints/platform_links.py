@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,7 +23,7 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 
-def _require_user_id(current_user: dict) -> str:
+def _require_user_id(current_user: Mapping[str, object]) -> str:
     user_id = current_user.get("user_id")
     if not isinstance(user_id, str):
         raise create_error(

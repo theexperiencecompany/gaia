@@ -84,10 +84,9 @@ sink and must touch loguru directly. Relative imports (`from .logging import
 
 ### Reserved wide-event keys
 
-**Rule:** `log.set(...)` / `log.set_ns(...)` / `log.bind(...)` must not pass a
-keyword named `time`, `level`, `message`, `logger`, `module`, `line`, or
-`worker` (the JSON line's core keys — `_CORE_KEYS` in
-`libs/shared/py/logging.py`).
+**Rule:** `log.set(...)` / `log.set_ns(...)` / `log.bind(...)` must not write a
+key named `time`, `level`, `message`, `logger`, `module`, `line`, or `worker`
+(the JSON line's core keys — `_CORE_KEYS` in `libs/shared/py/logging.py`).
 
 **Why:** the JSON sink guarantees core keys always win: a colliding extra field
 is re-emitted as `ctx_<key>` instead of corrupting the line's real
@@ -95,6 +94,11 @@ level/message. So a reserved key never lands where the caller expects — this
 catches the mistake at commit instead of at query time. Applies to the facade
 whatever it is imported as (`log`, or an alias like `wide_log`); the sentry.py
 import allowlist does not exempt it.
+
+Only setters whose keywords land at the JSON **top level** are checked.
+`set_ns` merges its keywords *under* the namespace (so sub-keys can safely be
+named `level`, `worker`, …) — for it, only the namespace argument itself is a
+top-level write and the only collision candidate.
 
 **Fix:** rename the field to a domain-specific name (e.g. `job_level`,
 `source_module`).

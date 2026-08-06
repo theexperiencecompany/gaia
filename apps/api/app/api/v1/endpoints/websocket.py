@@ -37,13 +37,13 @@ async def websocket_endpoint(websocket: WebSocket):
         # If client used subprotocol auth, echo back "Bearer" to complete handshake
         protocol_header = websocket.headers.get("sec-websocket-protocol", "")
         if protocol_header.startswith("Bearer, "):
-            auth_token_type = "subprotocol"  # nosec B105
+            auth_source = "subprotocol"
             await websocket.accept(subprotocol="Bearer")
         else:
-            auth_token_type = "cookie"  # nosec B105
+            auth_source = "cookie"
             await websocket.accept()
 
-        log.set(auth_token_type=auth_token_type)
+        log.set(auth_source=auth_source)
 
         # Add the connection to our manager
         connection_manager.add_connection(user_id=user_id, websocket=websocket)
@@ -69,8 +69,12 @@ async def websocket_endpoint(websocket: WebSocket):
             connection_manager.remove_connection(user_id=user_id, websocket=websocket)
             try:
                 await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
-            # evlog-map-disable-next-line error-handling -- best-effort close of an already-closed socket; nothing to record
-            except Exception:
-                # Ignore if WebSocket is already closed
-                pass  # nosec B110
+            except Exception as close_error:
+                # Socket already dead, so a failed close is expected — record it
+                # rather than swallow it silently.
+                log.warning(
+                    "WebSocket close failed",
+                    error_type=type(close_error).__name__,
+                    error=str(close_error),
+                )
             raise e

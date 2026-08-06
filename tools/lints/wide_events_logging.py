@@ -15,7 +15,10 @@ It also flags ``log.set(...)`` / ``log.set_ns(...)`` / ``log.bind(...)`` calls
 that pass a reserved keyword — the JSON sink's core keys (time, level, message,
 logger, module, line, worker). The sink runtime-guards collisions by re-emitting
 them as ``ctx_<key>``, so a reserved key never lands where the caller expects;
-this catches the mistake at commit instead.
+this catches the mistake at commit instead. Only setters whose keywords land at
+the JSON top level are checked: ``set_ns`` merges its kwargs under the namespace
+(sub-keys can safely be named ``level`` etc.), so only its namespace argument is
+a top-level write.
 
 Finally it flags emit calls (``log.info`` / ``log.error`` / ...) whose message is
 an f-string that interpolates data. A wide-event message is an identifier, not a
@@ -126,7 +129,18 @@ def _reserved_key_calls(tree: ast.Module) -> list[tuple[int, str]]:
             continue
         if not (isinstance(func.value, ast.Name) and func.value.id in aliases):
             continue
-        reserved = sorted(kw.arg for kw in node.keywords if kw.arg in _RESERVED_EVENT_KEYS)
+        # set_ns keywords merge UNDER the namespace — only the namespace
+        # argument itself is a top-level write, so it is the sole collision
+        # candidate (and only when it is a literal that can be compared).
+        if func.attr == "set_ns":
+            namespace = (
+                node.args[0].value
+                if node.args and isinstance(node.args[0], ast.Constant)
+                else None
+            )
+            reserved = [str(namespace)] if namespace in _RESERVED_EVENT_KEYS else []
+        else:
+            reserved = sorted(kw.arg for kw in node.keywords if kw.arg in _RESERVED_EVENT_KEYS)
         if reserved:
             hits.append((node.lineno, f"{func.value.id}.{func.attr}({', '.join(reserved)}=...)"))
     return hits

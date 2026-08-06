@@ -712,7 +712,7 @@ class WideEventLogger:
 
     def exception(self, message: str, /, **kwargs: Any) -> None:
         """Log exception with traceback — same as .error() but includes stack trace."""
-        _loguru.opt(depth=1, exception=True).error(message, **kwargs)
+        _loguru.opt(depth=1, exception=True).bind(**kwargs).error(message)
         self._append("errors", message, **kwargs)
         self._bump("ERROR")
 

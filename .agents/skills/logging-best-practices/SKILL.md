@@ -102,7 +102,9 @@ live).
   intentional swallows carry an `# evlog-map-disable-next-line error-handling
   -- <reason>` directive so the decision is visible.
 - Only the `log` facade in `app/` — stdlib `logging` and bare `loguru` are
-  banned by the `wide-events-logging` lint.
+  banned by the `wide-events-logging` lint. The one deliberate exception is
+  `app/config/sentry.py`, which is allowlisted so it can install the Loguru →
+  Sentry sink directly; nowhere else may touch Loguru/logging.
 
 ## Querying what you logged
 

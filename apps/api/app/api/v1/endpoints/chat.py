@@ -103,8 +103,11 @@ async def _stream_from_redis(
                     break
                 yield chunk
         except asyncio.CancelledError:
+            # Client disconnected mid-stream — expected, not an error. The
+            # background LangGraph task keeps running and persists the result.
             log.set(client_disconnected=True)
             log.info(f"{LogTag.CHAT} Client connection cancelled", stream_id=stream_id)
+            raise
         except Exception as e:
             log.error(
                 f"{LogTag.CHAT} Error streaming to client",

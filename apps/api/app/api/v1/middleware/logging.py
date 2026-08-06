@@ -140,11 +140,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         user = getattr(request.state, "user", None)
         if not user:
             return
-        auto = {
-            key: value
-            for key, value in {"id": user.get("user_id"), "email": user.get("email")}.items()
-            if value
-        }
+        auto = {"id": user.get("user_id")} if user.get("user_id") else {}
         if not auto:
             return
         wide_log.set(user={**auto, **wide_log.get().get("user", {})})

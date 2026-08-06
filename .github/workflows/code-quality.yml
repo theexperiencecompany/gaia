@@ -540,25 +540,20 @@ jobs:
           version: "0.8.17"
           enable-cache: true
       # This lane's verdict is only worth what its rules are worth, and those
-      # rules have been silently wrong: an `except` matrix that passed handlers
-      # which discarded the caught error, and route resolution that resolved 2
-      # of 283 paths. Both kept printing a score. So the tools are tested
-      # BEFORE they are trusted to gate anything — tools/evlog_map (static:
-      # can this code explain a failure?) and tools/logcheck (black-box: is the
-      # NDJSON it actually emitted usable?). Both suites run in ~1s and are
-      # deliberately un-grouped: on failure the traceback is the signal.
-      - name: Scanner self-tests — the observability tools are tested before they gate
+      # rules have been silently wrong (a discarded-error except matrix, route
+      # resolution that found 2 of 283 paths). Both still printed a score — so
+      # the tools are tested BEFORE they gate: tools/evlog_map (static) and
+      # tools/logcheck (black-box) run in ~1s, deliberately un-grouped so a
+      # failure traceback is the signal.
+      - name: Scanner self-tests
         run: |
           set -euo pipefail
           uv run --no-project --with pytest pytest tools/evlog_map tools/logcheck -q
           echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
-      # Discovery floors. A perfect score over an empty map is still a perfect
-      # score, so a framework upgrade or refactor that breaks entry-point
-      # discovery reads as an *improvement* and every score gate waves it
-      # through. --min-entries asserts the surface is still visible before the
-      # score means anything. Floors are the counts at the time of writing —
-      # 308 scored Python entry points, 23 scored bot entry points (run the
-      # scanners to re-read them). Raise them as the surface grows; a drop is
+      # --min-entries asserts the surface is still visible: a perfect score
+      # over an empty map is still perfect, so a break in entry-point discovery
+      # would otherwise read as an *improvement*. Floors are today's counts
+      # (308 Python, 23 bots) — raise them as the surface grows; a drop is
       # either a deliberate deletion (lower the floor in the same PR) or the
       # bug this gate exists to catch.
       - name: Full observability score — API + voice-agent + bots (details in job summary)
@@ -582,50 +577,8 @@ jobs:
             echo "observability: OK (full run — covered by the full scan above)"
             exit 0
           fi
-          BASE_SHA=$(git merge-base "origin/$GITHUB_BASE_REF" HEAD)
-          # NB: keep the worktree dir name free of sensitivity terms
-          # ("checkout", "auth", ...) — it prefixes every base file path.
-          git worktree add --detach /tmp/obs-merge-base "$BASE_SHA"
-          # Rename-aware lists: a renamed file must ratchet against its OLD
-          # path, not be treated (and floor-gated) as brand-new. Same
-          # merge-base diff + ACMR filter as changed-files.sh, plus -M and
-          # --name-status to see the old path of each rename.
-          : > /tmp/head-files.txt
-          : > /tmp/base-files.txt
-          : > /tmp/renames.txt
-          while IFS=$'\t' read -r status p1 p2; do
-            case "$status" in
-              R*)
-                head_path="$p2"
-                base_path="$p1"
-                ;;
-              *)
-                head_path="$p1"
-                base_path="$p1"
-                ;;
-            esac
-            case "$head_path" in
-              *.py) ;;
-              *) continue ;;
-            esac
-            if [ -f "$head_path" ]; then
-              echo "$head_path" >> /tmp/head-files.txt
-            fi
-            if [ -f "/tmp/obs-merge-base/$base_path" ]; then
-              echo "/tmp/obs-merge-base/$base_path" >> /tmp/base-files.txt
-              if [ "$base_path" != "$head_path" ]; then
-                printf '%s\t%s\n' "$base_path" "$head_path" >> /tmp/renames.txt
-              fi
-            fi
-          done < <(git diff --name-status -M --diff-filter=ACMR "$BASE_SHA"...HEAD)
           echo "::group::evlog map — changed files vs merge-base (per-file ratchet)"
-          # Score the changed files at the merge-base with the HEAD scanner,
-          # then ratchet per file: a file must score at least what it scored
-          # at base (legacy debt never blocks, regressions always do), and a
-          # file with no baseline must reach the "good"-grade floor (70).
-          python3 tools/evlog_map --files-from /tmp/base-files.txt --json --no-write > /tmp/base-map.json
-          python3 tools/evlog_map --files-from /tmp/head-files.txt --no-write \
-            --baseline /tmp/base-map.json --rename-map /tmp/renames.txt
+          scripts/ci/evlog-ratchet.sh
           echo "::endgroup::"
           echo "observability: OK (no per-file regression on changed Python files)"
       - name: Bots regression gate (full surface, held at 100)

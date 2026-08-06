@@ -24,7 +24,7 @@
         "command": "docker build --platform linux/amd64 --build-arg GIT_COMMIT_SHA=$(git rev-parse HEAD) -f apps/api/Dockerfile -t apps-api -t ghcr.io/theexperiencecompany/gaia:latest . && docker push ghcr.io/theexperiencecompany/gaia:latest",
         "cwd": "."
       },
-      "cache": true,
+      "cache": false,
       "inputs": ["production", "^production"]
     },
     "sync": {

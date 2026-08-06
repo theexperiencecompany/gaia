@@ -47,7 +47,7 @@ def _check_chips(entry: RouteEntry) -> str:
 
 
 def _top_issue(entry: RouteEntry) -> str:
-    for rule in REQUIREMENTS:
+    for rule in sorted(REQUIREMENTS, key=lambda r: r.weight, reverse=True):
         result = entry.checks.get(rule.id)
         if result is not None and result.status == "fail":
             return result.message
@@ -178,8 +178,10 @@ def render_github_summary(result: MapResult) -> str:
     lines = [
         f"## Observability score: {result.score}/100 ({result.grade})",
         "",
-        f"{len(scored)} entry points — {counts['instrumented']} instrumented, "
-        f"{counts['partial']} partial, {counts['dark']} dark, {counts['exempt']} exempt",
+        (
+            f"{len(scored)} entry points — {counts['instrumented']} instrumented, "
+            f"{counts['partial']} partial, {counts['dark']} dark, {counts['exempt']} exempt"
+        ),
     ]
     if waived:
         lines += ["", f"{waived} check(s) waived across {waived_files} file(s)"]

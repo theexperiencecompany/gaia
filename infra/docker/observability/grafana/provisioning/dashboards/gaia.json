@@ -712,7 +712,7 @@
           "refId": "A"
         }
       ],
-      "title": "Errors & Warnings",
+      "title": "Errors, Critical & Warnings",
       "type": "logs"
     },
     {

@@ -137,6 +137,9 @@ _CORE_KEYS = frozenset(
 _COLLIDING_KEY_PREFIX = "ctx_"
 # Extra keys consumed into the core entry (never re-emitted as extra fields).
 _CONSUMED_EXTRA_KEYS = frozenset({"logger_name", "worker"})
+# A structure that contains itself cannot be serialized; this marker keeps the
+# rest of the line intact instead of the sanitize fallback dropping it.
+_CIRCULAR_MARKER = "<circular reference>"
 # Loki rejects lines over its max_line_size (256KB by default) — cap below it.
 MAX_JSON_LINE_BYTES = 200_000
 # Matches Loki's retention_period (infra/docker/observability/loki-config.yaml)
@@ -277,19 +280,39 @@ def _iso_utc_millis(moment: datetime) -> str:
 
 
 def _finite(value: object) -> object:
-    """Recursively replace non-finite floats with ``None``.
+    """Recursively replace non-finite floats with ``None`` and cycles with a marker.
 
     Only called after a non-finite value has already been detected, so the
-    common path never pays for this walk.
+    common path never pays for this walk. A structure that contains itself
+    (directly or transitively) would recurse forever here and is rejected by
+    ``json.dumps`` anyway — replacing it with a constant marker keeps the rest
+    of the line intact instead of forcing the sanitize fallback to drop it.
     """
-    if isinstance(value, float):
-        # bool is not a float, and int cannot be non-finite, so this is total.
-        return value if isfinite(value) else None
-    if isinstance(value, dict):
-        return {key: _finite(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_finite(item) for item in value]
-    return value
+    ancestors: set[int] = set()
+
+    def _walk(node: object) -> object:
+        if isinstance(node, float):
+            # bool is not a float, and int cannot be non-finite, so this is total.
+            return node if isfinite(node) else None
+        if isinstance(node, dict):
+            if id(node) in ancestors:
+                return _CIRCULAR_MARKER
+            ancestors.add(id(node))
+            try:
+                return {key: _walk(item) for key, item in node.items()}
+            finally:
+                ancestors.remove(id(node))
+        if isinstance(node, (list, tuple)):
+            if id(node) in ancestors:
+                return _CIRCULAR_MARKER
+            ancestors.add(id(node))
+            try:
+                return [_walk(item) for item in node]
+            finally:
+                ancestors.remove(id(node))
+        return node
+
+    return _walk(value)
 
 
 def _dumps(entry: object) -> str:
@@ -316,9 +339,11 @@ def _dumps(entry: object) -> str:
 def _sanitized_entry(entry: dict[str, object], exc: Exception) -> dict[str, object]:
     """Fallback entry when the full record cannot be serialized.
 
-    `default=str` cannot save non-str dict keys or circular structures — rather
-    than dropping the whole line, preserve the core fields (all plain str/int,
-    always serializable) plus trace_id, and record what went wrong.
+    ``default=str`` cannot save non-str dict keys — rather than dropping the
+    whole line, preserve the core fields (all plain str/int, always
+    serializable) plus trace_id, and record what went wrong. (Cyclic values
+    are handled in ``_finite`` by degrading to a marker, so they do not reach
+    this fallback.)
     """
     sanitized = _core_fields(entry)
     if "trace_id" in entry:

@@ -278,11 +278,13 @@ def _collect_handler_facts(
             method = _log_attr(node, log_aliases)
             if method in WIDE_EVENT_SETTERS:
                 facts.sets_wide_event = True
-                for kw in node.keywords:
-                    if kw.arg:
-                        facts.set_field_names.add(kw.arg)
-                if method == "set_ns" and node.args and isinstance(node.args[0], ast.Constant):
-                    facts.set_field_names.add(str(node.args[0].value))
+                if method == "set_ns":
+                    if node.args and isinstance(node.args[0], ast.Constant):
+                        facts.set_field_names.add(str(node.args[0].value))
+                else:
+                    for kw in node.keywords:
+                        if kw.arg:
+                            facts.set_field_names.add(kw.arg)
             elif method == "audit":
                 facts.calls_audit = True
             elif method in {"info", "warning", "error", "exception", "critical", "debug"}:
