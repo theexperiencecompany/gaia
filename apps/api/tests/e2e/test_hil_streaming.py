@@ -1265,7 +1265,7 @@ class TestTwoGatedCallsInOneTurn:
     destructive actions in one turn are confirmed together, which is the
     behaviour worth having anyway." The gate delivers exactly that — both calls
     are asked about at once, and empirically both reach the gate in a single node
-    pass (verified by instrumenting ``gate_tool_call``: one turn produces
+    pass (verified by instrumenting ``decide_tool_call``: one turn produces
     ``middleware:get_weather`` then ``middleware:create_flowchart``, and two
     ``pending`` records).
 

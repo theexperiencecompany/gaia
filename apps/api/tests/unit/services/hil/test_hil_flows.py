@@ -4,7 +4,7 @@ The existing gate tests attack its *edges* — malformed resume payloads, missin
 broken dependencies. This file attacks the **journeys**: ask → approve → the tool runs,
 ask → deny → it never does, expiry → the model is told it expired, auto → receipt → run.
 
-Each drives the real ``gate_tool_call``, so the assertions are about the seam between its
+Each drives the real ``decide_tool_call``, so the assertions are about the seam between its
 steps rather than any one of them: does an approval actually reach the handler, does a
 denial actually stop it, does an expiry produce a *different* message from a refusal, and
 does the receipt land before the action rather than after it.
