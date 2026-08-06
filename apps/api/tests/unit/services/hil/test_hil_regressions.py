@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.agents.core.subagents.subagent_runner import recover_from_checkpoint
@@ -246,17 +247,16 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
                 f"{GATE}.judge_intent",
                 new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
             ) as judge,
-            patch(f"{GATE}.interrupt") as interrupt,
+            patch(f"{GATE}.interrupt", side_effect=GraphInterrupt(())) as interrupt,
         ):
-            await run_through_gate(request, handler)
+            with pytest.raises(GraphInterrupt):
+                await run_through_gate(request, handler)
 
         judge.assert_not_awaited()
         receipt.assert_not_awaited()
         handler.assert_not_awaited()
         card.assert_awaited_once()
-        # The card goes up and the call waits for the user. It does NOT pause here — only
-        # the approvals node may, and this is the tool node's path.
-        interrupt.assert_not_called()
+        interrupt.assert_called_once()
 
 
 class TestAnAutoApprovedRecordStillHasToRun:
@@ -309,17 +309,18 @@ class TestAnAutoApprovedRecordStillHasToRun:
         auto["card"].assert_not_awaited()
 
 
-class TestAPendingRecordNeverPausesTheToolNode:
-    """The tool node must fail closed rather than pause.
+class TestAPendingRecordParksInsteadOfRunning:
+    """A record that exists but is undecided means the user has not answered yet.
 
-    Only the ``approvals`` node may pause, and it runs first — so a call arriving at the
-    tool node still pending means that node never ran. Pausing HERE is the bug the whole
-    split exists to remove: the tool node's siblings have already executed, and a pause
-    discards and replays their work.
+    The call must neither run nor be refused: it parks, and the run resumes when the
+    decision lands. Its siblings are unaffected — LangGraph persists the writes of the
+    tasks that completed in the interrupting step (see
+    ``tests/unit/agents/test_pause_checkpointing.py``), which is what makes pausing
+    here safe rather than a source of double-execution.
     """
 
     @staticmethod
-    def _tool_node_over_a_pending_record():
+    def _edges():
         return (
             patch(f"{GATE}.log"),
             patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="ask")),
@@ -331,37 +332,106 @@ class TestAPendingRecordNeverPausesTheToolNode:
             patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
         )
 
-    async def test_it_refuses_instead_of_parking(self) -> None:
+    async def test_it_parks_rather_than_running_or_refusing(self) -> None:
         handler = AsyncMock()
         with ExitStack() as stack:
-            for ctx in self._tool_node_over_a_pending_record():
+            for ctx in self._edges():
                 stack.enter_context(ctx)
-            interrupt = stack.enter_context(patch(f"{GATE}.interrupt"))
-            result = await run_through_gate(make_request(), handler)
+            interrupt = stack.enter_context(
+                patch(f"{GATE}.interrupt", side_effect=GraphInterrupt(()))
+            )
+            with pytest.raises(GraphInterrupt):
+                await run_through_gate(make_request(), handler)
 
-        interrupt.assert_not_called()
-        handler.assert_not_awaited()
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+        interrupt.assert_called_once()
+        handler.assert_not_awaited(), "an unanswered call must not run"
 
     async def test_the_judge_is_not_re_run_over_an_existing_record(self) -> None:
         # A record means a card is already up and the answer is the user's to give.
-        # Re-judging could return "aligned" and run the tool without their decision.
+        # The judge is a non-deterministic LLM call: re-asking it on the replay could
+        # return "aligned" and run the tool without the decision the user actually gave.
         handler = AsyncMock()
         with ExitStack() as stack:
-            for ctx in self._tool_node_over_a_pending_record():
+            for ctx in self._edges():
                 stack.enter_context(ctx)
             stack.enter_context(patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")))
             stack.enter_context(patch(f"{GATE}.publish_auto_approval", new=AsyncMock()))
+            stack.enter_context(patch(f"{GATE}.interrupt", side_effect=GraphInterrupt(())))
             judge = stack.enter_context(
                 patch(
                     f"{GATE}.judge_intent",
                     new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
                 )
             )
-            await run_through_gate(make_request(), handler)
+            with pytest.raises(GraphInterrupt):
+                await run_through_gate(make_request(), handler)
 
         judge.assert_not_awaited()
         handler.assert_not_awaited()
+
+
+class TestAResumeWithNoDecisionFailsClosed:
+    """The one path where ``interrupt()`` RETURNS instead of exiting the run.
+
+    On a replay LangGraph hands the resume value back rather than raising, so execution
+    continues past the pause. Normally the decision is already on the record and the
+    call never reaches the pause again — ``resolve_approval`` marks the record decided
+    before it dispatches the resume. But the gate must not assume that: the resume value
+    is a wake-up, not a decision, and treating "we were woken" as "the user said yes"
+    would run an irreversible action nobody approved.
+
+    Found by mutation testing — replacing the post-pause re-read with a constant let an
+    undecided call execute, and nothing in the suite noticed.
+    """
+
+    @staticmethod
+    def _edges(record):
+        return (
+            patch(f"{GATE}.log"),
+            patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="ask")),
+            patch(f"{GATE}.recall_declined_call", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
+            patch(f"{GATE}.get_approval", new=AsyncMock(return_value=record)),
+            patch(f"{GATE}.publish_approval_request", new=AsyncMock()),
+            patch(f"{GATE}.publish_decision", new=AsyncMock()),
+            patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
+            patch(f"{GATE}.set_tool_override", new=AsyncMock()),
+        )
+
+    async def test_a_still_pending_record_never_runs_the_tool(self) -> None:
+        handler = AsyncMock()
+        with ExitStack() as stack:
+            for ctx in self._edges(make_record()):
+                stack.enter_context(ctx)
+            # Returns rather than raises: this IS the replay.
+            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "approved"}))
+            result = await run_through_gate(make_request(), handler)
+
+        handler.assert_not_awaited(), "no record decision means no execution, ever"
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+
+    async def test_an_approved_record_does_run_it(self) -> None:
+        # The positive control: without this, "never runs" would also pass if the gate
+        # were broken into refusing everything.
+        handler = AsyncMock()
+        with ExitStack() as stack:
+            for ctx in self._edges(make_record(status=HILApprovalStatus.APPROVED)):
+                stack.enter_context(ctx)
+            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "approved"}))
+            await run_through_gate(make_request(), handler)
+
+        handler.assert_awaited_once()
+
+    async def test_a_denied_resume_value_cannot_override_an_approved_record(self) -> None:
+        # The reverse direction: the payload is not the decision in EITHER direction.
+        handler = AsyncMock()
+        with ExitStack() as stack:
+            for ctx in self._edges(make_record(status=HILApprovalStatus.APPROVED)):
+                stack.enter_context(ctx)
+            stack.enter_context(patch(f"{GATE}.interrupt", return_value={"status": "denied"}))
+            await run_through_gate(make_request(), handler)
+
+        handler.assert_awaited_once()
 
 
 async def drain_spawned_tasks() -> None:

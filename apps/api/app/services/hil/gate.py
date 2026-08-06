@@ -1,18 +1,15 @@
 """The HIL approval gate: it decides whether a tool call may run, and never runs one.
 
-Two entry points, and the split between them is the whole design:
+One entry point, ``decide_tool_call``: the caller asks, and runs the tool only if the
+answer is "yes". Every ``return await handler(request)`` this module used to contain is
+gone, so there is exactly one place in the system a tool can run from.
 
-* ``settle_message_approvals`` — the ``approvals`` graph node. Decides every gated call
-  in one AI message and pauses until all of them are answered. **The only place in the
-  agent graph that pauses.**
-* ``decide_tool_call`` — asked by the tool node, one call at a time, immediately before
-  it executes. Reads decisions; never pauses.
-
-Why they are separate: ``interrupt()`` makes LangGraph discard the interrupting node's
-writes and replay it from the top, and each tool call is its own node task
-(``create_agent`` fans them out with ``Send``), so a whole step's tasks are discarded
-together. Deciding in an earlier superstep means nothing has run when the pause happens,
-and the tool node — which is where side effects live — is never the node that replays.
+A call the user has not answered pauses here. Its siblings are unaffected: each tool call
+is its own node task (``create_agent`` fans them out with ``Send``), and LangGraph
+persists the writes of the tasks that COMPLETED in an interrupting step, so they are not
+re-run on resume. That only holds while the run's checkpoint actually gets written —
+see the drain note in ``subagent_runner``, where breaking out of the stream early under
+``durability="exit"`` used to throw it away and re-run the completed siblings.
 
 The gate orchestrates; it does not decide or render. Each step is somebody else's job:
 
@@ -28,14 +25,14 @@ Three invariants hold this together:
   never be caught here, nor by the wrappers above (see the ``GraphBubbleUp`` guards in
   ``executor.py`` / ``dynamic_tool_node.py``).
 * **A decision is a record**, never a resume payload. ``resolve_approval`` writes it to
-  Mongo and settles the card; the ``Command(resume=...)`` that follows is only a wake-up,
-  and its value is deliberately ignored. That is what lets one decision wake a run with
-  several approvals outstanding without anything being lost or double-applied.
+  Mongo; the ``Command(resume=...)`` that follows is only a wake-up, and its value is
+  deliberately ignored. That is what lets one decision wake a run with several approvals
+  outstanding without anything being lost or double-applied.
 * Everything before a pause runs again on the replay, so all of it is idempotent: every
   pass re-reads the record instead of remembering what it did last time.
 """
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -46,7 +43,6 @@ from langgraph.types import Command, interrupt
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import (
-    HIL_BATCH_INTERRUPT_TYPE,
     HIL_EXEMPT_TOOLS,
     HIL_STATUS_KWARG,
     HILToolMessageStatus,
@@ -111,80 +107,45 @@ class _Pending:
     integration_name: str | None
 
 
-async def settle_message_approvals(requests: Sequence[ToolCallRequest]) -> None:
-    """Decide every gated call in one AI message, pausing until all of them are answered.
-
-    This runs as its own graph node, ahead of the node that executes tools, and it is the
-    ONLY place in the agent graph that pauses. That is what makes the pause harmless:
-    LangGraph discards a node's writes when it interrupts and replays the node from the
-    top, so anything that already ran would run a second time — and here nothing has run.
-
-    Every card is published before the pause, so a turn asking for two destructive things
-    puts both to the user at once rather than one after the other.
-
-    The resume VALUE is deliberately ignored. Decisions live on the approval records, so
-    a resume that answers one of two approvals simply wakes this loop, which re-reads the
-    records and pauses again on what is still outstanding.
-    """
-    while True:
-        pending = [
-            verdict
-            for verdict in [await _verdict(request) for request in requests]
-            if isinstance(verdict, _Pending)
-        ]
-        if not pending:
-            return
-        log.info(f"{LogTag.HIL} Pausing this turn on {len(pending)} approval(s)")
-        interrupt(
-            {
-                "type": HIL_BATCH_INTERRUPT_TYPE,
-                "approval_ids": [item.approval_id for item in pending],
-                "approvals": [
-                    {
-                        "approval_id": item.approval_id,
-                        "summary": item.summary,
-                        "integration_name": item.integration_name,
-                        "tool_name": item.tool_name,
-                    }
-                    for item in pending
-                ],
-            }
-        )
-
-
 async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
-    """HIL's verdict for one call, reached without running anything.
+    """HIL's verdict for one call. ``None`` clears it to run.
 
-    ``None`` clears the call to execute. A ToolMessage IS the call's whole result — it
-    was denied, timed out, or the gate itself failed, and nothing will run.
+    A ToolMessage IS the call's whole result — it was denied, timed out, or the gate
+    itself failed, and nothing will execute. The gate decides and never executes: the
+    caller runs the tool, so there is exactly one place a tool can run from.
 
-    The gate decides; it never executes. Exactly one place in the system pauses
-    (``settle_message_approvals``) and exactly one place runs a tool (the tool node), so
-    neither can surprise the other.
+    Pauses here when the user has not answered yet. The run checkpoints and EXITS on
+    that ``interrupt()``; on resume the node replays from the top and this same call
+    finds its decision on the record.
     """
-    verdict = await _verdict(request, settle_card=True)
+    verdict = await _verdict(request)
     if not isinstance(verdict, _Pending):
         return verdict
-    # The approvals node settles every decision before the tool node sees the call, so
-    # reaching here means it did not run. Fail closed rather than pause from a node whose
-    # siblings have already executed — the pause would discard and replay their work.
-    log.error(
-        f"{LogTag.HIL} {verdict.tool_name} reached execution still awaiting approval",
-        approval_id=verdict.approval_id,
+
+    interrupt(
+        {
+            "type": "hil_approval",
+            "approval_id": verdict.approval_id,
+            "tool_name": verdict.tool_name,
+            "summary": verdict.summary,
+            "integration_name": verdict.integration_name,
+        }
     )
-    return _unpausable_denial_message(unpack_tool_call(request))
+    # Reached only on the replay, with the decision now durable on the record. Deciding
+    # again (rather than trusting the resume value) is what lets ONE decision wake a run
+    # holding several outstanding approvals without any of them being misapplied.
+    settled = await _verdict(request)
+    if isinstance(settled, _Pending):
+        log.error(
+            f"{LogTag.HIL} {settled.tool_name} resumed with no decision on its record",
+            approval_id=settled.approval_id,
+        )
+        return _unpausable_denial_message(unpack_tool_call(request))
+    return settled
 
 
-async def _verdict(
-    request: ToolCallRequest, *, settle_card: bool = False
-) -> ToolMessage | _Pending | None:
-    """Where one call stands with HIL: cleared (``None``), blocked, or awaiting a user.
-
-    ``settle_card`` belongs to the tool node alone. The card has to resolve on the stream
-    the user is actually watching, and after a pause that is the RESUMED run's stream,
-    not the one the request was raised on. The tool node is the only pass that runs there
-    exactly once — the approvals node may loop several times over one batch.
-    """
+async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
+    """Where one call stands with HIL: cleared (``None``), blocked, or awaiting a user."""
     call = unpack_tool_call(request)
     if call.name in HIL_EXEMPT_TOOLS:
         return None
@@ -209,7 +170,7 @@ async def _verdict(
         # than run it unapproved or stall on an interrupt nothing can resume.
         log.info(f"{LogTag.HIL} Denying gated {call.name}: run cannot pause for approval")
         return _unpausable_denial_message(call)
-    return await _decide(request, context, policy, call, settle_card)
+    return await _decide(request, context, policy, call)
 
 
 def read_gate_context(request: ToolCallRequest) -> GateContext | None:
@@ -242,7 +203,6 @@ async def _decide(
     context: GateContext,
     policy: GatingPolicy,
     call: GatedCall,
-    settle_card: bool,
 ) -> ToolMessage | _Pending | None:
     """Surface the call and read where its decision stands.
 
@@ -258,7 +218,7 @@ async def _decide(
         # the user just gave, leaving its card unsettled.
         record = await get_approval(approval_id)
         if record is not None and record.status.settled:
-            return await _apply(record, context, call, settle_card)
+            return await _apply(record, context, call)
 
         # A RETRY of something the user already declined this turn. Re-asking is the loop
         # we want to kill (the executor never learns its subagent was declined, so it
@@ -309,15 +269,14 @@ async def _decide(
 
 
 async def _apply(
-    record: HILApprovalRecord, context: GateContext, call: GatedCall, settle_card: bool
+    record: HILApprovalRecord, context: GateContext, call: GatedCall
 ) -> ToolMessage | None:
     """Turn a settled record into the call's fate: ``None`` runs it, a message blocks it.
 
     The record is the decision — never the resume payload, which is only a wake-up.
     """
     outcome = _outcome_from_record(record)
-    if settle_card:
-        await publish_decision(
+    await publish_decision(
             record, outcome.status, stream_id=context.stream_id, feedback=outcome.feedback
         )
     if outcome.status == HILApprovalStatus.APPROVED:

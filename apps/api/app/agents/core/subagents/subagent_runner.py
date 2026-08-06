@@ -371,7 +371,7 @@ async def execute_subagent_stream(
     complete_message = ""
     emitted_tool_calls: set[str] = set()
     tool_ran = False
-    pending_interrupt: dict[str, Any] | None = None
+    pending_approvals: list[dict[str, Any]] = []
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
@@ -430,7 +430,10 @@ async def execute_subagent_stream(
             # one used to execute twice. Verified in isolation — break + "exit" is the
             # only combination that loses them; either alone is fine.
             if LANGGRAPH_INTERRUPT_KEY in payload:
-                pending_interrupt = interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
+                # ONE event per paused task, so two gated calls in a message arrive as
+                # two events. Accumulate: the caller stamps re-dispatch context onto
+                # every id here, and an approval left out of that can never be applied.
+                pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
                 log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
                 continue
             for node_name, state_update in payload.items():
@@ -469,8 +472,8 @@ async def execute_subagent_stream(
 
     # A pause is not a result: the narration-only heuristic below would misread a
     # half-finished run as "planning text" and tell the parent to re-issue it.
-    if pending_interrupt is not None:
-        return SubagentOutcome(text=complete_message, interrupt=pending_interrupt)
+    if pending_approvals:
+        return SubagentOutcome(text=complete_message, interrupt=merge_approvals(pending_approvals))
 
     # A subagent that only narrated and never ran a tool didn't do the work — return
     # an actionable signal so the parent re-issues the handoff instead of treating the
@@ -608,14 +611,45 @@ def _approval_id_of(resume: Command) -> str | None:
 
 def interrupt_payload(raw: object) -> dict[str, Any]:
     """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
-    ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the
-    objects carry no dict value (downstream treats that as malformed → deny)."""
+    ``__interrupt__`` tuple or a state snapshot's ``interrupts``.
+
+    Carries EVERY pending approval, not just the first. Two destructive calls in one AI
+    message park two tasks in the same step, and the caller stamps re-dispatch context
+    onto each id this returns (``executor_runner._record_pause``). Returning only the
+    first left the second with no ``resume_item`` at all, so approving it raised
+    ``ApprovalNotResumable`` and the decision could never be applied.
+
+    The first payload's own fields stay at the top level, so callers that read a single
+    approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch
+    readers use. ``{}`` when no object carries a dict value (downstream treats that as
+    malformed → deny).
+    """
+    return merge_approvals(interrupt_values(raw))
+
+
+def interrupt_values(raw: object) -> list[dict[str, Any]]:
+    """The dict payloads inside one or more LangGraph ``Interrupt`` objects."""
     items = raw if isinstance(raw, (list, tuple)) else (raw,)
-    for item in items:
-        value = getattr(item, "value", item)
-        if isinstance(value, dict):
-            return value
-    return {}
+    return [
+        value
+        for value in (getattr(item, "value", item) for item in items)
+        if isinstance(value, dict)
+    ]
+
+
+def merge_approvals(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fold several pending approvals into one payload carrying ALL their ids.
+
+    The first payload's own fields stay at the top level, so callers reading a single
+    approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch
+    readers use (``executor_runner._paused_approval_ids``).
+    """
+    if not payloads:
+        return {}
+    ids = [str(payload["approval_id"]) for payload in payloads if payload.get("approval_id")]
+    if len(ids) < 2:
+        return payloads[0]
+    return {**payloads[0], "approval_ids": ids}
 
 
 async def prepare_executor_execution(

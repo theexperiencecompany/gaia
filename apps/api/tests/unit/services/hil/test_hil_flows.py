@@ -22,7 +22,6 @@ import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG
 from app.models.hil_models import HILApprovalStatus
-from app.services.hil.gate import settle_message_approvals
 from app.services.hil.intent import IntentDecision
 from app.services.hil.utils import approval_window_label
 
@@ -95,13 +94,16 @@ def gate():
 
 
 async def asks(gate: dict, request: Any) -> None:
-    """Pass one — the approvals node: publish the card, then park the run.
+    """Pass one: the card goes up and the run parks on ``interrupt()``.
 
     Every journey below starts here, because that is the only place a card is ever
     published. Skipping it would let a test assert an approval the user was never shown.
+    ``interrupt`` is patched to RAISE, exactly as LangGraph's does — it is control flow
+    that exits the run, not a call that returns a decision.
     """
+    del gate
     with pytest.raises(GraphInterrupt):
-        await settle_message_approvals([request])
+        await run_through_gate(request, Handler([]))
 
 
 def decides(gate: dict, *, status: str, scope: str = "once", feedback: str | None = None) -> None:

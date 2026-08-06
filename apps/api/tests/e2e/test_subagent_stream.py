@@ -377,23 +377,55 @@ class TestMalformedEvents:
 
 
 class TestApprovalPause:
-    async def test_a_paused_run_returns_the_approval_and_stops_consuming(self):
-        """A pause is not an answer. Draining past it would let the driver treat
-        a half-finished run as a result and report it to the parent."""
+    async def test_a_paused_run_reports_the_approval_and_drains_the_stream(self):
+        """A pause is not an answer — but the stream still has to be drained.
+
+        It used to break here. Under ``durability="exit"`` the run-exit save is the
+        only checkpoint write there is, so abandoning the generator skipped it and the
+        writes of every task that had already COMPLETED in the interrupting step were
+        lost — LangGraph then re-ran them on resume, which is how an ungated tool call
+        beside a gated one executed twice. See
+        ``tests/unit/agents/test_pause_checkpointing.py``.
+
+        Draining is safe because the outcome is still marked paused: every caller keys
+        off ``outcome.paused`` and never reads the text of a paused run.
+        """
         graph = ScriptedGraph(
             [
                 *flat(message(AIMessageChunk(content="About to send. "))),
                 ("updates", {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "ap_1"},)}),
-                *flat(message(AIMessageChunk(content="never reached"))),
+                *flat(message(AIMessageChunk(content="after the pause"))),
             ]
         )
         transcript, outcome, _ = await run_subagent([], graph=graph)
 
-        assert outcome.paused is True
+        assert outcome.paused is True, "a pause must never be reported as a result"
         assert outcome.interrupt == {"approval_id": "ap_1"}
-        assert "never reached" not in outcome.text
-        assert graph.yielded == 2
+        assert graph.yielded == 3, (
+            "the whole stream must be consumed, or the run-exit checkpoint never lands"
+        )
         assert transcript.frames() == []
+
+    async def test_every_paused_call_is_reported_not_just_the_last(self):
+        """One ``__interrupt__`` event per paused task, so they must accumulate.
+
+        The caller stamps re-dispatch context onto every id reported here. An approval
+        left out gets no ``resume_item``, and deciding it later raises
+        ApprovalNotResumable — the user presses Approve and nothing can ever happen.
+        """
+        graph = ScriptedGraph(
+            [
+                ("updates", {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "ap_1"},)}),
+                ("updates", {LANGGRAPH_INTERRUPT_KEY: ({"approval_id": "ap_2"},)}),
+            ]
+        )
+        _transcript, outcome, _ = await run_subagent([], graph=graph)
+
+        assert outcome.paused is True
+        assert outcome.interrupt is not None
+        assert outcome.interrupt.get("approval_ids") == ["ap_1", "ap_2"], (
+            f"both approvals must be reported, got {outcome.interrupt}"
+        )
 
     async def test_an_unreadable_interrupt_is_an_empty_payload_not_a_crash(self):
         """Downstream denies on an empty payload; a raised error here would

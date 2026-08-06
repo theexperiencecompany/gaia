@@ -960,25 +960,27 @@ class TestUngatedSiblingAcrossThePause:
         non-destructive, but not empty: a second API round trip and a second
         decrement of the user's rate-limit quota, every time.
 
-        The fix is structural rather than defensive: approvals are settled by their
-        own graph node, in the superstep BEFORE the one that runs tools. The pause
-        happens where nothing has executed, so the replay has nothing to repeat and
-        the tool node itself never replays.
+        LangGraph already prevents this on its own: each tool call is its own node
+        task, and the writes of the tasks that COMPLETED in an interrupting step are
+        persisted, so they are not re-run on resume. We were throwing that checkpoint
+        away — ``durability="exit"`` makes the run-exit save the only write there is,
+        and the runner used to abandon the stream the instant it saw the pause.
 
-        Asserted in two halves on purpose. The first pins that nothing ran while the
-        approval was outstanding; the second that the turn then goes ahead exactly
-        once — so this cannot pass by the work never happening at all.
+        Asserted in two halves on purpose. The first pins that the sibling DID run,
+        so this cannot pass by the work never happening at all; the second that the
+        resume did not repeat it.
         """
         async with sibling_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
-            assert calls == [], (
-                f"nothing runs while the sibling's approval is outstanding, got {calls}"
+            assert calls == [SIBLING_ARGS["location"]], (
+                f"the ungated sibling runs, once, before the pause, got {calls}"
             )
 
             await world.decide("approve")
 
             assert calls == [SIBLING_ARGS["location"]], (
-                f"and once decided, the ungated sibling runs exactly once, got {calls}"
+                "the ungated sibling must not run a second time when the approved "
+                f"call resumes, got {calls}"
             )
 
 
@@ -1261,25 +1263,26 @@ class TestTwoGatedCallsInOneTurn:
             assert await world.cards_for(GATE_B_TOOL) == ["pending"]
             assert calls == [], "and neither may run before the user decides"
 
-    async def test_answering_only_one_of_them_runs_nothing_yet(self) -> None:
-        """A half-answered turn performs no action at all.
+    async def test_deciding_one_of_them_actually_runs_it(self) -> None:
+        """Approving one of two batched actions performs that one, straight away.
 
-        The turn's approvals settle together, in a graph node that runs before any
-        tool — so an approved action waits for its still-undecided sibling rather
-        than going ahead alone. That is the point of settling first: were it to run
-        now, the pause for the second approval would discard and replay the step it
-        ran in, and it would run a second time.
+        The user answered; making them wait on an unrelated second approval before
+        anything happens would be its own bug. It works only because BOTH approvals
+        got re-dispatch context: LangGraph emits one ``__interrupt__`` event PER
+        paused task, and the runner used to keep only the last one it saw — leaving
+        the other record with no ``resume_item``, so deciding it raised
+        ApprovalNotResumable and that decision could never be applied.
         """
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
             await world.decide("approve", tool=GATE_A_TOOL)
 
-            assert calls == [], (
-                f"nothing may run while a sibling approval is still outstanding, got {calls}"
+            assert calls == [SIBLING_ARGS["location"]], (
+                f"the approved action runs, exactly once, got {calls}"
             )
             assert await world.cards_for(GATE_B_TOOL) == ["pending"], (
-                "and the undecided one is still waiting on the user"
+                "and the one still undecided keeps waiting on the user"
             )
 
     async def test_answering_both_runs_each_exactly_once(self) -> None:
