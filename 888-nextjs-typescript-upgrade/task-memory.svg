@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" font-family="system-ui,sans-serif" font-size="13">
+<text x="70" y="32" font-size="16" font-weight="600">Peak memory per task (Next 16.3)</text>
+<line x1="70" y1="360.0" x2="870" y2="360.0" stroke="#e5e7eb"/>
+<text x="62" y="364.0" text-anchor="end" fill="#6b7280">0</text>
+<line x1="70" y1="298.0" x2="870" y2="298.0" stroke="#e5e7eb"/>
+<text x="62" y="302.0" text-anchor="end" fill="#6b7280">1180</text>
+<line x1="70" y1="236.0" x2="870" y2="236.0" stroke="#e5e7eb"/>
+<text x="62" y="240.0" text-anchor="end" fill="#6b7280">2360</text>
+<line x1="70" y1="174.0" x2="870" y2="174.0" stroke="#e5e7eb"/>
+<text x="62" y="178.0" text-anchor="end" fill="#6b7280">3541</text>
+<line x1="70" y1="112.0" x2="870" y2="112.0" stroke="#e5e7eb"/>
+<text x="62" y="116.0" text-anchor="end" fill="#6b7280">4721</text>
+<line x1="70" y1="50.0" x2="870" y2="50.0" stroke="#e5e7eb"/>
+<text x="62" y="54.0" text-anchor="end" fill="#6b7280">5901</text>
+<text x="70.0" y="380.0" text-anchor="middle" fill="#6b7280">tsc</text>
+<text x="470.0" y="380.0" text-anchor="middle" fill="#6b7280">build-cold</text>
+<text x="870.0" y="380.0" text-anchor="middle" fill="#6b7280">build-warm</text>
+<polyline points="70.0,310.8 470.0,78.2 870.0,265.0" fill="none" stroke="#4f8cff" stroke-width="2.5"/>
+<circle cx="70.0" cy="310.8" r="4" fill="#4f8cff"/>
+<text x="70.0" y="301.8" text-anchor="middle" fill="#111827" font-weight="600">937</text>
+<circle cx="470.0" cy="78.2" r="4" fill="#4f8cff"/>
+<text x="470.0" y="69.2" text-anchor="middle" fill="#111827" font-weight="600">5364</text>
+<circle cx="870.0" cy="265.0" r="4" fill="#4f8cff"/>
+<text x="870.0" y="256.0" text-anchor="middle" fill="#111827" font-weight="600">1808</text>
+<text x="70" y="412" fill="#9ca3af">MB</text>
+</svg>
