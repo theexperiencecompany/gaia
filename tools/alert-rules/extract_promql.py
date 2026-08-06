@@ -167,6 +167,29 @@ def _represent_str(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
 _BlockDumper.add_representer(str, _represent_str)
 
 
+def _check_test_coverage(test_dir: Path, rules: dict[str, Any]) -> None:
+    """Fail if any rule lacks a promtool test file, or any test has no rule.
+
+    A rule without a test is exactly the failure mode everything here guards
+    against: it provisions cleanly, is never executed, and no one notices. The
+    test directory is checked against the extracted uids so the coverage
+    contract lives in the same tool that owns the canonical uid list.
+    """
+    if not test_dir.is_dir():
+        _fail("test coverage", f"test directory {test_dir} does not exist")
+    uids = {r["alert"] for g in rules["groups"] for r in g["rules"]}
+    test_uids = {p.stem for p in test_dir.glob("*.yaml")}
+    missing = sorted(uids - test_uids)
+    orphaned = sorted(test_uids - uids)
+    if missing or orphaned:
+        detail = []
+        if missing:
+            detail.append(f"rules without a promtool test ({len(missing)}): {', '.join(missing)}")
+        if orphaned:
+            detail.append(f"test files with no matching rule ({len(orphaned)}): {', '.join(orphaned)}")
+        _fail("test coverage", "; ".join(detail))
+
+
 def extract(source: Path) -> dict[str, Any]:
     document = yaml.safe_load(source.read_text())
     groups = document.get("groups") if isinstance(document, dict) else None
@@ -202,14 +225,22 @@ def main(argv: list[str]) -> int:
         default=Path("infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml"),
     )
     parser.add_argument("-o", "--output", type=Path, help="write here instead of stdout")
+    parser.add_argument(
+        "--test-dir",
+        type=Path,
+        help="directory of per-rule promtool test files; every rule must have one",
+    )
     args = parser.parse_args(argv)
 
     try:
         rules = extract(args.source)
+        if args.test_dir is not None:
+            _check_test_coverage(args.test_dir, rules)
     except RuleShapeError as err:
-        print(f"\n✗ alert-rule extraction failed — {err}", file=sys.stderr)
+        print(f"\n✗ alert-rule validation failed — {err}", file=sys.stderr)
         print(
-            "\n  Every Grafana rule must match the three-node A/B/C shape so pint can lint it.\n"
+            "\n  Every Grafana rule must match the three-node A/B/C shape so pint can lint it,\n"
+            "  and every rule must have a promtool test in the --test-dir.\n"
             f"  Fix the rule, or teach {Path(__file__).name} the new shape deliberately.\n"
             f"  docs: {DOC}",
             file=sys.stderr,

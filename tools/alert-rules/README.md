@@ -1,25 +1,55 @@
-# Alert-rule linting (`tools/alert-rules/`)
+# Alert-rule verification (`tools/alert-rules/`)
 
-Runs [Cloudflare pint](https://github.com/cloudflare/pint) over the Grafana alert
-rules in `infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml`.
-
-Grafana has no equivalent of `promtool test rules`, so a rule built on a metric
-nothing exports provisions cleanly, logs nothing and never fires. pint's
-`promql/series` check is the closest guard we have. It runs in the
-`alert-rules` CI lane (offline subset) and as a manual step against prod
-Prometheus (the full set).
+Verifies the Grafana alert rules in
+`infra/docker/observability/grafana/provisioning/alerting/alert-rules.yaml` with
+[Cloudflare pint](https://github.com/cloudflare/pint) and Prometheus's own
+`promtool` — in CI and locally, via one command:
 
 ```bash
-# Translate the Grafana rules into Prometheus rule YAML:
-uv run tools/alert-rules/extract_promql.py -o /tmp/gaia-rules.yaml
-
-# The checks CI runs — no Prometheus needed:
-pint --offline --config config/pint.hcl lint /tmp/gaia-rules.yaml
-
-# The checks that find a metric nothing exports — needs prod Prometheus on :9090
-# (it is overlay-only; infra/docker/observability/CLAUDE.md has the tunnel):
-pint --config config/pint.hcl lint --min-severity=info /tmp/gaia-rules.yaml
+tools/alert-rules/verify.sh
 ```
+
+Grafana's rules are managed objects, not Prometheus rule files, so neither tool
+can read them directly. `extract_promql.py` derives a Prometheus-native rule file
+from the single source of truth on every run — there is no second, hand-written
+copy to drift. The derived file is thrown away after each run and never checked
+in (`tools/alert-rules/gaia-rules.yaml` is gitignored).
+
+The `verify.sh` pipeline, which is exactly what the `alert-rules` CI lane runs:
+
+1. `uv run tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml --test-dir tools/alert-rules/tests` — translates every Grafana rule and **fails if any rule has no promtool test file** (or any test file has no rule). A rule without a test is a rule that "provisions cleanly and never fires" — the exact failure mode this exists to prevent.
+2. `pint --offline` — PromQL validity and sanity (see the check split below).
+3. `promtool check rules` — validates the derived rule file (pint embeds Prometheus's own parser, so this is a deliberately redundant cross-check).
+4. `promtool test rules tools/alert-rules/tests/*.yaml` — **proves every rule fires** under its trigger fixture and **stays quiet** under its quiet fixture, honouring each rule's real `for` duration.
+
+## The test suite (`tools/alert-rules/tests/`)
+
+One `promtool test rules` file per rule (`<uid>.yaml`), in Prometheus's native
+test format — no custom schema. Each file has:
+
+- a **trigger** test — synthetic series at values that cross the rule's
+  threshold, asserting the alert fires (with the exact label set and literal
+  annotations, so a dropped `__dashboardUid__` or changed message also fails);
+- a **quiet** test — values below the threshold, asserting `exp_alerts: []`, so
+  an always-firing rule fails too.
+
+The fixtures encode the exporter reality the rule depends on — e.g. the latency
+fixtures use the exact `le` buckets from `apps/api/app/core/app_factory.py`. If
+those buckets ever cap below the rule's threshold (the p95-can-never-fire
+regression), the trigger test fails.
+
+**New rules ship with a test.** The extractor's `--test-dir` check enforces it:
+a rule without a matching `<uid>.yaml` aborts the run. Add the fixture in the
+same change as the rule; copy an existing fixture as a template.
+
+Two limits of what the fixtures can prove (both Grafana-only semantics that
+`promtool` cannot model, so both are documented rather than papered over):
+
+- `noDataState: Alerting` — the "no series at all → alert" path. Fixtures for
+  those rules cover the value-present path (`up=0` / `probe_success=0` fires).
+- `execErrState` and `DatasourceError` rendering — verified against a real
+  Grafana, see `infra/docker/observability/CLAUDE.md` → "Verify against a real
+  Grafana before shipping".
 
 ## Why an extractor
 
@@ -27,8 +57,7 @@ pint reads Prometheus-native rule YAML. Our rules are Grafana-managed, where the
 PromQL is one node in a `data[]` array and the threshold is another. Keeping a
 second, hand-written Prometheus copy of 25 rules would drift on the first edit —
 which is the same class of bug as the one being guarded against — so the
-translation is derived from the single source of truth on every run and thrown
-away afterwards. Nothing generated is checked in.
+translation is derived from the single source of truth on every run.
 
 The mapping, per rule:
 
@@ -60,13 +89,14 @@ covers how.
 
 ## Fail-loud
 
-A rule that quietly drops out of linting is the exact failure mode this exists to
-prevent, so the extractor aborts the run — it never skips a rule. It fails on a
-missing `uid` / `for` / `data[]`, a duplicate `refId` or `uid`, a `condition`
-naming a refId that does not exist, a condition node that is not a `threshold`,
-a threshold with more or fewer than one numeric condition, an evaluator with no
-PromQL equivalent, and a chain from the threshold back to the query that passes
-through anything other than a `reduce`/`last`.
+A rule that quietly drops out of verification is the exact failure mode this
+exists to prevent, so the extractor aborts the run — it never skips a rule. It
+fails on a missing `uid` / `for` / `data[]`, a duplicate `refId` or `uid`, a
+`condition` naming a refId that does not exist, a condition node that is not a
+`threshold`, a threshold with more or fewer than one numeric condition, an
+evaluator with no PromQL equivalent, a chain from the threshold back to the
+query that passes through anything other than a `reduce`/`last`, and any rule or
+test file without a counterpart in the other (`--test-dir`).
 
 Some of those are silent failures in Grafana too — a `condition` pointing at a
 refId that does not exist provisions fine and only breaks at evaluation time.
@@ -76,21 +106,26 @@ shape deliberately. Do not make it tolerant.
 
 ## What CI does and does not catch
 
-`pint --offline` runs only the checks that need no Prometheus connection.
-pint's own list decides which those are (`--offline` disables everything in its
-`OnlineChecks` set), so nothing here has to track it by hand:
+CI proves a rule is valid PromQL **and** that it fires and stays quiet against
+synthetic data (`promtool test rules`). It cannot prove the metric exists in
+prod with matching labels, or that the threshold is reachable on real traffic —
+those answers only live in Prometheus, so they need the online pint pass against
+prod before merging a new rule:
 
-- **offline, runs in CI** — `promql/syntax`, `promql/impossible`, `promql/nan`,
-  `promql/fragile`, `promql/regexp`, `alerts/comparison`, `alerts/template`,
-  `alerts/for`, `group/interval`, `rule/dependency`
-- **needs a live Prometheus, manual only** — `promql/series` (**the
-  metric-does-not-exist check**), `alerts/count`, `promql/rate`,
-  `promql/counter`, `promql/vector_matching`, `labels/conflict`,
-  `promql/range_query`, `promql/offset`, `promql/features`, `alerts/absent`,
-  `alerts/external_labels`, `rule/duplicate`
+```bash
+# The checks that find a metric nothing exports — needs prod Prometheus on :9090
+# (it is overlay-only; infra/docker/observability/CLAUDE.md has the tunnel):
+pint --config config/pint.hcl lint --min-severity=info tools/alert-rules/gaia-rules.yaml
+```
 
-CI therefore proves a rule is valid PromQL, not that it can ever fire. Run the
-online pass before merging a new rule.
+`pint --offline` (CI) runs only the checks that need no Prometheus connection —
+`promql/syntax`, `promql/impossible`, `promql/nan`, `promql/fragile`,
+`promql/regexp`, `alerts/comparison`, `alerts/template`, `alerts/for`,
+`group/interval`, `rule/dependency`. The live pass adds `promql/series` (**the
+metric-does-not-exist check**), `alerts/count`, `promql/rate`, `promql/counter`,
+`promql/vector_matching`, `labels/conflict`, `promql/range_query`,
+`promql/offset`, `promql/features`, `alerts/absent`, `alerts/external_labels`,
+`rule/duplicate`.
 
 Note that `alerts/count` reports at `Information`, which `pint lint` hides
 unless you pass `--min-severity=info`. That report — "this rule would have fired
@@ -101,14 +136,9 @@ the flag.
 artifact, not a finding: Grafana requires `for` on every rule and rejects the
 whole file without it. It stays at `Information` and never fails the lane.
 
-## Independent cross-check
+## Pinning
 
-pint embeds Prometheus's own PromQL parser, so it is not a fully independent
-opinion on whether the extracted file is a valid rule file. `promtool` is:
-
-```bash
-promtool check rules /tmp/gaia-rules.yaml
-```
-
-Not wired into CI — building promtool costs more than it adds once pint is
-already parsing the same file with the same library.
+`verify.sh` uses the pinned tool images — `ghcr.io/cloudflare/pint:0.87.0` and
+`prom/prometheus:v3.1.0` (the version prod runs) — so local and CI behaviour
+cannot drift. CI installs the same two versions with `go install` and runs the
+identical commands.

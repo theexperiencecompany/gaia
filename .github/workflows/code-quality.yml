@@ -556,20 +556,26 @@ jobs:
           echo "::endgroup::"
           echo "Dead code: OK (no unused TS or Python code)"
 
-  # --- Grafana alert rules (pint) -----------------------------------------
-  # Grafana has no `promtool test rules` equivalent, so a rule built on a metric
-  # nothing exports provisions cleanly and stays silent forever. pint is the
-  # closest guard, but it only reads Prometheus-native rule YAML — the extractor
-  # derives that from the Grafana rules so there is no second copy to maintain.
+  # --- Grafana alert rules (pint + promtool) ------------------------------
+  # Grafana's alert rules are managed objects, not Prometheus rule files, so they
+  # cannot be fed to promtool directly. The extractor derives a Prometheus-native
+  # rule file from the single source of truth (no second copy to maintain) and
+  # the lane proves three things:
   #
-  # `--offline` runs only the checks that need no Prometheus connection
-  # (promql/syntax, promql/impossible, promql/fragile, promql/regexp,
-  # promql/nan, alerts/comparison, alerts/template, alerts/for, group/interval,
-  # rule/dependency). The metric-does-not-exist check itself (promql/series) and
-  # alerts/count need a live server and are a documented manual step against
-  # prod — see infra/docker/observability/CLAUDE.md.
+  #   1. every rule matches the documented A/B/C shape AND has a promtool test
+  #      file — the extractor aborts on either violation (--test-dir),
+  #   2. the PromQL is valid and sane — pint `--offline` (promql/syntax,
+  #      promql/impossible, promql/fragile, alerts/comparison, alerts/for, …),
+  #   3. every rule actually fires under its trigger fixture and stays quiet
+  #      under its quiet fixture — promtool test rules, which also honours each
+  #      rule's real `for` duration.
+  #
+  # The two things CI structurally cannot prove are that the metric exists in
+  # prod with matching labels (promql/series) and that the threshold is
+  # reachable on real traffic (alerts/count) — both need a live server and are
+  # a documented manual step against prod — see infra/docker/observability/CLAUDE.md.
   alert-rules:
-    name: Grafana alert rules (pint, offline checks)
+    name: Grafana alert rules (pint + promtool)
     needs: [changes]
     if: needs.changes.outputs.has_alert_rules == 'true'
     runs-on: ubuntu-latest
@@ -585,25 +591,39 @@ jobs:
           # pint's go.mod requires 1.26; anything older makes `go install`
           # stop to download a toolchain first.
           go-version: "1.26"
-      - name: Install pint (Cloudflare's Prometheus rule linter)
+      - name: Install pint + promtool (pinned to the versions prod uses)
         run: |
-          echo "::group::go install pint"
+          echo "::group::go install"
           go install github.com/cloudflare/pint/cmd/pint@v0.87.0
+          go install github.com/prometheus/prometheus/cmd/promtool@v3.1.0
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           echo "::endgroup::"
-          echo "pint: installed (v0.87.0)"
-      - name: Every Grafana rule translates to a Prometheus rule (no silent skips)
+          echo "pint v0.87.0 + promtool v3.1.0 installed"
+      - name: Extract rules and enforce test coverage (no silent skips)
         run: |
           echo "::group::extract"
-          uv run tools/alert-rules/extract_promql.py -o "$RUNNER_TEMP/gaia-rules.yaml"
+          uv run tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
+            --test-dir tools/alert-rules/tests
           echo "::endgroup::"
-          echo "Extraction: OK (every rule matched the documented A/B/C shape)"
+          echo "Extraction: OK (every rule matched the A/B/C shape and has a test)"
       - name: pint lint (PromQL validity, impossible queries, fragile alerts)
         run: |
           echo "::group::pint lint --offline"
-          pint --no-color --offline --config config/pint.hcl lint "$RUNNER_TEMP/gaia-rules.yaml"
+          pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
           echo "::endgroup::"
           echo "pint: OK (offline checks pass — promql/series still needs a run against prod)"
+      - name: promtool check rules (independent rule-file validation)
+        run: |
+          echo "::group::promtool check rules"
+          promtool check rules tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          echo "promtool: OK (rule file is valid)"
+      - name: promtool test rules (every rule fires and stays quiet)
+        run: |
+          echo "::group::promtool test rules"
+          promtool test rules tools/alert-rules/tests/*.yaml
+          echo "::endgroup::"
+          echo "promtool: OK (all per-rule firing + quiet tests pass)"
 
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
