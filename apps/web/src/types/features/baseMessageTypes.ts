@@ -6,26 +6,10 @@ import type { Dispatch } from "react";
 import type { BaseMessageData } from "@/config/registries/baseMessageRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 
-import type {
-  CalendarDeleteOptions,
-  CalendarEditOptions,
-  CalendarOptions,
-} from "./calendarTypes";
-import type {
-  ContactData,
-  EmailComposeData,
-  EmailSentData,
-  EmailThreadData,
-  PeopleSearchData,
-} from "./mailTypes";
+import type { CalendarOptions } from "./calendarTypes";
+import type { EmailComposeData } from "./mailTypes";
 import type { DeepResearchResults, SearchResults } from "./searchTypes";
-import type { TodoToolData } from "./todoToolTypes";
-import type {
-  CodeData,
-  GoogleDocsData,
-  ImageData,
-  MemoryData,
-} from "./toolDataTypes";
+import type { ImageData } from "./toolDataTypes";
 import type { WeatherData } from "./weatherTypes";
 
 // Type for image data used in UI callbacks
@@ -85,20 +69,10 @@ export interface ConversationMessage extends Partial<BaseMessageData> {
 
 // Re-export all tool data types for convenience
 export type {
-  CalendarDeleteOptions,
-  CalendarEditOptions,
   CalendarOptions,
-  CodeData,
-  ContactData,
   DeepResearchResults,
   EmailComposeData,
-  EmailSentData,
-  EmailThreadData,
-  GoogleDocsData,
   ImageData,
-  MemoryData,
-  PeopleSearchData,
   SearchResults,
-  TodoToolData,
   WeatherData,
 };

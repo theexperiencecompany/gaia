@@ -122,12 +122,7 @@
         "noConsole": {
           "level": "warn",
           "options": {
-            "allow": [
-              "error",
-              "warn",
-              "info",
-              "debug"
-            ]
+            "allow": ["error", "warn", "info", "debug"]
           }
         },
         "useIterableCallbackReturn": "off",
@@ -186,9 +181,7 @@
   ],
   "overrides": [
     {
-      "includes": [
-        "apps/mobile/src/components/icons/index.ts"
-      ],
+      "includes": ["apps/mobile/src/components/icons/index.ts"],
       "linter": {
         "rules": {
           "performance": {
@@ -198,9 +191,7 @@
       }
     },
     {
-      "includes": [
-        "apps/web/**"
-      ],
+      "includes": ["apps/web/**"],
       "linter": {
         "domains": {
           "next": "recommended"
@@ -214,9 +205,7 @@
         "apps/web/src/app/**/index.ts",
         "apps/web/src/app/**/index.tsx"
       ],
-      "plugins": [
-        "./config/biome-rules/no-barrel-reexport.grit"
-      ]
+      "plugins": ["./config/biome-rules/no-barrel-reexport.grit"]
     },
     {
       "includes": [
@@ -246,12 +235,7 @@
       }
     },
     {
-      "includes": [
-        "**/types.ts",
-        "**/types/**",
-        "**/*.types.ts",
-        "**/*.d.ts"
-      ],
+      "includes": ["**/types.ts", "**/types/**", "**/*.types.ts", "**/*.d.ts"],
       "linter": {
         "rules": {
           "performance": {

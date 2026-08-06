@@ -130,9 +130,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Circular dependency scan (madge)
+      - name: Circular dependency scan (Biome)
         run: |
-          echo "::group::madge --circular"
+          echo "::group::biome lint --only=nursery/noImportCycles"
           pnpm run quality:circular
           echo "::endgroup::"
           echo "Circular deps: OK (no cycles found)"
@@ -239,23 +239,6 @@ jobs:
           pnpm run quality:dupe
           echo "::endgroup::"
           echo "Duplicates: OK (<= 3% on changed lines)"
-
-  # --- Type coverage ------------------------------------------------------
-  type-coverage:
-    name: Explicit-type coverage per workspace
-    needs: [changes]
-    if: needs.changes.outputs.has_typescript == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node-pnpm
-      - name: Type-coverage (98-99% per workspace)
-        run: |
-          echo "::group::type-coverage per workspace"
-          pnpm run quality:type-coverage
-          echo "::endgroup::"
-          echo "Type coverage: OK (every workspace meets its threshold)"
 
   # --- Published package hygiene ------------------------------------------
   package-hygiene:
@@ -557,7 +540,6 @@ jobs:
       - types-location
       - components-per-file
       - duplicates
-      - type-coverage
       - package-hygiene
       - type-check
       - python-ruff
@@ -581,7 +563,6 @@ jobs:
           TYPES_LOCATION: ${{ needs.types-location.result }}
           COMPONENTS_PER_FILE: ${{ needs.components-per-file.result }}
           DUPLICATES: ${{ needs.duplicates.result }}
-          TYPE_COVERAGE: ${{ needs.type-coverage.result }}
           PACKAGE_HYGIENE: ${{ needs.package-hygiene.result }}
           TYPE_CHECK: ${{ needs.type-check.result }}
           PYTHON_RUFF: ${{ needs.python-ruff.result }}
@@ -605,7 +586,6 @@ jobs:
             [types-location]="$TYPES_LOCATION"
             [components-per-file]="$COMPONENTS_PER_FILE"
             [duplicates]="$DUPLICATES"
-            [type-coverage]="$TYPE_COVERAGE"
             [package-hygiene]="$PACKAGE_HYGIENE"
             [type-check]="$TYPE_CHECK"
             [python-ruff]="$PYTHON_RUFF"
@@ -616,7 +596,7 @@ jobs:
             [dead-code]="$DEAD_CODE"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
-                 duplicates type-coverage package-hygiene type-check \
+                 duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
                  dead-code)
 

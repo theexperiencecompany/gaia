@@ -19,7 +19,6 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@gaia/shared": "workspace:*",
     "electron-liquid-glass": "^1.1.1",
     "electron-updater": "^6.8.9",
     "v8-compile-cache": "^2.4.0",
@@ -27,6 +26,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.7",
+    "@gaia/shared": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/node": "^24.13.3",

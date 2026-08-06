@@ -194,6 +194,10 @@ const config: KnipConfig = {
     "tsc",
     "tsx",
     "diff",
+    // Linux desktop protocol registration: runtime shell commands invoked via
+    // spawnSync in apps/desktop/src/main/protocol.ts (no npm package).
+    "update-desktop-database",
+    "xdg-mime",
   ],
 
   // ─── Workspace definitions ───────────────────────────────────────────

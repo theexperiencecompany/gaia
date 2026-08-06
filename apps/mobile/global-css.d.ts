@@ -3,4 +3,4 @@
 // default, which rejects a side-effect import that resolves to no declaration,
 // so the stylesheet modules are declared here. The web app gets the equivalent
 // declaration from the `next-env.d.ts` Next.js generates for it.
-declare module "*.css";
+declare module "*.css" {}
