@@ -421,12 +421,18 @@ async def execute_subagent_stream(
         stream_mode, payload = cast(tuple[str, Any], event)
 
         if stream_mode == "updates":
-            # The HIL gate paused this run. LangGraph has already checkpointed
-            # it; capture the approval payload and stop consuming the stream.
+            # The run paused. Record the approval and KEEP DRAINING — never break.
+            #
+            # Under durability="exit" the run-exit save is the only checkpoint write
+            # there is, and abandoning the generator early skips it: the writes of
+            # every task that COMPLETED in the interrupting step are lost, so those
+            # tasks re-run on resume. That is how an ungated tool call beside a gated
+            # one used to execute twice. Verified in isolation — break + "exit" is the
+            # only combination that loses them; either alone is fine.
             if LANGGRAPH_INTERRUPT_KEY in payload:
                 pending_interrupt = interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
                 log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
-                break
+                continue
             for node_name, state_update in payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
