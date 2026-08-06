@@ -111,6 +111,29 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
     return llm
 
 
+_MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
+
+
+def _openrouter_wire_configurables(llm: ChatOpenRouter):
+    """Attach the per-request configurable fields shared by every OpenRouter-wire
+    client (the real OpenRouter and the env-defined custom endpoint). The field
+    ids form one namespace across provider alternatives (``prefix_keys=False``),
+    so every compatible client must expose identical ids."""
+    return llm.configurable_fields(
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        reasoning=ConfigurableField(
+            id="reasoning",
+            name="Reasoning",
+            description="Reasoning effort (per-agent thinking budget)",
+        ),
+        model_kwargs=ConfigurableField(
+            id="model_kwargs",
+            name="Model kwargs",
+            description="Extra request params (e.g. provider routing pin)",
+        ),
+    )
+
+
 @lazy_provider(
     name="gemini_llm",
     required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.GOOGLE_API_KEY],
@@ -125,9 +148,7 @@ def init_gemini_llm():
         model=PROVIDER_MODELS["gemini"],
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
-    ).configurable_fields(
-        model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
-    )
+    ).configurable_fields(model=_MODEL_FIELD)
     return llm
 
 
@@ -152,34 +173,24 @@ def init_openrouter_llm():
     # No base_url kwarg here on purpose: passing None would override the field's
     # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
     # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
-    return ChatOpenRouter(
-        model=PROVIDER_MODELS["openrouter"],
-        temperature=DEFAULT_LLM_TEMPERATURE,
-        streaming=True,
-        stream_usage=True,
-        # Output cap; must stay well under the model's shared input+output context
-        # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
-        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-        api_key=settings.OPENROUTER_API_KEY,
-        # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
-        # these as dedicated params (NOT `default_headers`, which it forwards to
-        # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-        app_url=settings.FRONTEND_URL,
-        app_title=OPENROUTER_APP_TITLE,
-        app_categories=OPENROUTER_APP_CATEGORIES,
-        reasoning=OPENROUTER_REASONING,
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-        reasoning=ConfigurableField(
-            id="reasoning",
-            name="Reasoning",
-            description="OpenRouter reasoning effort (per-agent thinking budget)",
-        ),
-        model_kwargs=ConfigurableField(
-            id="model_kwargs",
-            name="Model kwargs",
-            description="Extra OpenRouter request params (e.g. provider routing pin)",
-        ),
+    return _openrouter_wire_configurables(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS["openrouter"],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            # Output cap; must stay well under the model's shared input+output context
+            # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
+            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+            api_key=settings.OPENROUTER_API_KEY,
+            # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
+            # these as dedicated params (NOT `default_headers`, which it forwards to
+            # send_async and crashes on). https://openrouter.ai/docs/app-attribution
+            app_url=settings.FRONTEND_URL,
+            app_title=OPENROUTER_APP_TITLE,
+            app_categories=OPENROUTER_APP_CATEGORIES,
+            reasoning=OPENROUTER_REASONING,
+        )
     )
 
 
@@ -197,32 +208,20 @@ def init_custom_llm():
     bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
     models) without spending real credits. ChatOpenRouter works against such
     endpoints unchanged, including reasoning parsing — only the base URL and key
-    differ. The configurable-field ids mirror the OpenRouter client's exactly;
-    alternatives share one namespace (prefix_keys=False), so ids must stay
-    consistent. Registered only when ENV=development (see register_llm_providers).
+    differ. Registered only when ENV=development (see register_llm_providers).
     """
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
-    return ChatOpenRouter(
-        model=PROVIDER_MODELS["custom"],
-        temperature=DEFAULT_LLM_TEMPERATURE,
-        streaming=True,
-        stream_usage=True,
-        max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
-        api_key=settings.DEV_LLM_API_KEY,
-        base_url=settings.DEV_LLM_BASE_URL,
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-        reasoning=ConfigurableField(
-            id="reasoning",
-            name="Reasoning",
-            description="Reasoning effort (per-agent thinking budget)",
-        ),
-        model_kwargs=ConfigurableField(
-            id="model_kwargs",
-            name="Model kwargs",
-            description="Extra request params (e.g. provider routing pin)",
-        ),
+    return _openrouter_wire_configurables(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS["custom"],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
+        )
     )
 
 
