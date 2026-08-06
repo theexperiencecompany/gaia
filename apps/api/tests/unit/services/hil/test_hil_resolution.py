@@ -7,9 +7,11 @@ An approval decision moves money, sends mail, deletes things. The attacks:
 * be told "approved" for an action that can never actually run.
 """
 
+import asyncio
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import fakeredis.aioredis
 import pytest
 
 from app.schemas.hil_schemas import BatchDecisionOutcome
@@ -24,6 +26,7 @@ from app.services.hil.resolution import (
     resolve_approvals_batch,
     sweep_approvals,
 )
+from app.services.hil.resume_slot import claim_resume_dispatch, release_resume_dispatch
 
 from .conftest import CONVERSATION_ID, USER_ID, make_record
 
@@ -125,6 +128,48 @@ class TestExactlyOnce:
             await resolve_approval(approval_id="appr-2", user_id=USER_ID, kind="approve")
 
         assert resume.runner.call_args.kwargs["resume"].resume["approval_id"] == "appr-2"
+
+
+class TestTheResumeSlotIsExclusive:
+    """A batch pause puts several approvals on ONE executor thread. Two decisions landing
+    together must not start two concurrent LangGraph runs on it — that corrupts the
+    checkpoint and can double-execute whatever the run was mid-way through.
+
+    The whole guarantee is one Redis ``SETNX``. Every other test in this file mocks
+    ``claim_resume_dispatch`` to a constant, so the exclusivity itself was never executed;
+    a plain ``SET`` would hand the slot to every caller with the suite still green. These
+    run the real function against a real (in-memory) Redis, so the claim has to actually
+    be atomic.
+    """
+
+    @pytest.fixture
+    def redis(self) -> Any:
+        client = fakeredis.aioredis.FakeRedis()
+        with patch("app.services.hil.resume_slot.redis_cache") as cache:
+            cache.client = client
+            yield client
+
+    async def test_only_one_of_two_racing_decisions_wins_the_slot(self, redis: Any) -> None:
+        both = await asyncio.gather(
+            claim_resume_dispatch(CONVERSATION_ID), claim_resume_dispatch(CONVERSATION_ID)
+        )
+
+        assert sorted(both) == [False, True], "exactly one decision may dispatch a run"
+
+    async def test_the_slot_is_reusable_once_the_run_finalizes(self, redis: Any) -> None:
+        # The other direction: never released, the conversation can never resume again and
+        # every later decision in it is silently dropped until the TTL expires.
+        assert await claim_resume_dispatch(CONVERSATION_ID) is True
+        await release_resume_dispatch(CONVERSATION_ID)
+
+        assert await claim_resume_dispatch(CONVERSATION_ID) is True
+
+    async def test_one_conversations_claim_does_not_block_another(self, redis: Any) -> None:
+        # Scoped per conversation. A global key would serialize every user's approvals
+        # behind whichever one happened to be resuming.
+        assert await claim_resume_dispatch(CONVERSATION_ID) is True
+
+        assert await claim_resume_dispatch("conv-someone-else") is True
 
 
 class TestUnresumableRecords:
