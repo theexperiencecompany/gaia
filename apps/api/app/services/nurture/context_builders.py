@@ -8,13 +8,14 @@ so a builder may also override cta_label.
 from collections.abc import Awaitable, Callable
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
+from app.models.user_models import UserDocument
 from app.services.oauth.oauth_service import check_multiple_integrations_status
 
 
-async def google_connection_status(user: dict) -> dict:
+async def google_connection_status(user: UserDocument) -> dict:
     """Gmail/Calendar connection flags; overrides cta_label when only one is missing."""
     statuses = await check_multiple_integrations_status(
-        [GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID], str(user["_id"])
+        [GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID], user.id
     )
     gmail = statuses[GMAIL_INTEGRATION_ID]
     calendar = statuses[GOOGLE_CALENDAR_INTEGRATION_ID]
@@ -26,6 +27,6 @@ async def google_connection_status(user: dict) -> dict:
     return context
 
 
-CONTEXT_BUILDERS: dict[str, Callable[[dict], Awaitable[dict]]] = {
+CONTEXT_BUILDERS: dict[str, Callable[[UserDocument], Awaitable[dict]]] = {
     "google_connection_status": google_connection_status,
 }

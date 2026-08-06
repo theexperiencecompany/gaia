@@ -103,6 +103,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
         """How many of the user's todos belong to ``project_id``."""
         return await self._count({"user_id": user_id, "project_id": project_id})
 
+    async def count_for_user(self, user_id: str) -> int:
+        """Total todos a user has — the feature-usage signal."""
+        return await self._count({"user_id": user_id})
+
     def _list_filter(
         self, user_id: str, params: TodoSearchParams, inbox_project_id: str | None
     ) -> dict[str, object]:

@@ -10,8 +10,6 @@ from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from bson import ObjectId
-
 from app.config.settings import settings
 from app.constants.email import CONTACT_EMAIL, FOUNDER_MEETING_URL, FOUNDER_SENDER
 from app.constants.log_tags import LogTag
@@ -26,7 +24,8 @@ from app.constants.nurture import (
     NURTURE_UTM_SOURCE,
     NurtureStep,
 )
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserDocument
 from app.services.analytics_service import AnalyticsEvents, capture_event
 from app.services.email import EmailMessage, render_email_template, send_email
 from app.services.nurture.context_builders import CONTEXT_BUILDERS
@@ -34,17 +33,6 @@ from app.services.nurture.predicates import SKIP_PREDICATES
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from shared.py.wide_events import log
-
-_USER_PROJECTION = {
-    "name": 1,
-    "email": 1,
-    "created_at": 1,
-    "timezone": 1,
-    "onboarding.completed": 1,
-    "platform_links": 1,
-    "notification_channel_prefs": 1,
-    "nurture": 1,
-}
 
 
 def _as_utc(dt: datetime | None) -> datetime | None:
@@ -75,23 +63,16 @@ def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
     return now - max(sent_times) >= timedelta(days=NURTURE_MIN_DAYS_BETWEEN_EMAILS)
 
 
-async def _record_step(user_id: ObjectId, step_key: str, now: datetime, status: str) -> None:
-    await users_collection.update_one(
-        {"_id": user_id},
-        {
-            "$addToSet": {"nurture.completed_steps": step_key},
-            "$push": {"nurture.history": {"step": step_key, "at": now, "status": status}},
-        },
-    )
+async def _record_step(user_id: str, step_key: str, now: datetime, status: str) -> None:
+    await user_repository.record_nurture_step(user_id, step_key, at=now, status=status)
 
 
-async def _send_step(user: dict, step: NurtureStep) -> None:
-    user_id = str(user["_id"])
+async def _send_step(user: UserDocument, step: NurtureStep) -> None:
     context: dict = {
-        "user_name": user.get("name"),
+        "user_name": user.name,
         "contact_email": CONTACT_EMAIL,
         "founder_meeting_url": FOUNDER_MEETING_URL,
-        "unsubscribe_url": build_unsubscribe_url(user_id),
+        "unsubscribe_url": build_unsubscribe_url(user.id),
     }
     if step.cta_path:
         utm = urlencode(
@@ -111,11 +92,11 @@ async def _send_step(user: dict, step: NurtureStep) -> None:
     await send_email(
         EmailMessage(
             sender=FOUNDER_SENDER,
-            to=[user["email"]],
+            to=[user.email],
             subject=step.subject,
             html=render_email_template(step.template, **context),
             reply_to=CONTACT_EMAIL,
-            headers=build_unsubscribe_headers(user_id),
+            headers=build_unsubscribe_headers(user.id),
         )
     )
 
@@ -137,36 +118,34 @@ def _step_pending(
 
 
 async def _select_step(
-    user: dict, days_since_signup: int, completed: set[str], now: datetime
+    user: UserDocument, days_since_signup: int, completed: set[str], now: datetime
 ) -> NurtureStep | None:
     """First pending step whose skip predicate doesn't fire; predicate hits are recorded as skipped."""
-    onboarded = bool(user.get("onboarding", {}).get("completed"))
+    onboarded = bool((user.onboarding or {}).get("completed"))
     for step in NURTURE_STEPS:
         if not _step_pending(step, days_since_signup, completed, onboarded):
             continue
         if step.skip_predicate and await SKIP_PREDICATES[step.skip_predicate](user):
-            await _record_step(user["_id"], step.key, now, status="skipped")
+            await _record_step(user.id, step.key, now, status="skipped")
             continue
         return step
     return None
 
 
-async def _process_user(user: dict, now: datetime) -> bool:
+async def _process_user(user: UserDocument, now: datetime) -> bool:
     """Evaluate one user against the sequence; sends at most one email. Returns True on send."""
-    if _local_hour(user.get("timezone"), now) != NURTURE_SEND_HOUR_LOCAL:
+    if _local_hour(user.timezone, now) != NURTURE_SEND_HOUR_LOCAL:
         return False
-    if not user.get("email"):
+    if not user.email:
         return False
-    if not normalize_channel_preferences(user.get("notification_channel_prefs"))[
-        CHANNEL_TYPE_EMAIL
-    ]:
+    if not normalize_channel_preferences(user.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
         return False
 
-    created_at = _as_utc(user.get("created_at"))
+    created_at = _as_utc(user.created_at)
     if not created_at:
         return False
 
-    state = user.get("nurture") or {}
+    state = user.nurture or {}
     if not _within_frequency_caps(state.get("history") or [], now):
         return False
 
@@ -176,13 +155,13 @@ async def _process_user(user: dict, now: datetime) -> bool:
         return False
 
     await _send_step(user, step)
-    await _record_step(user["_id"], step.key, now, status="sent")
+    await _record_step(user.id, step.key, now, status="sent")
     capture_event(
-        user["email"],
+        user.email,
         AnalyticsEvents.NURTURE_EMAIL_SENT,
         {"step": step.key, "day_offset": step.day_offset},
     )
-    log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent to {user['email']}")
+    log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent to {user.email}")
     return True
 
 
@@ -201,18 +180,14 @@ async def run_nurture_sequence() -> str:
 
     sent = 0
     checked = 0
-    cursor = users_collection.find(
-        {"created_at": {"$gte": cutoff}, "is_active": {"$ne": False}},
-        _USER_PROJECTION,
-    )
-    async for user in cursor:
+    for user in await user_repository.find_nurture_candidates(cutoff):
         checked += 1
         try:
             if await _process_user(user, now):
                 sent += 1
         except Exception as e:
             # One user's failure must not starve the rest of the cohort.
-            log.error(f"{LogTag.MAIL} Nurture failed for user {user.get('_id')}: {e!s}")
+            log.error(f"{LogTag.MAIL} Nurture failed for user {user.id}: {e!s}")
 
     log.set(nurture={"checked": checked, "sent": sent})
     return f"nurture: sent {sent} of {checked} candidates"

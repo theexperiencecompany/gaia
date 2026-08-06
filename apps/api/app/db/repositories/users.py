@@ -102,6 +102,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             }
         )
 
+    async def find_nurture_candidates(self, created_since: datetime) -> list[UserDocument]:
+        """Recently-signed-up, still-active users — the nurture-sequence cohort.
+        Send eligibility (timezone hour, frequency caps, step windows) is decided
+        per user per run, not by this query."""
+        return await self._find(
+            {"created_at": {"$gte": created_since}, "is_active": {"$ne": False}},
+        )
+
     def _backfill_query(
         self, active_since: datetime, eligible_before: datetime
     ) -> dict[str, object]:
@@ -488,6 +496,23 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def record_nurture_step(
+        self, user_id: str, step_key: str, *, at: datetime, status: str
+    ) -> None:
+        """Record one nurture-step outcome on the user document.
+
+        ``completed_steps`` uses ``$addToSet`` (a step can never be re-sent), and
+        ``history`` appends the outcome so the frequency caps can be enforced."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {
+                "$addToSet": {"nurture.completed_steps": step_key},
+                "$push": {"nurture.history": {"step": step_key, "at": at, "status": status}},
+            },
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
     async def mark_memory_backfilled(self, user_id: str) -> None:
         """Stamp the memory-backfill marker so the daily cron won't re-select the user."""
         await self._apply_raw_update(
@@ -535,6 +560,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         discord: bool | None = None,
         whatsapp: bool | None = None,
         slack: bool | None = None,
+        email: bool | None = None,
     ) -> None:
         """Set the given notification channel flags; unspecified channels are left
         untouched (a ``None`` argument is not written)."""
@@ -547,6 +573,8 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             set_fields["notification_channel_prefs.whatsapp"] = whatsapp
         if slack is not None:
             set_fields["notification_channel_prefs.slack"] = slack
+        if email is not None:
+            set_fields["notification_channel_prefs.email"] = email
         if not set_fields:
             return
         await self._apply_raw_update(

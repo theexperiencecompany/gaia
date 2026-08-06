@@ -290,6 +290,8 @@ class UserDocument(MongoDocument):
     memory_backfilled: datetime | None = None
     last_inactive_email_sent: datetime | None = None
     inactive_email_count: int | None = None
+    # Nurture email sequence state (workers): completed_steps + send history.
+    nurture: dict[str, Any] | None = None
 
 
 class UserUpdate(BaseModel):
