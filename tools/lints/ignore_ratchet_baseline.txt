@@ -175,8 +175,6 @@ per-file-ignores	**/tests/**/*.py	S107
 per-file-ignores	**/tests/**/*.py	SLF001
 per-file-ignores	**/tests/**/*.py	T20
 per-file-ignores	**/tests/**/*.py	TRY003
-per-file-ignores	.agents/skills/seo-geo/scripts/dataforseo_api.py	S310
-per-file-ignores	.agents/skills/seo-geo/scripts/seo_audit.py	S310
 per-file-ignores	apps/api/app/agents/core/background/result_delivery.py	PLC0415
 per-file-ignores	apps/api/app/agents/core/nodes/adapt_media.py	ARG001
 per-file-ignores	apps/api/app/agents/core/nodes/executor_status.py	ARG001
