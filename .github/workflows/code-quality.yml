@@ -548,7 +548,7 @@ jobs:
       - name: Scanner self-tests
         run: |
           set -euo pipefail
-          uv run --no-project --with pytest pytest tools/evlog_map tools/logcheck -q
+          uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
           echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
       # --min-entries asserts the surface is still visible: a perfect score
       # over an empty map is still perfect, so a break in entry-point discovery

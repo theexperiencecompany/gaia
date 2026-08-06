@@ -454,6 +454,22 @@ def check_lines(
     return out
 
 
+def _resolve_input_path(raw: str) -> Path:
+    """Resolve a CLI-supplied file path, rejecting traversal out of the CWD.
+
+    Relative paths are confined to the working directory; absolute paths are
+    accepted as-is. This keeps the tool from reading arbitrary files when it
+    is driven by an agent with faulty arguments (CWE-22).
+    """
+    path = Path(raw)
+    resolved = path.resolve()
+    if not path.is_absolute():
+        base = Path.cwd().resolve()
+        if resolved != base and not resolved.is_relative_to(base):
+            raise SystemExit(f"logcheck: refusing path outside the working directory: {raw}")
+    return resolved
+
+
 def main() -> int:
     """CLI: validate a capture, print every violation, exit 1 if there are any."""
     ap = argparse.ArgumentParser(
@@ -481,7 +497,11 @@ def main() -> int:
     if args.path == "-":
         lines = list(sys.stdin)
     else:
-        lines = Path(args.path).read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = (
+            _resolve_input_path(args.path)
+            .read_text(encoding="utf-8", errors="replace")
+            .splitlines()
+        )
     if args.filter_trace:
         lines = [ln for ln in lines if args.filter_trace in ln]
 

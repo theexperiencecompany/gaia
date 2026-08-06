@@ -222,7 +222,7 @@ function listTsFiles(dir) {
     if (name.endsWith(".d.ts") || name.endsWith(".test.ts")) continue;
     out.push(full);
   }
-  return out.sort();
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 function parseFile(absPath) {
@@ -687,7 +687,7 @@ function runRules(entry, ownFacts, reach, canonicalFields, wrappedSharedCalls) {
         status: "fail",
         message:
           "handler never enters a wide-event boundary — wrap it in " +
-          `withWideEvent() or route through one of: ${[...wrappedSharedCalls].sort().join(", ")}`,
+          `withWideEvent() or route through one of: ${[...wrappedSharedCalls].sort((a, b) => a.localeCompare(b)).join(", ")}`,
         line: entry.line,
       };
 

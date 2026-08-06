@@ -102,13 +102,29 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _resolve_input_path(raw: str) -> Path:
+    """Resolve a CLI-supplied file path, rejecting traversal out of the CWD.
+
+    Relative paths are confined to the working directory; absolute paths are
+    accepted as-is. This keeps the tool from reading arbitrary files when it
+    is driven by an agent with faulty arguments (CWE-22).
+    """
+    path = Path(raw)
+    resolved = path.resolve()
+    if not path.is_absolute():
+        base = Path.cwd().resolve()
+        if resolved != base and not resolved.is_relative_to(base):
+            raise SystemExit(f"evlog map: refusing path outside the working directory: {raw}")
+    return resolved
+
+
 def _resolve_paths(args: argparse.Namespace) -> list[Path]:
     paths = [Path(p) for p in args.paths]
     if args.files_from:
         raw = (
             sys.stdin.read()
             if args.files_from == "-"
-            else Path(args.files_from).read_text(encoding="utf-8")
+            else _resolve_input_path(args.files_from).read_text(encoding="utf-8")
         )
         paths += [Path(line.strip()) for line in raw.splitlines() if line.strip().endswith(".py")]
     if not paths and not args.files_from:
@@ -165,7 +181,7 @@ def main(argv: list[str]) -> int:
             )
             failed = True
     if args.baseline:
-        baseline = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
+        baseline = json.loads(_resolve_input_path(args.baseline).read_text(encoding="utf-8"))
         failures = compare_to_baseline(
             head_file_entries(result),
             baseline_file_entries(baseline),

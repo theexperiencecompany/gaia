@@ -47,7 +47,7 @@ install_mongo() {
   local tmp url
   tmp="$(mktemp -d)"
   url="https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2404-${MONGO_VERSION}.tgz"
-  curl -sL -o "$tmp/mongo.tgz" "$url" || die "mongod download failed: $url"
+  curl -sL --proto '=https' --proto-redir '=https' -o "$tmp/mongo.tgz" "$url" || die "mongod download failed: $url"
   tar xzf "$tmp/mongo.tgz" -C "$tmp"
   cp -f "$tmp"/mongodb-linux-*/bin/mongod /usr/local/bin/mongod
   chmod +x /usr/local/bin/mongod
@@ -119,7 +119,7 @@ start_all() {
 # database looks like it works and leaves startup_validation still failing.
 seed_mongo() {
   log "seeding GAIA.ai_models + GAIA.subscription_plans"
-  (cd "$API_DIR" && uv run python - <<'PY'
+  (cd "$API_DIR" && uv run --no-build python - <<'PY'
 from pymongo import MongoClient
 
 db = MongoClient("mongodb://localhost:27017/")["GAIA"]
