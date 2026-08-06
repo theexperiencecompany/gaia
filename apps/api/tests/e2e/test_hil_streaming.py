@@ -8,7 +8,7 @@ only as a config value threaded through, and no ``subscribe_stream``, no
 of HIL the user actually experiences — a card that appears, a pause, and then a
 result that has to land somewhere they are watching — was untested.
 
-The four things asserted here:
+What is asserted here:
 
 * **the resumed result reaches the stream exactly once, carrying real output.**
   ``claim_tool_output`` (``background/session.py``) claims each ``tool_call_id``
@@ -26,6 +26,15 @@ The four things asserted here:
 * **``always_allow`` short-circuits the gate.** No approval frame is published and
   the tool runs inline. Both halves are asserted — "it ran" alone cannot tell a
   short-circuit from a gate that paused and was auto-approved.
+* **a turn that pauses more than once.** Several gated calls in one AI message,
+  with an ungated one running beside them: every approval has to stay answerable,
+  each action has to happen exactly once, and the ungated call has to survive
+  BOTH resumes. Mixed approve/deny is covered in either order, because a resume
+  that consumed the wrong pause strands whatever is left.
+
+The framework contract underneath all of this — that LangGraph keeps the writes of
+tasks which completed in an interrupting step, and what we do that can throw them
+away — is pinned separately in ``tests/unit/agents/test_pause_checkpointing.py``.
 
 Everything between the comms model and Redis is production code — the real chat
 stream, the real ``call_executor``, the real background runner, the real gate, the
@@ -69,10 +78,12 @@ from app.models.hil_models import (
     HILApprovalRecord,
     HILApprovalStatus,
     HILApprovalUpdate,
+    HILMode,
     HILPreferences,
 )
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.hil import resolution
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -81,7 +92,7 @@ from tests.e2e.test_agent_chain import call, streaming_model
 
 pytestmark = pytest.mark.e2e
 
-USER: dict[str, Any] = {
+USER: AuthenticatedUser = {
     "user_id": "u-hil-stream",
     "email": "hil-stream@test.local",
     "name": "Test User",
@@ -256,6 +267,16 @@ class InMemoryApprovals:
         )
         return matches[0]
 
+    def for_call(self, tool_call_id: str) -> HILApprovalRecord:
+        """The approval for one specific call — the only way to tell apart two
+        gated calls of the SAME tool in one turn, which ``for_tool`` cannot."""
+        matches = [r for r in self.records.values() if r.tool_call_id == tool_call_id]
+        assert len(matches) == 1, (
+            f"expected exactly one approval for call {tool_call_id!r}, got "
+            f"{[(r.tool_call_id, r.tool_name, r.status) for r in self.records.values()]}"
+        )
+        return matches[0]
+
     def statuses(self) -> dict[str, str]:
         """tool name -> recorded status, for asserting a whole batch at once."""
         return {r.tool_name: r.status for r in self.records.values()}
@@ -319,7 +340,12 @@ class HilWorld:
         return cards
 
     async def decide(
-        self, kind: resolution.DecisionKind, *, scope: str = "once", tool: str | None = None
+        self,
+        kind: resolution.DecisionKind,
+        *,
+        scope: str = "once",
+        tool: str | None = None,
+        call_id: str | None = None,
     ) -> HILApprovalRecord:
         """Answer a pending approval, and wait out the run it wakes.
 
@@ -327,10 +353,16 @@ class HilWorld:
         approve/deny buttons, a bot's interactive component, the conversational
         resolver — so this is the same code path a click takes.
 
-        ``tool`` selects which approval when a turn gated several calls; without
-        it the turn must have exactly one.
+        ``tool`` selects which approval when a turn gated several calls, and
+        ``call_id`` when two of them are the same tool; without either, the turn
+        must have exactly one.
         """
-        record = self.approvals.for_tool(tool) if tool is not None else self.approvals.only_record()
+        if call_id is not None:
+            record = self.approvals.for_call(call_id)
+        elif tool is not None:
+            record = self.approvals.for_tool(tool)
+        else:
+            record = self.approvals.only_record()
         await resolution.resolve_approval(
             approval_id=record.approval_id, user_id=str(USER["user_id"]), kind=kind, scope=scope
         )
@@ -433,7 +465,7 @@ async def drain_background_runs() -> None:
 @asynccontextmanager
 async def hil_world(
     *,
-    mode: str,
+    mode: HILMode,
     tool_overrides: dict[str, bool],
     comms: Sequence[Any] | None = None,
     executor: Sequence[Any] | None = None,
@@ -473,7 +505,7 @@ async def hil_world(
 
     stored_user = MagicMock()
     stored_user.hil_preferences = HILPreferences(
-        mode=mode,  # type: ignore[arg-type]
+        mode=mode,
         tool_overrides=tool_overrides,
     ).model_dump()
 
@@ -626,7 +658,7 @@ async def run_turn(world: HilWorld, prompt: str, *, follow_up: bool = False) -> 
             messages=[{"role": "user", "content": prompt}],
             conversation_id=world.conversation_id,
         ),
-        user=USER,  # type: ignore[arg-type]
+        user=USER,
         conversation_id=world.conversation_id,
     )
     await drain_publishes()
@@ -1237,12 +1269,13 @@ class TestTwoGatedCallsInOneTurn:
     ``middleware:get_weather`` then ``middleware:create_flowchart``, and two
     ``pending`` records).
 
-    What the RESUME path cannot do is answer them. ``resolution._dispatch_resume``
-    sends a bare ``Command(resume={...})`` with no interrupt id, and LangGraph
-    rejects that outright once a thread holds more than one pending interrupt.
-
-    Every test here is RED on today's code and names its defect in the failure
-    message. Seeing one fail in CI before the fix is expected.
+    Answering them took two fixes. ``resolution._dispatch_resume`` sends a bare
+    ``Command(resume={...})``, which LangGraph rejects once a thread holds more
+    than one pending interrupt — ``subagent_runner._address_resume`` now aims it
+    at the interrupt carrying its own ``approval_id``. And the pause reports one
+    ``__interrupt__`` event PER paused task, so both ids have to be accumulated;
+    keeping only one left the other record without ``resume_item``, permanently
+    un-decidable.
     """
 
     async def test_both_gated_calls_are_asked_about_together(self) -> None:
@@ -1454,3 +1487,164 @@ class TestResumeAgainstAThreadWithNoInterrupt:
                 "telling the user an action succeeded that never happened. Delivered: "
                 f"{world.delivered}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Scenario 6 — an ungated call beside TWO gated ones, across TWO resumes
+# ---------------------------------------------------------------------------
+
+#: Two gated calls of the SAME tool, so they are told apart by call id, not name.
+FIRST_GATE_CALL_ID = "tc_first_gate"
+SECOND_GATE_CALL_ID = "tc_second_gate"
+FIRST_GATE_ARGS = {"description": "the first approved action", "direction": "LR"}
+SECOND_GATE_ARGS = {"description": "the second approved action", "direction": "TB"}
+
+
+def one_ungated_two_gated_script() -> list[Any]:
+    """One AI message: a harmless call and two that need approval."""
+    return [
+        call("retrieve_tools", {"exact_tool_names": [SIBLING_TOOL, GATED_TOOL]}, id="tc_retrieve"),
+        [
+            call(SIBLING_TOOL, SIBLING_ARGS, id=SIBLING_CALL_ID),
+            call(GATED_TOOL, FIRST_GATE_ARGS, id=FIRST_GATE_CALL_ID),
+            call(GATED_TOOL, SECOND_GATE_ARGS, id=SECOND_GATE_CALL_ID),
+        ],
+        "Checked the weather and drew both flowcharts.",
+    ]
+
+
+@asynccontextmanager
+async def compound_world() -> AsyncIterator[tuple[HilWorld, list[str]]]:
+    """A turn needing TWO decisions, with an ungated call running beside them."""
+    calls: list[str] = []
+
+    async def _weather(location: str) -> dict[str, Any]:
+        calls.append(location)
+        return {"temperature": "31C", "conditions": "humid"}
+
+    with patch("app.agents.tools.weather_tool.user_weather", new=_weather):
+        async with hil_world(
+            mode="always_ask",
+            tool_overrides={GATED_TOOL: True, SIBLING_TOOL: False},
+            executor=one_ungated_two_gated_script(),
+        ) as world:
+            yield world, calls
+
+
+class TestAnUngatedCallAcrossTwoResumes:
+    """The compound case, and the strongest test of the checkpoint claim.
+
+    Everything else here pauses once. This turn pauses TWICE — approving the first
+    gated call resumes the run, which immediately parks again on the second — so
+    the ungated call has to survive two separate resumes. One surviving resume
+    could be luck in how a single checkpoint happened to land; two cannot.
+
+    It is also the shape that regressed silently before: the sibling's second and
+    third executions were invisible, because only the last replayed ToolMessage
+    ever reached the stream.
+    """
+
+    async def test_the_ungated_call_runs_once_and_never_again(self) -> None:
+        async with compound_world() as (world, calls):
+            await run_turn(world, "check the weather and draw both flowcharts")
+            assert calls == [SIBLING_ARGS["location"]], (
+                f"it runs while the approvals wait, got {calls}"
+            )
+
+            await world.decide("approve", call_id=FIRST_GATE_CALL_ID)
+            assert calls == [SIBLING_ARGS["location"]], (
+                f"the first resume must not repeat it, got {calls}"
+            )
+
+            await world.decide("approve", call_id=SECOND_GATE_CALL_ID)
+            assert calls == [SIBLING_ARGS["location"]], f"and neither must the second, got {calls}"
+
+    async def test_each_approved_action_happens_exactly_once(self) -> None:
+        # The positive control for the test above: "never again" would also pass on
+        # a turn that fell over and did nothing at all.
+        async with compound_world() as (world, _calls):
+            await run_turn(world, "check the weather and draw both flowcharts")
+            await world.decide("approve", call_id=FIRST_GATE_CALL_ID)
+            await world.decide("approve", call_id=SECOND_GATE_CALL_ID)
+
+            for call_id, args in (
+                (FIRST_GATE_CALL_ID, FIRST_GATE_ARGS),
+                (SECOND_GATE_CALL_ID, SECOND_GATE_ARGS),
+            ):
+                outputs = await world.outputs_for(call_id)
+                assert len(outputs) == 1, (
+                    f"{call_id} must produce exactly one result, got {len(outputs)}"
+                )
+                assert args["description"] in outputs[0], (
+                    "and it must be that call's OWN output — two calls of the same tool "
+                    f"must not be joined to each other's result, got {outputs[0][:200]!r}"
+                )
+
+    async def test_every_card_settles_exactly_once(self) -> None:
+        async with compound_world() as (world, _calls):
+            await run_turn(world, "check the weather and draw both flowcharts")
+            await world.decide("approve", call_id=FIRST_GATE_CALL_ID)
+            await world.decide("approve", call_id=SECOND_GATE_CALL_ID)
+
+            cards = await world.approval_cards()
+            settled = [c["status"] for c in cards if c["status"] != "pending"]
+            assert settled == ["approved", "approved"], (
+                f"one settle per approval, no more and no fewer, got {settled}"
+            )
+
+    async def test_approving_one_and_denying_the_other_applies_both(self) -> None:
+        """Mixed decisions in one turn. Neither may leak onto the other."""
+        async with compound_world() as (world, calls):
+            await run_turn(world, "check the weather and draw both flowcharts")
+
+            await world.decide("approve", call_id=FIRST_GATE_CALL_ID)
+            await world.decide("deny", call_id=SECOND_GATE_CALL_ID)
+
+            approved = await world.outputs_for(FIRST_GATE_CALL_ID)
+            denied = await world.outputs_for(SECOND_GATE_CALL_ID)
+            assert len(approved) == 1 and FIRST_GATE_ARGS["description"] in approved[0], (
+                f"the approved call runs and returns its real output, got {approved}"
+            )
+            assert len(denied) == 1, f"the denied call still answers the model, got {denied}"
+            assert SECOND_GATE_ARGS["description"] not in denied[0], (
+                f"but it must NOT carry the tool's real output, got {denied[0][:200]!r}"
+            )
+            assert "the action was not performed" in denied[0].lower(), (
+                f"and it must say the action did not happen, got {denied[0][:200]!r}"
+            )
+            assert calls == [SIBLING_ARGS["location"]], (
+                f"the ungated call is unaffected by either decision, got {calls}"
+            )
+
+    async def test_a_denial_first_still_leaves_the_other_answerable(self) -> None:
+        # Order matters: the denial resumes the run too, and a resume that consumed
+        # the wrong pause would strand the remaining approval.
+        async with compound_world() as (world, _calls):
+            await run_turn(world, "check the weather and draw both flowcharts")
+
+            await world.decide("deny", call_id=FIRST_GATE_CALL_ID)
+            await world.decide("approve", call_id=SECOND_GATE_CALL_ID)
+
+            outputs = await world.outputs_for(SECOND_GATE_CALL_ID)
+            assert len(outputs) == 1 and SECOND_GATE_ARGS["description"] in outputs[0], (
+                f"the approval that landed second must still be applied, got {outputs}"
+            )
+
+    async def test_both_approvals_are_registered_for_re_dispatch(self) -> None:
+        """Every paused call must carry the context to restart its run.
+
+        The defect this pins: LangGraph reports one ``__interrupt__`` event PER
+        paused task, and the runner used to keep only one. The approval left out
+        got no ``resume_item``, so deciding it raised ApprovalNotResumable — the
+        user presses Approve and nothing can ever happen. Asserted on the records
+        directly, because through the UI it looks like a silent no-op.
+        """
+        async with compound_world() as (world, _calls):
+            await run_turn(world, "check the weather and draw both flowcharts")
+
+            for call_id in (FIRST_GATE_CALL_ID, SECOND_GATE_CALL_ID):
+                record = world.approvals.for_call(call_id)
+                assert record.resume_item, (
+                    f"{call_id} parked without re-dispatch context, so its decision "
+                    "could never be applied"
+                )
