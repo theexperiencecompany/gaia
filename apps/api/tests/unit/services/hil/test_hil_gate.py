@@ -104,7 +104,9 @@ class TestTheDecisionComesFromTheRecord:
         # so a status wrongly counted as settled would run an unapproved call.
         assert not HILApprovalStatus.PENDING.settled
         assert all(
-            status.settled for status in HILApprovalStatus if status is not HILApprovalStatus.PENDING
+            status.settled
+            for status in HILApprovalStatus
+            if status is not HILApprovalStatus.PENDING
         )
 
 

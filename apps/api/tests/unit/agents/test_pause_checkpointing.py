@@ -293,9 +293,7 @@ class TestItDoesNotMatterWhereThePauseComesFrom:
     """
 
     async def test_a_sibling_survives_a_pause_raised_deep_inside_a_tool(self) -> None:
-        sim = ToolCallSimulator(
-            calls=["get_weather", "handoff"], gated={"handoff"}, nested=True
-        )
+        sim = ToolCallSimulator(calls=["get_weather", "handoff"], gated={"handoff"}, nested=True)
 
         await sim.turn()
         assert sim.ran == ["get_weather"]

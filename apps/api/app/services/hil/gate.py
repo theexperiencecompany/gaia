@@ -277,8 +277,8 @@ async def _apply(
     """
     outcome = _outcome_from_record(record)
     await publish_decision(
-            record, outcome.status, stream_id=context.stream_id, feedback=outcome.feedback
-        )
+        record, outcome.status, stream_id=context.stream_id, feedback=outcome.feedback
+    )
     if outcome.status == HILApprovalStatus.APPROVED:
         if outcome.scope == "always_tool":
             await set_tool_override(context.user_id, call.name, False)

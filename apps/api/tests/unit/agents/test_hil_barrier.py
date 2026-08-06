@@ -141,7 +141,10 @@ class TestBatchPause:
 
     async def test_a_replayed_batch_with_all_decided_pauses_nothing(self) -> None:
         # The resume replay: every approval decided → collect all, return, no pause.
-        records = [make_record("a1", status=HILApprovalStatus.APPROVED), make_record("a2", status=HILApprovalStatus.DENIED)]
+        records = [
+            make_record("a1", status=HILApprovalStatus.APPROVED),
+            make_record("a2", status=HILApprovalStatus.DENIED),
+        ]
         listing = AsyncMock(side_effect=[records, []])
         with (
             patch(f"{BARRIER}.list_parked_subagents_for_conversation", listing),
