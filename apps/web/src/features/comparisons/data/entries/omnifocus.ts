@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Powerful task management for Apple users who mean business",
   description:
     "OmniFocus is a feature-rich GTD task manager built exclusively for Apple devices. GAIA goes further by layering proactive AI intelligence on top of tasks, email, and calendar — and running on every platform your team actually uses.",
-  metaTitle: "OmniFocus Alternative with AI Email | GAIA vs OmniFocus",
+  metaTitle: "OmniFocus Alternative with AI Email — GAIA vs OmniFocus",
   metaDescription:
     "OmniFocus is a powerful GTD system but is Apple-only and requires manual task entry. GAIA is an open-source OmniFocus alternative with AI email integration, cross-platform support, and workflow automation across 50+ tools — free to self-host.",
   keywords: [

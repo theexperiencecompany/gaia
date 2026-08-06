@@ -113,7 +113,7 @@ Thin connective tissue over existing rails (silent agent runs, system workflows,
 - No inline imports — all imports at the top of the file.
 - Use `ruff` for linting and formatting (not black/flake8/isort).
 - Raise `AppError` (from `app/utils/errors.py`) for domain errors — it serializes to a structured JSON response automatically.
-- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit.
+- Structured logging uses `from shared.py.wide_events import log`. Call `log.set(key=value)` to attach context fields, `log.info(...)` / `log.error(...)` to emit. No stdlib `logging` / bare `loguru` in `app/` — enforced by the `wide-events-logging` lint (`tools/lints/README`).
 
 ### Docstrings & Comments
 
@@ -157,7 +157,7 @@ One domain per file. Never let a file span multiple domains.
 
 One `APIRouter` per domain with `prefix` and `tags`. Every handler follows the same 3-step contract:
 
-1. `log.set()` with everything known at the start (user, operation, IDs).
+1. `log.set()` with everything known at the start (user, operation, IDs). Presence of this step is enforced by the `route-contract` lint (`tools/lints/README`).
 2. Delegate all work to a service function.
 3. `log.set()` again with result IDs, then return `JSONResponse`.
 
@@ -180,20 +180,23 @@ async def create_todo(
 
 Services are async module-level functions, not classes.
 
-- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`.
-- Services access MongoDB collections directly via `app.db.mongodb.collections` — no repository layer.
-- Keep one-off query logic in the service function where it is used; return domain models, not raw DB documents.
+- No service classes with `__init__`, instance methods, or injected dependencies. If grouping is needed, use a class with `@staticmethod` methods only — never `self`. Enforced for `*Service`-named classes by the `no-service-classes` lint (`tools/lints/README`).
+- Services reach MongoDB through the domain repositories in `app.db.repositories`, never `app.db.mongodb.collections` directly. Only a repository touches its own collection; a service needing another domain's data calls that domain's repository (ownership rule). Enforced by the `repository-boundaries` lint (`tools/lints/README`).
+- Repositories are the one deliberate exception to the no-service-classes rule: they are generic classes (`MongoRepository[TDoc, TUpdate]`) because the shared base eliminates per-collection CRUD duplication across 33 collections. Services stay functional and call the module-level repository singleton.
+- Keep one-off query logic as a named, typed finder on the repository — not an ad-hoc filter dict in the service — and return typed document models, never raw DB dicts.
 
 ```python
 # wrong
 class TodoService:
     def __init__(self, db):
         self.db = db
+
     async def get_todo(self, todo_id: str): ...
 
+
 # correct
-async def get_todo(todo_id: str, user_id: str) -> TodoModel | None:
-    return await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
+async def get_todo(todo_id: str, user_id: str) -> TodoDocument | None:
+    return await todo_repository.get(todo_id, user_id=user_id)
 ```
 
 ## Anti-Patterns
@@ -208,9 +211,9 @@ async def get_todo(todo_id: str, user_id: str) -> TodoModel | None:
 
 | Store          | Used for                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **MongoDB**    | All user data: conversations, todos, reminders, workflows, notes, files, payments, integrations, etc. DB name is `GAIA`. Collections are accessed via `from app.db.mongodb.collections import <name>_collection` — lazy-loaded, async (Motor). Use `get_sync_collection()` only in sync code (e.g. Composio tools).                                                                                                                                                                                                                                                                                                                                                       |
+| **MongoDB**    | All user data: conversations, todos, reminders, workflows, notes, files, payments, integrations, etc. DB name is `GAIA`. Access is through the typed, cache-integrated domain repositories in `app.db.repositories` — only a repository touches its collection (enforced by the `repository-boundaries` lint). Repositories resolve the lazy async (Motor) collections via the internal accessor in `app.db.mongodb.collections`; services never import `<name>_collection` directly.                                                                                                                                                                                                       |
 | **PostgreSQL** | LangGraph checkpointer (conversation thread state / memory). Also general relational data.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **Redis**      | Caching (`fastapi-cache2`), SSE stream channels, rate limiter counters, stream cancellation flags. Use Redis for all server-side caching of JSON-serializable data (integration status, tool schemas, API responses). The `@Cacheable` decorator (`app/utils/cacheable.py`) is the standard pattern — see `get_all_integrations_status()` in oauth_service.py for usage. **Do NOT try to cache Composio tool objects in Redis** — they contain dynamically-generated Pydantic models and `functools.partial` closures that are not pickleable. Cache these in-memory on the `ComposioService` singleton instead (keyed by `(tool_name, user_id, hook_flags)` with a TTL). |
+| **Redis**      | Caching (hand-rolled in `app/db/redis.py` + `app/decorators/caching.py` — not `fastapi-cache2`), SSE stream channels, rate limiter counters, stream cancellation flags. Entity and query caching for repository-managed data is automatic inside the repository base (generation-based invalidation) — services never call `get_cache`/`set_cache`/`delete_cache` for it. The `@Cacheable`/`@CacheInvalidator` decorators (`app/decorators/caching.py`) remain the pattern only for non-entity caching (web search, favicons, provider metadata, OAuth status aggregation) — see `get_all_integrations_status()` in oauth_service.py. **Do NOT try to cache Composio tool objects in Redis** — they contain dynamically-generated Pydantic models and `functools.partial` closures that are not pickleable. Cache these in-memory on the `ComposioService` singleton instead (keyed by `(tool_name, user_id, hook_flags)` with a TTL). |
 | **ChromaDB**   | Vector store for tool retrieval (which tools the executor should use), trigger embeddings, and public integration descriptions.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | **RabbitMQ**   | Event publishing for cross-service messaging (bots, voice agent).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 
@@ -293,9 +296,24 @@ Secrets in production are injected from **Infisical** before Pydantic validates 
 
 See `apps/api/.env.example` or the `ProductionSettings` class in `app/config/settings.py` for the full list of required keys. For local dev, `DevelopmentSettings` makes most keys optional — set at minimum `ENV=development`, MongoDB URL, Redis URL, and WorkOS credentials.
 
+### Dev auth bypass (`DEV_AUTH_BYPASS_EMAIL`)
+
+When `DEV_AUTH_BYPASS_EMAIL=<email>` is set (development only), every request is authenticated as that Mongo user with no WorkOS session — `WorkOSAuthMiddleware` short-circuits before any cookie handling. This is how agents (and you) drive the full app end to end locally without logging in: point `apps/web/.env.local` at `http://localhost:8000/api/v1/` and the web app just works. **Don't set it in `apps/api/.env`** — it stays commented there so a bare `mise dev` is the real WorkOS login flow. Enable the bypass with the `--agent` flag (real LLM) or `--sim` (scripted LLM) on `mise dev` (native) or `mise dev:vm` (dockered API + JuiceFS); each exports `DEV_AUTH_BYPASS_EMAIL=${DEV_USER:-dev@gaia.local}` for you and refuses to run under `ENV=production` (`scripts/dev/assert-not-prod.sh`, backed by the `get_settings()` guard). For the full operating cookbook (boot matrix, mint/seed/impersonate curls, driving the API/browser/bots), see the **`driving-gaia`** skill.
+
+Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local scripted stub — use it to verify *plumbing* (tool flow, streaming, persistence) deterministically; never to judge real model behavior (prompts, tool selection, tone). The skill has the full use/don't-use table. Production refuses to boot with it set.
+
+- The user must exist in Mongo. Mint one without a WorkOS login via the dev router: `POST /api/v1/dev/users {"email": ...}` (idempotent; reuses the real signup path). A bypass target that resolves to no user fails loud with a 401 whose message names the fix ("mint it via POST /api/v1/dev/users") instead of a generic auth error.
+- Per-request impersonation: with the bypass active, an `X-Dev-User: <email>` request header authenticates as that user instead of `DEV_AUTH_BYPASS_EMAIL`, so one server can act as many users without restarts. Applies to HTTP (middleware) and WebSocket paths.
+- The dev router (`/api/v1/dev/*` — mint, seed, delete, direct agent runs) is mounted only when `ENV=development` and `DEV_AUTH_BYPASS_EMAIL` is set; it 404s otherwise. It is excluded from the auth bypass so minting the first user is possible before any user exists.
+- Direct layer invocation for tests: `POST /api/v1/dev/executor` runs the executor without the comms front door; `POST /api/v1/dev/subagents/{id}` runs one subagent without comms or the executor (`GET /api/v1/dev/subagents` lists ids). Both reuse the production preparation paths (`prepare_executor_execution` / `prepare_subagent_execution`) — see the `driving-gaia` skill §5.
+- Development only: `get_settings()` raises at startup if the var is set with `ENV=production` — never weaken that check.
+- The bypass user context carries `dev_bypass=True` for anything that needs to tell.
+- WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
+- On Windows with a native Redis (Memurai), use `REDIS_URL=redis://127.0.0.1:6379` — Memurai binds IPv4 only and `localhost` resolves to `::1` first, which makes the ARQ/lifespan services time out and startup fail.
+
 ## Pre-commit Hooks & Security Scanners
 
-The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, and **mypy**.
+The API pre-commit config (`.pre-commit-config.yaml`) runs: **ruff**, **ruff-format**, **bandit**, **pip-audit**, **mypy**, and **gaia-python-lints** (the custom AST rules in `tools/lints/` — route contract, no service classes, wide-events logging).
 
 ### Bandit
 

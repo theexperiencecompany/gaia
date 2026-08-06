@@ -2,7 +2,6 @@
 
 from fastapi import (
     APIRouter,
-    Body,
     Depends,
     File,
     Form,
@@ -13,14 +12,11 @@ from fastapi import (
 )
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
 from app.models.message_models import FileData
-from app.services.file_service import (
-    delete_file_service,
-    update_file_service,
-    upload_file_service,
-)
+from app.schemas.file import UpdateFileRequest
+from app.services.files import FileService
 from app.services.storage import SAFE_PATH_ID_PATTERN
 from shared.py.wide_events import log
 
@@ -46,18 +42,14 @@ async def upload_file_endpoint(
         # Reject uploads targeting a conversation the authenticated user does
         # not own — otherwise alice could pollute her own session tree with
         # artifacts keyed under bob's conversation id.
-        owner = await conversations_collection.find_one(
-            {"user_id": user_id, "conversation_id": conversation_id},
-            projection={"_id": 1},
-        )
-        if owner is None:
+        if not await conversation_repository.exists(conversation_id, user_id=user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Conversation not found or not owned by this user",
             )
 
     try:
-        result = await upload_file_service(
+        result = await FileService.upload(
             file=file,
             user_id=user_id,
             conversation_id=conversation_id,
@@ -78,6 +70,7 @@ async def upload_file_endpoint(
             filename=result["filename"],
             message="File uploaded successfully",
             type=result.get("type", "file"),
+            description=result.get("description"),
         )
     except HTTPException:
         # Preserve 4xx from the upload service (413 oversize, 415 bad type, …).
@@ -93,7 +86,7 @@ async def upload_file_endpoint(
 @router.put("/{file_id}", status_code=status.HTTP_200_OK)
 async def update_file_endpoint(
     file_id: str,
-    update_data: dict = Body(...),
+    payload: UpdateFileRequest,
     user: dict = Depends(get_current_user),
 ):
     """Update file metadata; regenerates the embedding when the description changes."""
@@ -102,10 +95,10 @@ async def update_file_endpoint(
         return {"error": "User ID is required"}
 
     try:
-        result = await update_file_service(
+        result = await FileService.update(
             file_id=file_id,
             user_id=user_id,
-            update_data=update_data,
+            update_data=payload.model_dump(exclude_none=True),
         )
 
         log.set(user={"id": user_id}, operation="update", file_id=file_id, outcome="success")
@@ -125,7 +118,7 @@ async def delete_file_endpoint(
 ):
     """Delete a file from Cloudinary, MongoDB, and ChromaDB."""
     try:
-        result = await delete_file_service(
+        result = await FileService.delete(
             file_id=file_id,
             user_id=user.get("user_id"),
         )

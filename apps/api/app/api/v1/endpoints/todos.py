@@ -3,10 +3,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 import uuid
 
-from bson import ObjectId
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 from fastapi.responses import JSONResponse
-from pymongo import ReturnDocument
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
@@ -14,9 +12,9 @@ from app.api.v1.dependencies.oauth_dependencies import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.todos import FACET_FIELDS, FACET_NOTES
-from app.db.mongodb.collections import projects_collection, todos_collection
 from app.db.redis import delete_cache, get_cache, set_cache
-from app.db.utils import serialize_document
+from app.db.repositories.projects import project_repository
+from app.db.repositories.todos import todo_repository
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import (
     BulkMoveRequest,
@@ -26,12 +24,15 @@ from app.models.todo_models import (
     ProjectCreate,
     ProjectResponse,
     SearchMode,
+    SubTask,
     SubtaskCreateRequest,
     SubtaskUpdateRequest,
+    TodoLabelCount,
     TodoListResponse,
     TodoModel,
     TodoResponse,
     TodoSearchParams,
+    TodoUpdate,
     TodoUpdateRequest,
     UpdateProjectRequest,
 )
@@ -61,93 +62,14 @@ async def get_todo_counts(response: Response, user: Annotated[dict, Depends(get_
     response.headers["Cache-Control"] = "private, max-age=10"
     log.set(user={"id": user["user_id"]}, todo={"operation": "counts"})
     try:
-        cache_key = f"counts:{user['user_id']}"
-        cached = await get_cache(cache_key)
-        if cached:
-            return cached
-
-        # Get today's date for filtering
-        today = datetime.now(UTC).date()
-        today_start = datetime.combine(today, datetime.min.time()).replace(tzinfo=UTC)
-        today_end = datetime.combine(today, datetime.max.time()).replace(tzinfo=UTC)
-
-        # Get upcoming end date (7 days from now)
-        upcoming_end = datetime.now(UTC) + timedelta(days=7)
-
-        # Get inbox project
-        inbox_project = await projects_collection.find_one(
-            {"user_id": user["user_id"], "is_default": True}
+        # The repository's own generation-based query cache handles caching —
+        # no manual Redis cache here (see app/db/repositories/CLAUDE.md).
+        inbox_project = await project_repository.get_default_inbox(user["user_id"])
+        inbox_project_id = inbox_project.id if inbox_project else "no_inbox_found"
+        counts = await todo_repository.compute_counts(
+            user_id=user["user_id"], inbox_project_id=inbox_project_id
         )
-        inbox_project_id = str(inbox_project["_id"]) if inbox_project else "no_inbox_found"
-
-        # Get current time for overdue calculation
-        now = datetime.now(UTC)
-
-        # Count todos efficiently with a single aggregation
-        counts_pipeline = [
-            {"$match": {"user_id": user["user_id"]}},
-            {
-                "$facet": {
-                    "inbox": [
-                        {
-                            "$match": {
-                                "project_id": inbox_project_id,
-                                "completed": False,
-                            }
-                        },
-                        {"$count": "count"},
-                    ],
-                    "today": [
-                        {
-                            "$match": {
-                                "due_date": {"$gte": today_start, "$lte": today_end},
-                                "completed": False,
-                            }
-                        },
-                        {"$count": "count"},
-                    ],
-                    "upcoming": [
-                        {
-                            "$match": {
-                                "due_date": {"$gt": today_end, "$lte": upcoming_end},
-                                "completed": False,
-                            }
-                        },
-                        {"$count": "count"},
-                    ],
-                    "overdue": [
-                        {
-                            "$match": {
-                                "due_date": {"$lt": now},
-                                "completed": False,
-                            }
-                        },
-                        {"$count": "count"},
-                    ],
-                    "completed": [
-                        {"$match": {"completed": True}},
-                        {"$count": "count"},
-                    ],
-                }
-            },
-        ]
-
-        counts_result = await todos_collection.aggregate(counts_pipeline).to_list(1)
-        facets = counts_result[0] if counts_result else {}
-
-        # Safely extract counts from facets (handle empty arrays)
-        def safe_get_count(facet_result):
-            return facet_result[0].get("count", 0) if facet_result else 0
-
-        result = {
-            "inbox": safe_get_count(facets.get("inbox", [])),
-            "today": safe_get_count(facets.get("today", [])),
-            "upcoming": safe_get_count(facets.get("upcoming", [])),
-            "completed": safe_get_count(facets.get("completed", [])),
-            "overdue": safe_get_count(facets.get("overdue", [])),
-        }
-        await set_cache(cache_key, result, ttl=30)
-        return result
+        return counts.model_dump()
 
     except Exception as e:
         raise HTTPException(
@@ -161,19 +83,9 @@ async def get_todo_counts(response: Response, user: Annotated[dict, Depends(get_
 async def get_todo_labels(
     user: Annotated[dict, Depends(get_current_user)],
     limit: int = 10,
-) -> list[dict]:
+) -> list[TodoLabelCount]:
     """Get most-used labels for the current user's todos."""
-    user_id = user["user_id"]
-    pipeline = [
-        {"$match": {"user_id": user_id, "completed": False}},
-        {"$unwind": "$labels"},
-        {"$group": {"_id": "$labels", "count": {"$sum": 1}}},
-        {"$sort": {"count": -1}},
-        {"$limit": limit},
-        {"$project": {"name": "$_id", "count": 1, "_id": 0}},
-    ]
-    result: list[dict] = await todos_collection.aggregate(pipeline).to_list(limit)
-    return result
+    return await todo_repository.top_labels(user_id=user["user_id"], limit=limit)
 
 
 # Main Todo CRUD Endpoints
@@ -469,10 +381,7 @@ async def generate_workflow(
             # Empty or failed workflow — delete it and allow regeneration
             if existing_workflow and existing_workflow.id:
                 await WorkflowService.delete_workflow(existing_workflow.id, user["user_id"])
-            await todos_collection.update_one(
-                {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-                {"$unset": {"workflow_id": ""}},
-            )
+            await todo_repository.clear_workflow_id(todo_id, user_id=user["user_id"])
 
         # Invalidate cached workflow status so next poll reflects generating state
         await delete_cache(f"workflow_status:{user['user_id']}:{todo_id}")
@@ -783,34 +692,17 @@ async def create_subtask(
         todo={"operation": "create_subtask", "id": todo_id},
     )
     try:
-        new_subtask = {
-            "id": str(uuid.uuid4()),
-            "title": subtask.title,
-            "completed": False,
-        }
+        new_subtask = SubTask(id=str(uuid.uuid4()), title=subtask.title, completed=False)
 
         # Atomic operation: verify ownership and add subtask in one query
-        updated_todo = await todos_collection.find_one_and_update(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            {
-                "$push": {"subtasks": new_subtask},
-                "$set": {"updated_at": datetime.now(UTC)},
-            },
-            return_document=ReturnDocument.AFTER,
+        updated_todo = await todo_repository.add_subtask(
+            todo_id, user_id=user["user_id"], subtask=new_subtask
         )
 
         if not updated_todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Invalidate cache
-        await TodoService._invalidate_cache(
-            user["user_id"],
-            updated_todo.get("project_id"),
-            todo_id,
-            "update_minor",
-        )
-
-        return TodoResponse(**serialize_document(updated_todo))
+        return TodoResponse.from_document(updated_todo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -834,41 +726,24 @@ async def update_subtask(
         todo={"operation": "update_subtask", "id": todo_id},
     )
     try:
-        # Build update operations
-        from typing import Any
-
-        update_ops: dict[str, Any] = {"$set": {"updated_at": datetime.now(UTC)}}
-
-        if updates.title is not None:
-            update_ops["$set"]["subtasks.$[elem].title"] = updates.title
-        if updates.completed is not None:
-            update_ops["$set"]["subtasks.$[elem].completed"] = updates.completed
-
         # Atomic operation: verify ownership, find subtask, and update in one query
-        updated_todo = await todos_collection.find_one_and_update(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            update_ops,
-            array_filters=[{"elem.id": subtask_id}],
-            return_document=ReturnDocument.AFTER,
+        updated_todo = await todo_repository.set_subtask_fields(
+            todo_id,
+            user_id=user["user_id"],
+            subtask_id=subtask_id,
+            title=updates.title,
+            completed=updates.completed,
         )
 
         if not updated_todo:
             raise ValueError(f"Todo {todo_id} not found")
 
         # Verify subtask exists (if no match, the update still succeeds but doesn't modify)
-        subtask_found = any(s.get("id") == subtask_id for s in updated_todo.get("subtasks", []))
+        subtask_found = any(s.id == subtask_id for s in updated_todo.subtasks)
         if not subtask_found:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
-        # Invalidate cache
-        await TodoService._invalidate_cache(
-            user["user_id"],
-            updated_todo.get("project_id"),
-            todo_id,
-            "update_minor",
-        )
-
-        return TodoResponse(**serialize_document(updated_todo))
+        return TodoResponse.from_document(updated_todo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -888,34 +763,19 @@ async def delete_subtask(todo_id: str, subtask_id: str, user: dict = Depends(get
     )
     try:
         # Atomic operation: verify ownership and remove subtask in one query
-        updated_todo = await todos_collection.find_one_and_update(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            {
-                "$pull": {"subtasks": {"id": subtask_id}},
-                "$set": {"updated_at": datetime.now(UTC)},
-            },
-            return_document=ReturnDocument.AFTER,
+        updated_todo = await todo_repository.remove_subtask(
+            todo_id, user_id=user["user_id"], subtask_id=subtask_id
         )
 
         if not updated_todo:
             raise ValueError(f"Todo {todo_id} not found")
 
         # Verify subtask was actually removed by checking if it still exists in the result
-        subtask_still_exists = any(
-            s.get("id") == subtask_id for s in updated_todo.get("subtasks", [])
-        )
+        subtask_still_exists = any(s.id == subtask_id for s in updated_todo.subtasks)
         if subtask_still_exists:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
-        # Invalidate cache
-        await TodoService._invalidate_cache(
-            user["user_id"],
-            updated_todo.get("project_id"),
-            todo_id,
-            "update_minor",
-        )
-
-        return TodoResponse(**serialize_document(updated_todo))
+        return TodoResponse.from_document(updated_todo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -937,47 +797,30 @@ async def toggle_subtask_completion(
     )
     try:
         # First, get current completion status to toggle
-        todo = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            {"subtasks": 1, "project_id": 1},
-        )
+        todo = await todo_repository.get(todo_id, user_id=user["user_id"])
 
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
 
         # Find the subtask to get current completion status
-        subtask = next((s for s in todo.get("subtasks", []) if s.get("id") == subtask_id), None)
+        subtask = next((s for s in todo.subtasks if s.id == subtask_id), None)
         if not subtask:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Subtask not found")
 
-        new_completed = not subtask.get("completed", False)
+        new_completed = not subtask.completed
 
         # Atomic operation: toggle completion using array filter
-
-        updated_todo = await todos_collection.find_one_and_update(
-            {"_id": ObjectId(todo_id), "user_id": user["user_id"]},
-            {
-                "$set": {
-                    "subtasks.$[elem].completed": new_completed,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-            array_filters=[{"elem.id": subtask_id}],
-            return_document=ReturnDocument.AFTER,
+        updated_todo = await todo_repository.set_subtask_fields(
+            todo_id,
+            user_id=user["user_id"],
+            subtask_id=subtask_id,
+            completed=new_completed,
         )
 
         if not updated_todo:
             raise ValueError(f"Todo {todo_id} not found")
 
-        # Invalidate cache
-        await TodoService._invalidate_cache(
-            user["user_id"],
-            updated_todo.get("project_id"),
-            todo_id,
-            "update_minor",
-        )
-
-        return TodoResponse(**serialize_document(updated_todo))
+        return TodoResponse.from_document(updated_todo)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception:
@@ -1002,6 +845,7 @@ async def approve_gaia_todo(
 ):
     """Approve a proposed GAIA todo: meter quota, queue it, enqueue execution."""
     user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "approve", "id": todo_id})
     user_plan = await payment_service.get_cached_plan_type(user_id)
     try:
         await lifecycle.approve(
@@ -1020,7 +864,6 @@ async def approve_gaia_todo(
         )
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    await delete_cache(f"counts:{user_id}")
     return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
 
 
@@ -1033,11 +876,11 @@ async def dismiss_gaia_todo(
 ):
     """Dismiss a proposed GAIA todo; the rejection teaches memory (3-strike rule)."""
     user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "dismiss", "id": todo_id})
     try:
         await lifecycle.dismiss(todo_id, user_id, reason=reason, channel=channel)
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    await delete_cache(f"counts:{user_id}")
     return {"success": True, "todo_id": todo_id, "execution_status": "dismissed"}
 
 
@@ -1050,11 +893,11 @@ async def answer_gaia_todo(
 ):
     """Answer a blocked (needs_you) GAIA todo: record the reply and re-queue the run."""
     user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "answer", "id": todo_id})
     try:
         await lifecycle.answer(todo_id, user_id, answer, channel=channel)
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    await delete_cache(f"counts:{user_id}")
     return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
 
 
@@ -1065,11 +908,11 @@ async def handoff_todo_to_gaia(
 ):
     """Hand a user todo to GAIA (entry state queued; outward steps escalate mid-run)."""
     user_id = user["user_id"]
+    log.set(user={"id": user_id}, todo={"operation": "handoff", "id": todo_id})
     try:
         await lifecycle.handoff(todo_id, user_id)
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    await delete_cache(f"counts:{user_id}")
     return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
 
 
@@ -1086,7 +929,6 @@ async def retry_gaia_todo(
         await lifecycle.retry(todo_id, user_id, channel=channel)
     except InvalidTransitionError as e:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
-    await delete_cache(f"counts:{user_id}")
     log.set(todo={"execution_status": "queued"})
     return {"success": True, "todo_id": todo_id, "execution_status": "queued"}
 
@@ -1099,12 +941,9 @@ async def dismiss_gaia_offer(
     """Dismiss the GAIA-takeover offer on a user todo, suppressing it everywhere."""
     user_id = user["user_id"]
     log.set(user={"id": user_id}, todo={"operation": "dismiss_offer", "id": todo_id})
-    updated = await todos_collection.find_one_and_update(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": {"gaia_offer_dismissed": True, "updated_at": datetime.now(UTC)}},
-        return_document=ReturnDocument.AFTER,
+    updated = await todo_repository.update(
+        todo_id, user_id=user_id, update=TodoUpdate(gaia_offer_dismissed=True)
     )
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Todo not found")
-    await TodoService._invalidate_cache(user_id, updated.get("project_id"), todo_id, "update_minor")
     return {"success": True, "todo_id": todo_id, "gaia_offer_dismissed": True}

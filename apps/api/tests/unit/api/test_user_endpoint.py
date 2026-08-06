@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.user_models import UserDocument
+
 USER_BASE = "/api/v1/user"
 
 FAKE_USER_UPDATE = {
@@ -144,11 +146,9 @@ class TestUpdateUserName:
 class TestUpdateTimezone:
     """PATCH /api/v1/user/timezone"""
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_timezone_success(self, mock_users: MagicMock, client: AsyncClient):
-        result = MagicMock()
-        result.matched_count = 1
-        mock_users.update_one = AsyncMock(return_value=result)
+    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    async def test_update_timezone_success(self, mock_update: AsyncMock, client: AsyncClient):
+        mock_update.return_value = UserDocument(timezone="America/New_York")
         response = await client.patch(
             f"{USER_BASE}/timezone",
             data={"timezone": "America/New_York"},
@@ -158,11 +158,9 @@ class TestUpdateTimezone:
         assert data["success"] is True
         assert data["timezone"] == "America/New_York"
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_timezone_utc(self, mock_users: MagicMock, client: AsyncClient):
-        result = MagicMock()
-        result.matched_count = 1
-        mock_users.update_one = AsyncMock(return_value=result)
+    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    async def test_update_timezone_utc(self, mock_update: AsyncMock, client: AsyncClient):
+        mock_update.return_value = UserDocument(timezone="UTC")
         response = await client.patch(
             f"{USER_BASE}/timezone",
             data={"timezone": "UTC"},
@@ -176,11 +174,11 @@ class TestUpdateTimezone:
         )
         assert response.status_code == 400
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_timezone_user_not_found(self, mock_users: MagicMock, client: AsyncClient):
-        result = MagicMock()
-        result.matched_count = 0
-        mock_users.update_one = AsyncMock(return_value=result)
+    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    async def test_update_timezone_user_not_found(
+        self, mock_update: AsyncMock, client: AsyncClient
+    ):
+        mock_update.return_value = None
         response = await client.patch(
             f"{USER_BASE}/timezone",
             data={"timezone": "America/New_York"},
@@ -191,9 +189,9 @@ class TestUpdateTimezone:
         response = await client.patch(f"{USER_BASE}/timezone")
         assert response.status_code == 422
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_timezone_db_error(self, mock_users: MagicMock, client: AsyncClient):
-        mock_users.update_one = AsyncMock(side_effect=Exception("db error"))
+    @patch("app.api.v1.endpoints.user.user_repository.update", new_callable=AsyncMock)
+    async def test_update_timezone_db_error(self, mock_update: AsyncMock, client: AsyncClient):
+        mock_update.side_effect = Exception("db error")
         response = await client.patch(
             f"{USER_BASE}/timezone",
             data={"timezone": "America/New_York"},
@@ -210,20 +208,18 @@ class TestUpdateTimezone:
 class TestGetPublicHoloCard:
     """GET /api/v1/user/holo-card/{card_id}"""
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_holo_card_success(self, mock_users: MagicMock, client: AsyncClient):
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": "507f1f77bcf86cd799439011",
-                "name": "Alice",
-                "onboarding": {
-                    "house": "phoenix",
-                    "personality_phrase": "creative",
-                    "user_bio": "Hello",
-                    "account_number": 42,
-                    "member_since": "Jan 01, 2025",
-                },
-            }
+    @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
+    async def test_holo_card_success(self, mock_get: AsyncMock, client: AsyncClient):
+        mock_get.return_value = UserDocument(
+            id="507f1f77bcf86cd799439011",
+            name="Alice",
+            onboarding={
+                "house": "phoenix",
+                "personality_phrase": "creative",
+                "user_bio": "Hello",
+                "account_number": 42,
+                "member_since": "Jan 01, 2025",
+            },
         )
         response = await client.get(f"{USER_BASE}/holo-card/507f1f77bcf86cd799439011")
         assert response.status_code == 200
@@ -235,26 +231,21 @@ class TestGetPublicHoloCard:
         response = await client.get(f"{USER_BASE}/holo-card/not-a-valid-id")
         assert response.status_code == 400
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_holo_card_not_found(self, mock_users: MagicMock, client: AsyncClient):
-        mock_users.find_one = AsyncMock(return_value=None)
+    @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
+    async def test_holo_card_not_found(self, mock_get: AsyncMock, client: AsyncClient):
+        mock_get.return_value = None
         response = await client.get(f"{USER_BASE}/holo-card/507f1f77bcf86cd799439011")
         assert response.status_code == 404
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_holo_card_no_house(self, mock_users: MagicMock, client: AsyncClient):
-        mock_users.find_one = AsyncMock(
-            return_value={
-                "_id": "507f1f77bcf86cd799439011",
-                "onboarding": {},
-            }
-        )
+    @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
+    async def test_holo_card_no_house(self, mock_get: AsyncMock, client: AsyncClient):
+        mock_get.return_value = UserDocument(id="507f1f77bcf86cd799439011", onboarding={})
         response = await client.get(f"{USER_BASE}/holo-card/507f1f77bcf86cd799439011")
         assert response.status_code == 404
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_holo_card_db_error(self, mock_users: MagicMock, client: AsyncClient):
-        mock_users.find_one = AsyncMock(side_effect=Exception("db error"))
+    @patch("app.api.v1.endpoints.user.user_repository.get", new_callable=AsyncMock)
+    async def test_holo_card_db_error(self, mock_get: AsyncMock, client: AsyncClient):
+        mock_get.side_effect = Exception("db error")
         response = await client.get(f"{USER_BASE}/holo-card/507f1f77bcf86cd799439011")
         assert response.status_code == 500
 
@@ -268,11 +259,9 @@ class TestGetPublicHoloCard:
 class TestUpdateHoloCardColors:
     """PATCH /api/v1/user/holo-card/colors"""
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_colors_success(self, mock_users: MagicMock, client: AsyncClient):
-        result = MagicMock()
-        result.matched_count = 1
-        mock_users.update_one = AsyncMock(return_value=result)
+    @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
+    async def test_update_colors_success(self, mock_set: AsyncMock, client: AsyncClient):
+        mock_set.return_value = True
         response = await client.patch(
             f"{USER_BASE}/holo-card/colors",
             data={"overlay_color": "rgba(255,0,0,1)", "overlay_opacity": 50},
@@ -282,11 +271,9 @@ class TestUpdateHoloCardColors:
         assert data["success"] is True
         assert data["overlay_opacity"] == 50
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_colors_user_not_found(self, mock_users: MagicMock, client: AsyncClient):
-        result = MagicMock()
-        result.matched_count = 0
-        mock_users.update_one = AsyncMock(return_value=result)
+    @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
+    async def test_update_colors_user_not_found(self, mock_set: AsyncMock, client: AsyncClient):
+        mock_set.return_value = False
         response = await client.patch(
             f"{USER_BASE}/holo-card/colors",
             data={"overlay_color": "rgba(0,0,0,1)", "overlay_opacity": 50},
@@ -297,9 +284,9 @@ class TestUpdateHoloCardColors:
         response = await client.patch(f"{USER_BASE}/holo-card/colors")
         assert response.status_code == 422
 
-    @patch("app.api.v1.endpoints.user.users_collection")
-    async def test_update_colors_db_error(self, mock_users: MagicMock, client: AsyncClient):
-        mock_users.update_one = AsyncMock(side_effect=Exception("db error"))
+    @patch("app.api.v1.endpoints.user.user_repository.set_holo_card_colors", new_callable=AsyncMock)
+    async def test_update_colors_db_error(self, mock_set: AsyncMock, client: AsyncClient):
+        mock_set.side_effect = Exception("db error")
         response = await client.patch(
             f"{USER_BASE}/holo-card/colors",
             data={"overlay_color": "rgba(0,0,0,1)", "overlay_opacity": 50},

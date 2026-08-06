@@ -119,6 +119,7 @@ export function getStage(s: OnboardingState): Stage {
   if (s.questionIndex < questions.length) return "questions";
   if (needsFocus(s)) return "focus";
   if (needsClarify(s)) return "clarify";
+  if (!s.integrationSelectDone) return "integrationSelect";
 
   const queue = hasGmail(s) ? GMAIL_QUEUE : NO_GMAIL_QUEUE;
 
@@ -149,15 +150,16 @@ const STAGE_PROGRESS: Record<Stage, number> = {
   questions: 0,
   focus: 4,
   clarify: 5,
-  processing: 5,
-  revealWriting: 6,
-  revealTodos: 7,
-  workflows: 8,
-  platforms: 9,
-  chat: 10,
+  integrationSelect: 6,
+  processing: 7,
+  revealWriting: 8,
+  revealTodos: 9,
+  workflows: 10,
+  platforms: 11,
+  chat: 12,
 };
 
-export const PROGRESS_TOTAL_STEPS = 10;
+export const PROGRESS_TOTAL_STEPS = 12;
 
 export function getProgress(s: OnboardingState, stage: Stage): number {
   if (s.isRestarting) return 0;

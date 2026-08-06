@@ -73,6 +73,21 @@
 - [x] H.6 Tracked-todo tool audit (16 findings fixed): dead `gaia-tracked` queries, references-only update no-op, unguarded block path, false docstrings, SKILL.md drift (`initial_canvas`, missing required args, facet model).
 - [ ] H.7 Badges/awards product decision: shame-audit gamification (streak framing, GAIA-vs-You split) — brainstorm, fully implement, or remove.
 
+## 7c. Phase I — Calm-surface consolidation (2026-08-06, in-PR)
+
+Decisions: the product has exactly three user-facing surfaces (chat, todos, briefing documents); briefings are documents delivered by email/chat, not a dashboard; nudges are completion-triggered only.
+
+- [ ] I.1 Remove the standalone `/dashboard` route (redirect to `/todos`); render the Today view as the top of `/todos`; absorb/delete the dashboard feature's row components into the todos feature — no parallel implementations.
+- [ ] I.2 Batch simultaneous `needs_you` blockers into one combined proactive message ("3 things need your call") — never separate pushes.
+- [ ] I.3 Completion-report nudge: an approved todo's completion message on the priority chat channel may carry at most one contextual next-step suggestion; no clock-based engagement pings; dismissed/ignored suggestions are not repeated.
+- [ ] I.4 Weekly editions v1: 2–3 email template families from the edition-template system + deterministic no-repeat rotation; weekly digest content = shipped (by assignee, hours-saved, streak) + ahead (open todos, scheduled follow-ups); renders to email + archive.
+- [ ] I.5 Cut the goal↔workflow linkage (`find_goal_linked_workflows`, goal-sourced workflow reads in briefing context); goals stay backstage per the revised `unified-todo-model` spec — no lane UI.
+- [ ] I.6 Verify system workflows (briefing crons, todo-execution plumbing) never appear in user-facing workflow lists; hide if they do.
+- [ ] I.7 Founder-day script (dev-only): one command replays a full user day against a live dev stack — seed → morning brief (Telegram + email) → reply-approve → execution → blocker/answer → completion nudge → weekly edition. Covers the re-opened 7.3 verification.
+- [ ] I.8 `nx run-many -t lint type-check` across api, web, bots — green.
+
+Deferred to follow-up issues (not this PR): Gmail bulk-action tool (single scoped call for inbox cleanup), signal→todo wiring for reply-driven loops (scheduling negotiation), per-integration proactive workflow templates (Linear/Slack/Notion).
+
 ## 8. Documentation & cleanup
 
 - [x] 8.1 Update `apps/api/CLAUDE.md` (briefing run, budgets, approval rule, tier metering) and `apps/web/src/features/todo/` docs for the unified model.

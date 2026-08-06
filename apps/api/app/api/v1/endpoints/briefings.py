@@ -11,13 +11,14 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.briefing import BRIEFING_KIND_DAILY
+from app.db.repositories.briefings import briefing_repository
 from app.models.briefing_models import (
     BriefingListResponse,
     BriefingModel,
     ChannelPriorityResponse,
     ChannelPriorityUpdate,
 )
-from app.services.briefing import delivery_channels, repository
+from app.services.briefing import delivery_channels
 from app.utils.analytics import track
 from shared.py.wide_events import log
 
@@ -32,12 +33,12 @@ async def get_latest_briefing(
     user_id = user["user_id"]
     log.set(user={"id": user_id}, briefing={"operation": "latest"})
 
-    latest = await repository.get_latest_briefing(user_id, BRIEFING_KIND_DAILY)
+    latest = await briefing_repository.get_latest(user_id, kind=BRIEFING_KIND_DAILY)
     if latest is None:
         return None
 
     if latest.opened_at is None:
-        opened = await repository.mark_opened(user_id, latest.id)
+        opened = await briefing_repository.mark_opened(user_id, latest.id)
         if opened is not None:
             track(
                 user_id, "briefing_opened", {"briefing_id": latest.id, "kind": BRIEFING_KIND_DAILY}
@@ -80,5 +81,5 @@ async def list_briefings(
     """Archive of the user's briefings (daily + weekly), newest first."""
     user_id = user["user_id"]
     log.set(user={"id": user_id}, briefing={"operation": "list", "limit": limit})
-    briefings = await repository.list_briefings(user_id, limit)
+    briefings = await briefing_repository.list_recent(user_id, limit=limit)
     return BriefingListResponse(briefings=briefings)

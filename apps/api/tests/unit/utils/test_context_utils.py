@@ -55,11 +55,11 @@ class TestExecuteTool:
             {"successful": True, "data": {"emails": [1, 2, 3]}}
         )
 
-        result = execute_tool("GMAIL_FETCH_EMAILS", {"limit": 10}, "user_123")
+        result = execute_tool("GMAIL_FETCH_MESSAGES", {"limit": 10}, "user_123")
 
         assert result == {"emails": [1, 2, 3]}
         mock_get_service.return_value.composio.tools.execute.assert_called_once_with(
-            slug="GMAIL_FETCH_EMAILS",
+            slug="GMAIL_FETCH_MESSAGES",
             arguments={"limit": 10},
             user_id="user_123",
             dangerously_skip_version_check=True,
@@ -74,7 +74,7 @@ class TestExecuteTool:
         )
 
         with pytest.raises(Exception, match="Auth token expired"):
-            execute_tool("GMAIL_FETCH_EMAILS", {}, "user_123")
+            execute_tool("GMAIL_FETCH_MESSAGES", {}, "user_123")
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_unsuccessful_execution_raises_fallback_message_when_no_error_key(
@@ -82,8 +82,8 @@ class TestExecuteTool:
     ) -> None:
         mock_get_service.return_value = _make_composio_service({"successful": False})
 
-        with pytest.raises(Exception, match="GMAIL_FETCH_EMAILS failed"):
-            execute_tool("GMAIL_FETCH_EMAILS", {}, "user_123")
+        with pytest.raises(Exception, match="GMAIL_FETCH_MESSAGES failed"):
+            execute_tool("GMAIL_FETCH_MESSAGES", {}, "user_123")
 
     @patch(_COMPOSIO_SERVICE_PATCH)
     def test_with_output_model_validation_succeeds(self, mock_get_service: MagicMock) -> None:

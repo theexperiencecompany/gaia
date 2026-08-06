@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.todos import ASSIGNEE_USER
+from app.db.repositories.base import UserScopedDocument
 
 # Who owns a todo. Replaces the legacy ``gaia-tracked`` label as the
 # discriminator for GAIA-owned todos.
@@ -254,6 +255,17 @@ class TodoResponse(TodoBase):
         description="Tool categories from linked workflow steps for icon display",
     )
 
+    @classmethod
+    def from_document(
+        cls, doc: "TodoDocument", *, workflow_categories: list[str] | None = None
+    ) -> "TodoResponse":
+        """Project a stored ``TodoDocument`` onto the API response shape. The
+        tracked-only fields (canvas/log content, retry state) are dropped by
+        ``extra="ignore"``; ``workflow_categories`` is enrichment, not stored."""
+        return cls.model_validate(
+            {**doc.model_dump(), "workflow_categories": workflow_categories or []}
+        )
+
 
 # Project models
 class ProjectBase(BaseModel):
@@ -298,6 +310,16 @@ class ProjectResponse(ProjectBase):
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime = Field(..., description="Last update timestamp")
 
+    @classmethod
+    def from_document(cls, doc: "ProjectDocument", *, todo_count: int = 0) -> "ProjectResponse":
+        """Project a stored ``ProjectDocument`` onto the API response shape.
+
+        ``ProjectWithCount`` already carries its ``todo_count``; pass it through so
+        the aggregation's count is not silently dropped."""
+        return cls.model_validate(
+            {**doc.model_dump(), "todo_count": getattr(doc, "todo_count", todo_count)}
+        )
+
 
 # Subtask operations
 class SubtaskCreateRequest(BaseModel):
@@ -327,7 +349,7 @@ class TodoStats(BaseModel):
     by_priority: dict[str, int] = Field(default_factory=dict)
     by_project: dict[str, int] = Field(default_factory=dict)
     completion_rate: float = Field(default=0.0)
-    labels: list[dict] | None = None
+    labels: list[dict[str, object]] | None = None
 
 
 class TodoListResponse(BaseModel):
@@ -374,7 +396,7 @@ class BulkMoveRequest(BulkOperationRequest):
 
 class BulkOperationResponse(BaseModel):
     success: list[str] = Field(default_factory=list)
-    failed: list[dict] = Field(default_factory=list)
+    failed: list[dict[str, object]] = Field(default_factory=list)
     total: int
     message: str
 
@@ -400,3 +422,162 @@ class TodoClassificationOutput(BaseModel):
         default=None,
         description="Supporting material to prep into the work log. Required when disposition == 'prep'.",
     )
+
+
+# Repository layer — persisted documents, typed updates, and aggregation results.
+# ``TodoDocument`` is the full stored shape (a superset of ``TodoResponse``): it
+# also carries the tracked-todo fields (facet content, scheduling, retry and
+# execution state) that the executor and maintenance sweep read and write.
+
+
+class TodoDocument(UserScopedDocument):
+    """A todo as stored in MongoDB. Base stamps created_at/updated_at on write."""
+
+    title: str
+    description: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    due_date: datetime | None = None
+    due_date_timezone: str | None = None
+    priority: Priority = Priority.NONE
+    project_id: str | None = None
+    completed: bool = False
+    subtasks: list[SubTask] = Field(default_factory=list)
+    workflow_id: str | None = None
+    workflow_activated: bool = False
+    vfs_path: str | None = None
+    scheduled_at: datetime | None = None
+    recurrence: str | None = None
+    gaia_retry_count: int = 0
+    gaia_user_retry_count: int = 0
+    expires_at: datetime | None = None
+    references: list[str] = Field(default_factory=list)
+    completed_at: datetime | None = None
+    # Facet bodies for tracked todos live on the document itself; canvas_content
+    # is the legacy pre-facet blob (see ``facet_from_doc`` migration bridge).
+    deliverable_content: str | None = None
+    notes_content: str | None = None
+    log_content: str | None = None
+    canvas_content: str | None = None
+    artifacts: list[Artifact] = Field(default_factory=list)
+    # GAIA-assignee lifecycle (see ExecutionStatus and gaia_todo_lifecycle).
+    assignee: Assignee = ASSIGNEE_USER
+    kind: TodoKind = "task"
+    goal_id: str | None = None
+    execution_status: ExecutionStatus | None = None
+    serves: str | None = None
+    error_message: str | None = None
+    blocker_question: str | None = None
+    last_run_conversation_id: str | None = None
+    gaia_offer: str | None = None
+    gaia_offer_dismissed: bool = False
+    pitch_expires_at: datetime | None = None
+    # Set alongside execution_status == queued by ``approve``: "release" tells the
+    # execution run to PERFORM the approved deliverable rather than draft/prep it.
+    execution_intent: str | None = None
+    # The user's verbatim qualifying words at approval (e.g. "only send the
+    # Sequoia one"); overrides the staged deliverable content where they conflict.
+    approve_instruction: str | None = None
+    # Verbatim dismissal reason and timestamp — feeds the 3-strike rejection summary.
+    dismiss_reason: str | None = None
+    dismissed_at: datetime | None = None
+    # Sender of the email an onboarding-seeded todo was extracted from.
+    source_email: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class TodoUpdate(BaseModel):
+    """Partial ``$set`` update for a todo — every settable field, all optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str | None = None
+    description: str | None = None
+    labels: list[str] | None = None
+    due_date: datetime | None = None
+    due_date_timezone: str | None = None
+    priority: Priority | None = None
+    project_id: str | None = None
+    completed: bool | None = None
+    subtasks: list[SubTask] | None = None
+    workflow_id: str | None = None
+    workflow_activated: bool | None = None
+    vfs_path: str | None = None
+    scheduled_at: datetime | None = None
+    recurrence: str | None = None
+    gaia_retry_count: int | None = None
+    gaia_user_retry_count: int | None = None
+    expires_at: datetime | None = None
+    references: list[str] | None = None
+    completed_at: datetime | None = None
+    deliverable_content: str | None = None
+    notes_content: str | None = None
+    canvas_content: str | None = None
+    log_content: str | None = None
+    artifacts: list[Artifact] | None = None
+    assignee: Assignee | None = None
+    kind: TodoKind | None = None
+    goal_id: str | None = None
+    execution_status: ExecutionStatus | None = None
+    serves: str | None = None
+    error_message: str | None = None
+    blocker_question: str | None = None
+    last_run_conversation_id: str | None = None
+    gaia_offer: str | None = None
+    gaia_offer_dismissed: bool | None = None
+    pitch_expires_at: datetime | None = None
+    execution_intent: str | None = None
+    approve_instruction: str | None = None
+    dismiss_reason: str | None = None
+    dismissed_at: datetime | None = None
+
+
+class ProjectDocument(UserScopedDocument):
+    """A project as stored in MongoDB. Base stamps created_at/updated_at on write."""
+
+    name: str
+    description: str | None = None
+    color: str | None = None
+    is_default: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class ProjectUpdate(BaseModel):
+    """Partial ``$set`` update for a project — user-editable fields, all optional."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+    color: str | None = None
+
+
+class ProjectWithCount(ProjectDocument):
+    """A project plus its todo count, produced by the list aggregation."""
+
+    todo_count: int = 0
+
+
+class TodoCounts(BaseModel):
+    """Dashboard/sidebar counts for a user's todos."""
+
+    inbox: int = 0
+    today: int = 0
+    upcoming: int = 0
+    completed: int = 0
+    overdue: int = 0
+
+
+class TodoLabelCount(BaseModel):
+    """One label with the number of (incomplete) todos carrying it."""
+
+    name: str
+    count: int
+
+
+class TodoPage(BaseModel):
+    """A page of todos plus the unpaginated total for the same filter."""
+
+    items: list[TodoDocument] = Field(default_factory=list)
+    total: int = 0

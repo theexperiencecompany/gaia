@@ -9,9 +9,10 @@ in {successful, data, error} format automatically.
 """
 
 import asyncio
+from collections.abc import Coroutine
 import concurrent.futures
 from datetime import UTC, date, datetime, timedelta, tzinfo
-from typing import Any
+from typing import Any, TypeVar
 
 from composio import Composio
 from langgraph.config import get_config, get_stream_writer
@@ -51,6 +52,24 @@ from shared.py.wide_events import log
 
 CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 CALENDAR_TOOLKIT = "GOOGLECALENDAR"
+
+_T = TypeVar("_T")
+
+
+def _run_sync(coro: Coroutine[Any, Any, _T], *, timeout: float | None = None) -> _T:
+    """Run an async coroutine from a synchronous Composio custom-tool body.
+
+    The custom tools are registered as sync callables but the services they call
+    (calendar_service, user_service) are async. When the tool is invoked inside a
+    running event loop the coroutine is offloaded to a fresh thread + loop
+    (``asyncio.run`` cannot re-enter a running loop); otherwise it runs directly.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(lambda: asyncio.run(coro)).result(timeout=timeout)
 
 
 def _extract_datetime(dt: Any) -> str:
@@ -130,7 +149,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
     ) -> dict[str, Any]:
         log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
         user_id = _get_user_id(auth_credentials)
-        calendars = calendar_service.list_calendars(user_id, short=request.short)
+        calendars = _run_sync(calendar_service.list_calendars(user_id, short=request.short))
 
         writer = get_stream_writer()
         if calendars:
@@ -157,16 +176,8 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         user_id = _get_user_id(auth_credentials)
 
         try:
-            try:
-                asyncio.get_running_loop()
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    user = pool.submit(
-                        lambda: asyncio.run(user_service.get_user_by_id(user_id))
-                    ).result(timeout=5)
-                user_timezone = user.get("timezone") if user else None
-            except RuntimeError:
-                user = asyncio.run(user_service.get_user_by_id(user_id))
-                user_timezone = user.get("timezone") if user else None
+            user = _run_sync(user_service.get_user_by_id(user_id), timeout=5)
+            user_timezone = user.get("timezone") if user else None
         except Exception:
             user_timezone = None
 
@@ -188,18 +199,20 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         day_start = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
         day_end = day_start + timedelta(days=1)
 
-        result = calendar_service.get_calendar_events(
-            user_id=user_id,
-            selected_calendars=None,
-            time_min=day_start.isoformat(),
-            time_max=day_end.isoformat(),
-            max_results=100,
+        result = _run_sync(
+            calendar_service.get_calendar_events(
+                user_id=user_id,
+                selected_calendars=None,
+                time_min=day_start.isoformat(),
+                time_max=day_end.isoformat(),
+                max_results=100,
+            )
         )
 
         events = result.get("events", [])
 
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
+            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             formatted_events = [
                 calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
@@ -261,18 +274,20 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
 
         time_min = request.time_min or datetime.now(UTC).isoformat()
 
-        result = calendar_service.get_calendar_events(
-            user_id=user_id,
-            selected_calendars=request.calendar_ids if request.calendar_ids else None,
-            time_min=time_min,
-            time_max=request.time_max,
-            max_results=request.max_results,
+        result = _run_sync(
+            calendar_service.get_calendar_events(
+                user_id=user_id,
+                selected_calendars=request.calendar_ids if request.calendar_ids else None,
+                time_min=time_min,
+                time_max=request.time_max,
+                max_results=request.max_results,
+            )
         )
 
         events = result.get("events", [])
 
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
+            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             calendar_fetch_data = [
                 calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
@@ -299,17 +314,19 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         log.set(tool={"integration": "google_calendar", "action": "find_event"})
         user_id = _get_user_id(auth_credentials)
 
-        result = calendar_service.search_calendar_events_native(
-            query=request.query,
-            user_id=user_id,
-            time_min=request.time_min,
-            time_max=request.time_max,
+        result = _run_sync(
+            calendar_service.search_calendar_events_native(
+                query=request.query,
+                user_id=user_id,
+                time_min=request.time_min,
+                time_max=request.time_max,
+            )
         )
 
         events = result.get("matching_events", [])
 
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
+            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
             calendar_search_data = [
                 calendar_service.format_event_for_frontend(event, color_map, name_map)
                 for event in events
@@ -512,7 +529,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         user_id = _get_user_id(auth_credentials)
 
         try:
-            color_map, name_map = calendar_service.get_calendar_metadata_map(user_id)
+            color_map, name_map = _run_sync(calendar_service.get_calendar_metadata_map(user_id))
         except Exception:
             color_map, name_map = {}, {}
 

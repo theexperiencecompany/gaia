@@ -39,7 +39,7 @@ async def _run(
     coll = AsyncMock()
     with (
         patch.object(lifecycle, "_acquire_or_create", side_effect=fake_acquire_or_create),
-        patch.object(lifecycle, "e2b_sandboxes_collection", coll),
+        patch.object(lifecycle, "e2b_sandbox_repository", coll),
         patch.object(lifecycle, "_schedule_pause") as sched,
     ):
         raised: Exception | None = None
@@ -54,12 +54,9 @@ async def _run(
     pool.evict(user_id)  # cleanup any survivor
 
 
-def _dead_state_written(coll: AsyncMock) -> bool:
-    for call in coll.update_one.call_args_list:
-        update = call.args[1] if len(call.args) > 1 else call.kwargs.get("update", {})
-        if update.get("$set", {}).get("state") == "dead":
-            return True
-    return False
+def _dead_state_written(repo: AsyncMock) -> bool:
+    # mark_dead is the only dead-state write on the repository seam.
+    return repo.mark_dead.await_count > 0
 
 
 async def test_dead_sandbox_is_evicted_when_tool_op_fails() -> None:

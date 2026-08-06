@@ -5,8 +5,6 @@ delivered as a notification and returned so the current briefing can mention
 them. No points, no effort rewards, no badge-cabinet page.
 """
 
-from bson import ObjectId
-
 from app.constants.briefing import (
     BADGE_FIRST_APPROVE,
     BADGE_FIRST_OVERNIGHT_SHIPMENT,
@@ -19,15 +17,15 @@ from app.constants.briefing import (
     STREAK_7_DAYS,
     STREAK_30_DAYS,
 )
-from app.constants.todos import gaia_assigned_filter
-from app.db.mongodb.collections import todos_collection, users_collection
+from app.db.repositories.awards import award_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
     NotificationType,
 )
-from app.services.briefing import repository
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
 from shared.py.wide_events import log
@@ -45,26 +43,11 @@ BADGE_META: dict[str, tuple[str, str]] = {
 }
 
 
-async def _has_first_approve(user_id: str) -> bool:
-    user = await users_collection.find_one(
-        {"_id": ObjectId(user_id)}, {"first_steps.first_approve": 1}
-    )
-    return bool((user or {}).get("first_steps", {}).get("first_approve"))
-
-
-async def _gaia_completed_count(user_id: str) -> int:
-    return await todos_collection.count_documents(
-        {"user_id": user_id, "completed_at": {"$ne": None}, **gaia_assigned_filter()}
-    )
-
-
 async def _has_overnight_shipment(user_id: str, clock: UserClock) -> bool:
-    cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$ne": None}, **gaia_assigned_filter()},
-        {"completed_at": 1},
-    )
-    async for doc in cursor:
-        hour = doc["completed_at"].astimezone(clock.tz).hour
+    for doc in await todo_repository.list_gaia_completed(user_id):
+        if doc.completed_at is None:
+            continue
+        hour = doc.completed_at.astimezone(clock.tz).hour
         if hour >= OVERNIGHT_START_HOUR or hour < OVERNIGHT_END_HOUR:
             return True
     return False
@@ -72,13 +55,15 @@ async def _has_overnight_shipment(user_id: str, clock: UserClock) -> bool:
 
 async def check_and_award_badges(user_id: str, clock: UserClock, streak: int) -> list[str]:
     """Award any newly earned badges; return human labels for the brief to mention."""
-    already = await repository.get_awarded_keys(user_id)
+    already = await award_repository.get_awarded_keys(user_id)
     earned: dict[str, bool] = {}
 
     if BADGE_FIRST_APPROVE not in already:
-        earned[BADGE_FIRST_APPROVE] = await _has_first_approve(user_id)
+        earned[BADGE_FIRST_APPROVE] = await user_repository.has_first_approve(user_id)
     if BADGE_GAIA_100_TODOS not in already:
-        earned[BADGE_GAIA_100_TODOS] = await _gaia_completed_count(user_id) >= GAIA_TODOS_CENTURY
+        earned[BADGE_GAIA_100_TODOS] = (
+            await todo_repository.count_gaia_completed(user_id) >= GAIA_TODOS_CENTURY
+        )
     if BADGE_FIRST_OVERNIGHT_SHIPMENT not in already:
         earned[BADGE_FIRST_OVERNIGHT_SHIPMENT] = await _has_overnight_shipment(user_id, clock)
     if BADGE_STREAK_7 not in already:
@@ -90,7 +75,7 @@ async def check_and_award_badges(user_id: str, clock: UserClock, streak: int) ->
     for key, qualifies in earned.items():
         if not qualifies:
             continue
-        if not await repository.award_badge(user_id, key):
+        if not await award_repository.award_badge(user_id, key):
             continue  # lost a race — already held
         title, body = BADGE_META[key]
         labels.append(title)

@@ -195,7 +195,7 @@ def write_readonly_body(target: Path, content: str) -> None:
 
 def write_rw_if_changed(target: Path, content: str) -> bool:
     """Write to ``target`` (mode 0644) only if its content differs. Returns
-    ``True`` iff a write happened — useful for telemetry/skip-counts.
+    ``True`` if a write happened — useful for telemetry/skip-counts.
     """
     if matches_text(target, content):
         return False

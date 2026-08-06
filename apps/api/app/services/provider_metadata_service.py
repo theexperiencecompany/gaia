@@ -6,15 +6,12 @@ when OAuth integrations are connected. This metadata is used to enhance agent
 system prompts with user context.
 """
 
-from datetime import UTC, datetime
 import json
 from typing import Any
 
-from bson import ObjectId
-
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
 from shared.py.wide_events import log
@@ -129,17 +126,9 @@ async def store_provider_metadata(user_id: str, provider: str, metadata: dict[st
         provider_metadata_keys=list(metadata.keys()),
     )
     try:
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    f"provider_metadata.{provider}": metadata,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+        stored = await user_repository.set_provider_metadata(user_id, provider, metadata)
 
-        if result.modified_count > 0:
+        if stored:
             log.info(f"Stored {provider} metadata for user {user_id}: {metadata}")
             return True
         log.warning(f"No document updated for user {user_id}")
@@ -157,12 +146,12 @@ async def store_provider_metadata(user_id: str, provider: str, metadata: dict[st
 async def get_provider_metadata(user_id: str, provider: str) -> dict[str, str] | None:
     """Retrieve provider metadata for a user, or None if not found."""
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"provider_metadata": 1})
+        user = await user_repository.get(user_id)
 
         if not user:
             return None
 
-        provider_metadata = user.get("provider_metadata", {})
+        provider_metadata = user.provider_metadata or {}
         return provider_metadata.get(provider)
 
     except Exception as e:

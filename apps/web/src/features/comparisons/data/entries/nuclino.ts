@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Nuclino is a clean, fast team wiki and knowledge base tool that organizes shared documentation in a graph, list, or board view. GAIA is a proactive AI assistant that connects knowledge management to email, calendar, tasks, and 50+ integrations — automating the capture and application of knowledge across your workflow.",
   metaTitle:
-    "Nuclino Alternative with AI-Powered Knowledge Management & Workflow Automation | GAIA vs Nuclino",
+    "Nuclino Alternative with AI-Powered Knowledge Management & Workflow Automation — GAIA vs Nuclino",
   metaDescription:
     "Nuclino is a great wiki but passive and isolated from your workflow. GAIA is a free, open-source Nuclino alternative with AI email management, proactive task creation, and knowledge automation across 50+ integrations.",
   keywords: [

@@ -1,14 +1,16 @@
 ## ADDED Requirements
 
-> Revised 2026-07-10: the Mission Control layout (briefing hero + timeline + action rail + heatmap) was replaced by the **Today view** before rollout — a single-column, status-grouped list optimized for scanning and acting. The timeline, action rail, and dashboard heatmap requirements from the earlier revision are superseded by the requirements below.
+> Revised 2026-07-10: the Mission Control layout (briefing hero + timeline + action rail + heatmap) was replaced by the **Today view** before rollout — a single-column, status-grouped list optimized for scanning and acting.
+>
+> Revised 2026-08-06: the standalone `/dashboard` route is removed. The product has exactly three user-facing surfaces — chat, todos, briefing documents — and a separate dashboard route showed only task-shaped data, duplicating `/todos`. The Today view now lives at the top of `/todos`. A dashboard route may return later only if there is daily-glance content that is not task-shaped.
 
-### Requirement: The Today view replaces the dashboard widget grid
+### Requirement: The Today view is the top of the todos page
 
-The `/dashboard` page SHALL render the Today view: the briefing headline as the page `<h1>` with a one-line subline (date, needs-you count, next calendar event, runs remaining, link to the full briefing), followed by flat status-grouped sections in priority order — **Needs you**, **Suggested**, **In flight**, **Your tasks**, **Done today**. Empty sections render nothing. The prior widget-grid and Mission Control components (timeline, action rail, contribution heatmap) are deleted from this page. The replacement ships directly — **no feature flags**. The page SHALL follow GAIA's design system (`DESIGN.md`). The post-login redirect (`/c`) is explicitly NOT changed by this spec.
+The `/todos` page SHALL open with the Today view: the briefing headline as the page heading with a one-line subline (date, needs-you count, next calendar event, runs remaining), followed by flat status-grouped sections in priority order — **Needs you**, **Suggested**, **In flight**, **Your tasks**, **Done today** — above the regular todo list. Empty sections render nothing. The standalone `/dashboard` route SHALL be removed (redirecting to `/todos`), and the dashboard feature's separate row components SHALL be deleted or absorbed into the todos feature — no parallel implementations. The replacement ships directly — **no feature flags**. The page SHALL follow GAIA's design system (`DESIGN.md`). The post-login redirect (`/c`) is explicitly NOT changed by this spec.
 
 #### Scenario: Direct replacement
 - **WHEN** the change is deployed
-- **THEN** `/dashboard` renders the Today view for all users and no code path can render the old widget grid or Mission Control components
+- **THEN** `/dashboard` redirects to `/todos`, the Today view renders at the top of `/todos` for all users, and no code path renders a standalone dashboard page
 
 ### Requirement: One sectioned payload
 

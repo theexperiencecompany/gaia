@@ -154,6 +154,13 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(title="Webpage Fetch", description="Fetch and analyze web pages"),
     ),
+    "download": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=200),
+        pro=RateLimitConfig(day=300, month=9000),
+        info=FeatureInfo(
+            title="File Download", description="Download a file from a URL into the workspace"
+        ),
+    ),
     # AUTOMATION (High Value)
     "workflow_operations": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),  # Keep restrictive
@@ -252,6 +259,24 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         info=FeatureInfo(
             title="Workspace Edit",
             description="Edit files in the persistent coding workspace",
+        ),
+    ),
+    # Read-only miners over offloaded workspace files (mirror workspace_read's
+    # generous limits — a large-inbox triage fans these out across chunks).
+    "workspace_query_json": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Query",
+            description="Filter/aggregate offloaded JSON/JSONL files in the coding workspace",
+        ),
+    ),
+    "workspace_grep": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Grep",
+            description="Search files in the persistent coding workspace",
         ),
     ),
     # CREATIVE TOOLS

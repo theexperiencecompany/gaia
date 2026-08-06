@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
     "No automation or workflow capabilities — Perplexity surfaces information but never takes action on your behalf",
   ],
   metaTitle:
-    "Perplexity Alternative | GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
+    "Perplexity Alternative — GAIA — AI Assistant That Manages Your Work, Not Just Searches It",
   metaDescription:
     "Need more than AI search? GAIA is a personal AI assistant that manages your email, tasks, and calendar — with persistent memory and 50+ integrations. Open source, self-hostable, free tier available.",
   keywords: [

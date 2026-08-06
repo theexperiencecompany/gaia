@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Chip } from "@heroui/chip";
 import { usePathname, useRouter } from "next/navigation";
 
 import {
@@ -26,7 +27,12 @@ export default function SettingsSidebar() {
     <div className="flex h-full max-w-[280px] flex-col border-t-1 border-zinc-800 pt-3">
       <nav className="flex-1 space-y-1">
         {visibleItems.map((item) => {
-          const isActive = item.href ? pathname.endsWith(item.href) : false;
+          // Match the section itself or any sub-route of it (e.g. the pairing
+          // page under /settings/devices). `endsWith` rather than `startsWith`
+          // because a non-default locale prefixes the path.
+          const isActive = item.href
+            ? pathname.endsWith(item.href) || pathname.includes(`${item.href}/`)
+            : false;
           const Icon = item.icon;
 
           return (
@@ -45,6 +51,11 @@ export default function SettingsSidebar() {
                 />
               )}
               <span className="text-sm">{item.label}</span>
+              {item.beta && (
+                <Chip size="sm" variant="flat" color="success">
+                  Beta
+                </Chip>
+              )}
             </Button>
           );
         })}

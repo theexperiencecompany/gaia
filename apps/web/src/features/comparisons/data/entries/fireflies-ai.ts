@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Fireflies.ai automatically records, transcribes, and indexes meetings with AI-powered search and CRM integrations. GAIA is a proactive AI assistant that manages your full productivity workflow — not just what happened in calls.",
   metaTitle:
-    "Fireflies.ai Alternative for Full Workflow Automation | GAIA vs Fireflies",
+    "Fireflies.ai Alternative for Full Workflow Automation — GAIA vs Fireflies",
   metaDescription:
     "Fireflies records and searches meetings but stops at the transcript. GAIA is an open-source alternative that automates task creation, follow-up emails, and workflows across 50+ tools after every meeting.",
   keywords: [

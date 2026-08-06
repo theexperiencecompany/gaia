@@ -14,19 +14,15 @@ from app.constants.todos import (
     ASSIGNEE_GAIA,
     FACET_NOTES,
     facet_from_doc,
-    gaia_assigned_filter,
-    user_assigned_filter,
 )
-from app.db.mongodb.collections import (
-    briefings_collection,
-    todos_collection,
-    workflow_executions_collection,
-    workflows_collection,
-)
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.workflow_executions import workflow_executions_repository
+from app.db.repositories.workflows import workflow_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
-from app.models.briefing_models import BriefingMood
-from app.models.todo_models import ExecutionStatus
+from app.models.briefing_models import BriefingKind, BriefingMood, BriefingPayload
+from app.models.todo_models import ExecutionStatus, Priority, TodoDocument
 from app.services.briefing import dormancy
 from shared.py.wide_events import log
 
@@ -65,8 +61,8 @@ class WinbackState:
 
 @dataclass
 class CompletedWork:
-    gaia: list[dict] = field(default_factory=list)
-    user: list[dict] = field(default_factory=list)
+    gaia: list[TodoDocument] = field(default_factory=list)
+    user: list[TodoDocument] = field(default_factory=list)
 
 
 def resolve_clock(user_timezone: str | None) -> UserClock:
@@ -86,18 +82,17 @@ def day_start_utc(clock: UserClock, days_ago: int = 0) -> datetime:
 
 
 async def get_yesterday_payload(
-    user_id: str, before_date: str, kind: str = BRIEFING_KIND_DAILY
-) -> dict | None:
+    user_id: str, before_date: str, kind: BriefingKind = BRIEFING_KIND_DAILY
+) -> BriefingPayload | None:
     """Latest daily briefing payload strictly before ``before_date`` (today).
 
     Excludes today so a same-day re-run compares against the real prior brief,
-    not itself. ``date`` is ISO ``YYYY-MM-DD`` so the lexical ``$lt`` is correct.
+    not itself.
     """
-    doc = await briefings_collection.find_one(
-        {"user_id": user_id, "kind": kind, "date": {"$lt": before_date}},
-        sort=[("date", -1)],
+    briefing = await briefing_repository.get_before_date(
+        user_id, kind=kind, before_date=before_date
     )
-    return doc.get("payload") if doc else None
+    return briefing.payload if briefing else None
 
 
 # Users type junk into onboarding ("nothing", "n/a"); junk is not a goal.
@@ -140,18 +135,27 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
 
 
 @dataclass
+class LaneWorkflow:
+    """One goal-linked workflow's latest run state — the brief's per-lane line."""
+
+    title: str
+    last_status: str | None
+    last_run: datetime | None
+
+
+@dataclass
 class GoalLane:
     """One goal's world: the lane the nightly pass advances and the brief reports."""
 
     goal_id: str
     title: str
     canvas_excerpt: str
-    completed: list[dict] = field(default_factory=list)
-    staged: list[dict] = field(default_factory=list)
-    running: list[dict] = field(default_factory=list)
-    failed: list[dict] = field(default_factory=list)
-    needs_you: list[dict] = field(default_factory=list)
-    workflows: list[dict] = field(default_factory=list)
+    completed: list[TodoDocument] = field(default_factory=list)
+    staged: list[TodoDocument] = field(default_factory=list)
+    running: list[TodoDocument] = field(default_factory=list)
+    failed: list[TodoDocument] = field(default_factory=list)
+    needs_you: list[TodoDocument] = field(default_factory=list)
+    workflows: list[LaneWorkflow] = field(default_factory=list)
 
 
 _LANE_CANVAS_EXCERPT_CHARS = 700
@@ -212,33 +216,17 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
     advances: state lives here, never in per-run memory recall.
     """
     lanes: list[GoalLane] = []
-    async for goal in todos_collection.find(
-        {"user_id": user_id, "kind": "goal", "completed": False},
-        {"title": 1, "notes_content": 1, "canvas_content": 1},
-    ).sort("created_at", 1):
-        goal_id = str(goal["_id"])
+    for goal in await todo_repository.list_open_goals(user_id):
         # A goal's living strategy is its notes facet (its working memory).
-        goal_notes = facet_from_doc(goal, FACET_NOTES, allow_canvas_fallback=False)
+        goal_notes = facet_from_doc(goal.model_dump(), FACET_NOTES, allow_canvas_fallback=False)
         lane = GoalLane(
-            goal_id=goal_id,
-            title=goal.get("title", "untitled goal"),
+            goal_id=goal.id,
+            title=goal.title or "untitled goal",
             canvas_excerpt=_excerpt_canvas(goal_notes),
         )
-        async for child in todos_collection.find(
-            {"user_id": user_id, "goal_id": goal_id},
-            {
-                "title": 1,
-                "execution_status": 1,
-                "deliverable_content": 1,
-                "notes_content": 1,
-                "canvas_content": 1,
-                "completed_at": 1,
-                "created_at": 1,
-                "error_message": 1,
-            },
-        ):
-            status = child.get("execution_status")
-            if child.get("completed_at") and child["completed_at"] >= since:
+        for child in await todo_repository.list_goal_children(user_id, goal.id):
+            status = child.execution_status.value if child.execution_status else None
+            if child.completed_at and child.completed_at >= since:
                 lane.completed.append(child)
             elif status == "proposed":
                 lane.staged.append(child)
@@ -248,26 +236,14 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
                 lane.failed.append(child)
             elif status == "needs_you":
                 lane.needs_you.append(child)
-        async for wf in workflows_collection.find(
-            {
-                "user_id": user_id,
-                "source_todo_id": goal_id,
-                "activated": True,
-                # Per-todo execution plumbing is not a rhythm workflow.
-                "is_todo_workflow": {"$ne": True},
-            },
-            {"title": 1, "id": 1},
-        ):
-            wf_id = wf.get("id") or str(wf.get("_id"))
-            last = await workflow_executions_collection.find_one(
-                {"workflow_id": wf_id}, sort=[("started_at", -1)]
-            )
+        for wf in await workflow_repository.find_goal_linked_workflows(user_id, goal.id):
+            last = await workflow_executions_repository.get_latest_for_workflow(wf.id)
             lane.workflows.append(
-                {
-                    "title": wf.get("title", "workflow"),
-                    "last_status": (last or {}).get("status"),
-                    "last_run": (last or {}).get("started_at"),
-                }
+                LaneWorkflow(
+                    title=wf.title or "workflow",
+                    last_status=last.status if last else None,
+                    last_run=last.started_at if last else None,
+                )
             )
         lanes.append(lane)
     return lanes
@@ -290,54 +266,35 @@ def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
             ("blocked on the user", lane.needs_you),
         ):
             if docs:
-                lines.append(label + ": " + "; ".join(d.get("title", "?") for d in docs))
+                lines.append(label + ": " + "; ".join(d.title or "?" for d in docs))
         for wf in lane.workflows:
-            lines.append(f"workflow '{wf['title']}': last run {wf['last_status'] or 'never'}")
+            lines.append(f"workflow '{wf.title}': last run {wf.last_status or 'never'}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 
 
-async def gather_completed_since(
-    user_id: str, since: datetime, *, include_deliverables: bool = False
-) -> CompletedWork:
-    projection = {"title": 1, "assignee": 1, "labels": 1, "completed_at": 1, "serves": 1}
-    if include_deliverables:
-        # The weekly digest voices deliverable snippets; the daily look-back only
-        # needs titles, so it skips the heavier facet fields.
-        projection |= {"deliverable_content": 1, "canvas_content": 1}
+async def gather_completed_since(user_id: str, since: datetime) -> CompletedWork:
     work = CompletedWork()
-    cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$gte": since}}, projection
-    )
-    async for doc in cursor:
-        is_gaia = doc.get("assignee") == ASSIGNEE_GAIA
-        (work.gaia if is_gaia else work.user).append(doc)
+    for doc in await todo_repository.list_completed_since(user_id, since=since):
+        (work.gaia if doc.assignee == ASSIGNEE_GAIA else work.user).append(doc)
     return work
 
 
 async def format_todos_block(user_id: str) -> str:
-    gaia_cursor = todos_collection.find(
-        {
-            "user_id": user_id,
-            "execution_status": {"$in": _OPEN_GAIA_STATUSES},
-            **gaia_assigned_filter(),
-        },
-        {"title": 1, "execution_status": 1, "serves": 1},
-    ).limit(20)
+    gaia_docs = await todo_repository.list_open_gaia_by_status(
+        user_id, statuses=_OPEN_GAIA_STATUSES, limit=20
+    )
     gaia_lines = [
-        f"- [GAIA · {d.get('execution_status')}] {d.get('title', 'untitled')}"
-        + (f" (serves: {d['serves']})" if d.get("serves") else "")
-        async for d in gaia_cursor
+        f"- [GAIA · {d.execution_status.value if d.execution_status else None}] {d.title or 'untitled'}"
+        + (f" (serves: {d.serves})" if d.serves else "")
+        for d in gaia_docs
     ]
 
-    user_cursor = todos_collection.find(
-        {"user_id": user_id, "completed": False, **user_assigned_filter()},
-        {"title": 1, "priority": 1},
-    ).limit(20)
+    user_docs = await todo_repository.list_open_user_todos(user_id, limit=20)
     user_lines = [
-        f"- [YOU] {d.get('title', 'untitled')}"
-        + (f" (priority: {d['priority']})" if d.get("priority") not in (None, "none") else "")
-        async for d in user_cursor
+        f"- [YOU] {d.title or 'untitled'}"
+        + (f" (priority: {d.priority.value})" if d.priority != Priority.NONE else "")
+        for d in user_docs
     ]
 
     if not gaia_lines and not user_lines:
@@ -356,30 +313,20 @@ async def user_open_todo_summary(user_id: str) -> tuple[int, list[str]]:
     The voice pass gets these so an empty-lane day can't be voiced as "all
     clear" while the user's own list still has work in it.
     """
-    cursor = todos_collection.find(
-        {"user_id": user_id, "completed": False, **user_assigned_filter()},
-        {"title": 1},
-    ).limit(50)
-    titles = [d.get("title", "untitled") async for d in cursor]
+    docs = await todo_repository.list_open_user_todos(user_id, limit=50)
+    titles = [d.title or "untitled" for d in docs]
     return len(titles), titles[:5]
 
 
 async def format_lookback_block(
-    user_id: str, yesterday_payload: dict | None, since: datetime
+    user_id: str, yesterday_payload: BriefingPayload | None, since: datetime
 ) -> str:
     completed = await gather_completed_since(user_id, since)
-    exec_cursor = workflow_executions_collection.find(
-        {"user_id": user_id, "started_at": {"$gte": since}},
-        {"workflow_title": 1, "status": 1, "summary": 1},
-    ).limit(20)
-    executions = [doc async for doc in exec_cursor]
+    executions = await workflow_executions_repository.list_since(user_id, since, limit=20)
 
     parts: list[str] = []
     if yesterday_payload:
-        planned = []
-        for section in yesterday_payload.get("sections", []):
-            for item in section.get("items", []):
-                planned.append(item.get("text", ""))
+        planned = [item.text for section in yesterday_payload.sections for item in section.items]
         if planned:
             parts.append(
                 "Yesterday you told the user you'd focus on:\n"
@@ -389,17 +336,17 @@ async def format_lookback_block(
         parts.append("No prior briefing — this is the first look-back.")
 
     if completed.gaia or completed.user:
-        done = [f"- GAIA finished: {d.get('title', 'untitled')}" for d in completed.gaia]
-        done += [f"- You finished: {d.get('title', 'untitled')}" for d in completed.user]
+        done = [f"- GAIA finished: {d.title or 'untitled'}" for d in completed.gaia]
+        done += [f"- You finished: {d.title or 'untitled'}" for d in completed.user]
         parts.append("Actually completed since then:\n" + "\n".join(done))
     else:
         parts.append("Nothing was completed since the last briefing.")
 
     if executions:
+        # workflow_executions carries no workflow_title field; "Workflow" is the
+        # generic label every run has used for as long as the field's been gone.
         ex_lines = [
-            f"- {d.get('workflow_title') or 'Workflow'} [{d.get('status')}]"
-            + (f": {d['summary']}" if d.get("summary") else "")
-            for d in executions
+            f"- Workflow [{d.status}]" + (f": {d.summary}" if d.summary else "") for d in executions
         ]
         parts.append("Background workflow runs since then:\n" + "\n".join(ex_lines))
 
@@ -418,29 +365,23 @@ async def compute_winback_state(user_id: str, recent: int = 10) -> WinbackState:
     The loop breaks at the first acknowledged briefing, so the reactivation-signal
     lookup runs only for the unacknowledged tail (at most one extra call past it).
     """
-    briefings = (
-        await briefings_collection.find(
-            {"user_id": user_id, "kind": BRIEFING_KIND_DAILY},
-            {"created_at": 1, "opened_at": 1, "payload": 1},
-        )
-        .sort("created_at", -1)
-        .limit(recent)
-        .to_list(length=recent)
+    briefings = await briefing_repository.list_recent(
+        user_id, limit=recent, kind=BRIEFING_KIND_DAILY
     )
     if not briefings:
         return WinbackState(unacknowledged=0, last_was_winback=False)
 
     unacknowledged = 0
-    for doc in briefings:
-        created_at = doc["created_at"]
+    for briefing in briefings:
+        created_at = briefing.created_at
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=UTC)
-        acknowledged = doc.get("opened_at") is not None or await dormancy.reactivation_signal_since(
+        acknowledged = briefing.opened_at is not None or await dormancy.reactivation_signal_since(
             user_id, created_at
         )
         if acknowledged:
             break
         unacknowledged += 1
 
-    last_mood: BriefingMood | str = (briefings[0].get("payload") or {}).get("mood", "")
+    last_mood: BriefingMood | str = briefings[0].payload.mood
     return WinbackState(unacknowledged=unacknowledged, last_was_winback=last_mood == "winback")

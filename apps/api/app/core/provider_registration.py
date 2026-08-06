@@ -34,6 +34,7 @@ from pydantic import PydanticDeprecatedSince20
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
 from app.agents.llm.client import register_llm_providers
+from app.agents.llm.model_catalog import init_openrouter_model_catalog
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
 from app.config.cloudinary import init_cloudinary
@@ -166,6 +167,48 @@ def _spawn_background_services(
     _spawn_background_task(name, _run_all)
 
 
+def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
+    """Register all lazy providers (dormant until first access).
+
+    Always fast — no I/O, just decorator bookkeeping — so it's safe to call on
+    every process start. Split out from `unified_startup` so callers that only
+    need the provider registry populated (e.g. a test harness exercising one
+    feature that doesn't want the full eager-service startup, which requires
+    RabbitMQ/Mongo/etc. to be live) can do so without the rest of startup.
+
+    Gotcha: many providers are authored as `async def` and decorated with
+    `@lazy_provider(...)`. The decorator replaces the async function with a
+    sync registration function, so these calls are intentionally NOT awaited.
+    """
+    log.info(f"{LogTag.STARTUP} Registering lazy providers for {context}...")
+
+    registrations: tuple[Callable[[], object], ...] = (
+        init_postgresql_engine,
+        init_rabbitmq_publisher,
+        register_llm_providers,
+        init_openrouter_model_catalog,
+        build_graphs,
+        init_chroma,
+        init_checkpointer_manager,
+        init_tool_registry,
+        init_composio_service,
+        init_mcp_client_pool,
+        init_embeddings,
+        initialize_chroma_tools_store,
+        initialize_chroma_triggers_store,
+        init_cloudinary,
+        validate_startup_requirements,
+        init_juicefs_mount,
+        init_sandbox_pool,
+        init_posthog,
+        init_langfuse,
+    )
+
+    for register in registrations:
+        register()
+    log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for {context}")
+
+
 async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     """
     Unified startup function for both FastAPI and ARQ worker contexts.
@@ -191,37 +234,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
 
     log.info(f"{LogTag.STARTUP} Starting {context} with unified provider system...")
 
-    # Register lazy providers (dormant until first access).
-    #
-    # Gotcha: many providers are authored as `async def` and decorated with
-    # `@lazy_provider(...)`. The decorator replaces the async function with a
-    # sync registration function, so these calls are intentionally NOT awaited.
-    log.info(f"{LogTag.STARTUP} Registering lazy providers for {context}...")
-
-    registrations: tuple[Callable[[], object], ...] = (
-        init_postgresql_engine,
-        init_rabbitmq_publisher,
-        register_llm_providers,
-        build_graphs,
-        init_chroma,
-        init_checkpointer_manager,
-        init_tool_registry,
-        init_composio_service,
-        init_mcp_client_pool,
-        init_embeddings,
-        initialize_chroma_tools_store,
-        initialize_chroma_triggers_store,
-        init_cloudinary,
-        validate_startup_requirements,
-        init_juicefs_mount,
-        init_sandbox_pool,
-        init_posthog,
-        init_langfuse,
-    )
-
-    for register in registrations:
-        register()
-    log.info(f"{LogTag.STARTUP} All lazy providers registered successfully for {context}")
+    register_lazy_providers(context)
 
     # Services we typically want running in-process.
     #
@@ -259,12 +272,20 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     startup_services: list[StartupService] = list(eager_services)
     startup_services.append(
         StartupService(
+            # strict=True honors each provider's declared strategy: only an
+            # ERROR-strategy provider that fails to initialize propagates (WARN/SILENT
+            # return None and degrade), so a provider declared ERROR to fail loud —
+            # e.g. tool_registry — aborts a blocking boot instead of coming up broken
+            # and 500ing the first request. required=True is what lets that abort
+            # reach _process_results; without it the failure would be logged and
+            # swallowed. The background warmup path (warmup_all below) stays lenient:
+            # the server is already serving, so a warmup failure must not crash it.
             lambda: providers.initialize_auto_providers(
                 concurrency=AUTO_PROVIDER_CONCURRENCY,
-                strict=False,
+                strict=True,
             ),
             "lazy_providers_auto_initializer",
-            required=False,
+            required=True,
         )
     )
     startup_services.append(

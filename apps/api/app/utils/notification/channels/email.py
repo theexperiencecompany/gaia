@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from bson import ObjectId
 import httpx
 
 from app.config.settings import settings
@@ -28,7 +27,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
     NotificationRequest,
@@ -73,8 +72,8 @@ class EmailChannelAdapter(ChannelAdapter):
             log.info(f"{LogTag.NOTIFICATION} Email skipped: ESP not configured")
             return self._skipped("email: RESEND_API_KEY/EMAIL_UNSUBSCRIBE_SECRET not configured")
 
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        email = normalize_email(user.get("email", "")) if user else None
+        user = await user_repository.get(user_id)
+        email = normalize_email(user.email or "") if user else None
         if not email:
             return self._skipped("email: no email address on file")
 

@@ -15,7 +15,8 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from app.constants.todos import ASSIGNEE_GAIA
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import TodoDocument
 
 # date-iso -> {"user_count": n, "gaia_count": n}
 DayCounts = dict[str, dict[str, int]]
@@ -24,8 +25,8 @@ DayCounts = dict[str, dict[str, int]]
 DEFAULT_STREAK_LOOKBACK_DAYS = 366
 
 
-def _is_gaia(doc: dict) -> bool:
-    return doc.get("assignee") == ASSIGNEE_GAIA
+def _is_gaia(doc: TodoDocument) -> bool:
+    return doc.assignee == ASSIGNEE_GAIA
 
 
 def window_start_utc(tz: ZoneInfo, days: int) -> datetime:
@@ -37,12 +38,11 @@ def window_start_utc(tz: ZoneInfo, days: int) -> datetime:
 async def completed_day_counts(user_id: str, tz: ZoneInfo, since: datetime) -> DayCounts:
     """Per-local-day completed-todo counts split by assignee, since ``since`` (UTC)."""
     counts: DayCounts = {}
-    cursor = todos_collection.find(
-        {"user_id": user_id, "completed_at": {"$gte": since}},
-        {"completed_at": 1, "assignee": 1, "labels": 1},
-    )
-    async for doc in cursor:
-        day = doc["completed_at"].astimezone(tz).date().isoformat()
+    docs = await todo_repository.list_completed_since(user_id, since=since)
+    for doc in docs:
+        if doc.completed_at is None:
+            continue
+        day = doc.completed_at.astimezone(tz).date().isoformat()
         bucket = counts.setdefault(day, {"user_count": 0, "gaia_count": 0})
         bucket["gaia_count" if _is_gaia(doc) else "user_count"] += 1
     return counts

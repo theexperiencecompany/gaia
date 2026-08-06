@@ -121,8 +121,8 @@ class TestWorkspaceScoping:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
         ):
             result = await _build_tools_response(None)
@@ -149,8 +149,8 @@ class TestWorkspaceScoping:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",
@@ -180,8 +180,8 @@ class TestWorkspaceScoping:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",
@@ -232,8 +232,8 @@ class TestBuildToolsResponse:
         )
         stack.enter_context(
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             )
         )
         if user_records is not None:
@@ -500,8 +500,8 @@ class TestLockedAndFilteredTools:
                 return_value=mock_registry,
             ),
             patch(
-                "app.services.tools.tools_service.get_mcp_tools_store",
-                return_value=mock_mcp_store,
+                "app.services.tools.tools_service.get_all_mcp_tools",
+                new=mock_mcp_store.get_all_mcp_tools,
             ),
             patch(
                 "app.services.tools.tools_service.get_user_integration_records",

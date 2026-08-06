@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Cannot read email or create tasks from communication",
     "Scheduling links and calendar buffers don't replace a full AI assistant",
   ],
-  metaTitle: "Best Reclaim.ai Alternative in 2026 | GAIA",
+  metaTitle: "Best Reclaim.ai Alternative in 2026",
   metaDescription:
     "Reclaim.ai only optimizes your calendar. GAIA is a proactive AI assistant that manages email, tasks, and scheduling together. Free tier + open-source self-hosting.",
   keywords: [

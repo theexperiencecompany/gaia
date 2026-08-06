@@ -10,11 +10,9 @@ design: an "I can't help" banner is noise.
 
 import asyncio
 
-from bson import ObjectId
-
 from app.agents.llm.client import LLMNotConfiguredError, get_default_llm
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import TodoClassificationOutput
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import TodoClassificationOutput, TodoUpdate
 from shared.py.wide_events import log
 
 _CLASSIFY_TIMEOUT_SECONDS = 20
@@ -61,16 +59,13 @@ async def classify_new_todo(
         log.warning("todo_classification.failed", todo_id=todo_id, error=str(e))
         return
 
-    updates: dict[str, str] = {}
     if result.disposition == "offer" and result.offer:
-        updates["gaia_offer"] = result.offer.strip()
+        update = TodoUpdate(gaia_offer=result.offer.strip())
     elif result.disposition == "prep" and result.prep_note:
-        updates["notes_content"] = f"## Prep from GAIA\n\n{result.prep_note.strip()}\n"
-    if not updates:
+        update = TodoUpdate(notes_content=f"## Prep from GAIA\n\n{result.prep_note.strip()}\n")
+    else:
         return
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": updates}
-    )
+    await todo_repository.update(todo_id, user_id=user_id, update=update)
     log.info("todo_classification.applied", todo_id=todo_id, disposition=result.disposition)
 
 

@@ -15,8 +15,6 @@ JuiceFS / FUSE mount is required, so tracked todos work in every dev mode.
 from datetime import UTC, datetime
 import re
 
-from bson import ObjectId
-
 from app.constants.todos import (
     ASSIGNEE_GAIA,
     DELIVERABLE_TEMPLATE,
@@ -25,10 +23,16 @@ from app.constants.todos import (
     FACET_NOTES,
     NOTES_TEMPLATE,
     facet_from_doc,
-    gaia_assigned_filter,
 )
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import ExecutionStatus, Priority, TodoModel, TodoResponse
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import (
+    ExecutionStatus,
+    Priority,
+    TodoDocument,
+    TodoModel,
+    TodoResponse,
+    TodoUpdate,
+)
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.todo_canvas_storage import (
     append_facet,
@@ -46,12 +50,12 @@ from app.utils.canvas_vector_utils import (
 from shared.py.wide_events import log
 
 
-def _pin_active_todo(docs: list[dict], active_todo_id: str | None) -> None:
+def _pin_active_todo(docs: list[TodoDocument], active_todo_id: str | None) -> None:
     """Move the matching todo to the front of `docs` in-place (no-op if not found)."""
     if not active_todo_id:
         return
     for i, d in enumerate(docs):
-        if str(d["_id"]) == active_todo_id and i > 0:
+        if d.id == active_todo_id and i > 0:
             docs.insert(0, docs.pop(i))
             return
 
@@ -73,9 +77,9 @@ _KEY_DETAILS_RE = re.compile(r"## Key Details\n((?:(?!\n## ).)*)", re.DOTALL)
 _KEY_DETAILS_MAX_LINES = 5
 
 
-async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
+async def _extract_canvas_key_details(doc: TodoDocument, user_id: str) -> str:
     """Pull the Key Details section text from a tracked todo's notes (empty on miss)."""
-    todo_id = str(doc["_id"])
+    todo_id = doc.id
     try:
         notes = await read_facet(todo_id, user_id, FACET_NOTES)
     except Exception as e:
@@ -91,41 +95,36 @@ async def _extract_canvas_key_details(doc: dict, user_id: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def _format_signal_entry(doc: dict, key_details: str) -> str:
+def _format_signal_entry(doc: TodoDocument, key_details: str) -> str:
     """Render one tracked todo as a signal-matching context bullet (+ indented key details)."""
-    labels = doc.get("labels", [])
-    labels_str = f" [{', '.join(labels)}]" if labels else ""
-    entry = (
-        f'- "{doc.get("title", "")}"{labels_str} '
-        f"(ID: {doc['_id']!s}, vfs: {doc.get('vfs_path', '')})"
-    )
+    labels_str = f" [{', '.join(doc.labels)}]" if doc.labels else ""
+    entry = f'- "{doc.title}"{labels_str} (ID: {doc.id}, vfs: {doc.vfs_path or ""})'
     if key_details:
         for dl in key_details.split("\n")[:_KEY_DETAILS_MAX_LINES]:
             entry += f"\n    {dl.strip()}"
     return entry
 
 
-def _format_tracked_todo_line(doc: dict, now: datetime, active_todo_id: str | None) -> str:
+def _format_tracked_todo_line(doc: TodoDocument, now: datetime, active_todo_id: str | None) -> str:
     """Format one tracked-todo doc as a context-injection summary line.
 
     State (and the blocker question, when waiting) is what lets the agent act
     on a chat reply — "yes send it" needs the proposed item, an answer needs
     the blocked one.
     """
-    age_days = (now - doc.get("created_at", now)).days
-    last_update = (now - doc.get("updated_at", now)).days
-    labels = doc.get("labels", [])
-    labels_str = f" [{', '.join(labels)}]" if labels else ""
-    todo_id = str(doc["_id"])
+    age_days = (now - (doc.created_at or now)).days
+    last_update = (now - (doc.updated_at or now)).days
+    labels_str = f" [{', '.join(doc.labels)}]" if doc.labels else ""
+    todo_id = doc.id
     prefix = "⭐ ACTIVE " if todo_id == active_todo_id else ""
-    state = doc.get("execution_status")
-    state_str = f" | state: {state}" if state else ""
-    if state == ExecutionStatus.NEEDS_YOU.value and doc.get("blocker_question"):
-        state_str += f' | waiting on user: "{doc["blocker_question"]}"'
+    state = doc.execution_status
+    state_str = f" | state: {state.value}" if state else ""
+    if state == ExecutionStatus.NEEDS_YOU and doc.blocker_question:
+        state_str += f' | waiting on user: "{doc.blocker_question}"'
     return (
-        f'  {prefix}"{doc["title"]}"{labels_str}{_format_due_string(doc.get("due_date"), now)}'
+        f'  {prefix}"{doc.title}"{labels_str}{_format_due_string(doc.due_date, now)}'
         f" — {age_days}d old, updated {last_update}d ago"
-        f"{state_str} | ID: {todo_id} | VFS: {doc.get('vfs_path', 'none')}"
+        f"{state_str} | ID: {todo_id} | VFS: {doc.vfs_path or 'none'}"
     )
 
 
@@ -251,16 +250,15 @@ class TrackedTodoService:
             f"- Labels: {', '.join(all_labels)}\n"
         )
 
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {
-                "$set": {
-                    "vfs_path": vfs_path,
-                    "deliverable_content": deliverable_content,
-                    "notes_content": notes_content,
-                    "log_content": log_content,
-                }
-            },
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(
+                vfs_path=vfs_path,
+                deliverable_content=deliverable_content,
+                notes_content=notes_content,
+                log_content=log_content,
+            ),
         )
 
         # Index notes + deliverable in ChromaDB (log is audit noise, skipped).
@@ -289,9 +287,8 @@ class TrackedTodoService:
             # The approval rule's other half: internal work executes without
             # permission — immediately, not only when a schedule happens to be
             # attached. Callers arming their own schedule pass auto_execute=False.
-            await todos_collection.update_one(
-                {"_id": ObjectId(todo_id), "user_id": user_id},
-                {"$set": {"scheduled_at": now}},
+            await todo_repository.update(
+                todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=now)
             )
             await lifecycle.schedule_execution(todo_id, now)
         return result
@@ -299,15 +296,15 @@ class TrackedTodoService:
     @staticmethod
     async def complete_tracked_todo(todo_id: str, user_id: str, summary: str) -> bool:
         """Complete a tracked todo: append completion to log, mark done, archive label."""
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
 
         # Guard against double-completion
-        if doc.get("completed"):
+        if doc.completed:
             return True
 
-        vfs_path = doc.get("vfs_path") or build_vfs_label(user_id, todo_id)
+        vfs_path = doc.vfs_path or build_vfs_label(user_id, todo_id)
         now = datetime.now(UTC)
 
         # Append completion to log
@@ -323,26 +320,13 @@ class TrackedTodoService:
 
         # Update todo (the execution_status flip goes through the lifecycle so
         # the transition is broadcast; it also emits the completion track event).
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {
-                "$set": {
-                    "completed": True,
-                    "completed_at": now,
-                    "vfs_path": archive_path,
-                    "updated_at": now,
-                }
-            },
+        # The repository write invalidates the entity/query cache automatically.
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(completed=True, completed_at=now, vfs_path=archive_path),
         )
         await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.DONE)
-
-        # Invalidate Redis cache so the frontend reflects completion immediately
-        await TodoService._invalidate_cache(
-            user_id=user_id,
-            project_id=str(doc["project_id"]) if doc.get("project_id") else None,
-            todo_id=todo_id,
-            operation="update",
-        )
 
         # Mark as completed in ChromaDB (keep embedding but mark completed)
         await mark_canvas_completed(todo_id)
@@ -364,22 +348,9 @@ class TrackedTodoService:
         an ⭐ ACTIVE marker so the agent can quickly identify the run's
         bound canvas.
         """
-        cursor = todos_collection.find(
-            {
-                "user_id": user_id,
-                "completed": False,
-                # Dismissed/expired proposals are terminal — never re-surface
-                # them to the agent (they teach via the strike summary instead).
-                "execution_status": {
-                    "$nin": [
-                        ExecutionStatus.DISMISSED.value,
-                        ExecutionStatus.EXPIRED.value,
-                    ]
-                },
-                **gaia_assigned_filter(),
-            }
-        ).sort("updated_at", -1)
-        docs = await cursor.to_list(length=15)
+        # Dismissed/expired proposals are terminal — never re-surface them to
+        # the agent (they teach via the strike summary instead).
+        docs = await todo_repository.list_active_gaia_for_summary(user_id, limit=15)
         strikes = await lifecycle.get_rejection_strikes_summary(user_id)
         if not docs:
             return f"\n{strikes}" if strikes else ""
@@ -428,14 +399,7 @@ class TrackedTodoService:
         Includes key IDs (thread_ids, email addresses, event_ids) so the
         agent can match incoming signals to relevant todos.
         """
-        cursor = todos_collection.find(
-            {
-                "user_id": user_id,
-                "completed": False,
-                **gaia_assigned_filter(),
-            }
-        ).sort("updated_at", -1)
-        docs = await cursor.to_list(length=15)
+        docs = await todo_repository.list_active_tracked(user_id, limit=15)
         if not docs:
             return ""
 
@@ -454,14 +418,15 @@ class TrackedTodoService:
         The searchable content is the notes and deliverable facets concatenated
         into the one-doc-per-todo embedding; the log facet is skipped.
         """
-        doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             return False
 
-        allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
+        allow_canvas_fallback = doc.execution_status == ExecutionStatus.PROPOSED
+        raw = doc.model_dump()
         content = _embedding_text(
-            facet_from_doc(doc, FACET_NOTES, allow_canvas_fallback=allow_canvas_fallback),
-            facet_from_doc(doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback),
+            facet_from_doc(raw, FACET_NOTES, allow_canvas_fallback=allow_canvas_fallback),
+            facet_from_doc(raw, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback),
         )
         if not content:
             return False
@@ -470,8 +435,8 @@ class TrackedTodoService:
             todo_id=todo_id,
             content=content,
             user_id=user_id,
-            title=doc.get("title", ""),
-            labels=doc.get("labels"),
+            title=doc.title,
+            labels=doc.labels,
         )
 
     @staticmethod

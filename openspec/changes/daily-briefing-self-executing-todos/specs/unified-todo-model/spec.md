@@ -76,6 +76,14 @@ Agent creation of a GAIA todo SHALL require a `serves` argument naming the goal,
 - **WHEN** the agent calls the creation tool with an empty `serves`
 - **THEN** the service rejects the creation
 
+### Requirement: Goals are a data-model concept, not a user-facing surface
+
+`kind: "goal"` todos SHALL exist only as backstage structure: the nightly pass advances them, child tasks link via `goal_id`, and `serves` traceability references them. The product SHALL NOT ship a goal-lane UI, and goals SHALL NOT link to workflows (`source_todo_id` on a goal is not a supported relationship — recurring goal work is expressed as GAIA todos with `recurrence`). The user-facing primitive count stays at three surfaces: chat, todos, briefing documents.
+
+#### Scenario: A goal renders as a pinned todo, nothing more
+- **WHEN** a user has an active goal lane with three child tasks
+- **THEN** the todos page shows them as todos (the goal pinned, children linked), with no separate lane view, board, or goal-workflow surface
+
 ### Requirement: Dismissal and expiry teach memory
 
 Every Dismiss and every expiry SHALL write a structured memory signal (`proposal_rejected: {kind, serves, reason?}`). Agent runs that propose todos SHALL read these signals and SHALL NOT re-propose a kind rejected or expired 3+ times, unless the user explicitly asks again.

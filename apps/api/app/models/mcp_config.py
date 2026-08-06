@@ -73,7 +73,19 @@ class SubAgentConfig(BaseModel):
     use_direct_tools: bool = False
     disable_retrieve_tools: bool = False
     specific_tools: list[str] | None = None
+    # Toolkit tools to drop from this provider's space: neither bound nor
+    # retrievable/indexed. Use to retire a stock Composio tool that a custom
+    # tool supersedes (e.g. GMAIL_FETCH_EMAILS -> GMAIL_FETCH_MESSAGES).
+    exclude_tools: list[str] | None = None
     auto_bind_tools: list[str] | None = None
+    # Local/general tools (by name) to bind into this subagent's initial set AND
+    # its spawned chunk-reader children — e.g. query_json/grep for a subagent
+    # that offloads large results and must mine them sandbox-free. Unlike
+    # auto_bind_tools (provider tools, parent-only; children get the hardcoded
+    # read/bash/finish set), these propagate to spawned readers so a fan-out
+    # child can use them too. Declare per-integration here instead of branching
+    # on the provider name in the subagent factory.
+    extra_initial_tools: list[str] | None = None
     memory_prompt: str | None = None
     # When False, finish_task is omitted from the subagent's tool set. The
     # subagent must terminate naturally with an AIMessage. The streaming

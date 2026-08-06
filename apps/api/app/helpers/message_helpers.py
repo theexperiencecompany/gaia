@@ -2,7 +2,6 @@ import asyncio
 from datetime import UTC, datetime
 from typing import Literal, NamedTuple
 
-from bson import ObjectId
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.prompts.onboarding_prompts import (
@@ -23,12 +22,11 @@ from app.agents.workspace.paths import (
     safe_upload_filename,
     session_dir,
 )
-from app.db.mongodb.collections import (
-    conversations_collection,
-    todos_collection,
-    users_collection,
-)
+from app.constants.chat import UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS
 from app.db.redis import get_cache, set_cache
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.message_models import (
@@ -37,11 +35,13 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.todo_models import TodoDocument
 from app.models.user_models import OnboardingPhase
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.integrations.user_integrations import get_connected_integrations_named
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.workflow import WorkflowService
+from app.utils.artifact_utils import artifact_url_base
 from app.utils.timezone import Timezone
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
@@ -240,20 +240,29 @@ BACKGROUND_EXECUTION_BANNER = (
 
 
 def build_workspace_session_banner(session_id: str) -> str:
-    """State the absolute path of the agent's own session directory.
+    """State the agent's own session directory and the public artifact URL base.
 
     The agent never otherwise learns its conversation/session id, so a prompt
     that asks it to report an absolute ``/workspace/sessions/<id>/...`` path
     forces it to guess — and a weak model fabricates one, writing the
     deliverable outside the session the artifact watcher scans, where it is
     silently lost. Stating the real path removes the guess.
+
+    The agent also knows a file's workspace path but not the URL the browser
+    fetches it from, so it cannot link or embed an artifact (in an HTML page it
+    generates, an email body, etc.). Stating the public URL base gives it the
+    one fact it is missing.
     """
-    return f"Session directory: {session_dir(session_id)}"
+    return (
+        f"Session directory: {session_dir(session_id)}\n"
+        f"Public artifact URL: a file at `artifacts/<name>` is served at "
+        f"{artifact_url_base(session_id)}/<name>"
+    )
 
 
-def _format_active_todo_banner(todo: dict) -> str:
-    title = todo.get("title", "Untitled")
-    todo_id = str(todo.get("_id") or todo.get("id") or "")
+def _format_active_todo_banner(todo: TodoDocument) -> str:
+    title = todo.title or "Untitled"
+    todo_id = todo.id
     return (
         "🎯 ACTIVE TODO (this run is bound to this todo)\n"
         f"   id: {todo_id}\n"
@@ -270,7 +279,7 @@ async def _build_active_todo_banner(user_id: str, active_todo_id: str | None) ->
     if not active_todo_id:
         return ""
     try:
-        doc = await todos_collection.find_one({"_id": ObjectId(active_todo_id), "user_id": user_id})
+        doc = await todo_repository.get(active_todo_id, user_id=user_id)
         if not doc:
             return ""
         return _format_active_todo_banner(doc)
@@ -713,11 +722,8 @@ async def get_onboarding_system_prompt_if_applicable(
 ) -> str | None:
     """Return the onboarding system prompt for onboarding/demo turns, else ``None``."""
     try:
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id},
-            {"is_onboarding_conversation": 1, "messages": 1},
-        )
-        is_tagged_onboarding = bool(conv and conv.get("is_onboarding_conversation"))
+        probe = await conversation_repository.get_onboarding_probe(conversation_id)
+        is_tagged_onboarding = bool(probe and probe.is_onboarding_conversation)
         is_run_now_demo = bool(
             latest_user_message and latest_user_message.lstrip().startswith(_RUN_NOW_DEMO_PREFIX)
         )
@@ -726,30 +732,24 @@ async def get_onboarding_system_prompt_if_applicable(
             return None
 
         if is_tagged_onboarding:
-            message_count = len(conv.get("messages", [])) if conv else 0
+            message_count = probe.message_count if probe else 0
             if message_count >= 7:
-                await users_collection.update_one(
-                    {"_id": ObjectId(user_id)},
-                    {"$set": {"onboarding.phase": OnboardingPhase.COMPLETED}},
-                )
+                await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED.value)
                 log.info(
                     f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
                 )
                 return None
 
-        user_doc = await users_collection.find_one(
-            {"_id": ObjectId(user_id)},
-            {"onboarding.phase": 1, "name": 1, "onboarding.preferences": 1},
-        )
+        user_doc = await user_repository.get(user_id)
         if not user_doc:
             return None
 
-        phase = user_doc.get("onboarding", {}).get("phase", "initial")
+        onboarding = user_doc.onboarding or {}
+        phase = onboarding.get("phase", "initial")
         if phase == OnboardingPhase.COMPLETED:
             return None
 
-        name = user_doc.get("name", "there")
-        onboarding = user_doc.get("onboarding", {})
+        name = user_doc.name or "there"
         profession = onboarding.get("preferences", {}).get("profession", "")
         triage_summary = onboarding.get("triage_summary", "")
 
@@ -773,14 +773,22 @@ def format_files_list(
     files_data: list[FileData] | None,
     file_ids: list[str] | None = None,
     conversation_id: str | None = None,
+    *,
+    include_processing_guide: bool = True,
 ) -> str:
-    """Surface uploaded files to the agent as concrete FS paths.
+    """Surface uploaded files to an agent with path and summary.
 
-    The agent reads/writes files via bash/read/write/edit; the upload
-    pipeline mirrors every attachment into the session's read-only
-    `user-uploaded/` dir. Tell the agent the on-disk path explicitly and
-    point at the session GUIDE for the action conventions — no
-    `query_files` tool indirection, no path guessing.
+    Each attachment is shown with its on-disk path and a truncated summary (so
+    the reader knows what the file is without a tool call). The summary text is
+    enriched server-side by the caller; this helper only formats. Pure — no
+    DB/FS access.
+
+    ``include_processing_guide`` controls the audience:
+    - ``True`` (executor): adds the `full summary` sidecar pointer and the full
+      read/bash/scratch/artifacts how-to — the executor holds those tools.
+    - ``False`` (comms): a lean block — name, path, summary, and a single line
+      telling it to delegate real file work. Comms has no file tools; the
+      executor-voice how-to only baits it into over-delegating.
     """
     if not files_data or (file_ids is not None and not file_ids):
         return ""
@@ -800,19 +808,38 @@ def format_files_list(
         else:
             path = f"./user-uploaded/{on_disk}"
         lines.append(f"- {file.filename}  →  `{path}`")
+        if file.description:
+            summary = file.description.strip()
+            if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
+                summary = summary[:UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS].rstrip() + "…"
+            lines.append(f"    summary: {summary}")
+            if conversation_id and include_processing_guide:
+                lines.append(f"    full summary: `{path}.summary.md`")
 
     if not lines:
         return ""
 
     file_block = "\n".join(lines)
+
+    if not include_processing_guide:
+        return (
+            f"\n[Uploaded files]\n{file_block}\n\n"
+            "Answer simple questions from these summaries directly; for the full "
+            "contents or any work on the files, delegate to the executor.\n"
+        )
+
     return f"""
-[Attached files for this turn]
+[Uploaded files]
 {file_block}
 
-These files are on the conversation filesystem in `./user-uploaded/`
-(read-only). To process them: copy into `./scratch/`, do your work,
-and write any user-visible output into `./artifacts/` — files written
-there render as cards in the chat immediately.
+How to work with these files:
+- What is it? — the `summary` above already says; read the `full summary` file
+  for the complete write-up.
+- Need the raw content? — read the file at its path with read/bash.
+- Searching across several uploaded files? — use `search_uploaded_files`.
+The files live in `./user-uploaded/` (read-only). To process them: copy into
+`./scratch/`, do your work, and write user-visible output into `./artifacts/`
+— files written there render as cards in the chat immediately.
 
 See `/workspace/sessions/{conversation_id or "<conv>"}/GUIDE.md` for the
 full layout and conventions, and `/workspace/INDEX.md` for the top level.

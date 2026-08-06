@@ -22,6 +22,14 @@ CONNECT_LINK_TTL_MINUTES = 60
 # Session cookie name (WorkOS sealed session)
 WOS_SESSION_COOKIE = "wos_session"
 
+# Dev auth bypass: per-request impersonation header (development only). When the
+# bypass is active, this header selects the Mongo user to authenticate as instead
+# of DEV_AUTH_BYPASS_EMAIL, letting one server act as many users without restarts.
+DEV_USER_HEADER = "X-Dev-User"
+# Remediation shown when the resolved dev-bypass user does not exist. The exact
+# "mint it via ..." phrasing is the actionable fix — keep it in the message.
+DEV_USER_MISSING_HINT = "mint it via POST /api/v1/dev/users"
+
 # OAuth login/signup method identifiers
 LOGIN_METHOD_WORKOS = "workos"
 LOGIN_METHOD_GOOGLE = "google"

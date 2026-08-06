@@ -142,14 +142,16 @@ class TestUpdateChannelPreferences:
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
         new_callable=AsyncMock,
     )
-    @patch("app.api.v1.endpoints.notification.users_collection")
+    @patch(
+        "app.api.v1.endpoints.notification.user_repository.set_channel_preferences",
+        new_callable=AsyncMock,
+    )
     async def test_update_channel_preferences_success(
         self,
-        mock_users: MagicMock,
+        mock_set_prefs: AsyncMock,
         mock_fetch: AsyncMock,
         client: AsyncClient,
     ):
-        mock_users.update_one = AsyncMock()
         mock_fetch.return_value = {
             "telegram": False,
             "discord": True,
@@ -169,14 +171,17 @@ class TestUpdateChannelPreferences:
         "app.api.v1.endpoints.notification.fetch_channel_preferences",
         new_callable=AsyncMock,
     )
-    @patch("app.api.v1.endpoints.notification.users_collection")
+    @patch(
+        "app.api.v1.endpoints.notification.user_repository.set_channel_preferences",
+        new_callable=AsyncMock,
+    )
     async def test_update_channel_preferences_error(
         self,
-        mock_users: MagicMock,
+        mock_set_prefs: AsyncMock,
         mock_fetch: AsyncMock,
         client: AsyncClient,
     ):
-        mock_users.update_one = AsyncMock(side_effect=Exception("db fail"))
+        mock_set_prefs.side_effect = Exception("db fail")
         response = await client.put(
             f"{NOTIF_BASE}/preferences/channels",
             json={"telegram": True},

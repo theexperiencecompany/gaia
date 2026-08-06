@@ -8,6 +8,13 @@ from typing import Any, Final
 
 ONBOARDING_TODO_LIMIT = 3
 
+# Label marking a todo seeded during onboarding — used to fetch and to purge them.
+ONBOARDING_LABEL: Final[str] = "onboarding"
+
+# Label added by the maintenance sweep to an overdue todo with no scheduled
+# follow-up, so the UI can surface it for attention.
+NEEDS_FOLLOW_UP_LABEL: Final[str] = "needs-follow-up"
+
 # DEPRECATED: legacy discriminator for GAIA-owned todos, fully superseded by the
 # ``assignee`` field. The runtime no longer reads it — only the one-time backfill
 # (scripts/migrate_todo_assignee.py) still references this constant to find and

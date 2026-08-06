@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable, Mapping
 from functools import cache
 from typing import Any, TypeVar
@@ -10,7 +11,7 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from typing_extensions import TypedDict
 
 from app.agents.llm.exceptions import (
@@ -26,11 +27,15 @@ from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
+    LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    SIM_STUB_API_KEY,
+    SIM_STUB_BASE_URL,
+    SIM_STUB_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -81,14 +86,36 @@ class LLMProvider(TypedDict):
     instance: BaseChatModel
 
 
+@cache
+def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The one model used for EVERYTHING under GAIA_SIM_MODE: an OpenAI-wire
+    client pointed at the local scripted stub (tools/llm-stub). Deliberately
+    exposes no configurable fields — provider/model pinning is meaningless when
+    every request lands on the stub, so pinned config is silently ignored."""
+    llm = ChatOpenRouter(
+        model=SIM_STUB_MODEL_NAME,
+        temperature=temperature,
+        streaming=True,
+        stream_usage=True,
+        api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
+        base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+    )
+    # Same reason as _build_default_llm: fractional-window middleware needs a
+    # context-window profile at graph-build time.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
 @lazy_provider(
     name="gemini_llm",
-    required_keys=[settings.GOOGLE_API_KEY],
+    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.GOOGLE_API_KEY],
     strategy=MissingKeyStrategy.WARN,
     warning_message="Google API key not configured. Models provided by Google Gemini will not work.",
 )
 def init_gemini_llm():
     """Initialize Gemini LLM with default model."""
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
     llm = ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=DEFAULT_LLM_TEMPERATURE,
@@ -101,7 +128,7 @@ def init_gemini_llm():
 
 @lazy_provider(
     name="openrouter_llm",
-    required_keys=[settings.OPENROUTER_API_KEY],
+    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
     strategy=MissingKeyStrategy.WARN,
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
 )
@@ -115,6 +142,11 @@ def init_openrouter_llm():
     routing (the first-party MiniMax pin) rides `model_kwargs` (OpenRouter's
     `provider` request param). Both are per-request configurable.
     """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    # No base_url kwarg here on purpose: passing None would override the field's
+    # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
+    # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
     return ChatOpenRouter(
         model=PROVIDER_MODELS["openrouter"],
         temperature=DEFAULT_LLM_TEMPERATURE,
@@ -280,6 +312,8 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     cached per temperature so hot paths reuse one HTTP client instead of
     rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
     configured."""
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature)
     if not settings.GOOGLE_API_KEY:
         raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
     return _build_default_llm(temperature)
@@ -331,17 +365,32 @@ async def ainvoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
-    given) on a provider failure. Bugs and CancelledError propagate."""
-    try:
-        return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-            messages, config=config
-        )
-    except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        return _stamp_fallback(
-            await _resolve_fallback(fallback, label, primary_error).ainvoke(messages, config=config)
-        )
+    given) on a provider failure. Bugs and CancelledError propagate.
+
+    ``timeout`` is a total wall-clock ceiling over the retries, their backoff sleeps
+    and the fallback attempt — the guarantee being that this call cannot outlive it.
+    Retry alone cannot cover a provider that accepts the connection and then never
+    answers, because nothing is ever raised to retry on. ``None`` disables it.
+
+    The ceiling deliberately wraps the fallback too. Expiring mid-fallback raising
+    ``TimeoutError`` is the point: the alternative is catching it as a fallback trigger
+    (``TimeoutError`` is in ``LLM_FALLBACK_EXCEPTIONS``) and starting a second,
+    unbounded attempt — which is exactly the stall this exists to prevent.
+    """
+    async with asyncio.timeout(timeout):
+        try:
+            return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                messages, config=config
+            )
+        except LLM_FALLBACK_EXCEPTIONS as primary_error:
+            return _stamp_fallback(
+                await _resolve_fallback(fallback, label, primary_error).ainvoke(
+                    messages, config=config
+                )
+            )
 
 
 def invoke_llm(
@@ -362,6 +411,20 @@ def invoke_llm(
         )
 
 
+# Marks an internal one-shot LLM call so the chat token stream drops its output instead
+# of rendering it as assistant text. Any structured/internal call made while a graph is
+# streaming (HIL tool classification, the intent judge, the conversational resolver) must
+# carry this, or its structured-output tokens leak into the conversation as a bot message.
+# ``silent`` is the flag the messages-stream consumers read (helpers/agent_helpers.py);
+# ``metadata.silent`` is the canonical location, the top-level key mirrors it for the
+# other consumers. Pass as ``config=SILENT_LLM_CONFIG``; it merges with the ambient run
+# config, so tracing and thread context are preserved.
+SILENT_LLM_CONFIG: RunnableConfig = {
+    "silent": True,
+    "metadata": {"silent": True},
+}  # type: ignore[typeddict-unknown-key]
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -369,6 +432,7 @@ async def ainvoke_structured(
     label: str,
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> _StructuredT:
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
@@ -377,4 +441,4 @@ async def ainvoke_structured(
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
-    return await ainvoke_llm(structured, prompt, config=config, label=label)
+    return await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout)

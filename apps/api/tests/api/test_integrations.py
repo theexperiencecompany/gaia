@@ -1,32 +1,35 @@
 """Tests for public integration endpoints."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
+
+from app.models.integration_models import Integration
 
 INTEGRATION_ID = "integ-001"
-SLUG = "my-tool-mcp-custom-integ001"
 
 
-def _make_integration_doc(
+def _make_integration(
     integration_id: str = INTEGRATION_ID,
     name: str = "My Tool",
-    is_public: bool = True,
-) -> dict:
-    return {
-        "_id": "fake-oid",
-        "integration_id": integration_id,
-        "name": name,
-        "description": "A test integration",
-        "category": "custom",
-        "is_public": is_public,
-        "tools": [{"name": "tool_a", "description": "does A"}],
-        "mcp_config": {
-            "server_url": "https://mcp.example.com",
-            "requires_auth": False,
-            "auth_type": "none",
-        },
-        "clone_count": 5,
-        "icon_url": None,
-    }
+) -> Integration:
+    return Integration.model_validate(
+        {
+            "integration_id": integration_id,
+            "name": name,
+            "description": "A test integration",
+            "category": "custom",
+            "managed_by": "mcp",
+            "source": "custom",
+            "is_public": True,
+            "tools": [{"name": "tool_a", "description": "does A"}],
+            "mcp_config": {
+                "server_url": "https://mcp.example.com",
+                "requires_auth": False,
+                "auth_type": "none",
+            },
+            "clone_count": 5,
+            "icon_url": None,
+        }
+    )
 
 
 class TestSearchIntegrations:
@@ -43,9 +46,6 @@ class TestSearchIntegrations:
                 "relevance_score": 0.95,
             }
         ]
-        doc = _make_integration_doc()
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[doc])
 
         with (
             patch(
@@ -53,15 +53,16 @@ class TestSearchIntegrations:
                 new_callable=AsyncMock,
                 return_value=search_results,
             ),
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
         ):
-            mock_coll.find = MagicMock(return_value=cursor)
+            mock_repo.find_public_by_ids = AsyncMock(return_value=[_make_integration()])
 
             resp = await client.get("/api/v1/integrations/search?q=tool")
             assert resp.status_code == 200
             data = resp.json()
             assert len(data["integrations"]) == 1
             assert data["integrations"][0]["integrationId"] == INTEGRATION_ID
+            mock_repo.find_public_by_ids.assert_awaited_once_with([INTEGRATION_ID])
 
     async def test_search_no_matches(self, client):
         with patch(
@@ -76,33 +77,33 @@ class TestSearchIntegrations:
 
 class TestGetPublicIntegration:
     async def test_invalid_slug(self, client):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-
+        """A slug that parses to nothing never reaches the legacy prefix lookup."""
         with (
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
             patch(
                 "app.api.v1.endpoints.integrations.public.parse_integration_slug",
                 return_value={},
             ),
         ):
-            mock_coll.aggregate = MagicMock(return_value=cursor)
+            mock_repo.get_public_by_slug = AsyncMock(return_value=None)
+            mock_repo.get_public_by_id_prefix = AsyncMock(return_value=None)
 
             resp = await client.get("/api/v1/integrations/public/bad-slug")
             assert resp.status_code == 404
+            mock_repo.get_public_by_id_prefix.assert_not_awaited()
 
     async def test_not_found(self, client):
-        cursor = MagicMock()
-        cursor.to_list = AsyncMock(return_value=[])
-
+        """A parseable legacy slug falls back to the id-prefix lookup, then 404s."""
         with (
             patch(
                 "app.api.v1.endpoints.integrations.public.parse_integration_slug",
                 return_value={"shortid": "abc123"},
             ),
-            patch("app.api.v1.endpoints.integrations.public.integrations_collection") as mock_coll,
+            patch("app.api.v1.endpoints.integrations.public.integration_repository") as mock_repo,
         ):
-            mock_coll.aggregate = MagicMock(return_value=cursor)
+            mock_repo.get_public_by_slug = AsyncMock(return_value=None)
+            mock_repo.get_public_by_id_prefix = AsyncMock(return_value=None)
 
             resp = await client.get("/api/v1/integrations/public/some-slug")
             assert resp.status_code == 404
+            mock_repo.get_public_by_id_prefix.assert_awaited_once_with("abc123")

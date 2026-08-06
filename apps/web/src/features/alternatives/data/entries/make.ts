@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Error handling and debugging requires significant technical skill",
     "No personal assistant or proactive features beyond automation execution",
   ],
-  metaTitle: "Best Make.com Alternative in 2026 | GAIA",
+  metaTitle: "Best Make.com Alternative in 2026",
   metaDescription:
     "Make.com is powerful but complex and costly. GAIA is a proactive AI assistant with built-in workflow automation and natural language setup. Open-source, free tier.",
   keywords: [

@@ -40,6 +40,7 @@ class ArtifactInfo:
     size_bytes: int
     mtime: float
     content_type: str | None
+    inode: int = 0
 
 
 def _list_files(base: Path) -> list[ArtifactInfo]:
@@ -95,6 +96,7 @@ def _scan_one_dir(dir_path: str, base: Path, stack: list[str], out: list[Artifac
                         size_bytes=st.st_size,
                         mtime=st.st_mtime,
                         content_type=detect_content_type(entry.name),
+                        inode=st.st_ino,
                     )
                 )
     except OSError:
@@ -119,6 +121,27 @@ async def list_user_uploaded(user_id: str, conv_id: str) -> list[ArtifactInfo]:
 
     async with fs_timer(FsOps.LIST_USER_UPLOADED):
         return await asyncio.to_thread(_go)
+
+
+def _safe_inode(path: Path) -> int | None:
+    try:
+        return path.stat().st_ino
+    except OSError:
+        return None
+
+
+async def session_dir_inodes(user_id: str, conv_id: str) -> tuple[int | None, int | None]:
+    """``(conv_dir_inode, artifacts_dir_inode)`` for the watcher's scope index.
+
+    Lets a mutating-op inode from the FUSE accesslog (a create/unlink under
+    ``artifacts/``, or the session dir itself) resolve back to this conversation.
+    """
+
+    def _go() -> tuple[int | None, int | None]:
+        base = session_base(user_id, conv_id)
+        return _safe_inode(base), _safe_inode(base / ARTIFACTS_DIRNAME)
+
+    return await asyncio.to_thread(_go)
 
 
 async def stat_artifact(user_id: str, conv_id: str, rel_path: str) -> ArtifactInfo | None:
@@ -146,6 +169,7 @@ async def stat_artifact(user_id: str, conv_id: str, rel_path: str) -> ArtifactIn
             size_bytes=st.st_size,
             mtime=st.st_mtime,
             content_type=detect_content_type(target.name),
+            inode=st.st_ino,
         )
 
     async with fs_timer(FsOps.STAT_ARTIFACT):

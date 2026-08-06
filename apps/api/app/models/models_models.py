@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.db.repositories.base import MongoDocument
 
 
 class ModelProvider(str, Enum):
@@ -20,10 +22,10 @@ class PlanType(str, Enum):
     PRO = "pro"
 
 
-class ModelConfig(BaseModel):
-    """Configuration for an AI model."""
+class ModelConfig(MongoDocument):
+    """Configuration for an AI model as stored in the ``ai_models`` collection."""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(extra="ignore", arbitrary_types_allowed=True)
 
     model_id: str = Field(..., description="Unique identifier for the model")
     name: str = Field(..., description="Display name of the model")
@@ -57,6 +59,15 @@ class ModelConfig(BaseModel):
     )
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class AiModelUpdate(BaseModel):
+    """Typed ``$set`` fields for an AI model row (admin/seed edits)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    is_active: bool | None = None
+    is_default: bool | None = None
 
 
 class ModelResponse(BaseModel):

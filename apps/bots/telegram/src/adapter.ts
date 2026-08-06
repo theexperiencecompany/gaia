@@ -720,7 +720,9 @@ export class TelegramAdapter extends BaseBotAdapter {
 
     try {
       await ctx.api.sendChatAction(chatId, "typing");
-    } catch {}
+    } catch {
+      /* typing action is best-effort */
+    }
 
     try {
       const outcome = await this.resolveIncomingMedia(
@@ -749,7 +751,9 @@ export class TelegramAdapter extends BaseBotAdapter {
         await ctx.reply(
           friendlyMediaError(media.kind, err, this.gaia.getPricingUrl()),
         );
-      } catch {}
+      } catch {
+        /* the error notice itself failing is not actionable */
+      }
     }
   }
 
@@ -868,7 +872,10 @@ export class TelegramAdapter extends BaseBotAdapter {
       },
 
       startTyping: async () => {
-        if (!chatId) return () => {};
+        if (!chatId)
+          return () => {
+            /* no chat to type into */
+          };
         return this.startTypingIndicator(
           () => api.sendChatAction(chatId, "typing"),
           TELEGRAM_TYPING_REFRESH_INTERVAL_MS,

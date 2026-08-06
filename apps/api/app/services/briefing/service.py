@@ -13,8 +13,6 @@ import json
 import re
 from uuid import uuid4
 
-from bson import ObjectId
-
 from app.agents.prompts.briefing_prompts import (
     build_briefing_voice_prompt,
     build_overnight_work_prompt,
@@ -32,7 +30,8 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
 from app.constants.todos import FACET_DELIVERABLE, PROPOSAL_TTL_HOURS, facet_from_doc
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.users import user_repository
 from app.models.briefing_models import BriefingKind, BriefingModel, BriefingPayload
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
@@ -47,8 +46,8 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.models.todo_models import ExecutionStatus
-from app.services.briefing import chat_sync, context, delivery_channels, dormancy, repository
+from app.models.todo_models import ExecutionStatus, TodoDocument
+from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
 from app.services.notification_service import notification_service
@@ -100,7 +99,7 @@ async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_ke
     """One silent agent turn on a fresh per-day thread; returns the final text."""
     # Inline import breaks the agent<->workflow import cycle (same pattern the
     # worker uses for call_agent_silent).
-    from app.agents.core.agent import call_agent_silent
+    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415
 
     # construct_langchain_messages reads the human turn from `messages`
     # (`message` alone is not consulted when no workflow/tool is selected).
@@ -155,21 +154,21 @@ def _format_awards(badge_labels: list[str]) -> str:
     )
 
 
-def _group_by_serves(docs: list[dict]) -> str:
+def _group_by_serves(docs: list[TodoDocument]) -> str:
     """GAIA completions grouped by the goal they served, each with a deliverable
     snippet so the digest voices specifics instead of bare titles."""
-    groups: dict[str, list[dict]] = {}
+    groups: dict[str, list[TodoDocument]] = {}
     for d in docs[:15]:
-        key = (d.get("serves") or "").strip() or "unfiled"
+        key = (d.serves or "").strip() or "unfiled"
         groups.setdefault(key, []).append(d)
     lines: list[str] = []
     for serves, items in groups.items():
         lines.append(f"{serves}:")
         for d in items:
             snippet = _canvas_snippet(
-                facet_from_doc(d, FACET_DELIVERABLE, allow_canvas_fallback=True)
+                facet_from_doc(d.model_dump(), FACET_DELIVERABLE, allow_canvas_fallback=True)
             )
-            title = d.get("title", "untitled")
+            title = d.title or "untitled"
             lines.append(f"  - {title}" + (f": {snippet}" if snippet else ""))
     return "\n".join(lines)
 
@@ -183,8 +182,7 @@ def _format_week(completed: context.CompletedWork) -> str:
         )
     if completed.user:
         lines.append(
-            "You finished:\n"
-            + "\n".join(f"- {d.get('title', 'untitled')}" for d in completed.user[:15])
+            "You finished:\n" + "\n".join(f"- {d.title or 'untitled'}" for d in completed.user[:15])
         )
     return "\n\n".join(lines)
 
@@ -264,7 +262,7 @@ async def _gather_artifacts(
     """
     out: dict[str, _ArtifactFact] = {}
     for lane in lanes:
-        action_ids = {str(d["_id"]) for d in [*lane.staged, *lane.needs_you]}
+        action_ids = {d.id for d in [*lane.staged, *lane.needs_you]}
         for doc in [
             *lane.completed,
             *lane.staged,
@@ -272,15 +270,15 @@ async def _gather_artifacts(
             *lane.needs_you,
             *lane.failed,
         ]:
-            todo_id = str(doc["_id"])
+            todo_id = doc.id
             if todo_id in out:
                 continue
             # The briefing summarises and links the DELIVERABLE facet — the
             # send-ready output — not GAIA's private working notes. Fields are
             # projected in context.gather_goal_lanes, so no extra read here.
-            allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
+            allow_canvas_fallback = doc.execution_status == ExecutionStatus.PROPOSED
             deliverable = facet_from_doc(
-                doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback
+                doc.model_dump(), FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback
             )
             out[todo_id] = _ArtifactFact(
                 snippet=_canvas_snippet(deliverable),
@@ -375,42 +373,36 @@ def _lane_items(lane: context.GoalLane) -> list[dict]:
     for d in lane.completed:
         items.append(
             {
-                "text": f"Done overnight: {d.get('title')}",
-                "todo_id": str(d["_id"]),
+                "text": f"Done overnight: {d.title}",
+                "todo_id": d.id,
                 "kind": "lookback",
             }
         )
     for d in lane.staged:
-        expiry = (
-            " (expires within a day)" if _expires_within_a_day(d.get("created_at"), now) else ""
-        )
+        expiry = " (expires within a day)" if _expires_within_a_day(d.created_at, now) else ""
         items.append(
             {
-                "text": f"Staged and ready: {d.get('title')}{expiry} — a reply releases it.",
-                "todo_id": str(d["_id"]),
+                "text": f"Staged and ready: {d.title}{expiry} — a reply releases it.",
+                "todo_id": d.id,
                 "kind": "proposal",
             }
         )
     for d in lane.running:
-        items.append(
-            {"text": f"In progress: {d.get('title')}", "todo_id": str(d["_id"]), "kind": "gaia"}
-        )
+        items.append({"text": f"In progress: {d.title}", "todo_id": d.id, "kind": "gaia"})
     for d in lane.failed:
-        cause = d.get("error_message") or "unknown cause"
+        cause = d.error_message or "unknown cause"
         items.append(
             {
-                "text": f"Failed: {d.get('title')} — {cause}",
-                "todo_id": str(d["_id"]),
+                "text": f"Failed: {d.title} — {cause}",
+                "todo_id": d.id,
                 "kind": "note",
             }
         )
     for d in lane.needs_you:
-        items.append(
-            {"text": f"Needs you: {d.get('title')}", "todo_id": str(d["_id"]), "kind": "you"}
-        )
+        items.append({"text": f"Needs you: {d.title}", "todo_id": d.id, "kind": "you"})
     for wf in lane.workflows:
-        status = wf.get("last_status") or "has not run yet"
-        items.append({"text": f"Workflow '{wf['title']}': last run {status}.", "kind": "note"})
+        status = wf.last_status or "has not run yet"
+        items.append({"text": f"Workflow '{wf.title}': last run {status}.", "kind": "note"})
     return items
 
 
@@ -525,9 +517,7 @@ def _bootstrap_should_skip(user: dict, clock: UserClock, has_goal: bool) -> bool
 
 async def _clear_bootstrap(user_id: str, user: dict) -> None:
     if user.get(BOOTSTRAP_FIELD):
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)}, {"$unset": {BOOTSTRAP_FIELD: ""}}
-        )
+        await user_repository.clear_briefing_bootstrap(user_id)
 
 
 async def run_overnight_work(user_id: str) -> None:
@@ -617,7 +607,7 @@ async def run_daily_briefing(user_id: str) -> None:
     strikes_block = await get_rejection_strikes_summary(user_id)
     winback = await context.compute_winback_state(user_id)
     streak = await activity.compute_streak(user_id, clock.tz)
-    is_first = not await repository.has_daily_briefing(user_id)
+    is_first = not await briefing_repository.has_daily_briefing(user_id)
 
     # Gone-quiet backoff: a winback already went out and the user is still silent.
     if winback.should_back_off:
@@ -679,11 +669,13 @@ async def run_daily_briefing(user_id: str) -> None:
         }
     )
 
-    briefing = await repository.upsert_briefing(
+    briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_DAILY, payload
     )
     channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_DAILY)
-    await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_DAILY, channels)
+    await briefing_repository.set_delivered_channels(
+        user_id, clock.date_str, BRIEFING_KIND_DAILY, channels
+    )
     # The bot's conversation must contain the brief it "sent", so replies like
     # "yeah send them" land with real context instead of a cold thread.
     await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
@@ -720,7 +712,7 @@ async def run_weekly_digest(user_id: str) -> None:
         return
 
     since = context.day_start_utc(clock, days_ago=7)
-    completed = await context.gather_completed_since(user_id, since, include_deliverables=True)
+    completed = await context.gather_completed_since(user_id, since)
     hours_saved = round(len(completed.gaia) * MINUTES_SAVED_PER_GAIA_TODO / 60)
     streak = await activity.compute_streak(user_id, clock.tz)
     badge_labels = await check_and_award_badges(user_id, clock, streak)
@@ -736,11 +728,13 @@ async def run_weekly_digest(user_id: str) -> None:
     payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
     payload.hue = hue_for_day(clock.day_of_year)
 
-    briefing = await repository.upsert_briefing(
+    briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload
     )
     channels = await _deliver(user_id, user, briefing, payload, NOTIFICATION_KIND_BRIEFING_WEEKLY)
-    await repository.set_delivered_channels(user_id, clock.date_str, BRIEFING_KIND_WEEKLY, channels)
+    await briefing_repository.set_delivered_channels(
+        user_id, clock.date_str, BRIEFING_KIND_WEEKLY, channels
+    )
     await chat_sync.persist_delivered_brief(user_id, user, _platform_parts(payload), channels)
 
     track(

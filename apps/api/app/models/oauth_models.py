@@ -64,6 +64,12 @@ class OAuthIntegration(BaseModel):
     managed_by: Literal["self", "composio", "mcp", "internal"]
     composio_config: ComposioConfig | None = None
     mcp_config: MCPConfig | None = None
+    # Tool names/slugs this integration's HIL gate must treat as destructive
+    # (e.g. GMAIL_SEND_EMAIL). Integration-agnostic — applies to Composio and
+    # built-in MCP configs alike. ``None`` = uncurated: the HIL LLM classifier
+    # resolves each tool at gate time and fails closed. A list (possibly empty)
+    # = reviewed: exactly those are destructive, the rest safe.
+    destructive_tools: list[str] | None = None
     associated_triggers: list[TriggerConfig] = []
     subagent_config: SubAgentConfig | None = None
     metadata_config: ProviderMetadataConfig | None = None

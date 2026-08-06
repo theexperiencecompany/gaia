@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Perplexity excels at AI-powered research and search. GAIA goes beyond research to proactively manage your entire digital workflow with 50+ tool integrations.",
   metaTitle:
-    "Perplexity Alternative with Task & Email Management | GAIA vs Perplexity",
+    "Perplexity Alternative with Task & Email Management — GAIA vs Perplexity",
   metaDescription:
     "Perplexity excels at AI search but stops at information — it won't manage your inbox or automate tasks. GAIA is an open-source Perplexity alternative that turns research into action across email, calendar, and 50+ tools.",
   keywords: [

@@ -12,15 +12,11 @@ from zoneinfo import ZoneInfo
 
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.rate_limits import RateLimitPeriod, get_limits_for_plan, get_reset_time
-from app.constants.todos import (
-    GAIA_TODO_EXECUTIONS_FEATURE,
-    gaia_assigned_filter,
-    user_assigned_filter,
-)
-from app.db.mongodb.collections import todos_collection
+from app.constants.todos import GAIA_TODO_EXECUTIONS_FEATURE
+from app.db.repositories.briefings import briefing_repository
+from app.db.repositories.todos import todo_repository
 from app.models.payment_models import PlanType
-from app.models.todo_models import ExecutionStatus
-from app.services.briefing.repository import get_latest_briefing
+from app.models.todo_models import TodoDocument
 from app.services.calendar_service import fetch_calendar_events
 from shared.py.wide_events import log
 
@@ -37,110 +33,78 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
 
 
-def _base_item(doc: dict[str, Any]) -> dict[str, Any]:
+def _base_item(doc: TodoDocument) -> dict[str, Any]:
     return {
-        "todo_id": str(doc["_id"]),
-        "title": doc.get("title", "untitled"),
-        "serves": doc.get("serves"),
+        "todo_id": doc.id,
+        "title": doc.title or "untitled",
+        "serves": doc.serves,
     }
 
 
 async def _needs_you(user_id: str) -> list[dict[str, Any]]:
-    query = {
-        "user_id": user_id,
-        "completed": False,
-        "kind": {"$ne": "goal"},
-        "execution_status": {
-            "$in": [ExecutionStatus.PROPOSED.value, ExecutionStatus.NEEDS_YOU.value]
-        },
-        **gaia_assigned_filter(),
-    }
-    cursor = todos_collection.find(query).sort("created_at", -1).limit(_SECTION_LIMIT)
+    docs = await todo_repository.list_needs_you(user_id, limit=_SECTION_LIMIT)
     return [
         {
             **_base_item(doc),
-            "execution_status": doc.get("execution_status"),
-            "blocker_question": doc.get("blocker_question"),
-            "conversation_id": doc.get("last_run_conversation_id"),
+            "execution_status": doc.execution_status.value if doc.execution_status else None,
+            "blocker_question": doc.blocker_question,
+            "conversation_id": doc.last_run_conversation_id,
         }
-        async for doc in cursor
+        for doc in docs
     ]
 
 
 async def _in_flight(user_id: str) -> list[dict[str, Any]]:
-    query = {
-        "user_id": user_id,
-        "completed": False,
-        "kind": {"$ne": "goal"},
-        "execution_status": {"$in": [ExecutionStatus.QUEUED.value, ExecutionStatus.RUNNING.value]},
-        **gaia_assigned_filter(),
-    }
-    cursor = todos_collection.find(query).sort("scheduled_at", -1).limit(_SECTION_LIMIT)
+    docs = await todo_repository.list_in_flight(user_id, limit=_SECTION_LIMIT)
     return [
         {
             **_base_item(doc),
-            "execution_status": doc.get("execution_status"),
-            "started_at": _iso(doc.get("scheduled_at")),
-            "conversation_id": doc.get("last_run_conversation_id"),
+            "execution_status": doc.execution_status.value if doc.execution_status else None,
+            "started_at": _iso(doc.scheduled_at),
+            "conversation_id": doc.last_run_conversation_id,
         }
-        async for doc in cursor
+        for doc in docs
     ]
 
 
 async def _suggested(user_id: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
     # Due-today todos already render in "Your tasks" (with the offer tag), so
     # this section only surfaces offers the day view would otherwise miss.
-    query = {
-        "user_id": user_id,
-        "completed": False,
-        "gaia_offer": {"$nin": [None, ""]},
-        "gaia_offer_dismissed": {"$ne": True},
-        "$nor": [
-            {"due_date": {"$gte": start, "$lt": end}},
-            {"scheduled_at": {"$gte": start, "$lt": end}},
-        ],
-        **user_assigned_filter(),
-    }
-    cursor = todos_collection.find(query).sort("updated_at", -1).limit(_SECTION_LIMIT)
-    return [{**_base_item(doc), "gaia_offer": doc.get("gaia_offer")} async for doc in cursor]
+    docs = await todo_repository.list_suggested_offers(
+        user_id, day_start=start, day_end=end, limit=_SECTION_LIMIT
+    )
+    return [{**_base_item(doc), "gaia_offer": doc.gaia_offer} for doc in docs]
 
 
 async def _your_tasks(user_id: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
     # Deadline-only on purpose: a scheduled_at is GAIA's plumbing, a due_date
     # is the user's own commitment for the day.
-    query = {
-        "user_id": user_id,
-        "completed": False,
-        "due_date": {"$gte": start, "$lt": end},
-        **user_assigned_filter(),
-    }
-    cursor = todos_collection.find(query).sort("due_date", 1).limit(_SECTION_LIMIT)
+    docs = await todo_repository.list_due_today(
+        user_id, day_start=start, day_end=end, limit=_SECTION_LIMIT
+    )
     return [
         {
             **_base_item(doc),
-            "due_at": _iso(doc.get("due_date") or doc.get("scheduled_at")),
+            "due_at": _iso(doc.due_date or doc.scheduled_at),
             # A dismissed offer keeps the task but drops its handoff tag.
-            "gaia_offer": None if doc.get("gaia_offer_dismissed") else doc.get("gaia_offer"),
+            "gaia_offer": None if doc.gaia_offer_dismissed else doc.gaia_offer,
         }
-        async for doc in cursor
+        for doc in docs
     ]
 
 
 async def _done_today(user_id: str, start: datetime, end: datetime) -> list[dict[str, Any]]:
-    query = {
-        "user_id": user_id,
-        "kind": {"$ne": "goal"},
-        "completed_at": {"$gte": start, "$lt": end},
-    }
-    cursor = todos_collection.find(query).sort("completed_at", -1).limit(_SECTION_LIMIT)
+    docs = await todo_repository.list_completed_today(
+        user_id, day_start=start, day_end=end, limit=_SECTION_LIMIT
+    )
     return [
         {
             **_base_item(doc),
-            "completed_at": _iso(doc.get("completed_at")),
-            "assignee": doc.get("assignee", "user"),
-            "conversation_id": doc.get("last_run_conversation_id"),
+            "completed_at": _iso(doc.completed_at),
+            "assignee": doc.assignee,
+            "conversation_id": doc.last_run_conversation_id,
         }
-        async for doc in cursor
+        for doc in docs
     ]
 
 
@@ -166,16 +130,16 @@ async def _headline(user_id: str, tz: ZoneInfo, fallback: str) -> str:
     now_local = datetime.now(tz)
     if now_local.hour >= 12:
         return fallback
-    briefing = await get_latest_briefing(user_id)
+    briefing = await briefing_repository.get_latest(user_id)
     if briefing and briefing.date == now_local.date().isoformat() and briefing.payload.headline:
         return briefing.payload.headline
     return fallback
 
 
-def _next_event(user_id: str, start: datetime, end: datetime) -> dict[str, Any] | None:
+async def _next_event(user_id: str, start: datetime, end: datetime) -> dict[str, Any] | None:
     """First calendar event still ahead today; an outage degrades to None."""
     try:
-        data = fetch_calendar_events(
+        data = await fetch_calendar_events(
             "primary",
             user_id,
             time_min=datetime.now(UTC).isoformat(),
@@ -214,13 +178,22 @@ async def build_today_payload(
     tz = ZoneInfo(timezone_name or "UTC")
     start, end = _day_bounds(tz)
 
-    needs_you, in_flight, suggested, your_tasks, done_today, runs = await asyncio.gather(
+    (
+        needs_you,
+        in_flight,
+        suggested,
+        your_tasks,
+        done_today,
+        runs,
+        next_event,
+    ) = await asyncio.gather(
         _needs_you(user_id),
         _in_flight(user_id),
         _suggested(user_id, start, end),
         _your_tasks(user_id, start, end),
         _done_today(user_id, start, end),
         _runs(user_id, user_plan),
+        _next_event(user_id, start, end),
     )
 
     fallback = _fallback_headline(len(needs_you), len(in_flight), len(done_today))
@@ -231,7 +204,7 @@ async def build_today_payload(
         "subline": {
             "date": datetime.now(tz).date().isoformat(),
             "needs_you": len(needs_you),
-            "next_event": _next_event(user_id, start, end),
+            "next_event": next_event,
         },
         "runs": runs,
         "needs_you": needs_you,

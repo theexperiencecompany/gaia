@@ -417,7 +417,9 @@ class TestToolRegistryAsync:
         assert "GMAIL_SEND" in tool_names
         assert "GMAIL_READ" in tool_names
         assert len(category.tools) == 2
-        mock_composio_service.get_tools.assert_awaited_once_with(tool_kit="GMAIL")
+        mock_composio_service.get_tools.assert_awaited_once_with(
+            tool_kit="GMAIL", exclude_tools=None
+        )
 
     async def test_register_provider_tools_skips_existing_category(self):
         """register_provider_tools() must not re-register an already-loaded toolkit."""

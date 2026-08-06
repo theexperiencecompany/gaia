@@ -12,7 +12,7 @@ from app.constants.agents import INTERNAL_AGENT_MARKERS
 from app.constants.cache import HANDOFF_NAME_CACHE_PREFIX
 from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
-from app.db.mongodb.collections import integrations_collection
+from app.db.repositories.integrations import integration_repository
 from app.decorators.caching import Cacheable
 from app.models.stream_events import (
     ResponseFrame,
@@ -78,10 +78,8 @@ def parse_subagent_id(subagent_id: str) -> tuple[str, str | None]:
 @Cacheable(key_pattern=f"{HANDOFF_NAME_CACHE_PREFIX}:{{clean_id}}", ttl=3600)
 async def _lookup_custom_integration_name(clean_id: str) -> str | None:
     """Look up custom integration name from MongoDB with caching."""
-    custom = await integrations_collection.find_one(
-        {"integration_id": {"$regex": f"^{clean_id}", "$options": "i"}}, {"name": 1}
-    )
-    return custom.get("name") if custom else None
+    custom = await integration_repository.find_by_id_prefix(clean_id)
+    return custom.name if custom else None
 
 
 async def _resolve_handoff_display_name(subagent_id: str) -> str:
@@ -133,28 +131,6 @@ def format_subagent_end_event(
         duration_ms=duration_ms,
         token_count=token_count,
     ).model_dump()
-
-
-async def emit_subagent_tool_calls(
-    stream_writer: StreamWriterCallable,
-    subagent_id: str,
-    tool_calls: list[ToolCall],
-    user_id: str | None = None,
-) -> None:
-    """Emit tool_data events for each tool call made inside a spawned subagent.
-
-    Reuses ``format_tool_call_entry`` so categories, icons, and special-tool
-    display names match the post-execution path; otherwise e.g. ``vfs_read``
-    renders with its raw name as the category instead of ``filesystem``.
-
-    With ``user_id``, MCP tool calls resolve their integration metadata via
-    the user's MCPClient (MCP tools no longer live in the global registry).
-    """
-    for tc in tool_calls:
-        entry = await format_tool_call_entry(tc, user_id=user_id)
-        if entry is None:
-            continue
-        stream_writer({"tool_data": {**entry, "subagent_id": subagent_id}})
 
 
 async def format_tool_call_entry(
@@ -346,16 +322,14 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
         return cached.get("icon_url"), cached.get("integration_name")
 
     try:
-        integration = await integrations_collection.find_one(
-            {"integration_id": integration_id}, {"name": 1, "icon_url": 1}
-        )
+        integration = await integration_repository.get(integration_id)
         if not integration:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return None, None
         metadata = {
-            "icon_url": integration.get("icon_url"),
+            "icon_url": integration.icon_url,
             "integration_id": integration_id,
-            "integration_name": integration.get("name"),
+            "integration_name": integration.name,
         }
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
         return metadata["icon_url"], metadata["integration_name"]

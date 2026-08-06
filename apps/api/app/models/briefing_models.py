@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.constants.briefing import BRIEFING_KIND_DAILY, HUE_MAX
 from app.constants.notifications import DEFAULT_CHAT_CHANNEL_PRIORITY
+from app.db.repositories.base import UserScopedDocument
 
 BriefingKind = Literal["daily", "weekly"]
 
@@ -85,19 +86,57 @@ class BriefingPayload(BaseModel):
     )
 
 
-class BriefingModel(BaseModel):
-    """Persisted briefing document (``briefings`` collection)."""
+class BriefingModel(UserScopedDocument):
+    """Persisted briefing document (``briefings`` collection).
 
-    model_config = ConfigDict(from_attributes=True)
+    Doubles as the repository's document model (``BriefingsRepository`` in
+    ``app/db/repositories/briefings.py``) — one canonical model for the
+    persisted shape and every consumer (endpoints, ``BriefingListResponse``,
+    the archive/dashboard reads). Identity is the string business key ``id``,
+    persisted as Mongo's ``_id`` (``uses_object_id=False``).
+    """
+
+    model_config = ConfigDict(extra="ignore", from_attributes=True)
 
     id: str = Field(default_factory=lambda: f"brief_{uuid.uuid4().hex[:12]}")
-    user_id: str
     date: str  # user-local YYYY-MM-DD
     kind: BriefingKind = BRIEFING_KIND_DAILY
     payload: BriefingPayload
     delivered_channels: list[str] = Field(default_factory=list)
     opened_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = None
+
+
+class BriefingUpdate(BaseModel):
+    """Typed ``$set`` fields for a briefing. Every real write (payload swap,
+    delivered-channels list, the idempotent opened-at stamp) goes through its
+    own named repository method with its own filter guard, so this exists only
+    to satisfy the repository base's typed-update-model contract."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    payload: BriefingPayload | None = None
+    delivered_channels: list[str] | None = None
+    opened_at: datetime | None = None
+
+
+class AwardDocument(UserScopedDocument):
+    """One earned badge (``awards`` collection). ``(user_id, key)`` is unique —
+    each badge is earnable once (``AwardsRepository`` in
+    ``app/db/repositories/awards.py``). ``created_at`` (base-stamped on insert)
+    IS the earned timestamp — no separate field for the same moment."""
+
+    key: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime | None = None
+
+
+class AwardUpdate(BaseModel):
+    """Awards are immutable once earned — no field is ever updated in place.
+    Exists only to satisfy the repository base's typed-update-model contract."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class BriefingListResponse(BaseModel):

@@ -3,8 +3,14 @@
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import mail_collection
+from app.db.repositories.mail import mail_repository
+from app.models.mail_models import MailDocument
 from shared.py.wide_events import MailContext, log
+
+
+def _mail_dict(summary: MailDocument) -> dict[str, Any]:
+    """JSON-safe email-summary dict the read endpoints return (string ``_id``)."""
+    return {**summary.model_dump(mode="json", exclude={"id"}), "_id": summary.id}
 
 
 async def get_email_importance_summaries(
@@ -13,21 +19,10 @@ async def get_email_importance_summaries(
     """Get email importance summaries for a user."""
     log.set(user={"id": user_id}, mail=MailContext(operation="summarize"))
     try:
-        # Build query filter
-        query_filter: dict[str, Any] = {"user_id": user_id}
-        if important_only:
-            query_filter["is_important"] = True
-
-        # Get email summaries from database
-        cursor = mail_collection.find(query_filter).sort("analyzed_at", -1).limit(limit)
-        emails = await cursor.to_list(length=limit)
-
-        # Convert ObjectId to string for JSON serialization
-        for email in emails:
-            email["_id"] = str(email["_id"])
-            # Convert datetime to ISO string
-            if "analyzed_at" in email:
-                email["analyzed_at"] = email["analyzed_at"].isoformat()
+        summaries = await mail_repository.list_for_user(
+            user_id, important_only=important_only, limit=limit
+        )
+        emails = [_mail_dict(summary) for summary in summaries]
 
         log.set_ns("mail", result_count=len(emails), success=True)
         return {
@@ -47,21 +42,13 @@ async def get_single_email_importance_summary(
     """Get the importance summary for a specific email."""
     log.set(user={"id": user_id}, mail=MailContext(operation="summarize"))
     try:
-        # Find the email in database
-        email = await mail_collection.find_one({"user_id": user_id, "message_id": message_id})
-
-        if not email:
+        summary = await mail_repository.get_by_message(user_id, message_id)
+        if summary is None:
             log.set_ns("mail", result_count=0, success=True)
             return None
 
-        # Convert ObjectId to string for JSON serialization
-        email["_id"] = str(email["_id"])
-        # Convert datetime to ISO string
-        if "analyzed_at" in email:
-            email["analyzed_at"] = email["analyzed_at"].isoformat()
-
         log.set_ns("mail", result_count=1, success=True)
-        return {"status": "success", "email": email}
+        return {"status": "success", "email": _mail_dict(summary)}
     except Exception as e:
         log.error(
             f"{LogTag.MAIL} Error retrieving email summary for user {user_id}, message {message_id}: {e}"
@@ -78,24 +65,9 @@ async def get_bulk_email_importance_summaries(
         mail=MailContext(operation="summarize", message_count=len(message_ids)),
     )
     try:
-        # Query for all emails matching the message IDs
-        query_filter = {"user_id": user_id, "message_id": {"$in": message_ids}}
+        summaries = await mail_repository.list_by_message_ids(user_id, message_ids)
+        email_summaries = {summary.message_id: _mail_dict(summary) for summary in summaries}
 
-        cursor = mail_collection.find(query_filter)
-        emails = await cursor.to_list(length=len(message_ids))
-
-        # Convert ObjectId to string and datetime to ISO string
-        processed_emails = []
-        for email in emails:
-            email["_id"] = str(email["_id"])
-            if "analyzed_at" in email:
-                email["analyzed_at"] = email["analyzed_at"].isoformat()
-            processed_emails.append(email)
-
-        # Create a mapping of message_id to email summary
-        email_summaries = {email["message_id"]: email for email in processed_emails}
-
-        # Get the found and missing message IDs
         found_message_ids = set(email_summaries.keys())
         missing_message_ids = set(message_ids) - found_message_ids
 

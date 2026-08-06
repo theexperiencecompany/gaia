@@ -75,6 +75,19 @@ class CommonSettings(BaseAppSettings):
     """Common settings required for all environments."""
 
     # ----------------------------------------------
+    # Dev-only overrides — declared on the COMMON base so production code can
+    # safely read them (app/agents/llm/client.py evaluates GAIA_SIM_MODE in
+    # decorator args at import time; an AttributeError there crashes prod boot).
+    # get_settings() refuses to start in production when either is enabled.
+    # ----------------------------------------------
+    # Sim mode: every LLM factory resolves to the local scripted stub
+    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev --sim`.
+    GAIA_SIM_MODE: bool = False
+    # Where the scripted stub lives when sim mode is on; consumed only by
+    # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
+    OPENROUTER_BASE_URL: str | None = None
+
+    # ----------------------------------------------
     # Database Connections
     # ----------------------------------------------
     MONGO_DB: str
@@ -103,6 +116,12 @@ class CommonSettings(BaseAppSettings):
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
         return v.rstrip("/") if isinstance(v, str) else v
+
+    # ----------------------------------------------
+    # Outbound Email
+    # ----------------------------------------------
+    # Key into the provider registry in app/services/email/providers.
+    EMAIL_PROVIDER: str = "resend"
 
     # ----------------------------------------------
     # Observability
@@ -151,6 +170,16 @@ class CommonSettings(BaseAppSettings):
     # - Gives 5,000 API requests/hour vs 60/hour without token
     # - Used for discovering and installing skills from GitHub
     GITHUB_TOKEN: str | None = None
+
+    # check_fields=False: E2B_DOMAIN is declared per-environment in the subclasses.
+    # Rejected rather than stripped because the e2b SDK reads os.environ verbatim —
+    # "" there silently falls back to the US cluster, padding yields a broken URL.
+    @field_validator("E2B_DOMAIN", mode="after", check_fields=False)
+    @classmethod
+    def _reject_unusable_e2b_domain(cls, v: str | None) -> str | None:
+        if v is not None and (not v or v != v.strip()):
+            raise ValueError("E2B_DOMAIN must be non-empty and free of surrounding whitespace")
+        return v
 
     # ----------------------------------------------
     # Computed Properties
@@ -284,7 +313,7 @@ class ProductionSettings(CommonSettings):
     # Webhook Secrets & Security
     # ----------------------------------------------
     COMPOSIO_WEBHOOK_SECRET: str
-    DODO_WEBHOOK_PAYMENTS_SECRET: str = ""
+    DODO_WEBHOOK_PAYMENTS_SECRET: str
 
     # ----------------------------------------------
     # Content Management
@@ -296,6 +325,7 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str
     E2B_TEMPLATE_ID: str  # gaia-coder template ID (run scripts/build_e2b_template.py)
+    E2B_DOMAIN: str
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,
@@ -491,6 +521,7 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     E2B_API_KEY: str | None = None
     E2B_TEMPLATE_ID: str | None = None
+    E2B_DOMAIN: str | None = None
     # Idle window before a sandbox is paused. A paused sandbox must resume +
     # re-mount JuiceFS on the next turn, and the cold JuiceFS mount is the single
     # most expensive step in an acquire (the metadata engine is remote). At 60s,
@@ -560,6 +591,15 @@ class DevelopmentSettings(CommonSettings):
     # Debug Config
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
+
+    # Development-only auth bypass: every request is authenticated as this
+    # user (must exist in Mongo) with no WorkOS session, so agents and tools
+    # can drive the app end to end. get_settings() refuses to start in
+    # production when this is set.
+    DEV_AUTH_BYPASS_EMAIL: str | None = None
+
+    # GAIA_SIM_MODE and OPENROUTER_BASE_URL are declared on CommonSettings (the
+    # production import path reads them) — see the note there.
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
@@ -642,6 +682,37 @@ def get_settings():
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
         else:
+            # Hard block, not a warning: the dev auth bypass authenticates
+            # every request as a fixed user, so production must refuse to
+            # boot rather than run with it. Checked via os.getenv because
+            # from_env() downgrades pydantic validation errors to warnings.
+            if os.getenv("DEV_AUTH_BYPASS_EMAIL"):
+                raise RuntimeError(
+                    "DEV_AUTH_BYPASS_EMAIL is set but ENV=production — "
+                    "the dev auth bypass must never be enabled in production."
+                )
+            # Same policy as the auth bypass: the OpenRouter base-URL override
+            # redirects the model to a local scripted stub, so production must
+            # refuse to boot rather than run against it.
+            if os.getenv("OPENROUTER_BASE_URL"):
+                raise RuntimeError(
+                    "OPENROUTER_BASE_URL is set but ENV=production — "
+                    "the OpenRouter base-URL override is a development-only stub hook."
+                )
+            # Boolean-semantic var: an explicit "false"/"0"/"no"/"off" is a
+            # legitimate way to DISABLE sim mode and must not trip the guard
+            # (unlike the string-valued overrides above, where set == enabled).
+            if os.getenv("GAIA_SIM_MODE", "").strip().lower() not in (
+                "",
+                "0",
+                "false",
+                "no",
+                "off",
+            ):
+                raise RuntimeError(
+                    "GAIA_SIM_MODE is set but ENV=production — "
+                    "sim mode routes every model call to a local scripted stub."
+                )
             settings_obj = ProductionSettings.from_env()
             log.info(f"{LogTag.STARTUP} Production settings initialized")
 

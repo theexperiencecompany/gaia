@@ -56,7 +56,7 @@ from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
     format_tool_error,
-    timeout_guarded_tool_call,
+    hil_and_timeout_guarded_tool_call,
 )
 from app.override.langgraph_bigtool.hooks import (
     HookType,
@@ -71,6 +71,7 @@ from app.override.langgraph_bigtool.utils import (
     format_selected_tools,
 )
 from app.utils.mcp_utils import canonical_tool_name_map
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
@@ -277,8 +278,10 @@ def create_agent(
             preview = []
             for msg in recent_messages:
                 role = msg.__class__.__name__
-                content = getattr(msg, "content", "")
-                if isinstance(content, str) and len(content) > 200:
+                # extract_text_content, not the raw content: a tool result carrying
+                # inline media holds megabytes of base64 that must never reach a log.
+                content = extract_text_content(getattr(msg, "content", ""))
+                if len(content) > 200:
                     content = content[:197] + "..."
                 preview.append({"role": role, "content": content})
             log.info("acall_model message preview", preview=preview)
@@ -558,7 +561,7 @@ def create_agent(
         # middleware dispatch path. The per-call timeout wrapper bounds hung
         # tools (orchestration tools exempt).
         handle_tool_errors=format_tool_error,
-        awrap_tool_call=timeout_guarded_tool_call,
+        awrap_tool_call=hil_and_timeout_guarded_tool_call,
     )
 
     builder.set_entry_point("agent")

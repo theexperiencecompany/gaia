@@ -15,14 +15,10 @@ daily run mutates dormancy state; the night shift and weekly digest read it.
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from bson import ObjectId
-
 from app.constants.briefing import IDLE_DORMANT_DAYS, IDLE_WARN_DAYS
-from app.db.mongodb.collections import (
-    conversations_collection,
-    todos_collection,
-    users_collection,
-)
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 
 # Marker on the user doc:
 # {"idle_days": int, "date": "YYYY-MM-DD", "dormant_since": datetime | None}.
@@ -72,14 +68,10 @@ async def reactivation_signal_since(user_id: str, since: datetime) -> bool:
     acknowledgement (``context.compute_winback_state``) so the two never diverge on
     what counts as the user showing up. ``since`` must be timezone-aware.
     """
-    goal = await todos_collection.find_one(
-        {"user_id": user_id, "kind": "goal", "created_at": {"$gte": since}}, {"_id": 1}
-    )
-    if goal:
+    if await todo_repository.has_goal_created_since(user_id, since=since):
         return True
 
-    user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"last_active_at": 1})
-    last_active = (user or {}).get("last_active_at")
+    last_active = await user_repository.get_last_active_at(user_id)
     if isinstance(last_active, datetime):
         if last_active.tzinfo is None:
             last_active = last_active.replace(tzinfo=UTC)
@@ -88,20 +80,7 @@ async def reactivation_signal_since(user_id: str, since: datetime) -> bool:
 
     # Bot turns don't pass the web auth middleware that bumps last_active_at, so
     # a Telegram reply is detected from the conversation record directly.
-    # Message dates are UTC ISO strings, so $gte is a string comparison.
-    message = await conversations_collection.find_one(
-        {
-            "user_id": user_id,
-            "messages": {
-                "$elemMatch": {
-                    "type": "user",
-                    "date": {"$gte": since.astimezone(UTC).isoformat()},
-                }
-            },
-        },
-        {"_id": 1},
-    )
-    return message is not None
+    return await conversation_repository.has_user_message_since(user_id, since)
 
 
 async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_str: str) -> int:
@@ -115,19 +94,13 @@ async def record_idle_day(user_id: str, prior: DormancyState, idle: bool, date_s
     if not idle and prior.idle_days == 0 and prior.date is None:
         return 0
     idle_days = prior.idle_days + 1 if idle else 0
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {f"{DORMANCY_FIELD}.idle_days": idle_days, f"{DORMANCY_FIELD}.date": date_str}},
-    )
+    await user_repository.set_dormancy_day(user_id, idle_days=idle_days, date_str=date_str)
     return idle_days
 
 
 async def enter_dormancy(user_id: str) -> None:
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {f"{DORMANCY_FIELD}.dormant_since": datetime.now(UTC)}},
-    )
+    await user_repository.enter_briefing_dormancy(user_id)
 
 
 async def clear_dormancy(user_id: str) -> None:
-    await users_collection.update_one({"_id": ObjectId(user_id)}, {"$unset": {DORMANCY_FIELD: ""}})
+    await user_repository.clear_briefing_dormancy(user_id)

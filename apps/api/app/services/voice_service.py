@@ -8,7 +8,6 @@ even when the upstream call fails.
 import asyncio
 from typing import Any
 
-from bson import ObjectId
 import httpx
 
 from app.config.settings import settings
@@ -23,13 +22,11 @@ from app.constants.voices import (
     ELEVENLABS_REQUEST_TIMEOUT_S,
     ELEVENLABS_SHARED_VOICES_URL,
     ELEVENLABS_VOICES_URL,
-    SELECTED_VOICE_FIELD,
     SHARED_VOICES_PAGE_SIZE,
-    STARRED_VOICES_FIELD,
     VOICE_CATALOG,
     VOICE_IDS,
 )
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
@@ -151,8 +148,8 @@ async def get_user_voice(user_id: str) -> str | None:
     drag a (cached, but worst-case live) ElevenLabs lookup into it. Selections
     are validated once at ``set_user_voice`` time instead.
     """
-    doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {SELECTED_VOICE_FIELD: 1})
-    voice_id = (doc or {}).get(SELECTED_VOICE_FIELD)
+    user = await user_repository.get(user_id)
+    voice_id = user.selected_voice_id if user else None
     if isinstance(voice_id, str) and voice_id:
         return voice_id
     return DEFAULT_VOICE_ID
@@ -213,8 +210,8 @@ async def list_voices(user_id: str) -> VoiceListResponse:
 
 async def get_starred_voice_ids(user_id: str) -> list[str]:
     """The user's starred voice ids, defaulting to the product starter set."""
-    doc = await users_collection.find_one({"_id": ObjectId(user_id)}, {STARRED_VOICES_FIELD: 1})
-    stored = (doc or {}).get(STARRED_VOICES_FIELD)
+    user = await user_repository.get(user_id)
+    stored = user.starred_voice_ids if user else None
     if isinstance(stored, list):
         return [v for v in stored if isinstance(v, str)]
     return list(DEFAULT_STARRED_VOICE_IDS)
@@ -226,10 +223,7 @@ async def set_voice_star(user_id: str, voice_id: str, starred: bool) -> list[str
     updated = [v for v in current if v != voice_id]
     if starred:
         updated.insert(0, voice_id)
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {STARRED_VOICES_FIELD: updated}},
-    )
+    await user_repository.set_starred_voices(user_id, updated)
     return updated
 
 
@@ -254,8 +248,5 @@ async def set_user_voice(user_id: str, voice_id: str) -> str:
                 status_code=404,
             )
 
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {SELECTED_VOICE_FIELD: voice_id}},
-    )
+    await user_repository.set_selected_voice(user_id, voice_id)
     return voice_id

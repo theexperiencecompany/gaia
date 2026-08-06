@@ -1,6 +1,5 @@
 import asyncio
 
-from bson import ObjectId
 from fastapi import (
     APIRouter,
     Body,
@@ -14,12 +13,8 @@ from fastapi.responses import HTMLResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
-from app.constants.notifications import (
-    CHANNEL_TYPE_EMAIL,
-    EXPO_TOKEN_PATTERN,
-    MAX_DEVICES_PER_USER,
-)
-from app.db.mongodb.collections import users_collection
+from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
+from app.db.repositories.users import user_repository
 from app.models.device_token_models import (
     DeviceTokenRequest,
     DeviceTokenResponse,
@@ -62,10 +57,7 @@ async def unsubscribe_from_emails(token: str = Query(...)) -> HTMLResponse:
         return HTMLResponse(content=_UNSUBSCRIBE_INVALID_HTML, status_code=400)
 
     log.set(user={"id": user_id}, operation="unsubscribe_email")
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {f"notification_channel_prefs.{CHANNEL_TYPE_EMAIL}": False}},
-    )
+    await user_repository.set_channel_preferences(user_id, email=False)
     log.set(outcome="success")
     return HTMLResponse(content=_UNSUBSCRIBE_SUCCESS_HTML)
 
@@ -156,20 +148,14 @@ async def update_channel_preferences(
     )
 
     try:
-        updates: dict = {}
-        if preferences.telegram is not None:
-            updates["notification_channel_prefs.telegram"] = preferences.telegram
-        if preferences.discord is not None:
-            updates["notification_channel_prefs.discord"] = preferences.discord
-        if preferences.whatsapp is not None:
-            updates["notification_channel_prefs.whatsapp"] = preferences.whatsapp
-        if preferences.slack is not None:
-            updates["notification_channel_prefs.slack"] = preferences.slack
-        if preferences.email is not None:
-            updates["notification_channel_prefs.email"] = preferences.email
-
-        if updates:
-            await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": updates})
+        await user_repository.set_channel_preferences(
+            user_id,
+            telegram=preferences.telegram,
+            discord=preferences.discord,
+            whatsapp=preferences.whatsapp,
+            slack=preferences.slack,
+            email=preferences.email,
+        )
 
         prefs = await fetch_channel_preferences(user_id)
         log.set(operation="update_channel_preferences", outcome="success")

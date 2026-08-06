@@ -26,7 +26,7 @@ The run SHALL compare yesterday's briefing payload against what actually happene
 
 ### Requirement: One briefing message per day is law
 
-The system SHALL deliver at most one briefing message per user per day. The only permitted additional proactive messages are: a time-critical `needs_you` blocker, or replies when the user messaged first. For ignored items the escalation ladder SHALL be: mention in brief → one re-mention with a different angle → drop to a memory signal. The run SHALL read its own prior briefings and recent conversation history before writing and SHALL NOT re-ask a question the same way twice.
+The system SHALL deliver at most one briefing message per user per day. The only permitted additional proactive messages are: a time-critical `needs_you` blocker, a completion report for a todo the user approved (which MAY carry one contextual next-step suggestion — see `retention-loop`), or replies when the user messaged first. When multiple `needs_you` blockers are pending simultaneously, they SHALL be delivered as one combined message ("3 things need your call"), never as separate pushes. For ignored items the escalation ladder SHALL be: mention in brief → one re-mention with a different angle → drop to a memory signal. The run SHALL read its own prior briefings and recent conversation history before writing and SHALL NOT re-ask a question the same way twice.
 
 #### Scenario: Ignored item exits to memory
 - **WHEN** an item has appeared in two briefings with no user action

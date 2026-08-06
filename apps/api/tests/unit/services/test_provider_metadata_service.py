@@ -288,39 +288,42 @@ class TestFetchProviderUserInfo:
 
 class TestStoreProviderMetadata:
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_success(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.set_provider_metadata",
+        new_callable=AsyncMock,
+    )
+    async def test_success(self, mock_set: AsyncMock) -> None:
         from app.services.provider_metadata_service import store_provider_metadata
 
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_coll.update_one = AsyncMock(return_value=mock_result)
-
+        mock_set.return_value = True
         ok = await store_provider_metadata(
             "507f1f77bcf86cd799439011", "github", {"username": "octocat"}
         )
         assert ok is True
 
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_no_document_updated(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.set_provider_metadata",
+        new_callable=AsyncMock,
+    )
+    async def test_no_document_updated(self, mock_set: AsyncMock) -> None:
         from app.services.provider_metadata_service import store_provider_metadata
 
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_coll.update_one = AsyncMock(return_value=mock_result)
-
+        mock_set.return_value = False
         ok = await store_provider_metadata(
             "507f1f77bcf86cd799439011", "github", {"username": "octocat"}
         )
         assert ok is False
 
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_exception_returns_false(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.set_provider_metadata",
+        new_callable=AsyncMock,
+    )
+    async def test_exception_returns_false(self, mock_set: AsyncMock) -> None:
         from app.services.provider_metadata_service import store_provider_metadata
 
-        mock_coll.update_one = AsyncMock(side_effect=RuntimeError("db error"))
+        mock_set.side_effect = RuntimeError("db error")
         ok = await store_provider_metadata("507f1f77bcf86cd799439011", "github", {"a": "b"})
         assert ok is False
 
@@ -332,40 +335,52 @@ class TestStoreProviderMetadata:
 
 class TestGetProviderMetadata:
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_metadata(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.get",
+        new_callable=AsyncMock,
+    )
+    async def test_returns_metadata(self, mock_get: AsyncMock) -> None:
+        from app.models.user_models import UserDocument
         from app.services.provider_metadata_service import get_provider_metadata
 
-        mock_coll.find_one = AsyncMock(
-            return_value={"provider_metadata": {"github": {"username": "octocat"}}}
-        )
+        mock_get.return_value = UserDocument(provider_metadata={"github": {"username": "octocat"}})
         result = await get_provider_metadata("507f1f77bcf86cd799439011", "github")
         assert result == {"username": "octocat"}
 
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_none_when_user_not_found(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.get",
+        new_callable=AsyncMock,
+    )
+    async def test_returns_none_when_user_not_found(self, mock_get: AsyncMock) -> None:
         from app.services.provider_metadata_service import get_provider_metadata
 
-        mock_coll.find_one = AsyncMock(return_value=None)
+        mock_get.return_value = None
         result = await get_provider_metadata("507f1f77bcf86cd799439011", "github")
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_returns_none_when_provider_missing(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.get",
+        new_callable=AsyncMock,
+    )
+    async def test_returns_none_when_provider_missing(self, mock_get: AsyncMock) -> None:
+        from app.models.user_models import UserDocument
         from app.services.provider_metadata_service import get_provider_metadata
 
-        mock_coll.find_one = AsyncMock(return_value={"provider_metadata": {}})
+        mock_get.return_value = UserDocument(provider_metadata={})
         result = await get_provider_metadata("507f1f77bcf86cd799439011", "github")
         assert result is None
 
     @pytest.mark.asyncio
-    @patch("app.services.provider_metadata_service.users_collection")
-    async def test_exception_returns_none(self, mock_coll: MagicMock) -> None:
+    @patch(
+        "app.services.provider_metadata_service.user_repository.get",
+        new_callable=AsyncMock,
+    )
+    async def test_exception_returns_none(self, mock_get: AsyncMock) -> None:
         from app.services.provider_metadata_service import get_provider_metadata
 
-        mock_coll.find_one = AsyncMock(side_effect=RuntimeError("db"))
+        mock_get.side_effect = RuntimeError("db")
         result = await get_provider_metadata("507f1f77bcf86cd799439011", "github")
         assert result is None
 

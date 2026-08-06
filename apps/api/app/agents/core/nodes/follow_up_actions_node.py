@@ -14,7 +14,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
@@ -32,6 +32,10 @@ class FollowUpActions(BaseModel):
     actions: list[str] = Field(
         description="Array of 2-4 follow-up action suggestions for the user. Each action should be clear, actionable, contextually relevant, and short (aim under ~30 characters)."
     )
+
+
+# How many trailing conversation messages to scan for already-shown suggestions.
+_PREVIOUS_ACTIONS_MESSAGE_WINDOW = 10
 
 
 async def generate_follow_up_actions(
@@ -55,8 +59,12 @@ async def generate_follow_up_actions(
         tool_names = tool_registry.get_tool_names()
 
     try:
+        # Suggestions already shown in this conversation's recent messages, so
+        # the generator can avoid repeating them and detect suggestion fatigue.
         previous_actions = (
-            await _previously_suggested_actions(user_id, conversation_id)
+            await conversation_repository.get_recent_follow_up_actions(
+                user_id, conversation_id, window=_PREVIOUS_ACTIONS_MESSAGE_WINDOW
+            )
             if user_id and conversation_id
             else []
         )
@@ -109,27 +117,6 @@ async def generate_follow_up_actions(
     except Exception as e:
         log.debug(f"{LogTag.AGENT} Follow-up action generation failed: {e}")
         return []
-
-
-# How many trailing conversation messages to scan for already-shown suggestions.
-_PREVIOUS_ACTIONS_MESSAGE_WINDOW = 10
-
-
-async def _previously_suggested_actions(user_id: str, conversation_id: str) -> list[str]:
-    """Collect suggestions already shown in this conversation's recent messages,
-    so the generator can avoid repeating them and detect suggestion fatigue."""
-    doc = await conversations_collection.find_one(
-        {"user_id": user_id, "conversation_id": conversation_id},
-        {"messages": {"$slice": -_PREVIOUS_ACTIONS_MESSAGE_WINDOW}},
-    )
-    if not doc:
-        return []
-    seen: list[str] = []
-    for message in doc.get("messages", []):
-        for action in message.get("follow_up_actions") or []:
-            if action not in seen:
-                seen.append(action)
-    return seen
 
 
 async def follow_up_actions_node(state: State, config: RunnableConfig, store: BaseStore) -> State:

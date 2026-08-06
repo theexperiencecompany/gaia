@@ -29,43 +29,6 @@ def _make_trigger_config(trigger_data: Any) -> MagicMock:
     return tc
 
 
-def _make_workflow_doc(
-    wid: str = "wf1",
-    user_id: str = "u1",
-    activated: bool = True,
-) -> dict[str, Any]:
-    return {
-        "_id": wid,
-        "id": wid,
-        "user_id": user_id,
-        "activated": activated,
-        "name": "Test Workflow",
-        "trigger_config": {
-            "type": "integration",
-            "enabled": True,
-            "composio_trigger_ids": ["trig1"],
-        },
-    }
-
-
-class _AsyncCursorMock:
-    """Simulates an async MongoDB cursor."""
-
-    def __init__(self, docs: list[dict[str, Any]]) -> None:
-        self._docs = docs
-        self._index = 0
-
-    def __aiter__(self):
-        return self
-
-    async def __anext__(self):
-        if self._index >= len(self._docs):
-            raise StopAsyncIteration
-        doc = self._docs[self._index]
-        self._index += 1
-        return doc
-
-
 # ---------------------------------------------------------------------------
 # NotionTriggerHandler properties
 # ---------------------------------------------------------------------------
@@ -367,85 +330,70 @@ class TestRegister:
 
 
 class TestFindWorkflows:
+    # find_workflows delegates the Mongo query + doc parsing to
+    # workflow_repository.find_active_by_composio_trigger (contract-tested). Here we
+    # verify the handler's delegation, payload validation, and fail-loud-swallow.
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_finds_matching_workflows(self, mock_coll: MagicMock) -> None:
+    @patch("app.services.triggers.handlers.notion.workflow_repository")
+    async def test_finds_matching_workflows(self, mock_repo: MagicMock) -> None:
         handler = _make_handler()
-        mock_coll.find.return_value = _AsyncCursorMock([_make_workflow_doc()])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[MagicMock()])
 
-        with patch("app.services.triggers.handlers.notion.Workflow") as mock_wf_cls:
-            mock_wf = MagicMock()
-            mock_wf_cls.return_value = mock_wf
-
-            result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {})
+        result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {})
 
         assert len(result) == 1
+        mock_repo.find_active_by_composio_trigger.assert_awaited_once_with("trig1")
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_returns_empty_on_no_match(self, mock_coll: MagicMock) -> None:
+    @patch("app.services.triggers.handlers.notion.workflow_repository")
+    async def test_returns_empty_on_no_match(self, mock_repo: MagicMock) -> None:
         handler = _make_handler()
-        mock_coll.find.return_value = _AsyncCursorMock([])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
         result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig_missing", {})
         assert result == []
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_skips_invalid_workflow_doc(self, mock_coll: MagicMock) -> None:
+    @patch("app.services.triggers.handlers.notion.workflow_repository")
+    async def test_exception_returns_empty(self, mock_repo: MagicMock) -> None:
         handler = _make_handler()
-        mock_coll.find.return_value = _AsyncCursorMock([_make_workflow_doc()])
-
-        with patch(
-            "app.services.triggers.handlers.notion.Workflow",
-            side_effect=Exception("bad"),
-        ):
-            result = await handler.find_workflows("NOTION_PAGE_ADDED_TO_DATABASE", "trig1", {})
-
-        assert result == []
-
-    @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_exception_returns_empty(self, mock_coll: MagicMock) -> None:
-        handler = _make_handler()
-        mock_coll.find.side_effect = RuntimeError("db error")
+        mock_repo.find_active_by_composio_trigger = AsyncMock(side_effect=RuntimeError("db error"))
 
         result = await handler.find_workflows("NOTION_PAGE_UPDATED_TRIGGER", "trig1", {})
         assert result == []
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_validates_page_added_payload(self, mock_coll: MagicMock) -> None:
+    @patch("app.services.triggers.handlers.notion.NotionPageAddedPayload")
+    @patch("app.services.triggers.handlers.notion.workflow_repository")
+    async def test_validates_page_added_payload(
+        self, mock_repo: MagicMock, mock_payload: MagicMock
+    ) -> None:
         handler = _make_handler()
-        mock_coll.find.return_value = _AsyncCursorMock([])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        with patch("app.services.triggers.handlers.notion.NotionPageAddedPayload") as mock_payload:
-            mock_payload.model_validate.return_value = MagicMock()
-            await handler.find_workflows("NOTION_new_page_EVENT", "trig1", {"some": "data"})
-            mock_payload.model_validate.assert_called_once()
+        await handler.find_workflows("NOTION_new_page_EVENT", "trig1", {"some": "data"})
+        mock_payload.model_validate.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_validates_page_updated_payload(self, mock_coll: MagicMock) -> None:
+    @patch("app.services.triggers.handlers.notion.NotionPageUpdatedPayload")
+    @patch("app.services.triggers.handlers.notion.workflow_repository")
+    async def test_validates_page_updated_payload(
+        self, mock_repo: MagicMock, mock_payload: MagicMock
+    ) -> None:
         handler = _make_handler()
-        mock_coll.find.return_value = _AsyncCursorMock([])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionPageUpdatedPayload"
-        ) as mock_payload:
-            mock_payload.model_validate.return_value = MagicMock()
-            await handler.find_workflows("NOTION_page_updated_EVENT", "trig1", {})
-            mock_payload.model_validate.assert_called_once()
+        await handler.find_workflows("NOTION_page_updated_EVENT", "trig1", {})
+        mock_payload.model_validate.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("app.services.triggers.handlers.notion.workflows_collection")
-    async def test_validates_all_page_events_payload(self, mock_coll: MagicMock) -> None:
+    @patch("app.services.triggers.handlers.notion.NotionAllPageEventsPayload")
+    @patch("app.services.triggers.handlers.notion.workflow_repository")
+    async def test_validates_all_page_events_payload(
+        self, mock_repo: MagicMock, mock_payload: MagicMock
+    ) -> None:
         handler = _make_handler()
-        mock_coll.find.return_value = _AsyncCursorMock([])
+        mock_repo.find_active_by_composio_trigger = AsyncMock(return_value=[])
 
-        with patch(
-            "app.services.triggers.handlers.notion.NotionAllPageEventsPayload"
-        ) as mock_payload:
-            mock_payload.model_validate.return_value = MagicMock()
-            await handler.find_workflows("NOTION_all_page_events_EVENT", "trig1", {})
-            mock_payload.model_validate.assert_called_once()
+        await handler.find_workflows("NOTION_all_page_events_EVENT", "trig1", {})
+        mock_payload.model_validate.assert_called_once()

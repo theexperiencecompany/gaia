@@ -15,7 +15,7 @@ sessions that would drown the briefing context.
 
 from datetime import UTC, datetime
 
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     BOT_CONVERSATION_SOURCES,
     ConversationSource,
@@ -76,33 +76,16 @@ async def persist_delivered_brief(
 
 
 async def format_replies_block(user_id: str, since: datetime) -> str:
-    """The user's bot-chat messages since ``since``, newest last, bounded.
-
-    Message dates are stored as UTC ISO strings, so ``$gt`` is a string
-    comparison — chronologically correct because persistence always writes
-    UTC ``isoformat()``.
-    """
-    since_iso = since.astimezone(UTC).isoformat()
-    pipeline = [
-        {
-            "$match": {
-                "user_id": user_id,
-                "source": {"$in": [s.value for s in BOT_CONVERSATION_SOURCES]},
-            }
-        },
-        {"$unwind": "$messages"},
-        {"$match": {"messages.type": "user", "messages.date": {"$gt": since_iso}}},
-        {"$sort": {"messages.date": -1}},
-        {"$limit": MAX_REPLY_LINES},
-        {"$project": {"_id": 0, "source": 1, "text": "$messages.response"}},
-    ]
-    docs = await conversations_collection.aggregate(pipeline).to_list(length=MAX_REPLY_LINES)
-    if not docs:
+    """The user's bot-chat messages since ``since``, newest last, bounded."""
+    replies = await conversation_repository.list_bot_replies_since(
+        user_id, since, limit=MAX_REPLY_LINES
+    )
+    if not replies:
         return "No replies since the last brief."
     lines: list[str] = []
-    for doc in reversed(docs):  # newest last, reading order
-        text = " ".join(str(doc.get("text") or "").split())
+    for reply in reversed(replies):  # newest last, reading order
+        text = " ".join((reply.text or "").split())
         if len(text) > MAX_REPLY_CHARS:
             text = text[:MAX_REPLY_CHARS] + "..."
-        lines.append(f"- [{doc.get('source')}] {text}")
+        lines.append(f"- [{reply.source}] {text}")
     return "\n".join(lines)

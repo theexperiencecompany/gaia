@@ -15,14 +15,9 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.system_docs import GAIA_TASKS_GUIDE_MD
-from app.constants.todos import (
-    FACET_DELIVERABLE,
-    FACET_NOTES,
-    facet_from_doc,
-    gaia_assigned_filter,
-)
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import ExecutionStatus
+from app.constants.todos import FACET_DELIVERABLE, FACET_NOTES, facet_from_doc
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import ExecutionStatus, TodoDocument
 from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
 from app.services.storage.gaia_tasks_vfs import (
     GaiaTaskProjection,
@@ -66,45 +61,37 @@ async def _fetch_active_projections(user_id: str) -> list[GaiaTaskProjection]:
     30 days).
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
-    cursor = todos_collection.find(
-        {
-            "user_id": user_id,
-            **gaia_assigned_filter(),
-            "$or": [
-                {"completed": {"$ne": True}},
-                {"completed_at": {"$gte": cutoff}},
-            ],
-        }
-    )
-    return [_project(doc) async for doc in cursor]
+    docs = await todo_repository.list_active_gaia_tracked_since(user_id, completed_since=cutoff)
+    return [_project(doc) for doc in docs]
 
 
-def _project(doc: dict) -> GaiaTaskProjection:
-    """Mongo doc → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
-    allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
+def _project(doc: TodoDocument) -> GaiaTaskProjection:
+    """Typed document → ``GaiaTaskProjection`` (preserve every field the agent uses)."""
+    allow_canvas_fallback = doc.execution_status == ExecutionStatus.PROPOSED
+    raw = doc.model_dump()
     return {
-        "id": str(doc["_id"]),
+        "id": doc.id,
         "deliverable": facet_from_doc(
-            doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback
+            raw, FACET_DELIVERABLE, allow_canvas_fallback=allow_canvas_fallback
         ),
-        "notes": facet_from_doc(doc, FACET_NOTES, allow_canvas_fallback=allow_canvas_fallback),
-        "log": doc.get("log_content") or "",
-        "artifacts": doc.get("artifacts") or [],
+        "notes": facet_from_doc(raw, FACET_NOTES, allow_canvas_fallback=allow_canvas_fallback),
+        "log": doc.log_content or "",
+        "artifacts": [artifact.model_dump() for artifact in doc.artifacts],
         "meta": {
-            "title": doc.get("title"),
-            "completed": bool(doc.get("completed", False)),
-            "completed_at": doc.get("completed_at"),
-            "priority": doc.get("priority"),
-            "due_date": doc.get("due_date"),
-            "due_date_timezone": doc.get("due_date_timezone"),
-            "labels": doc.get("labels", []),
-            "references": doc.get("references", []),
-            "scheduled_at": doc.get("scheduled_at"),
-            "recurrence": doc.get("recurrence"),
-            "expires_at": doc.get("expires_at"),
-            "project_id": doc.get("project_id"),
-            "created_at": doc.get("created_at"),
-            "updated_at": doc.get("updated_at"),
-            "vfs_path": doc.get("vfs_path"),
+            "title": doc.title,
+            "completed": doc.completed,
+            "completed_at": doc.completed_at,
+            "priority": doc.priority,
+            "due_date": doc.due_date,
+            "due_date_timezone": doc.due_date_timezone,
+            "labels": doc.labels,
+            "references": doc.references,
+            "scheduled_at": doc.scheduled_at,
+            "recurrence": doc.recurrence,
+            "expires_at": doc.expires_at,
+            "project_id": doc.project_id,
+            "created_at": doc.created_at,
+            "updated_at": doc.updated_at,
+            "vfs_path": doc.vfs_path,
         },
     }

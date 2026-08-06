@@ -1,3 +1,4 @@
+import type { ApprovalRequestData } from "@shared/chat";
 import type React from "react";
 import type {
   MemoryData,
@@ -36,6 +37,7 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
+import ApprovalRequestGroup from "../ApprovalRequestGroup";
 import { CalendarDeleteSection } from "../CalendarDeleteSection";
 import { CalendarEditSection } from "../CalendarEditSection";
 import CalendarEventSection from "../CalendarEventSection";
@@ -430,6 +432,23 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   memory_data: (data, index) => {
     const items = (Array.isArray(data) ? data : [data]) as MemoryData[];
     return <MemoryCard key={`tool-memory-${index}`} items={items} />;
+  },
+
+  // HIL approval — grouped so a run needing many decisions doesn't stack a full
+  // card each: pending ones show side by side, settled ones are removed (the
+  // assistant's reply already reflects them). Each approval_id is a single entry
+  // (pending→resolved replaced in place via upsertApprovalToolData); grouping
+  // collects them into the array.
+  approval_request: (data, index) => {
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as ApprovalRequestData[];
+    return (
+      <ApprovalRequestGroup
+        key={`approval-group-${items[0]?.approval_id || index}`}
+        items={items}
+      />
+    );
   },
 };
 

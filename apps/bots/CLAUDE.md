@@ -42,6 +42,10 @@ mise ci:docker:bot-<platform>    # Dagger Docker build
 - **Inbound media** (`bots/utils/media.ts`): `processBotMedia`, reached via `BaseBotAdapter.resolveIncomingMedia`, makes one cross-platform decision — video/sticker → polite reply (no download); audio/voice → `gaia.transcribeAudio` (Whisper) becomes the chat message; image/document → `gaia.uploadFile` referenced via `fileIds`/`fileData`. Caps: 10 MB files, 25 MB audio (`BOT_MEDIA_LIMITS`); upload/transcribe failures map to friendly replies via `friendlyMediaError`. Each adapter supplies only the glue — detect type → build `IncomingMedia` → pass a lazy `download` thunk → act on the returned `MediaOutcome` (`reply` vs `chat`). Slack is text-only for now.
 - **Auth** (`GaiaClient`, `bots/api/index.ts`): sends `X-Bot-API-Key`, `X-Bot-Platform`, `X-Bot-Platform-User-Id`. Session tokens cached 12 min; on 401 the cache is cleared and the call retried once. Users link accounts via `/auth` → backend issues a 10-min Redis token → web confirm → `platform_links.{platform}` in MongoDB. The "link your account" prompt is one shared string (`buildAuthLinkMessage`) used by both the `/auth` command and every adapter's streaming `onAuthError` — never hardcode an auth message in an adapter.
 
+## Simulation harness (`gaia-sim`)
+
+`apps/bots/harness` (`@gaia/bot-harness`) is a fifth `BaseBotAdapter` for testing: its `gaia-sim` CLI drives the real shared bot pipeline against a running API while emulating a platform's real `PLATFORM_LIMITS` / converters, and writes a JSONL transcript to assert on — no real Discord/Slack/Telegram/WhatsApp connection. A golden conformance suite (`apps/bots/__tests__/harness/`, wired into `mise test:bots`) fails CI if harness output ever diverges from the real adapter's. For how to run it end to end, see the **`driving-gaia`** skill.
+
 ## Config
 
 `loadConfig()` (`bots/config/index.ts`) is called inside `boot()`, not the constructor. Resolution order, first wins: process env → `apps/bots/.env` (shared by all bots) → `apps/bots/{platform}/.env` (legacy) → Infisical. dotenv is loaded in code, so no `--require dotenv` flag.

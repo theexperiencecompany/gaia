@@ -202,15 +202,20 @@ const nextConfig = {
     ...(useCloudflareImageLoader
       ? { loader: "custom", loaderFile: "./image-loader.ts" }
       : {}),
+    // Kept on: remote SVGs are relied upon (cdn.simpleicons.org logos, the
+    // ProductHunt featured.svg badge, integration icon URLs). Next serves
+    // remote SVGs with a restrictive CSP for images, so this is scoped to the
+    // image pipeline only.
     dangerouslyAllowSVG: true,
     minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
+    // Image sources are open-ended (user avatars from arbitrary OAuth
+    // providers, LLM/backend-driven integration icon URLs, Unsplash, map tiles,
+    // etc.), so the https host set can't be safely enumerated without breaking
+    // images. The http wildcard is dropped — every real source is https, and
+    // allowing plaintext http fetches is an unnecessary SSRF/mixed-content risk.
     remotePatterns: [
       {
         protocol: "https",
-        hostname: "**",
-      },
-      {
-        protocol: "http",
         hostname: "**",
       },
     ],
@@ -233,6 +238,20 @@ const nextConfig = {
   ],
   async headers() {
     return [
+      // Baseline security headers on every route. A full Content-Security-Policy
+      // is intentionally deferred — a wrong CSP silently breaks the app and can't
+      // be verified by a build alone, so it needs its own scoped rollout.
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
       // /_next/static/* — intentionally NOT setting a custom Cache-Control
       // here. Next.js content-hashes chunk filenames in production builds, so
       // its default immutable cache headers are already correct; in dev

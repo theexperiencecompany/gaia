@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Apple Reminders is the built-in, completely free task management app for iPhone, iPad, and Mac — with smart lists, location-based alerts, natural language input, and Siri integration across the Apple ecosystem. GAIA is a proactive, cross-platform AI assistant that manages tasks, email, and calendar intelligently across 50+ integrations, going far beyond what any single-ecosystem reminder app can reach.",
   metaTitle:
-    "Apple Reminders Alternative: GAIA vs Apple Reminders | AI Task Manager | GAIA",
+    "Apple Reminders Alternative: GAIA vs Apple Reminders | AI Task Manager",
   metaDescription:
     "Compare GAIA and Apple Reminders. Apple Reminders is a great free task app for Apple users. GAIA adds proactive AI across email, calendar, and tasks — and works on Windows, Android, and any browser.",
   keywords: [

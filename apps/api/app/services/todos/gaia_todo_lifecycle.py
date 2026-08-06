@@ -15,8 +15,7 @@ this module — never the reverse.
 
 from datetime import UTC, datetime, timedelta
 import re
-
-from bson import ObjectId
+from typing import Any
 
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
@@ -40,10 +39,9 @@ from app.constants.todos import (
     PROPOSAL_REJECTED_MEMORY_CATEGORY,
     PROPOSAL_TTL_HOURS,
     REJECTION_STRIKE_THRESHOLD,
-    gaia_assigned_filter,
 )
 from app.core.websocket_manager import WebSocketManager
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
 from app.memory.engine import memory_engine
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -57,7 +55,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.payment_models import PlanType
-from app.models.todo_models import ExecutionStatus
+from app.models.todo_models import ExecutionStatus, TodoDocument, TodoUpdate
 from app.services import first_steps_service
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from app.services.notification_service import notification_service
@@ -114,33 +112,31 @@ class ExecutionQuotaError(GaiaTodoError):
         super().__init__(f"GAIA execution quota reached for todo {todo_id}")
 
 
-def derive_proposal_kind(doc: dict) -> str:
+def derive_proposal_kind(doc: TodoDocument) -> str:
     """Stable category for a proposal, used to group rejection signals.
 
     First non-reserved label, else a slug of the title — so the 3-strike rule
     still groups repeated proposals of the same shape.
     """
-    for label in doc.get("labels", []):
+    for label in doc.labels:
         if label not in _RESERVED_KIND_LABELS:
             return label
-    title = (doc.get("title") or "untitled").strip().lower()
+    title = (doc.title or "untitled").strip().lower()
     return re.sub(r"[^a-z0-9]+", "-", title).strip("-")[:60] or "untitled"
 
 
-def _build_upgrade_pitch(doc: dict) -> str:
+def _build_upgrade_pitch(doc: TodoDocument) -> str:
     """One-line pitch naming the specific staged work behind an at-quota Approve."""
-    what = doc.get("serves") or doc.get("title") or "this work"
-    return (
-        f"GAIA has '{doc.get('title', 'this todo')}' staged and ready ({what}) — upgrade to run it."
-    )
+    what = doc.serves or doc.title or "this work"
+    return f"GAIA has '{doc.title or 'this todo'}' staged and ready ({what}) — upgrade to run it."
 
 
-def _is_gaia_assigned(doc: dict) -> bool:
-    return doc.get("assignee") == ASSIGNEE_GAIA
+def _is_gaia_assigned(doc: TodoDocument) -> bool:
+    return doc.assignee == ASSIGNEE_GAIA
 
 
-async def _get_gaia_todo(todo_id: str, user_id: str) -> dict:
-    doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+async def _get_gaia_todo(todo_id: str, user_id: str) -> TodoDocument:
+    doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
         raise InvalidTransitionError(f"Todo {todo_id} not found")
     if not _is_gaia_assigned(doc):
@@ -150,12 +146,12 @@ async def _get_gaia_todo(todo_id: str, user_id: str) -> dict:
 
 async def _require_status(
     todo_id: str, user_id: str, expected: ExecutionStatus, action: str
-) -> dict:
+) -> TodoDocument:
     doc = await _get_gaia_todo(todo_id, user_id)
-    if doc.get("execution_status") != expected.value:
+    if doc.execution_status != expected:
         raise InvalidTransitionError(
             f"Only {expected.value} todos can be {action} "
-            f"(todo {todo_id} is {doc.get('execution_status')!r})"
+            f"(todo {todo_id} is {doc.execution_status!r})"
         )
     return doc
 
@@ -220,9 +216,7 @@ async def gate_creation(
             raise TraceabilityError(
                 "A goal needs `serves`: the user's own words for what they're pursuing."
             )
-        active_goals = await todos_collection.count_documents(
-            {"user_id": user_id, "kind": "goal", "completed": False, **gaia_assigned_filter()}
-        )
+        active_goals = await todo_repository.count_open_goals(user_id)
         if active_goals >= MAX_ACTIVE_GOALS:
             raise BudgetExceededError(
                 f"Already at {active_goals}/{MAX_ACTIVE_GOALS} active goals. A goal "
@@ -236,19 +230,11 @@ async def gate_creation(
         # One Approve button per piece of work: an identically-titled pending
         # proposal means this is a duplicate (rerun, retry, or model repeat),
         # never a second legitimate ask.
-        dupe = await todos_collection.find_one(
-            {
-                "user_id": user_id,
-                "execution_status": ExecutionStatus.PROPOSED.value,
-                "title": title.strip(),
-                **gaia_assigned_filter(),
-            },
-            {"_id": 1},
-        )
+        dupe = await todo_repository.find_pending_proposal_by_title(user_id, title.strip())
         if dupe:
             raise BudgetExceededError(
                 f"A pending proposal titled {title.strip()!r} already exists "
-                f"(id {dupe['_id']}). Update or approve that one instead of duplicating it."
+                f"(id {dupe.id}). Update or approve that one instead of duplicating it."
             )
     if not serves:
         raise TraceabilityError(
@@ -268,15 +254,9 @@ async def gate_creation(
             list(IN_FLIGHT_STATUSES),
             "GAIA todos in flight",
         )
-    query = {
-        "user_id": user_id,
-        "execution_status": {"$in": statuses},
-        "kind": {"$ne": "goal"},
-        **gaia_assigned_filter(),
-    }
-    existing = await todos_collection.find(query, {"title": 1}).to_list(length=cap + 1)
+    existing = await todo_repository.list_budget_bucket(user_id, statuses=statuses, limit=cap + 1)
     if len(existing) >= cap:
-        titles = "; ".join(doc.get("title", "untitled") for doc in existing[:cap])
+        titles = "; ".join(doc.title or "untitled" for doc in existing[:cap])
         raise BudgetExceededError(
             f"Budget full: {len(existing)}/{cap} {bucket} ({titles}). "
             "Complete, dismiss, or let items expire before creating more."
@@ -306,16 +286,9 @@ async def enforce_budget_post_insert(
             list(IN_FLIGHT_STATUSES),
             "GAIA todos in flight",
         )
-    count = await todos_collection.count_documents(
-        {
-            "user_id": user_id,
-            "execution_status": {"$in": statuses},
-            "kind": {"$ne": "goal"},
-            **gaia_assigned_filter(),
-        }
-    )
+    count = await todo_repository.count_budget_bucket(user_id, statuses=statuses)
     if count > cap:
-        await todos_collection.delete_one({"_id": ObjectId(todo_id), "user_id": user_id})
+        await todo_repository.delete(todo_id, user_id=user_id)
         raise BudgetExceededError(
             f"Budget full: {count - 1}/{cap} {bucket} already in place (parallel "
             "creations raced). Finish or dismiss existing items before adding more."
@@ -323,12 +296,12 @@ async def enforce_budget_post_insert(
 
 
 async def _record_rejection_signal(
-    user_id: str, doc: dict, source: str, reason: str | None = None
+    user_id: str, doc: TodoDocument, source: str, reason: str | None = None
 ) -> None:
     """Persist a structured proposal_rejected memory signal (dismiss/expiry teach)."""
     content = (
         f"proposal_rejected | kind: {derive_proposal_kind(doc)} "
-        f"| title: {doc.get('title', 'untitled')} | serves: {doc.get('serves', '')} "
+        f"| title: {doc.title or 'untitled'} | serves: {doc.serves or ''} "
         f"| source: {source}"
     )
     if reason:
@@ -343,7 +316,7 @@ async def _record_rejection_signal(
     except Exception as e:
         # The mongo-derived strike count still enforces the 3-strike rule;
         # losing the memory copy only weakens organic recall — log it.
-        log.warning("gaia_todo.rejection_signal_failed", todo_id=str(doc.get("_id")), error=str(e))
+        log.warning("gaia_todo.rejection_signal_failed", todo_id=doc.id, error=str(e))
 
 
 async def approve(
@@ -367,9 +340,10 @@ async def approve(
     try:
         await tiered_limiter.check_and_increment(user_id, GAIA_TODO_EXECUTIONS_FEATURE, user_plan)
     except RateLimitExceededException as e:
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id), "user_id": user_id},
-            {"$set": {"pitch_expires_at": now + timedelta(days=PITCH_TTL_DAYS)}},
+        await todo_repository.update(
+            todo_id,
+            user_id=user_id,
+            update=TodoUpdate(pitch_expires_at=now + timedelta(days=PITCH_TTL_DAYS)),
         )
         track(
             user_id,
@@ -383,20 +357,19 @@ async def approve(
             pitch=_build_upgrade_pitch(doc),
             plan_required=detail.get("plan_required") or "pro",
         ) from e
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {
-            "$set": {
-                "execution_status": ExecutionStatus.QUEUED.value,
-                "scheduled_at": now,
-                "pitch_expires_at": None,
-                # Approval means "do it now" — the execution must PERFORM the
-                # outward action from the deliverable, not re-draft it.
-                "execution_intent": "release",
-                # Always set (None clears a stale instruction from a prior cycle).
-                "approve_instruction": instruction,
-            }
-        },
+    await todo_repository.update(
+        todo_id,
+        user_id=user_id,
+        update=TodoUpdate(
+            execution_status=ExecutionStatus.QUEUED,
+            scheduled_at=now,
+            pitch_expires_at=None,
+            # Approval means "do it now" — the execution must PERFORM the
+            # outward action from the deliverable, not re-draft it.
+            execution_intent="release",
+            # Always set (None clears a stale instruction from a prior cycle).
+            approve_instruction=instruction,
+        ),
     )
     await schedule_execution(todo_id, now)
     log_detail = f"User approved execution via {channel}"
@@ -421,16 +394,15 @@ async def dismiss(
     # Persist the verbatim reason (and when) on the doc so the strike summary can
     # surface it without reaching into memory recall — the summary stays derived
     # from the todos collection, where the 3-strike rule cannot silently degrade.
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {
-            "$set": {
-                "execution_status": ExecutionStatus.DISMISSED.value,
-                "completed": True,
-                "dismiss_reason": reason,
-                "dismissed_at": datetime.now(UTC),
-            }
-        },
+    await todo_repository.update(
+        todo_id,
+        user_id=user_id,
+        update=TodoUpdate(
+            execution_status=ExecutionStatus.DISMISSED,
+            completed=True,
+            dismiss_reason=reason,
+            dismissed_at=datetime.now(UTC),
+        ),
     )
     await _record_rejection_signal(user_id, doc, "dismissed", reason)
     track(
@@ -448,32 +420,30 @@ async def handoff(todo_id: str, user_id: str) -> None:
     Handoff never needs a tap: outward-facing steps discovered during execution
     flip the todo to ``needs_you`` per the run's approval contract.
     """
-    doc = await todos_collection.find_one({"_id": ObjectId(todo_id), "user_id": user_id})
+    doc = await todo_repository.get(todo_id, user_id=user_id)
     if not doc:
         raise InvalidTransitionError(f"Todo {todo_id} not found")
     if _is_gaia_assigned(doc):
         raise InvalidTransitionError(f"Todo {todo_id} is already GAIA-assigned")
     now = datetime.now(UTC)
-    title = doc.get("title", "untitled")
-    updates: dict = {
+    title = doc.title or "untitled"
+    update_kwargs: dict[str, Any] = {
         "assignee": ASSIGNEE_GAIA,
-        "execution_status": ExecutionStatus.QUEUED.value,
+        "execution_status": ExecutionStatus.QUEUED,
         "serves": f"user handoff: {title}",
         "scheduled_at": now,
     }
     # Seed facets only if the todo has no working memory yet — a prep-classified
     # user todo may already carry notes_content (see todo_classification).
-    if not doc.get("notes_content") and not doc.get("canvas_content"):
-        updates["vfs_path"] = build_vfs_label(user_id, todo_id)
-        updates["deliverable_content"] = DELIVERABLE_TEMPLATE.format(title=title)
-        updates["notes_content"] = NOTES_TEMPLATE.format(title=title)
-        updates["log_content"] = (
+    if not doc.notes_content and not doc.canvas_content:
+        update_kwargs["vfs_path"] = build_vfs_label(user_id, todo_id)
+        update_kwargs["deliverable_content"] = DELIVERABLE_TEMPLATE.format(title=title)
+        update_kwargs["notes_content"] = NOTES_TEMPLATE.format(title=title)
+        update_kwargs["log_content"] = (
             f"# System Log: {title}\n\n## {now.isoformat()} [HANDOFF]\n- Source: user\n"
         )
     # assignee is the discriminator; no gaia-tracked label stamp (see create).
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": updates}
-    )
+    await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate(**update_kwargs))
     await schedule_execution(todo_id, now)
     await system_log(todo_id, user_id, "handoff", "User handed this todo to GAIA")
     track(user_id, "handoff_created", {"todo_id": todo_id})
@@ -496,13 +466,14 @@ async def mark_execution_status(
     """
     if status == ExecutionStatus.FAILED and not (error_message or "").strip():
         raise InvalidTransitionError("failed status requires an error_message cause")
-    updates = {
-        "execution_status": status.value,
-        "error_message": error_message if status == ExecutionStatus.FAILED else None,
-        "blocker_question": blocker_question if status == ExecutionStatus.NEEDS_YOU else None,
-    }
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id}, {"$set": updates}
+    await todo_repository.update(
+        todo_id,
+        user_id=user_id,
+        update=TodoUpdate(
+            execution_status=status,
+            error_message=error_message if status == ExecutionStatus.FAILED else None,
+            blocker_question=blocker_question if status == ExecutionStatus.NEEDS_YOU else None,
+        ),
     )
     if status == ExecutionStatus.DONE:
         track(user_id, "gaia_todo_completed", {"todo_id": todo_id})
@@ -520,10 +491,8 @@ async def _notify_needs_you(todo_id: str, user_id: str, blocker_question: str | 
     Best-effort: the transition is already persisted and broadcast over the
     websocket, so a delivery failure only delays the ping — log it, never raise.
     """
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id}, {"title": 1}
-    )
-    title = (doc or {}).get("title", "your todo")
+    doc = await todo_repository.get(todo_id, user_id=user_id)
+    title = (doc.title if doc else None) or "your todo"
     body = (blocker_question or "").strip() or "GAIA needs a decision from you to continue."
     try:
         await notification_service.create_notification(
@@ -566,8 +535,8 @@ async def block(todo_id: str, user_id: str, question: str) -> None:
     if not question:
         raise InvalidTransitionError("block requires a non-empty question")
     doc = await _get_gaia_todo(todo_id, user_id)
-    current = doc.get("execution_status")
-    if current not in (ExecutionStatus.QUEUED.value, ExecutionStatus.RUNNING.value):
+    current = doc.execution_status
+    if current not in (ExecutionStatus.QUEUED, ExecutionStatus.RUNNING):
         raise InvalidTransitionError(
             f"Only queued/running todos can be blocked (todo {todo_id} is {current!r})"
         )
@@ -589,23 +558,22 @@ async def answer(todo_id: str, user_id: str, answer_text: str, channel: str = "w
         raise InvalidTransitionError("answer requires a non-empty reply")
     doc = await _require_status(todo_id, user_id, ExecutionStatus.NEEDS_YOU, "answered")
     now = datetime.now(UTC)
-    question = doc.get("blocker_question") or doc.get("error_message") or "the open question"
+    question = doc.blocker_question or doc.error_message or "the open question"
     await append_facet(
         todo_id,
         user_id,
         FACET_NOTES,
         f"\n## User answer ({now.isoformat()})\nQ: {question}\nA: {answer_text}\n",
     )
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {
-            "$set": {
-                "execution_status": ExecutionStatus.QUEUED.value,
-                "scheduled_at": now,
-                "blocker_question": None,
-                "error_message": None,
-            }
-        },
+    await todo_repository.update(
+        todo_id,
+        user_id=user_id,
+        update=TodoUpdate(
+            execution_status=ExecutionStatus.QUEUED,
+            scheduled_at=now,
+            blocker_question=None,
+            error_message=None,
+        ),
     )
     await schedule_execution(todo_id, now)
     await system_log(
@@ -625,26 +593,14 @@ async def retry(todo_id: str, user_id: str, channel: str = "web") -> None:
     bounds how many times a human may retry a todo that keeps failing.
     """
     doc = await _require_status(todo_id, user_id, ExecutionStatus.FAILED, "retried")
-    user_retries = doc.get("gaia_user_retry_count", 0)
+    user_retries = doc.gaia_user_retry_count
     if user_retries >= MAX_GAIA_USER_RETRIES:
         raise InvalidTransitionError(
             f"This todo has already been retried {MAX_GAIA_USER_RETRIES} times and keeps "
             "failing. Edit it or hand it off before retrying again."
         )
     now = datetime.now(UTC)
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {
-            "$set": {
-                "execution_status": ExecutionStatus.QUEUED.value,
-                "scheduled_at": now,
-                "error_message": None,
-                "gaia_retry_count": 0,
-                "gaia_user_retry_count": user_retries + 1,
-            },
-            "$pull": {"labels": FAILED_LABEL},
-        },
-    )
+    await todo_repository.retry_failed(todo_id, user_id, now=now, user_retry_count=user_retries + 1)
     await schedule_execution(todo_id, now)
     await system_log(todo_id, user_id, "retry", f"User retried after failure via {channel}")
     track(
@@ -663,24 +619,19 @@ async def expire_stale_proposals(user_id: str) -> list[str]:
     Returns expired titles so the briefing can report the cleanup.
     """
     now = datetime.now(UTC)
-    query = {
-        "user_id": user_id,
-        "execution_status": ExecutionStatus.PROPOSED.value,
-        "created_at": {"$lt": now - timedelta(hours=PROPOSAL_TTL_HOURS)},
-        "$and": [
-            {"$or": [{"pitch_expires_at": None}, {"pitch_expires_at": {"$lt": now}}]},
-            gaia_assigned_filter(),
-        ],
-    }
+    candidates = await todo_repository.list_expirable_proposals(
+        user_id, before=now - timedelta(hours=PROPOSAL_TTL_HOURS), now=now
+    )
     expired_titles: list[str] = []
-    async for doc in todos_collection.find(query):
-        await todos_collection.update_one(
-            {"_id": doc["_id"]},
-            {"$set": {"execution_status": ExecutionStatus.EXPIRED.value, "completed": True}},
+    for doc in candidates:
+        await todo_repository.update(
+            doc.id,
+            user_id=user_id,
+            update=TodoUpdate(execution_status=ExecutionStatus.EXPIRED, completed=True),
         )
         await _record_rejection_signal(user_id, doc, "expired")
-        track(user_id, "proposal_expired", {"todo_id": str(doc["_id"])})
-        expired_titles.append(doc.get("title", "untitled"))
+        track(user_id, "proposal_expired", {"todo_id": doc.id})
+        expired_titles.append(doc.title or "untitled")
     if expired_titles:
         schedule_gaia_tasks_sync(user_id)
     return expired_titles
@@ -696,23 +647,15 @@ async def get_rejection_strikes_summary(user_id: str) -> str:
     REJECTION_STRIKE_THRESHOLD+ are BLOCKED; sub-threshold kinds appear only when
     the user gave a reason worth learning from.
     """
-    query = {
-        "user_id": user_id,
-        "execution_status": {
-            "$in": [ExecutionStatus.DISMISSED.value, ExecutionStatus.EXPIRED.value]
-        },
-        **gaia_assigned_filter(),
-    }
-    strikes: dict[str, int] = {}
-    reasons: dict[str, str] = {}
-    projection = {"title": 1, "labels": 1, "serves": 1, "dismiss_reason": 1, "dismissed_at": 1}
     # Newest dismissal first, so the first reason seen per kind is the most recent
     # (expiries have no reason and no dismissed_at — they only add to the count).
-    cursor = todos_collection.find(query, projection).sort("dismissed_at", -1)
-    async for doc in cursor:
+    docs = await todo_repository.list_rejected_gaia(user_id)
+    strikes: dict[str, int] = {}
+    reasons: dict[str, str] = {}
+    for doc in docs:
         kind = derive_proposal_kind(doc)
         strikes[kind] = strikes.get(kind, 0) + 1
-        reason = (doc.get("dismiss_reason") or "").strip()
+        reason = (doc.dismiss_reason or "").strip()
         if reason and kind not in reasons:
             reasons[kind] = reason
 

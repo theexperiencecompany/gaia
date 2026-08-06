@@ -29,6 +29,7 @@ returns — the storage helpers treat the missing mount as a soft-fail.
 from __future__ import annotations
 
 import asyncio
+import errno
 import os
 from pathlib import Path
 import shutil
@@ -36,6 +37,7 @@ import subprocess  # nosec B404 - JuiceFS CLI invocation
 import tempfile
 import threading
 import time
+from typing import Literal
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -82,6 +84,28 @@ def _classify(text: str) -> str:
     return "fatal" if any(marker in low for marker in _PERMANENT_MARKERS) else "transient"
 
 
+def _meta_err_tail(stderr: str) -> str:
+    """Return the most diagnostic slice of a juicefs CLI failure.
+
+    juicefs logs a banner ("Meta address: postgres://...") first and the actual
+    cause last, on a ``<FATAL>``/``<ERROR>`` line — so head-truncating the stderr
+    (``[:300]``) drops exactly the reason and leaves only the (masked) URL.
+
+    The pgx/pgconn driver wraps the real cause (``dial tcp ... i/o timeout``,
+    ``connection refused``, ``too many connections``, ...) on *continuation*
+    lines below the ``<FATAL>:`` header, so a single-line grab clips it right at
+    the trailing colon. Keep the FATAL/ERROR line through the end of stderr.
+    """
+    text = (stderr or "").strip()
+    if not text:
+        return ""
+    lines = text.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        if "<FATAL>" in lines[i] or "<ERROR>" in lines[i]:
+            return "\n".join(lines[i:]).strip()[-500:]
+    return text[-500:]
+
+
 # Module state — guards against the bootstrap thread being spawned twice.
 _bootstrap_lock = threading.Lock()
 _bootstrap_thread: threading.Thread | None = None
@@ -120,9 +144,38 @@ def _bucket_url() -> str:
     return f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com/{settings.R2_BUCKET}"
 
 
+_MountState = Literal["present", "absent", "broken"]
+
+
+def _mount_state(path: Path) -> _MountState:
+    """Classify a mountpoint path by stat-ing it directly.
+
+    On Python 3.12 ``Path.exists()`` only swallows ENOENT/ENOTDIR/EBADF/ELOOP;
+    a disconnected FUSE mountpoint ("Transport endpoint is not connected")
+    makes stat raise ENOTCONN, which would otherwise escape the mount checks
+    and make the stale-mount recovery below unreachable. Unexpected OSErrors
+    still propagate — they are failures, not "not mounted".
+    """
+    try:
+        path.stat()
+    except OSError as e:
+        if e.errno in (errno.ENOENT, errno.ENOTDIR):
+            return "absent"
+        if e.errno == errno.ENOTCONN:
+            log.warning(
+                f"{LogTag.STORAGE} broken FUSE mountpoint detected",
+                path=str(path),
+                errno=e.errno,
+                detail=str(e),
+            )
+            return "broken"
+        raise
+    return "present"
+
+
 def _is_mounted(path: Path) -> bool:
     """Best-effort mountpoint check that works on Linux + macOS."""
-    if not path.exists():
+    if _mount_state(path) != "present":
         return False
     try:
         result = subprocess.run(  # nosec B603 B607 - fixed argv, no shell
@@ -206,7 +259,7 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         log.warning(
             f"{LogTag.STORAGE} permanent error during status",
             meta=_mask_meta(meta_url),
-            detail=status.stderr.strip()[:300],
+            detail=_meta_err_tail(status.stderr),
         )
         return "fatal"
     # Non-zero status with no permanent marker == "not formatted yet" (or a
@@ -215,6 +268,8 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
     # variables when --access-key/--secret-key are absent), so they do not
     # appear in argv visible to `ps auxww` during the format window.
     log.info(f"{LogTag.STORAGE} formatting filesystem against {_bucket_url()}")
+    r2_key = (settings.R2_ACCESS_KEY or "").strip()
+    r2_secret = (settings.R2_SECRET_KEY or "").strip()
     cmd: list[str] = [
         "juicefs",
         "format",
@@ -222,14 +277,18 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         "s3",
         "--bucket",
         _bucket_url(),
+        # Pass R2 credentials as explicit flags — JuiceFS falls through to EC2
+        # IMDS when only AWS_* env vars are set against a non-AWS endpoint, which
+        # times out in Docker. Explicit --access-key/--secret-key bypass that chain.
+        "--access-key",
+        r2_key,
+        "--secret-key",
+        r2_secret,
     ]
     if encrypt_key is not None:
         cmd.extend(["--encrypt-rsa-key", str(encrypt_key)])
     cmd.extend([meta_url, "gaia-0"])
-    fmt_env = {
-        "AWS_ACCESS_KEY_ID": (settings.R2_ACCESS_KEY or "").strip(),
-        "AWS_SECRET_ACCESS_KEY": (settings.R2_SECRET_KEY or "").strip(),
-    }
+    fmt_env: dict[str, str] = {}
     fmt_started = time.monotonic()
     fmt = _run(cmd, timeout=120, env=fmt_env)
     record_fs_op(
@@ -250,10 +309,14 @@ def _format_if_needed(meta_url: str, encrypt_key: Path | None) -> str:
         log.warning(
             f"{LogTag.STORAGE} permanent error during format",
             meta=_mask_meta(meta_url),
-            detail=err[:300],
+            detail=_meta_err_tail(err),
         )
         return "fatal"
-    log.warning(f"{LogTag.STORAGE} format failed (transient; will retry): {err[:300]}")
+    log.warning(
+        f"{LogTag.STORAGE} format failed (transient; will retry)",
+        meta=_mask_meta(meta_url),
+        detail=_meta_err_tail(err),
+    )
     return "transient"
 
 
@@ -273,6 +336,15 @@ def _mount(meta_url: str, mount_path: Path) -> str:
         log.info(f"{LogTag.STORAGE} already mounted at {mount_path}")
         return "ok"
 
+    # If the directory exists but is a broken/stale FUSE mountpoint (left over
+    # from a prior container run), JuiceFS will detect it and try a normal umount
+    # that can time out for 3 seconds and still fail. Lazy-unmount proactively so
+    # the mount call gets a clean directory instead of fighting a stale endpoint.
+    # `_mount_state` (not `Path.exists()`) so a disconnected FUSE endpoint —
+    # which makes stat raise ENOTCONN — deterministically reaches this cleanup.
+    if _mount_state(mount_path) != "absent":
+        _run(["fusermount", "-u", "-z", str(mount_path)], timeout=5)
+
     _CACHE_DIR.mkdir(parents=True, exist_ok=True)
     mount_path.mkdir(parents=True, exist_ok=True)
     cmd = [
@@ -284,6 +356,9 @@ def _mount(meta_url: str, mount_path: Path) -> str:
         f"--cache-size={_CACHE_SIZE_MB}",
         f"--max-uploads={_MAX_UPLOADS}",
         f"--buffer-size={_BUFFER_SIZE_MB}",
+        # NOTE: --access-key / --secret-key are NOT valid flags for `juicefs mount`.
+        # Credentials were stored in the Neon metadata during `juicefs format` and
+        # are read from there automatically at mount time.
         meta_url,
         str(mount_path),
     ]
@@ -310,7 +385,7 @@ def _mount(meta_url: str, mount_path: Path) -> str:
     log.warning(
         f"{LogTag.STORAGE} mount not ready within {timeout}s ({kind})",
         meta=_mask_meta(meta_url),
-        detail=detail.strip()[:300],
+        detail=_meta_err_tail(res.stderr),
     )
     return kind
 

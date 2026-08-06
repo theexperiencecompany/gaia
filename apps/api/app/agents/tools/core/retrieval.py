@@ -177,9 +177,9 @@ Simple read task:
 
 Multi-tool task:
   retrieve_tools(query="fetch emails, send reply")
-  → ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD"])
-  → GMAIL_FETCH_EMAILS(...) → find the thread
+  → ["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD", ...]
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_MESSAGES", "GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_MESSAGES(...) → find the thread
   → GMAIL_REPLY_TO_THREAD(...) → send reply. Done.
 
 Write task with verification:
@@ -620,12 +620,14 @@ def get_retrieve_tools_function(
             return RetrieveToolsResult(
                 tools_to_bind=[],
                 response=[
-                    "retrieve_tools received no usable argument (an empty "
-                    "exact_tool_names counts as none). Next step: pass "
-                    "query='what you want to do' to discover, or "
-                    "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
-                    "subagent (a 'subagent:' result), do NOT call retrieve_tools "
-                    "again; call handoff(subagent_id='gmail', task='...') directly."
+                    (
+                        "retrieve_tools received no usable argument (an empty "
+                        "exact_tool_names counts as none). Next step: pass "
+                        "query='what you want to do' to discover, or "
+                        "exact_tool_names=['TOOL_NAME'] to bind a known tool. To use a "
+                        "subagent (a 'subagent:' result), do NOT call retrieve_tools "
+                        "again; call handoff(subagent_id='gmail', task='...') directly."
+                    )
                 ],
             )
 

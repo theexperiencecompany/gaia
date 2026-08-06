@@ -2,26 +2,22 @@
 
 A tracked todo's content lives as distinct facets — ``deliverable``, ``notes``,
 and ``log`` — each a field on the todo document itself (``deliverable_content``,
-``notes_content``, ``log_content``). Reading, writing, and appending are atomic
-MongoDB updates — no FUSE mount or JuiceFS required, so tracked todos work in
-every dev mode.
+``notes_content``, ``log_content``). Reading, writing, and appending go through
+the todos repository — no FUSE mount or JuiceFS required, so tracked todos work
+in every dev mode.
 
 The legacy ``vfs_path`` field on the todo doc is retained as a stable display
 label (``/users/{user_id}/todos/{todo_id}``) but is no longer a real filesystem
 path.
 """
 
-from datetime import UTC, datetime
-
-from bson import ObjectId
+from typing import Any
 
 from app.constants.todos import FACET_FIELDS, facet_from_doc
-from app.db.mongodb.collections import todos_collection
-from app.models.todo_models import ExecutionStatus
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import ExecutionStatus, TodoUpdate
 from app.services.gaia_tasks_fs import schedule_gaia_tasks_sync
 from shared.py.wide_events import log
-
-ARTIFACTS_FIELD = "artifacts"
 
 
 def build_vfs_label(user_id: str, todo_id: str) -> str:
@@ -43,25 +39,20 @@ async def read_facet(todo_id: str, user_id: str, facet: str) -> str | None:
     Returns ``None`` only when the todo does not exist; a todo with an empty
     facet returns ``""``.
     """
-    field = _facet_field(facet)
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {field: 1, "canvas_content": 1, "execution_status": 1},
-    )
-    if not doc:
+    _facet_field(facet)  # validates the facet name
+    doc = await todo_repository.get(todo_id, user_id=user_id)
+    if doc is None:
         return None
-    allow_canvas_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
-    return facet_from_doc(doc, facet, allow_canvas_fallback=allow_canvas_fallback)
+    allow_canvas_fallback = doc.execution_status == ExecutionStatus.PROPOSED
+    return facet_from_doc(doc.model_dump(), facet, allow_canvas_fallback=allow_canvas_fallback)
 
 
 async def write_facet(todo_id: str, user_id: str, facet: str, content: str) -> bool:
     """Overwrite a facet's content. Returns False if the todo was not found."""
     field = _facet_field(facet)
-    result = await todos_collection.update_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {"$set": {field: content, "updated_at": datetime.now(UTC)}},
-    )
-    if result.matched_count > 0:
+    fields: dict[str, Any] = {field: content}
+    updated = await todo_repository.update(todo_id, user_id=user_id, update=TodoUpdate(**fields))
+    if updated is not None:
         schedule_gaia_tasks_sync(user_id)
         return True
     return False
@@ -79,10 +70,7 @@ async def append_facet(todo_id: str, user_id: str, facet: str, content: str) -> 
 
 async def read_artifacts(todo_id: str, user_id: str) -> list[dict] | None:
     """Read the todo's artifacts list. Returns None only when the todo is missing."""
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id), "user_id": user_id},
-        {ARTIFACTS_FIELD: 1},
-    )
-    if not doc:
+    doc = await todo_repository.get(todo_id, user_id=user_id)
+    if doc is None:
         return None
-    return doc.get(ARTIFACTS_FIELD) or []
+    return [artifact.model_dump() for artifact in doc.artifacts]

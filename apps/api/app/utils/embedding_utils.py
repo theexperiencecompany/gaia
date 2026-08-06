@@ -1,11 +1,10 @@
 from typing import Any
 
-from bson import ObjectId
 from langchain_core.documents import Document
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import files_collection, notes_collection
+from app.db.repositories.notes import note_repository
 from shared.py.wide_events import log
 
 
@@ -56,53 +55,37 @@ async def search_by_similarity(
 
         # Extract IDs for MongoDB lookup if needed
         result_items = []
-        mongo_ids = []
         id_field = "note_id" if collection_name == "notes" else "file_id"
 
-        # Build initial result data and collect IDs for MongoDB lookup
+        # Build initial result data
         for item, score in chroma_results:
             item_id = item.metadata.get(id_field)
             if not item_id:
                 continue
 
-            item_data = {
-                "id": item_id,
-                "similarity_score": score,
-                "user_id": item.metadata.get("user_id", ""),
-                "content": item.page_content,
-            }
-            result_items.append(item_data)
-
-            if fetch_mongo_details:
-                mongo_ids.append(ObjectId(item_id))
-
-        # Extract IDs, similarity scores, content, and metadata
-        if fetch_mongo_details:
-            # Fetch additional details from MongoDB if required
-            mongo_collection = notes_collection if collection_name == "notes" else files_collection
-
-            mongo_items = await mongo_collection.find(
+            result_items.append(
                 {
-                    "_id": {"$in": mongo_ids},
-                    "user_id": user_id,
+                    "id": item_id,
+                    "similarity_score": score,
+                    "user_id": item.metadata.get("user_id", ""),
+                    "content": item.page_content,
                 }
-            ).to_list(length=None)
+            )
 
-            mongo_items_map = {str(item["_id"]): item for item in mongo_items}
-
-            # Enhance result items with MongoDB details
+        # Enrich note results with their stored timestamps. Only the notes path
+        # requests enrichment (see search_notes_by_similarity, the sole caller);
+        # the files-detail branch was unreachable and is intentionally dropped.
+        if fetch_mongo_details and collection_name == "notes":
+            note_ids = [str(d["id"]) for d in result_items]
+            notes_by_id = {n.id: n for n in await note_repository.find_by_ids(user_id, note_ids)}
             for item_data in result_items:
-                mongo_item = mongo_items_map.get(item_data["id"])
-                if mongo_item:
-                    # Format timestamps
-                    for ts_field in ["created_at", "updated_at"]:
-                        if ts_field in mongo_item and hasattr(mongo_item[ts_field], "isoformat"):
-                            item_data[ts_field] = mongo_item[ts_field].isoformat()
-
-                    # Add collection-specific fields
-                    if collection_name == "files":
-                        item_data["folder"] = mongo_item.get("folder", "")
-                        item_data["tags"] = mongo_item.get("tags", [])
+                note = notes_by_id.get(item_data["id"])
+                if note is None:
+                    continue
+                for ts_field in ("created_at", "updated_at"):
+                    value = getattr(note, ts_field, None)
+                    if value is not None and hasattr(value, "isoformat"):
+                        item_data[ts_field] = value.isoformat()
 
         # Sort by similarity score (lower is better)
         result_items.sort(key=lambda x: x.get("similarity_score", 1.0))

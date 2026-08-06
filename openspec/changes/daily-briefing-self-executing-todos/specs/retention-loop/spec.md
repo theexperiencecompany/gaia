@@ -20,9 +20,9 @@ An `awards` collection SHALL store earned badges `{user_id, key, earned_at}`. v1
 - **WHEN** a user's 100th GAIA-completed todo lands and later a 101st completes
 - **THEN** `gaia_100_todos` is awarded and notified exactly once
 
-### Requirement: Weekly zoom-out with a shareable Wrapped card
+### Requirement: Weekly editions are beautiful rotating documents
 
-A `weekly_digest` system workflow (Sunday 5pm user-local) SHALL emit a `kind: weekly` BriefingPayload summarizing the week: completed work split by assignee, an hours-saved estimate, streak length, and heatmap snippet. It SHALL render via the weekly email template and the dashboard archive, and SHALL offer a shareable public Wrapped card at a public URL (public-slug pattern), containing only the aggregate stats the user explicitly shares.
+A `weekly_digest` system workflow (Sunday 5pm user-local) SHALL emit a `kind: weekly` BriefingPayload summarizing the week: completed work split by assignee, an hours-saved estimate, streak length, and what's ahead (open todos, scheduled follow-ups). It SHALL render as a designed editorial email document from a **template family** chosen by a deterministic rotation engine (no repeat within the rotation window); v1 ships 2–3 template families from the edition-template system, expanding later. The weekly edition is an emailed keepsake document — it is NOT a dashboard surface. It SHALL also appear in the briefing archive, and SHALL offer a shareable public Wrapped card at a public URL (public-slug pattern), containing only the aggregate stats the user explicitly shares.
 
 #### Scenario: Weekly email delivered
 - **WHEN** the weekly run completes for a user with email enabled
@@ -31,6 +31,18 @@ A `weekly_digest` system workflow (Sunday 5pm user-local) SHALL emit a `kind: we
 #### Scenario: Share is opt-in
 - **WHEN** the user has not tapped share
 - **THEN** no public URL for their Wrapped card exists
+
+### Requirement: Completion reports carry the next step
+
+When a GAIA todo the user approved completes during the user's waking hours, the completion message on their priority chat channel MAY include one contextual next-step suggestion drawn from open todos, goal state, or the completed work itself ("Done — sent the Rahul follow-up. Want me to prep the invoice chase next?"). Nudges SHALL be completion-triggered only — the system SHALL NOT send standalone time-based engagement pings ("it's 2pm, want anything?"). At most one suggestion per completion message; a suggestion dismissed or ignored SHALL NOT be repeated in later completion messages.
+
+#### Scenario: Completion nudge is contextual and single
+- **WHEN** an approved GAIA todo completes at 2pm and two other candidate tasks exist
+- **THEN** the completion message contains the report plus at most one suggestion, and no separate engagement ping is sent
+
+#### Scenario: No clock-based pings
+- **WHEN** no approved todo completes during an afternoon
+- **THEN** no proactive engagement message is sent that afternoon
 
 ### Requirement: Retention instrumentation from day one
 

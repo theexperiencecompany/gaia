@@ -85,7 +85,7 @@ export default function WorkflowDescriptionField({
         description: description ?? undefined,
         trigger_config: triggerConfig as Record<string, unknown>,
         existing_prompt: hasExistingPrompt ? currentPrompt : undefined,
-        selected_integrations:
+        integration_ids:
           selectedIntegrationSlugs.length > 0
             ? selectedIntegrationSlugs
             : undefined,

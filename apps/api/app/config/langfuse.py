@@ -11,6 +11,7 @@ re-derive it without persisting anything.
 """
 
 import os
+import threading
 
 from langfuse import Langfuse
 from langfuse.langchain import CallbackHandler
@@ -19,6 +20,14 @@ from opentelemetry.sdk.trace import TracerProvider
 from app.config.settings import settings
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from shared.py.wide_events import log
+
+# How long process start will wait for the reachability check below. A healthy
+# Langfuse answers in milliseconds, so this only bites when it is down or slow —
+# exactly when startup must not be held up. It cannot be expressed as an SDK
+# timeout: `Langfuse(timeout=...)` bounds a single HTTP attempt, but auth_check
+# retries internally and takes ~120s against an unreachable host regardless of
+# the value passed (measured at both 2s and 5s).
+LANGFUSE_AUTH_CHECK_WAIT_SECONDS = 5
 
 
 def _langfuse_configured() -> bool:
@@ -55,8 +64,10 @@ def init_langfuse() -> Langfuse:
     A successful `Langfuse(...)` construction does not test the network. The
     SDK ships traces from a background flush thread that swallows errors, so
     bad creds / DNS / TLS failures normally surface as zero traces in the UI
-    with no log line anywhere. We run an explicit auth check here so the bad
-    case is one warning at startup instead of a silent black hole.
+    with no log line anywhere. We run an explicit auth check so the bad case is
+    one warning instead of a silent black hole — but off the startup path, since
+    the check can otherwise block a process start for two minutes (see
+    ``LANGFUSE_AUTH_CHECK_WAIT_SECONDS``).
     """
     # Sentry's OTel integration (sentry-sdk[langgraph]) sets the global
     # TracerProvider before us, so the SDK's `environment` constructor kwarg
@@ -81,6 +92,31 @@ def init_langfuse() -> Langfuse:
         environment=settings.ENV,
         tracer_provider=TracerProvider(),
     )
+    # Daemon thread, joined with a deadline: the check is a diagnostic, and
+    # nothing below it depends on the answer, so a Langfuse outage must cost
+    # startup a bounded wait rather than the SDK's full internal retry budget.
+    # Daemon so a still-running check can never hold up interpreter shutdown.
+    checker = threading.Thread(
+        target=_log_reachability, args=(client,), name="langfuse-auth-check", daemon=True
+    )
+    checker.start()
+    checker.join(LANGFUSE_AUTH_CHECK_WAIT_SECONDS)
+    if checker.is_alive():
+        log.warning(
+            "langfuse_reachability_check_timed_out",
+            host=settings.LANGFUSE_HOST,
+            waited_seconds=LANGFUSE_AUTH_CHECK_WAIT_SECONDS,
+            hint="Langfuse slow or unreachable; startup continued, traces likely dropped",
+        )
+    return client
+
+
+def _log_reachability(client: Langfuse) -> None:
+    """Report whether Langfuse is reachable and the keys are accepted.
+
+    Runs off the startup path (see the caller), so it may log after the process
+    is already serving — or not at all, if the process exits first.
+    """
     try:
         if client.auth_check():
             log.info("langfuse_ready", host=settings.LANGFUSE_HOST, environment=settings.ENV)
@@ -98,7 +134,6 @@ def init_langfuse() -> Langfuse:
             error_type=type(exc).__name__,
             hint="DNS/TLS/network — traces will be queued and likely dropped",
         )
-    return client
 
 
 def build_langfuse_callback() -> CallbackHandler | None:

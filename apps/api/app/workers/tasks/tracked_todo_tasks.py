@@ -14,18 +14,10 @@ import random
 from typing import Any
 from uuid import uuid4
 
-from bson import ObjectId
-
 from app.agents.core.agent import call_agent_silent
 from app.constants.notifications import CHANNEL_TYPE_INAPP, NOTIFICATION_KIND_TODO_DONE
-from app.constants.todos import (
-    FACET_DELIVERABLE,
-    FACET_LOG,
-    FACET_NOTES,
-    FAILED_LABEL,
-    gaia_assigned_filter,
-)
-from app.db.mongodb.collections import todos_collection
+from app.constants.todos import FACET_DELIVERABLE, FACET_LOG, FACET_NOTES, FAILED_LABEL
+from app.db.repositories.todos import todo_repository
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -39,7 +31,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
-from app.models.todo_models import ExecutionStatus
+from app.models.todo_models import ExecutionStatus, TodoDocument, TodoUpdate
 from app.services.model_service import get_default_model
 from app.services.notification_service import notification_service
 from app.services.todo_canvas_storage import read_facet
@@ -104,32 +96,32 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
     Fetch the todo document, run the appropriate execution path, and
     handle retry / recurrence logic on the result.
     """
-    doc = await todos_collection.find_one({"_id": ObjectId(todo_id)})
+    doc = await todo_repository.get_by_id(todo_id)
     if not doc:
         log.warning("tracked_todo.execute_not_found", todo_id=todo_id)
         return f"not_found:{todo_id}"
 
-    if doc.get("completed"):
+    if doc.completed:
         log.info("tracked_todo.execute_already_completed", todo_id=todo_id)
         return f"completed:{todo_id}"
 
     # Skip expired todos — let maintenance sweep handle gracefully
-    if doc.get("expires_at") and doc["expires_at"] <= datetime.now(UTC):
+    if doc.expires_at and doc.expires_at <= datetime.now(UTC):
         log.info(
             "tracked_todo.execute_expired",
             todo_id=todo_id,
-            expires_at=doc["expires_at"].isoformat(),
+            expires_at=doc.expires_at.isoformat(),
         )
         return f"expired:{todo_id}"
 
     # Skip failed todos — the user must retry (POST /todos/{id}/retry clears this
     # label) before re-execution.
-    if FAILED_LABEL in doc.get("labels", []):
+    if FAILED_LABEL in doc.labels:
         log.info("tracked_todo.execute_marked_failed", todo_id=todo_id)
         return f"skipped:{todo_id} (marked failed)"
 
-    user_id: str = doc.get("user_id", "")
-    retry_count: int = doc.get("gaia_retry_count", 0)
+    user_id: str = doc.user_id
+    retry_count: int = doc.gaia_retry_count
 
     if not user_id:
         log.error("tracked_todo.execute_missing_user_id", todo_id=todo_id)
@@ -151,20 +143,14 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         # re-arms to queued for its next fire; a one-shot work order (no
         # recurrence) is DONE now that its run finished — it produced its
         # deliverable and must not linger "in progress" forever.
-        post = await todos_collection.find_one(
-            {"_id": ObjectId(todo_id)}, {"completed": 1, "execution_status": 1}
-        )
-        post_status = (post or {}).get("execution_status")
+        post = await todo_repository.get_by_id(todo_id)
+        post_status = post.execution_status if post else None
         if (
             post
-            and not post.get("completed")
-            and post_status
-            not in (
-                ExecutionStatus.PROPOSED.value,
-                ExecutionStatus.NEEDS_YOU.value,
-            )
+            and not post.completed
+            and post_status not in (ExecutionStatus.PROPOSED, ExecutionStatus.NEEDS_YOU)
         ):
-            if doc.get("recurrence"):
+            if doc.recurrence:
                 await lifecycle.mark_execution_status(todo_id, user_id, ExecutionStatus.QUEUED)
             else:
                 await tracked_todo_service.complete_tracked_todo(
@@ -176,26 +162,17 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         await _notify_done_if_scoped(todo_id, user_id, doc, run_summary)
 
         # Reset retry counter on success
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id)},
-            {"$set": {"gaia_retry_count": 0, "updated_at": datetime.now(UTC)}},
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=0)
         )
 
         # Re-enqueue if recurring. Recurrence is always evaluated in the
         # user's stored timezone (looked up once at the top of this run).
-        if doc.get("recurrence"):
-            next_run = _compute_next_run(
-                doc["recurrence"], user_tz.value, anchor=doc.get("scheduled_at")
-            )
+        if doc.recurrence:
+            next_run = _compute_next_run(doc.recurrence, user_tz.value, anchor=doc.scheduled_at)
             if next_run:
-                await todos_collection.update_one(
-                    {"_id": ObjectId(todo_id)},
-                    {
-                        "$set": {
-                            "scheduled_at": next_run,
-                            "updated_at": datetime.now(UTC),
-                        }
-                    },
+                await todo_repository.update(
+                    todo_id, user_id=user_id, update=TodoUpdate(scheduled_at=next_run)
                 )
                 await pool.enqueue_job(
                     "execute_tracked_todo",
@@ -213,14 +190,8 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
     except Exception as exc:
         log.exception("tracked_todo.execution_failed", todo_id=todo_id, error=str(exc))
         new_retry_count = retry_count + 1
-        await todos_collection.update_one(
-            {"_id": ObjectId(todo_id)},
-            {
-                "$set": {
-                    "gaia_retry_count": new_retry_count,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        await todo_repository.update(
+            todo_id, user_id=user_id, update=TodoUpdate(gaia_retry_count=new_retry_count)
         )
 
         if new_retry_count >= MAX_RETRY_ATTEMPTS:
@@ -246,13 +217,13 @@ async def _execute_todo_with_retry(todo_id: str, pool: Any) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> str | None:
+async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: dict) -> str | None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow (no summary to return).
     - Otherwise, run the agent directly and return its completion summary.
     """
-    workflow_id: str | None = doc.get("workflow_id")
+    workflow_id: str | None = doc.workflow_id
 
     if workflow_id:
         # Deferred import to avoid circular dependency
@@ -260,15 +231,15 @@ async def _run_execution(doc: dict, user_id: str, *, user_data: dict) -> str | N
 
         context = {
             "trigger_type": "scheduled_todo",
-            "todo_id": str(doc["_id"]),
+            "todo_id": doc.id,
         }
         success = await WorkflowQueueService.queue_workflow_execution(workflow_id, user_id, context)
         if not success:
-            raise RuntimeError(f"Failed to queue workflow {workflow_id} for todo {doc['_id']}")
+            raise RuntimeError(f"Failed to queue workflow {workflow_id} for todo {doc.id}")
         log.info(
             "tracked_todo.workflow_queued",
             workflow_id=workflow_id,
-            todo_id=str(doc["_id"]),
+            todo_id=doc.id,
         )
         return None
     return await _execute_via_agent(doc, user_id, user_data=user_data)
@@ -292,13 +263,13 @@ async def _collect_reference_context(ref_ids: list[str], user_id: str) -> str:
     ref_parts: list[str] = []
     for ref_id in ref_ids[:5]:  # Cap at 5 to avoid context bloat
         try:
-            ref_doc = await todos_collection.find_one({"_id": ObjectId(ref_id)})
+            ref_doc = await todo_repository.get_by_id(ref_id)
             if not ref_doc:
                 continue
             learnings = _extract_learnings(await read_facet(ref_id, user_id, FACET_NOTES))
             if learnings:
                 ref_parts.append(
-                    f'From past todo "{ref_doc.get("title", "Unknown")}":\n{learnings.strip()}'
+                    f'From past todo "{ref_doc.title or "Unknown"}":\n{learnings.strip()}'
                 )
         except Exception as e:
             log.debug("execute_todo.reference_read_failed", ref_id=ref_id, error=str(e))
@@ -502,13 +473,13 @@ def _release_performed(tool_data: object) -> bool:
     return False
 
 
-async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str:
+async def _execute_via_agent(doc: TodoDocument, user_id: str, *, user_data: dict) -> str:
     """
     Execute the todo using call_agent_silent directly (no workflow needed).
 
     Returns the first 200 chars of the agent response.
     """
-    todo_id = str(doc["_id"])
+    todo_id = doc.id
 
     user_model_config = None
     try:
@@ -522,7 +493,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
     notes: str | None = None
     deliverable: str | None = None
     log_facet: str | None = None
-    is_release = doc.get("execution_intent") == "release"
+    is_release = doc.execution_intent == "release"
     try:
         notes = await read_facet(todo_id, user_id, FACET_NOTES)
         deliverable = await read_facet(todo_id, user_id, FACET_DELIVERABLE)
@@ -536,19 +507,19 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         )
 
     # Read referenced notes for institutional memory
-    reference_context = await _collect_reference_context(doc.get("references", []), user_id)
+    reference_context = await _collect_reference_context(doc.references, user_id)
 
     # Build prompt
-    title: str = doc.get("title", "Untitled Todo")
+    title: str = doc.title or "Untitled Todo"
     prompt = _build_execution_prompt(
         title=title,
-        description=doc.get("description", ""),
+        description=doc.description or "",
         deliverable=deliverable,
         notes=notes,
         reference_context=reference_context,
-        intent=doc.get("execution_intent"),
+        intent=doc.execution_intent,
         log_facet=log_facet,
-        instruction=doc.get("approve_instruction"),
+        instruction=doc.approve_instruction,
     )
 
     # Generate a fresh conversation_id for each execution to prevent
@@ -557,9 +528,10 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
 
     # Persisted up front so the dashboard can link into the live run, not just
     # the finished one.
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id)},
-        {"$set": {"last_run_conversation_id": conversation_id}},
+    await todo_repository.update(
+        todo_id,
+        user_id=user_id,
+        update=TodoUpdate(last_run_conversation_id=conversation_id),
     )
 
     # The human turn must be in `messages` — construct_langchain_messages does
@@ -581,7 +553,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
         "execution_mode": "background",
         # Lane-child prep todos (linked to a goal) run silently overnight — the
         # morning briefing reports them, so no per-todo chat ping.
-        "suppress_platform_delivery": bool(doc.get("goal_id")),
+        "suppress_platform_delivery": bool(doc.goal_id),
     }
 
     # Structural paper trail — write a start marker to the canvas Timeline
@@ -648,7 +620,7 @@ async def _execute_via_agent(doc: dict, user_id: str, *, user_data: dict) -> str
 
 
 async def _notify_done_if_scoped(
-    todo_id: str, user_id: str, doc: dict, run_summary: str | None
+    todo_id: str, user_id: str, doc: TodoDocument, run_summary: str | None
 ) -> None:
     """In-app ping when a run finished (DONE), scoped to work the user asked for.
 
@@ -661,17 +633,15 @@ async def _notify_done_if_scoped(
     Workflow-backed todos are excluded: they carry their own completion
     notification (WORKFLOW_DONE_COPY), so a second ping here would double up.
     """
-    if doc.get("workflow_id"):
+    if doc.workflow_id:
         return
-    final = await todos_collection.find_one(
-        {"_id": ObjectId(todo_id)}, {"execution_status": 1, "title": 1}
-    )
-    if not final or final.get("execution_status") != ExecutionStatus.DONE.value:
+    final = await todo_repository.get_by_id(todo_id)
+    if not final or final.execution_status != ExecutionStatus.DONE:
         return
-    if doc.get("execution_intent") != "release" and doc.get("goal_id"):
+    if doc.execution_intent != "release" and doc.goal_id:
         return
 
-    title: str = final.get("title") or "your todo"
+    title: str = final.title or "your todo"
     body = (run_summary or "").strip()[:200] or "GAIA finished this and it's ready for you."
     try:
         await notification_service.create_notification(
@@ -709,18 +679,12 @@ async def _notify_done_if_scoped(
         )
 
 
-async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
+async def _mark_todo_failed(todo_id: str, user_id: str, doc: TodoDocument) -> None:
     """
     Mark the todo as permanently failed by adding a 'failed' label,
     then send an in-app notification to the user.
     """
-    await todos_collection.update_one(
-        {"_id": ObjectId(todo_id)},
-        {
-            "$addToSet": {"labels": FAILED_LABEL},
-            "$set": {"updated_at": datetime.now(UTC)},
-        },
-    )
+    await todo_repository.add_labels(todo_id, user_id=user_id, labels=[FAILED_LABEL])
     await lifecycle.mark_execution_status(
         todo_id,
         user_id,
@@ -729,7 +693,7 @@ async def _mark_todo_failed(todo_id: str, user_id: str, doc: dict) -> None:
     )
     log.info("tracked_todo.marked_failed", todo_id=todo_id)
 
-    title: str = doc.get("title", "Untitled Todo")
+    title: str = doc.title or "Untitled Todo"
     try:
         await notification_service.create_notification(
             NotificationRequest(
@@ -844,21 +808,16 @@ async def safety_net_check_orphaned_todos(_ctx: dict) -> str:
         now = datetime.now(UTC)
         log.info("tracked_todo.safety_net_scan_started")
 
-        cursor = todos_collection.find(
-            {
-                "scheduled_at": {"$lte": now},
-                "completed": False,
-                **gaia_assigned_filter(),
-                "gaia_retry_count": {"$lt": MAX_RETRY_ATTEMPTS},
-            }
-        ).limit(100)
+        docs = await todo_repository.find_due_tracked_all_users(
+            now=now, max_retries=MAX_RETRY_ATTEMPTS, limit=100
+        )
 
         pool = await RedisPoolManager.get_pool()
         re_enqueued = 0
         skipped = 0
 
-        async for doc in cursor:
-            todo_id = str(doc["_id"])
+        for doc in docs:
+            todo_id = doc.id
             lock_key = f"gaia_todo_exec:{todo_id}"
 
             lock_exists = await pool.exists(lock_key)

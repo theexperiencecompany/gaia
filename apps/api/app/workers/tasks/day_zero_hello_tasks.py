@@ -13,10 +13,8 @@ import json
 import re
 from uuid import uuid4
 
-from bson import ObjectId
-
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.services.briefing import chat_sync, context
@@ -64,7 +62,7 @@ async def _run_silent(user: dict, prompt: str) -> str:
     Mirrors the briefing service's silent-run plumbing, including the inline
     import that breaks the agent<->workflow import cycle.
     """
-    from app.agents.core.agent import call_agent_silent
+    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415
 
     request = MessageRequestWithHistory(
         message=prompt,
@@ -120,9 +118,11 @@ async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
             log.set(skipped="already_sent")
             return f"skip {user_id}: day-zero hello already sent"
 
-        # An ObjectId encodes its creation instant, so it is the account age.
-        created_at = ObjectId(user_id).generation_time
-        if datetime.now(UTC) - created_at > timedelta(days=DAY_ZERO_MAX_ACCOUNT_AGE_DAYS):
+        created_at = user.get("created_at")
+        account_too_old = created_at is None or datetime.now(UTC) - created_at > timedelta(
+            days=DAY_ZERO_MAX_ACCOUNT_AGE_DAYS
+        )
+        if account_too_old:
             log.set(skipped="account_too_old")
             return f"skip {user_id}: account older than {DAY_ZERO_MAX_ACCOUNT_AGE_DAYS} days"
 
@@ -149,10 +149,7 @@ async def send_day_zero_hello(ctx: dict, user_id: str, platform: str) -> str:
             return f"skip {user_id}: publish skipped ({platform})"
 
         await chat_sync.persist_bot_message(user_id, user, platform, bubbles)
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"day_zero_hello": {"sent_at": datetime.now(UTC), "platform": platform}}},
-        )
+        await user_repository.mark_day_zero_hello_sent(user_id, platform)
         track(user_id, "day_zero_hello_sent", {"platform": platform, "has_goal": has_goal})
         log.set(bubbles=len(bubbles), has_goal=has_goal)
         return f"sent day-zero hello to {user_id} on {platform}"

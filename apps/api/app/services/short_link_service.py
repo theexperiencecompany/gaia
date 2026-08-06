@@ -11,12 +11,12 @@ owner lets it.
 from datetime import UTC, datetime, timedelta
 import secrets
 
-from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 
 from app.config.settings import settings
 from app.constants.todos import FACET_DELIVERABLE, facet_from_doc
-from app.db.mongodb.collections import short_links_collection, todos_collection
+from app.db.repositories.short_links import short_link_repository
+from app.db.repositories.todos import todo_repository
 from app.models.short_link_models import ShortLink, ShortLinkTarget
 from app.models.todo_models import ExecutionStatus
 from shared.py.wide_events import log
@@ -76,29 +76,23 @@ async def get_or_create_short_link(
     """
     now = datetime.now(UTC)
     expires_at = now + timedelta(days=LINK_TTL_DAYS)
-    existing = await short_links_collection.find_one_and_update(
-        {
-            "user_id": user_id,
-            "target_type": target_type,
-            "target_id": target_id,
-            "revoked": {"$ne": True},
-        },
-        {"$set": {"expires_at": expires_at}},
-        projection={"slug": 1},
+    existing = await short_link_repository.refresh_for_target(
+        user_id, target_type, target_id, expires_at=expires_at
     )
     if existing:
-        return _build_url(existing["slug"])
+        return _build_url(existing.slug)
 
     for _ in range(MAX_SLUG_ATTEMPTS):
-        link = ShortLink(
-            slug=_random_slug(),
-            user_id=user_id,
-            target_type=target_type,
-            target_id=target_id,
-            expires_at=expires_at,
-        )
         try:
-            await short_links_collection.insert_one(link.model_dump())
+            link = await short_link_repository.create(
+                ShortLink(
+                    slug=_random_slug(),
+                    user_id=user_id,
+                    target_type=target_type,
+                    target_id=target_id,
+                    expires_at=expires_at,
+                )
+            )
         except DuplicateKeyError:
             # Slug already taken — draw another.
             continue
@@ -112,11 +106,8 @@ async def get_or_create_short_link(
 
 async def resolve_public_short_link(slug: str) -> ShortLink | None:
     """Resolve ``slug`` globally; ``None`` when unknown, revoked, or expired."""
-    doc = await short_links_collection.find_one({"slug": slug})
-    if doc is None:
-        return None
-    link = ShortLink.model_validate(doc)
-    if link.revoked:
+    link = await short_link_repository.get_by_slug(slug)
+    if link is None or link.revoked:
         return None
     expires = link.expires_at
     if expires is not None:
@@ -139,16 +130,15 @@ async def get_public_artifact(slug: str) -> dict | None:
     link = await resolve_public_short_link(slug)
     if link is None or link.target_type != "todo_canvas":
         return None
-    doc = await todos_collection.find_one(
-        {"_id": ObjectId(link.target_id), "user_id": link.user_id},
-        {"title": 1, "execution_status": 1, "deliverable_content": 1, "canvas_content": 1},
-    )
-    if not doc:
+    todo = await todo_repository.get(link.target_id, user_id=link.user_id)
+    if not todo:
         return None
-    allow_fallback = doc.get("execution_status") == ExecutionStatus.PROPOSED.value
-    content = facet_from_doc(doc, FACET_DELIVERABLE, allow_canvas_fallback=allow_fallback)
+    allow_fallback = todo.execution_status == ExecutionStatus.PROPOSED
+    content = facet_from_doc(
+        todo.model_dump(), FACET_DELIVERABLE, allow_canvas_fallback=allow_fallback
+    )
     return {
-        "title": doc.get("title", "Artifact"),
+        "title": todo.title or "Artifact",
         "content": content or "",
         "todo_id": link.target_id,
         "target_type": link.target_type,
@@ -157,7 +147,4 @@ async def get_public_artifact(slug: str) -> dict | None:
 
 async def revoke_short_link(user_id: str, slug: str) -> bool:
     """Owner revocation: the URL goes dead immediately. False if not the owner's."""
-    result = await short_links_collection.update_one(
-        {"slug": slug, "user_id": user_id}, {"$set": {"revoked": True}}
-    )
-    return result.matched_count > 0
+    return await short_link_repository.revoke(user_id, slug)

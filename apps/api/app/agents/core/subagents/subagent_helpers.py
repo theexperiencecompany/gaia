@@ -87,20 +87,29 @@ def _mark_dynamic(msg: SystemMessage) -> SystemMessage:
     return msg
 
 
-async def _fetch_provider_metadata_block(integration_id: str | None, user_id: str | None) -> str:
-    """Return the provider-metadata lines for the dynamic context, or ''."""
+async def _fetch_provider_metadata_block(
+    integration_id: str | None,
+    user_id: str | None,
+    metadata: dict | None = None,
+) -> str:
+    """Return the provider-metadata lines for the dynamic context, or ''.
+
+    ``metadata`` is the pre-fetched provider metadata; if provided, skips the
+    Mongo lookup (same rationale as the memories/skills prefetch params).
+    """
     if not (integration_id and user_id):
         return ""
     integration = get_integration_by_id(integration_id)
     if not integration or not integration.provider:
         return ""
-    try:
-        metadata = await get_provider_metadata(user_id, integration.provider)
-    except Exception as e:
-        log.warning(
-            f"{LogTag.AGENT} Failed to fetch provider metadata for {integration.provider}: {e}"
-        )
-        return ""
+    if metadata is None:
+        try:
+            metadata = await get_provider_metadata(user_id, integration.provider)
+        except Exception as e:
+            log.warning(
+                f"{LogTag.AGENT} Failed to fetch provider metadata for {integration.provider}: {e}"
+            )
+            return ""
     if not metadata:
         return ""
     lines = [f"- {k}: {v}" for k, v in metadata.items()]
@@ -140,6 +149,7 @@ async def create_agent_context_message(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
+    provider_metadata: dict | None = None,
     include_connected_integrations: bool = False,
 ) -> SystemMessage:
     """Build the dynamic-context system message for executor/subagent runs.
@@ -162,6 +172,9 @@ async def create_agent_context_message(
             ChromaDB lookup. Memory fetched by the caller is passed through
             the handoff payload so subagents don't re-run the same search.
         skills_text: Pre-fetched skills section; same rationale as memories.
+        provider_metadata: Pre-fetched provider metadata dict; if provided,
+            skips the Mongo lookup (the handoff path already fetched it for
+            task sanitization).
         include_connected_integrations: When True (executor only), append the
             live connected-integrations manifest (names + handoff subagent_ids).
     """
@@ -270,7 +283,7 @@ async def create_agent_context_message(
     ) = await asyncio.gather(
         _fetch_memories(),
         _fetch_skills(),
-        _fetch_provider_metadata_block(integration_id, user_id),
+        _fetch_provider_metadata_block(integration_id, user_id, metadata=provider_metadata),
         _fetch_instructions_block(integration_id or subagent_id, user_id),
         _fetch_integrations_manifest(),
     )

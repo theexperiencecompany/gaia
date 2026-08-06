@@ -18,8 +18,10 @@ Run from apps/api:
 
 import asyncio
 
-from app.db.mongodb.collections import integrations_collection
+from app.db.mongodb.collections import get_async_collection
 from app.utils.favicon_utils import fetch_favicon_uncached, legacy_favicon_url
+
+integrations_collection = get_async_collection("integrations")
 
 
 async def backfill() -> None:

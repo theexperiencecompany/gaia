@@ -26,7 +26,9 @@ from app.models.integration_models import (
     Integration,
     IntegrationResponse,
     IntegrationTool,
+    IntegrationWithCreator,
     UpdateCustomIntegrationRequest,
+    UserIntegrationDocument,
     UserIntegrationsListResponse,
 )
 from app.models.mcp_config import ComposioConfig, MCPConfig, SubAgentConfig
@@ -53,7 +55,6 @@ from app.services.integrations.integration_resolver import (
     ResolvedIntegration,
 )
 from app.services.integrations.integration_service import (
-    build_creator_lookup_stages,
     format_community_integrations,
     get_user_available_tool_namespaces,
 )
@@ -147,6 +148,11 @@ def _make_custom_doc(
     }
 
 
+def _make_custom_integration(**kwargs: Any) -> Integration:
+    """A custom integration as the repository returns it (typed model)."""
+    return Integration.model_validate(_make_custom_doc(**kwargs))
+
+
 # ---------------------------------------------------------------------------
 # IntegrationResolver tests
 # ---------------------------------------------------------------------------
@@ -156,11 +162,9 @@ def _make_custom_doc(
 class TestIntegrationResolverResolve:
     """Tests for IntegrationResolver.resolve()."""
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_integration_with_mcp_config(
-        self, mock_get_by_id, mock_collection
-    ):
+    async def test_resolve_platform_integration_with_mcp_config(self, mock_get_by_id, mock_repo):
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=True, auth_type="oauth")
         oauth_int = _make_oauth_integration(id="github", managed_by="mcp", mcp_config=mcp_cfg)
         mock_get_by_id.return_value = oauth_int
@@ -175,11 +179,11 @@ class TestIntegrationResolverResolve:
         assert result.mcp_config == mcp_cfg
         assert result.platform_integration == oauth_int
         assert result.custom_doc is None
-        mock_collection.find_one.assert_not_called()
+        mock_repo.get.assert_not_called()
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_collection):
+    async def test_resolve_platform_with_composio_config(self, mock_get_by_id, mock_repo):
         composio_cfg = ComposioConfig(auth_config_id="auth_123", toolkit="slack_toolkit")
         oauth_int = _make_oauth_integration(
             id="slack", managed_by="composio", composio_config=composio_cfg
@@ -193,9 +197,9 @@ class TestIntegrationResolverResolve:
         assert result.auth_type == "oauth"
         assert result.source == "platform"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_self_managed(self, mock_get_by_id, mock_collection):
+    async def test_resolve_platform_self_managed(self, mock_get_by_id, mock_repo):
         oauth_int = _make_oauth_integration(id="gcal", managed_by="self", provider="google")
         mock_get_by_id.return_value = oauth_int
 
@@ -206,9 +210,9 @@ class TestIntegrationResolverResolve:
         assert result.auth_type == "oauth"
         assert result.managed_by == "self"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_platform_no_auth(self, mock_get_by_id, mock_collection):
+    async def test_resolve_platform_no_auth(self, mock_get_by_id, mock_repo):
         """Platform integration with no mcp, composio, or self — requires no auth."""
         mcp_cfg = MCPConfig(server_url=SERVER_URL, requires_auth=False)
         oauth_int = _make_oauth_integration(id="public-tool", managed_by="mcp", mcp_config=mcp_cfg)
@@ -220,12 +224,12 @@ class TestIntegrationResolverResolve:
         assert result.requires_auth is False
         assert result.auth_type == "none"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_integration_from_mongodb(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_integration_from_mongodb(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        custom_doc = _make_custom_doc()
-        mock_collection.find_one = AsyncMock(return_value=custom_doc)
+        integration = _make_custom_integration()
+        mock_repo.get = AsyncMock(return_value=integration)
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
@@ -234,17 +238,17 @@ class TestIntegrationResolverResolve:
         assert result.name == "Custom MCP"
         assert result.managed_by == "mcp"
         assert result.platform_integration is None
-        assert result.custom_doc == custom_doc
+        # custom_doc is the integration's model_dump (backward-compat dict).
+        assert result.custom_doc["integration_id"] == CUSTOM_INTEGRATION_ID
         assert isinstance(result.mcp_config, MCPConfig)
         assert result.mcp_config.server_url == SERVER_URL
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_integration_no_mcp_config(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_integration_no_mcp_config(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        doc = _make_custom_doc()
-        doc.pop("mcp_config")
-        mock_collection.find_one = AsyncMock(return_value=doc)
+        integration = _make_custom_integration().model_copy(update={"mcp_config": None})
+        mock_repo.get = AsyncMock(return_value=integration)
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
@@ -253,44 +257,44 @@ class TestIntegrationResolverResolve:
         assert result.requires_auth is False
         assert result.auth_type == "none"
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_with_auth_mismatch_syncs(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_with_auth_mismatch_syncs(self, mock_get_by_id, mock_repo):
         """When mcp_config.requires_auth differs from doc-level, mcp_config wins and syncs."""
         mock_get_by_id.return_value = None
         doc = _make_custom_doc(requires_auth=False, auth_type="none")
         doc["mcp_config"]["requires_auth"] = True
         doc["mcp_config"]["auth_type"] = "oauth"
-        mock_collection.find_one = AsyncMock(return_value=doc)
-        mock_collection.update_one = AsyncMock()
+        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+        mock_repo.heal_top_level_auth = AsyncMock()
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
         assert result is not None
         assert result.requires_auth is True
         assert result.auth_type == "oauth"
-        mock_collection.update_one.assert_awaited_once()
+        mock_repo.heal_top_level_auth.assert_awaited_once()
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_custom_sync_failure_is_non_fatal(self, mock_get_by_id, mock_collection):
+    async def test_resolve_custom_sync_failure_is_non_fatal(self, mock_get_by_id, mock_repo):
         """If syncing auth mismatch fails, resolve still returns correct data."""
         mock_get_by_id.return_value = None
         doc = _make_custom_doc(requires_auth=False)
         doc["mcp_config"]["requires_auth"] = True
-        mock_collection.find_one = AsyncMock(return_value=doc)
-        mock_collection.update_one = AsyncMock(side_effect=Exception("DB write failed"))
+        mock_repo.get = AsyncMock(return_value=Integration.model_validate(doc))
+        mock_repo.heal_top_level_auth = AsyncMock(side_effect=Exception("DB write failed"))
 
         result = await IntegrationResolver.resolve(CUSTOM_INTEGRATION_ID)
 
         assert result is not None
         assert result.requires_auth is True
 
-    @patch("app.services.integrations.integration_resolver.integrations_collection")
+    @patch("app.services.integrations.integration_resolver.integration_repository")
     @patch("app.services.integrations.integration_resolver.get_integration_by_id")
-    async def test_resolve_not_found_returns_none(self, mock_get_by_id, mock_collection):
+    async def test_resolve_not_found_returns_none(self, mock_get_by_id, mock_repo):
         mock_get_by_id.return_value = None
-        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.get = AsyncMock(return_value=None)
 
         result = await IntegrationResolver.resolve("nonexistent")
 
@@ -530,28 +534,17 @@ class TestGetUserAvailableToolNamespaces:
         assert "some-server.com" in result
 
 
-@pytest.mark.unit
-class TestBuildCreatorLookupStages:
-    def test_returns_five_pipeline_stages(self):
-        stages = build_creator_lookup_stages()
-        assert len(stages) == 5
-
-    def test_first_stage_is_addfields(self):
-        stages = build_creator_lookup_stages()
-        assert "$addFields" in stages[0]
-
-    def test_lookup_stage_targets_users_collection(self):
-        stages = build_creator_lookup_stages()
-        lookup = stages[1]["$lookup"]
-        assert lookup["from"] == "users"
-        assert lookup["localField"] == "created_by_oid"
-        assert lookup["foreignField"] == "_id"
-
-    def test_final_stage_removes_temp_fields(self):
-        stages = build_creator_lookup_stages()
-        project = stages[4]["$project"]
-        assert project.get("creator_info") == 0
-        assert project.get("created_by_oid") == 0
+def _iwc(**overrides: object) -> IntegrationWithCreator:
+    """Build an IntegrationWithCreator as the creator-lookup aggregation returns it."""
+    data: dict[str, object] = {
+        "integration_id": "abc",
+        "name": "Test",
+        "description": "",
+        "category": "custom",
+        "managed_by": "mcp",
+    }
+    data.update(overrides)
+    return IntegrationWithCreator.model_validate(data)
 
 
 @pytest.mark.unit
@@ -560,18 +553,15 @@ class TestFormatCommunityIntegrations:
         assert format_community_integrations([]) == []
 
     def test_format_basic_document(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "desc",
-            "category": "custom",
-            "tools": [
-                {"name": "tool1", "description": "d1"},
-                {"name": "tool2"},
-            ],
-            "slug": "test-mcp-custom",
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations(
+            [
+                _iwc(
+                    description="desc",
+                    tools=[{"name": "tool1", "description": "d1"}, {"name": "tool2"}],
+                    slug="test-mcp-custom",
+                )
+            ]
+        )
 
         assert len(result) == 1
         item = result[0]
@@ -583,66 +573,32 @@ class TestFormatCommunityIntegrations:
 
     def test_tools_truncated_to_10(self):
         tools = [{"name": f"tool_{i}", "description": f"d{i}"} for i in range(15)]
-        doc = {
-            "integration_id": "x",
-            "name": "X",
-            "description": "",
-            "category": "custom",
-            "tools": tools,
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc(integration_id="x", name="X", tools=tools)])
 
         assert len(result[0].tools) == 10
         assert result[0].tool_count == 15
 
     def test_with_creator_data(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "",
-            "category": "custom",
-            "tools": [],
-            "creator": {"name": "Alice", "picture": "https://img.com/a.jpg"},
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations(
+            [_iwc(creator={"name": "Alice", "picture": "https://img.com/a.jpg"})]
+        )
 
         assert result[0].creator is not None
         assert result[0].creator.name == "Alice"
 
     def test_without_creator_data(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "",
-            "category": "custom",
-            "tools": [],
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc()])
         assert result[0].creator is None
 
     def test_slug_falls_back_to_generated(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "My Tool",
-            "description": "",
-            "category": "developer",
-            "tools": [],
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc(name="My Tool", category="developer")])
 
-        # Should generate a slug since "slug" key is not present
+        # Should generate a slug since none is stored on the document
         assert result[0].slug is not None
         assert len(result[0].slug) > 0
 
     def test_clone_count_defaults_to_zero(self):
-        doc = {
-            "integration_id": "abc",
-            "name": "Test",
-            "description": "",
-            "category": "custom",
-            "tools": [],
-        }
-        result = format_community_integrations([doc])
+        result = format_community_integrations([_iwc()])
         assert result[0].clone_count == 0
 
 
@@ -653,97 +609,39 @@ class TestFormatCommunityIntegrations:
 
 @pytest.mark.unit
 class TestUpdateUserIntegrationStatus:
-    @patch("app.services.integrations.user_integration_status.user_integrations_collection")
-    async def test_update_status_connected_success(self, mock_collection):
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_result.upserted_id = None
-        mock_result.matched_count = 0
-        mock_collection.update_one = AsyncMock(return_value=mock_result)
+    """The service delegates to repo.set_status; the upsert/$set/connected_at
+    shape is the repository's concern (covered by its contract suite)."""
+
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_update_status_connected_success(self, mock_repo, mock_sched):
+        mock_repo.set_status = AsyncMock(return_value=True)
 
         result = await update_user_integration_status.__wrapped__(
             USER_ID, INTEGRATION_ID, "connected"
         )
 
         assert result is True
-        call_args = mock_collection.update_one.call_args
-        set_data = call_args[0][1]["$set"]
-        assert set_data["status"] == "connected"
-        assert "connected_at" in set_data
+        mock_repo.set_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status="connected")
+        mock_sched.assert_called_once_with(USER_ID)
 
-    @patch("app.services.integrations.user_integration_status.user_integrations_collection")
-    async def test_update_status_created_no_connected_at(self, mock_collection):
-        mock_result = MagicMock()
-        mock_result.modified_count = 1
-        mock_result.upserted_id = None
-        mock_result.matched_count = 0
-        mock_collection.update_one = AsyncMock(return_value=mock_result)
+    @patch("app.services.integrations.user_integration_status.schedule_user_integrations_sync")
+    @patch("app.services.integrations.user_integration_status.user_integration_repository")
+    async def test_update_status_created_does_not_schedule(self, mock_repo, mock_sched):
+        mock_repo.set_status = AsyncMock(return_value=True)
 
         result = await update_user_integration_status.__wrapped__(
             USER_ID, INTEGRATION_ID, "created"
         )
 
         assert result is True
-        set_data = mock_collection.update_one.call_args[0][1]["$set"]
-        assert "connected_at" not in set_data
-
-    @patch("app.services.integrations.user_integration_status.user_integrations_collection")
-    async def test_upsert_creates_new_record(self, mock_collection):
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_result.upserted_id = "new_id"
-        mock_result.matched_count = 0
-        mock_collection.update_one = AsyncMock(return_value=mock_result)
-
-        result = await update_user_integration_status.__wrapped__(
-            USER_ID, INTEGRATION_ID, "connected"
-        )
-
-        assert result is True
-        # Verify upsert=True was passed
-        assert mock_collection.update_one.call_args[1].get("upsert") is True
-
-    @patch("app.services.integrations.user_integration_status.user_integrations_collection")
-    async def test_matched_but_not_modified_is_success(self, mock_collection):
-        """Matching an existing doc with same values is still success."""
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_result.upserted_id = None
-        mock_result.matched_count = 1
-        mock_collection.update_one = AsyncMock(return_value=mock_result)
-
-        result = await update_user_integration_status.__wrapped__(
-            USER_ID, INTEGRATION_ID, "connected"
-        )
-
-        assert result is True
-
-    @patch("app.services.integrations.user_integration_status.user_integrations_collection")
-    async def test_no_match_no_upsert_returns_false(self, mock_collection):
-        mock_result = MagicMock()
-        mock_result.modified_count = 0
-        mock_result.upserted_id = None
-        mock_result.matched_count = 0
-        mock_collection.update_one = AsyncMock(return_value=mock_result)
-
-        result = await update_user_integration_status.__wrapped__(
-            USER_ID, INTEGRATION_ID, "created"
-        )
-
-        assert result is False
+        mock_repo.set_status.assert_awaited_once_with(USER_ID, INTEGRATION_ID, status="created")
+        mock_sched.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
 # user_integrations.py tests
 # ---------------------------------------------------------------------------
-
-
-def _user_integrations_cursor(docs: list[dict]) -> MagicMock:
-    """Mock the ``user_integrations_collection.find().sort().to_list()`` chain."""
-    cursor = MagicMock()
-    cursor.sort = MagicMock(return_value=cursor)
-    cursor.to_list = AsyncMock(return_value=docs)
-    return cursor
 
 
 def _async_find_cursor(docs: list[dict]) -> MagicMock:
@@ -758,30 +656,28 @@ def _async_find_cursor(docs: list[dict]) -> MagicMock:
     return cursor
 
 
+def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool = True):
+    now = datetime.now(UTC)
+    return UserIntegrationDocument(
+        user_id=USER_ID,
+        integration_id=integration_id,
+        status=status,
+        created_at=now,
+        connected_at=now if connected else None,
+    )
+
+
 @pytest.mark.unit
 class TestGetUserIntegrations:
-    @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_returns_hydrated_integrations(
-        self, mock_user_int_col, mock_int_col, mock_users_col
-    ):
-        now = datetime.now(UTC)
-        docs = [
-            {
-                "user_id": USER_ID,
-                "integration_id": "github",
-                "status": "connected",
-                "created_at": now,
-                "connected_at": now,
-            },
-        ]
-
-        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor(docs))
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_returns_hydrated_integrations(self, mock_repo, mock_int_repo, mock_users_col):
+        mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("github")])
         # github is a platform integration resolved from the in-memory catalog,
         # so no stored integration doc and no creator lookups are needed.
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
 
         result = await get_user_integrations(USER_ID)
 
@@ -791,55 +687,29 @@ class TestGetUserIntegrations:
         assert result.integrations[0].status == "connected"
         assert result.integrations[0].integration.name == "GitHub"
 
-    @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_skips_integration_with_no_details(
-        self, mock_user_int_col, mock_int_col, mock_users_col
+        self, mock_repo, mock_int_repo, mock_users_col
     ):
-        now = datetime.now(UTC)
-        docs = [
-            {
-                "user_id": USER_ID,
-                "integration_id": "deleted-int",
-                "status": "connected",
-                "created_at": now,
-            },
-        ]
-
-        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor(docs))
+        mock_repo.list_for_user_newest_first = AsyncMock(return_value=[_ui_doc("deleted-int")])
         # Not in the catalog and no stored doc → _build_integration_response returns None.
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
 
         result = await get_user_integrations(USER_ID)
 
         assert result.total == 0
         assert result.integrations == []
 
-    @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_handles_parse_error_gracefully(
-        self, mock_user_int_col, mock_int_col, mock_users_col
-    ):
-        """If UserIntegration(**doc) raises, that entry is skipped."""
-        bad_doc = {"user_id": USER_ID}  # Missing required fields
-
-        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor([bad_doc]))
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
-
-        result = await get_user_integrations(USER_ID)
-        assert result.total == 0
-
-    @patch("app.services.integrations.user_integrations.users_collection")
-    @patch("app.services.integrations.user_integrations.integrations_collection")
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_empty_workspace(self, mock_user_int_col, mock_int_col, mock_users_col):
-        mock_user_int_col.find = MagicMock(return_value=_user_integrations_cursor([]))
-        mock_int_col.find = MagicMock(return_value=_async_find_cursor([]))
-        mock_users_col.find = MagicMock(return_value=_async_find_cursor([]))
+    @patch("app.services.integrations.user_integrations.user_repository")
+    @patch("app.services.integrations.user_integrations.integration_repository")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_empty_workspace(self, mock_repo, mock_int_repo, mock_users_col):
+        mock_repo.list_for_user_newest_first = AsyncMock(return_value=[])
+        mock_int_repo.find_by_ids = AsyncMock(return_value=[])
+        mock_users_col.find_by_ids = AsyncMock(return_value=[])
 
         result = await get_user_integrations(USER_ID)
         assert result.total == 0
@@ -848,44 +718,19 @@ class TestGetUserIntegrations:
 
 @pytest.mark.unit
 class TestGetUserConnectedIntegrations:
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_returns_serialized_documents(self, mock_collection):
-        docs = [
-            {
-                "_id": MagicMock(),
-                "user_id": USER_ID,
-                "integration_id": "github",
-                "status": "connected",
-            },
-        ]
-        # _id needs to be a valid ObjectId-like for serialize_document
-        from bson import ObjectId
-
-        docs[0]["_id"] = ObjectId()
-
-        async def aiter_docs(*args, **kwargs):
-            for doc in docs:
-                yield doc
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_docs
-        mock_collection.find = MagicMock(return_value=mock_cursor)
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_returns_serialized_documents(self, mock_repo):
+        mock_repo.list_for_user = AsyncMock(return_value=[_ui_doc("github")])
 
         result = await get_user_integration_records.__wrapped__(USER_ID)
 
         assert len(result) == 1
         assert result[0]["integration_id"] == "github"
-        assert "id" in result[0]  # serialize_document converts _id to id
+        assert "id" in result[0]  # the document's id field is present
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_empty_list_when_no_integrations(self, mock_collection):
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_empty
-        mock_collection.find = MagicMock(return_value=mock_cursor)
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_empty_list_when_no_integrations(self, mock_repo):
+        mock_repo.list_for_user = AsyncMock(return_value=[])
 
         result = await get_user_integration_records.__wrapped__(USER_ID)
         assert result == []
@@ -893,12 +738,12 @@ class TestGetUserConnectedIntegrations:
 
 @pytest.mark.unit
 class TestAddUserIntegration:
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
         new_callable=AsyncMock,
     )
-    async def test_add_success_no_auth_defaults_connected(self, mock_get_details, mock_collection):
+    async def test_add_success_no_auth_defaults_connected(self, mock_get_details, mock_repo):
         mock_get_details.return_value = IntegrationResponse(
             integration_id="my-int",
             name="My Int",
@@ -910,21 +755,21 @@ class TestAddUserIntegration:
             display_priority=0,
             requires_auth=False,
         )
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
+        mock_repo.exists = AsyncMock(return_value=False)
+        mock_repo.create = AsyncMock()
 
         result = await add_user_integration.__wrapped__(USER_ID, "my-int")
 
         assert result.status == "connected"
         assert result.connected_at is not None
-        mock_collection.insert_one.assert_awaited_once()
+        mock_repo.create.assert_awaited_once()
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
         new_callable=AsyncMock,
     )
-    async def test_add_with_auth_defaults_created(self, mock_get_details, mock_collection):
+    async def test_add_with_auth_defaults_created(self, mock_get_details, mock_repo):
         mock_get_details.return_value = IntegrationResponse(
             integration_id="oauth-int",
             name="OAuth Int",
@@ -936,20 +781,20 @@ class TestAddUserIntegration:
             display_priority=0,
             requires_auth=True,
         )
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
+        mock_repo.exists = AsyncMock(return_value=False)
+        mock_repo.create = AsyncMock()
 
         result = await add_user_integration.__wrapped__(USER_ID, "oauth-int")
 
         assert result.status == "created"
         assert result.connected_at is None
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
         new_callable=AsyncMock,
     )
-    async def test_add_with_explicit_initial_status(self, mock_get_details, mock_collection):
+    async def test_add_with_explicit_initial_status(self, mock_get_details, mock_repo):
         mock_get_details.return_value = IntegrationResponse(
             integration_id="x",
             name="X",
@@ -961,30 +806,30 @@ class TestAddUserIntegration:
             display_priority=0,
             requires_auth=True,
         )
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
+        mock_repo.exists = AsyncMock(return_value=False)
+        mock_repo.create = AsyncMock()
 
         result = await add_user_integration.__wrapped__(USER_ID, "x", initial_status="connected")
 
         assert result.status == "connected"
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
         new_callable=AsyncMock,
     )
-    async def test_add_raises_if_not_found(self, mock_get_details, mock_collection):
+    async def test_add_raises_if_not_found(self, mock_get_details, mock_repo):
         mock_get_details.return_value = None
 
         with pytest.raises(ValueError, match="not found"):
             await add_user_integration.__wrapped__(USER_ID, "nonexistent")
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
         new_callable=AsyncMock,
     )
-    async def test_add_raises_if_already_exists(self, mock_get_details, mock_collection):
+    async def test_add_raises_if_already_exists(self, mock_get_details, mock_repo):
         mock_get_details.return_value = IntegrationResponse(
             integration_id="dup",
             name="Dup",
@@ -995,7 +840,7 @@ class TestAddUserIntegration:
             is_featured=False,
             display_priority=0,
         )
-        mock_collection.find_one = AsyncMock(return_value={"integration_id": "dup"})
+        mock_repo.exists = AsyncMock(return_value=True)
 
         with pytest.raises(ValueError, match="already added"):
             await add_user_integration.__wrapped__(USER_ID, "dup")
@@ -1003,42 +848,30 @@ class TestAddUserIntegration:
 
 @pytest.mark.unit
 class TestRemoveUserIntegration:
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_remove_success(self, mock_collection):
-        mock_result = MagicMock()
-        mock_result.deleted_count = 1
-        mock_collection.delete_one = AsyncMock(return_value=mock_result)
-
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_remove_success(self, mock_repo):
+        mock_repo.delete_for_user = AsyncMock(return_value=True)
         result = await remove_user_integration.__wrapped__(USER_ID, INTEGRATION_ID)
-
         assert result is True
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_remove_not_found(self, mock_collection):
-        mock_result = MagicMock()
-        mock_result.deleted_count = 0
-        mock_collection.delete_one = AsyncMock(return_value=mock_result)
-
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_remove_not_found(self, mock_repo):
+        mock_repo.delete_for_user = AsyncMock(return_value=False)
         result = await remove_user_integration.__wrapped__(USER_ID, "missing")
-
         assert result is False
 
 
 @pytest.mark.unit
 class TestCheckUserHasIntegration:
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_has_integration(self, mock_collection):
-        mock_collection.find_one = AsyncMock(
-            return_value={"user_id": USER_ID, "integration_id": INTEGRATION_ID}
-        )
-
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_has_integration(self, mock_repo):
+        mock_repo.exists = AsyncMock(return_value=True)
         result = await check_user_has_integration(USER_ID, INTEGRATION_ID)
         assert result is True
 
-    @patch("app.services.integrations.user_integrations.user_integrations_collection")
-    async def test_does_not_have_integration(self, mock_collection):
-        mock_collection.find_one = AsyncMock(return_value=None)
-
+    @patch("app.services.integrations.user_integrations.user_integration_repository")
+    async def test_does_not_have_integration(self, mock_repo):
+        mock_repo.exists = AsyncMock(return_value=False)
         result = await check_user_has_integration(USER_ID, "missing")
         assert result is False
 
@@ -1154,9 +987,9 @@ class TestCreateCustomIntegration:
         "app.services.integrations.custom_crud.add_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_create_success(self, mock_int_collection, mock_add_user):
-        mock_int_collection.insert_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_create_success(self, mock_repo, mock_add_user):
+        mock_repo.create = AsyncMock()
         mock_add_user.return_value = MagicMock()
 
         request = CreateCustomIntegrationRequest(
@@ -1174,16 +1007,16 @@ class TestCreateCustomIntegration:
         assert result.created_by == USER_ID
         assert result.mcp_config is not None
         assert result.mcp_config.server_url == SERVER_URL
-        mock_int_collection.insert_one.assert_awaited_once()
+        mock_repo.create.assert_awaited_once()
         mock_add_user.assert_awaited_once()
 
     @patch(
         "app.services.integrations.custom_crud.add_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_create_with_icon_url(self, mock_int_collection, mock_add_user):
-        mock_int_collection.insert_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_create_with_icon_url(self, mock_repo, mock_add_user):
+        mock_repo.create = AsyncMock()
         mock_add_user.return_value = MagicMock()
 
         request = CreateCustomIntegrationRequest(name="My MCP", server_url=SERVER_URL)
@@ -1198,12 +1031,10 @@ class TestCreateCustomIntegration:
         "app.services.integrations.custom_crud.add_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_create_rolls_back_on_user_integration_failure(
-        self, mock_int_collection, mock_add_user
-    ):
-        mock_int_collection.insert_one = AsyncMock()
-        mock_int_collection.delete_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_create_rolls_back_on_user_integration_failure(self, mock_repo, mock_add_user):
+        mock_repo.create = AsyncMock()
+        mock_repo.delete = AsyncMock()
         mock_add_user.side_effect = Exception("User integration failed")
 
         request = CreateCustomIntegrationRequest(name="Fail MCP", server_url=SERVER_URL)
@@ -1211,15 +1042,15 @@ class TestCreateCustomIntegration:
         with pytest.raises(Exception, match="User integration failed"):
             await create_custom_integration(USER_ID, request)
 
-        mock_int_collection.delete_one.assert_awaited_once()
+        mock_repo.delete.assert_awaited_once()
 
     @patch(
         "app.services.integrations.custom_crud.add_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_create_with_auth_requirements(self, mock_int_collection, mock_add_user):
-        mock_int_collection.insert_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_create_with_auth_requirements(self, mock_repo, mock_add_user):
+        mock_repo.create = AsyncMock()
         mock_add_user.return_value = MagicMock()
 
         request = CreateCustomIntegrationRequest(
@@ -1238,9 +1069,9 @@ class TestCreateCustomIntegration:
         "app.services.integrations.custom_crud.add_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_create_public_integration(self, mock_int_collection, mock_add_user):
-        mock_int_collection.insert_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_create_public_integration(self, mock_repo, mock_add_user):
+        mock_repo.create = AsyncMock()
         mock_add_user.return_value = MagicMock()
 
         request = CreateCustomIntegrationRequest(
@@ -1255,33 +1086,23 @@ class TestCreateCustomIntegration:
 
 @pytest.mark.unit
 class TestUpdateCustomIntegration:
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_name_success(self, mock_collection, mock_user_int_collection):
-        doc = _make_custom_doc()
-        updated_doc = {**doc, "name": "New Name"}
-        mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
-        mock_collection.update_one = AsyncMock()
-
-        # update_custom_integration iterates user_integrations_collection.find to bust caches
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — makes this an async generator
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_empty
-        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
+    @patch("app.services.integrations.custom_crud.user_integration_repository")
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_update_name_success(self, mock_repo, mock_user_int_repo):
+        mock_repo.get_custom_for_user = AsyncMock(return_value=_make_custom_integration())
+        mock_repo.update = AsyncMock(return_value=_make_custom_integration(name="New Name"))
+        mock_user_int_repo.user_ids_with_integration = AsyncMock(return_value=[])
 
         request = UpdateCustomIntegrationRequest(name="New Name")
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
 
         assert result is not None
         assert result.name == "New Name"
-        mock_collection.update_one.assert_awaited_once()
+        mock_repo.update.assert_awaited_once()
 
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_not_found_returns_none(self, mock_collection):
-        mock_collection.find_one = AsyncMock(return_value=None)
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_update_not_found_returns_none(self, mock_repo):
+        mock_repo.get_custom_for_user = AsyncMock(return_value=None)
 
         request = UpdateCustomIntegrationRequest(name="New Name")
         result = await update_custom_integration(USER_ID, "missing", request)
@@ -1292,17 +1113,14 @@ class TestUpdateCustomIntegration:
         "app.services.integrations.custom_crud.cleanup_integration_chroma_data",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_server_url_cleans_up_old_namespace(
-        self, mock_collection, mock_chroma_cleanup
-    ):
-        import copy
-
-        doc = _make_custom_doc(server_url="https://old-server.com")
-        updated_doc = copy.deepcopy(doc)
-        updated_doc["mcp_config"]["server_url"] = "https://new-server.com"
-        mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
-        mock_collection.update_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_update_server_url_cleans_up_old_namespace(self, mock_repo, mock_chroma_cleanup):
+        mock_repo.get_custom_for_user = AsyncMock(
+            return_value=_make_custom_integration(server_url="https://old-server.com")
+        )
+        mock_repo.update = AsyncMock(
+            return_value=_make_custom_integration(server_url="https://new-server.com")
+        )
 
         request = UpdateCustomIntegrationRequest(server_url="https://new-server.com")
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
@@ -1316,13 +1134,12 @@ class TestUpdateCustomIntegration:
         "app.services.integrations.custom_crud.cleanup_integration_chroma_data",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_server_url_same_url_no_cleanup(
-        self, mock_collection, mock_chroma_cleanup
-    ):
-        doc = _make_custom_doc(server_url=SERVER_URL)
-        mock_collection.find_one = AsyncMock(side_effect=[doc, doc])
-        mock_collection.update_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_update_server_url_same_url_no_cleanup(self, mock_repo, mock_chroma_cleanup):
+        mock_repo.get_custom_for_user = AsyncMock(
+            return_value=_make_custom_integration(server_url=SERVER_URL)
+        )
+        mock_repo.update = AsyncMock(return_value=_make_custom_integration(server_url=SERVER_URL))
 
         request = UpdateCustomIntegrationRequest(server_url=SERVER_URL)
         await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
@@ -1333,15 +1150,16 @@ class TestUpdateCustomIntegration:
         "app.services.integrations.custom_crud.cleanup_integration_chroma_data",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_update_server_url_chroma_cleanup_failure_non_fatal(
-        self, mock_collection, mock_chroma_cleanup
+        self, mock_repo, mock_chroma_cleanup
     ):
-        doc = _make_custom_doc(server_url="https://old.com")
-        updated_doc = {**doc}
-        updated_doc["mcp_config"]["server_url"] = "https://new.com"
-        mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
-        mock_collection.update_one = AsyncMock()
+        mock_repo.get_custom_for_user = AsyncMock(
+            return_value=_make_custom_integration(server_url="https://old.com")
+        )
+        mock_repo.update = AsyncMock(
+            return_value=_make_custom_integration(server_url="https://new.com")
+        )
         mock_chroma_cleanup.side_effect = Exception("Chroma error")
 
         request = UpdateCustomIntegrationRequest(server_url="https://new.com")
@@ -1349,48 +1167,37 @@ class TestUpdateCustomIntegration:
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
         assert result is not None
 
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_description_and_is_public(
-        self, mock_collection, mock_user_int_collection
-    ):
-        doc = _make_custom_doc()
-        updated_doc = {**doc, "description": "new desc", "is_public": True}
-        mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
-        mock_collection.update_one = AsyncMock()
-
-        # update_custom_integration iterates user_integrations_collection.find to bust caches
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — makes this an async generator
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_empty
-        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
+    @patch("app.services.integrations.custom_crud.user_integration_repository")
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_update_description_and_is_public(self, mock_repo, mock_user_int_repo):
+        mock_repo.get_custom_for_user = AsyncMock(return_value=_make_custom_integration())
+        mock_repo.update = AsyncMock(
+            return_value=_make_custom_integration(is_public=True, name="Custom MCP")
+        )
+        mock_user_int_repo.user_ids_with_integration = AsyncMock(return_value=[])
 
         request = UpdateCustomIntegrationRequest(description="new desc", is_public=True)
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
 
         assert result is not None
-        call_args = mock_collection.update_one.call_args[0][1]["$set"]
-        assert call_args["description"] == "new desc"
-        assert call_args["is_public"] is True
+        update_arg = mock_repo.update.call_args[0][1]
+        assert update_arg.description == "new desc"
+        assert update_arg.is_public is True
 
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_update_requires_auth(self, mock_collection):
-        doc = _make_custom_doc(requires_auth=False)
-        updated_doc = {**doc}
-        updated_doc["mcp_config"]["requires_auth"] = True
-        mock_collection.find_one = AsyncMock(side_effect=[doc, updated_doc])
-        mock_collection.update_one = AsyncMock()
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_update_requires_auth(self, mock_repo):
+        mock_repo.get_custom_for_user = AsyncMock(
+            return_value=_make_custom_integration(requires_auth=False)
+        )
+        mock_repo.update = AsyncMock(return_value=_make_custom_integration(requires_auth=True))
 
         request = UpdateCustomIntegrationRequest(requires_auth=True)
         result = await update_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID, request)
 
         assert result is not None
-        call_args = mock_collection.update_one.call_args[0][1]["$set"]
-        assert "mcp_config" in call_args
-        assert call_args["mcp_config"]["requires_auth"] is True
+        update_arg = mock_repo.update.call_args[0][1]
+        assert update_arg.mcp_config is not None
+        assert update_arg.mcp_config.requires_auth is True
 
 
 @pytest.mark.unit
@@ -1413,11 +1220,11 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.user_integration_repository")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_delete_as_creator_success(
         self,
-        mock_int_collection,
+        mock_repo,
         mock_user_int_collection,
         mock_remove_user,
         mock_remove_public,
@@ -1426,20 +1233,13 @@ class TestDeleteCustomIntegration:
         mock_delete_cache,
         mock_delete_pattern,
     ):
-        doc = _make_custom_doc(created_by=USER_ID, is_public=False)
-        mock_int_collection.find_one = AsyncMock(return_value=doc)
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        doc = _make_custom_integration(created_by=USER_ID, is_public=False)
+        mock_repo.get_custom = AsyncMock(return_value=doc)
+        mock_repo.delete_custom = AsyncMock(return_value=True)
 
-        # Code iterates user_integrations_collection.find to get affected user IDs,
-        # then calls remove_user_integration(affected_user_id, integration_id) per user
-        async def aiter_affected(*args, **kwargs):
-            yield {"user_id": USER_ID}
-
-        mock_affected_cursor = MagicMock()
-        mock_affected_cursor.__aiter__ = aiter_affected
-        mock_user_int_collection.find = MagicMock(return_value=mock_affected_cursor)
+        # The service asks the repo for every affected user, then calls
+        # remove_user_integration(affected_user_id, integration_id) per user.
+        mock_user_int_collection.user_ids_with_integration = AsyncMock(return_value=[USER_ID])
         mock_remove_user.return_value = True
 
         # Mock PostgreSQL session
@@ -1452,7 +1252,7 @@ class TestDeleteCustomIntegration:
         result = await delete_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID)
 
         assert result is True
-        mock_int_collection.delete_one.assert_awaited_once()
+        mock_repo.delete_custom.assert_awaited_once()
         mock_remove_user.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
         mock_chroma_cleanup.assert_awaited_once()
 
@@ -1474,11 +1274,11 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.user_integration_repository")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_delete_public_integration_removes_from_store(
         self,
-        mock_int_collection,
+        mock_repo,
         mock_user_int_collection,
         mock_remove_user,
         mock_remove_public,
@@ -1487,20 +1287,12 @@ class TestDeleteCustomIntegration:
         mock_delete_cache,
         mock_delete_pattern,
     ):
-        doc = _make_custom_doc(created_by=USER_ID, is_public=True)
-        mock_int_collection.find_one = AsyncMock(return_value=doc)
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        doc = _make_custom_integration(created_by=USER_ID, is_public=True)
+        mock_repo.get_custom = AsyncMock(return_value=doc)
+        mock_repo.delete_custom = AsyncMock(return_value=True)
 
         # No affected users in this test scenario
-        async def aiter_empty(*args, **kwargs):
-            return
-            yield  # NOSONAR — intentionally unreachable: makes this an async generator
-
-        mock_cursor = MagicMock()
-        mock_cursor.__aiter__ = aiter_empty
-        mock_user_int_collection.find = MagicMock(return_value=mock_cursor)
+        mock_user_int_collection.user_ids_with_integration = AsyncMock(return_value=[])
         mock_remove_user.return_value = True
 
         mock_session = AsyncMock()
@@ -1518,12 +1310,10 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
-    async def test_delete_not_found_checks_user_integrations(
-        self, mock_int_collection, mock_remove_user
-    ):
+    @patch("app.services.integrations.custom_crud.integration_repository")
+    async def test_delete_not_found_checks_user_integrations(self, mock_repo, mock_remove_user):
         """When catalog doc not found, code delegates directly to remove_user_integration."""
-        mock_int_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.get_custom = AsyncMock(return_value=None)
         mock_remove_user.return_value = True
 
         result = await delete_custom_integration(USER_ID, "orphan")
@@ -1535,11 +1325,11 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_delete_not_found_no_user_integration_returns_false(
-        self, mock_int_collection, mock_remove_user
+        self, mock_repo, mock_remove_user
     ):
-        mock_int_collection.find_one = AsyncMock(return_value=None)
+        mock_repo.get_custom = AsyncMock(return_value=None)
         mock_remove_user.return_value = False
 
         result = await delete_custom_integration(USER_ID, "nonexistent")
@@ -1551,16 +1341,16 @@ class TestDeleteCustomIntegration:
         new_callable=AsyncMock,
     )
     @patch("app.services.integrations.custom_crud.get_db_session")
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_delete_as_non_creator_removes_user_integration_only(
         self,
-        mock_int_collection,
+        mock_repo,
         mock_get_db,
         mock_remove_user,
     ):
         """Non-creator delegates to remove_user_integration; integration catalog is untouched."""
-        doc = _make_custom_doc(created_by="other-user-id")
-        mock_int_collection.find_one = AsyncMock(return_value=doc)
+        doc = _make_custom_integration(created_by="other-user-id")
+        mock_repo.get_custom = AsyncMock(return_value=doc)
         mock_remove_user.return_value = True
 
         mock_session = AsyncMock()
@@ -1573,7 +1363,7 @@ class TestDeleteCustomIntegration:
 
         assert result is True
         # Catalog row must NOT be touched
-        mock_int_collection.delete_one.assert_not_called()
+        mock_repo.delete_custom.assert_not_called()
         # User's link is removed via the canonical mutator
         mock_remove_user.assert_awaited_once_with(USER_ID, CUSTOM_INTEGRATION_ID)
 
@@ -1591,11 +1381,11 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_public_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.user_integrations_collection")
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.user_integration_repository")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_delete_creator_db_delete_zero_returns_false(
         self,
-        mock_int_collection,
+        mock_repo,
         mock_user_int_collection,
         mock_remove_public,
         mock_get_db,
@@ -1603,11 +1393,9 @@ class TestDeleteCustomIntegration:
         mock_delete_cache,
         mock_delete_pattern,
     ):
-        doc = _make_custom_doc(created_by=USER_ID)
-        mock_int_collection.find_one = AsyncMock(return_value=doc)
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 0
-        mock_int_collection.delete_one = AsyncMock(return_value=mock_delete_result)
+        doc = _make_custom_integration(created_by=USER_ID)
+        mock_repo.get_custom = AsyncMock(return_value=doc)
+        mock_repo.delete_custom = AsyncMock(return_value=False)
 
         result = await delete_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID)
 
@@ -1617,12 +1405,12 @@ class TestDeleteCustomIntegration:
         "app.services.integrations.custom_crud.remove_user_integration",
         new_callable=AsyncMock,
     )
-    @patch("app.services.integrations.custom_crud.integrations_collection")
+    @patch("app.services.integrations.custom_crud.integration_repository")
     async def test_delete_as_non_creator_zero_deleted_returns_false(
-        self, mock_int_collection, mock_remove_user
+        self, mock_repo, mock_remove_user
     ):
-        doc = _make_custom_doc(created_by="other-user")
-        mock_int_collection.find_one = AsyncMock(return_value=doc)
+        doc = _make_custom_integration(created_by="other-user")
+        mock_repo.get_custom = AsyncMock(return_value=doc)
         mock_remove_user.return_value = False
 
         result = await delete_custom_integration(USER_ID, CUSTOM_INTEGRATION_ID)
@@ -1663,13 +1451,13 @@ class TestCreateAndConnectCustomIntegration:
                 "app.services.integrations.custom_crud.update_user_integration_status",
                 new_callable=AsyncMock,
             ),
-            patch("app.services.integrations.custom_crud.integrations_collection") as mock_int_col,
+            patch("app.services.integrations.custom_crud.integration_repository") as mock_repo,
         ):
             mock_store_instance = AsyncMock()
             mock_token_store_cls.return_value = mock_store_instance
 
             # _get_integration returns the Integration
-            mock_int_col.find_one = AsyncMock(return_value=integration.model_dump())
+            mock_repo.get = AsyncMock(return_value=integration)
 
             request = CreateCustomIntegrationRequest(
                 name="Bearer Int",

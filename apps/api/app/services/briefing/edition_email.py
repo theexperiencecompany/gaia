@@ -91,12 +91,14 @@ def _action_strip(payload: dict, unsubscribe_url: str) -> str:
 
     sans = "Inter,-apple-system,Helvetica,Arial,sans-serif"
     rows = [
-        f'<tr><td align="center" style="padding:24px 24px 8px 24px;">'
-        f'<a href="{escape(app_url)}" '
-        f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
-        f"text-decoration:none;font:600 15px/1.2 {sans};"
-        'padding:13px 30px;border-radius:10px;">'
-        "Open today&#39;s brief in GAIA</a></td></tr>"
+        (
+            f'<tr><td align="center" style="padding:24px 24px 8px 24px;">'
+            f'<a href="{escape(app_url)}" '
+            f'style="display:inline-block;background:{_ACCENT};color:{_ACCENT_FG};'
+            f"text-decoration:none;font:600 15px/1.2 {sans};"
+            'padding:13px 30px;border-radius:10px;">'
+            "Open today&#39;s brief in GAIA</a></td></tr>"
+        )
     ]
 
     if actions:

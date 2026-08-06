@@ -7,14 +7,12 @@ explicit channel list turns off the orchestrator's all-platforms auto-inject (th
 triple-delivery bug); generic notifications keep the auto-inject fan-out.
 """
 
-from bson import ObjectId
-
 from app.constants.notifications import (
     CHANNEL_TYPE_EMAIL,
     CHANNEL_TYPE_INAPP,
     DEFAULT_CHAT_CHANNEL_PRIORITY,
 )
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.services.platform_link_service import PlatformLinkService
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 
@@ -23,13 +21,12 @@ from app.utils.notification.channel_preferences import fetch_channel_preferences
 VALID_CHAT_PLATFORMS: frozenset[str] = frozenset(DEFAULT_CHAT_CHANNEL_PRIORITY)
 
 
-def resolve_channel_priority(user: dict) -> list[str]:
+def resolve_channel_priority(stored: list[str] | None) -> list[str]:
     """The user's stored briefing chat-channel priority, or the default order.
 
     Drops any stored entry that is not one of the four chat platforms so a
     hand-edited or legacy document can never route a brief to an unknown channel.
     """
-    stored = user.get("briefing_channel_priority")
     if isinstance(stored, list):
         cleaned = [p for p in stored if p in VALID_CHAT_PLATFORMS]
         if cleaned:
@@ -48,7 +45,7 @@ async def resolve_briefing_channels(user_id: str, user: dict) -> list[str]:
 
     prefs = await fetch_channel_preferences(user_id)
     linked = await PlatformLinkService.get_linked_platforms(user_id)
-    for platform in resolve_channel_priority(user):
+    for platform in resolve_channel_priority(user.get("briefing_channel_priority")):
         if platform in linked and prefs.get(platform, True):
             channels.append(platform)
             break
@@ -61,14 +58,10 @@ async def resolve_briefing_channels(user_id: str, user: dict) -> list[str]:
 
 async def get_channel_priority(user_id: str) -> list[str]:
     """The stored (or default) briefing chat-channel priority for a user."""
-    user = await users_collection.find_one(
-        {"_id": ObjectId(user_id)}, {"briefing_channel_priority": 1}
-    )
-    return resolve_channel_priority(user or {})
+    priority = await user_repository.get_briefing_channel_priority(user_id)
+    return resolve_channel_priority(priority)
 
 
 async def set_channel_priority(user_id: str, priority: list[str]) -> None:
     """Persist a user's briefing chat-channel priority order."""
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)}, {"$set": {"briefing_channel_priority": priority}}
-    )
+    await user_repository.set_briefing_channel_priority(user_id, priority)

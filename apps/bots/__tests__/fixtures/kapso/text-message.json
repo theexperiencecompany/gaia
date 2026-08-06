@@ -1,0 +1,16 @@
+{
+  "message": {
+    "id": "wamid.SYNTHETIC0001",
+    "timestamp": "0",
+    "type": "text",
+    "text": { "body": "remind me to water the plants tomorrow" }
+  },
+  "conversation": {
+    "id": "conv_synthetic_1",
+    "phone_number": "+15550000001",
+    "phone_number_id": "pn_synthetic",
+    "status": "active"
+  },
+  "is_new_conversation": false,
+  "phone_number_id": "pn_synthetic"
+}
