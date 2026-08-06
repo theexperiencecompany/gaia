@@ -641,22 +641,26 @@ async def _wide_event_boundary(
     log.set(**env_context())
     log.set(task=task_name, **initial_context)
     start = time.monotonic()
+    # Bound in `except` and consumed in `finally`, which runs before the raise
+    # propagates. Recording the failure there rather than in the handler keeps
+    # every field of the canonical event written in one place — and .error()
+    # stays correct instead of .exception(), which would print the traceback a
+    # second time for a task that re-raises it anyway.
+    failure: Exception | None = None
     try:
         yield log
         log.set(outcome="success")
     except Exception as exc:
-        # TRY400 is suppressed below, not ignored: the rule exists because .error()
-        # inside `except` drops the traceback. Here the very next statement
-        # re-raises, so the traceback is not lost — it reaches whoever catches it.
-        # Switching to .exception() would emit it twice for every failed task.
-        log.error(  # noqa: TRY400
-            "task failed",
-            error=str(exc),
-            error_type=type(exc).__name__,
-        )
+        failure = exc
         log.set(outcome="failed")
         raise
     finally:
+        if failure is not None:
+            log.error(
+                "task failed",
+                error=str(failure),
+                error_type=type(failure).__name__,
+            )
         duration_ms = round((time.monotonic() - start) * 1000, 2)
         log.set(duration_ms=duration_ms)
         level = log.get_max_level()

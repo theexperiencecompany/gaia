@@ -11,7 +11,7 @@ marked with a "BUG:" comment.
 """
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -433,8 +433,12 @@ class _FrozenDatetime(datetime):
     _instant = datetime(2026, 3, 14, 20, 30, tzinfo=UTC)
 
     @classmethod
-    def now(cls, tz: Any = None) -> datetime:  # type: ignore[override]
-        return cls._instant.astimezone(tz) if tz is not None else cls._instant.replace(tzinfo=None)
+    def now(cls, tz: tzinfo | None = None) -> "_FrozenDatetime":
+        # Rebuilt through cls so the pinned instant comes back as this subclass:
+        # datetime.now() is declared to return Self, and handing back a plain
+        # datetime would break that contract for every caller under patch.
+        inst = cls._instant.astimezone(tz) if tz is not None else cls._instant.replace(tzinfo=None)
+        return cls.fromisoformat(inst.isoformat())
 
 
 class TestGetDaySummary:

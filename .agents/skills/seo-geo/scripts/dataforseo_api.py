@@ -27,14 +27,14 @@ def api_post(endpoint: str, data: list) -> dict:
     auth = base64.b64encode(f"{login}:{password}".encode()).decode()
     headers = {"Authorization": f"Basic {auth}", "Content-Type": "application/json"}
 
-    req = urllib.request.Request(  # noqa: S310
+    req = urllib.request.Request(
         url, data=json.dumps(data).encode(), headers=headers, method="POST"
     )
 
     try:
         # S310: url is API_BASE (a hardcoded https:// constant) plus an endpoint
         # path, never caller-supplied, so no file:/custom scheme can reach here.
-        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=60) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         error_body = e.read().decode()

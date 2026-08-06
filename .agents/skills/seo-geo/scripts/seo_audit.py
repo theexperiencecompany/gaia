@@ -22,8 +22,8 @@ def fetch_url(url: str, timeout: int = 30) -> tuple:
         return None, None, None
     try:
         start = time.time()
-        req = urllib.request.Request(url, headers={"User-Agent": "SEO-Audit/1.0"})  # noqa: S310
-        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+        req = urllib.request.Request(url, headers={"User-Agent": "SEO-Audit/1.0"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             content = resp.read().decode("utf-8", errors="ignore")
             headers = dict(resp.headers)
             load_time = time.time() - start

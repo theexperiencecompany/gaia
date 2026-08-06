@@ -541,6 +541,16 @@ unfixable = [
 "**/migrations/**/*.py" = ["INP001", "N999", "ANN"]
 "**/__init__.py" = ["F401"]
 "**/patches.py" = ["F401", "PLC", "ANN", "ARG"]
+# S310: these two fetch over the network with urllib, which ruff flags because
+# urlopen also serves file:// and custom schemes. Both close that hole in code
+# rather than assert it away — dataforseo_api builds its URL from the hardcoded
+# https API_BASE constant and never from input, and seo_audit takes a URL from
+# argv and rejects any scheme other than http/https before opening it. Scoped to
+# these two files, not the "**/scripts/**" entry above, so an unguarded urlopen
+# in a future script still fails. (These surfaced when the ruff lane widened
+# from three app roots to the whole repo; .agents/ had never been linted.)
+".agents/skills/seo-geo/scripts/dataforseo_api.py" = ["S310"]
+".agents/skills/seo-geo/scripts/seo_audit.py" = ["S310"]
 
 [tool.ruff.lint.isort]
 combine-as-imports = true
