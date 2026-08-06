@@ -12,7 +12,11 @@ apiVersion: 1
 # ---------------------------------------------------------------------------
 # `title`       Plain-language name of what is wrong, not the metric. This is
 #               the Slack message title and the on-call's first read.
-# `summary`     One line: the measured value and the threshold it crossed.
+# `summary`     One line: the measured value and the threshold it crossed. The
+#               probe/`up` rules (gaia-chromadb-down, gaia-api-external-down,
+#               gaia-arq-worker-down) are the exception: their signal is binary
+#               (0/1) and they can fire on NoData where no value exists, so their
+#               summary is a static sentence rather than a measured value.
 # `description` What breaks for users, and the first thing to check. Both
 #               annotations render in Slack and email, summary first.
 # `runbook_url` https://docs.lab.heygaia.io/production/runbooks/<uid> — required
@@ -62,13 +66,20 @@ apiVersion: 1
 # report. Put every `$labels` reference inside the `{{ if $values.B }}` branch;
 # `$values` and `$labels` are present and absent together.
 #
-# `execErrState` is `Error` on every rule, deliberately. With `Alerting`, a
-# Prometheus outage makes each rule assert its own subject has failed —
-# "No ARQ worker replica has reported metrics for 2 minutes" when the worker is
-# perfectly healthy and only the datasource is unreachable. `Error` instead
-# raises Grafana's `DatasourceError` alert, which the first route in
-# notification-policies.yaml collapses into a single "monitoring is broken"
-# message. One true statement beats N false ones.
+# `execErrState` is `Error` on every rule that owns a distinct failure mode,
+# deliberately. With `Alerting`, a Prometheus outage makes each rule assert its
+# own subject has failed — "No ARQ worker replica has reported metrics for 2
+# minutes" when the worker is perfectly healthy and only the datasource is
+# unreachable. `Error` instead raises Grafana's `DatasourceError` alert, which
+# the first route in notification-policies.yaml collapses into a single
+# "monitoring is broken" message. One true statement beats N false ones.
+#
+# The exception is the cadvisor- and Redis-derived rules — gaia-container-restarts,
+# gaia-container-oom, gaia-redis-memory, gaia-redis-evictions,
+# gaia-rabbitmq-no-consumers — which use `OK`. Their datasource already has a
+# dedicated owner: gaia-monitoring-target-down reports a dead cadvisor and
+# gaia-redis-down reports a dead Redis, so a datasource error here is that
+# owner's alert, not a second copy of it.
 #
 # `noDataState` is a genuine per-rule judgement and is NOT uniform. NoData on a
 # probe or an `up` series means the target vanished, which is real and should

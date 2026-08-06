@@ -125,11 +125,27 @@ sourced from `theexperiencecompany/internal-docs` at
 the alert tells you something is wrong, the runbook is what makes it
 actionable. Register the new page in `docs/docs.json` navigation.
 
-### 6. Verify against a real Grafana before shipping
+### 6. Verify before shipping
 
 Do not trust reading the YAML. Provisioning is permissive: a bogus `condition`
 refId, an unresolvable `datasourceUid`, and a dropped dashboard field all
 provision **silently** and fail later at evaluation time.
+
+**Every rule ships with a promtool test.** `tools/alert-rules/tests/<uid>.yaml`
+proves the rule fires under a trigger series and stays quiet under a quiet
+series, honouring the real `for` duration. The extractor's `--test-dir` check
+rejects any rule without one, so a rule "that provisions cleanly and never
+fires" can no longer ship. Run the whole verification pipeline — extract +
+coverage check, pint offline, `promtool check rules`, `promtool test rules` —
+in one command, and it is the same pipeline CI runs:
+
+```bash
+tools/alert-rules/verify.sh
+```
+
+That proves the rule's logic. Then confirm it against a real Grafana — the
+checks below catch the Grafana-side silent failures the rule test cannot
+(provisioning, annotation survival, template rendering):
 
 ```bash
 docker build -t gaia-grafana infra/docker/observability/grafana
@@ -169,6 +185,12 @@ translation is thrown away after each run. The extractor aborts on any rule it
 cannot translate rather than skipping it, because a rule that silently drops out
 of linting is the failure mode all of this exists to prevent.
 
+The `alert-rules` CI lane (and `tools/alert-rules/verify.sh`) runs four stages:
+extraction with a `--test-dir` coverage check, `pint --offline`, `promtool
+check rules`, and `promtool test rules` against the per-rule fixtures in
+`tools/alert-rules/tests/`. The last one is what proves a rule can actually
+fire; the fixtures are required for every rule.
+
 ```bash
 uv run tools/alert-rules/extract_promql.py -o /tmp/gaia-rules.yaml
 
@@ -178,13 +200,13 @@ pint --offline --config config/pint.hcl lint /tmp/gaia-rules.yaml
 
 ### CI cannot catch the bug this file keeps warning about
 
-The offline run proves each rule is valid PromQL: it catches syntax errors,
-queries that can never match (`promql/impossible`), sampling functions that make
-alerts flap (`promql/fragile`), and regexp matchers with no metacharacters. It
-cannot tell you whether a metric exists, because that answer only lives in
-Prometheus. **`promql/series` is the check that catches a rule built on a metric
-nothing exports, and it needs a live server.** So do the online pass before
-merging a new rule.
+CI proves each rule is valid PromQL (pint's offline checks: syntax errors,
+queries that can never match, sampling functions that make alerts flap,
+regexp matchers with no metacharacters) and that it fires against synthetic
+series (`promtool test rules`). It cannot tell you whether a metric exists,
+because that answer only lives in Prometheus. **`promql/series` is the check
+that catches a rule built on a metric nothing exports, and it needs a live
+server.** So do the online pass before merging a new rule.
 
 Prod Prometheus has no `ports:` block in `docker-compose.prod.yml` — it is
 reachable only on the `gaia-prod-shared` overlay network — so it has to be
@@ -243,8 +265,21 @@ but different rules never do** — an incident that trips five rules produces fi
 separate Slack threads, each repeating on its own timer. Keep that in mind when
 adding a rule that will fire alongside existing ones.
 
-`severity: critical` routes to `critical-slack-email` (Slack **and** email) and
-repeats hourly; everything else goes to Slack only and repeats every 4h.
+Routing and repeat cadence (see `notification-policies.yaml` — the first
+matching route wins):
+
+- DatasourceError / DatasourceNoData → `critical-slack-email`, grouped by
+  `alertname`, repeats 6h. One "monitoring is broken" thread, whatever the
+  severity of the affected rules.
+- `incident: availability` → `critical-slack-email`, grouped by `incident`,
+  group_wait 90s so one outage batches into a single thread, repeats 1h.
+- Remaining `severity: critical` → `critical-slack-email` (Slack **and** email),
+  repeats 12h.
+- Everything else (root) → `slack-alerts` (Slack only), repeats 24h.
+
+The cadences are deliberately slow: warnings and criticals describe states that
+move over days, and the availability route's faster 1h repeat is the "act now"
+tier.
 
 ## Slack message templates
 
