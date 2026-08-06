@@ -1,6 +1,7 @@
 """HIL preference + custom-tool classification documents."""
 
 from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -8,30 +9,34 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.db.repositories.base import MongoDocument
 
-HILApprovalStatus = Literal[
-    "pending", "approved", "denied", "timeout", "abandoned", "auto_approved"
-]
+
+class HILApprovalStatus(StrEnum):
+    """Where one approval stands. ``StrEnum`` because these values are already written
+    to Mongo and streamed to the client as plain strings — the enum names them without
+    changing a single stored document.
+
+    ``AUTO_APPROVED`` means *decided without asking*, and nothing more. It does not mean
+    the call ran: approvals are settled in their own graph node, and every tool — auto
+    or not — is executed afterwards by the tool node.
+    """
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    TIMEOUT = "timeout"
+    ABANDONED = "abandoned"
+    AUTO_APPROVED = "auto_approved"
+
+    @property
+    def settled(self) -> bool:
+        """Whether the decision is final. Every status but ``PENDING`` is."""
+        return self is not HILApprovalStatus.PENDING
 
 
 # The three global approval modes. Launch switch: the default stays
 # ``always_allow`` (HIL off — nothing gated) until we flip it post-launch.
 HILMode = Literal["always_allow", "always_ask", "auto"]
 HIL_DEFAULT_MODE: HILMode = "always_allow"
-
-
-class ToolResultMemo(TypedDict):
-    """One tool call's result, kept so a replayed node reuses it instead of re-running.
-
-    Written and read only by ``services/hil/replay_guard.py``, so it needs no runtime
-    validation — the TypedDict is the shape contract both sides are checked against.
-    Enough of the ToolMessage to rebuild it: ``additional_kwargs`` carries the HIL
-    status and any offload descriptor, which the model's next turn reads.
-    """
-
-    content: str
-    name: str
-    status: str
-    additional_kwargs: dict[str, Any]
 
 
 class DeclinedCallRecord(TypedDict):
@@ -89,7 +94,7 @@ class HILApprovalRecord(MongoDocument):
     args: dict[str, Any] = Field(default_factory=dict)
     summary: str = ""
     integration_name: str | None = None
-    status: HILApprovalStatus = "pending"
+    status: HILApprovalStatus = HILApprovalStatus.PENDING
     scope: str = "once"
     feedback: str | None = None
     # Why auto mode ran this without asking (the intent judge's own words). Empty for

@@ -36,7 +36,7 @@ from app.constants.hil import (
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.models.hil_models import DeclinedCallRecord, HILApprovalStatus
+from app.models.hil_models import DeclinedCallRecord, HILApprovalRecord, HILApprovalStatus
 from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
@@ -91,25 +91,32 @@ async def publish_approval_request(
     log.set(hil={"approval_id": approval_id, "tool": tool_call.name, "stream_id": stream_id})
     await _publish_entry(
         stream_id,
-        _approval_entry(approval_id, tool_call, "pending", summary, integration_name),
+        _approval_entry(
+            approval_id, tool_call, HILApprovalStatus.PENDING, summary, integration_name
+        ),
     )
     _schedule_pending_notification(user_id, conversation_id, approval_id, summary)
 
 
-async def publish_approval_outcome(
-    *,
-    stream_id: str,
-    approval_id: str,
-    tool_call: GatedCall,
-    summary: str,
-    integration_name: str | None,
-    outcome: ApprovalOutcome,
+async def publish_decision(
+    record: HILApprovalRecord, status: HILApprovalStatus, *, stream_id: str, feedback: str | None
 ) -> None:
-    """Update the card to its resolved state on the stream that resumed the run."""
+    """Settle this approval's card, on the stream the user is watching NOW.
+
+    Never ``record.stream_id``: that is the stream the request was raised on, and a run
+    that paused resumes on a fresh one (``prepare_run_from_item``), leaving the original
+    closed. The client follows the new stream via ``executor.stream_started``, so a card
+    settled on the old one resolves where nobody is looking.
+    """
     await _publish_entry(
         stream_id,
         _approval_entry(
-            approval_id, tool_call, outcome.status, summary, integration_name, outcome.feedback
+            record.approval_id,
+            GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
+            status,
+            record.summary,
+            record.integration_name,
+            feedback,
         ),
     )
 
@@ -148,7 +155,7 @@ async def publish_auto_approval(
         _approval_entry(
             approval_id,
             tool_call,
-            "auto_approved",
+            HILApprovalStatus.AUTO_APPROVED,
             summary,
             integration_name,
             auto_reason=reason,
@@ -182,7 +189,7 @@ async def recall_declined_call(
         return None
     # Correct by construction: the only writer is ``remember_declined_call`` above.
     record = cast(DeclinedCallRecord, raw)
-    return ApprovalOutcome(status="denied", feedback=record.get("feedback"))
+    return ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback=record.get("feedback"))
 
 
 def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:

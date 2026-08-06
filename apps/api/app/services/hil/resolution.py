@@ -55,10 +55,10 @@ CANCELLED_FEEDBACK = "The user cancelled this task; the action was never perform
 # What the record audits. The paused gate receives the same status, except
 # "abandoned" resumes as a denial — the user moved on, the agent must not act.
 _TERMINAL_STATUS: dict[str, HILApprovalStatus] = {
-    "approve": "approved",
-    "deny": "denied",
-    "timeout": "timeout",
-    "abandon": "abandoned",
+    "approve": HILApprovalStatus.APPROVED,
+    "deny": HILApprovalStatus.DENIED,
+    "timeout": HILApprovalStatus.TIMEOUT,
+    "abandon": HILApprovalStatus.ABANDONED,
 }
 
 # Prevent GC of resume tasks spawned here (create_task keeps only a weak ref).
@@ -199,7 +199,7 @@ async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> l
             continue
         if not await mark_decided(
             record.approval_id,
-            "abandoned",
+            HILApprovalStatus.ABANDONED,
             feedback=CANCELLED_FEEDBACK,
             scope="once",
             decided_by=user_id,

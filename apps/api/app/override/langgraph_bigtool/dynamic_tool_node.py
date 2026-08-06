@@ -32,7 +32,7 @@ from app.agents.middleware.executor import MiddlewareExecutor
 from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.utils import State
-from app.services.hil.gate import gate_tool_call
+from app.services.hil.gate import decide_tool_call
 
 
 def format_tool_error(exc: Exception) -> str:
@@ -87,14 +87,14 @@ async def hil_and_timeout_guarded_tool_call(
 ) -> ToolMessage | Command:
     """Parent ToolNode ``awrap_tool_call`` for InjectedState/middleware tools.
 
-    The HIL gate sits OUTSIDE the timeout guard so the approval wait never counts
-    against the tool-execution timeout. Both nest around the raw ``execute``.
+    The gate is asked first and separately: it only ever reads a decision the
+    ``approvals`` node already settled, so a blocked call costs nothing and never
+    enters the timeout window meant for the tool itself.
     """
-
-    async def timed(req: ToolCallRequest) -> ToolMessage | Command:
-        return await timeout_guarded_tool_call(req, execute)
-
-    return await gate_tool_call(request, timed)
+    blocked = await decide_tool_call(request)
+    if blocked is not None:
+        return blocked
+    return await timeout_guarded_tool_call(request, execute)
 
 
 class DynamicToolNode(ToolNode):
@@ -157,7 +157,7 @@ class DynamicToolNode(ToolNode):
             if hasattr(tool, "name"):
                 self.tools_by_name[tool.name] = tool
 
-    def _get_tool(self, name: str) -> BaseTool | None:
+    def get_tool(self, name: str) -> BaseTool | None:
         """Look up tool dynamically from registry.
 
         Args:
@@ -282,7 +282,7 @@ class DynamicToolNode(ToolNode):
             results.append(
                 await self._run_tool_call_with_middleware(
                     tool_call=dict(cast(Mapping[str, Any], tool_call)),
-                    tool=self._get_tool(tool_name),
+                    tool=self.get_tool(tool_name),
                     middleware_executor=middleware_executor,
                     store=store,
                     config=config,
@@ -333,7 +333,7 @@ class DynamicToolNode(ToolNode):
         """
 
         async def invoke_tool(tc: dict[str, Any]) -> ToolMessage | Command:
-            resolved_tool = self._get_tool(tc.get("name", ""))
+            resolved_tool = self.get_tool(tc.get("name", ""))
             if resolved_tool is None:
                 return ToolMessage(
                     content=f"Tool '{tc.get('name')}' not found",

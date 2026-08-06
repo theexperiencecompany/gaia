@@ -136,7 +136,7 @@ async def _resolve_parked_batch(
         if not parked:
             return
 
-        decided = [record for record in parked if record.status != "pending"]
+        decided = [record for record in parked if record.status.settled]
         for record in decided:
             await _collect_subagent(record, configurable, writer, conversation_id)
         if decided:
@@ -144,7 +144,7 @@ async def _resolve_parked_batch(
             # re-parked) — re-query before deciding whether to pause.
             continue
 
-        pending = [record for record in parked if record.status == "pending"]
+        pending = [record for record in parked if not record.status.settled]
         log.info(
             f"{LogTag.HIL} wait_for_subagents pausing executor for {len(pending)} approval(s)",
             conversation_id=conversation_id,

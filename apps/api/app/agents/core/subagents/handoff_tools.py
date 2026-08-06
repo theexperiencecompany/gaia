@@ -58,7 +58,7 @@ from app.db.repositories.integrations import integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
-from app.models.hil_models import HILApprovalRecord
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.models.subagent_models import Subagent
 from app.services.connect_link_service import build_connect_link_url
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
@@ -697,15 +697,15 @@ async def resume_parked_subagent(
     )
 
 
-def _subagent_resume_status(status: str) -> str:
+def _subagent_resume_status(status: HILApprovalStatus) -> HILApprovalStatus:
     """Map a record's terminal status onto the gate's resumable statuses.
 
     ``abandoned`` resumes as a denial — the gate accepts only
     approved/denied/timeout, and abandonment means "do not act."
     """
-    if status in ("approved", "timeout"):
+    if status in (HILApprovalStatus.APPROVED, HILApprovalStatus.TIMEOUT):
         return status
-    return "denied"
+    return HILApprovalStatus.DENIED
 
 
 @tool

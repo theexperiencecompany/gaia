@@ -24,8 +24,8 @@ from app.constants.hil import (
     HIL_STATUS_KWARG,
     HIL_UNRESUMED_SWEEP_STATUSES,
 )
+from app.models.hil_models import HILApprovalStatus
 from app.services.hil.approvals_store import clear_resume_item
-from app.services.hil.gate import gate_tool_call
 from app.services.hil.intent import IntentDecision
 from app.services.hil.policy import has_pausing_sibling
 from app.services.hil.resolution import (
@@ -35,7 +35,14 @@ from app.services.hil.resolution import (
 )
 from app.utils.errors import AppError
 
-from .conftest import CONVERSATION_ID, USER_ID, ai_message_with_calls, make_record, make_request
+from .conftest import (
+    CONVERSATION_ID,
+    USER_ID,
+    ai_message_with_calls,
+    make_record,
+    make_request,
+    run_through_gate,
+)
 
 GATE = "app.services.hil.gate"
 POLICY = "app.services.hil.policy"
@@ -144,7 +151,7 @@ class TestJoinToolIsNeverGated:
             return ToolMessage(content="collected", tool_call_id="call-1")
 
         with patch(f"{GATE}.resolve_policy", new=AsyncMock()) as policy:
-            result = await gate_tool_call(make_request(name=WAIT_FOR_SUBAGENTS_NAME), handler)
+            result = await run_through_gate(make_request(name=WAIT_FOR_SUBAGENTS_NAME), handler)
 
         assert ran is True
         assert result.content == "collected"
@@ -232,34 +239,39 @@ class TestExemptSiblingsThatPauseSuppressAutoApproval:
             patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
             patch(f"{GATE}.get_approval", new=AsyncMock(return_value=None)),
             patch(f"{GATE}.publish_approval_request", new=AsyncMock()) as card,
-            patch(f"{GATE}.publish_approval_outcome", new=AsyncMock()),
+            patch(f"{GATE}.publish_decision", new=AsyncMock()),
             patch(f"{GATE}.publish_auto_approval", new=AsyncMock()) as receipt,
             patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
             patch(
                 f"{GATE}.judge_intent",
                 new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
             ) as judge,
-            patch(f"{GATE}.interrupt", return_value={"status": "denied"}) as interrupt,
+            patch(f"{GATE}.interrupt") as interrupt,
         ):
-            await gate_tool_call(request, handler)
+            await run_through_gate(request, handler)
 
         judge.assert_not_awaited()
         receipt.assert_not_awaited()
         handler.assert_not_awaited()
         card.assert_awaited_once()
-        interrupt.assert_called_once()
+        # The card goes up and the call waits for the user. It does NOT pause here — only
+        # the approvals node may, and this is the tool node's path.
+        interrupt.assert_not_called()
 
 
-class TestAutoApprovedReplayNeverParks:
-    """Bug: on a node replay the gate found the existing ``auto_approved`` record, skipped
-    the judge, published nothing (the upsert no-ops), and then called ``interrupt()``
-    anyway — parking the run on an approval with no pending record, no card, and no sweep
-    pass that would ever resolve it. The conversation's executor lock was held for hours.
+class TestAnAutoApprovedRecordStillHasToRun:
+    """``auto_approved`` means the user was not ASKED. It never meant the call ran.
+
+    It used to: auto mode approved and executed in one pass, so a replay finding the
+    record had to refuse (the action was irreversible and already done). Approvals are
+    now settled in their own graph node and every tool — auto or not — is executed
+    afterwards by the tool node, so a record that blocked execution would strand every
+    auto-approved call unperformed.
     """
 
     @pytest.fixture
-    def replay(self):
-        """The gate re-entered over a record for a call auto mode already ran."""
+    def auto(self):
+        """The tool node, over a record auto mode decided without asking."""
         with (
             patch(f"{GATE}.log"),
             patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")),
@@ -267,98 +279,88 @@ class TestAutoApprovedReplayNeverParks:
             patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
             patch(
                 f"{GATE}.get_approval",
-                new=AsyncMock(return_value=make_record(status="auto_approved")),
+                new=AsyncMock(return_value=make_record(status=HILApprovalStatus.AUTO_APPROVED)),
             ),
             patch(f"{GATE}.publish_approval_request", new=AsyncMock()) as card,
             patch(f"{GATE}.publish_auto_approval", new=AsyncMock()) as receipt,
+            patch(f"{GATE}.publish_decision", new=AsyncMock()) as settle,
+            patch(f"{GATE}.set_tool_override", new=AsyncMock()),
             patch(f"{GATE}.judge_intent", new=AsyncMock()) as judge,
-            patch(f"{GATE}.interrupt") as interrupt,
         ):
-            yield {"card": card, "receipt": receipt, "judge": judge, "interrupt": interrupt}
+            yield {"card": card, "receipt": receipt, "judge": judge, "settle": settle}
 
-    async def test_the_replay_does_not_park_on_an_unanswerable_approval(self, replay: dict) -> None:
+    async def test_the_action_is_performed(self, auto: dict) -> None:
         handler = AsyncMock()
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
-        replay["interrupt"].assert_not_called()
-        replay["card"].assert_not_awaited()
+        handler.assert_awaited_once()
 
-    async def test_the_action_is_not_performed_a_second_time(self, replay: dict) -> None:
-        # The other way this could fail: re-running the handler instead of parking. Both
-        # are wrong — the action already happened and is irreversible by definition.
-        handler = AsyncMock()
+    async def test_no_second_judge_call_is_spent(self, auto: dict) -> None:
+        # The judge is a non-deterministic LLM call and the decision is already made.
+        await run_through_gate(make_request(), AsyncMock())
 
-        result = await gate_tool_call(make_request(), handler)
+        auto["judge"].assert_not_awaited()
+        auto["receipt"].assert_not_awaited()
 
-        handler.assert_not_awaited()
-        assert result.additional_kwargs[HIL_STATUS_KWARG] == "already_ran"
+    async def test_no_card_is_published_for_a_decision_already_made(self, auto: dict) -> None:
+        await run_through_gate(make_request(), AsyncMock())
 
-    async def test_the_model_is_told_the_action_did_happen(self, replay: dict) -> None:
-        # A refusal that reads as "did not happen" would make the model do it again by
-        # another route. This is the one gate message that must confirm the action.
-        result = await gate_tool_call(make_request(), AsyncMock())
+        auto["card"].assert_not_awaited()
 
-        assert "WAS performed" in result.content
 
-    async def test_no_second_judge_call_is_spent_on_the_replay(self, replay: dict) -> None:
-        await gate_tool_call(make_request(), AsyncMock())
+class TestAPendingRecordNeverPausesTheToolNode:
+    """The tool node must fail closed rather than pause.
 
-        replay["judge"].assert_not_awaited()
-        replay["receipt"].assert_not_awaited()
+    Only the ``approvals`` node may pause, and it runs first — so a call arriving at the
+    tool node still pending means that node never ran. Pausing HERE is the bug the whole
+    split exists to remove: the tool node's siblings have already executed, and a pause
+    discards and replays their work.
+    """
 
-    async def test_a_pending_record_still_falls_through_to_the_pause(self) -> None:
-        # The short-circuit must be scoped to `auto_approved`: a PENDING record is the
-        # normal ask-mode replay and must still reach interrupt(). Ask mode never
-        # consults the judge, so this pins the short-circuit's scope only — the guard
-        # inside _judge is what the auto-mode case below covers.
-        with (
+    @staticmethod
+    def _tool_node_over_a_pending_record():
+        return (
             patch(f"{GATE}.log"),
             patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="ask")),
             patch(f"{GATE}.recall_declined_call", new=AsyncMock(return_value=None)),
             patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
             patch(f"{GATE}.get_approval", new=AsyncMock(return_value=make_record())),
             patch(f"{GATE}.publish_approval_request", new=AsyncMock()),
-            patch(f"{GATE}.publish_approval_outcome", new=AsyncMock()),
+            patch(f"{GATE}.publish_decision", new=AsyncMock()),
             patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
-            patch(f"{GATE}.interrupt", return_value={"status": "denied"}) as interrupt,
-        ):
-            await gate_tool_call(make_request(), AsyncMock())
+        )
 
-        interrupt.assert_called_once()
-
-    async def test_an_auto_mode_replay_does_not_re_run_the_judge_over_a_pending_record(
-        self,
-    ) -> None:
-        # A pending record means a prior pass already published a card and called
-        # interrupt(); this pass is the replay carrying the user's decision. The judge is
-        # a non-deterministic LLM call, so re-asking it here can return "aligned" and run
-        # the tool immediately — swallowing the resume value the waiting interrupt() is
-        # expecting and acting without the answer the user actually gave. It must fall
-        # through to the pause instead, judge unspent.
+    async def test_it_refuses_instead_of_parking(self) -> None:
         handler = AsyncMock()
-        with (
-            patch(f"{GATE}.log"),
-            patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")),
-            patch(f"{GATE}.recall_declined_call", new=AsyncMock(return_value=None)),
-            patch(f"{GATE}._integration_name_for", new=AsyncMock(return_value=None)),
-            patch(f"{GATE}.get_approval", new=AsyncMock(return_value=make_record())),
-            patch(f"{GATE}.publish_approval_request", new=AsyncMock()),
-            patch(f"{GATE}.publish_approval_outcome", new=AsyncMock()),
-            patch(f"{GATE}.publish_auto_approval", new=AsyncMock()) as receipt,
-            patch(f"{GATE}.remember_declined_call", new=AsyncMock()),
-            # Aligned on purpose: if the guard is gone the gate auto-approves and runs.
-            patch(
-                f"{GATE}.judge_intent",
-                new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
-            ) as judge,
-            patch(f"{GATE}.interrupt", return_value={"status": "denied"}) as interrupt,
-        ):
-            await gate_tool_call(make_request(), handler)
+        with ExitStack() as stack:
+            for ctx in self._tool_node_over_a_pending_record():
+                stack.enter_context(ctx)
+            interrupt = stack.enter_context(patch(f"{GATE}.interrupt"))
+            result = await run_through_gate(make_request(), handler)
+
+        interrupt.assert_not_called()
+        handler.assert_not_awaited()
+        assert result.additional_kwargs[HIL_STATUS_KWARG] == "denied"
+
+    async def test_the_judge_is_not_re_run_over_an_existing_record(self) -> None:
+        # A record means a card is already up and the answer is the user's to give.
+        # Re-judging could return "aligned" and run the tool without their decision.
+        handler = AsyncMock()
+        with ExitStack() as stack:
+            for ctx in self._tool_node_over_a_pending_record():
+                stack.enter_context(ctx)
+            stack.enter_context(patch(f"{GATE}.resolve_policy", new=AsyncMock(return_value="auto")))
+            stack.enter_context(patch(f"{GATE}.publish_auto_approval", new=AsyncMock()))
+            judge = stack.enter_context(
+                patch(
+                    f"{GATE}.judge_intent",
+                    new=AsyncMock(return_value=IntentDecision(True, "you said send it")),
+                )
+            )
+            await run_through_gate(make_request(), handler)
 
         judge.assert_not_awaited()
-        receipt.assert_not_awaited()
-        interrupt.assert_called_once()
         handler.assert_not_awaited()
 
 

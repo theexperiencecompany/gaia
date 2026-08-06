@@ -24,14 +24,14 @@ from app.constants.hil import HIL_SUMMARY_MAX_ARG_CHARS, HIL_SUMMARY_MAX_ARGS
 from app.services.hil.bridge import (
     ApprovalOutcome,
     build_summary,
-    publish_approval_outcome,
     publish_approval_request,
+    publish_decision,
     recall_declined_call,
     remember_declined_call,
 )
 from app.services.hil.utils import GatedCall
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID
+from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record
 
 MODULE = "app.services.hil.bridge"
 
@@ -142,13 +142,18 @@ class TestTheOutcomeSettlesTheCard:
     """
 
     async def settle(self, outcome: ApprovalOutcome) -> None:
-        await publish_approval_outcome(
-            stream_id=STREAM_ID,
+        record = make_record(
             approval_id="appr-1",
-            tool_call=TOOL_CALL,
+            tool_name=TOOL_CALL.name,
+            tool_call_id=TOOL_CALL.id,
+            args=TOOL_CALL.args,
             summary="Send email — to: bob@example.com",
             integration_name="Gmail",
-            outcome=outcome,
+        )
+        # STREAM_ID explicitly, never record.stream_id: a resumed run publishes to a
+        # NEW stream, and the card has to settle where the user is now watching.
+        await publish_decision(
+            record, outcome.status, stream_id=STREAM_ID, feedback=outcome.feedback
         )
 
     async def test_an_approval_settles_the_card(self, bridge: dict) -> None:

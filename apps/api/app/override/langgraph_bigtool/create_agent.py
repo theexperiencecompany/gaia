@@ -43,7 +43,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 # to no_implicit_reexport.
 from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
-from langgraph.prebuilt.tool_node import ToolCallWithContext
+from langgraph.prebuilt.tool_node import ToolCallRequest, ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
@@ -56,6 +56,7 @@ from app.agents.llm.client import (
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.middleware.runtime_adapter import BigtoolToolRuntime
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
 from app.models.agent_models import AgentConfigurable, agent_configurable
@@ -76,6 +77,7 @@ from app.override.langgraph_bigtool.utils import (
     dedupe_tool_bindings,
     format_selected_tools,
 )
+from app.services.hil.gate import settle_message_approvals
 from app.utils.mcp_utils import canonical_tool_name_map
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -482,6 +484,60 @@ def create_agent(
     async def areject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
         return reject_unbound_tools(tool_calls, store=store)
 
+    def _last_tool_calling_message(state: State) -> AIMessage | None:
+        """The AI message whose calls this turn is executing.
+
+        NOT ``messages[-1]``: a resume prepends a current-time HumanMessage
+        (``subagent_runner._with_current_time``), so by the time the approvals node has
+        paused and woken, the tool-calling message is no longer last. Matches
+        ``hil/utils.current_tool_calls``, which the gate resolves siblings with — the two
+        must agree on which message is being executed or they gate different call sets.
+        """
+        for message in reversed(state["messages"]):
+            if isinstance(message, AIMessage) and message.tool_calls:
+                return message
+        return None
+
+    def _executable_calls(state: State) -> list[ToolCall]:
+        """The message's tool calls that the tools node will run, names canonicalized.
+
+        Mutates each call's name in place when it maps to a bound tool, so the tools
+        node's registry lookup hits the actual BaseTool. Separate from routing because
+        both the router and the approvals node's outgoing edge need this same list.
+        """
+        last_message = _last_tool_calling_message(state)
+        if last_message is None:
+            return []
+        bound_names = _get_bound_tool_names(state)
+        canonical_to_bound = canonical_tool_name_map(bound_names)
+        runnable: list[ToolCall] = []
+        for call in last_message.tool_calls:
+            if retrieve_tools is not None and call["name"] == retrieve_tools.name:
+                continue
+            if call["name"] not in bound_names:
+                canonical = canonical_to_bound.get(call["name"].replace("-", "_"))
+                if canonical is None:
+                    continue
+                call["name"] = canonical
+            runnable.append(call)
+        return runnable
+
+    def dispatch_tools(state: State, *, store: BaseStore) -> list[Send]:
+        """Fan the message's calls out to the tools node, one task each.
+
+        Reached only from ``approvals``, so by the time any of these run, every approval
+        this message needs has been settled — see ``services/hil/gate``. ToolCallWithContext
+        carries the full state dict so ToolNode can do InjectedState injection.
+        """
+        del store
+        return [
+            Send(
+                "tools",
+                ToolCallWithContext(__type="tool_call_with_context", tool_call=call, state=state),
+            )
+            for call in _executable_calls(state)
+        ]
+
     def should_continue(state: State, *, store: BaseStore) -> str | Send | list[Send]:
         messages = state["messages"]
         last_message = messages[-1]
@@ -489,7 +545,7 @@ def create_agent(
             return "end_graph_hooks" if end_graph_hooks else END
         bound_names = _get_bound_tool_names(state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
-        destinations = []
+        destinations: list[Send] = []
         unbound_calls: list[ToolCall] = []
 
         finish_calls: list[ToolCall] = [
@@ -502,32 +558,46 @@ def create_agent(
             if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                 destinations.append(Send("select_tools", [call]))
                 continue
-            if call["name"] not in bound_names:
-                canonical = canonical_to_bound.get(call["name"].replace("-", "_"))
-                if canonical is None:
-                    unbound_calls.append(call)
-                    continue
-                # Rewrite to the canonical name so the tools node's
-                # registry lookup hits the actual BaseTool.
-                call["name"] = canonical
-            # Wrap each tool call with ToolCallWithContext so that ToolNode
-            # receives the full state dict (including "todos") for
-            # InjectedState injection.
-            destinations.append(
-                Send(
-                    "tools",
-                    ToolCallWithContext(
-                        __type="tool_call_with_context",
-                        tool_call=call,
-                        state=state,
-                    ),
-                )
-            )
+            if call["name"] not in bound_names and not canonical_to_bound.get(
+                call["name"].replace("-", "_")
+            ):
+                unbound_calls.append(call)
+
+        # ONE task for the whole message, and it runs before any tool: the approvals node
+        # settles every HIL decision in its own superstep, then fans out to the tools node.
+        # Sending straight to "tools" here is what used to let an ungated call execute
+        # beside one that paused — and a pause discards and replays that whole step.
+        if _executable_calls(state):
+            destinations.append(Send("approvals", state))
 
         if unbound_calls:
             destinations.append(Send("reject_unbound_tools", unbound_calls))
 
         return destinations
+
+    async def aapprovals_node(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
+        """Settle every HIL approval this message needs, before a single tool runs.
+
+        One task for the whole message (unlike ``tools``, which gets one task per call),
+        because only a single task can pause coherently: it interrupts once for the whole
+        batch and re-reads the records when it wakes. Executes nothing, writes no
+        messages — its entire job is that the decisions are in before the fan-out.
+        """
+        del store
+        await settle_message_approvals(
+            [
+                ToolCallRequest(
+                    tool_call=call,
+                    tool=tool_node.get_tool(call["name"]),
+                    state=state,
+                    runtime=BigtoolToolRuntime.from_graph_context(
+                        config=config, tool_name=call["name"]
+                    ),
+                )
+                for call in _executable_calls(state)
+            ]
+        )
+        return cast(State, {})
 
     def finish_task_node(tool_calls: list[ToolCall], *, store: BaseStore) -> State:
         messages = []
@@ -589,6 +659,9 @@ def create_agent(
             select_tools_node,  # type: ignore[possibly-undefined]
             retry_policy=RetryPolicy(),
         )
+    # Deliberately NO retry policy, for the same reason as "tools": it publishes
+    # approval cards, and a retried publish is a duplicate card.
+    builder.add_node("approvals", RunnableCallable(None, aapprovals_node))
     builder.add_node("tools", tool_node)
     builder.add_node(
         FINISH_TASK_NAME,
@@ -599,7 +672,7 @@ def create_agent(
         RunnableCallable(reject_unbound_tools, areject_unbound_tools),
     )
 
-    path_map = ["tools", FINISH_TASK_NAME, "reject_unbound_tools", END]
+    path_map = ["approvals", "tools", FINISH_TASK_NAME, "reject_unbound_tools", END]
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
     if end_graph_hooks:
@@ -616,6 +689,9 @@ def create_agent(
         path_map=path_map,
     )
 
+    # Its own superstep: every approval is settled here before a single tool task starts,
+    # so a pause has nothing already-executed to discard and replay.
+    builder.add_conditional_edges("approvals", dispatch_tools, path_map=["tools"])
     builder.add_edge("tools", "agent")
     builder.add_edge(
         FINISH_TASK_NAME,

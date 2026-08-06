@@ -69,6 +69,9 @@ COMMS_HOOKS = COMMS_PRE_MODEL_HOOKS + COMMS_END_GRAPH_HOOKS
 COMMS_GRAPH_NODES = {
     "__start__",
     "agent",
+    # Every tool call is routed through here first: it settles the turn's HIL decisions
+    # in its own superstep, so no tool has run when a pause discards and replays it.
+    "approvals",
     "tools",
     FINISH_TASK_NAME,
     "reject_unbound_tools",

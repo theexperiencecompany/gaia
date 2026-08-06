@@ -97,7 +97,7 @@ async def record_auto_approval(
         args=args,
         summary=summary,
         integration_name=integration_name,
-        status="auto_approved",
+        status=HILApprovalStatus.AUTO_APPROVED,
         auto_reason=reason,
         decided_at=now,
         created_at=now,

@@ -142,14 +142,6 @@ HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
 HIL_BG_RESULTS_KEY_PREFIX = "hil:bg_results:"
 HIL_BG_RESULTS_TTL_SECONDS = 7200
 
-# An ungated call that ran beside one that paused is remembered under its
-# tool_call_id, so the node's replay reuses the result instead of running the tool a
-# second time (see services/hil/replay_guard.py). Keyed by conversation, never
-# stream_id — the resume runs on a new stream. The memo must outlive the longest
-# possible pause, which is the same window the paused busy lock is re-armed to.
-HIL_REPLAY_MEMO_KEY_PREFIX = "hil:ran:"
-HIL_REPLAY_MEMO_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
-
 # Interrupt payload type for the wait_for_subagents join pause. Carries the whole
 # batch of parked-subagent approvals, unlike the gate's single "hil_approval".
 HIL_BATCH_INTERRUPT_TYPE = "hil_approval_batch"

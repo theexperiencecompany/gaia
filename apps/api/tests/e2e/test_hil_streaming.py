@@ -960,23 +960,25 @@ class TestUngatedSiblingAcrossThePause:
         non-destructive, but not empty: a second API round trip and a second
         decrement of the user's rate-limit quota, every time.
 
-        ``gate._run_once_across_replays`` now remembers an ungated call's result
-        under its tool_call_id whenever a sibling can pause, so the replay reuses
-        it. Asserted in two halves on purpose: the first pins that the tool DID
-        run (so this cannot pass by the work never happening), the second that
-        the replay did not repeat it.
+        The fix is structural rather than defensive: approvals are settled by their
+        own graph node, in the superstep BEFORE the one that runs tools. The pause
+        happens where nothing has executed, so the replay has nothing to repeat and
+        the tool node itself never replays.
+
+        Asserted in two halves on purpose. The first pins that nothing ran while the
+        approval was outstanding; the second that the turn then goes ahead exactly
+        once — so this cannot pass by the work never happening at all.
         """
         async with sibling_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
-            assert calls == [SIBLING_ARGS["location"]], (
-                f"the ungated sibling runs once before the pause, got {calls}"
+            assert calls == [], (
+                f"nothing runs while the sibling's approval is outstanding, got {calls}"
             )
 
             await world.decide("approve")
 
             assert calls == [SIBLING_ARGS["location"]], (
-                "the ungated sibling must not run a second time when the node "
-                f"replays for the approved call, got {calls}"
+                f"and once decided, the ungated sibling runs exactly once, got {calls}"
             )
 
 
@@ -1259,25 +1261,47 @@ class TestTwoGatedCallsInOneTurn:
             assert await world.cards_for(GATE_B_TOOL) == ["pending"]
             assert calls == [], "and neither may run before the user decides"
 
-    async def test_deciding_one_of_them_actually_runs_it(self) -> None:
-        """Approving one of two batched actions runs that one.
+    async def test_answering_only_one_of_them_runs_nothing_yet(self) -> None:
+        """A half-answered turn performs no action at all.
 
-        Was a defect: both gates park, so the thread holds TWO pending
-        interrupts, and a bare ``Command(resume=...)`` is one LangGraph refuses
-        outright — the whole dispatch died before any handler was called.
-        ``subagent_runner._address_resume`` now keys the resume to the interrupt
-        carrying its own ``approval_id``.
+        The turn's approvals settle together, in a graph node that runs before any
+        tool — so an approved action waits for its still-undecided sibling rather
+        than going ahead alone. That is the point of settling first: were it to run
+        now, the pause for the second approval would discard and replay the step it
+        ran in, and it would run a second time.
         """
         async with two_gate_world() as (world, calls):
             await run_turn(world, "check the weather and draw me a flowchart")
 
             await world.decide("approve", tool=GATE_A_TOOL)
 
+            assert calls == [], (
+                f"nothing may run while a sibling approval is still outstanding, got {calls}"
+            )
+            assert await world.cards_for(GATE_B_TOOL) == ["pending"], (
+                "and the undecided one is still waiting on the user"
+            )
+
+    async def test_answering_both_runs_each_exactly_once(self) -> None:
+        """The turn goes ahead once every approval in it has an answer.
+
+        The other half of the test above, and the one that stops "runs nothing yet"
+        from passing by the turn being permanently wedged — which is what a bare
+        ``Command(resume=...)`` used to cause, LangGraph refusing the dispatch
+        outright while two interrupts were pending.
+        """
+        async with two_gate_world() as (world, calls):
+            await run_turn(world, "check the weather and draw me a flowchart")
+
+            await world.decide("approve", tool=GATE_A_TOOL)
+            await world.decide("approve", tool=GATE_B_TOOL)
+
             assert calls == [SIBLING_ARGS["location"]], (
-                "two gated calls in ONE AI message must not wedge the turn: the "
-                "resume has to name the interrupt it answers, or LangGraph rejects "
-                f"the dispatch and the approved action never runs. Executions of "
-                f"{GATE_A_TOOL}: {calls}"
+                f"the approved action runs, exactly once, got {calls}"
+            )
+            assert len(await world.outputs_for(GATE_B_CALL_ID)) == 1, (
+                "and so does its sibling, got "
+                f"{len(await world.outputs_for(GATE_B_CALL_ID))} results"
             )
 
     async def test_the_turn_does_not_die_with_an_executor_error(self) -> None:
