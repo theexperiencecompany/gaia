@@ -160,6 +160,21 @@ class CommonSettings(BaseAppSettings):
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
     # ----------------------------------------------
+    # Dev-only LLM overrides (honored only when ENV=development)
+    # ----------------------------------------------
+    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
+    # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
+    # "custom" provider is registered exclusively in development (see
+    # register_llm_providers), so these have no effect in production.
+    DEV_LLM_BASE_URL: str | None = None
+    DEV_LLM_API_KEY: str | None = None
+    DEV_LLM_MODEL: str | None = None
+    # Default model for every dev request that doesn't pick one in the chat-header
+    # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
+    # the endpoint above). An explicit selector choice still wins.
+    DEV_DEFAULT_MODEL: str | None = None
+
+    # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)
     # ----------------------------------------------
     # Optional: Get a token at https://github.com/settings/tokens

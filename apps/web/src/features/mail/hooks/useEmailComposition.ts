@@ -19,12 +19,7 @@ import type {
   UseEmailCompositionReturn,
 } from "./useEmailComposition.types";
 
-export type {
-  EmailCompositionActions,
-  EmailCompositionFormState,
-  EmailCompositionUIState,
-  UseEmailCompositionReturn,
-} from "./useEmailComposition.types";
+export type { UseEmailCompositionReturn } from "./useEmailComposition.types";
 
 const defaultFormState: EmailCompositionFormState = {
   toEmails: [],

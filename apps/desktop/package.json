@@ -26,13 +26,14 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.7",
+    "@gaia/shared": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/node": "^24.13.3",
     "electron": "^39.8.10",
     "electron-builder": "^25.1.8",
     "electron-vite": "^5.0.0",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "vitest": "^4.1.10"
   },

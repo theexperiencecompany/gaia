@@ -88,7 +88,9 @@
         "noUselessLoneBlockStatements": "error",
         "noExcessiveCognitiveComplexity": {
           "level": "warn",
-          "options": { "maxAllowedComplexity": 25 }
+          "options": {
+            "maxAllowedComplexity": 25
+          }
         }
       },
       "correctness": {
@@ -108,7 +110,9 @@
         "noNamespace": "error",
         "useConsistentArrayType": {
           "level": "error",
-          "options": { "syntax": "shorthand" }
+          "options": {
+            "syntax": "shorthand"
+          }
         },
         "useShorthandFunctionType": "error"
       },
@@ -117,7 +121,9 @@
         "noExplicitAny": "error",
         "noConsole": {
           "level": "warn",
-          "options": { "allow": ["error", "warn", "info", "debug"] }
+          "options": {
+            "allow": ["error", "warn", "info", "debug"]
+          }
         },
         "useIterableCallbackReturn": "off",
         "noEmptyBlockStatements": "warn",
@@ -140,6 +146,9 @@
       "security": {
         "noDangerouslySetInnerHtmlWithChildren": "error",
         "noGlobalEval": "error"
+      },
+      "nursery": {
+        "noImportCycles": "error"
       }
     }
   },
