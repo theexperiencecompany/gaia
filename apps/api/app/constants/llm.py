@@ -137,6 +137,12 @@ PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
 # levels if comms routing or executor tool-selection quality needs more headroom.
 COMMS_REASONING = {"effort": "low"}
 
+# Output cap for the env-defined custom dev provider (the "custom" entry below;
+# endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the
+# completion ceilings of the cheap lanes this is meant for (e.g. DeepSeek V4
+# Flash caps at 65,536).
+DEV_LLM_MAX_OUTPUT_TOKENS = 64_000
+
 # OpenRouter app attribution (https://openrouter.ai/docs/app-attribution). The
 # OpenRouter client surfaces these as the HTTP-Referer / X-Title /
 # X-OpenRouter-Categories headers so GAIA appears on OpenRouter's app rankings.
@@ -173,6 +179,23 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
     "deepseek-v4": {
         "provider": "openrouter",
         "model": "deepseek/deepseek-v4-pro",
+        "model_kwargs": None,
+        "reasoning": False,
+    },
+    "deepseek-v4-flash": {
+        # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
+        # lanes (e.g. Nous Research), so the custom endpoint below can run the
+        # identical model for A/B-ing routes.
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "model_kwargs": None,
+        "reasoning": False,
+    },
+    "custom": {
+        # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
+        # one here; the client's own default (DEV_LLM_MODEL) serves the request.
+        "provider": "custom",
+        "model": None,
         "model_kwargs": None,
         "reasoning": False,
     },

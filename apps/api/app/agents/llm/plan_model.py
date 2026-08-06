@@ -2,6 +2,7 @@
 by subscription plan. Set on the comms configurable; executor/subagents inherit it.
 """
 
+from app.config.settings import settings
 from app.constants.llm import (
     COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
@@ -56,7 +57,15 @@ def _apply_dev_model(configurable: dict, option: dict, reasoning_cfg: dict) -> N
     """Pin a DEV_MODEL_OPTIONS entry onto a configurable, applying role-appropriate
     reasoning. Clears `model_kwargs`/`reasoning` for models that don't use them so a
     prior plan/inherited OpenRouter pin can't leak onto a Gemini-routed model."""
-    _pin_model(configurable, option["provider"], option["model"])
+    if option["model"]:
+        _pin_model(configurable, option["provider"], option["model"])
+    else:
+        # Entry without a pinned model (the env-defined "custom" endpoint): route
+        # by provider and clear any earlier model pin so the client's own default
+        # (DEV_LLM_MODEL) serves the request.
+        configurable["provider"] = option["provider"]
+        configurable.pop("model", None)
+        configurable.pop("model_name", None)
     if option["model_kwargs"] is not None:
         configurable["model_kwargs"] = option["model_kwargs"]
     else:
@@ -74,11 +83,21 @@ def apply_dev_model_override(
     use_defaults: bool,
 ) -> None:
     """DEV-ONLY: override the comms model now and stash the executor model for the
-    executor run. No-op when use_defaults is set or an id is unknown. Runs AFTER
-    apply_plan_model so the dev selection wins over the plan model. Caller gates this
-    to ENV=development; never reached in production."""
+    executor run. Requests that don't pick a model (use_defaults) fall back to the
+    env-configured DEV_DEFAULT_MODEL for both roles, so bots/scripts/plain requests
+    route to it too; an explicit selector choice wins. No-op when neither is set or
+    an id is unknown. Runs AFTER apply_plan_model so the dev selection wins over
+    the plan model. Caller gates this to ENV=development; never reached in
+    production."""
     if use_defaults:
-        return
+        dev_default = settings.DEV_DEFAULT_MODEL
+        if dev_default and dev_default not in DEV_MODEL_OPTIONS:
+            log.warning(
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL '{dev_default}' is not a "
+                "DEV_MODEL_OPTIONS key; keeping the plan model"
+            )
+            return
+        comms_model = executor_model = dev_default
     comms_option = DEV_MODEL_OPTIONS.get(comms_model or "")
     if comms_option:
         _apply_dev_model(configurable, comms_option, COMMS_REASONING)
