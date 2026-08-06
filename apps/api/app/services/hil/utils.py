@@ -23,6 +23,7 @@ from app.constants.hil import (
     HIL_JUDGE_MAX_PRIOR_CALLS,
     HIL_JUDGE_NONCE_BYTES,
 )
+from app.models.agent_models import AgentConfigurable, runtime_configurable
 from app.utils.general_utils import clip_text
 
 
@@ -74,14 +75,9 @@ def tool_description(tool: BaseTool | None) -> str:
     return getattr(tool, "description", "") or ""
 
 
-def configurable_of(request: ToolCallRequest) -> dict[str, Any]:
-    """The run's ``configurable``, or an empty dict outside a graph."""
-    runtime = getattr(request, "runtime", None)
-    config = getattr(runtime, "config", {}) or {}
-    if not isinstance(config, dict):
-        return {}
-    configurable = config.get("configurable", {})
-    return configurable if isinstance(configurable, dict) else {}
+def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
+    """The run's ``configurable``, under this module's HIL-facing vocabulary."""
+    return runtime_configurable(request)
 
 
 # --- reading the graph state -----------------------------------------------------------

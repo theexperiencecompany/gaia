@@ -38,6 +38,7 @@ from app.agents.workspace.offload import (
 from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.models.agent_models import runtime_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import (
     MessageContent,
@@ -300,8 +301,7 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             tool_name = tool_call.name
             tool_call_id = tool_call.id
 
-        config = getattr(request.runtime, "config", {}) or {}
-        configurable = config.get("configurable", {})
+        configurable = runtime_configurable(request)
         thread_id = configurable.get("thread_id")
 
         compacted = await compact_tool_output(

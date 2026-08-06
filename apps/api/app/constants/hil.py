@@ -6,7 +6,7 @@ the tool registry (``app/agents/tools/core/registry.py``), the single source of 
 for every tool in the app.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME, WAIT_FOR_SUBAGENTS_NAME
@@ -127,7 +127,7 @@ LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
 # subagent thread's checkpoint for a parked interrupt ONLY when this is set — a
 # parked subagent can only exist on a resume replay, so fresh runs (the ~100%
 # case) skip that per-handoff Postgres read entirely.
-HIL_RESUME_CONFIG_KEY = "hil_resume_replay"
+HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
 
 # How long a declined call is remembered so a retrying agent is auto-denied
 # without re-prompting. Keyed by stream_id (unique per turn), so this only
@@ -141,6 +141,14 @@ HIL_DECLINE_MEMORY_TTL_SECONDS = 1800
 # approval window plus a long executor turn.
 HIL_BG_RESULTS_KEY_PREFIX = "hil:bg_results:"
 HIL_BG_RESULTS_TTL_SECONDS = 7200
+
+# An ungated call that ran beside one that paused is remembered under its
+# tool_call_id, so the node's replay reuses the result instead of running the tool a
+# second time (see services/hil/replay_guard.py). Keyed by conversation, never
+# stream_id — the resume runs on a new stream. The memo must outlive the longest
+# possible pause, which is the same window the paused busy lock is re-armed to.
+HIL_REPLAY_MEMO_KEY_PREFIX = "hil:ran:"
+HIL_REPLAY_MEMO_TTL_SECONDS = HIL_APPROVAL_TIMEOUT_SECONDS + EXECUTOR_BUSY_TTL
 
 # Interrupt payload type for the wait_for_subagents join pause. Carries the whole
 # batch of parked-subagent approvals, unlike the gate's single "hil_approval".

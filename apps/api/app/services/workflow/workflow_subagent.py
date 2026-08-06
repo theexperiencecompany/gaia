@@ -34,7 +34,7 @@ from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
-from app.models.agent_models import AgentUserContext
+from app.models.agent_models import AgentUserContext, agent_configurable
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.utils.workflow_utils import unknown_integration_ids
@@ -162,7 +162,7 @@ class WorkflowSubagentRunner:
             agent_name="workflow_agent",
             subagent_id="workflow_agent",
         )
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
 
         # Authoring only needs a few discovery calls before it emits JSON. Cap the
         # loop below a full agent's budget so a wandering model can't burn ~20 tool

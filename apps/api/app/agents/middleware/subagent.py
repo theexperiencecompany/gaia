@@ -47,7 +47,7 @@ from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
-from app.models.agent_models import AnyAgentMiddleware
+from app.models.agent_models import AnyAgentMiddleware, agent_configurable
 from app.utils.agent_utils import (
     StreamWriterCallable,
     format_subagent_end_event,
@@ -201,7 +201,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         inherited_tool_names: list[str] | None,
     ) -> str:
         """Run one spawned subagent to completion, pausing the parent for approvals."""
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         # A fresh spawn has a brand-new tool_call_id, so nothing can already exist on
         # its thread — only a resume replay can, which is why the checkpoint probe is
         # gated on it and effectively every spawn skips that Postgres read.
@@ -298,7 +298,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         if self._spawn_middleware_factory is None or self._spawn_graph_provider is None:
             raise ValueError("Spawn graph not configured for subagent execution")
 
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         conversation_id = str(configurable.get("conversation_id") or "")
 
@@ -334,7 +334,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             subagent_id=SPAWN_AGENT_NAME,
             recursion_limit=self._max_turns,
         )
-        new_configurable = spawn_config.get("configurable", {})
+        new_configurable = agent_configurable(spawn_config)
 
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
         messages = await build_initial_messages(

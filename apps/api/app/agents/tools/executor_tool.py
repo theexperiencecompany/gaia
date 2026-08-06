@@ -8,7 +8,7 @@ run_executor_background.
 
 import asyncio
 import json
-from typing import Annotated, Any
+from typing import Annotated
 from uuid import uuid4
 
 from langchain_core.runnables import RunnableConfig
@@ -39,6 +39,7 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.hil.resolution import cancel_conversation_approvals
 from shared.py.wide_events import log
 
@@ -120,11 +121,11 @@ async def call_executor(
     The executor runs in the background and posts its result to the
     conversation as a new bot message when it completes.
     """
-    base_configurable = config.get("configurable", {})
+    base_configurable = agent_configurable(config)
     # Shallow-copy so the executor's overrides (todo binding) never mutate the
     # comms agent's live RunnableConfig. The model is inherited from the comms
     # configurable (set by per-plan routing).
-    configurable = {**base_configurable}
+    configurable: AgentConfigurable = {**base_configurable}
     if active_todo_id:
         configurable["active_todo_id"] = active_todo_id
     conversation_id = configurable.get("thread_id", "")
@@ -156,7 +157,7 @@ async def _dispatch_executor(
     *,
     task: str,
     task_id: str,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     conversation_id: str,
 ) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""
@@ -288,7 +289,7 @@ async def cancel_executor(
     question, or saying "nevermind" about a NEW request. Only the USER
     decides to cancel.
     """
-    configurable = config.get("configurable", {})
+    configurable = agent_configurable(config)
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:

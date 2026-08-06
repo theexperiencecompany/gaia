@@ -10,6 +10,7 @@ from typing import cast
 from langgraph.config import get_config
 
 from app.config.settings import settings
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import SourceCategory
 
 
@@ -23,7 +24,7 @@ def _current_source_category() -> str | None:
         config = get_config()
     except RuntimeError:
         return None
-    return cast(str | None, config.get("configurable", {}).get("source_category"))
+    return cast(str | None, agent_configurable(config).get("source_category"))
 
 
 def build_integration_connection_message(

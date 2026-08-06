@@ -26,6 +26,7 @@ from langgraph.runtime import Runtime
 from app.config.model_pricing import calculate_token_cost
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from shared.py.wide_events import ModelContext, log
 
 
@@ -129,7 +130,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     # --- helpers ---------------------------------------------------------
 
     def _thread_id(self, config: RunnableConfig) -> str:
-        configurable = config.get("configurable", {}) or {}
+        configurable = agent_configurable(config)
         return str(configurable.get("thread_id") or configurable.get("stream_id") or "unknown")
 
     def _next_step(self, thread_id: str) -> int:
@@ -177,7 +178,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         cached_tokens = usage["cached_tokens"]
 
         config = _current_config()
-        configurable = config.get("configurable", {}) or {}
+        configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
         model_name = configurable.get("model_name") or configurable.get("model") or "unknown"
         provider = configurable.get("provider", "unknown")

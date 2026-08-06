@@ -7,6 +7,7 @@ from langchain_core.runnables.config import RunnableConfig
 from langgraph.types import StreamWriter
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     TriggerConfig,
@@ -141,7 +142,7 @@ async def filter_existing_integration_ids(integration_ids: list[str] | None) -> 
 
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config. Raises error if missing."""
-    user_id: str | None = config.get("configurable", {}).get("user_id")
+    user_id: str | None = agent_configurable(config).get("user_id")
     if not user_id:
         raise WorkflowConfigError("User authentication required")
     return user_id
@@ -149,7 +150,7 @@ def get_user_id(config: RunnableConfig) -> str:
 
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
-    thread_id: str | None = config.get("configurable", {}).get("thread_id")
+    thread_id: str | None = agent_configurable(config).get("thread_id")
     return thread_id
 
 

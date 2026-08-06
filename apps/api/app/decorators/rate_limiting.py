@@ -72,7 +72,12 @@ def with_rate_limiting(
                 # Extract from RunnableConfig
                 context = {
                     "user_id": config.get("metadata", {}).get("user_id"),
-                    "initiator": config.get("configurable", {}).get("initiator", "frontend"),
+                    # Always user-initiated: no producer writes an "initiator" into
+                    # a run's configurable (see AgentConfigurable), so the lookup
+                    # this replaces could only ever return this default. Backend
+                    # callers announce themselves through user_context instead,
+                    # which is the branch above.
+                    "initiator": "frontend",
                 }
 
             if context and context.get("user_id"):

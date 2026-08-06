@@ -19,7 +19,7 @@ only the fast path for live tasks in the current invocation.
 """
 
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -35,6 +35,7 @@ from app.agents.core.background.session import get_pending_subagents
 from app.agents.core.subagents.handoff_tools import resume_parked_subagent
 from app.constants.hil import HIL_BATCH_INTERRUPT_TYPE
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.models.hil_models import HILApprovalRecord
 from app.services.hil.approvals_store import (
     list_parked_subagents_for_conversation,
@@ -67,7 +68,7 @@ async def wait_for_subagents(
     Returns all subagent results concatenated, ready for you to summarize.
     Returns immediately if no background subagents are pending.
     """
-    configurable = config.get("configurable", {})
+    configurable = agent_configurable(config)
     stream_id = str(configurable.get("stream_id") or "")
     conversation_id = str(configurable.get("conversation_id") or "")
 
@@ -119,7 +120,7 @@ async def _poll_live_tasks(stream_id: str, timeout: int) -> None:
 
 
 async def _resolve_parked_batch(
-    conversation_id: str, configurable: dict[str, Any], stream_id: str
+    conversation_id: str, configurable: AgentConfigurable, stream_id: str
 ) -> None:
     """Drive every HIL-parked subagent to completion, pausing the executor as needed.
 
@@ -169,7 +170,7 @@ async def _resolve_parked_batch(
 
 async def _collect_subagent(
     record: HILApprovalRecord,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     writer: StreamWriter,
     conversation_id: str,
 ) -> None:

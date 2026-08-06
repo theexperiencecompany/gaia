@@ -58,6 +58,7 @@ from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
     format_tool_error,
@@ -85,7 +86,7 @@ RetrieveToolsResponse = RetrieveToolsResult | list[str]
 def _prepare_fallback(
     fallback_llm: Runnable | None,
     tools_to_bind: list[BaseTool],
-    model_configurations: Mapping[str, Any],
+    model_configurations: AgentConfigurable,
 ) -> Callable[[], Runnable] | None:
     """Factory that binds the default fallback model with the same tools as the
     primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
@@ -217,8 +218,10 @@ def create_agent(
                 "Use the async graph execution path (ainvoke/astream)."
             )
 
-        model_configurations = config.get("configurable", {})
-        _llm = llm.with_config(configurable=model_configurations)
+        # The raw bag goes back to LangChain untouched (it owns the keys it
+        # merged in); the typed view is what GAIA reads its own keys through.
+        _llm = llm.with_config(configurable=config.get("configurable", {}))
+        model_configurations = agent_configurable(config)
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
@@ -268,8 +271,10 @@ def create_agent(
 
         state = _maybe_inject_wrapup(state)
 
-        model_configurations = config.get("configurable", {})
-        _llm = llm.with_config(configurable=model_configurations)
+        # The raw bag goes back to LangChain untouched (it owns the keys it
+        # merged in); the typed view is what GAIA reads its own keys through.
+        _llm = llm.with_config(configurable=config.get("configurable", {}))
+        model_configurations = agent_configurable(config)
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
@@ -345,7 +350,7 @@ def create_agent(
             if store_arg:
                 kwargs[store_arg] = store
             if config:
-                user_id = config.get("configurable", {}).get("user_id")
+                user_id = agent_configurable(config).get("user_id")
                 if user_id:
                     kwargs["user_id"] = user_id
 
@@ -393,7 +398,7 @@ def create_agent(
             if store_arg:
                 kwargs[store_arg] = store
             if config:
-                user_id = config.get("configurable", {}).get("user_id")
+                user_id = agent_configurable(config).get("user_id")
                 if user_id:
                     kwargs["user_id"] = user_id
 

@@ -29,6 +29,7 @@ from app.agents.workspace.offload import OffloadInfo
 from app.constants.email import MessageFieldLiteral
 from app.constants.log_tags import LogTag
 from app.constants.offload import OFFLOAD_RESULT_KEY
+from app.models.agent_models import agent_configurable
 from app.models.common_models import GatherContextInput
 from app.models.composio_schemas.gmail import (
     BodyProcessingLiteral,
@@ -129,7 +130,7 @@ def _conversation_id(config: RunnableConfig) -> str | None:
     ``user_id``). Mirrors the conversation-id resolution in the compaction /
     summarization middleware.
     """
-    configurable = config.get("configurable") or {}
+    configurable = agent_configurable(config)
     return cast("str | None", configurable.get("vfs_session_id") or configurable.get("thread_id"))
 
 

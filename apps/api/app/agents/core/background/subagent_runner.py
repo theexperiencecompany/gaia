@@ -11,7 +11,6 @@ HIL approval — pause the executor once for the whole batch.
 """
 
 import time
-from typing import Any
 
 from app.agents.core.background.bg_results import append_bg_subagent_result
 from app.agents.core.background.executor_queue import enqueue_collection_run, is_executor_busy
@@ -25,6 +24,7 @@ from app.agents.core.subagents.subagent_runner import (
     execute_subagent_stream,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
 from app.services.hil.approvals_store import stamp_subagent_resume
 from app.utils.agent_utils import (
     IntegrationMetadata,
@@ -123,7 +123,7 @@ async def run_subagent_background(
         await _wake_if_executor_rested(conversation_id, ctx.configurable)
 
 
-async def _wake_if_executor_rested(conversation_id: str, configurable: dict[str, Any]) -> None:
+async def _wake_if_executor_rested(conversation_id: str, configurable: AgentConfigurable) -> None:
     """Queue a collection turn when this landing has no live executor to collect it.
 
     The executor may legitimately end its turn while background subagents run

@@ -9,6 +9,7 @@ from langchain_core.tools import tool
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc, with_rate_limiting
+from app.models.agent_models import agent_configurable
 from app.models.reminder_models import (
     AgentType,
     CreateReminderToolRequest,
@@ -75,7 +76,7 @@ async def create_reminder_tool(
     """Create a new reminder tool function."""
     try:
         log.set(tool={"name": "create_reminder_tool", "action": "create"})
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             return {"error": "User ID is required to create a reminder"}
 
@@ -125,7 +126,7 @@ async def list_user_reminders_tool(
     """List user reminders tool function."""
     try:
         log.set(tool={"name": "list_user_reminders_tool", "action": "list"})
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             return {"error": "User ID is required to list reminders"}
 
@@ -149,7 +150,7 @@ async def get_reminder_tool(
     """Get full details of a specific reminder by ID"""
     try:
         log.set(tool={"name": "get_reminder_tool", "action": "get"})
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             return {"error": "User ID is required to get reminder"}
 
@@ -173,7 +174,7 @@ async def delete_reminder_tool(
     """Cancel a scheduled reminder by ID"""
     try:
         log.set(tool={"name": "delete_reminder_tool", "action": "delete"})
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to delete reminder"}
@@ -213,7 +214,7 @@ async def update_reminder_tool(
     """Update attributes of an existing reminder"""
     try:
         log.set(tool={"name": "update_reminder_tool", "action": "update"})
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             return {"error": "User ID is required to update reminder"}
 
@@ -271,7 +272,7 @@ async def search_reminders_tool(
     """Search reminders by keyword or content"""
     try:
         log.set(tool={"name": "search_reminders_tool", "action": "search"})
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             log.error(f"{LogTag.TOOL} Missing user_id in config")
             return {"error": "User ID is required to search reminders"}

@@ -28,6 +28,7 @@ from app.agents.workspace.paths import (
     session_dir,
 )
 from app.constants.sandbox import WORKSPACE_TMP_SUFFIX
+from app.models.agent_models import agent_configurable
 from shared.py.wide_events import log
 
 _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
@@ -35,7 +36,7 @@ _SESSION_EVENT_KEYS = ("bash_data", "file_data", "artifact_data")
 
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config or raise a clear error."""
-    configurable = config.get("configurable", {}) if config else {}
+    configurable = agent_configurable(config)
     metadata = config.get("metadata", {}) if config else {}
     user_id = configurable.get("user_id") or metadata.get("user_id")
     if not isinstance(user_id, str) or not user_id:
@@ -53,7 +54,7 @@ def get_session_id(config: RunnableConfig) -> str | None:
     chat artifact forwarder key on — using it would split the session dir and
     drop every artifact event). May be None for non-chat invocations
     (workflows, background tasks)."""
-    configurable = config.get("configurable", {}) if config else {}
+    configurable = agent_configurable(config)
     metadata = config.get("metadata", {}) if config else {}
     session_id = (
         configurable.get("vfs_session_id")

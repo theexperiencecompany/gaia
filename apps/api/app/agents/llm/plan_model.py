@@ -15,20 +15,21 @@ from app.constants.llm import (
     PAID_MODEL_PROVIDER,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
 from app.models.models_models import DevModelOption
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 
-def _pin_model(configurable: dict[str, Any], provider: str, model: str) -> None:
+def _pin_model(configurable: AgentConfigurable, provider: str, model: str) -> None:
     # Gemini binds from ``model_name``, OpenRouter from ``model`` — set both.
     configurable["provider"] = provider
     configurable["model"] = model
     configurable["model_name"] = model
 
 
-async def apply_plan_model(configurable: dict[str, Any], user_id: str | None) -> None:
+async def apply_plan_model(configurable: AgentConfigurable, user_id: str | None) -> None:
     """Route the model by plan: free -> Gemini, any paid plan -> MiniMax. No-op without a user_id."""
     if not user_id:
         return
@@ -56,7 +57,7 @@ async def apply_plan_model(configurable: dict[str, Any], user_id: str | None) ->
 
 
 def _apply_dev_model(
-    configurable: dict[str, Any], option: DevModelOption, reasoning_cfg: dict[str, Any]
+    configurable: AgentConfigurable, option: DevModelOption, reasoning_cfg: dict[str, Any]
 ) -> None:
     """Pin a DEV_MODEL_OPTIONS entry onto a configurable, applying role-appropriate
     reasoning. Clears `model_kwargs`/`reasoning` for models that don't use them so a
@@ -73,7 +74,7 @@ def _apply_dev_model(
 
 
 def apply_dev_model_override(
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     comms_model: str | None,
     executor_model: str | None,
     use_defaults: bool,
@@ -96,7 +97,7 @@ def apply_dev_model_override(
 
 
 def apply_dev_executor_model(
-    parent_configurable: dict[str, Any], executor_configurable: dict[str, Any]
+    parent_configurable: AgentConfigurable, executor_configurable: AgentConfigurable
 ) -> None:
     """DEV-ONLY: pin the dev-selected executor model on the executor configurable,
     overriding the model inherited from comms. No-op unless the parent stashed one."""

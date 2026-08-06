@@ -23,6 +23,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
 from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
@@ -88,7 +89,7 @@ class ExecutorRun:
     @classmethod
     def from_configurable(
         cls,
-        configurable: dict[str, Any],
+        configurable: AgentConfigurable,
         *,
         stream_id: str,
         conversation_id: str,

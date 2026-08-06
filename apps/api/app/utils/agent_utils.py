@@ -14,6 +14,7 @@ from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.repositories.integrations import integration_repository
 from app.decorators.caching import Cacheable
+from app.models.chat_models import ToolDataEntry
 from app.models.stream_events import (
     ResponseFrame,
     SubagentEndPayload,
@@ -141,7 +142,7 @@ async def format_tool_call_entry(
     integration_id: str | None = None,
     integration_name: str | None = None,
     user_id: str | None = None,
-) -> dict[str, Any] | None:
+) -> ToolDataEntry | None:
     """Format a tool call as a tool_data entry for frontend streaming.
 
     Emitted once per tool call from the 'updates' stream when complete args
@@ -260,23 +261,29 @@ async def format_tool_call_entry(
     if integration_id and not is_core_tool and not icon_url and user_id:
         icon_url, integration_name = await _resolve_mcp_icon_name(integration_id)
 
-    return ToolCallsDataEntry(
-        tool_name="tool_calls_data",
-        tool_category=tool_category or "",
-        data=ToolCallsDataEntryData(
-            tool_name=tool_name_raw,
+    # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
+    # carries, in the byte order the frontend parser expects — so its dump IS a
+    # ToolDataEntry by construction (Type Safety item 12).
+    return cast(
+        ToolDataEntry,
+        ToolCallsDataEntry(
+            tool_name="tool_calls_data",
             tool_category=tool_category or "",
-            message=tool_display_name,
-            show_category=show_category,
-            tool_call_id=tool_call.get("id"),
-            inputs=tool_call.get("args", {}),
-            icon_url=icon_url,
-            integration_name=integration_name,
-        ),
-        timestamp=timestamp,
-        mcp_ui=mcp_ui,
-        mcp_server_url=mcp_server_url,
-    ).model_dump()
+            data=ToolCallsDataEntryData(
+                tool_name=tool_name_raw,
+                tool_category=tool_category or "",
+                message=tool_display_name,
+                show_category=show_category,
+                tool_call_id=tool_call.get("id"),
+                inputs=tool_call.get("args", {}),
+                icon_url=icon_url,
+                integration_name=integration_name,
+            ),
+            timestamp=timestamp,
+            mcp_ui=mcp_ui,
+            mcp_server_url=mcp_server_url,
+        ).model_dump(),
+    )
 
 
 async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
@@ -366,7 +373,7 @@ def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
     try:
         serialized = json.dumps(payload) if payload else "{}"
         new_data = extract_tool_data(serialized)
-        return new_data if new_data else {}
+        return new_data or {}
     except Exception as e:
         log.error(f"{LogTag.AGENT} Error extracting tool data: {e}")
         return {}

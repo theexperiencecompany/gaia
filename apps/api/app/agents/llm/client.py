@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from functools import cache
 from typing import Any, TypeVar, cast
 
@@ -39,6 +39,7 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.models.agent_models import AgentConfigurable
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -63,7 +64,7 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
     )
 
 
-def is_default_model_config(configurable: Mapping[str, Any]) -> bool:
+def is_default_model_config(configurable: AgentConfigurable) -> bool:
     """True when the run config already selects the default model — callers use
     this to skip preparing a fallback to the very same model."""
     return bool(

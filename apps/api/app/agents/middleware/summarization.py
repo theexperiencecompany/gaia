@@ -21,6 +21,7 @@ from langgraph.config import get_config
 from langgraph.runtime import Runtime
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
@@ -93,7 +94,7 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
         # raised "requires 'user_id'" and was swallowed by the caller's handler:
         # no history was ever archived. `get_config()` is the supported accessor,
         # and is what LLMAccountingMiddleware already uses for the same reason.
-        configurable = get_config().get("configurable", {}) or {}
+        configurable = agent_configurable(get_config())
         user_id = configurable.get("user_id")
         thread_id = configurable.get("thread_id")
         conversation_id = configurable.get("vfs_session_id") or thread_id

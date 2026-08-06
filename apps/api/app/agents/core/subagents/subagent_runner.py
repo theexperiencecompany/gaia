@@ -46,7 +46,12 @@ from app.helpers.message_helpers import (
     create_system_message,
     format_files_list,
 )
-from app.models.agent_models import AgentRunnableConfig, AgentUserContext
+from app.models.agent_models import (
+    AgentConfigurable,
+    AgentRunnableConfig,
+    AgentUserContext,
+    agent_configurable,
+)
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
 from app.services.files import FileService
@@ -163,7 +168,7 @@ class SubagentExecutionContext:
         subagent_graph: CompiledAgentGraph,
         agent_name: str,
         config: AgentRunnableConfig,
-        configurable: dict[str, Any],
+        configurable: AgentConfigurable,
         integration_id: str,
         initial_state: dict[str, Any],
         user_id: str | None = None,
@@ -182,7 +187,7 @@ class SubagentExecutionContext:
 async def build_initial_messages(
     system_message: SystemMessage,
     agent_name: str,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     task: str,
     user_id: str | None = None,
     subagent_id: str | None = None,
@@ -256,7 +261,7 @@ async def build_initial_messages(
     ]
 
 
-def _with_current_time(resume: Command, configurable: dict[str, Any]) -> Command:
+def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:
     """Re-clock a resumed run.
 
     A resume replaces ``initial_state``, so the fresh time message
@@ -373,11 +378,19 @@ async def execute_subagent_stream(
     # configurable.get("subagent_id").
     run_config = ctx.config
     if subagent_id:
-        base_configurable = ctx.config.get("configurable", {})
+        base_configurable = agent_configurable(ctx.config)
         run_config = {
             **ctx.config,
             "configurable": {**base_configurable, "subagent_id": subagent_id},
         }
+
+    if resume is not None:
+        resume = await _address_resume(ctx.subagent_graph, cast(RunnableConfig, run_config), resume)
+        if resume is None:
+            # The thread has already consumed this decision. Running it would execute
+            # nothing and return empty, which the caller cannot tell apart from a
+            # finished task — an empty outcome says "nothing to deliver" outright.
+            return SubagentOutcome(text="")
 
     async for event in ctx.subagent_graph.astream(
         _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
@@ -515,6 +528,78 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
     return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
 
 
+async def _address_resume(
+    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command
+) -> Command | None:
+    """Aim a resume at the one interrupt it answers, or ``None`` if there is none left.
+
+    A bare ``Command(resume=value)`` feeds the next interrupt positionally, and
+    LangGraph refuses it outright once a thread holds more than one pending
+    interrupt — which is the ordinary case here, because two destructive calls
+    in one AI message both reach the gate in a single node pass and both park.
+    Left bare, the user approves, the dispatch raises, the approved action never
+    runs, LangGraph's own error text reaches them, and the second approval stays
+    pending forever with every retry re-entering the same failure.
+
+    ``None`` means the thread has already consumed this decision and finished: a
+    resume dispatched at it would run no node at all, and the caller would read the
+    empty result as a completed task and tell the user an action succeeded that this
+    run never performed. The sweep re-dispatches any decision it cannot prove reached
+    a run (``list_decided_unresumed``), so a crash between resuming and stamping the
+    record puts a second, redundant resume on a thread that is already done.
+
+    The interrupts are read from the live checkpoint rather than from anything
+    recorded at pause time: the id has to match the interrupt that is actually
+    pending now, and a stored copy can only disagree with it.
+
+    Falls through unchanged when the thread holds exactly one interrupt, or when none
+    of them carries this decision's ``approval_id`` — a bare resume is correct in the
+    first case, and in the second there is nothing better to do than let the existing
+    path report the mismatch.
+    """
+    snapshot = await graph.aget_state(config)
+    interrupts = getattr(snapshot, "interrupts", ()) or ()
+    if not interrupts and not snapshot.next:
+        log.error(
+            f"{LogTag.HIL} Resume arrived for a thread with no pending work; "
+            "the decision was already applied and this run has nothing to do",
+            approval_id=str(_approval_id_of(resume) or ""),
+        )
+        return None
+
+    approval_id = _approval_id_of(resume)
+    if not approval_id or len(interrupts) < 2:
+        return resume
+    payload = resume.resume
+
+    for item in interrupts:
+        value = getattr(item, "value", None)
+        interrupt_id = getattr(item, "id", None)
+        if interrupt_id and isinstance(value, dict) and value.get("approval_id") == approval_id:
+            log.info(
+                f"{LogTag.HIL} Addressing resume to its interrupt",
+                approval_id=str(approval_id),
+                pending_interrupts=len(interrupts),
+            )
+            return Command(resume={interrupt_id: payload}, update=resume.update, goto=resume.goto)
+
+    log.warning(
+        f"{LogTag.HIL} No pending interrupt matches this decision",
+        approval_id=str(approval_id),
+        pending_interrupts=len(interrupts),
+    )
+    return resume
+
+
+def _approval_id_of(resume: Command) -> str | None:
+    """Which gate this decision answers, when the payload carries one."""
+    payload = resume.resume
+    if not isinstance(payload, dict):
+        return None
+    approval_id = payload.get("approval_id")
+    return str(approval_id) if approval_id else None
+
+
 def interrupt_payload(raw: object) -> dict[str, Any]:
     """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
     ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the
@@ -529,7 +614,7 @@ def interrupt_payload(raw: object) -> dict[str, Any]:
 
 async def prepare_executor_execution(
     task: str,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
     """Prepare execution context for the executor agent.
@@ -584,7 +669,7 @@ async def prepare_executor_execution(
         vfs_session_id=vfs_session_id,
         recursion_limit=EXECUTOR_RECURSION_LIMIT,
     )
-    new_configurable = config.get("configurable", {})
+    new_configurable = agent_configurable(config)
 
     # DEV-ONLY: if the chat-header selector chose an executor model, pin it here —
     # after the inherit-from-comms copy, so it overrides the comms model for the

@@ -66,6 +66,7 @@ from app.services.hil.prompts import (
     TIMEOUT_TEMPLATE,
     UNPAUSABLE_DENIAL_TEMPLATE,
 )
+from app.services.hil.replay_guard import recall_tool_result, remember_tool_result
 from app.services.hil.utils import (
     GatedCall,
     approval_window_label,
@@ -116,7 +117,7 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
         return _gate_error_message(call)
 
     if policy == "allow":
-        return await handler(request)
+        return await _run_once_across_replays(request, handler, call, context)
     if not context.pausable:
         # The call is gated and HIL is on, but this run (background subagent, workflow,
         # scheduled task) has no live client to approve it. Fail closed: refuse rather
@@ -149,6 +150,33 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     raw = configurable.get("user_messages")
     turns = [text for text in raw if isinstance(text, str)] if isinstance(raw, list) else []
     return GateContext(stream_id, user_id, conversation_id, turns, pausable)
+
+
+async def _run_once_across_replays(
+    request: ToolCallRequest, handler: Handler, call: GatedCall, context: GateContext
+) -> ToolMessage | Command[Any]:
+    """Run an ungated call, but only once even when the node runs twice.
+
+    A sibling that pauses discards this node's writes and replays it, so a call that
+    already ran runs again — see ``replay_guard`` for why holding it back instead is
+    the worse trade. Nothing is remembered unless a sibling can actually pause, so the
+    HIL-off path costs one preference lookup and no Redis round trip.
+
+    A ``Command`` result is deliberately not remembered: a state-mutating tool's whole
+    effect IS the graph write the rollback threw away, so the replay must redo it.
+    """
+    if not await has_pausing_sibling(request, context.user_id, call.id):
+        return await handler(request)
+
+    remembered = await recall_tool_result(context.conversation_id, call.id)
+    if remembered is not None:
+        log.info(f"{LogTag.HIL} {call.name} already ran before the pause; reusing its result")
+        return remembered
+
+    result = await handler(request)
+    if isinstance(result, ToolMessage):
+        await remember_tool_result(context.conversation_id, call.id, result)
+    return result
 
 
 async def _gate(

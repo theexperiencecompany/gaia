@@ -10,7 +10,6 @@ message emitted alongside the static prompt — not inside the static prompt.
 """
 
 import asyncio
-from typing import Any
 
 from langchain_core.messages import SystemMessage
 
@@ -30,6 +29,7 @@ from app.helpers.message_helpers import (
     build_workspace_session_banner,
 )
 from app.memory.engine import memory_engine
+from app.models.agent_models import AgentConfigurable
 from app.services.integration_instructions_service import get_instructions
 from app.services.provider_metadata_service import get_provider_metadata
 from shared.py.wide_events import log
@@ -37,21 +37,15 @@ from shared.py.wide_events import log
 
 async def build_subagent_system_prompt(
     integration_id: str,
-    user_id: str | None = None,
     base_system_prompt: str | None = None,
 ) -> str:
     """Return the STATIC subagent system prompt.
 
-    Per-user provider metadata (username, email, etc.) is NOT injected here —
-    it lives in the dynamic-context message built alongside by
-    `create_agent_context_message`. Keeping this string independent of user_id
-    is what lets the implicit prompt cache hit on subagent invocations.
-
-    The ``user_id`` parameter is accepted for back-compat with existing
-    callers; it is intentionally unused.
+    Takes no user: per-user provider metadata (username, email, etc.) lives in
+    the dynamic-context message built alongside by `create_agent_context_message`.
+    Keeping this string independent of the user is what lets the implicit prompt
+    cache hit on subagent invocations.
     """
-    del user_id  # retained for signature compat; metadata flows via dynamic context
-
     subagent = get_subagent_by_id(integration_id) if integration_id else None
     if not subagent:
         # Custom or public MCP fallback — universal prompt; no per-user injection.
@@ -65,20 +59,11 @@ async def build_subagent_system_prompt(
 
 async def create_subagent_system_message(
     integration_id: str,
-    agent_name: str,
-    user_id: str | None = None,
     base_system_prompt: str | None = None,
 ) -> SystemMessage:
-    """Return the static subagent prompt as a SystemMessage.
-
-    ``agent_name`` and ``user_id`` are intentionally unused here — the prompt is
-    keyed only by ``integration_id``; provider metadata for this user is carried
-    on the dynamic-context SystemMessage emitted beside this one.
-    """
-    del agent_name  # retained for call-site symmetry with build_agent_config()
+    """Return the static subagent prompt as a SystemMessage."""
     system_prompt = await build_subagent_system_prompt(
         integration_id=integration_id,
-        user_id=user_id,
         base_system_prompt=base_system_prompt,
     )
     return SystemMessage(content=system_prompt)
@@ -145,7 +130,7 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
 
 
 async def create_agent_context_message(
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     user_id: str | None = None,
     query: str | None = None,
     subagent_id: str | None = None,

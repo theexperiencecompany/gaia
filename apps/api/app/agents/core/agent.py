@@ -9,7 +9,7 @@ Both share _core_agent_logic() for common setup (messages, graph, config).
 import asyncio
 from collections.abc import AsyncGenerator
 import json
-from typing import Any, Literal, cast
+from typing import Any, cast
 from uuid import uuid4
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
@@ -33,7 +33,12 @@ from app.helpers.agent_helpers import (
     execute_graph_streaming,
     recent_user_messages,
 )
-from app.models.agent_models import AgentRunnableConfig
+from app.models.agent_models import (
+    AgentConfigurable,
+    AgentRunnableConfig,
+    ExecutionMode,
+    agent_configurable,
+)
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
 from app.models.user_models import AuthenticatedUser
@@ -77,12 +82,12 @@ async def _core_agent_logic(
     # Extract active todo binding + execution mode from trigger_context (scheduled
     # runs set these; interactive turns leave them unset / "interactive").
     active_todo_id: str | None = None
-    execution_mode: Literal["interactive", "background"] = "interactive"
+    execution_mode: ExecutionMode = "interactive"
     if trigger_context:
         active_todo_id = trigger_context.get("active_todo_id") or trigger_context.get("todo_id")
         mode = trigger_context.get("execution_mode")
         if mode in ("interactive", "background"):
-            execution_mode = cast(Literal["interactive", "background"], mode)
+            execution_mode = cast(ExecutionMode, mode)
 
     # Build langchain messages and get graph concurrently
     history, graph = await asyncio.gather(
@@ -129,15 +134,20 @@ async def _core_agent_logic(
         langfuse_tags=langfuse_tags,
     )
 
+    # The live bag build_agent_config just produced — mutated below, so it is
+    # indexed (KeyError if absent) rather than read via agent_configurable,
+    # whose empty-dict fallback would swallow the writes.
+    configurable = cast(AgentConfigurable, config["configurable"])
+
     # Route the model by subscription plan (Free -> Gemini, Pro -> MiniMax).
     # Hardcoded policy; the executor and subagents inherit it via the configurable.
-    await apply_plan_model(config["configurable"], user_id)
+    await apply_plan_model(configurable, user_id)
 
     # DEV-ONLY: the chat-header model selector overrides comms/executor models per
     # request, winning over the plan model above. Stripped to a no-op in production.
     if settings.ENV == "development":
         apply_dev_model_override(
-            config["configurable"],
+            configurable,
             comms_model=request.comms_model,
             executor_model=request.executor_model,
             use_defaults=request.use_default_models,
@@ -147,15 +157,15 @@ async def _core_agent_logic(
     # path can route the final result to the workflow-completion notification
     # instead of a normal conversation message. Absent for interactive chat.
     if trigger_context and trigger_context.get("workflow_id"):
-        config["configurable"]["workflow_id"] = trigger_context["workflow_id"]
-        config["configurable"]["workflow_title"] = trigger_context.get("workflow_title", "")
-        config["configurable"]["workflow_notify_on_completion"] = trigger_context.get(
+        configurable["workflow_id"] = trigger_context["workflow_id"]
+        configurable["workflow_title"] = trigger_context.get("workflow_title", "")
+        configurable["workflow_notify_on_completion"] = trigger_context.get(
             "workflow_notify_on_completion", True
         )
 
     log.set(
         agent=dict(
-            model=config["configurable"].get("model_name"),
+            model=configurable.get("model_name"),
             has_workflow=bool(request.selectedWorkflow),
             has_trigger_context=bool(trigger_context),
             has_calendar_event=bool(request.selectedCalendarEvent),
@@ -206,13 +216,17 @@ async def call_agent(
             langfuse_tags=["comms_agent", settings.ENV],
         )
 
+        # The live bag (see the same cast in _core_agent_logic) — mutated, so
+        # indexed rather than read through agent_configurable.
+        configurable = cast(AgentConfigurable, config["configurable"])
+
         # Add stream_id to config for cancellation checking
         if stream_id:
-            config["configurable"]["stream_id"] = stream_id
+            configurable["stream_id"] = stream_id
 
         # Add user_message_id so executor can link notifications back
         if user_message_id:
-            config["configurable"]["user_message_id"] = user_message_id
+            configurable["user_message_id"] = user_message_id
 
         return execute_graph_streaming(graph, initial_state, config)
 
@@ -267,7 +281,7 @@ async def call_agent_silent(
         # message — exactly like chat_service attaches it to the comms ack. Bind
         # the stream_id + register the collector before the graph runs so the
         # executor's tool events are captured.
-        config["configurable"]["stream_id"] = stream_id
+        cast(AgentConfigurable, config["configurable"])["stream_id"] = stream_id
         register_executor_capture(stream_id)
 
         complete_message, tool_data = await execute_graph_silent(graph, initial_state, config)
@@ -288,7 +302,7 @@ async def call_agent_silent(
                 v.get("output_tokens", 0) for v in usage.values() if isinstance(v, dict)
             )
             log.set(
-                agent={"model": config["configurable"].get("model_name")},
+                agent={"model": agent_configurable(config).get("model_name")},
                 token_input=total_input,
                 token_output=total_output,
                 token_total=total_input + total_output,

@@ -10,7 +10,7 @@ real hand-off does. Mounted only in development behind the auth bypass — see
 scripted LLM stub, so directive-bearing tasks run deterministically.
 """
 
-from typing import Any
+from typing import cast
 from uuid import uuid4
 
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
@@ -22,7 +22,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
-from app.models.agent_models import AgentUserContext
+from app.models.agent_models import AgentConfigurable, AgentUserContext
 from app.schemas.dev_schemas import DevAgentRunResponse, DevSubagentInfo
 from app.services.dev_service import require_dev_user
 from app.utils.errors import create_error
@@ -44,7 +44,7 @@ def list_dev_subagents() -> list[DevSubagentInfo]:
 
 async def _dev_base_configurable(
     email: str, conversation_id: str | None, agent_name: str
-) -> tuple[dict[str, Any], str, str]:
+) -> tuple[AgentConfigurable, str, str]:
     """Resolve the dev user and build the parent configurable a direct run needs.
 
     Returns (configurable, user_id, conversation_id). The conversation_id is
@@ -60,7 +60,7 @@ async def _dev_base_configurable(
         "name": user_doc.name,
     }
     config = build_agent_config(conversation_id=cid, user=user, agent_name=agent_name)
-    return config["configurable"], user_id, cid
+    return cast(AgentConfigurable, config["configurable"]), user_id, cid
 
 
 def _reject_pause(outcome: SubagentOutcome, agent_name: str) -> None:

@@ -16,7 +16,7 @@ keeps the import graph acyclic.
 from dataclasses import dataclass
 from enum import StrEnum
 import json
-from typing import Any, TypedDict
+from typing import TypedDict, cast
 from uuid import uuid4
 
 from app.agents.core.background.session import ExecutorRun, RunKind, create_session
@@ -35,6 +35,7 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.models.agent_models import AgentConfigurable
 from shared.py.wide_events import log
 
 # Cosmetic prefix for queued stream ids — kept for log greppability only.
@@ -87,7 +88,7 @@ class ExecutorRunItem(TypedDict, total=False):
 
     task: str
     task_id: str | None
-    configurable: dict[str, Any]
+    configurable: AgentConfigurable
     conversation_id: str
     user_message_id: str | None
 
@@ -98,7 +99,7 @@ class PreparedQueuedTask:
 
     run: ExecutorRun
     task: str
-    configurable: dict[str, Any]
+    configurable: AgentConfigurable
 
 
 # ── Busy lock ────────────────────────────────────────────────────────
@@ -247,7 +248,7 @@ async def enqueue_task(
     queue_key: str,
     task: str,
     task_id: str,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     conversation_id: str,
     user_message_id: str | None,
 ) -> None:
@@ -266,7 +267,9 @@ async def enqueue_task(
         await redis_cache.client.expire(queue_key, EXECUTOR_QUEUE_TTL)
 
 
-async def enqueue_collection_run(conversation_id: str, base_configurable: dict[str, Any]) -> bool:
+async def enqueue_collection_run(
+    conversation_id: str, base_configurable: AgentConfigurable
+) -> bool:
     """Queue a wake-up turn to collect landed background-subagent work.
 
     The "rest" contract: an executor may end its turn while background subagents
@@ -285,7 +288,7 @@ async def enqueue_collection_run(conversation_id: str, base_configurable: dict[s
     claimed = await redis_cache.client.set(marker, "1", nx=True, ex=EXECUTOR_COLLECT_MARKER_TTL)
     if not claimed:
         return False
-    configurable = {
+    configurable: AgentConfigurable = {
         **safe_configurable(base_configurable),
         "thread_id": conversation_id,
         "execution_mode": "interactive",
@@ -362,7 +365,7 @@ def build_run_item(
     *,
     task: str,
     task_id: str | None,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     conversation_id: str,
     user_message_id: str | None,
 ) -> ExecutorRunItem:
@@ -378,14 +381,21 @@ def build_run_item(
     }
 
 
-def safe_configurable(configurable: dict[str, Any]) -> dict[str, Any]:
+def safe_configurable(configurable: AgentConfigurable) -> AgentConfigurable:
     """The serializable subset of a ``configurable``, safe to persist and rebuild
-    a run from. Filters out non-serializable LangGraph internals (Runtime objects)."""
-    return {
-        k: v
-        for k, v in configurable.items()
-        if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
-    }
+    a run from. Filters out non-serializable LangGraph internals (Runtime objects).
+
+    ``_CONFIGURABLE_SCALAR_KEYS`` is the allowlist, so every surviving key is an
+    ``AgentConfigurable`` key by construction (Type Safety item 12).
+    """
+    return cast(
+        AgentConfigurable,
+        {
+            k: v
+            for k, v in configurable.items()
+            if k in _CONFIGURABLE_SCALAR_KEYS and isinstance(v, str | int | float | bool | None)
+        },
+    )
 
 
 async def prepare_run_from_item(
@@ -403,7 +413,7 @@ async def prepare_run_from_item(
     task = item.get("task", "")
     task_id = item.get("task_id")
     queued_user_message_id = item.get("user_message_id")
-    configurable: dict[str, Any] = item.get("configurable", {})
+    configurable: AgentConfigurable = item.get("configurable") or {}
 
     queued_stream_id = f"{QUEUED_STREAM_ID_PREFIX}{uuid4()}"
     user_id: str = configurable.get("user_id", "")

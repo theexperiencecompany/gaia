@@ -21,6 +21,7 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns, generate_integration_slug
+from app.models.agent_models import agent_configurable
 from app.models.integration_models import (
     IntegrationInfo,
     ListIntegrationsResult,
@@ -59,7 +60,7 @@ async def list_integrations(
     """
     try:
         log.set(tool={"name": "list_integrations", "action": "list"})
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."
@@ -238,7 +239,7 @@ async def connect_integration(
 ) -> str:
     try:
         log.set(tool={"name": "connect_integration", "action": "connect"})
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."
@@ -313,7 +314,7 @@ async def check_integrations_status(
 ) -> str:
     try:
         log.set(tool={"name": "check_integrations_status", "action": "check"})
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."

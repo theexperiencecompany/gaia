@@ -19,6 +19,21 @@ HILMode = Literal["always_allow", "always_ask", "auto"]
 HIL_DEFAULT_MODE: HILMode = "always_allow"
 
 
+class ToolResultMemo(TypedDict):
+    """One tool call's result, kept so a replayed node reuses it instead of re-running.
+
+    Written and read only by ``services/hil/replay_guard.py``, so it needs no runtime
+    validation — the TypedDict is the shape contract both sides are checked against.
+    Enough of the ToolMessage to rebuild it: ``additional_kwargs`` carries the HIL
+    status and any offload descriptor, which the model's next turn reads.
+    """
+
+    content: str
+    name: str
+    status: str
+    additional_kwargs: dict[str, Any]
+
+
 class DeclinedCallRecord(TypedDict):
     """What ``bridge.remember_declined_call`` stores in Redis for one declined call.
 

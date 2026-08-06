@@ -27,6 +27,7 @@ from app.agents.tools.workflow_shared_tools import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
+from app.models.agent_models import agent_configurable
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -93,7 +94,7 @@ async def create_workflow(
     try:
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
-        user_name: str | None = config.get("configurable", {}).get("user_name")
+        user_name: str | None = agent_configurable(config).get("user_name")
         # Home timezone (IANA, e.g. Asia/Kolkata) for the new workflow's schedule
         # default and the subagent's "now".
         user_timezone = home_timezone_from_config(config).value
@@ -334,7 +335,7 @@ async def edit_workflow(
     try:
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
-        user_name: str | None = config.get("configurable", {}).get("user_name")
+        user_name: str | None = agent_configurable(config).get("user_name")
         user_timezone = home_timezone_from_config(config).value
 
         if not user_request or not user_request.strip():

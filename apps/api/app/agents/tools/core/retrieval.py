@@ -36,6 +36,7 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
@@ -632,7 +633,7 @@ def get_retrieve_tools_function(
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
             include_subagents=include_subagents,
-            user_id=config.get("configurable", {}).get("user_id")
+            user_id=agent_configurable(config).get("user_id")
             or config.get("metadata", {}).get("user_id"),
         )
         if not query and not exact_tool_names:
@@ -661,14 +662,14 @@ def get_retrieve_tools_function(
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
         conversation_source = ConversationSource.coerce(
-            config.get("configurable", {}).get("conversation_source")
+            agent_configurable(config).get("conversation_source")
         )
         desktop_enabled = (
             conversation_source is ConversationSource.DESKTOP and tool_space == "general"
         )
 
         # Get user_id from config (try configurable first, then metadata as fallback)
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             # Fallback to metadata
             user_id = config.get("metadata", {}).get("user_id")

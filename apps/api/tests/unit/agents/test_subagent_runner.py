@@ -762,31 +762,12 @@ class TestBuildSubagentSystemPrompt:
             ) as mock_meta,
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
+            result = await build_subagent_system_prompt("github")
 
         assert "You are the GitHub agent." in result
         assert "USER CONTEXT FOR GITHUB" not in result
         assert "testuser" not in result
         mock_meta.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_no_metadata_when_no_user_id(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-            ) as mock_meta,
-        ):
-            result = await build_subagent_system_prompt("github")
-
-        mock_meta.assert_not_awaited()
-        assert "You are the GitHub agent." in result
 
     @pytest.mark.asyncio
     async def test_integration_not_found_uses_custom_prompt(self):
@@ -816,16 +797,9 @@ class TestBuildSubagentSystemPrompt:
     async def test_base_system_prompt_override(self):
         integration = _make_integration("github")
 
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+        with patch(
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
+            return_value=integration,
         ):
             result = await build_subagent_system_prompt(
                 "github", base_system_prompt="Custom prompt"
@@ -834,45 +808,9 @@ class TestBuildSubagentSystemPrompt:
         assert result == "Custom prompt"
 
     @pytest.mark.asyncio
-    async def test_metadata_fetch_error_handled(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("DB down"),
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
-
-        # Should not raise, returns prompt without metadata
-        assert "You are the GitHub agent." in result
-
-    @pytest.mark.asyncio
-    async def test_empty_metadata_no_context_injected(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
-
-        assert "USER CONTEXT" not in result
+    async def test_blank_integration_id_returns_empty(self):
+        with patch("app.agents.core.subagents.subagent_helpers.log"):
+            assert await build_subagent_system_prompt("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -889,10 +827,7 @@ class TestCreateSubagentSystemMessage:
             new_callable=AsyncMock,
             return_value="Test prompt",
         ):
-            result = await create_subagent_system_message(
-                integration_id="github",
-                agent_name="github_agent",
-            )
+            result = await create_subagent_system_message(integration_id="github")
 
         assert isinstance(result, SystemMessage)
         assert result.content == "Test prompt"

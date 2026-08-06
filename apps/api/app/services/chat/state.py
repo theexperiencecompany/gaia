@@ -5,12 +5,11 @@ Pure data manipulation on the orchestrator's accumulators
 ``usage_metadata``). No I/O except for the Redis progress read used on
 cancellation paths where the ``nostream`` marker never arrives.
 
-The ``tool_data`` accumulator stays ``dict[str, Any]`` rather than becoming a
-TypedDict: its entries are heterogeneous per ``tool_name`` (each tool owns its
-own ``data`` shape), and the same object is threaded through
-``services/chat/persistence``, ``utils/stream_utils`` and
-``agents/core/background/executor_capture`` as a plain dict — naming it would
-have to retype all of them in one pass (Type Safety item 14).
+Entries inside the ``tool_data`` accumulator are :class:`ToolDataEntry`; the
+accumulator envelope holding them stays ``dict[str, Any]`` because
+``services/chat/persistence`` ``setattr``s every one of its keys onto the
+message, so arbitrary non-``tool_data`` keys (``follow_up_actions``, …) ride
+along in the same bag (see ``utils/stream_utils``).
 """
 
 from datetime import UTC, datetime
@@ -18,6 +17,8 @@ from typing import Any, NamedTuple
 
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
+from app.models.chat_models import ToolDataEntry
+from app.utils.stream_utils import apply_outputs_to_tool_data
 from shared.py.wide_events import log
 
 
@@ -88,14 +89,13 @@ def merge_tool_outputs(
     tool_data: dict[str, Any],
     tool_outputs: dict[str, str],
 ) -> None:
-    """Merge captured tool outputs into ``tool_calls_data`` entries in-place."""
-    for entry in tool_data.get("tool_data", []):
-        if entry.get("tool_name") == "tool_calls_data":
-            data = entry.get("data", {})
-            if isinstance(data, dict):
-                tool_call_id = data.get("tool_call_id")
-                if tool_call_id and tool_call_id in tool_outputs:
-                    data["output"] = tool_outputs[tool_call_id]
+    """Merge captured tool outputs into ``tool_calls_data`` entries in-place.
+
+    The envelope-taking counterpart of ``apply_outputs_to_tool_data``, which the
+    background-executor drain calls with the entry list directly.
+    """
+    entries: list[ToolDataEntry] = tool_data.get("tool_data", [])
+    apply_outputs_to_tool_data(entries, tool_outputs, only_tool_name="tool_calls_data")
 
 
 def inject_todo_progress(
@@ -104,10 +104,10 @@ def inject_todo_progress(
 ) -> None:
     """Append the accumulated todo snapshots as a single ``tool_data`` entry."""
     if todo_progress_accumulated:
-        tool_data["tool_data"].append(
-            {
-                "tool_name": "todo_progress",
-                "data": todo_progress_accumulated,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
+        entry: ToolDataEntry = {
+            "tool_name": "todo_progress",
+            "data": todo_progress_accumulated,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+        entries: list[ToolDataEntry] = tool_data["tool_data"]
+        entries.append(entry)
