@@ -17,6 +17,10 @@ throw that away, and both are exercised here:
   never reaches ``_record_pause`` gets no ``resume_item``, which makes it permanently
   un-decidable.
 
+Where the ``interrupt()`` is raised makes no difference — a tool's own gate and a gate
+bubbled up from a subagent two frames down (``handoff``) behave identically. That was
+once written down as a gap; the last class here is what proves it is not.
+
 These run against a real compiled graph with a real checkpointer and real interrupts:
 nothing here is mocked, because the thing under test IS the framework contract.
 """
@@ -58,10 +62,14 @@ class ToolCallSimulator:
         gated: set[str] | None = None,
         durability: str = "exit",
         drain: bool = True,
+        nested: bool = False,
     ) -> None:
         self.calls = calls
         self.gated = gated or set()
         self.durability = durability
+        #: True raises the interrupt several frames deep inside the tool, the way
+        #: ``handoff`` does when it bubbles up its subagent's gate.
+        self.nested = nested
         #: False reproduces the old ``break`` — abandon the stream at the first pause.
         self.drain = drain
         self.ran: list[str] = []
@@ -74,10 +82,20 @@ class ToolCallSimulator:
     def _build(self) -> Any:
         graph = StateGraph(ToolRun)
 
+        def pause_for(name: str) -> None:
+            interrupt({"type": "hil_approval", "approval_id": f"appr-{name}"})
+
+        def bubble_up_from_a_subagent(name: str) -> None:
+            """Two frames deep — ``handoff`` -> ``resume_for_gate`` -> ``interrupt``."""
+            pause_for(name)
+
         def tools(payload: dict[str, Any]) -> ToolRun:
             name = payload["tool"]
             if name in self.gated:
-                interrupt({"type": "hil_approval", "approval_id": f"appr-{name}"})
+                if self.nested:
+                    bubble_up_from_a_subagent(name)
+                else:
+                    pause_for(name)
             self.ran.append(name)
             return {"ran": [name]}
 
@@ -262,3 +280,41 @@ class TestMergingWhatThePauseReports:
         merged = merge_approvals([{"type": "hil_approval"}, {"type": "hil_approval"}])
 
         assert "approval_ids" not in merged
+
+
+class TestItDoesNotMatterWhereThePauseComesFrom:
+    """``handoff`` / ``spawn_subagent`` / ``wait_for_subagents`` (HIL_PAUSING_TOOLS).
+
+    These are never gated themselves — they pause from INSIDE, bubbling up the gate of
+    a subagent they are driving. That distinction mattered under an earlier design and
+    was written down as a gap this could not close. It is not one: LangGraph sees a task
+    that interrupted, and where in the call stack the ``interrupt()`` was raised makes no
+    difference to whether its siblings' completed writes are kept.
+    """
+
+    async def test_a_sibling_survives_a_pause_raised_deep_inside_a_tool(self) -> None:
+        sim = ToolCallSimulator(
+            calls=["get_weather", "handoff"], gated={"handoff"}, nested=True
+        )
+
+        await sim.turn()
+        assert sim.ran == ["get_weather"]
+
+        await sim.approve()
+
+        assert sim.ran == ["get_weather", "handoff"], (
+            "a pause bubbled up from a subagent protects siblings exactly like a pause "
+            f"at the tool's own gate, got {sim.ran}"
+        )
+
+    async def test_and_is_lost_the_same_way_without_the_drain(self) -> None:
+        # The control: same shape, same failure mode. If these two ever diverge, the
+        # nested case needs its own handling after all.
+        sim = ToolCallSimulator(
+            calls=["get_weather", "handoff"], gated={"handoff"}, nested=True, drain=False
+        )
+
+        await sim.turn()
+        await sim.approve()
+
+        assert sim.ran == ["get_weather", "get_weather"]
