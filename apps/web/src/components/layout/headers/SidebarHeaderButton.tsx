@@ -1,13 +1,13 @@
 "use client";
 
 import { Tooltip } from "@heroui/react";
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 interface SidebarHeaderButtonProps
-  extends React.HTMLAttributes<HTMLButtonElement> {
-  children: React.ReactNode;
-  onClick?: () => void;
+  extends ButtonHTMLAttributes<HTMLButtonElement> {
+  children: ReactNode;
   tooltip?: ReactNode;
   "aria-label": string;
 }
@@ -21,6 +21,7 @@ export const SidebarHeaderButton = ({
   onClick,
   tooltip,
   "aria-label": ariaLabel,
+  className,
   ...rest
 }: SidebarHeaderButtonProps) => {
   const button = (
@@ -28,7 +29,10 @@ export const SidebarHeaderButton = ({
       aria-label={ariaLabel}
       size="icon"
       variant="ghost"
-      className={`group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary`}
+      className={cn(
+        "group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary",
+        className,
+      )}
       onClick={onClick}
       {...rest}
     >
