@@ -18,6 +18,7 @@ from app.workers.tasks import (
     generate_workflow_steps,
     process_gmail_emails_to_memory,
     process_onboarding_intelligence_task,
+    process_onboarding_workflows_task,
     process_reminder,
     process_workflow_generation_task,
     prune_checkpoint_versions,
@@ -26,6 +27,7 @@ from app.workers.tasks import (
     run_nurture_sequence_task,
     sweep_idle_sandboxes,
 )
+from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from app.workers.tasks.maintenance_sweep_tasks import maintenance_sweep_tracked_todos
 from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_tasks
 from app.workers.tasks.tracked_todo_tasks import (
@@ -38,6 +40,7 @@ from app.workers.tasks.tracked_todo_tasks import (
 # wrapped functions so scheduled runs are also instrumented.
 _process_reminder = instrument_task(process_reminder)
 _cleanup_expired_reminders = instrument_task(cleanup_expired_reminders)
+_sweep_hil_approvals = instrument_task(sweep_hil_approvals)
 _check_inactive_users = instrument_task(check_inactive_users)
 _run_nurture_sequence_task = instrument_task(run_nurture_sequence_task)
 _process_workflow_generation_task = instrument_task(process_workflow_generation_task)
@@ -46,6 +49,7 @@ _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
 _generate_workflow_steps = instrument_task(generate_workflow_steps)
 _process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
 _process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
+_process_onboarding_workflows_task = instrument_task(process_onboarding_workflows_task)
 _cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
 _backfill_active_users = instrument_task(backfill_active_users)
 _backfill_user_memories = instrument_task(backfill_user_memories)
@@ -57,6 +61,7 @@ _safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_tod
 _maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
 _rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
 WorkerSettings.functions = [
+    _sweep_hil_approvals,
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
@@ -67,6 +72,7 @@ WorkerSettings.functions = [
     _generate_workflow_steps,
     _process_gmail_emails_to_memory,
     _process_onboarding_intelligence_task,
+    _process_onboarding_workflows_task,
     _cleanup_stuck_personalization,
     _sweep_idle_sandboxes,
     _prune_inactive_sessions,
@@ -77,6 +83,13 @@ WorkerSettings.functions = [
 ]
 
 WorkerSettings.cron_jobs = [
+    cron(
+        # Every minute: HIL approvals must expire promptly — a stale pending
+        # approval hijacks the conversation's next messages and holds the
+        # executor's claim on the thread.
+        _sweep_hil_approvals,
+        second=0,
+    ),
     cron(
         _cleanup_expired_reminders,
         hour=0,  # At midnight

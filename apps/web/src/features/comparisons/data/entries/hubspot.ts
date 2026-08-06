@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "HubSpot is a comprehensive CRM platform covering marketing automation, sales pipeline management, and customer service. GAIA focuses on the personal productivity layer — proactively managing your inbox, calendar, and task workflow with AI that acts across 50+ integrations including HubSpot itself.",
   metaTitle:
-    "HubSpot Alternative for Personal AI Productivity | GAIA vs HubSpot",
+    "HubSpot Alternative for Personal AI Productivity — GAIA vs HubSpot",
   metaDescription:
     "HubSpot excels at CRM and marketing, but it won't manage your inbox or automate your personal workflow. GAIA is an open-source AI alternative that proactively handles email, tasks, and 50+ integrations — free tier available.",
   keywords: [

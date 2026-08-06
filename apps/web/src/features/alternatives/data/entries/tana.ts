@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Outliner format does not suit everyone — forces a node-first mental model",
     "Knowledge is only as good as what you put in — no automatic data capture",
   ],
-  metaTitle: "Best Tana Alternative in 2026 | GAIA",
+  metaTitle: "Best Tana Alternative in 2026",
   metaDescription:
     "Tana has a steep learning curve and no automatic knowledge capture. GAIA builds knowledge from email and calendar proactively. Free tier + open-source self-hosting.",
   keywords: [

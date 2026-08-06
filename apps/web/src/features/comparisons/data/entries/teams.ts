@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Microsoft Teams is a unified communication platform bundled with Office 365, now featuring Copilot AI for meeting summaries and chat drafts. GAIA is an open-source proactive AI assistant that works across your entire tool stack, not just the Microsoft ecosystem.",
   metaTitle:
-    "Microsoft Teams Alternative with Open Integrations | GAIA vs Teams",
+    "Microsoft Teams Alternative with Open Integrations — GAIA vs Teams",
   metaDescription:
     "Microsoft Teams locks your AI into the Office 365 ecosystem. GAIA is an open-source alternative connecting Gmail, Slack, Notion, GitHub, and 50+ tools with proactive AI that manages tasks and workflows.",
   keywords: [

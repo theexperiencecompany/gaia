@@ -19,12 +19,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.exceptions import OutputParserException
 import pytest
 
+from app.models.workflow_execution_models import WorkflowExecutionDocument
 from app.models.workflow_models import (
     CreateWorkflowRequest,
     GeneratedStep,
     TriggerConfig,
     UpdateWorkflowRequest,
     Workflow,
+    WorkflowDocument,
     WorkflowExecutionRequest,
     WorkflowStep,
 )
@@ -51,6 +53,13 @@ from app.utils.exceptions import TriggerRegistrationError
 
 FAKE_USER_ID = "507f1f77bcf86cd799439011"
 FAKE_WORKFLOW_ID = "wf_abc123def456"
+
+# The workflow service routes every DB op through this module-level repository
+# singleton; tests patch its async methods rather than a raw Mongo collection.
+_REPO = "app.services.workflow.service.workflow_repository"
+_GET_WORKFLOW = "app.services.workflow.service.WorkflowService.get_workflow"
+# Execution tracking routes through its own repository singleton.
+_EXEC_REPO = "app.services.workflow.execution_service.workflow_executions_repository"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -113,11 +122,10 @@ def _make_workflow(
     )
 
 
-def _workflow_as_doc(workflow: Workflow) -> dict:
-    """Convert a Workflow to a MongoDB-style document dict."""
-    doc = workflow.model_dump(mode="json")
-    doc["_id"] = doc.pop("id")
-    return doc
+def _make_workflow_doc(**overrides) -> WorkflowDocument:
+    """Build a WorkflowDocument (the repository's return type) from the Workflow
+    factory — repository methods return typed models, not raw dicts."""
+    return WorkflowDocument(**_make_workflow(**overrides).model_dump())
 
 
 # ---------------------------------------------------------------------------
@@ -130,19 +138,12 @@ class TestWorkflowCRUDLifecycle:
     """Create workflow -> read -> update -> verify state at each step."""
 
     async def test_create_workflow_inserts_and_activates(self):
-        """WorkflowService.create_workflow inserts into MongoDB and activates."""
+        """create_workflow persists via the repository and activates it."""
         request = _make_create_request(title="My New Workflow")
-        mock_collection = AsyncMock()
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = "wf_fake"
-        mock_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
 
         with (
-            patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
-            ),
+            patch(f"{_REPO}.create", new_callable=AsyncMock) as mock_create,
+            patch(f"{_REPO}.mark_activated_with_triggers", new_callable=AsyncMock) as mock_activate,
             patch("app.services.workflow.service.ChromaClient") as mock_chroma_cls,
             patch(
                 "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
@@ -156,35 +157,22 @@ class TestWorkflowCRUDLifecycle:
         assert workflow.title == "My New Workflow"
         assert workflow.activated is True
         assert workflow.user_id == FAKE_USER_ID
-        mock_collection.insert_one.assert_awaited_once()
-        # Activation update call
-        mock_collection.update_one.assert_awaited_once()
+        mock_create.assert_awaited_once()
+        # Activation flips the pending workflow live via the repository.
+        mock_activate.assert_awaited_once()
 
     async def test_get_workflow_returns_none_when_missing(self):
         """get_workflow returns None for a non-existent workflow."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+        with patch(f"{_REPO}.get_for_user", new_callable=AsyncMock, return_value=None):
             result = await WorkflowService.get_workflow("wf_missing", FAKE_USER_ID)
 
         assert result is None
 
     async def test_get_workflow_returns_transformed_document(self):
         """get_workflow returns a Workflow model from a stored document."""
-        workflow = _make_workflow()
-        doc = _workflow_as_doc(workflow)
+        doc = _make_workflow_doc()
 
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=doc)
-
-        with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+        with patch(f"{_REPO}.get_for_user", new_callable=AsyncMock, return_value=doc):
             result = await WorkflowService.get_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is not None
@@ -193,23 +181,24 @@ class TestWorkflowCRUDLifecycle:
 
     async def test_update_workflow_applies_changes(self):
         """update_workflow persists field changes and returns updated workflow."""
-        original = _make_workflow()
-        updated_doc = _workflow_as_doc(original)
-        updated_doc["title"] = "Updated Title"
-
-        mock_collection = AsyncMock()
-        # First call: get_workflow for current state
-        # Second call: get_workflow after update
-        mock_collection.find_one = AsyncMock(side_effect=[_workflow_as_doc(original), updated_doc])
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+        current = _make_workflow()
+        updated = _make_workflow(title="Updated Title")
 
         update_request = UpdateWorkflowRequest(title="Updated Title")
 
         with (
+            # get_workflow is called twice: once for current state, once to
+            # return the re-read after the persisted update.
             patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
+                _GET_WORKFLOW,
+                new_callable=AsyncMock,
+                side_effect=[current, updated],
             ),
+            patch(
+                f"{_REPO}.update_for_user",
+                new_callable=AsyncMock,
+                return_value=_make_workflow_doc(title="Updated Title"),
+            ) as mock_update,
             patch("app.services.workflow.service.workflow_scheduler"),
         ):
             result = await WorkflowService.update_workflow(
@@ -218,19 +207,19 @@ class TestWorkflowCRUDLifecycle:
 
         assert result is not None
         assert result.title == "Updated Title"
+        mock_update.assert_awaited_once()
 
     async def test_delete_workflow_removes_document(self):
         """delete_workflow removes the document and returns True."""
-        workflow = _make_workflow()
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=_workflow_as_doc(workflow))
-        mock_collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=1))
-
         with (
             patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
+                _GET_WORKFLOW,
+                new_callable=AsyncMock,
+                return_value=_make_workflow(),
             ),
+            patch(
+                f"{_REPO}.delete_for_user", new_callable=AsyncMock, return_value=True
+            ) as mock_delete,
             patch("app.services.workflow.service.workflow_scheduler") as mock_scheduler,
         ):
             mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock()
@@ -238,19 +227,13 @@ class TestWorkflowCRUDLifecycle:
             result = await WorkflowService.delete_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is True
-        mock_collection.delete_one.assert_awaited_once()
+        mock_delete.assert_awaited_once()
 
     async def test_delete_workflow_returns_false_when_not_found(self):
         """delete_workflow returns False when the document does not exist."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.delete_one = AsyncMock(return_value=MagicMock(deleted_count=0))
-
         with (
-            patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
-            ),
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=None),
+            patch(f"{_REPO}.delete_for_user", new_callable=AsyncMock, return_value=False),
             patch("app.services.workflow.service.workflow_scheduler") as mock_scheduler,
         ):
             mock_scheduler.cancel_scheduled_workflow_execution = AsyncMock()
@@ -325,14 +308,14 @@ class TestExecutionTracking:
     """Start execution -> update status -> complete -> verify history."""
 
     async def test_create_execution_records_running_state(self):
-        """create_execution inserts a record with status 'running'."""
-        mock_collection = AsyncMock()
-        mock_collection.insert_one = AsyncMock()
-
+        """create_execution persists a record with status 'running'."""
+        # The repository echoes back the document it was handed, so the
+        # service-built execution_id/started_at/status flow through unchanged.
         with patch(
-            "app.services.workflow.execution_service.workflow_executions_collection",
-            mock_collection,
-        ):
+            f"{_EXEC_REPO}.create",
+            new_callable=AsyncMock,
+            side_effect=lambda doc: doc,
+        ) as mock_create:
             execution = await create_execution(
                 workflow_id=FAKE_WORKFLOW_ID,
                 user_id=FAKE_USER_ID,
@@ -344,24 +327,26 @@ class TestExecutionTracking:
         assert execution.user_id == FAKE_USER_ID
         assert execution.execution_id.startswith("exec_")
         assert execution.started_at is not None
-        mock_collection.insert_one.assert_awaited_once()
+        mock_create.assert_awaited_once()
 
     async def test_complete_execution_success(self):
-        """complete_execution updates record to 'success' with duration."""
+        """complete_execution marks the record 'success' and returns True."""
         started_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
-        stored_doc = {
-            "execution_id": "exec_abc123",
-            "workflow_id": FAKE_WORKFLOW_ID,
-            "started_at": started_at,
-        }
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=stored_doc)
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+        completed = WorkflowExecutionDocument(
+            execution_id="exec_abc123",
+            workflow_id=FAKE_WORKFLOW_ID,
+            user_id=FAKE_USER_ID,
+            status="success",
+            started_at=started_at,
+            summary="Completed all steps",
+            duration_seconds=1.5,
+        )
 
         with patch(
-            "app.services.workflow.execution_service.workflow_executions_collection",
-            mock_collection,
-        ):
+            f"{_EXEC_REPO}.complete",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ) as mock_complete:
             result = await complete_execution(
                 execution_id="exec_abc123",
                 status="success",
@@ -369,28 +354,33 @@ class TestExecutionTracking:
             )
 
         assert result is True
-        update_call = mock_collection.update_one.call_args
-        update_set = update_call[0][1]["$set"]
-        assert update_set["status"] == "success"
-        assert update_set["summary"] == "Completed all steps"
-        assert update_set["duration_seconds"] is not None
-        assert update_set["duration_seconds"] >= 0
+        # Duration is computed inside the repository; the service just forwards
+        # the completion fields.
+        mock_complete.assert_awaited_once_with(
+            "exec_abc123",
+            status="success",
+            summary="Completed all steps",
+            error_message=None,
+            conversation_id=None,
+        )
 
     async def test_complete_execution_failure_with_error_message(self):
         """complete_execution records 'failed' status with error message."""
-        stored_doc = {
-            "execution_id": "exec_fail",
-            "workflow_id": FAKE_WORKFLOW_ID,
-            "started_at": datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
-        }
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=stored_doc)
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+        completed = WorkflowExecutionDocument(
+            execution_id="exec_fail",
+            workflow_id=FAKE_WORKFLOW_ID,
+            user_id=FAKE_USER_ID,
+            status="failed",
+            started_at=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
+            error_message="Step 2 timed out",
+            duration_seconds=2.0,
+        )
 
         with patch(
-            "app.services.workflow.execution_service.workflow_executions_collection",
-            mock_collection,
-        ):
+            f"{_EXEC_REPO}.complete",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ) as mock_complete:
             result = await complete_execution(
                 execution_id="exec_fail",
                 status="failed",
@@ -398,54 +388,42 @@ class TestExecutionTracking:
             )
 
         assert result is True
-        update_set = mock_collection.update_one.call_args[0][1]["$set"]
-        assert update_set["status"] == "failed"
-        assert update_set["error_message"] == "Step 2 timed out"
+        mock_complete.assert_awaited_once_with(
+            "exec_fail",
+            status="failed",
+            summary=None,
+            error_message="Step 2 timed out",
+            conversation_id=None,
+        )
 
     async def test_complete_execution_returns_false_for_missing(self):
         """complete_execution returns False when execution_id is not found."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch(
-            "app.services.workflow.execution_service.workflow_executions_collection",
-            mock_collection,
-        ):
+        with patch(f"{_EXEC_REPO}.complete", new_callable=AsyncMock, return_value=None):
             result = await complete_execution(
                 execution_id="exec_nonexistent",
                 status="success",
             )
 
         assert result is False
-        mock_collection.update_one.assert_not_awaited()
 
     async def test_get_workflow_executions_paginates(self):
         """get_workflow_executions returns paginated results with correct metadata."""
         exec_docs = [
-            {
-                "execution_id": f"exec_{i}",
-                "workflow_id": FAKE_WORKFLOW_ID,
-                "user_id": FAKE_USER_ID,
-                "status": "success",
-                "started_at": datetime(2026, 1, 1, 12, i, 0, tzinfo=UTC),
-                "trigger_type": "manual",
-            }
+            WorkflowExecutionDocument(
+                execution_id=f"exec_{i}",
+                workflow_id=FAKE_WORKFLOW_ID,
+                user_id=FAKE_USER_ID,
+                status="success",
+                started_at=datetime(2026, 1, 1, 12, i, 0, tzinfo=UTC),
+                trigger_type="manual",
+            )
             for i in range(3)
         ]
 
-        mock_cursor = AsyncMock()
-        mock_cursor.__aiter__ = lambda self: aiter_docs(exec_docs)
-        mock_cursor.sort = MagicMock(return_value=mock_cursor)
-        mock_cursor.skip = MagicMock(return_value=mock_cursor)
-        mock_cursor.limit = MagicMock(return_value=mock_cursor)
-
-        mock_collection = AsyncMock()
-        mock_collection.count_documents = AsyncMock(return_value=5)
-        mock_collection.find = MagicMock(return_value=mock_cursor)
-
         with patch(
-            "app.services.workflow.execution_service.workflow_executions_collection",
-            mock_collection,
+            f"{_EXEC_REPO}.list_for_workflow",
+            new_callable=AsyncMock,
+            return_value=(exec_docs, 5),
         ):
             response = await get_workflow_executions(
                 workflow_id=FAKE_WORKFLOW_ID,
@@ -458,12 +436,6 @@ class TestExecutionTracking:
         assert len(response.executions) == 3
         assert response.has_more is True
         assert all(e.workflow_id == FAKE_WORKFLOW_ID for e in response.executions)
-
-
-async def aiter_docs(docs):
-    """Async iterator helper for mock cursors."""
-    for doc in docs:
-        yield doc
 
 
 # ---------------------------------------------------------------------------
@@ -547,17 +519,10 @@ class TestTriggerRegistration:
             trigger_type="integration",
             trigger_name="calendar_event_created",
         )
-        mock_collection = AsyncMock()
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = "wf_rollback"
-        mock_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-        mock_collection.delete_one = AsyncMock()
 
         with (
-            patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
-            ),
+            patch(f"{_REPO}.create", new_callable=AsyncMock),
+            patch(f"{_REPO}.delete_for_user", new_callable=AsyncMock) as mock_delete,
             patch("app.services.workflow.service.ChromaClient") as mock_chroma_cls,
             # check_integration_status is imported lazily inside the function;
             # patch it True so the code proceeds past the connectivity gate to
@@ -579,8 +544,8 @@ class TestTriggerRegistration:
             with pytest.raises(TriggerRegistrationError):
                 await WorkflowService.create_workflow(request, FAKE_USER_ID)
 
-        # Verify rollback: workflow was deleted
-        mock_collection.delete_one.assert_awaited_once()
+        # Verify rollback: the pending workflow was deleted via the repository.
+        mock_delete.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -598,14 +563,14 @@ class TestMultiStepWorkflowExecution:
             activated=True,
             steps=_make_workflow_steps(3),
         )
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=_workflow_as_doc(workflow))
-        mock_collection.find_one_and_update = AsyncMock(return_value=_workflow_as_doc(workflow))
 
         with (
+            patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=workflow),
+            # touch() heartbeats last-execution; a non-None return means it matched.
             patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
+                f"{_REPO}.touch",
+                new_callable=AsyncMock,
+                return_value=_make_workflow_doc(),
             ),
             patch(
                 "app.services.workflow.service.WorkflowQueueService.queue_workflow_execution",
@@ -626,13 +591,8 @@ class TestMultiStepWorkflowExecution:
     async def test_execute_workflow_rejects_deactivated(self):
         """execute_workflow raises ValueError for deactivated workflows."""
         workflow = _make_workflow(activated=False)
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=_workflow_as_doc(workflow))
 
-        with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+        with patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=workflow):
             with pytest.raises(ValueError, match="deactivated"):
                 await WorkflowService.execute_workflow(
                     FAKE_WORKFLOW_ID,
@@ -642,13 +602,7 @@ class TestMultiStepWorkflowExecution:
 
     async def test_execute_workflow_raises_for_missing_workflow(self):
         """execute_workflow raises ValueError when workflow not found."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+        with patch(_GET_WORKFLOW, new_callable=AsyncMock, return_value=None):
             with pytest.raises(ValueError, match="not found"):
                 await WorkflowService.execute_workflow(
                     "wf_ghost",
@@ -697,21 +651,22 @@ class TestExecutionFailure:
     async def test_execution_failure_records_error_state(self):
         """A failed execution stores error_message and status='failed'."""
         started_at = datetime(2026, 3, 15, 10, 0, 0, tzinfo=UTC)
-        stored_doc = {
-            "execution_id": "exec_mid_fail",
-            "workflow_id": FAKE_WORKFLOW_ID,
-            "started_at": started_at,
-            "status": "running",
-        }
-
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=stored_doc)
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(modified_count=1))
+        completed = WorkflowExecutionDocument(
+            execution_id="exec_mid_fail",
+            workflow_id=FAKE_WORKFLOW_ID,
+            user_id=FAKE_USER_ID,
+            status="failed",
+            started_at=started_at,
+            completed_at=datetime(2026, 3, 15, 10, 5, 0, tzinfo=UTC),
+            duration_seconds=300.0,
+            error_message="LLM API rate limit exceeded at step 3",
+        )
 
         with patch(
-            "app.services.workflow.execution_service.workflow_executions_collection",
-            mock_collection,
-        ):
+            f"{_EXEC_REPO}.complete",
+            new_callable=AsyncMock,
+            return_value=completed,
+        ) as mock_complete:
             result = await complete_execution(
                 execution_id="exec_mid_fail",
                 status="failed",
@@ -719,48 +674,41 @@ class TestExecutionFailure:
             )
 
         assert result is True
-        update_set = mock_collection.update_one.call_args[0][1]["$set"]
-        assert update_set["status"] == "failed"
-        assert "rate limit" in update_set["error_message"]
-        assert update_set["completed_at"] is not None
-        assert update_set["duration_seconds"] is not None
+        # completed_at/duration_seconds are computed by the repository; the service
+        # forwards the failed status and error message.
+        mock_complete.assert_awaited_once_with(
+            "exec_mid_fail",
+            status="failed",
+            summary=None,
+            error_message="LLM API rate limit exceeded at step 3",
+            conversation_id=None,
+        )
 
     async def test_execution_count_incremented_on_failure(self):
-        """increment_execution_count increments total but not successful on failure."""
-        mock_collection = AsyncMock()
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
-
+        """increment_execution_count records a non-successful execution."""
         with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+            f"{_REPO}.record_execution", new_callable=AsyncMock, return_value=True
+        ) as mock_record:
             result = await WorkflowService.increment_execution_count(
                 FAKE_WORKFLOW_ID, FAKE_USER_ID, is_successful=False
             )
 
         assert result is True
-        update_call = mock_collection.update_one.call_args
-        inc_data = update_call[0][1]["$inc"]
-        assert inc_data["total_executions"] == 1
-        assert "successful_executions" not in inc_data
+        # The $inc counter split now lives in the repository; the service just
+        # forwards the success flag.
+        mock_record.assert_awaited_once_with(FAKE_WORKFLOW_ID, FAKE_USER_ID, successful=False)
 
     async def test_execution_count_incremented_on_success(self):
-        """increment_execution_count increments both total and successful on success."""
-        mock_collection = AsyncMock()
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
-
+        """increment_execution_count records a successful execution."""
         with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+            f"{_REPO}.record_execution", new_callable=AsyncMock, return_value=True
+        ) as mock_record:
             result = await WorkflowService.increment_execution_count(
                 FAKE_WORKFLOW_ID, FAKE_USER_ID, is_successful=True
             )
 
         assert result is True
-        inc_data = mock_collection.update_one.call_args[0][1]["$inc"]
-        assert inc_data["total_executions"] == 1
-        assert inc_data["successful_executions"] == 1
+        mock_record.assert_awaited_once_with(FAKE_WORKFLOW_ID, FAKE_USER_ID, successful=True)
 
 
 # ---------------------------------------------------------------------------
@@ -774,13 +722,7 @@ class TestSlugGeneration:
 
     async def test_generate_unique_slug_returns_base_when_available(self):
         """Slug for a title is '{base}-{6hex}' — always includes a random suffix."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+        with patch(f"{_REPO}.find_public_slug_conflict", new_callable=AsyncMock, return_value=None):
             slug = await generate_unique_workflow_slug("My Awesome Workflow")
 
         # Format is always "{base}-{6_hex_chars}"
@@ -791,23 +733,12 @@ class TestSlugGeneration:
 
     async def test_generate_unique_slug_appends_suffix_on_collision(self):
         """When candidate slugs are taken, the function keeps retrying with fresh hex suffixes."""
-        call_count = 0
-
-        async def find_one_side_effect(query):
-            nonlocal call_count
-            call_count += 1
-            # First two calls: slug exists. Third: slug is free.
-            if call_count <= 2:
-                return {"_id": "existing", "slug": query["slug"]}
-            return None
-
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(side_effect=find_one_side_effect)
-
+        # First two probes hit an existing public workflow; the third is free.
         with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+            f"{_REPO}.find_public_slug_conflict",
+            new_callable=AsyncMock,
+            side_effect=[_make_workflow_doc(), _make_workflow_doc(), None],
+        ) as mock_conflict:
             slug = await generate_unique_workflow_slug("Daily Report")
 
         # The function retried and returned a free candidate
@@ -815,18 +746,12 @@ class TestSlugGeneration:
         suffix = slug.split("-", 1)[1]
         assert len(suffix) == 6
         assert all(c in "0123456789abcdef" for c in suffix)
-        # find_one was called exactly 3 times (2 collisions + 1 free)
-        assert call_count == 3
+        # The conflict probe ran exactly 3 times (2 collisions + 1 free)
+        assert mock_conflict.await_count == 3
 
     async def test_generate_unique_slug_handles_empty_title(self):
         """An empty/invalid title falls back to 'workflow-{hex}' base."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
-        with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+        with patch(f"{_REPO}.find_public_slug_conflict", new_callable=AsyncMock, return_value=None):
             slug = await generate_unique_workflow_slug("")
 
         assert slug.startswith("workflow-")
@@ -835,18 +760,13 @@ class TestSlugGeneration:
         assert all(c in "0123456789abcdef" for c in suffix)
 
     async def test_generate_unique_slug_excludes_own_id(self):
-        """When exclude_id is provided, the query excludes that workflow."""
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(return_value=None)
-
+        """When exclude_id is provided, the probe forwards it to exclude that workflow."""
         with patch(
-            "app.services.workflow.service.workflows_collection",
-            mock_collection,
-        ):
+            f"{_REPO}.find_public_slug_conflict", new_callable=AsyncMock, return_value=None
+        ) as mock_conflict:
             await generate_unique_workflow_slug("Test Workflow", exclude_id="wf_self")
 
-        query_arg = mock_collection.find_one.call_args[0][0]
-        assert query_arg["_id"] == {"$ne": "wf_self"}
+        assert mock_conflict.await_args.kwargs["exclude_id"] == "wf_self"
 
 
 # ---------------------------------------------------------------------------
@@ -990,46 +910,50 @@ class TestActivateDeactivateLifecycle:
 
     async def test_activate_workflow_enables_and_registers_triggers(self):
         """activate_workflow sets activated=True and registers integration triggers."""
-        workflow = _make_workflow(activated=False, trigger_type="manual")
-        doc = _workflow_as_doc(workflow)
-        activated_doc = {**doc, "activated": True}
-
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(side_effect=[doc, activated_doc])
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+        pending = _make_workflow(activated=False, trigger_type="manual")
+        activated = _make_workflow(activated=True, trigger_type="manual")
 
         with (
+            # get_workflow: first the pending workflow, then the re-read after activation.
             patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
+                _GET_WORKFLOW,
+                new_callable=AsyncMock,
+                side_effect=[pending, activated],
             ),
+            patch(
+                f"{_REPO}.activate",
+                new_callable=AsyncMock,
+                return_value=_make_workflow_doc(activated=True),
+            ) as mock_activate,
             patch("app.services.workflow.service.workflow_scheduler"),
         ):
             result = await WorkflowService.activate_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is not None
         assert result.activated is True
+        mock_activate.assert_awaited_once()
 
     async def test_deactivate_workflow_disables_and_cancels(self):
         """deactivate_workflow sets activated=False."""
-        workflow = _make_workflow(activated=True)
-        doc = _workflow_as_doc(workflow)
-        deactivated_doc = {**doc, "activated": False}
-
-        mock_collection = AsyncMock()
-        mock_collection.find_one = AsyncMock(side_effect=[doc, deactivated_doc])
-        mock_collection.update_one = AsyncMock(return_value=MagicMock(matched_count=1))
+        active = _make_workflow(activated=True)
+        deactivated = _make_workflow(activated=False)
 
         with (
             patch(
-                "app.services.workflow.service.workflows_collection",
-                mock_collection,
+                _GET_WORKFLOW,
+                new_callable=AsyncMock,
+                side_effect=[active, deactivated],
             ),
+            patch(
+                f"{_REPO}.deactivate",
+                new_callable=AsyncMock,
+                return_value=_make_workflow_doc(activated=False),
+            ) as mock_deactivate,
             patch("app.services.workflow.service.workflow_scheduler"),
         ):
             result = await WorkflowService.deactivate_workflow(FAKE_WORKFLOW_ID, FAKE_USER_ID)
 
         assert result is not None
         assert result.activated is False
-        # update_one is called once to persist activated=False
-        mock_collection.update_one.assert_awaited_once()
+        # The repository deactivate() call persists activated=False.
+        mock_deactivate.assert_awaited_once()

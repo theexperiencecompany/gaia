@@ -38,10 +38,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import workflows_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.models.scheduler_models import ScheduledTaskStatus  # noqa: E402
 from app.services.workflow.scheduler import WorkflowScheduler  # noqa: E402
 from app.utils.cron_utils import get_next_run_time  # noqa: E402
+
+workflows_collection = get_async_collection("workflows")
 
 # Run-states a workflow may legitimately hold after the refactor. Anything else is a
 # leftover from the old conflated model and gets normalised to SCHEDULED.

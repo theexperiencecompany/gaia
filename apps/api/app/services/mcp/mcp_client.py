@@ -47,11 +47,9 @@ from app.constants.mcp import (
 )
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
-from app.db.mongodb.collections import (
-    integrations_collection,
-    user_integrations_collection,
-)
 from app.db.redis import delete_cache
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.mcp_config import MCPConfig, OAuthDiscovery
@@ -66,7 +64,7 @@ from app.services.integrations.user_integrations import (
 from app.services.mcp.device_connector import DeviceConnector
 from app.services.mcp.mcp_client_pool import get_mcp_client_pool
 from app.services.mcp.mcp_token_store import MCPTokenStore
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import store_mcp_tools
 from app.services.mcp.oauth_discovery import (
     discover_oauth_config,
     probe_mcp_connection,
@@ -301,16 +299,10 @@ class MCPClient:
         discovered from the server, fixing stale requires_auth flags.
         """
         try:
-            result = await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {
-                    "$set": {
-                        "mcp_config.requires_auth": requires_auth,
-                        "mcp_config.auth_type": auth_type,
-                    }
-                },
+            updated = await integration_repository.set_mcp_auth(
+                integration_id, requires_auth, auth_type
             )
-            if result.modified_count > 0:
+            if updated:
                 log.info(
                     f"{LogTag.MCP} Updated auth status for {integration_id}: "
                     f"requires_auth={requires_auth}, auth_type={auth_type}"
@@ -777,8 +769,7 @@ class MCPClient:
             log.info(
                 f"{LogTag.MCP} [{integration_id}] Storing {len(tool_metadata)} tools to MongoDB"
             )
-            global_store = get_mcp_tools_store()
-            post_tasks.append(global_store.store_tools(integration_id, tool_metadata))
+            post_tasks.append(store_mcp_tools(integration_id, tool_metadata))
 
             # 3. Index integration tools in ChromaDB. Custom MCPs use a
             # URL-derived namespace and also register a subagent doc; platform
@@ -1584,10 +1575,7 @@ class MCPClient:
 
         # Remove tool metadata from MongoDB so ghost tools don't appear
         try:
-            await integrations_collection.update_one(
-                {"integration_id": integration_id},
-                {"$unset": {"tools": ""}},
-            )
+            await integration_repository.clear_tools(integration_id)
             # Invalidate the global MCP tools Redis cache
             await delete_cache(MCP_TOOLS_CACHE_KEY)
         except Exception as e:
@@ -1650,14 +1638,7 @@ class MCPClient:
 
     async def is_connected_db(self, integration_id: str) -> bool:
         """Check if integration is connected (in MongoDB user_integrations)."""
-        doc = await user_integrations_collection.find_one(
-            {
-                "user_id": self.user_id,
-                "integration_id": integration_id,
-                "status": "connected",
-            }
-        )
-        return doc is not None
+        return await user_integration_repository.is_connected(self.user_id, integration_id)
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:
         """

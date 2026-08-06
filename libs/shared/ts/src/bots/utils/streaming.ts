@@ -20,6 +20,7 @@
  */
 import type { Analytics } from "../../analytics";
 import { BOT_EVENTS } from "../../analytics/events/bots";
+import type { ApprovalRequestData } from "../../chat";
 import {
   NEW_MESSAGE_BREAK_TOKEN,
   NEW_MESSAGE_BREAK_TOKEN_LENGTH,
@@ -27,6 +28,7 @@ import {
 import type { GaiaClient } from "../api";
 import type { ChatRequest } from "../types";
 import { formatBotError, PLATFORM_MARKDOWN } from "./formatters";
+
 import {
   createBotLogger,
   hashLogIdentifier,
@@ -35,6 +37,24 @@ import {
 import { chunkResponse, truncateResponse } from "./text";
 
 const logger = createBotLogger("shared", "streaming");
+
+/** The approval window is hours, so "360 minutes" is not a usable way to say it. */
+function formatExpiry(seconds: number): string {
+  const minutes = Math.max(1, Math.round(seconds / 60));
+  if (minutes < 60) return minutes === 1 ? "1 minute" : `${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? "1 hour" : `${hours} hours`;
+}
+
+/** Render a PENDING HIL approval as a yes/no prompt for a bot message. Only
+ * pending approvals are surfaced out-of-band (see handleApprovalUpdate); settled
+ * ones are narrated by the agent's streamed reply. */
+function formatApprovalPrompt(data: ApprovalRequestData): string {
+  return (
+    `**Approval needed:** ${data.summary}\n` +
+    `Reply **yes** to approve or **no** to decline. This expires in ${formatExpiry(data.timeout_seconds)}.`
+  );
+}
 
 export interface StreamingOptions {
   editIntervalMs: number;
@@ -395,6 +415,26 @@ export async function handleStreamingChat(
     await onGenericError(formattedError);
   };
 
+  // HIL approval prompts are delivered out-of-band as their own message so a
+  // non-streaming platform (Discord/WhatsApp, which shows nothing until the
+  // stream ends) still surfaces the question while the agent is paused waiting.
+  const render = PLATFORM_MARKDOWN[options.platform];
+  const handleApprovalUpdate = async (data: ApprovalRequestData) => {
+    // Only the PENDING question needs an out-of-band message — a bot has no
+    // buttons, so the user answers in chat. Settled frames (an auto_approved
+    // receipt in auto mode, or a resumed decision) arrive MID-STREAM and are
+    // already narrated by the agent's streamed reply; posting them here fires
+    // sendNewMessage, which on editing platforms (Telegram/Slack) rebinds the
+    // live edit cursor and fragments/overwrites that reply.
+    if (data.status !== "pending") return;
+    const text = render(formatApprovalPrompt(data));
+    if (sendNewMessage) {
+      await sendNewMessage(text);
+    } else {
+      await editMessage(text);
+    }
+  };
+
   const streamFn = (
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
@@ -421,6 +461,7 @@ export async function handleStreamingChat(
         await onDone(fullText, convId);
       },
       onError,
+      handleApprovalUpdate,
     );
 
   try {

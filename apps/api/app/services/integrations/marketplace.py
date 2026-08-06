@@ -2,11 +2,10 @@
 
 import asyncio
 
-from bson import ObjectId
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import integrations_collection, users_collection
+from app.db.repositories.integrations import integration_repository
+from app.db.repositories.users import user_repository
 from app.models.integration_models import (
     Integration,
     IntegrationResponse,
@@ -15,7 +14,7 @@ from app.models.integration_models import (
 )
 from app.models.oauth_models import OAuthIntegration
 from app.services.integrations.integration_resolver import IntegrationResolver
-from app.services.mcp.mcp_tools_store import get_mcp_tools_store
+from app.services.mcp.mcp_tools_service import get_all_mcp_tools, get_integration_tools
 from shared.py.wide_events import log
 
 
@@ -25,29 +24,16 @@ async def get_all_integrations(
 ) -> MarketplaceResponse:
     """Get all available integrations for the marketplace."""
     log.set(integration={"provider": category or "all", "action": "get_all_integrations"})
-    tools_store = get_mcp_tools_store()
 
     async def fetch_mcp_tools() -> dict[str, dict]:
-        return await tools_store.get_all_mcp_tools()
+        return await get_all_mcp_tools()
 
     async def fetch_custom_integrations() -> list[IntegrationResponse]:
         if not include_custom_public:
             return []
 
-        custom_integrations = []
-        query = {"source": "custom", "is_public": True}
-        if category and category != "all":
-            query["category"] = category
-
-        cursor = integrations_collection.find(query).sort("created_at", -1)
-        async for doc in cursor:
-            try:
-                integration = Integration(**doc)
-                custom_integrations.append(IntegrationResponse.from_integration(integration))
-            except Exception as e:
-                log.warning(f"{LogTag.INTEGRATION} Failed to parse custom integration: {e}")
-
-        return custom_integrations
+        integrations = await integration_repository.list_public_custom(category)
+        return [IntegrationResponse.from_integration(i) for i in integrations]
 
     all_mcp_tools, custom_integrations = await asyncio.gather(
         fetch_mcp_tools(),
@@ -129,8 +115,7 @@ def assemble_integration_response(
 async def get_integration_details(integration_id: str) -> IntegrationResponse | None:
     """Get single integration details by ID."""
     log.set(integration={"provider": integration_id, "action": "get_integration_details"})
-    tools_store = get_mcp_tools_store()
-    stored_tools = await tools_store.get_tools(integration_id)
+    stored_tools = await get_integration_tools(integration_id)
 
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
@@ -141,10 +126,9 @@ async def get_integration_details(integration_id: str) -> IntegrationResponse | 
     created_by = resolved.custom_doc.get("created_by") if resolved.custom_doc else None
     if created_by:
         try:
-            creator_doc = await users_collection.find_one(
-                {"_id": ObjectId(created_by)},
-                {"name": 1, "picture": 1},
-            )
+            creator = await user_repository.get(created_by)
+            if creator:
+                creator_doc = {"name": creator.name, "picture": creator.picture}
         except Exception as e:
             log.debug(f"{LogTag.INTEGRATION} Failed to fetch creator info for {created_by}: {e}")
 

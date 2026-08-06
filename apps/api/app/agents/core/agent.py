@@ -31,6 +31,7 @@ from app.helpers.agent_helpers import (
     build_initial_state,
     execute_graph_silent,
     execute_graph_streaming,
+    recent_user_messages,
 )
 from app.models.message_models import MessageRequestWithHistory
 from app.models.models_models import ModelConfig
@@ -121,6 +122,7 @@ async def _core_agent_logic(
         active_todo_id=active_todo_id,
         execution_mode=execution_mode,
         source=source,
+        user_messages=recent_user_messages(request.messages, request.message),
         langfuse_trace_id=langfuse_trace_id,
         langfuse_tags=langfuse_tags,
     )

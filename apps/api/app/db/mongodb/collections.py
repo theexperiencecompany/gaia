@@ -1,31 +1,26 @@
 """
-MongoDB Collections with Lazy Loading.
+MongoDB collection access, lazily initialized.
 
-This module provides access to MongoDB collections using lazy initialization
-to optimize application startup performance.
-
-Implementation:
-    - Collections are created on-demand when first accessed
-    - MongoDB connections are deferred until actual database operations
-    - Uses Python's __getattr__ for transparent lazy loading
-    - Maintains backward compatibility with existing import syntax
+``get_async_collection`` is the single supported way to reach a Motor
+collection. The per-collection module attributes it replaced (``users_collection``
+and friends) are gone: every domain is behind a typed repository in
+``app.db.repositories``, and application code goes through those, never through a
+raw handle. The repository layer resolves its own handle here; the boundary lint
+in ``tools/lints/repository_boundaries.py`` keeps it that way.
 
 Usage:
-    from app.db.mongodb.collections import blog_collection
+    from app.db.mongodb.collections import get_async_collection
 
-    # Import is instant - no database connection yet
-    result = await blog_collection.find_one({"_id": id})  # Connection happens here
+    # Import is instant — the connection is opened on first resolution.
+    collection = get_async_collection("blog")
 
-Performance:
-    - Import time: ~0.001s (previously ~1+ seconds)
-    - Memory: Only initializes collections that are actually used
-    - Runtime: First access initializes, subsequent access is cached
+Collections are created on demand and cached, so the MongoDB connection is
+deferred until a collection is actually used rather than paid at import time.
 """
 
 from typing import Any
 
-import pymongo
-from pymongo.server_api import ServerApi
+from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
@@ -33,11 +28,6 @@ from shared.py.wide_events import log
 # Cache for async (Motor) collections
 _collections_cache: dict[str, Any] = {}
 _mongodb_instance = None
-
-# Cache for sync (PyMongo) collections
-_sync_collections_cache: dict[str, Any] = {}
-_sync_client = None
-_sync_db = None
 
 
 def _get_mongodb_instance():
@@ -61,88 +51,11 @@ def _get_collection(collection_name: str):
     return _collections_cache[collection_name]
 
 
-def _get_sync_db():
-    """Get or create sync PyMongo client and database."""
-    global _sync_client, _sync_db
-    if _sync_db is None:
-        from app.config.settings import settings
+def get_async_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+    """Resolve a Motor collection by its Mongo name — the only collection accessor.
 
-        log.info(f"{LogTag.MONGO} Initializing sync MongoDB client (PyMongo)")
-        _sync_client = pymongo.MongoClient(settings.MONGO_DB, server_api=ServerApi("1"))
-        _sync_db = _sync_client.get_database("GAIA")
-        log.info(f"{LogTag.MONGO} Sync MongoDB client initialized")
-    return _sync_db
-
-
-def get_sync_collection(collection_name: str):
+    Repositories declare a ``collection_name`` and resolve their handle through
+    this one function. Application code outside ``app/db/`` calls a repository,
+    not this.
     """
-    Get a synchronous PyMongo collection for use in sync code.
-
-    This is useful for sync functions that need to access MongoDB
-    without using asyncio (e.g., Composio tools, sync services).
-
-    Args:
-        collection_name: The name of the MongoDB collection
-
-    Returns:
-        A PyMongo Collection object (sync)
-    """
-    if collection_name not in _sync_collections_cache:
-        log.info(f"{LogTag.MONGO} Creating sync collection '{collection_name}' (lazy loading)")
-        db = _get_sync_db()
-        _sync_collections_cache[collection_name] = db.get_collection(collection_name)
-    return _sync_collections_cache[collection_name]
-
-
-# Collection name mappings
-_COLLECTION_MAPPINGS = {
-    "users_collection": "users",
-    "conversations_collection": "conversations",
-    "notes_collection": "notes",
-    "calendars_collection": "calendar",
-    "feedback_collection": "feedback_form",
-    "waitlist_collection": "waitlist",
-    "mail_collection": "mail",
-    "blog_collection": "blog",
-    "search_urls_collection": "search_urls",
-    "files_collection": "files",
-    "notifications_collection": "notifications",
-    "todos_collection": "todos",
-    "projects_collection": "projects",
-    "reminders_collection": "reminders",
-    "workflows_collection": "workflows",
-    "support_collection": "support_requests",
-    "payments_collection": "payments",
-    "subscriptions_collection": "subscriptions",
-    "plans_collection": "subscription_plans",
-    "usage_snapshots_collection": "usage_snapshots",
-    "ai_models_collection": "ai_models",
-    "integrations_collection": "integrations",
-    "user_integrations_collection": "user_integrations",
-    "integration_instructions_collection": "integration_instructions",
-    "device_tokens_collection": "device_tokens",
-    "skills_collection": "skills",
-    "workflow_executions_collection": "workflow_executions",
-    "processed_webhooks_collection": "processed_webhooks",
-    "bot_sessions_collection": "bot_sessions",
-    "e2b_sandboxes_collection": "e2b_sandboxes",
-    "e2b_warm_pool_collection": "e2b_warm_pool",
-    # Legacy: kept ONLY so the one-shot migration script (scripts/
-    # migrate_vfs_to_juicefs.py) can read pre-cutover data. Drop after
-    # the migration has been run successfully in production.
-    "vfs_nodes_collection": "vfs_nodes",
-}
-
-
-def __getattr__(name: str):
-    """
-    Lazy loading of collections using module-level __getattr__.
-
-    This is called when someone tries to import a collection that doesn't exist
-    as a module-level variable. We create it on-demand.
-    """
-    if name in _COLLECTION_MAPPINGS:
-        collection_name = _COLLECTION_MAPPINGS[name]
-        return _get_collection(collection_name)
-
-    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+    return _get_collection(collection_name)

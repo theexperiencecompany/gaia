@@ -10,6 +10,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
+from app.utils.email_body_normalizer import normalize_email_body
 from shared.py.wide_events import log
 
 # ============================================================================
@@ -307,6 +308,36 @@ def _get_text_from_html(html_content):
     return soup.get_text()
 
 
+def _attachment_metadata(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract attachment metadata (no bytes) from a full-format Gmail payload.
+
+    Walks the (possibly nested) MIME ``parts`` tree, returning one entry per
+    part that has a filename and an ``attachmentId`` — the id the caller later
+    passes to fetch the attachment content. Returns ``[]`` for a metadata-format
+    message (no ``parts``), so the fetch requests ``format=full`` when the
+    ``attachments`` field is selected.
+    """
+    out: list[dict[str, Any]] = []
+
+    def walk(part: dict[str, Any]) -> None:
+        body = part.get("body") or {}
+        filename = part.get("filename")
+        if filename and body.get("attachmentId"):
+            out.append(
+                {
+                    "filename": filename,
+                    "mimeType": part.get("mimeType"),
+                    "size": body.get("size"),
+                    "attachmentId": body.get("attachmentId"),
+                }
+            )
+        for sub in part.get("parts") or []:
+            walk(sub)
+
+    walk(raw.get("payload") or {})
+    return out
+
+
 # Template for minimal message representation
 def minimal_message_template(
     email_data: dict[str, Any], short_body=True, include_both_formats=False
@@ -350,17 +381,23 @@ def minimal_message_template(
 
 
 # Template for message details (when a single message needs more detail)
-def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
+def detailed_message_template(
+    email_data: dict[str, Any], *, include_body: bool = True
+) -> dict[str, Any]:
     """Convert a Gmail message to a detailed representation: essential fields
-    plus body content in both text and HTML."""
+    plus body content in both text and HTML.
+
+    ``include_body=False`` skips the MIME body extraction entirely (the view
+    carries headers, labels, and snippet only) — use it when the body would be
+    dropped anyway.
+    """
     # Use GmailMessageParser directly for efficiency
     parser = GmailMessageParser(email_data)
     parser.parse()
 
-    content = parser.content
     labels = parser.labels
 
-    return {
+    view: dict[str, Any] = {
         "id": email_data.get("messageId") or email_data.get("id", ""),
         "threadId": email_data.get("threadId", ""),
         "from": parser.sender,
@@ -370,11 +407,15 @@ def detailed_message_template(email_data: dict[str, Any]) -> dict[str, Any]:
         "time": parser.date,
         "isRead": "UNREAD" not in labels,
         "hasAttachment": "HAS_ATTACHMENT" in labels,
-        "body": content["text"],  # Plain text for backward compatibility
+        "attachments": _attachment_metadata(email_data),
         "labels": labels,
-        "content": {"text": content["text"], "html": content["html"]},
         "cc": parser.cc,
     }
+    if include_body:
+        content = parser.content
+        view["body"] = content["text"]  # Plain text for backward compatibility
+        view["content"] = {"text": content["text"], "html": content["html"]}
+    return view
 
 
 # Template for thread information
@@ -415,23 +456,69 @@ def draft_template(draft_data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def message_view_needs_body(fields: Any, body_processing: str) -> bool:
+    """Whether a projected message view will carry a body.
+
+    ``body`` is the only projectable field that requires the full MIME
+    payload — everything else in ``build_message_view`` comes from headers,
+    labels, and top-level metadata (so ``format=metadata`` suffices).
+    """
+    if body_processing == "none":
+        return False
+    # `None` or an empty list both mean "all documented fields", body included.
+    return not fields or "body" in fields
+
+
+def project_message_view(view: dict[str, Any], fields: Any) -> dict[str, Any]:
+    """Project a full message view to the requested fields.
+
+    ``None`` or an empty ``fields`` list means "all fields" (view returned
+    as-is).
+    """
+    if not fields:
+        return view
+    return {key: view[key] for key in fields if key in view}
+
+
 # Process tool responses
-def process_list_messages_response(response: dict[str, Any]) -> dict[str, Any]:
-    """Process the response from list_gmail_messages tool to minimize data."""
-    processed_response = {
-        "nextPageToken": response.get("nextPageToken"),
-        "resultSize": len(response.get("messages", [])),
-    }
+def build_message_view(
+    raw: dict[str, Any],
+    fields: Any = None,
+    body_processing: str = "none",
+) -> dict[str, Any]:
+    """Project a raw Gmail API message to only the requested fields.
 
-    if "messages" in response:
-        processed_response["messages"] = [
-            minimal_message_template(msg, short_body=False) for msg in response.get("messages", [])
-        ]
+    Single source of truth for per-message field selection. Used by
+    ``GMAIL_FETCH_MESSAGES`` (caller-supplied fields + body processing
+    mode). Body extraction/normalization is skipped entirely when the
+    projected view won't carry a body (``message_view_needs_body``).
 
-    if "error" in response:
-        processed_response["error"] = response["error"]
+    Args:
+        raw: Raw Gmail API message object (the same shape consumed by
+            ``minimal_message_template`` and ``detailed_message_template``).
+        fields: List of fields to include (from ``MessageFieldLiteral``).
+            ``None`` or an empty list means "all documented fields". Pass a
+            non-empty list to constrain the output.
+        body_processing: One of ``"normalize"``, ``"raw"``, ``"none"``.
+            ``"normalize"`` runs ``normalize_email_body`` over the body,
+            which strips signatures / disclaimers / unsubscribe footers /
+            utm tracking chains (quoted replies are kept). ``"raw"`` keeps
+            the untouched body. ``"none"`` drops the body entirely,
+            regardless of whether ``"body"`` is listed in ``fields``.
+    """
+    view = detailed_message_template(
+        raw, include_body=message_view_needs_body(fields, body_processing)
+    )
 
-    return processed_response
+    # `content` is the detailed template's internal dual text/html blob; it is
+    # not part of the field contract and would otherwise leak the full body
+    # through the "all fields" path. Drop it.
+    view.pop("content", None)
+
+    if body_processing == "normalize" and view.get("body"):
+        view["body"] = normalize_email_body(view["body"])
+
+    return project_message_view(view, fields)
 
 
 def process_list_drafts_response(response: dict[str, Any]) -> dict[str, Any]:

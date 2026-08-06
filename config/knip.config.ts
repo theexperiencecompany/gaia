@@ -159,6 +159,9 @@ const config: KnipConfig = {
     "check",
     "fix",
     "format",
+    // Provided by @playwright/test (declared in apps/web) but invoked from an
+    // nx project.json target, which knip can't associate with the dependency.
+    "playwright",
     "type",
     "type-check",
     "deploy-commands",
@@ -191,6 +194,10 @@ const config: KnipConfig = {
     "tsc",
     "tsx",
     "diff",
+    // Linux desktop protocol registration: runtime shell commands invoked via
+    // spawnSync in apps/desktop/src/main/protocol.ts (no npm package).
+    "update-desktop-database",
+    "xdg-mime",
   ],
 
   // ─── Workspace definitions ───────────────────────────────────────────
@@ -334,6 +341,10 @@ const config: KnipConfig = {
 
     // ── Bots (umbrella) ──────────────────────────────────────────────
     "apps/bots": {
+      // Exclude tests from the reference graph: code reachable ONLY from a
+      // test is dead production code and must be flagged (knip's vitest
+      // plugin would otherwise register *.test.ts as live entry points).
+      project: ["**/*.ts", "!**/__tests__/**", "!**/*.test.ts"],
       ignoreDependencies: [
         "@gaia/bot-discord",
         "@gaia/bot-slack",
@@ -345,6 +356,12 @@ const config: KnipConfig = {
     // ── CLI Package ──────────────────────────────────────────────────
     "packages/cli": {
       entry: ["src/index.{ts,tsx}", "src/commands/**/*.{ts,tsx}"],
+      // Tests are not live references — see apps/bots note.
+      project: [
+        "src/**/*.{ts,tsx}",
+        "!src/**/*.test.{ts,tsx}",
+        "!**/__tests__/**",
+      ],
       // Peer type package for react-dom (pulled in transitively by Ink/React).
       ignoreDependencies: ["@types/react-dom"],
     },
@@ -352,6 +369,8 @@ const config: KnipConfig = {
     // ── Shared TS Library ────────────────────────────────────────────
     "libs/shared/ts": {
       entry: ["src/index.ts"],
+      // Tests are not live references — see apps/bots note.
+      project: ["src/**/*.ts", "!src/**/*.test.ts", "!**/__tests__/**"],
       includeEntryExports: false, // library exports consumed by other workspaces
       // Optional peer: zustand is a peerDependency consumed by importing apps.
       ignoreDependencies: ["zustand"],

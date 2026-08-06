@@ -6,11 +6,11 @@ import pytest
 from app.agents.core.nodes.memory_node import (
     MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
-    _extract_text_content,
     _format_messages_for_user_memory,
     _store_user_memory_background,
     memory_node,
 )
+from app.utils.multimodal import extract_text_content
 
 
 @pytest.mark.unit
@@ -123,19 +123,19 @@ class TestFormatMessagesForUserMemory:
 @pytest.mark.unit
 class TestExtractTextContent:
     def test_string_content(self):
-        assert _extract_text_content("hello") == "hello"
+        assert extract_text_content("hello") == "hello"
 
     def test_list_content(self):
         blocks = [
             {"type": "text", "text": "part1"},
             {"type": "text", "text": "part2"},
         ]
-        result = _extract_text_content(blocks)
+        result = extract_text_content(blocks)
         assert "part1" in result
         assert "part2" in result
 
     def test_other_content(self):
-        result = _extract_text_content(42)
+        result = extract_text_content(42)
         assert result == "42"
 
 

@@ -16,7 +16,7 @@ import type {
   SettingsResponse,
 } from "../types";
 import { getHttpStatus } from "../utils/logger";
-import { streamChat } from "./chat-stream";
+import { type ApprovalUpdateHandler, streamChat } from "./chat-stream";
 import {
   downloadArtifactRequest,
   transcribeAudioRequest,
@@ -158,6 +158,7 @@ export class GaiaClient {
     onChunk: (text: string) => void | Promise<void>,
     onDone: (fullText: string, conversationId: string) => void | Promise<void>,
     onError: (error: Error) => void | Promise<void>,
+    onApprovalUpdate?: ApprovalUpdateHandler,
   ): Promise<string> {
     return streamChat(
       {
@@ -171,6 +172,7 @@ export class GaiaClient {
       onDone,
       onError,
       "/api/v1/bot/chat-stream",
+      onApprovalUpdate,
     );
   }
 

@@ -7,7 +7,10 @@ from .cleanup_tasks import cleanup_stuck_personalization
 from .memory_backfill_tasks import backfill_active_users, backfill_user_memories
 from .memory_email_tasks import process_gmail_emails_to_memory
 from .nurture_tasks import run_nurture_sequence_task
-from .onboarding_tasks import process_onboarding_intelligence_task
+from .onboarding_tasks import (
+    process_onboarding_intelligence_task,
+    process_onboarding_workflows_task,
+)
 from .reminder_tasks import cleanup_expired_reminders, process_reminder
 from .sandbox_tasks import sweep_idle_sandboxes
 from .session_tasks import prune_inactive_sessions
@@ -23,6 +26,7 @@ from .workflow_tasks import (
 __all__ = [
     "process_gmail_emails_to_memory",
     "process_onboarding_intelligence_task",
+    "process_onboarding_workflows_task",
     "process_reminder",
     "cleanup_expired_reminders",
     "check_inactive_users",

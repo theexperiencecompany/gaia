@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Popular task management app",
   description:
     "Todoist is a well-designed task manager for organizing to-dos. GAIA goes beyond task lists by using AI to create, prioritize, and execute tasks across your entire workflow.",
-  metaTitle: "Todoist Alternative with AI Email Integration | GAIA vs Todoist",
+  metaTitle: "Todoist Alternative with AI Email Integration — GAIA vs Todoist",
   metaDescription:
     "Todoist requires you to add tasks manually. GAIA is an open-source Todoist alternative that automatically creates tasks from your emails, prioritizes by context, and automates follow-through across 50+ tools — with a free tier.",
   keywords: [

@@ -5,7 +5,11 @@ import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import type { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
-import type { ImageData, MemoryData } from "@/types/features/toolDataTypes";
+import type {
+  ArtifactData,
+  ImageData,
+  MemoryData,
+} from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared/fileTypes";
 
@@ -20,6 +24,10 @@ export interface IConversation {
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
   source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
+  // Conversation-level artifact registry: the single source of truth for this
+  // conversation's agent-written files. Messages store path references that
+  // resolve against this (see FileArtifactSection / chatStore).
+  artifacts?: ArtifactData[];
   createdAt: Date;
   updatedAt: Date;
 }

@@ -6,7 +6,14 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./out",
-    "baseUrl": ".",
+    // The type-check program legitimately spans the workspace: the Electron main
+    // process imports `@gaia/shared/desktop-tools` straight from the library's
+    // sources. TypeScript 6 stopped inferring `rootDir` from the common source
+    // directory and now defaults it to this file's directory, which puts those
+    // shared sources outside the root (TS6059). Emit is handled by electron-vite
+    // and `noEmit` is inherited from the base config, so this only widens what
+    // `tsc` will accept into the program.
+    "rootDir": "../..",
     "paths": {
       "@/*": ["./src/*"],
       "@gaia/shared": ["../../libs/shared/ts/src/index.ts"],

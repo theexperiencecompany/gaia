@@ -308,6 +308,19 @@ class BotContext(TypedDict, total=False):
     operation: str
 
 
+class FileContext(TypedDict, total=False):
+    """User-uploaded file operation context."""
+
+    operation: str  # "upload"|"delete"|"update"|"seed"|"descriptions"
+    file_id: str
+    filename: str
+    content_type: str
+    size_bytes: int
+    conversation_id: str
+    has_summary: bool
+    page_count: int
+
+
 class SandboxContext(TypedDict, total=False):
     """Per-user E2B sandbox lifecycle context.
 
@@ -454,6 +467,7 @@ class WideEventFields(TypedDict, total=False):
     integration: IntegrationContext
     image: ImageContext
     bot: BotContext
+    file: FileContext
     sandbox: SandboxContext
     mcp: McpContext
     trigger: TriggerContext
@@ -721,6 +735,7 @@ __all__ = [
     "IntegrationContext",
     "ImageContext",
     "BotContext",
+    "FileContext",
     "SandboxContext",
     "McpContext",
     "TriggerContext",

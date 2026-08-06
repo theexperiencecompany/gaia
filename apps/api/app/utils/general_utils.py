@@ -3,6 +3,14 @@ from datetime import datetime
 from pathlib import Path
 import tomllib
 
+ELLIPSIS = "…"
+
+
+def clip_text(text: str, limit: int) -> str:
+    """Cap ``text`` at ``limit`` characters, marking the cut so a reader (or a model)
+    can tell truncation apart from the real end of the value."""
+    return text if len(text) <= limit else f"{text[:limit]}{ELLIPSIS}"
+
 
 def get_context_window(text: str, query: str, chars_before: int = 15, chars_after: int = 30) -> str:
     """

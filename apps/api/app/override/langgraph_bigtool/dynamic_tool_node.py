@@ -14,6 +14,7 @@ from typing import Any, cast
 from langchain_core.messages import AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
+from langgraph.errors import GraphBubbleUp
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt.tool_node import ToolCallRequest, _get_all_injected_args
 from langgraph.runtime import Runtime
@@ -22,8 +23,10 @@ from langgraph.types import Command
 from pydantic import BaseModel
 
 from app.agents.middleware.executor import MiddlewareExecutor
+from app.agents.workspace.offload import mark_offload, pop_offload_descriptor
 from app.constants.llm import TOOL_EXECUTION_TIMEOUT_SECONDS, TOOL_TIMEOUT_EXEMPT_TOOLS
 from app.override.langgraph_bigtool.utils import State
+from app.services.hil.gate import gate_tool_call
 
 
 def format_tool_error(exc: Exception) -> str:
@@ -70,6 +73,22 @@ async def timeout_guarded_tool_call(
             name=tool_name,
             status="error",
         )
+
+
+async def hil_and_timeout_guarded_tool_call(
+    request: ToolCallRequest,
+    execute: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command]],
+) -> ToolMessage | Command:
+    """Parent ToolNode ``awrap_tool_call`` for InjectedState/middleware tools.
+
+    The HIL gate sits OUTSIDE the timeout guard so the approval wait never counts
+    against the tool-execution timeout. Both nest around the raw ``execute``.
+    """
+
+    async def timed(req: ToolCallRequest) -> ToolMessage | Command:
+        return await timeout_guarded_tool_call(req, execute)
+
+    return await gate_tool_call(request, timed)
 
 
 class DynamicToolNode(ToolNode):
@@ -287,6 +306,13 @@ class DynamicToolNode(ToolNode):
                 else:
                     async with asyncio.timeout(TOOL_EXECUTION_TIMEOUT_SECONDS):
                         result = await resolved_tool.ainvoke(tool_input, config=config)
+            except GraphBubbleUp:
+                # Control flow, not a failure: a GraphInterrupt raised by a gated
+                # tool — or bubbled up by ``handoff`` when its subagent graph
+                # interrupts — must reach the runtime so the run checkpoints and
+                # pauses. Converting it to an error ToolMessage would silently
+                # drop the approval request. Mirrors upstream ToolNode.
+                raise
             except TimeoutError:
                 return ToolMessage(
                     content=_timeout_error_text(tool_name),
@@ -305,10 +331,17 @@ class DynamicToolNode(ToolNode):
             if isinstance(result, ToolMessage):
                 return result
 
+            # A self-offloading tool (returns a dict) can't set additional_kwargs
+            # itself — lift its offload descriptor into the structured marker here,
+            # the one seam where dict results become ToolMessages. pop_* strips the
+            # descriptor so it never leaks into the model-facing content.
+            info = pop_offload_descriptor(result)
+            additional_kwargs = mark_offload({}, info) if info else {}
             return ToolMessage(
                 content=str(result) if not isinstance(result, str) else result,
                 tool_call_id=tc.get("id", ""),
                 name=tc.get("name", ""),
+                additional_kwargs=additional_kwargs,
             )
 
         return await middleware_executor.wrap_tool_invocation(

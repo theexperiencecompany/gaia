@@ -37,6 +37,7 @@ from app.agents.core.subagents.provider_subagents import SubagentUnavailableErro
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
     SubagentExecutionContext,
+    SubagentOutcome,
     build_initial_messages,
     execute_subagent_stream,
 )
@@ -346,7 +347,8 @@ class TestSubagentExecutionContext:
 
         # The production function read ctx.initial_state, ctx.config, ctx.stream_id
         # correctly — if any field name were wrong the call would have raised
-        assert "context field test passed" in result
+        assert not result.paused
+        assert "context field test passed" in result.text
         mock_graph.astream.assert_called_once_with(
             ctx.initial_state,
             stream_mode=["messages", "custom", "updates"],
@@ -451,7 +453,8 @@ class TestSubagentRun:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
-        assert "Hello from Gmail agent" in result
+        assert not result.paused
+        assert "Hello from Gmail agent" in result.text
 
     async def test_execute_subagent_stream_default_on_empty(self):
         """execute_subagent_stream must return 'Task completed' when no AI
@@ -472,7 +475,8 @@ class TestSubagentRun:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     async def test_execute_subagent_stream_forwards_custom_events(self):
         """Custom stream events must be forwarded to the stream_writer."""
@@ -530,8 +534,8 @@ class TestSubagentRun:
             mock_sm.is_cancelled = AsyncMock(return_value=False)
             result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
 
-        assert "SHOULD NOT APPEAR" not in result
-        assert "SHOULD APPEAR" in result
+        assert "SHOULD NOT APPEAR" not in result.text
+        assert "SHOULD APPEAR" in result.text
 
 
 # ---------------------------------------------------------------------------
@@ -861,7 +865,7 @@ class TestHandoffFunctionDirectly:
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
-                new=AsyncMock(return_value="direct handoff result"),
+                new=AsyncMock(return_value=SubagentOutcome(text="direct handoff result")),
             ) as mock_execute,
             patch(
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
@@ -1069,7 +1073,7 @@ class TestCustomMCPPath:
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
-                new=AsyncMock(return_value="custom mcp result"),
+                new=AsyncMock(return_value=SubagentOutcome(text="custom mcp result")),
             ) as mock_execute,
             patch(
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",
@@ -1395,7 +1399,7 @@ class TestHandoffWithToolCallArgs:
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
-                new=AsyncMock(return_value="args test result"),
+                new=AsyncMock(return_value=SubagentOutcome(text="args test result")),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.get_stream_writer",

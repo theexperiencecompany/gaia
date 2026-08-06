@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "DeepSeek is a powerful open-weight large language model from China with strong coding capabilities and a free API tier. GAIA is a proactive AI productivity assistant that connects AI intelligence to real workflow automation across email, calendar, tasks, and 50+ integrations.",
   metaTitle:
-    "DeepSeek Alternative for Productivity Automation | GAIA vs DeepSeek",
+    "DeepSeek Alternative for Productivity Automation — GAIA vs DeepSeek",
   metaDescription:
     "DeepSeek is a powerful open LLM but it won't manage your inbox or automate workflows. GAIA is an open-source alternative that proactively manages tasks, email, and workflows across 50+ integrations.",
   keywords: [

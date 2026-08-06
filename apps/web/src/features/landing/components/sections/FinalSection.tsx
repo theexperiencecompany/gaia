@@ -42,7 +42,7 @@ const SWISS_KID_WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
   },
 };
 
-export const SOCIAL_LINKS = [
+const SOCIAL_LINKS = [
   {
     href: "https://twitter.com/trygaia",
     ariaLabel: "Twitter",

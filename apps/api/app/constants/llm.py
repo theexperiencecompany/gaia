@@ -1,4 +1,7 @@
-DEFAULT_LLM_PROVIDER = "gemini"
+GEMINI_PROVIDER = "gemini"
+OPENROUTER_PROVIDER = "openrouter"
+
+DEFAULT_LLM_PROVIDER = GEMINI_PROVIDER
 
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
@@ -18,6 +21,11 @@ AGENT_RECURSION_LIMIT = 40  # Comms + provider subagents (routing / focused work
 # this, so enforcement and analytics stay in sync.
 EXECUTOR_RECURSION_LIMIT = 100
 SUBAGENT_RECURSION_LIMIT = 15  # Spawned subagents (spawn_subagent tool loop)
+# The workflow authoring subagent only discovers integrations/triggers then emits
+# JSON; it never executes. A handful of discovery calls is plenty, so it gets a
+# tighter budget than a full agent. On hitting it the runner forces a final
+# answer instead of crashing, so this doubles as the "stop wandering" bound.
+WORKFLOW_SUBAGENT_RECURSION_LIMIT = 20
 # Emit a ``recursion_high_water_mark`` wide event when a run uses ≥80% of
 # its limit so we can tune the cap from real traffic.
 RECURSION_HWM_FRACTION = 0.80
@@ -46,6 +54,16 @@ TOOL_TIMEOUT_EXEMPT_TOOLS = frozenset(
 # to the default model (see with_llm_retry in app/agents/llm/client.py).
 LLM_RETRY_MAX_ATTEMPTS = 3
 
+# Total wall-clock ceiling for one ainvoke_llm call — retries, backoff sleeps and the
+# fallback attempt included. A backstop against a provider that accepts the connection
+# and then never answers, which no retry can rescue because nothing ever raises.
+#
+# Sized for the slowest legitimate caller (onboarding intelligence, workflow generation,
+# document analysis), NOT as a per-caller latency budget: a call on a user-blocking path
+# should pass its own tighter value, the way the HIL gate passes
+# HIL_LLM_TIMEOUT_SECONDS. Pass timeout=None to opt out entirely.
+LLM_INVOKE_TIMEOUT_SECONDS = 120
+
 # Near-deterministic default for every LLM call; creative tasks opt into more
 # variation via get_default_llm(temperature=...).
 DEFAULT_LLM_TEMPERATURE = 0.1
@@ -70,11 +88,31 @@ DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 DEFAULT_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
+# GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
+# the local scripted stub (tools/llm-stub) at this address. The model name is a
+# marker the stub ignores; the key satisfies client construction only.
+SIM_STUB_BASE_URL = "http://localhost:9797/api/v1"
+SIM_STUB_API_KEY = "sk-stub-dev"  # pragma: allowlist secret
+SIM_STUB_MODEL_NAME = "gaia-sim-stub"
+
 # Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
 # default Gemini model above; every paid (non-free) plan runs a more capable
 # model via OpenRouter.
-PAID_MODEL_PROVIDER = "openrouter"
+PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
 PAID_MODEL_NAME = "z-ai/glm-5.2"
+
+# Which OpenRouter models accept image input, straight from the live catalog's
+# `architecture.input_modalities` — so vision support needs no per-model
+# curation here. See app/agents/llm/model_catalog.py for the cache, and
+# app/agents/llm/vision/ for how each lane then receives the media.
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+OPENROUTER_MODEL_CATALOG_TTL_SECONDS = 3600
+OPENROUTER_MODEL_CATALOG_TIMEOUT_SECONDS = 10
+# How long a failed catalog refresh is remembered. The catalog is consulted on
+# the pre-model hook, so without a backoff an OpenRouter outage would cost every
+# model call a full fetch timeout — turning a degraded dependency into an
+# unusable product.
+OPENROUTER_MODEL_CATALOG_RETRY_SECONDS = 300
 
 # GLM 5.2's first-party (z-ai) lane exposes a 1M-token context window and a 131k
 # output ceiling. Cap output well under that; the summarization / compaction
@@ -98,6 +136,12 @@ PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
 # tool selection. GLM 5.2 also documents "high"/"xhigh" efforts — revisit these
 # levels if comms routing or executor tool-selection quality needs more headroom.
 COMMS_REASONING = {"effort": "low"}
+
+# Output cap for the env-defined custom dev provider (the "custom" entry below;
+# endpoint/key/model all come from the DEV_LLM_* settings). 64k fits under the
+# completion ceilings of the cheap lanes this is meant for (e.g. DeepSeek V4
+# Flash caps at 65,536).
+DEV_LLM_MAX_OUTPUT_TOKENS = 64_000
 
 # OpenRouter app attribution (https://openrouter.ai/docs/app-attribution). The
 # OpenRouter client surfaces these as the HTTP-Referer / X-Title /
@@ -135,6 +179,23 @@ DEV_MODEL_OPTIONS: dict[str, dict] = {
     "deepseek-v4": {
         "provider": "openrouter",
         "model": "deepseek/deepseek-v4-pro",
+        "model_kwargs": None,
+        "reasoning": False,
+    },
+    "deepseek-v4-flash": {
+        # Pinned snapshot — same id also served by the cheap OpenRouter-compatible
+        # lanes (e.g. Nous Research), so the custom endpoint below can run the
+        # identical model for A/B-ing routes.
+        "provider": "openrouter",
+        "model": "deepseek/deepseek-v4-flash-0731",
+        "model_kwargs": None,
+        "reasoning": False,
+    },
+    "custom": {
+        # The env-defined endpoint (DEV_LLM_* settings). `model` None = don't pin
+        # one here; the client's own default (DEV_LLM_MODEL) serves the request.
+        "provider": "custom",
+        "model": None,
         "model_kwargs": None,
         "reasoning": False,
     },

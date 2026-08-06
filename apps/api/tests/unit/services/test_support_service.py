@@ -1,7 +1,7 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, UploadFile
 import pytest
@@ -9,6 +9,7 @@ import pytest
 from app.models.support_models import (
     SupportEmailNotification,
     SupportRequestCreate,
+    SupportRequestDocument,
     SupportRequestPriority,
     SupportRequestResponse,
     SupportRequestStatus,
@@ -45,9 +46,23 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 @pytest.fixture
-def mock_support_collection():
-    with patch("app.services.support_service.support_collection") as mock_col:
-        yield mock_col
+def mock_support_repo():
+    """Patch the support-requests repository seam.
+
+    ``create`` echoes the document back with ``updated_at`` stamped (as the real
+    base does on insert); ``delete`` reports a successful rollback by default.
+    """
+    repo = AsyncMock()
+
+    async def _create(doc: SupportRequestDocument) -> SupportRequestDocument:
+        if doc.updated_at is None:
+            doc.updated_at = datetime.now(UTC)
+        return doc
+
+    repo.create.side_effect = _create
+    repo.delete.return_value = True
+    with patch("app.services.support_service.support_request_repository", repo):
+        yield repo
 
 
 @pytest.fixture
@@ -118,30 +133,25 @@ def _make_upload_file(
     return upload
 
 
-def _make_db_support_doc(
+def _make_support_doc(
     request_id: str = REQUEST_ID,
     ticket_id: str = TICKET_ID,
-    req_type: str = "support",
-) -> dict:
-    """Create a support request document as it would exist in MongoDB."""
+    req_type: SupportRequestType = SupportRequestType.SUPPORT,
+) -> SupportRequestDocument:
+    """A support request document as the repository returns it."""
     now = datetime.now(UTC)
-    return {
-        "_id": request_id,
-        "ticket_id": ticket_id,
-        "user_id": USER_ID,
-        "user_email": USER_EMAIL,
-        "user_name": USER_NAME,
-        "type": req_type,
-        "title": "Test Request",
-        "description": "A test support request with enough characters.",
-        "status": "open",
-        "priority": "medium",
-        "created_at": now,
-        "updated_at": now,
-        "resolved_at": None,
-        "tags": [],
-        "metadata": {"source": "web_form", "user_agent": None},
-    }
+    return SupportRequestDocument(
+        id=request_id,
+        ticket_id=ticket_id,
+        user_id=USER_ID,
+        user_email=USER_EMAIL,
+        user_name=USER_NAME,
+        type=req_type,
+        title="Test Request",
+        description="A test support request with enough characters.",
+        created_at=now,
+        updated_at=now,
+    )
 
 
 # ===========================================================================
@@ -403,15 +413,11 @@ class TestUploadSingleAttachment:
 class TestCreateSupportRequest:
     async def test_success(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_email_notifications,
         sample_request_data,
     ):
-        """Happy path: DB insert succeeds, emails succeed, response returned."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
+        """Happy path: repository stores the request, emails succeed, response returned."""
         with patch("app.services.support_service.log"):
             result = await create_support_request(
                 request_data=sample_request_data,
@@ -427,17 +433,15 @@ class TestCreateSupportRequest:
         assert result.support_request.user_id == USER_ID
         assert result.support_request.status == SupportRequestStatus.OPEN
         assert result.support_request.priority == SupportRequestPriority.MEDIUM
-        mock_support_collection.insert_one.assert_awaited_once()
+        mock_support_repo.create.assert_awaited_once()
 
-    async def test_db_insertion_returns_no_inserted_id_raises_500(
+    async def test_create_failure_rolls_back_and_raises_500(
         self,
-        mock_support_collection,
+        mock_support_repo,
         sample_request_data,
     ):
-        """When insert_one returns falsy inserted_id, 500 is raised."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = None
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
+        """When the repository create fails, the request is rolled back and 500 raised."""
+        mock_support_repo.create.side_effect = RuntimeError("write failed")
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -449,23 +453,16 @@ class TestCreateSupportRequest:
 
         assert exc_info.value.status_code == 500
         assert "Failed to create" in exc_info.value.detail
+        mock_support_repo.delete.assert_awaited_once()
 
     async def test_email_failure_triggers_rollback_and_raises_500(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         sample_request_data,
     ):
-        """Email failure causes DB deletion (rollback) and raises 500."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
+        """Email failure causes a repository delete (rollback) and raises 500."""
         mock_send_team_notification.side_effect = Exception("SMTP error")
 
         with patch("app.services.support_service.log"):
@@ -478,22 +475,17 @@ class TestCreateSupportRequest:
 
         assert exc_info.value.status_code == 500
         assert "email" in exc_info.value.detail.lower()
-        mock_support_collection.delete_one.assert_awaited_once()
+        mock_support_repo.delete.assert_awaited_once_with(ANY, user_id=USER_ID)
 
     async def test_email_failure_rollback_fails_still_raises_500(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         sample_request_data,
     ):
         """Even if rollback itself fails, the 500 is still raised."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("DB unreachable"))
-
+        mock_support_repo.delete.side_effect = Exception("DB unreachable")
         mock_send_team_notification.side_effect = Exception("SMTP error")
 
         with patch("app.services.support_service.log"):
@@ -506,22 +498,15 @@ class TestCreateSupportRequest:
 
         assert exc_info.value.status_code == 500
 
-    async def test_email_failure_rollback_deleted_count_zero_logs_error(
+    async def test_email_failure_rollback_not_deleted_logs_error(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         sample_request_data,
     ):
-        """When rollback delete returns 0 deleted_count, an error is logged."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 0
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
+        """When rollback delete finds nothing to delete, an error is logged."""
+        mock_support_repo.delete.return_value = False
         mock_send_team_notification.side_effect = Exception("SMTP error")
 
         with patch("app.services.support_service.log") as mock_log:
@@ -538,28 +523,17 @@ class TestCreateSupportRequest:
 
     async def test_unexpected_error_with_rollback(
         self,
-        mock_support_collection,
+        mock_support_repo,
         sample_request_data,
     ):
         """Unexpected exception after request_id is set triggers rollback."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
-        # Patch _send_support_email_notifications to raise a non-HTTP exception
-        # that won't be caught by the inner try/except
+        # Emails succeed, but response construction fails with a non-HTTP error.
         with patch(
             "app.services.support_service._send_support_email_notifications",
             new_callable=AsyncMock,
-        ) as mock_notify:
-            mock_notify.return_value = None
-            # Cause an error in SupportRequestResponse construction
+        ):
             with patch(
-                "app.services.support_service.SupportRequestResponse",
+                "app.services.support_service.SupportRequestResponse.model_validate",
                 side_effect=RuntimeError("unexpected"),
             ):
                 with patch("app.services.support_service.log"):
@@ -571,26 +545,22 @@ class TestCreateSupportRequest:
                         )
 
         assert exc_info.value.status_code == 500
-        mock_support_collection.delete_one.assert_awaited_once()
+        mock_support_repo.delete.assert_awaited_once()
 
     async def test_unexpected_error_rollback_failure_still_raises_500(
         self,
-        mock_support_collection,
+        mock_support_repo,
         sample_request_data,
     ):
         """When both the main operation and rollback fail, 500 is still raised."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("rollback failed"))
+        mock_support_repo.delete.side_effect = Exception("rollback failed")
 
         with patch(
             "app.services.support_service._send_support_email_notifications",
             new_callable=AsyncMock,
         ):
             with patch(
-                "app.services.support_service.SupportRequestResponse",
+                "app.services.support_service.SupportRequestResponse.model_validate",
                 side_effect=RuntimeError("unexpected"),
             ):
                 with patch("app.services.support_service.log"):
@@ -605,16 +575,12 @@ class TestCreateSupportRequest:
 
     async def test_user_name_defaults_to_user_in_email(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         sample_request_data,
     ):
         """When user_name is None, 'User' is used in email notifications."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         with patch("app.services.support_service.log"):
             result = await create_support_request(
                 request_data=sample_request_data,
@@ -637,16 +603,12 @@ class TestCreateSupportRequest:
 class TestCreateSupportRequestWithAttachments:
     async def test_success_with_attachments(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_email_notifications,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
-        """Happy path: files uploaded, DB insert, emails sent."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
+        """Happy path: files uploaded, request stored, emails sent."""
         attachments = [
             _make_upload_file("img1.png", "image/png", b"data1"),
             _make_upload_file("img2.jpg", "image/jpeg", b"data2"),
@@ -665,19 +627,17 @@ class TestCreateSupportRequestWithAttachments:
         assert result.success is True
         assert result.ticket_id is not None
         assert "images" in result.message.lower()
-        mock_support_collection.insert_one.assert_awaited_once()
+        mock_support_repo.create.assert_awaited_once()
+        stored = mock_support_repo.create.await_args.args[0]
+        assert len(stored.attachments) == 2  # both uploads recorded on the document
 
     async def test_success_with_empty_attachments(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_email_notifications,
         sample_request_data,
     ):
         """No attachments provided still creates the request."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         with patch("app.services.support_service.log"):
             result = await create_support_request_with_attachments(
                 request_data=sample_request_data,
@@ -706,16 +666,12 @@ class TestCreateSupportRequestWithAttachments:
 
     async def test_exactly_five_attachments_succeeds(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_email_notifications,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
         """Exactly 5 attachments should be accepted."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
         attachments = [_make_upload_file(f"img{i}.png", "image/png", b"data") for i in range(5)]
 
         with patch("app.services.support_service.log"):
@@ -762,14 +718,12 @@ class TestCreateSupportRequestWithAttachments:
 
     async def test_db_failure_cleans_up_uploaded_files(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
-        """When DB insert fails (no inserted_id), uploaded files are cleaned up."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = None
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
+        """When the repository create fails, uploaded files are cleaned up."""
+        mock_support_repo.create.side_effect = RuntimeError("write failed")
 
         attachments = [
             _make_upload_file("img1.png", "image/png", b"data"),
@@ -793,21 +747,13 @@ class TestCreateSupportRequestWithAttachments:
 
     async def test_email_failure_cleans_up_files_and_db(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
         """Email failure triggers cleanup of both files and DB entry."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
         mock_send_team_notification.side_effect = Exception("SMTP fail")
 
         attachments = [
@@ -831,25 +777,17 @@ class TestCreateSupportRequestWithAttachments:
         # Files should be cleaned up
         mock_delete_files.assert_awaited_once()
         # DB entry should be rolled back
-        mock_support_collection.delete_one.assert_awaited_once()
+        mock_support_repo.delete.assert_awaited_once()
 
     async def test_email_failure_file_cleanup_error_still_rolls_back_db(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
         """If file cleanup fails during email rollback, DB rollback still happens."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
         mock_send_team_notification.side_effect = Exception("SMTP fail")
 
         attachments = [
@@ -871,25 +809,18 @@ class TestCreateSupportRequestWithAttachments:
                     )
 
         # DB rollback should still be attempted
-        mock_support_collection.delete_one.assert_awaited_once()
+        mock_support_repo.delete.assert_awaited_once()
 
-    async def test_email_failure_db_rollback_deleted_count_zero(
+    async def test_email_failure_db_rollback_not_deleted(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_send_team_notification,
         mock_send_user_email,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
-        """When DB rollback returns deleted_count=0, error is logged."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 0
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
+        """When DB rollback finds nothing to delete, an error is logged."""
+        mock_support_repo.delete.return_value = False
         mock_send_team_notification.side_effect = Exception("SMTP fail")
 
         attachments = [
@@ -914,19 +845,11 @@ class TestCreateSupportRequestWithAttachments:
 
     async def test_unexpected_error_cleans_up_everything(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
         """An unexpected (non-HTTP) error triggers full cleanup of files and DB."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_delete_result = MagicMock()
-        mock_delete_result.deleted_count = 1
-        mock_support_collection.delete_one = AsyncMock(return_value=mock_delete_result)
-
         attachments = [
             _make_upload_file("img1.png", "image/png", b"data"),
         ]
@@ -937,7 +860,7 @@ class TestCreateSupportRequestWithAttachments:
             new_callable=AsyncMock,
         ):
             with patch(
-                "app.services.support_service.SupportRequestResponse",
+                "app.services.support_service.SupportRequestResponse.model_validate",
                 side_effect=RuntimeError("unexpected model error"),
             ):
                 with patch(
@@ -955,20 +878,16 @@ class TestCreateSupportRequestWithAttachments:
 
         assert exc_info.value.status_code == 500
         mock_delete_files.assert_awaited_once()
-        mock_support_collection.delete_one.assert_awaited_once()
+        mock_support_repo.delete.assert_awaited_once()
 
     async def test_unexpected_error_cleanup_failures_still_raises_500(
         self,
-        mock_support_collection,
+        mock_support_repo,
         mock_upload_file_to_cloudinary,
         sample_request_data,
     ):
         """Even when both file cleanup and DB rollback fail, 500 is raised."""
-        mock_insert_result = MagicMock()
-        mock_insert_result.inserted_id = REQUEST_ID
-        mock_support_collection.insert_one = AsyncMock(return_value=mock_insert_result)
-
-        mock_support_collection.delete_one = AsyncMock(side_effect=Exception("DB gone"))
+        mock_support_repo.delete.side_effect = Exception("DB gone")
 
         attachments = [
             _make_upload_file("img1.png", "image/png", b"data"),
@@ -979,7 +898,7 @@ class TestCreateSupportRequestWithAttachments:
             new_callable=AsyncMock,
         ):
             with patch(
-                "app.services.support_service.SupportRequestResponse",
+                "app.services.support_service.SupportRequestResponse.model_validate",
                 side_effect=RuntimeError("unexpected"),
             ):
                 with patch(
@@ -1071,24 +990,13 @@ class TestSendSupportEmailNotifications:
 
 @pytest.mark.unit
 class TestGetUserSupportRequests:
-    def _setup_cursor(self, mock_collection, docs):
-        """Configure the chained find().sort().skip().limit().to_list() mock."""
-        mock_cursor = MagicMock()
-        mock_cursor.sort.return_value = mock_cursor
-        mock_cursor.skip.return_value = mock_cursor
-        mock_cursor.limit.return_value = mock_cursor
-        mock_cursor.to_list = AsyncMock(return_value=docs)
-        mock_collection.find.return_value = mock_cursor
-        return mock_cursor
-
     async def test_success_returns_requests_and_pagination(
         self,
-        mock_support_collection,
+        mock_support_repo,
     ):
         """Returns correctly formatted response with pagination."""
-        doc = _make_db_support_doc()
-        self._setup_cursor(mock_support_collection, [doc])
-        mock_support_collection.count_documents = AsyncMock(return_value=1)
+        mock_support_repo.page_for_user.return_value = [_make_support_doc()]
+        mock_support_repo.count_for_user_status.return_value = 1
 
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
@@ -1100,10 +1008,10 @@ class TestGetUserSupportRequests:
         assert result["pagination"]["total"] == 1
         assert result["pagination"]["pages"] == 1
 
-    async def test_with_status_filter(self, mock_support_collection):
-        """Status filter is applied to the query."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
+    async def test_with_status_filter(self, mock_support_repo):
+        """Status filter is passed through to the repository."""
+        mock_support_repo.page_for_user.return_value = []
+        mock_support_repo.count_for_user_status.return_value = 0
 
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(
@@ -1113,16 +1021,22 @@ class TestGetUserSupportRequests:
                 status_filter=SupportRequestStatus.RESOLVED,
             )
 
-        # Verify query includes both user_id and status
-        call_args = mock_support_collection.count_documents.call_args[0][0]
-        assert call_args["user_id"] == USER_ID
-        assert call_args["status"] == "resolved"
+        # Both the page and count queries receive the status filter.
+        assert (
+            mock_support_repo.page_for_user.await_args.kwargs["status"]
+            is SupportRequestStatus.RESOLVED
+        )
+        assert (
+            mock_support_repo.count_for_user_status.await_args.kwargs["status"]
+            is SupportRequestStatus.RESOLVED
+        )
+        assert mock_support_repo.page_for_user.await_args.args[0] == USER_ID
         assert result["requests"] == []
 
-    async def test_empty_results(self, mock_support_collection):
+    async def test_empty_results(self, mock_support_repo):
         """No matching documents returns empty list."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=0)
+        mock_support_repo.page_for_user.return_value = []
+        mock_support_repo.count_for_user_status.return_value = 0
 
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
@@ -1131,10 +1045,10 @@ class TestGetUserSupportRequests:
         assert result["pagination"]["total"] == 0
         assert result["pagination"]["pages"] == 0
 
-    async def test_pagination_calculation(self, mock_support_collection):
+    async def test_pagination_calculation(self, mock_support_repo):
         """Pagination pages are calculated correctly with ceiling division."""
-        self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=25)
+        mock_support_repo.page_for_user.return_value = []
+        mock_support_repo.count_for_user_status.return_value = 25
 
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=2, per_page=10)
@@ -1142,20 +1056,21 @@ class TestGetUserSupportRequests:
         assert result["pagination"]["pages"] == 3
         assert result["pagination"]["page"] == 2
 
-    async def test_pagination_skip_value(self, mock_support_collection):
-        """The cursor uses the correct skip value for page 3."""
-        mock_cursor = self._setup_cursor(mock_support_collection, [])
-        mock_support_collection.count_documents = AsyncMock(return_value=50)
+    async def test_pagination_skip_value(self, mock_support_repo):
+        """The repository page query uses the correct skip/limit for page 3."""
+        mock_support_repo.page_for_user.return_value = []
+        mock_support_repo.count_for_user_status.return_value = 50
 
         with patch("app.services.support_service.log"):
             await get_user_support_requests(user_id=USER_ID, page=3, per_page=10)
 
-        mock_cursor.skip.assert_called_once_with(20)
-        mock_cursor.limit.assert_called_once_with(10)
+        page_call = mock_support_repo.page_for_user.await_args
+        assert page_call.kwargs["skip"] == 20
+        assert page_call.kwargs["limit"] == 10
 
-    async def test_db_error_raises_500(self, mock_support_collection):
+    async def test_db_error_raises_500(self, mock_support_repo):
         """Database error raises 500."""
-        mock_support_collection.count_documents = AsyncMock(side_effect=Exception("DB error"))
+        mock_support_repo.count_for_user_status.side_effect = Exception("DB error")
 
         with patch("app.services.support_service.log"):
             with pytest.raises(HTTPException) as exc_info:
@@ -1163,11 +1078,11 @@ class TestGetUserSupportRequests:
 
         assert exc_info.value.status_code == 500
 
-    async def test_multiple_documents_returned(self, mock_support_collection):
+    async def test_multiple_documents_returned(self, mock_support_repo):
         """Multiple documents are all converted to response models."""
-        docs = [_make_db_support_doc(request_id=f"id-{i}", ticket_id=f"T-{i}") for i in range(3)]
-        self._setup_cursor(mock_support_collection, docs)
-        mock_support_collection.count_documents = AsyncMock(return_value=3)
+        docs = [_make_support_doc(request_id=f"id-{i}", ticket_id=f"T-{i}") for i in range(3)]
+        mock_support_repo.page_for_user.return_value = docs
+        mock_support_repo.count_for_user_status.return_value = 3
 
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)

@@ -29,8 +29,9 @@ Sender identities (`FOUNDER_SENDER`, `SUPPORT_SENDER`) and brand URLs live in `a
 
    ```python
    class SesEmailProvider:
-       async def send(self, message: EmailMessage) -> None:
-           ...  # map EmailMessage fields to the provider API; raise on failure
+       async def send(
+           self, message: EmailMessage
+       ) -> None: ...  # map EmailMessage fields to the provider API; raise on failure
    ```
 
    Rules: the adapter must be fully async (wrap sync SDKs in `asyncio.to_thread`), must raise on failure (never swallow — retry/fallback policy belongs to callers), and must not leak provider types outside its module.

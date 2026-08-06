@@ -14,19 +14,19 @@ import { wallpapers } from "@/config/wallpapers";
 import { siteConfig } from "@/lib/seo";
 import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
+export type { ToolIconConfig };
 // Re-export from shared config
 export {
-  toolIconConfigs,
+  getCategoryInitial,
+  getIconPath,
+  getIconPaths,
+  getOgIconPath,
+  getToolIconConfig,
   iconAliases,
   normalizeCategoryName,
-  getToolIconConfig,
-  getIconPath,
-  getOgIconPath,
-  getCategoryInitial,
-  getIconPaths,
+  toolIconConfigs,
   wallpapers,
 };
-export type { ToolIconConfig };
 
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;

@@ -32,8 +32,6 @@ import re
 import time
 from typing import Any
 
-from bson import ObjectId
-
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
     PLATFORM_CONFIG,
@@ -49,7 +47,7 @@ from app.constants.email import (
 )
 from app.constants.log_tags import LogTag
 from app.constants.memory import MemorySourceType
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.helpers.email_helpers import (
     mark_email_processing_complete,
     process_email_content,
@@ -255,8 +253,8 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     Returns dict with processing stats.
     """
     timer = _StepTimer()
-    user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if user and user.get("email_memory_processed", False):
+    user = await user_repository.get(user_id)
+    if user and user.email_memory_processed:
         log.info(f"{LogTag.MEMORY} User {user_id} emails already processed, skipping")
         return {
             "total": 0,
@@ -266,8 +264,8 @@ async def process_gmail_to_memory(user_id: str) -> dict:
         }
 
     # Extract user name for consistent memory attribution
-    user_name = user.get("name") if user else None
-    user_email = user.get("email") if user else None
+    user_name = user.name if user else None
+    user_email = user.email if user else None
 
     # State tracking
     total_fetched = 0
@@ -287,7 +285,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     # Check for last scan timestamp
     last_scan_timestamp = None
     if user:
-        scan_states = user.get("integration_scan_states", {})
+        scan_states = user.integration_scan_states or {}
         if isinstance(scan_states, dict):
             gmail_state = scan_states.get("gmail", {})
             if isinstance(gmail_state, dict):
@@ -443,10 +441,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     # This prevents re-scanning the same emails
     try:
         current_time = datetime.now(UTC)
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"integration_scan_states.gmail.last_scan_timestamp": current_time}},
-        )
+        await user_repository.set_gmail_scan_timestamp(user_id, current_time)
     except Exception as e:
         log.error(f"{LogTag.MEMORY} Failed to update Gmail scan timestamp: {e}")
 
@@ -482,8 +477,8 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
         extraction_start = time.time()
 
         # Get user context for memory storage
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
-        user_name = user.get("name") if user else None
+        user = await user_repository.get(user_id)
+        user_name = user.name if user else None
 
         # Step 1: Parallel Gmail searches for all platforms
         t0_platform_search = time.monotonic()

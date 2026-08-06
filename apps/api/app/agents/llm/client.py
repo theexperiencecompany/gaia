@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable, Mapping
 from functools import cache
 from typing import Any, TypeVar
@@ -10,7 +11,7 @@ from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openrouter import ChatOpenRouter
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
 from typing_extensions import TypedDict
 
 from app.agents.llm.exceptions import (
@@ -26,11 +27,16 @@ from app.constants.llm import (
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
+    DEV_LLM_MAX_OUTPUT_TOKENS,
+    LLM_INVOKE_TIMEOUT_SECONDS,
     LLM_RETRY_MAX_ATTEMPTS,
     OPENROUTER_APP_CATEGORIES,
     OPENROUTER_APP_TITLE,
     OPENROUTER_MAX_OUTPUT_TOKENS,
     OPENROUTER_REASONING,
+    SIM_STUB_API_KEY,
+    SIM_STUB_BASE_URL,
+    SIM_STUB_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -69,10 +75,14 @@ def is_default_model_config(configurable: Mapping[str, Any]) -> bool:
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
     "openrouter": DEFAULT_GROK_MODEL_NAME,
+    # The env-defined custom dev endpoint; empty when unset — the provider is
+    # only registered in development with all DEV_LLM_* settings present.
+    "custom": settings.DEV_LLM_MODEL or "",
 }
 PROVIDER_PRIORITY = {
     1: "gemini",
     2: "openrouter",
+    3: "custom",
 }
 
 
@@ -81,27 +91,70 @@ class LLMProvider(TypedDict):
     instance: BaseChatModel
 
 
+@cache
+def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The one model used for EVERYTHING under GAIA_SIM_MODE: an OpenAI-wire
+    client pointed at the local scripted stub (tools/llm-stub). Deliberately
+    exposes no configurable fields — provider/model pinning is meaningless when
+    every request lands on the stub, so pinned config is silently ignored."""
+    llm = ChatOpenRouter(
+        model=SIM_STUB_MODEL_NAME,
+        temperature=temperature,
+        streaming=True,
+        stream_usage=True,
+        api_key=SecretStr(settings.OPENROUTER_API_KEY or SIM_STUB_API_KEY),
+        base_url=settings.OPENROUTER_BASE_URL or SIM_STUB_BASE_URL,
+    )
+    # Same reason as _build_default_llm: fractional-window middleware needs a
+    # context-window profile at graph-build time.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
+_MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
+
+
+def _openrouter_wire_configurables(llm: ChatOpenRouter):
+    """Attach the per-request configurable fields shared by every OpenRouter-wire
+    client (the real OpenRouter and the env-defined custom endpoint). The field
+    ids form one namespace across provider alternatives (``prefix_keys=False``),
+    so every compatible client must expose identical ids."""
+    return llm.configurable_fields(
+        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
+        reasoning=ConfigurableField(
+            id="reasoning",
+            name="Reasoning",
+            description="Reasoning effort (per-agent thinking budget)",
+        ),
+        model_kwargs=ConfigurableField(
+            id="model_kwargs",
+            name="Model kwargs",
+            description="Extra request params (e.g. provider routing pin)",
+        ),
+    )
+
+
 @lazy_provider(
     name="gemini_llm",
-    required_keys=[settings.GOOGLE_API_KEY],
+    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.GOOGLE_API_KEY],
     strategy=MissingKeyStrategy.WARN,
     warning_message="Google API key not configured. Models provided by Google Gemini will not work.",
 )
 def init_gemini_llm():
     """Initialize Gemini LLM with default model."""
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
     llm = ChatGoogleGenerativeAI(
         model=PROVIDER_MODELS["gemini"],
         temperature=DEFAULT_LLM_TEMPERATURE,
         streaming=True,
-    ).configurable_fields(
-        model=ConfigurableField(id="model_name", name="Model", description="Which model to use"),
-    )
+    ).configurable_fields(model=_MODEL_FIELD)
     return llm
 
 
 @lazy_provider(
     name="openrouter_llm",
-    required_keys=[settings.OPENROUTER_API_KEY],
+    required_keys=[SIM_STUB_API_KEY if settings.GAIA_SIM_MODE else settings.OPENROUTER_API_KEY],
     strategy=MissingKeyStrategy.WARN,
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
 )
@@ -115,34 +168,60 @@ def init_openrouter_llm():
     routing (the first-party MiniMax pin) rides `model_kwargs` (OpenRouter's
     `provider` request param). Both are per-request configurable.
     """
-    return ChatOpenRouter(
-        model=PROVIDER_MODELS["openrouter"],
-        temperature=DEFAULT_LLM_TEMPERATURE,
-        streaming=True,
-        stream_usage=True,
-        # Output cap; must stay well under the model's shared input+output context
-        # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
-        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
-        api_key=settings.OPENROUTER_API_KEY,
-        # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
-        # these as dedicated params (NOT `default_headers`, which it forwards to
-        # send_async and crashes on). https://openrouter.ai/docs/app-attribution
-        app_url=settings.FRONTEND_URL,
-        app_title=OPENROUTER_APP_TITLE,
-        app_categories=OPENROUTER_APP_CATEGORIES,
-        reasoning=OPENROUTER_REASONING,
-    ).configurable_fields(
-        model_name=ConfigurableField(id="model", name="Model", description="Which model to use"),
-        reasoning=ConfigurableField(
-            id="reasoning",
-            name="Reasoning",
-            description="OpenRouter reasoning effort (per-agent thinking budget)",
-        ),
-        model_kwargs=ConfigurableField(
-            id="model_kwargs",
-            name="Model kwargs",
-            description="Extra OpenRouter request params (e.g. provider routing pin)",
-        ),
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    # No base_url kwarg here on purpose: passing None would override the field's
+    # OPENROUTER_API_BASE env default_factory. Redirecting to the stub is sim
+    # mode's job (_sim_llm); this construction is identical to pre-sim behavior.
+    return _openrouter_wire_configurables(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS["openrouter"],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            # Output cap; must stay well under the model's shared input+output context
+            # window (see OPENROUTER_MAX_OUTPUT_TOKENS) or OpenRouter rejects the request.
+            max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+            api_key=settings.OPENROUTER_API_KEY,
+            # App attribution → OpenRouter rankings/analytics. ChatOpenRouter exposes
+            # these as dedicated params (NOT `default_headers`, which it forwards to
+            # send_async and crashes on). https://openrouter.ai/docs/app-attribution
+            app_url=settings.FRONTEND_URL,
+            app_title=OPENROUTER_APP_TITLE,
+            app_categories=OPENROUTER_APP_CATEGORIES,
+            reasoning=OPENROUTER_REASONING,
+        )
+    )
+
+
+@lazy_provider(
+    name="custom_llm",
+    required_keys=[SIM_STUB_API_KEY]
+    if settings.GAIA_SIM_MODE
+    else [settings.DEV_LLM_BASE_URL, settings.DEV_LLM_API_KEY, settings.DEV_LLM_MODEL],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL not configured. The custom dev LLM endpoint will not work.",
+)
+def init_custom_llm():
+    """DEV-ONLY: the env-defined custom provider — any OpenRouter/OpenAI-compatible
+    endpoint, with base URL, key, and model all from the DEV_LLM_* settings. Routes
+    bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
+    models) without spending real credits. ChatOpenRouter works against such
+    endpoints unchanged, including reasoning parsing — only the base URL and key
+    differ. Registered only when ENV=development (see register_llm_providers).
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm()
+    return _openrouter_wire_configurables(
+        ChatOpenRouter(
+            model=PROVIDER_MODELS["custom"],
+            temperature=DEFAULT_LLM_TEMPERATURE,
+            streaming=True,
+            stream_usage=True,
+            max_tokens=DEV_LLM_MAX_OUTPUT_TOKENS,
+            api_key=settings.DEV_LLM_API_KEY,
+            base_url=settings.DEV_LLM_BASE_URL,
+        )
     )
 
 
@@ -201,6 +280,7 @@ def _get_available_providers() -> dict[str, Any]:
     provider_instance_mapping = {
         "gemini": "gemini_llm",
         "openrouter": "openrouter_llm",
+        "custom": "custom_llm",
     }
 
     available = {}
@@ -268,6 +348,11 @@ def register_llm_providers():
     """Register LLM providers in the lazy loader."""
     init_gemini_llm()
     init_openrouter_llm()
+    # The custom endpoint is a dev/testing-only lane — never registered in
+    # production, so DEV_LLM_* vars present in a prod environment can't route
+    # real traffic.
+    if settings.ENV == "development":
+        init_custom_llm()
 
 
 def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
@@ -280,6 +365,8 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     cached per temperature so hot paths reuse one HTTP client instead of
     rebuilding it per call. Raises ``LLMNotConfiguredError`` if Google is not
     configured."""
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature)
     if not settings.GOOGLE_API_KEY:
         raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
     return _build_default_llm(temperature)
@@ -331,17 +418,32 @@ async def ainvoke_llm(
     config: RunnableConfig | None = None,
     label: str = "model",
     max_attempts: int = LLM_RETRY_MAX_ATTEMPTS,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> Any:
     """Invoke a runnable: retry transient errors, then fall back to ``fallback`` (if
-    given) on a provider failure. Bugs and CancelledError propagate."""
-    try:
-        return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-            messages, config=config
-        )
-    except LLM_FALLBACK_EXCEPTIONS as primary_error:
-        return _stamp_fallback(
-            await _resolve_fallback(fallback, label, primary_error).ainvoke(messages, config=config)
-        )
+    given) on a provider failure. Bugs and CancelledError propagate.
+
+    ``timeout`` is a total wall-clock ceiling over the retries, their backoff sleeps
+    and the fallback attempt — the guarantee being that this call cannot outlive it.
+    Retry alone cannot cover a provider that accepts the connection and then never
+    answers, because nothing is ever raised to retry on. ``None`` disables it.
+
+    The ceiling deliberately wraps the fallback too. Expiring mid-fallback raising
+    ``TimeoutError`` is the point: the alternative is catching it as a fallback trigger
+    (``TimeoutError`` is in ``LLM_FALLBACK_EXCEPTIONS``) and starting a second,
+    unbounded attempt — which is exactly the stall this exists to prevent.
+    """
+    async with asyncio.timeout(timeout):
+        try:
+            return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                messages, config=config
+            )
+        except LLM_FALLBACK_EXCEPTIONS as primary_error:
+            return _stamp_fallback(
+                await _resolve_fallback(fallback, label, primary_error).ainvoke(
+                    messages, config=config
+                )
+            )
 
 
 def invoke_llm(
@@ -362,6 +464,20 @@ def invoke_llm(
         )
 
 
+# Marks an internal one-shot LLM call so the chat token stream drops its output instead
+# of rendering it as assistant text. Any structured/internal call made while a graph is
+# streaming (HIL tool classification, the intent judge, the conversational resolver) must
+# carry this, or its structured-output tokens leak into the conversation as a bot message.
+# ``silent`` is the flag the messages-stream consumers read (helpers/agent_helpers.py);
+# ``metadata.silent`` is the canonical location, the top-level key mirrors it for the
+# other consumers. Pass as ``config=SILENT_LLM_CONFIG``; it merges with the ambient run
+# config, so tracing and thread context are preserved.
+SILENT_LLM_CONFIG: RunnableConfig = {
+    "silent": True,
+    "metadata": {"silent": True},
+}  # type: ignore[typeddict-unknown-key]
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -369,6 +485,7 @@ async def ainvoke_structured(
     label: str,
     temperature: float = DEFAULT_LLM_TEMPERATURE,
     config: RunnableConfig | None = None,
+    timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
 ) -> _StructuredT:
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
@@ -377,4 +494,4 @@ async def ainvoke_structured(
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
-    return await ainvoke_llm(structured, prompt, config=config, label=label)
+    return await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout)

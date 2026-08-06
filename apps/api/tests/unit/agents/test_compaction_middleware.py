@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
+from langgraph.types import Command
 import pytest
 
 from app.agents.middleware.compaction import (
@@ -133,16 +134,20 @@ class TestAwrapToolCall:
         ) as mock_write:
             result = await mw.awrap_tool_call(request, handler)
 
+        # offloaded JSON binds the mining tools via a Command carrying the message
+        assert isinstance(result, Command)
+        assert result.update["selected_tool_ids"] == ["query_json", "grep"]
+        message = result.update["messages"][0]
         # inline message shrank to a pointer; full payload written under tool_outputs/
-        assert "stored at:" in result.content
-        assert WROTE[1] in result.content
-        assert result.additional_kwargs["compacted"] is True
-        assert result.additional_kwargs["workspace_path"] == WROTE[1]
+        assert "stored at:" in message.content
+        assert WROTE[1] in message.content
+        assert message.additional_kwargs["compacted"] is True
+        assert message.additional_kwargs["workspace_path"] == WROTE[1]
         rel_path = mock_write.await_args.kwargs["relative_path"]
         assert rel_path.startswith("tool_outputs/") and rel_path.endswith(".json")
-        # the FULL content is what gets persisted (recoverable), not the preview
-        persisted = json.loads(mock_write.await_args.kwargs["content"])
-        assert persisted["content"] == big
+        # the FULL raw content is what gets persisted (recoverable and mineable
+        # by query_json/grep), not the preview or a metadata wrapper
+        assert mock_write.await_args.kwargs["content"] == big
 
     async def test_small_output_passes_through_untouched(self) -> None:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000)

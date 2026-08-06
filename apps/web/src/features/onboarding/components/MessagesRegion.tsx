@@ -41,11 +41,20 @@ function MessagesRegionImpl({ state, stage }: MessagesRegionProps) {
     ],
   );
 
-  const checklist = STAGES_WITH_PROCESSING_CHECKLIST.has(stage) ? (
+  // Gmail path also shows the checklist while the user picks integrations —
+  // the early pipeline (scan/style/triage/todos) is already running; only
+  // the workflows step is gated on the selection being confirmed.
+  const gmailPath = hasGmailDerived(state);
+  const showChecklist =
+    STAGES_WITH_PROCESSING_CHECKLIST.has(stage) ||
+    (stage === "integrationSelect" && gmailPath);
+
+  const checklist = showChecklist ? (
     <OnboardingProcessing
-      hasGmail={hasGmailDerived(state)}
+      hasGmail={gmailPath}
       completedStages={state.completedStages}
       progressByStage={state.progressByStage}
+      gateWorkflowsStep={gmailPath && !state.integrationSelectDone}
     />
   ) : null;
 

@@ -109,9 +109,14 @@ class LazyLoader(Generic[T]):
                     )
                 else:
                     self._initialize_sync()
-                    log.info(
-                        f"{LogTag.STARTUP} Auto-initialized provider '{self.provider_name}' at registration time"
-                    )
+                    # Only claim success if it actually initialized. A non-ERROR
+                    # provider whose loader RAISED is swallowed to None by
+                    # _initialize_sync (which already logged the failure) — logging
+                    # "Auto-initialized" here too would report a broken provider as up.
+                    if self.is_initialized():
+                        log.info(
+                            f"{LogTag.STARTUP} Auto-initialized provider '{self.provider_name}' at registration time"
+                        )
             except Exception as e:
                 if self.strategy == MissingKeyStrategy.ERROR:
                     raise
@@ -500,7 +505,10 @@ class ProviderRegistry:
                         return
 
                     await self.aget(name)
-                    log.info(f"{LogTag.STARTUP} Auto-initialized provider '{name}'")
+                    # aget returns None (no raise) for a WARN/SILENT provider that is
+                    # unavailable or whose loader failed — don't log success for those.
+                    if provider is not None and provider.is_initialized():
+                        log.info(f"{LogTag.STARTUP} Auto-initialized provider '{name}'")
                 except asyncio.CancelledError:
                     # Propagate cancellation so shutdown can stop warmup promptly.
                     raise

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
+from typing import Annotated
 
-from bson import ObjectId
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -12,13 +12,13 @@ from app.api.v1.dependencies.oauth_dependencies import (
 from app.constants.log_tags import LogTag
 from app.constants.todos import ONBOARDING_TODO_LIMIT
 from app.core.websocket_manager import websocket_manager
-from app.db.mongodb.collections import (
-    todos_collection,
-    users_collection,
-    workflows_collection,
-)
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
+from app.db.repositories.workflows import workflow_repository
 from app.models.user_models import (
     BioStatus,
+    OnboardingIntegrationsRequest,
+    OnboardingIntegrationsResponse,
     OnboardingPhaseUpdateRequest,
     OnboardingPreferences,
     OnboardingRequest,
@@ -30,6 +30,7 @@ from app.services.onboarding.onboarding_service import (
     complete_onboarding,
     get_user_onboarding_status,
     reset_onboarding,
+    submit_onboarding_integrations,
     update_onboarding_preferences,
 )
 from app.services.onboarding.social_profile_service import save_confirmed_profiles
@@ -66,8 +67,8 @@ def _normalize_example_blocks(raw: object) -> dict | None:
 async def complete_user_onboarding(
     onboarding_data: OnboardingRequest,
     background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user),
-    tz_info: GET_USER_TZ_TYPE = Depends(get_user_timezone),
+    user: Annotated[dict, Depends(get_current_user)],
+    tz_info: Annotated[GET_USER_TZ_TYPE, Depends(get_user_timezone)],
 ):
     """Complete user onboarding by storing preferences and queuing the intelligence pipeline."""
     log.set(
@@ -95,6 +96,32 @@ async def complete_user_onboarding(
         raise HTTPException(status_code=500, detail="Failed to complete onboarding")
 
 
+@router.post(
+    "/integrations",
+    responses={500: {"description": "Failed to submit integrations"}},
+)
+async def submit_integrations(
+    request: OnboardingIntegrationsRequest,
+    user: Annotated[dict, Depends(get_current_user)],
+) -> OnboardingIntegrationsResponse:
+    """Persist selected integrations and start the deferred workflows phase (split-mode onboarding)."""
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "submit_integrations"},
+    )
+    try:
+        status = await submit_onboarding_integrations(
+            user["user_id"], request.selected_integrations
+        )
+        log.set(onboarding={"result_status": status.value})
+        return OnboardingIntegrationsResponse(success=True, status=status)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"{LogTag.ONBOARDING} Error submitting integrations: {e!s}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to submit integrations")
+
+
 class ClarifyQuestionsRequest(BaseModel):
     name: str
     profession: str
@@ -104,7 +131,7 @@ class ClarifyQuestionsRequest(BaseModel):
 @router.post("/clarify-questions", response_model=dict)
 async def get_clarify_questions(
     payload: ClarifyQuestionsRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     """Generate the LLM 3-question follow-up for the no-Gmail path."""
     log.set(
@@ -126,7 +153,7 @@ async def get_clarify_questions(
     response_model=dict,
     responses={500: {"description": "Failed to reset onboarding"}},
 )
-async def reset_user_onboarding(user: dict = Depends(get_current_user)):
+async def reset_user_onboarding(user: Annotated[dict, Depends(get_current_user)]):
     """Fully reset onboarding so the user can run the flow again from scratch."""
     log.set(user={"id": user["user_id"]}, onboarding={"operation": "reset"})
     try:
@@ -140,7 +167,7 @@ async def reset_user_onboarding(user: dict = Depends(get_current_user)):
 
 
 @router.get("/status", response_model=dict)
-async def get_onboarding_status(user: dict = Depends(get_current_user)):
+async def get_onboarding_status(user: Annotated[dict, Depends(get_current_user)]):
     """
     Get the current user's onboarding status and preferences.
     """
@@ -160,7 +187,8 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
 
 @router.post("/phase", response_model=dict)
 async def update_onboarding_phase(
-    request: OnboardingPhaseUpdateRequest, user: dict = Depends(get_current_user)
+    request: OnboardingPhaseUpdateRequest,
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Update the user's onboarding phase.
@@ -181,23 +209,13 @@ async def update_onboarding_phase(
 
         log.info(f"{LogTag.ONBOARDING} Updating phase to {phase} for user {user_id}")
 
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    "onboarding.phase": request.phase.value,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+        matched = await user_repository.set_onboarding_phase(user_id, request.phase.value)
 
-        if result.matched_count == 0:
+        if not matched:
             log.warning(f"{LogTag.ONBOARDING} No document found for user {user_id}")
             raise HTTPException(status_code=404, detail="User not found")
 
-        log.info(
-            f"{LogTag.ONBOARDING} Successfully updated phase to {phase} for user {user_id}, modified_count={result.modified_count}"
-        )
+        log.info(f"{LogTag.ONBOARDING} Successfully updated phase to {phase} for user {user_id}")
 
         try:
             await websocket_manager.broadcast_to_user(
@@ -226,7 +244,8 @@ async def update_onboarding_phase(
 
 @router.patch("/preferences", response_model=dict)
 async def update_user_preferences(
-    preferences: OnboardingPreferences, user: dict = Depends(get_current_user)
+    preferences: OnboardingPreferences,
+    user: Annotated[dict, Depends(get_current_user)],
 ):
     """
     Update user's onboarding preferences.
@@ -253,7 +272,7 @@ async def update_user_preferences(
 
 
 @router.get("/personalization")
-async def get_onboarding_personalization(user: dict = Depends(get_current_user)):
+async def get_onboarding_personalization(user: Annotated[dict, Depends(get_current_user)]):
     """
     Get personalization data (house, phrase, bio, workflows) for current authenticated user.
     Used as fallback if WebSocket fails or to refetch data.
@@ -265,13 +284,15 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             user={"id": user_id},
             onboarding={"operation": "get_personalization"},
         )
+        if not user_id or not isinstance(user_id, str):
+            raise HTTPException(status_code=400, detail="Invalid user_id")
         log.info(f"{LogTag.ONBOARDING} Fetching personalization for user {user_id}")
-        user_doc = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user_doc = await user_repository.get(user_id)
 
         if not user_doc:
             raise HTTPException(status_code=404, detail="User not found")
 
-        onboarding = user_doc.get("onboarding", {})
+        onboarding = user_doc.onboarding or {}
         user_bio = onboarding.get("user_bio", "")
         phase = onboarding.get("phase", "initial")
         log.info(
@@ -287,10 +308,9 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         member_since = onboarding.get("member_since")
 
         if not account_number or not member_since:
-            created_at = user_doc.get("created_at")
+            created_at = user_doc.created_at
             if created_at:
-                count = await users_collection.count_documents({"created_at": {"$lt": created_at}})
-                account_number = count + 1
+                account_number = await user_repository.count_created_before(created_at) + 1
             else:
                 account_number = 1
 
@@ -304,20 +324,16 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
         workflows = []
         if workflow_ids:
             try:
-                query_ids = [
-                    ObjectId(wf_id) if ObjectId.is_valid(wf_id) else wf_id for wf_id in workflow_ids
-                ]
-                cursor = workflows_collection.find({"_id": {"$in": query_ids}})
-                wf_docs = {str(wf["_id"]): wf async for wf in cursor}
+                wf_docs = {wf.id: wf for wf in await workflow_repository.find_by_ids(workflow_ids)}
                 for wf_id in workflow_ids:
-                    wf = wf_docs.get(str(wf_id))
+                    wf = wf_docs.get(wf_id)
                     if wf:
                         workflows.append(
                             {
-                                "id": str(wf["_id"]),
-                                "title": wf.get("title", ""),
-                                "description": wf.get("description", ""),
-                                "steps": wf.get("steps", []),
+                                "id": wf.id,
+                                "title": wf.title,
+                                "description": wf.description,
+                                "steps": [step.model_dump() for step in wf.steps],
                             }
                         )
             except Exception as e:
@@ -359,22 +375,17 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
 
         onboarding_todos: list[dict] = []
         try:
-            todo_cursor = (
-                todos_collection.find(
-                    {"user_id": user_id, "labels": "onboarding"},
-                    {"_id": 1, "title": 1, "description": 1, "source_email": 1},
-                )
-                .sort("created_at", -1)
-                .limit(ONBOARDING_TODO_LIMIT)
+            todos = await todo_repository.list_onboarding_todos(
+                user_id, limit=ONBOARDING_TODO_LIMIT
             )
             onboarding_todos = [
                 {
-                    "id": str(t["_id"]),
-                    "title": t.get("title", ""),
-                    "description": t.get("description"),
-                    "source_email": t.get("source_email"),
+                    "id": t.id,
+                    "title": t.title or "",
+                    "description": t.description,
+                    "source_email": t.source_email,
                 }
-                async for t in todo_cursor
+                for t in todos
             ]
         except Exception as e:
             log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
@@ -390,8 +401,8 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
             "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
             "overlay_opacity": onboarding.get("overlay_opacity", 40),
             "suggested_workflows": workflows,
-            "name": user_doc.get("name", "User"),
-            "holo_card_id": str(user_doc["_id"]),
+            "name": user_doc.name or "User",
+            "holo_card_id": user_doc.id,
             "first_message_conversation_id": onboarding.get("first_message_conversation_id"),
             "first_message": onboarding.get("first_message"),
             "writing_style": writing_style_payload,
@@ -428,7 +439,7 @@ class WritingStyleRegenerateRequest(BaseModel):
 )
 async def save_writing_style(
     request: WritingStyleEditRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> dict:
     """Save a user-edited writing style summary from the onboarding reveal card."""
     user_id: str = user["user_id"]
@@ -448,7 +459,7 @@ async def save_writing_style(
 )
 async def regenerate_writing_style_example(
     request: WritingStyleRegenerateRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> dict:
     """Generate a new example email from an edited writing style summary."""
     user_id: str = user["user_id"]
@@ -486,7 +497,7 @@ class SocialProfilesConfirmRequest(BaseModel):
 )
 async def confirm_social_profiles(
     request: SocialProfilesConfirmRequest,
-    user: dict = Depends(get_current_user),
+    user: Annotated[dict, Depends(get_current_user)],
 ) -> dict:
     """Save user-confirmed (and optionally edited) social profiles from onboarding."""
     user_id: str = user["user_id"]

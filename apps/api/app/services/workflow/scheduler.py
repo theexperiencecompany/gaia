@@ -8,7 +8,7 @@ from typing import Any
 from arq.connections import RedisSettings
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import UNSET, workflow_repository
 from app.models.scheduler_models import (
     BaseScheduledTask,
     ScheduleConfig,
@@ -83,39 +83,14 @@ class WorkflowScheduler(BaseSchedulerService):
         status can wedge it. The re-arm at the end of execution returns the row to
         "scheduled" with its next run time.
         """
-        result = await workflows_collection.find_one_and_update(
-            {
-                "_id": workflow_id,
-                "activated": True,
-                "status": ScheduledTaskStatus.SCHEDULED.value,
-            },
-            {
-                "$set": {
-                    "status": ScheduledTaskStatus.EXECUTING.value,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
-        return result is not None
+        return await workflow_repository.claim_for_execution(workflow_id)
 
     async def get_task(self, task_id: str, user_id: str | None = None) -> Workflow | None:
         """Get a workflow by ID, or None if not found."""
         try:
-            query = {"_id": task_id}
             if user_id:
-                query["user_id"] = user_id
-
-            workflow_doc = await workflows_collection.find_one(query)
-            if not workflow_doc:
-                log.warning(f"{LogTag.WORKFLOW} Workflow {task_id} not found")
-                return None
-
-            # Transform MongoDB document to Workflow object
-            workflow_doc["id"] = workflow_doc.get("_id")
-            if "_id" in workflow_doc:
-                del workflow_doc["_id"]
-
-            return Workflow(**workflow_doc)
+                return await workflow_repository.get_for_user(task_id, user_id)
+            return await workflow_repository.get(task_id)
         except Exception as e:
             log.error(f"{LogTag.WORKFLOW} Error fetching workflow {task_id}: {e}")
             return None
@@ -168,22 +143,22 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
         try:
-            update_fields = {
-                "status": status.value,
-                "updated_at": datetime.now(UTC),
-            }
+            # BaseSchedulerService (and the re-arm paths) hand a dict; thread its
+            # known keys through the typed repository method. ``updated_at`` is
+            # auto-stamped by the repository; scheduled_at / trigger_config.next_run
+            # use the UNSET sentinel because None is a meaningful clear (reap).
+            data = update_data or {}
+            matched = await workflow_repository.set_status(
+                task_id,
+                status,
+                user_id=user_id,
+                scheduled_at=data.get("scheduled_at", UNSET),
+                occurrence_count=data.get("occurrence_count"),
+                repeat=data.get("repeat"),
+                next_run=data.get("trigger_config.next_run", UNSET),
+            )
 
-            if update_data:
-                update_fields.update(update_data)
-
-            # Build query with optional user_id filter
-            query = {"_id": task_id}
-            if user_id:
-                query["user_id"] = user_id
-
-            result = await workflows_collection.update_one(query, {"$set": update_fields})
-
-            if result.modified_count > 0:
+            if matched:
                 log.set(workflow={"id": task_id, "status": status.value})
                 log.info(f"{LogTag.WORKFLOW} Updated workflow {task_id} status to {status.value}")
                 return True
@@ -203,21 +178,14 @@ class WorkflowScheduler(BaseSchedulerService):
         integration and todo workflows all do). Without ``repeat``, the recovery scan
         would match those non-scheduled workflows and re-run the agent on every pass.
         ``repeat`` (the cron the scheduler actually re-arms on) is the precise,
-        serialization-robust discriminator for "scheduler-managed".
+        serialization-robust discriminator for "scheduler-managed". The
+        ``status="scheduled"`` and ``scheduled_at <= now`` due-filter lives on the
+        repository (``find_pending_before``), sharing the ``$lte`` semantics with the
+        reminder scan.
         """
-        return await self._query_pending_tasks(
-            workflows_collection,
-            current_time,
-            self._doc_to_workflow,
-            extra_filter={"activated": True, "repeat": {"$nin": [None, ""]}},
-        )
-
-    @staticmethod
-    def _doc_to_workflow(doc: dict[str, Any]) -> Workflow:
-        """Transform a MongoDB document into a Workflow (string ``_id`` -> ``id``)."""
-        doc["id"] = doc.get("_id")
-        doc.pop("_id", None)
-        return Workflow(**doc)
+        pending: list[BaseScheduledTask] = []
+        pending.extend(await workflow_repository.find_pending_before(current_time))
+        return pending
 
     async def schedule_workflow_execution(
         self,
@@ -310,19 +278,12 @@ class WorkflowScheduler(BaseSchedulerService):
         cutoff = now - STALE_EXECUTING_THRESHOLD
         reaped = 0
 
-        cursor = workflows_collection.find(
-            {
-                "activated": True,
-                "status": ScheduledTaskStatus.EXECUTING.value,
-                "updated_at": {"$lt": cutoff},
-            }
-        )
-        async for doc in cursor:
-            workflow_id = doc["_id"]
-            repeat = doc.get("repeat")
-            timezone = (doc.get("trigger_config") or {}).get("timezone")
+        for workflow in await workflow_repository.find_stale_executing(cutoff):
+            workflow_id = workflow.id
+            repeat = workflow.repeat
+            timezone = workflow.trigger_config.timezone
 
-            updated_at = doc.get("updated_at")
+            updated_at = workflow.updated_at
             if isinstance(updated_at, datetime) and updated_at.tzinfo is None:
                 updated_at = updated_at.replace(tzinfo=UTC)
             stuck_seconds = int((now - updated_at).total_seconds()) if updated_at else -1

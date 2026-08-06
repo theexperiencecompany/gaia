@@ -20,7 +20,7 @@ from app.constants.cache import (
     INTEGRATION_INSTRUCTIONS_CACHE_KEY,
     INTEGRATION_INSTRUCTIONS_CACHE_TTL,
 )
-from app.db.mongodb.collections import integration_instructions_collection
+from app.db.repositories.integration_instructions import integration_instructions_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_instructions_models import (
     MAX_INSTRUCTIONS_CHARS,
@@ -40,12 +40,8 @@ async def get_all_instructions(user_id: str) -> dict[str, str]:
     projection and the per-turn subagent context injection, so it must stay a
     cheap, single read.
     """
-    cursor = integration_instructions_collection.find(
-        {"user_id": user_id, "content": {"$ne": ""}},
-        {"integration_id": 1, "content": 1, "_id": 0},
-    )
-    docs = await cursor.to_list(length=None)
-    return {d["integration_id"]: d["content"] for d in docs if d.get("content")}
+    docs = await integration_instructions_repository.all_nonempty(user_id)
+    return {d.integration_id: d.content for d in docs if d.content}
 
 
 async def get_instructions(user_id: str, integration_id: str) -> str | None:
@@ -61,18 +57,16 @@ async def get_instructions_record(
     Uncached single read — used by the UI editor on open, where the freshest
     ``updated_by`` / ``updated_at`` matter for the audit line.
     """
-    doc = await integration_instructions_collection.find_one(
-        {"user_id": user_id, "integration_id": integration_id}
-    )
-    if not doc:
+    doc = await integration_instructions_repository.get_record(user_id, integration_id)
+    if doc is None:
         return None
     return IntegrationInstructions(
-        id=str(doc["_id"]),
-        user_id=doc["user_id"],
-        integration_id=doc["integration_id"],
-        content=doc.get("content", ""),
-        updated_by=InstructionsEditor(doc.get("updated_by", InstructionsEditor.USER.value)),
-        updated_at=doc.get("updated_at") or datetime.now(UTC),
+        id=doc.id,
+        user_id=doc.user_id,
+        integration_id=doc.integration_id,
+        content=doc.content,
+        updated_by=doc.updated_by,
+        updated_at=doc.updated_at or datetime.now(UTC),
     )
 
 
@@ -98,24 +92,15 @@ async def upsert_instructions(
     )
     truncated = content[:MAX_INSTRUCTIONS_CHARS]
     trimmed = truncated if truncated.strip() else ""
-    now = datetime.now(UTC)
-    await integration_instructions_collection.update_one(
-        {"user_id": user_id, "integration_id": integration_id},
-        {
-            "$set": {
-                "content": trimmed,
-                "updated_by": updated_by.value,
-                "updated_at": now,
-            }
-        },
-        upsert=True,
+    stored = await integration_instructions_repository.upsert(
+        user_id, integration_id, content=trimmed, updated_by=updated_by
     )
     return IntegrationInstructions(
         user_id=user_id,
         integration_id=integration_id,
         content=trimmed,
         updated_by=updated_by,
-        updated_at=now,
+        updated_at=stored.updated_at or datetime.now(UTC),
     )
 
 

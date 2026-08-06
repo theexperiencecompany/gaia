@@ -9,20 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.user_models import UserDocument
+
 MODULE = "app.services.integrations.marketplace"
-
-
-def _make_async_cursor(docs: list) -> MagicMock:
-    """Build a mock async cursor that supports `async for doc in cursor`."""
-    cursor = MagicMock()
-    cursor.sort.return_value = cursor
-
-    async def _aiter():
-        for doc in docs:
-            yield doc
-
-    cursor.__aiter__ = lambda self: _aiter()
-    return cursor
 
 
 def _make_oauth_integration(
@@ -56,18 +45,14 @@ def _patch_log():
 
 class TestGetAllIntegrations:
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
-    async def test_empty_marketplace(
-        self, mock_coll: MagicMock, mock_tools_store_fn: MagicMock
-    ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {}
-        mock_tools_store_fn.return_value = mock_store
+    async def test_empty_marketplace(self, mock_repo: MagicMock, mock_get_all: AsyncMock) -> None:
+        mock_get_all.return_value = {}
 
         # Empty cursor
-        mock_coll.find.return_value = _make_async_cursor([])
+        mock_repo.list_public_custom = AsyncMock(return_value=[])
 
         from app.services.integrations.marketplace import get_all_integrations
 
@@ -77,20 +62,18 @@ class TestGetAllIntegrations:
         assert result.featured == []
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
     async def test_platform_integrations_returned(
         self,
         mock_oauth_list: MagicMock,
-        mock_coll: MagicMock,
-        mock_tools_store_fn: MagicMock,
+        mock_repo: MagicMock,
+        mock_get_all: AsyncMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {}
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_all.return_value = {}
 
-        mock_coll.find.return_value = _make_async_cursor([])
+        mock_repo.list_public_custom = AsyncMock(return_value=[])
 
         oauth = _make_oauth_integration()
         mock_oauth_list.__iter__ = MagicMock(return_value=iter([oauth]))
@@ -102,20 +85,18 @@ class TestGetAllIntegrations:
         assert result.integrations[0].name == "Gmail"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
     async def test_unavailable_integration_excluded(
         self,
         mock_oauth_list: MagicMock,
-        mock_coll: MagicMock,
-        mock_tools_store_fn: MagicMock,
+        mock_repo: MagicMock,
+        mock_get_all: AsyncMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {}
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_all.return_value = {}
 
-        mock_coll.find.return_value = _make_async_cursor([])
+        mock_repo.list_public_custom = AsyncMock(return_value=[])
 
         oauth = _make_oauth_integration(available=False)
         mock_oauth_list.__iter__ = MagicMock(return_value=iter([oauth]))
@@ -126,20 +107,18 @@ class TestGetAllIntegrations:
         assert result.total == 0
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
     async def test_category_filter(
         self,
         mock_oauth_list: MagicMock,
-        mock_coll: MagicMock,
-        mock_tools_store_fn: MagicMock,
+        mock_repo: MagicMock,
+        mock_get_all: AsyncMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {}
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_all.return_value = {}
 
-        mock_coll.find.return_value = _make_async_cursor([])
+        mock_repo.list_public_custom = AsyncMock(return_value=[])
 
         gmail = _make_oauth_integration("gmail", "Gmail", "communication")
         github = _make_oauth_integration("github", "GitHub", "developer")
@@ -152,25 +131,23 @@ class TestGetAllIntegrations:
         assert result.integrations[0].name == "GitHub"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
     async def test_tool_hydration_from_store(
         self,
         mock_oauth_list: MagicMock,
-        mock_coll: MagicMock,
-        mock_tools_store_fn: MagicMock,
+        mock_repo: MagicMock,
+        mock_get_all: AsyncMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {
+        mock_get_all.return_value = {
             "gmail": {
                 "tools": [{"name": "send_email", "description": "Send an email"}],
                 "name": "Gmail",
             }
         }
-        mock_tools_store_fn.return_value = mock_store
 
-        mock_coll.find.return_value = _make_async_cursor([])
+        mock_repo.list_public_custom = AsyncMock(return_value=[])
 
         oauth = _make_oauth_integration("gmail", "Gmail")
         mock_oauth_list.__iter__ = MagicMock(return_value=iter([oauth]))
@@ -182,20 +159,18 @@ class TestGetAllIntegrations:
         assert result.integrations[0].tools[0].name == "send_email"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS")
     async def test_featured_sorted(
         self,
         mock_oauth_list: MagicMock,
-        mock_coll: MagicMock,
-        mock_tools_store_fn: MagicMock,
+        mock_repo: MagicMock,
+        mock_get_all: AsyncMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {}
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_all.return_value = {}
 
-        mock_coll.find.return_value = _make_async_cursor([])
+        mock_repo.list_public_custom = AsyncMock(return_value=[])
 
         gmail = _make_oauth_integration("gmail", "Gmail", is_featured=True, display_priority=5)
         github = _make_oauth_integration("github", "GitHub", is_featured=True, display_priority=10)
@@ -209,38 +184,35 @@ class TestGetAllIntegrations:
         assert result.featured[0].name == "GitHub"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.get_mcp_tools_store")
-    @patch(f"{MODULE}.integrations_collection")
+    @patch(f"{MODULE}.get_all_mcp_tools", new_callable=AsyncMock)
+    @patch(f"{MODULE}.integration_repository")
     @patch(f"{MODULE}.OAUTH_INTEGRATIONS", [])
     async def test_exclude_custom_public(
-        self, mock_coll: MagicMock, mock_tools_store_fn: MagicMock
+        self, mock_repo: MagicMock, mock_get_all: AsyncMock
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_all_mcp_tools.return_value = {}
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_all.return_value = {}
 
         from app.services.integrations.marketplace import get_all_integrations
 
         result = await get_all_integrations(include_custom_public=False)
-        # integrations_collection.find should NOT be called when include_custom_public=False
+        # list_public_custom should NOT be called when include_custom_public=False
         # (fetch_custom_integrations returns early)
+        mock_repo.list_public_custom.assert_not_called()
         assert result.total == 0
 
 
 class TestGetIntegrationDetails:
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
-    @patch(f"{MODULE}.get_mcp_tools_store")
+    @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_not_found(
         self,
-        mock_tools_store_fn: MagicMock,
+        mock_get_tools: AsyncMock,
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_tools = AsyncMock(return_value=[])
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_tools.return_value = []
         mock_resolver.resolve = AsyncMock(return_value=None)
 
         from app.services.integrations.marketplace import get_integration_details
@@ -249,18 +221,16 @@ class TestGetIntegrationDetails:
         assert result is None
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
-    @patch(f"{MODULE}.get_mcp_tools_store")
+    @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_platform_integration(
         self,
-        mock_tools_store_fn: MagicMock,
+        mock_get_tools: AsyncMock,
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_tools = AsyncMock(return_value=[])
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_tools.return_value = []
 
         resolved = MagicMock()
         resolved.platform_integration = _make_oauth_integration("gmail", "Gmail")
@@ -274,19 +244,17 @@ class TestGetIntegrationDetails:
         assert result.name == "Gmail"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
-    @patch(f"{MODULE}.get_mcp_tools_store")
+    @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_stored_tools_hydrated(
         self,
-        mock_tools_store_fn: MagicMock,
+        mock_get_tools: AsyncMock,
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
         stored = [{"name": "tool1", "description": "desc1"}]
-        mock_store = AsyncMock()
-        mock_store.get_tools = AsyncMock(return_value=stored)
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_tools.return_value = stored
 
         resolved = MagicMock()
         resolved.platform_integration = _make_oauth_integration("gmail", "Gmail")
@@ -301,18 +269,16 @@ class TestGetIntegrationDetails:
         assert result.tools[0].name == "tool1"
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
-    @patch(f"{MODULE}.get_mcp_tools_store")
+    @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_creator_info_populated(
         self,
-        mock_tools_store_fn: MagicMock,
+        mock_get_tools: AsyncMock,
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_tools = AsyncMock(return_value=[])
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_tools.return_value = []
 
         resolved = MagicMock()
         resolved.platform_integration = _make_oauth_integration("gmail", "Gmail")
@@ -326,8 +292,8 @@ class TestGetIntegrationDetails:
             resp = MagicMock()
             resp.tools = []
             mock_from_oauth.return_value = resp
-            mock_users.find_one = AsyncMock(
-                return_value={"name": "Creator", "picture": "https://pic.com"}
+            mock_users.get = AsyncMock(
+                return_value=UserDocument(name="Creator", picture="https://pic.com")
             )
 
             result = await get_integration_details("gmail")
@@ -335,18 +301,16 @@ class TestGetIntegrationDetails:
         assert result.creator == {"name": "Creator", "picture": "https://pic.com"}  # type: ignore[union-attr]
 
     @pytest.mark.asyncio
-    @patch(f"{MODULE}.users_collection")
+    @patch(f"{MODULE}.user_repository")
     @patch(f"{MODULE}.IntegrationResolver")
-    @patch(f"{MODULE}.get_mcp_tools_store")
+    @patch(f"{MODULE}.get_integration_tools", new_callable=AsyncMock)
     async def test_resolved_no_platform_no_custom(
         self,
-        mock_tools_store_fn: MagicMock,
+        mock_get_tools: AsyncMock,
         mock_resolver: MagicMock,
         mock_users: MagicMock,
     ) -> None:
-        mock_store = AsyncMock()
-        mock_store.get_tools = AsyncMock(return_value=[])
-        mock_tools_store_fn.return_value = mock_store
+        mock_get_tools.return_value = []
 
         resolved = MagicMock()
         resolved.platform_integration = None

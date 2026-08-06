@@ -1,0 +1,49 @@
+name: Setup Python test environment
+description: >
+  Prepare the runner to execute the API pytest suite against live services:
+  install Node + pnpm deps (the device-bridge e2e tests drive the real
+  `gaia bridge` CLI via tsx), sync Python deps with uv, and start
+  PostgreSQL/Redis/MongoDB/ChromaDB/RabbitMQ containers on the local Docker
+  daemon. Mirrors the topology of `dagger call test-python` so the suite runs
+  identically in CI and in the local Dagger harness.
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js + pnpm
+      uses: ./.github/actions/setup-node-pnpm
+
+    - name: Setup uv
+      uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      with:
+        version: "0.8.17"
+        enable-cache: true
+
+    - name: Sync Python dependencies
+      shell: bash
+      # --no-build (Sonar S8541) is impossible: pysher ships no wheel in any
+      # release. Versions are hash-pinned via --frozen, so sdist builds run
+      # the same audited code as every other install path.
+      run: uv sync --frozen --package gaia --group backend --group dev # NOSONAR githubactions:S8541
+
+    - name: Start service containers
+      shell: bash
+      run: bash scripts/ci/start-test-services.sh
+
+    # Single source of truth for the suite's service env — consuming jobs
+    # (test-python, coverage) inherit these instead of duplicating them.
+    - name: Export test-suite service environment
+      shell: bash
+      run: |
+        {
+          echo "ENV=test"
+          echo "USE_REAL_SERVICES=1"
+          echo "DATABASE_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
+          echo "POSTGRES_URL=postgresql://gaia:gaia@localhost:5432/gaia_test" # pragma: allowlist secret
+          echo "REDIS_URL=redis://localhost:6379/0"
+          echo "MONGODB_URL=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
+          echo "MONGO_DB=mongodb://gaia:gaia@localhost:27017/gaia_test?authSource=admin" # pragma: allowlist secret
+          echo "CHROMADB_HOST=localhost"
+          echo "CHROMADB_PORT=8000"
+          echo "RABBITMQ_URL=amqp://guest:guest@localhost/"
+        } >> "$GITHUB_ENV"

@@ -107,15 +107,26 @@ if (violations.length > 0) {
   violations.sort((a, b) => b.count - a.count);
   const label = enforce ? "❌" : "ℹ️";
   console.log(
-    `\n${label} ${violations.length} file(s) export more than ${MAX_TYPES_OUTSIDE} type outside a types file:\n`,
+    `\n${label} types-location: ${violations.length} file(s) export more than ${MAX_TYPES_OUTSIDE} types outside a dedicated type file:\n`,
   );
   for (const v of violations) {
-    console.log(`  ${v.file} (${v.count})`);
+    console.log(`  ${v.file} (${v.count} exported types)`);
     for (const name of v.names.slice(0, 3)) console.log(`    - ${name}`);
     if (v.names.length > 3) console.log(`    + ${v.names.length - 3} more`);
   }
   console.log(
-    "\nMove exported types/interfaces/enums into a *.types.ts, types.ts, or types/ directory.",
+    "\nWhy: types scattered across feature files get re-declared instead of reused," +
+      " so the same shape drifts into three slightly different versions.",
+  );
+  console.log(
+    "\nFix: for each file above, move its exported type/interface/enum declarations" +
+      " into a colocated `*.types.ts` (or a `types.ts` / `types/` directory in the" +
+      " same feature) and import them back. A file may keep up to" +
+      ` ${MAX_TYPES_OUTSIDE} exported types for local Props/small helpers.`,
+  );
+  console.log(
+    '\nRule: apps/web/CLAUDE.md § "Types" and root CLAUDE.md § Code Style →' +
+      " TypeScript (search `src/types/` before creating a new type).",
   );
   if (enforce) {
     process.exit(1);

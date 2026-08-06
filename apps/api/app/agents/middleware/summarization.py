@@ -20,6 +20,7 @@ from langgraph.runtime import Runtime
 
 from app.constants.log_tags import LogTag
 from app.services.storage import JuiceFSUnavailable, write_session_file
+from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import log
 
 
@@ -124,9 +125,14 @@ class WorkspaceArchivingSummarizationMiddleware(SummarizationMiddleware):
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
         history: list[dict[str, Any]] = []
         for msg in messages:
+            # Text-extract so inline media never lands base64 in the archive —
+            # the archive is a text record of the conversation, and a single
+            # image block would add ~1.4 MB of base64 to the JSON.
             entry: dict[str, Any] = {
                 "type": type(msg).__name__,
-                "content": msg.content if hasattr(msg, "content") else str(msg),
+                "content": extract_text_content(msg.content)
+                if hasattr(msg, "content")
+                else str(msg),
             }
             tool_calls = getattr(msg, "tool_calls", None)
             if tool_calls:

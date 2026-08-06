@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Works on top of your email client rather than replacing it",
     "AI filtering requires training over days or weeks to be accurate",
   ],
-  metaTitle: "Best SaneBox Alternative in 2026 | GAIA",
+  metaTitle: "Best SaneBox Alternative in 2026",
   metaDescription:
     "SaneBox only filters email. GAIA is a proactive AI assistant that manages email, creates tasks, and handles your calendar. Free tier + open-source self-hosting.",
   keywords: [

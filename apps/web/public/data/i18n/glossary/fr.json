@@ -587,7 +587,7 @@
   },
   "ai-email-assistant": {
     "term": "Assistant e-mail IA",
-    "metaTitle": "Qu'est-ce qu'un assistant e-mail IA ? | GAIA",
+    "metaTitle": "Qu'est-ce qu'un assistant e-mail IA ?",
     "metaDescription": "Un assistant e-mail IA lit, trie, rédige et gère votre boîte de réception de façon autonome. Découvrez comment GAIA agit comme votre assistant e-mail IA sur Gmail et au-delà.",
     "definition": "Un assistant e-mail IA est un logiciel utilisant l'intelligence artificielle pour lire, catégoriser, prioriser et répondre aux e-mails en votre nom, réduisant ainsi le temps et l'effort consacrés à la gestion de votre boîte de réception.",
     "extendedDescription": "En moyenne, un salarié du savoir reçoit plus de 120 e-mails par jour. Un assistant e-mail IA résout ce problème en comprenant le contenu et l’intention de chaque message, et pas seulement en recherchant des mots-clés. Il peut classer les e-mails par urgence et thématique, rédiger des réponses adaptées à votre ton et à votre style de communication, extraire les actions à entreprendre et les échéances, programmer des suivis et signaler les messages nécessitant votre attention personnelle. Les meilleurs assistants e-mail IA vont au-delà du simple tri : ils comprennent les relations entre les expéditeurs, les discussions en cours et le contexte des projets pour prendre des décisions qu’aucun filtre basé sur des règles ne pourrait faire.",
@@ -617,7 +617,7 @@
   },
   "ai-calendar-management": {
     "term": "Gestion d’agenda intelligente par IA",
-    "metaTitle": "Qu’est-ce que la gestion d’agenda IA ? | GAIA",
+    "metaTitle": "Qu’est-ce que la gestion d’agenda IA ?",
     "metaDescription": "La gestion de calendrier par IA utilise l'automatisation intelligente pour planifier des réunions, préserver les temps de concentration et préparer des briefings. Découvrez comment GAIA gère votre agenda.",
     "definition": "La gestion de calendrier par IA consiste à utiliser l'intelligence artificielle pour planifier, organiser et optimiser votre agenda en trouvant les meilleurs créneaux de réunion, en protégeant les plages de concentration, en préparant des comptes-rendus de réunion, et en coordonnant les événements avec vos tâches et communications.",
     "extendedDescription": "La gestion d'un agenda est plus complexe qu'il n'y paraît. Elle consiste à équilibrer les demandes de réunion avec les temps de concentration, à préparer les événements à venir, à éviter les réunions consécutives qui fatiguent, à adapter votre emploi du temps aux échéances, et à tenir compte des différences de fuseaux horaires dans les équipes à distance. La gestion de calendrier par IA prend en charge ces compromis en apprenant vos préférences, en analysant vos rythmes d'énergie et en s'intégrant dans l'ensemble de votre flux de travail. Elle va bien au-delà de la simple planification et apporte une véritable intelligence de l'agenda : savoir quand protéger votre temps et quand une réunion mérite d'interrompre votre travail.",
@@ -643,7 +643,7 @@
   },
   "ai-task-prioritization": {
     "term": "Priorisation des tâches par IA",
-    "metaTitle": "Qu'est-ce que la priorisation des tâches par IA ? | GAIA",
+    "metaTitle": "Qu'est-ce que la priorisation des tâches par IA ?",
     "metaDescription": "La priorisation des tâches par IA utilise l'intelligence artificielle pour classer vos tâches selon l'urgence, l'importance et le contexte. Découvrez comment GAIA organise automatiquement vos priorités.",
     "definition": "La priorisation des tâches par IA consiste à utiliser l'intelligence artificielle pour classer et organiser automatiquement les tâches selon les échéances, l'importance, les dépendances, le contexte et vos habitudes de travail personnelles.",
     "extendedDescription": "Décider sur quoi travailler ensuite est l'un des plus grands freins à la productivité. Les méthodes traditionnelles de priorisation comme la matrice d'Eisenhower ou MoSCoW nécessitent une évaluation manuelle de chaque tâche. La priorisation des tâches par IA automatise ce processus en analysant de nombreux signaux : dates limites, importance de l'expéditeur, dépendances de projets, vos habitudes de travail, votre niveau d'énergie au fil de la journée et l'impact relatif de chaque tâche. Le résultat est une liste de tâches ordonnée de manière dynamique, qui reflète la réalité du moment plutôt qu'une priorité statique définie plusieurs jours auparavant dans un autre contexte.",
@@ -669,7 +669,7 @@
   },
   "workflow-orchestration": {
     "term": "Orchestration de workflows",
-    "metaTitle": "Qu'est-ce que l'orchestration de workflows ? | GAIA",
+    "metaTitle": "Qu'est-ce que l'orchestration de workflows ?",
     "metaDescription": "L'orchestration de workflows coordonne des processus à plusieurs étapes entre outils et équipes. Découvrez comment GAIA orchestre des workflows sur plus de 50 intégrations avec l'IA.",
     "definition": "L'orchestration de workflows est la coordination automatisée de plusieurs tâches, outils et processus en une séquence structurée, gérant les dépendances, le traitement des erreurs et le flux de données à chaque étape.",
     "extendedDescription": "Alors que l'automatisation de workflows gère des tâches individuelles, l'orchestration de workflows s'occupe de la coordination entre elles. Un workflow orchestré comprend que l'étape trois dépend de la réussite des étapes une et deux, qu'une erreur à l'étape quatre doit déclencher un chemin de reprise spécifique, et que les données produites à l'étape deux doivent être transformées avant d'être utilisées à l'étape cinq. L'orchestration apporte fiabilité, visibilité et reprise sur erreur aux processus multi-étapes. Dans le contexte de l'IA, l'orchestration consiste aussi à décider quels outils et agents mobiliser à chaque étape selon l'état actuel du workflow.",
@@ -695,7 +695,7 @@
   },
   "ai-meeting-assistant": {
     "term": "Assistant de réunion IA",
-    "metaTitle": "Qu'est-ce qu'un assistant de réunion IA ? | GAIA",
+    "metaTitle": "Qu'est-ce qu'un assistant de réunion IA ?",
     "metaDescription": "Un assistant de réunion IA prépare les ordres du jour, rassemble le contexte et gère automatiquement les suivis. Découvrez comment GAIA gère l'intégralité de vos réunions.",
     "definition": "Un assistant de réunion IA est un logiciel qui utilise l'intelligence artificielle pour préparer les comptes rendus des réunions, collecter le contexte pertinent, suggérer des points à l'ordre du jour et automatiser les suivis post-réunion comme la création de tâches et la distribution de résumés.",
     "extendedDescription": "Les réunions consomment une grande partie de la semaine de travail, pourtant la plupart des personnes y arrivent sans préparation et en ressortent sans actions claires. Un assistant de réunion IA résout ces deux problèmes. Avant la réunion, il recueille les e-mails, documents et mises à jour de tâches pertinentes pour le sujet et les participants. Il peut suggérer des points à l'ordre du jour en fonction de l'activité récente. Après la réunion, il crée des tâches de suivi, envoie des résumés aux participants et planifie les prochaines étapes convenues. L'objectif est de rendre chaque réunion productive en éliminant la charge de préparation et de suivi généralement négligée par manque de temps.",
@@ -725,7 +725,7 @@
   },
   "smart-notifications": {
     "term": "Notifications intelligentes",
-    "metaTitle": "Que sont les notifications intelligentes ? | GAIA",
+    "metaTitle": "Que sont les notifications intelligentes ?",
     "metaDescription": "Les notifications intelligentes utilisent l’IA pour filtrer, hiérarchiser et regrouper les alertes afin que seules les informations importantes vous interrompent. Découvrez comment GAIA réduit la surcharge de notifications.",
     "definition": "Les notifications intelligentes sont des alertes filtrées par IA qui privilégient et regroupent les notifications selon leur urgence, leur pertinence et votre contexte actuel, remplaçant le flot constant d’interruptions par des mises à jour pertinentes et opportunes.",
     "extendedDescription": "Le professionnel moyen reçoit des dizaines de notifications par heure via l'e-mail, Slack, les outils de gestion de projet et d'autres applications. La plupart sont de faible priorité, mais chacune interrompt la concentration et augmente la charge cognitive. Les notifications intelligentes résolvent ce problème grâce à l'IA, qui analyse chaque alerte selon plusieurs critères : l'expéditeur est-il important ? Le contenu est-il urgent ? Êtes-vous en session de concentration ? Peut-on attendre jusqu'à votre prochaine pause ? Au lieu de transmettre chaque alerte, un système de notifications intelligentes regroupe les éléments de faible priorité, met immédiatement en avant les urgences, et livre le reste aux moments opportuns. Résultat : moins d'interruptions, sans jamais rater l'essentiel.",
@@ -751,7 +751,7 @@
   },
   "ai-personal-productivity": {
     "term": "Productivité personnelle avec l'IA",
-    "metaTitle": "Qu'est-ce que la productivité personnelle avec l'IA ? | GAIA",
+    "metaTitle": "Qu'est-ce que la productivité personnelle avec l'IA ?",
     "metaDescription": "La productivité personnelle avec l'IA utilise l'intelligence artificielle pour gérer vos tâches, e-mails, calendrier et flux de travail. Découvrez comment GAIA augmente la productivité grâce à l'IA.",
     "definition": "La productivité personnelle avec l'IA désigne l'utilisation d'outils et de systèmes d'intelligence artificielle pour optimiser la gestion individuelle du travail, notamment la gestion des tâches, le traitement des e-mails, l'organisation du calendrier et l'automatisation des processus.",
     "extendedDescription": "La productivité personnelle s'est historiquement appuyée sur des méthodes comme Getting Things Done (GTD), le time blocking ou la technique Pomodoro. La productivité personnelle avec l'IA va plus loin en automatisant tous les aspects fastidieux qui rendent ces systèmes difficiles à maintenir. Au lieu de capter manuellement les tâches, de trier la boîte mail ou de planifier la journée, l'IA s'occupe de ce travail répétitif. Elle extrait les tâches de vos communications, organise les e-mails en fonction de leur priorité, planifie vos journées selon les échéances et votre niveau d'énergie, et exécute automatiquement les routines. Vous vous concentrez sur les tâches créatives et stratégiques pendant que l'IA gère le système.",
@@ -777,7 +777,7 @@
   },
   "inbox-zero": {
     "term": "Inbox Zero",
-    "metaTitle": "Qu’est-ce que l’Inbox Zero ? Atteignez-le grâce à l’IA | GAIA",
+    "metaTitle": "Qu’est-ce que l’Inbox Zero ? Atteignez-le grâce à l’IA",
     "metaDescription": "L’Inbox Zero consiste à garder sa boîte mail vide ou presque vide. Découvrez comment GAIA vous aide à atteindre et maintenir l’Inbox Zero grâce à l’automatisation par l’IA.",
     "definition": "L’Inbox Zero est une méthode de gestion des emails dont l’objectif est de garder sa boîte de réception vide ou presque vide en traitant chaque message par une action : répondre, déléguer, différer, archiver ou supprimer.",
     "extendedDescription": "Inventé par l’expert en productivité Merlin Mann, l’Inbox Zero ne consiste pas à n’avoir aucun email, mais à ne laisser aucun email non traité. Chaque message doit être pris en compte : répondre, transformer en tâche, déléguer, programmer pour plus tard ou archiver. Le problème, c’est que traiter entre 50 et 100 emails par jour est épuisant et chronophage. La plupart des gens abandonnent l’Inbox Zero en quelques semaines parce que l’effort manuel est trop important. L’IA change la donne en automatisant cette étape de traitement. Un système IA peut trier, catégoriser, rédiger des réponses, extraire des tâches et archiver les messages, rendant l’Inbox Zero accessible sans la corvée quotidienne.",
@@ -807,7 +807,7 @@
   },
   "deep-work": {
     "term": "Deep Work",
-    "metaTitle": "Qu’est-ce que le Deep Work ? Protégez votre temps de concentration avec l’IA | GAIA",
+    "metaTitle": "Qu’est-ce que le Deep Work ? Protégez votre temps de concentration avec l’IA",
     "metaDescription": "Le deep work consiste en une concentration intense et sans distractions sur des tâches exigeantes sur le plan cognitif. Découvrez comment GAIA protège vos moments de concentration avec la gestion d’agenda automatisée par l’IA.",
     "definition": "Le deep work est un état de concentration soutenue et ininterrompue sur des tâches intellectuelles exigeantes, qui produit des résultats de grande qualité, selon la définition du professeur d’informatique Cal Newport.",
     "extendedDescription": "Le concept de deep work développé par Cal Newport affirme que la capacité à se concentrer sans distraction est de plus en plus rare et précieuse. Le deep work génère vos accomplissements les plus significatifs : rédaction, programmation, réflexion stratégique, résolution créative de problèmes. L’ennemi du deep work ? Le flux constant d’e-mails, de messages Slack, de notifications ou de réunions qui morcellent votre attention. Les recherches montrent qu’il faut en moyenne 23 minutes pour retrouver entièrement sa concentration après une interruption. Protéger des plages de temps ininterrompues pour le deep work est essentiel pour produire votre meilleur travail, alors que les outils numériques modernes rendent cela plus difficile que jamais.",
@@ -833,7 +833,7 @@
   },
   "time-blocking": {
     "term": "Blocage de temps",
-    "metaTitle": "Qu'est-ce que le blocage de temps ? Planification automatisée par IA | GAIA",
+    "metaTitle": "Qu'est-ce que le blocage de temps ? Planification automatisée par IA",
     "metaDescription": "Le blocage de temps consiste à attribuer des tâches précises à des créneaux horaires précis dans votre agenda. Découvrez comment GAIA automatise le blocage de temps grâce à la planification par IA.",
     "definition": "Le blocage de temps est une méthode de planification qui consiste à diviser votre journée en blocs de temps réservés, chacun affecté à une tâche ou à un type de travail spécifique, transformant ainsi votre agenda en un plan concret pour la journée.",
     "extendedDescription": "Le blocage de temps est utilisé par les dirigeants, ingénieurs et créateurs pour garantir que les missions importantes soient réellement planifiées et non simplement casées entre deux réunions. Au lieu d'une simple liste de tâches, chaque mission dispose d'un créneau spécifique dans votre agenda. Cela élimine les hésitations sur ce qu'il faut faire ensuite et crée une responsabilité pour terminer le travail en profondeur. Le défi, c'est que cette méthode requiert un ajustement perpétuel. Les réunions se déplacent, de nouvelles priorités émergent, et certaines tâches prennent plus de temps que prévu. Ajuster manuellement vos blocs de temps tout au long de la journée devient vite fastidieux, ce qui explique pourquoi beaucoup commencent le blocage de temps, mais peinent à s'y tenir.",
@@ -859,7 +859,7 @@
   },
   "no-code-automation": {
     "term": "Automatisation sans code",
-    "metaTitle": "Qu’est-ce que l’automatisation sans code ? | GAIA",
+    "metaTitle": "Qu’est-ce que l’automatisation sans code ?",
     "metaDescription": "L'automatisation sans code vous permet de créer des workflows sans programmer. Découvrez comment GAIA utilise le langage naturel pour automatiser plus de 50 outils.",
     "definition": "L’automatisation sans code consiste à créer des workflows et des processus automatisés à l’aide d’outils visuels ou d’interfaces en langage naturel, au lieu d’écrire du code, rendant l’automatisation accessible aux utilisateurs non techniques.",
     "extendedDescription": "Des outils comme Zapier, Make et n8n ont popularisé l'automatisation sans code grâce à des éditeurs visuels de workflows en glisser-déposer. Ces logiciels ont rendu l’automatisation plus accessible, mais ils nécessitent néanmoins de comprendre les déclencheurs, actions, mappages de données et conditions logiques. L’évolution suivante est l’automatisation par langage naturel, où il suffit de décrire ce que l’on veut en mots simples pour que l’IA construise le workflow. Cela supprime même l’apprentissage des interfaces visuelles et rend l’automatisation vraiment accessible à tous. L’automatisation en langage naturel gère aussi les cas particuliers et variations que des workflows sans code plus rigides ne savent pas traiter, car l’IA comprend l’intention plutôt que de suivre un schéma fixe.",
@@ -1389,7 +1389,7 @@
   },
   "digital-executive-assistant": {
     "term": "Assistant(e) exécutif(ve) numérique",
-    "metaTitle": "Qu’est-ce qu’un(e) assistant(e) exécutif(ve) numérique ? | GAIA",
+    "metaTitle": "Qu’est-ce qu’un(e) assistant(e) exécutif(ve) numérique ?",
     "metaDescription": "Un(e) assistant(e) exécutif(ve) numérique est une IA qui gère des tâches de haut niveau comme la gestion des emails, la planification et les synthèses. Découvrez comment GAIA fonctionne comme votre assistant(e) IA.",
     "definition": "Un(e) assistant(e) exécutif(ve) numérique est un système basé sur l’IA qui accomplit les fonctions d’un(e) assistant(e) exécutif(ve) humain(e) : gestion de la messagerie, planification de réunions, préparation des synthèses, coordination des suivis et gestion de tâches administratives.",
     "extendedDescription": "Les assistant(e)s exécutif(ve)s humain(e)s sont précieux car ils/elles comprennent le contexte, anticipent les besoins et gèrent les aspects opérationnels qui prennent du temps aux dirigeants. Ils/elles trient la boîte mail, préparent les documents de réunion, gèrent l’agenda, coordonnent les parties prenantes et garantissent qu’aucun détail n’est oublié. Un(e) assistant(e) exécutif(ve) numérique reproduit ces fonctions grâce à l’IA, offrant une disponibilité 24/7, une réactivité immédiate et la capacité à travailler sur des dizaines d’outils numériques en même temps. Comme pour un(e) assistant(e) humain(e), la clé reste une compréhension profonde du contexte, des priorités et du style de travail du principal concerné.",
@@ -4558,7 +4558,7 @@
   },
   "rate-limiting": {
     "term": "Rate Limiting",
-    "metaTitle": "What Is Rate Limiting? API Limits Explained | GAIA",
+    "metaTitle": "What Is Rate Limiting? API Limits Explained",
     "metaDescription": "Rate limiting controls how many API requests a client can make in a given time period, protecting servers from overload. Learn how GAIA handles rate limits across 50+ integrations.",
     "definition": "Rate limiting is a technique used by APIs and servers to control the number of requests a client can make within a specified time window, protecting infrastructure from overload and preventing abuse.",
     "extendedDescription": "Every major API — Gmail, Slack, GitHub, OpenAI, and hundreds of others — enforces rate limits to ensure fair usage and system stability. These limits are expressed in various ways: requests per second, requests per minute, requests per day, or tokens per minute for LLM APIs. When a client exceeds its limit, the server returns an HTTP 429 'Too Many Requests' response, often with a Retry-After header indicating when requests can resume.\n\nFor applications like AI assistants that integrate with many services simultaneously, rate limits present a significant engineering challenge. A single workflow might touch Gmail, Google Calendar, Slack, and Notion in sequence. If any step hits a rate limit, the entire workflow must pause and retry gracefully.\n\nEffective rate limit handling requires exponential backoff (waiting progressively longer between retries), request queuing and throttling, caching responses to avoid redundant calls, and intelligent prioritization when competing requests need the same API. For LLM APIs specifically, token-per-minute limits often matter more than request counts, requiring careful batching of prompts.\n\nRate limits also directly affect system design choices like webhook-vs-polling: webhooks are more rate-limit-efficient because they only consume quota when events occur, whereas polling consumes quota on every request regardless of whether data has changed.",
@@ -4592,7 +4592,7 @@
   },
   "ical": {
     "term": "iCal (iCalendar)",
-    "metaTitle": "What Is iCal? iCalendar Format for Calendar Sharing | GAIA",
+    "metaTitle": "What Is iCal? iCalendar Format for Calendar Sharing",
     "metaDescription": "iCal (iCalendar) is the standard format for sharing calendar data across applications, enabling Google Calendar, Outlook, and Apple Calendar to interoperate. Learn how GAIA uses iCal.",
     "definition": "iCal, short for iCalendar, is an open standard file format (RFC 5545) for sharing and syncing calendar data across different applications and platforms, enabling interoperability between Google Calendar, Microsoft Outlook, Apple Calendar, and other calendar tools.",
     "extendedDescription": "The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import — you download a file from one calendar and import it into another. Second, live calendar subscriptions — your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.",
@@ -4626,7 +4626,7 @@
   },
   "inbox-management": {
     "term": "Inbox Management",
-    "metaTitle": "What Is Inbox Management? AI Email Organization | GAIA",
+    "metaTitle": "What Is Inbox Management? AI Email Organization",
     "metaDescription": "Inbox management refers to the practices and systems used to keep an email inbox organized and manageable. Learn how GAIA automates inbox management with AI.",
     "definition": "Inbox management refers to the strategies, habits, and tools used to keep an email inbox organized, actionable, and manageable — including triage, labeling, archiving, snoozing, delegation, and maintaining Inbox Zero.",
     "extendedDescription": "The average knowledge worker receives 120+ emails per day and spends 2.5 hours managing them — a significant productivity drain. Without a systematic approach, inboxes become a chaotic mix of urgent requests, newsletters, CC'd threads, receipts, and spam, making it difficult to identify what actually requires attention.\n\nEffective inbox management typically involves several practices. Triage is the first-pass review that categorizes each email: does it require action, waiting, reference, or deletion? Labeling or foldering organizes messages by project, sender, or priority. Archiving removes handled messages from the inbox without deleting them. Snoozing hides an email until a future date when it becomes relevant. Delegation routes emails requiring action by someone else directly to them.\n\nPopular inbox management philosophies include Inbox Zero (process all emails to empty the inbox daily), the GTD email workflow (convert emails to tasks immediately), and the Three-Folder System (Action, Waiting, Archive). Each has different trade-offs between thoroughness and speed.\n\nAI is increasingly central to inbox management. AI can classify emails by urgency and category, draft replies, unsubscribe from unwanted lists, summarize long threads, and take autonomous action on routine messages. The goal is to reduce the time spent on email triage so humans can focus on messages that genuinely require their judgment.",

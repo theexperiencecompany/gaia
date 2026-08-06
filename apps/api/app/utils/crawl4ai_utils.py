@@ -12,6 +12,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
+from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import log
 
 # Tags that are almost never primary content; dropped before markdown conversion.
@@ -80,24 +81,9 @@ def _build_run_config(
 # limit itself is sourced from ``settings.CRAWL4AI_MAX_BROWSERS`` (env-driven,
 # already clamped to a safe minimum); see ``constants/search.py`` for context
 # on why the cap exists.
-_browser_semaphore: asyncio.Semaphore | None = None
-_browser_semaphore_loop: asyncio.AbstractEventLoop | None = None
-
-
 def get_browser_semaphore() -> asyncio.Semaphore:
-    """Return the shared browser semaphore bound to the running loop.
-
-    ``asyncio.Semaphore`` binds to the loop that created its internal futures, so
-    a semaphore built under one loop raises "bound to a different event loop" if
-    awaited under another (e.g. a sync caller that spins up a fresh loop, like
-    the profile crawler). Recreate it whenever the running loop changes.
-    """
-    global _browser_semaphore, _browser_semaphore_loop
-    loop = asyncio.get_running_loop()
-    if _browser_semaphore is None or _browser_semaphore_loop is not loop:
-        _browser_semaphore = asyncio.Semaphore(settings.CRAWL4AI_MAX_BROWSERS)
-        _browser_semaphore_loop = loop
-    return _browser_semaphore
+    """Return the shared browser semaphore bound to the running loop."""
+    return loop_bound_semaphore("crawl4ai_browser", settings.CRAWL4AI_MAX_BROWSERS)
 
 
 # Keeps detached close tasks alive until they finish (standard pattern to stop

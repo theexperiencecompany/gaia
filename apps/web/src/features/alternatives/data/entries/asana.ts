@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Notification overload — hard to distinguish urgent from routine updates",
     "Interface complexity grows with project size, leading to abandoned tasks",
   ],
-  metaTitle: "Best Asana Alternative in 2026 | GAIA",
+  metaTitle: "Best Asana Alternative in 2026",
   metaDescription:
     "Need an Asana alternative that actually helps you get things done? GAIA proactively manages your tasks, email, and calendar with AI. Free tier + self-hosting available.",
   keywords: [

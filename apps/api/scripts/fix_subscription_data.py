@@ -43,12 +43,12 @@ sys.path.insert(0, str(backend_dir))
 
 from bson import ObjectId  # noqa: E402
 
-from app.db.mongodb.collections import (  # noqa: E402
-    plans_collection,
-    subscriptions_collection,
-)
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.db.mongodb.mongodb import init_mongodb  # noqa: E402
 from shared.py.wide_events import log as logger  # noqa: E402
+
+plans_collection = get_async_collection("subscription_plans")
+subscriptions_collection = get_async_collection("subscriptions")
 
 
 async def find_invalid_subscriptions():

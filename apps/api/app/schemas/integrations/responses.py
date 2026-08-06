@@ -85,6 +85,10 @@ class CreateCustomIntegrationResponse(SuccessResponse, CamelModel):
 class IntegrationTool(BaseModel):
     name: str
     description: str | None = None
+    # HIL default: this tool is gated (irreversible) unless the user overrides it.
+    # Only meaningful for curated Composio toolkits; MCP tools always report False
+    # (their gating is resolved at runtime by the classifier, not pre-known here).
+    destructive: bool = False
 
 
 class IntegrationResponse(CamelModel, CloneCountMixin):

@@ -76,7 +76,9 @@ async def _materialize_one(user_id: str, connected_override: set[str] | None) ->
 
 async def _all_users() -> Iterable[str]:
     """Every user that owns at least one connected integration in Mongo."""
-    from app.db.mongodb.collections import user_integrations_collection
+    from app.db.mongodb.collections import get_async_collection
+
+    user_integrations_collection = get_async_collection("user_integrations")
 
     return {
         doc["user_id"]

@@ -34,6 +34,9 @@ interface UnifiedToolThreadProps {
   /** Whether the owning message's stream is still open — gates subagent
    *  spinners so a dropped/missing end event can't spin a card forever. */
   isStreaming: boolean;
+  /** tool_call_ids currently blocked on a HIL approval — the matching row shows
+   *  "Waiting for approval" instead of a running spinner. */
+  pendingApprovalToolCallIds: Set<string>;
 }
 
 const SHOW_ICONS = 10;
@@ -43,6 +46,7 @@ const SHOW_ICONS = 10;
 export default function UnifiedToolThread({
   timeline,
   isStreaming,
+  pendingApprovalToolCallIds,
 }: Readonly<UnifiedToolThreadProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { getIntegrationName: lookupName, getIntegrationIconUrl } =
@@ -200,6 +204,7 @@ export default function UnifiedToolThread({
                     isLast={isLast}
                     getIconUrl={getIconUrl}
                     getIntegrationName={getIntegrationName}
+                    pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                   />
                 );
               }
@@ -212,6 +217,7 @@ export default function UnifiedToolThread({
                   isStreaming={isStreaming}
                   getIconUrl={getIconUrl}
                   getIntegrationName={getIntegrationName}
+                  pendingApprovalToolCallIds={pendingApprovalToolCallIds}
                 />
               );
             })}

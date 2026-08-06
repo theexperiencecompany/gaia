@@ -15,7 +15,7 @@ export const entry: AlternativeData = {
     "No AI that proactively surfaces what to work on — Linear shows your backlog, but you decide priorities manually",
   ],
   metaTitle:
-    "Linear Alternative | GAIA — AI Task Manager for Individuals & Small Teams",
+    "Linear Alternative — GAIA — AI Task Manager for Individuals & Small Teams",
   metaDescription:
     "Want Linear's clean UX without the engineering-team overhead? GAIA is an open-source AI productivity assistant that manages tasks, email, and calendar in one place. Free tier available. Self-hostable.",
   keywords: [

@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Bear is a focused markdown note-taking app for Apple devices with a beautiful UI and tagging system. GAIA is a proactive AI assistant that manages your tasks, email, calendar, and notes across 50+ integrations — available on every platform.",
   metaTitle:
-    "Bear App Alternative with AI & Cross-Platform Support | GAIA vs Bear",
+    "Bear App Alternative with AI & Cross-Platform Support — GAIA vs Bear",
   metaDescription:
     "Bear is a gorgeous notes app but lives only on Apple devices. GAIA is a free, open-source alternative with AI email management, task automation, and cross-platform support across 50+ integrations.",
   keywords: [

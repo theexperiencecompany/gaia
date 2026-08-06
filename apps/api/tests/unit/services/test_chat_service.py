@@ -32,10 +32,10 @@ from app.services.chat.persistence import (
 from app.services.chat.stream import run_chat_stream_background
 
 
-# Each chat sub-module does `from app.core.stream_manager import stream_manager`,
-# so the patch target is each sub-module's binding. This helper rebinds all
-# four at once so a single mock intercepts calls from stream.py, chunks.py,
-# state.py, and workspace.py.
+# Each module does `from app.core.stream_manager import stream_manager`,
+# so the patch target is each module's binding. This helper rebinds all
+# five at once so a single mock intercepts calls from stream.py, chunks.py,
+# state.py, artifact_forwarder.py, and stream_publishers.py.
 @contextlib.contextmanager
 def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
     with contextlib.ExitStack() as stack:
@@ -43,7 +43,7 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
             "app.services.chat.stream.stream_manager",
             "app.services.chat.chunks.stream_manager",
             "app.services.chat.state.stream_manager",
-            "app.services.chat.workspace.stream_manager",
+            "app.services.chat.artifact_forwarder.stream_manager",
             "app.utils.stream_publishers.stream_manager",
         ):
             stack.enter_context(patch(path, sm))
@@ -591,6 +591,21 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
 
 @pytest.mark.unit
 class TestRunChatStreamBackground:
+    @pytest.fixture(autouse=True)
+    def _no_pending_approval(self) -> Iterator[None]:
+        """Stub conversational HIL resolution to "nothing pending".
+
+        ``run_chat_stream_background`` now checks Mongo for a pending approval at
+        the top of each turn. These tests exercise the normal turn and don't stub
+        Redis, so without this the real ``redis_cache`` singleton is reached and
+        raises "Event loop is closed" under xdist's per-test event loops.
+        """
+        with patch(
+            "app.services.chat.stream.resolve_pending_from_message",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 

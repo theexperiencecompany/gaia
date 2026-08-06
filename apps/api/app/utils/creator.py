@@ -8,6 +8,8 @@ apps/web/src/features/workflows/utils/creator.ts.
 
 from typing import Any
 
+from app.models.workflow_models import PublicWorkflowRow
+
 SYSTEM_CREATOR_ID = "system"
 SYSTEM_CREATOR_NAME = "GAIA Team"
 UNKNOWN_CREATOR_NAME = "Unknown"
@@ -52,19 +54,16 @@ def creator_lookup_stage(
 
 
 def format_creator(
-    workflow: dict[str, Any],
-    creator_field: str = "created_by",
-    info_field: str = "creator_info",
+    row: PublicWorkflowRow,
+    *,
     default_name: str | None = None,
 ) -> dict[str, Any]:
-    """Build the public-facing `creator` dict for a workflow document, given
-    the joined `creator_info` array. Falls back to `SYSTEM_CREATOR_NAME` when
-    the creator id is "system" (or `default_name` is set), else
-    `UNKNOWN_CREATOR_NAME`.
+    """Build the public-facing `creator` dict from a hydrated public-workflow row,
+    given its joined `creator_info`. Falls back to `SYSTEM_CREATOR_NAME` when the
+    creator id is "system" (or `default_name` is set), else `UNKNOWN_CREATOR_NAME`.
     """
-    info_array = workflow.get(info_field) or []
-    info = info_array[0] if info_array else {}
-    creator_id = workflow.get(creator_field)
+    info = row.creator_info[0] if row.creator_info else None
+    creator_id = row.created_by
 
     if default_name is not None:
         fallback_name = default_name
@@ -75,6 +74,6 @@ def format_creator(
 
     return {
         "id": creator_id,
-        "name": info.get("name", fallback_name),
-        "avatar": info.get("picture"),
+        "name": info.name if info and info.name else fallback_name,
+        "avatar": info.picture if info else None,
     }

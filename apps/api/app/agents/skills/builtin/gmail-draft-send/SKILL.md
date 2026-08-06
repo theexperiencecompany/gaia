@@ -42,7 +42,14 @@ Send an already-created draft.
 **Required parameters:**
 - `draft_id`: The ID from GMAIL_CREATE_EMAIL_DRAFT response
 
-### GMAIL_FETCH_EMAILS
+### GMAIL_DELETE_DRAFT
+Delete a draft. Gmail has no in-place draft edit, so this is how you remove a
+superseded draft before creating the revised one. Deletion is permanent.
+
+**Required parameters:**
+- `draft_id`: The ID of the draft to delete (from the GMAIL_CREATE_EMAIL_DRAFT response)
+
+### GMAIL_FETCH_MESSAGES
 Search existing emails before composing.
 
 **Useful for:**
@@ -88,11 +95,16 @@ Best regards
 ### Step 4: Send Only After Approval
 Use `GMAIL_SEND_DRAFT` with the draft_id **only after** user explicitly confirms.
 
-### Step 5: Handle Feedback
-If user wants changes:
-- Ask what to modify
-- Create new draft with changes
-- Present again for approval
+### Step 5: Handle Change Requests
+Gmail drafts cannot be edited in place. When the user wants changes to an
+existing draft, replace it, don't add another:
+1. Delete the current draft with `GMAIL_DELETE_DRAFT` (pass its `draft_id`).
+2. Create the revised draft via `GMAIL_CREATE_EMAIL_DRAFT`.
+3. Present the new draft for approval.
+
+Never skip the delete. Creating a new draft without removing the old one leaves
+duplicate drafts piling up in the user's Gmail Drafts folder. Keep exactly one
+live draft per email at a time.
 
 ## Important Rules
 1. **NEVER auto-send** - Always wait for explicit confirmation
@@ -100,6 +112,7 @@ If user wants changes:
 3. **Show full draft** - Subject, body, recipients all visible
 4. **Handle errors gracefully** - If send fails, explain and offer retry
 5. **Check before replying** - Search for context when replying to threads
+6. **One live draft per email** - To revise, delete the old draft (GMAIL_DELETE_DRAFT with its draft_id) before creating the new one; never leave stale drafts behind
 
 ## Writing Style
 - If the user context includes a **Learned Writing Style** section, use it as the primary guide for tone, voice, and phrasing when composing the email body.

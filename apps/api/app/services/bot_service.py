@@ -7,10 +7,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from fastapi import HTTPException
-from pymongo import ReturnDocument
 
-from app.db.mongodb.collections import bot_sessions_collection, conversations_collection
 from app.db.redis import redis_cache
+from app.db.repositories.bot_sessions import bot_session_repository
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
@@ -106,26 +106,16 @@ class BotService:
         # wins the id and every other caller reads it back. The unique index on
         # session_key (see app/db/mongodb/indexes.py) guarantees this atomicity.
         candidate_conversation_id = str(uuid4())
-        session = await bot_sessions_collection.find_one_and_update(
-            {"session_key": session_key},
-            {
-                "$set": {
-                    "platform": platform,
-                    "platform_user_id": platform_user_id,
-                    "channel_id": channel_id,
-                    "updated_at": now,
-                },
-                "$setOnInsert": {
-                    "session_key": session_key,
-                    "conversation_id": candidate_conversation_id,
-                    "created_at": now,
-                },
-            },
-            upsert=True,
-            return_document=ReturnDocument.AFTER,
+        session = await bot_session_repository.claim_session(
+            session_key=session_key,
+            platform=platform,
+            platform_user_id=platform_user_id,
+            channel_id=channel_id,
+            candidate_conversation_id=candidate_conversation_id,
+            timestamp=now,
         )
 
-        conversation_id = session["conversation_id"]
+        conversation_id = session.conversation_id
         is_new_session = conversation_id == candidate_conversation_id
 
         # Ensure the conversation document exists for this session. On a fresh
@@ -134,11 +124,7 @@ class BotService:
         # (re)create it with the SAME conversation_id stored on the session rather
         # than minting a new one and repointing, so the chat thread is never
         # orphaned or forked.
-        existing_conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id, "user_id": user.get("user_id")},
-            {"_id": 1},
-        )
-        if existing_conv:
+        if await conversation_repository.exists(conversation_id, user_id=user.get("user_id", "")):
             log.set(
                 bot={
                     "platform": platform,
@@ -183,7 +169,7 @@ class BotService:
             New conversation ID
         """
         session_key = BotService.build_session_key(platform, platform_user_id, channel_id)
-        await bot_sessions_collection.delete_one({"session_key": session_key})
+        await bot_session_repository.delete_by_session_key(session_key)
 
         return await BotService.get_or_create_session(platform, platform_user_id, channel_id, user)
 
@@ -202,19 +188,14 @@ class BotService:
         Returns:
             List of message dicts with role and content
         """
-        conv = await conversations_collection.find_one(
-            {"conversation_id": conversation_id, "user_id": user_id},
-            {"messages": 1},
-        )
-        if not conv or not conv.get("messages"):
+        conversation = await conversation_repository.get(conversation_id, user_id=user_id)
+        if conversation is None or not conversation.messages:
             return []
 
-        messages = conv["messages"][-limit:]
         history = []
-        for msg in messages:
-            msg_type = msg.get("type", "")
-            if msg_type == "user":
-                history.append({"role": "user", "content": msg.get("response", "")})
-            elif msg_type == "bot":
-                history.append({"role": "assistant", "content": msg.get("response", "")})
+        for msg in conversation.messages[-limit:]:
+            if msg.type == "user":
+                history.append({"role": "user", "content": msg.response or ""})
+            elif msg.type == "bot":
+                history.append({"role": "assistant", "content": msg.response or ""})
         return history

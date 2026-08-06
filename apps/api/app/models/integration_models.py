@@ -13,6 +13,7 @@ from typing import Literal, TypedDict, cast
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
+from app.db.repositories.base import MongoDocument, UserScopedDocument
 from app.helpers.integration_helpers import generate_integration_slug
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import IntegrationContent, OAuthIntegration
@@ -28,6 +29,25 @@ class IntegrationTool(BaseModel):
     description: str | None = None
 
 
+class IntegrationToolsSlice(BaseModel):
+    """Projected read of just an integration's stored tools."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    tools: list[IntegrationTool] = Field(default_factory=list)
+
+
+class IntegrationToolsRecord(BaseModel):
+    """Projected {integration_id, name, icon_url, tools} for the global MCP tool roll-up."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    integration_id: str
+    name: str | None = None
+    icon_url: str | None = None
+    tools: list[IntegrationTool] = Field(default_factory=list)
+
+
 class ComposioConfigDoc(BaseModel):
     """Composio configuration stored in MongoDB."""
 
@@ -35,12 +55,15 @@ class ComposioConfigDoc(BaseModel):
     toolkit: str
 
 
-class Integration(BaseModel):
+class Integration(MongoDocument):
     """
     Integration document model for MongoDB 'integrations' collection.
 
     Platform integrations from OAUTH_INTEGRATIONS (code) are hydrated at runtime.
     Custom integrations created by users are stored here.
+
+    Identity is the business key ``integration_id`` (unique index); the Mongo
+    ``_id`` (ObjectId) is incidental and dropped on read.
     """
 
     integration_id: str = Field(..., description="Unique identifier for the integration")
@@ -65,12 +88,21 @@ class Integration(BaseModel):
         None, description="When integration was published to marketplace"
     )
     clone_count: int = Field(0, description="Number of times this integration was cloned")
-    # Note: cloned_from, slug, og_title, og_description, creator_name, creator_picture
-    # have been removed. Creator info is now fetched from users collection at runtime.
+    # Human-readable unique slug, written at publish time (and by the slug backfill);
+    # absent until published. Creator info (name/picture) is not stored here — it is
+    # joined from the users collection at read time (see IntegrationWithCreator).
+    slug: str | None = None
 
     # Configuration (one of these based on managed_by)
     mcp_config: MCPConfig | None = None
     composio_config: ComposioConfigDoc | None = None
+
+    # Legacy top-level auth mirror. mcp_config is authoritative; these duplicate
+    # its auth flags at the document root for older documents. IntegrationResolver
+    # reconciles them against mcp_config (and self-heals drift). Defaults match the
+    # historical ``.get("requires_auth", False)`` / ``.get("auth_type", "none")`` reads.
+    requires_auth: bool = False
+    auth_type: AuthType | None = None
 
     # Frontend display metadata
     tools: list[IntegrationTool] = Field(
@@ -90,11 +122,41 @@ class Integration(BaseModel):
 
     @field_validator("clone_count", mode="before")
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: int | None) -> int:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
-    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+    model_config = ConfigDict(extra="ignore", json_encoders={datetime: lambda v: v.isoformat()})
+
+
+class IntegrationUpdate(BaseModel):
+    """Typed ``$set`` surface for a custom integration edit.
+
+    Mirrors exactly the fields ``update_custom_integration`` writes; ``updated_at``
+    is passed explicitly because the repository does not auto-stamp this collection.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    description: str | None = None
+    is_public: bool | None = None
+    mcp_config: MCPConfig | None = None
+    updated_at: datetime | None = None
+
+
+class CreatorInfo(BaseModel):
+    """Creator name/picture joined from the users collection in marketplace aggregations."""
+
+    name: str | None = None
+    picture: str | None = None
+
+
+class IntegrationWithCreator(Integration):
+    """An integration enriched with joined creator info — the typed result of the
+    creator-lookup aggregations (public detail + community listings)."""
+
+    creator: CreatorInfo | None = None
 
 
 class UserIntegration(BaseModel):
@@ -115,6 +177,26 @@ class UserIntegration(BaseModel):
     connected_at: datetime | None = Field(None, description="When OAuth/auth was completed")
 
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
+
+
+class UserIntegrationDocument(UserScopedDocument):
+    """Storage model for the ``user_integrations`` collection — one document per
+    ``(user_id, integration_id)`` (unique index). The Mongo ``_id`` (ObjectId) is
+    incidental; access is always by the business pair."""
+
+    integration_id: str
+    status: Literal["created", "connected"] = "created"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    connected_at: datetime | None = None
+
+
+class UserIntegrationUpdate(BaseModel):
+    """Typed ``$set`` fields for a user-integration record (the auth transition)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["created", "connected"] | None = None
+    connected_at: datetime | None = None
 
 
 class AddUserIntegrationRequest(BaseModel):
@@ -184,7 +266,7 @@ class IntegrationResponse(BaseModel):
 
     @field_validator("clone_count", mode="before")
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: int | None) -> int:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 

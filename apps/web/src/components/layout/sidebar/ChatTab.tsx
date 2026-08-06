@@ -5,7 +5,10 @@ import Link from "next/link";
 import React, { type FC, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import { usePathname } from "@/i18n/navigation";
-import { useIsConversationStreaming } from "@/stores/streamStore";
+import {
+  useIsConversationAwaitingApproval,
+  useIsConversationStreaming,
+} from "@/stores/streamStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 
 const ICON_WIDTH = "20";
@@ -33,6 +36,11 @@ export const ChatTab: FC<ChatTabProps> = ({
 
   // Per-conversation: multiple conversations can stream concurrently.
   const isStreaming = useIsConversationStreaming(id);
+  const isAwaitingApproval = useIsConversationAwaitingApproval(id);
+  // A turn paused on an approval has already left the streaming phase (its SSE
+  // closed), so the dot must key off both — otherwise it would vanish for exactly
+  // the wait it exists to advertise.
+  const isBusy = isStreaming || isAwaitingApproval;
 
   // Derive current conversation ID from pathname during render
   const pathParts = pathname.split("/");
@@ -83,15 +91,20 @@ export const ChatTab: FC<ChatTabProps> = ({
         }
       >
         <div className="flex w-full items-center justify-start gap-2">
-          {/* Streaming indicator - pulsing dot */}
-          {isStreaming && (
+          {/* Streaming indicator — amber when blocked on your approval, else
+              the blue "actively streaming" pulse. */}
+          {isBusy && (
             <div
-              className="size-2 shrink-0 rounded-full bg-primary animate-pulse"
-              title="Streaming..."
+              className={`size-2 shrink-0 rounded-full animate-pulse ${isAwaitingApproval ? "bg-warning" : "bg-primary"}`}
+              title={
+                isAwaitingApproval
+                  ? "Waiting for your approval"
+                  : "Streaming..."
+              }
             />
           )}
           {/* Unread indicator */}
-          {!isStreaming && isUnread && (
+          {!isBusy && isUnread && (
             <div className="size-2.5 shrink-0 rounded-full bg-primary" />
           )}
           {/* min-w-0 + truncate so a long title shrinks/ellipsizes instead of

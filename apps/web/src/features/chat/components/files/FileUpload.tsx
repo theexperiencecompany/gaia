@@ -28,6 +28,7 @@ interface FileUploadProps {
   onFilesUploaded?: (files: UploadedFilePreview[]) => void;
   initialFiles?: File[];
   isPastedFile?: boolean;
+  conversationId?: string;
 }
 
 interface FileWithPreview {
@@ -56,6 +57,7 @@ export default function FileUpload({
   onFilesUploaded,
   initialFiles = [],
   isPastedFile = false,
+  conversationId,
 }: FileUploadProps) {
   const setAuxLoading = useStreamStore((state) => state.setAuxLoading);
 
@@ -190,7 +192,10 @@ export default function FileUpload({
 
       const uploadPromises = validFiles.map(async (fileWithPreview, index) => {
         try {
-          const response = await chatApi.uploadFile(fileWithPreview.file);
+          const response = await chatApi.uploadFile(
+            fileWithPreview.file,
+            conversationId,
+          );
 
           // Update progress to 100% when done
           setFiles((prevFiles) => {

@@ -9,11 +9,10 @@ from typing import Any
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
-from app.models.workflow_models import TriggerConfig, TriggerType
+from app.db.repositories.workflows import workflow_repository
+from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
-from app.utils.workflow_utils import ensure_trigger_config_object
 from shared.py.wide_events import log
 
 
@@ -75,14 +74,9 @@ class TriggerService:
 
         for trigger_id in trigger_ids:
             try:
-                # Build query to count references
-                query: dict[str, Any] = {"trigger_config.composio_trigger_ids": trigger_id}
-
-                # Exclude the current workflow if provided
-                if excluding_workflow_id:
-                    query["_id"] = {"$ne": excluding_workflow_id}
-
-                count = await workflows_collection.count_documents(query)
+                count = await workflow_repository.count_trigger_references(
+                    trigger_id, excluding_workflow_id=excluding_workflow_id
+                )
 
                 if count == 0:
                     safe_to_delete.append(trigger_id)
@@ -199,16 +193,11 @@ class TriggerService:
         """
         if not trigger_names:
             return
-        query = {
-            "user_id": user_id,
-            "activated": True,
-            "trigger_config.type": TriggerType.INTEGRATION,
-            "trigger_config.enabled": True,
-            "trigger_config.trigger_name": {"$in": trigger_names},
-        }
-        async for doc in workflows_collection.find(query):
-            workflow_id = doc["_id"]
-            tc = ensure_trigger_config_object(doc.get("trigger_config") or {})
+        for workflow in await workflow_repository.find_active_integration_workflows(
+            user_id, trigger_names
+        ):
+            workflow_id = workflow.id
+            tc = workflow.trigger_config
             if not tc.trigger_name:
                 continue
             old_ids = tc.composio_trigger_ids or []
@@ -225,10 +214,7 @@ class TriggerService:
             # Account-level triggers (e.g. gmail_new_message) return no ids — nothing to repoint.
             if not new_ids or set(new_ids) == set(old_ids):
                 continue
-            await workflows_collection.update_one(
-                {"_id": workflow_id},
-                {"$set": {"trigger_config.composio_trigger_ids": new_ids}},
-            )
+            await workflow_repository.set_composio_trigger_ids(workflow_id, new_ids)
             stale_ids = [i for i in old_ids if i not in new_ids]
             if stale_ids:
                 await TriggerService.unregister_triggers(
