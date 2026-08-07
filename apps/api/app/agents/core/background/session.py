@@ -67,9 +67,15 @@ class StreamSession:
     # so neither the payload nor its metadata says which run it belongs to. Both
     # drivers would emit a tool_output for it, and only the subagent's copy
     # carries a subagent_id, so the client renders the second one outside the
-    # subagent's row. First emitter wins; a tool_call_id is unique per call, so
-    # a second sighting is always the echo.
+    # subagent's row. A tool_call_id is unique per call, so a second sighting is
+    # always the echo — but arrival order does not say which sighting is the
+    # subagent's, so the owner below decides rather than whoever looks first.
     streamed_tool_outputs: set[str] = field(default_factory=set)
+    # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for the
+    # executor's own calls). "updates" mode does not carry nested runs, so only
+    # the owning driver ever announces a call, and it does so before any result
+    # exists. That makes this the one fact that survives the echo.
+    tool_output_owners: dict[str, str | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -225,17 +231,35 @@ def decrement_pending_subagents(stream_id: str) -> int:
     return session.pending_subagents
 
 
-def claim_tool_output(stream_id: str, tool_call_id: str) -> bool:
+def note_tool_output_owner(stream_id: str, tool_call_id: str, subagent_id: str | None) -> None:
+    """Record which run announced this call, so only it may stream the result."""
+    session = _sessions.get(stream_id)
+    if session is None or not tool_call_id:
+        return
+    session.tool_output_owners.setdefault(tool_call_id, subagent_id)
+
+
+def claim_tool_output(stream_id: str, tool_call_id: str, subagent_id: str | None = None) -> bool:
     """Claim the right to stream this tool result, once per stream.
 
-    Returns True for the first caller and False for every echo. Fails open when
+    Returns True for the owning caller and False for every echo. Fails open when
     the stream has no session (a bare driver run, or any caller outside the
     background machinery): with nowhere to record the claim there is nothing to
     echo it either, so suppressing would only drop the sole copy.
+
+    A run that did not announce the call is always the echo, however early it
+    looks. Deciding on arrival order instead let the outer driver — which sees
+    the nested run's ToolMessage but has no ``subagent_id`` — win on a slow
+    machine and publish the result untagged, stranding the card outside the
+    subagent's row. An unannounced call still fails open, so a HIL resume (whose
+    announcement happened in the run before the pause) keeps streaming.
     """
     session = _sessions.get(stream_id)
     if session is None or not tool_call_id:
         return True
+    owner = session.tool_output_owners.get(tool_call_id, subagent_id)
+    if owner != subagent_id:
+        return False
     if tool_call_id in session.streamed_tool_outputs:
         return False
     session.streamed_tool_outputs.add(tool_call_id)

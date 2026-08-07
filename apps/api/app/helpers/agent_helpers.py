@@ -763,9 +763,10 @@ async def execute_graph_streaming(
                 # One emission per result per stream. The executor runs as a
                 # detached task whose own driver (subagent_runner) sees the same
                 # ToolMessage, and this comms stream is still open while it does
-                # — so an ungated second copy renders the card twice. Which
-                # result doubles is a race: whichever lands before the comms turn
-                # closes. See background.session.claim_tool_output.
+                # — so an ungated second copy renders the card twice. The run that
+                # announced the call owns the result; comms announced its own, so
+                # it wins those and loses a subagent's. See
+                # background.session.claim_tool_output.
                 if claim_tool_output(stream_id or "", chunk.tool_call_id):
                     yield format_sse_data(
                         {"tool_output": tool_output_payload.model_dump(exclude_none=True)}

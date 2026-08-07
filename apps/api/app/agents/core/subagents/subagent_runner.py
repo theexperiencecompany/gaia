@@ -20,7 +20,7 @@ from langchain_core.messages import (
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import Command, StateSnapshot, interrupt
 
-from app.agents.core.background.session import claim_tool_output
+from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
 from app.agents.core.graph_manager import (
     CompiledAgentGraph,
     GraphManager,
@@ -306,10 +306,12 @@ def _process_messages_payload(
     protection in its ``node_name != "agent"`` gate, which is why tool_data
     never doubled and only tool_output did.
 
-    Claiming per stream rather than scoping to the calls this run announced is
-    deliberate: a run's announced set starts empty, so a HIL resume — where the
-    call was announced before the approval pause — would have its result
-    suppressed, trading a duplicate card for a missing one.
+    The claim goes to whichever run ANNOUNCED the call (``note_tool_output_owner``,
+    in the "updates" branch), not to whichever looks first: both drivers race for
+    the same ToolMessage, and on a slow machine the executor won and published the
+    untagged copy. A call nobody announced still fails open, so a HIL resume — where
+    the announcement happened in the run before the pause — keeps its result rather
+    than trading a duplicate card for a missing one.
     """
     chunk, metadata = payload
     if metadata.get("silent"):
@@ -338,7 +340,7 @@ def _process_messages_payload(
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = extract_text_content(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
-        if stream_writer and claim_tool_output(stream_id, chunk.tool_call_id):
+        if stream_writer and claim_tool_output(stream_id, chunk.tool_call_id, subagent_id):
             tool_output_payload = ToolOutputPayload(
                 tool_call_id=chunk.tool_call_id,
                 output=content_str,
@@ -451,6 +453,9 @@ async def execute_subagent_stream(
                     integration_metadata=integration_metadata,
                 )
                 for tc_id, tool_entry in entries:
+                    # Announcing the call is what claims its result: "messages" mode
+                    # will replay this ToolMessage into the outer run's stream too.
+                    note_tool_output_owner(ctx.stream_id or "", tc_id, subagent_id)
                     if stream_writer:
                         chunk_data: dict[str, Any] = {"tool_data": tool_entry}
                         if subagent_id:

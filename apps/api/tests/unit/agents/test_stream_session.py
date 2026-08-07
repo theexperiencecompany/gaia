@@ -13,6 +13,7 @@ from app.agents.core.background.session import (
     ExecutorRun,
     RunKind,
     claim_bg_integration,
+    claim_tool_output,
     create_session,
     decrement_pending_subagents,
     get_or_create_session,
@@ -21,6 +22,7 @@ from app.agents.core.background.session import (
     has_bg_integration,
     increment_pending_subagents,
     mark_executor_spawned,
+    note_tool_output_owner,
     release_bg_integration,
     signal_executor_done,
     teardown_session,
@@ -207,3 +209,48 @@ class TestSubagentCoordination:
     def test_integration_slot_for_missing_session_is_safe(self) -> None:
         release_bg_integration("missing", "gmail")  # must not raise
         assert has_bg_integration("missing", "gmail") is False
+
+
+@pytest.mark.unit
+class TestToolOutputOwnership:
+    """Who may stream a tool result, when both drivers see the same ToolMessage.
+
+    A subagent handed off to from an executor tool is a nested run, and "messages"
+    mode replays its chunks into the outer run's stream. Only the subagent's copy
+    carries a subagent_id, so if the outer driver wins the card renders outside the
+    subagent's row. Ownership — recorded when the call is announced, before any
+    result exists — is what decides it; arrival order must not.
+    """
+
+    def test_the_announcing_run_wins_however_late_it_looks(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        note_tool_output_owner("s1", "tc_fetch", "row-1")
+
+        # The outer driver (no subagent_id) sees the echo FIRST and must lose.
+        assert claim_tool_output("s1", "tc_fetch", None) is False
+        assert claim_tool_output("s1", "tc_fetch", "row-1") is True
+
+    def test_the_owner_still_streams_only_once(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        note_tool_output_owner("s1", "tc_fetch", "row-1")
+
+        assert claim_tool_output("s1", "tc_fetch", "row-1") is True
+        assert claim_tool_output("s1", "tc_fetch", "row-1") is False
+
+    def test_an_executors_own_call_is_owned_by_the_untagged_run(self) -> None:
+        create_session("s1", RunKind.LIVE)
+        note_tool_output_owner("s1", "tc_exec", None)
+
+        assert claim_tool_output("s1", "tc_exec", "row-1") is False
+        assert claim_tool_output("s1", "tc_exec", None) is True
+
+    def test_an_unannounced_call_fails_open(self) -> None:
+        # A HIL resume announced its call in the run before the pause, so nothing
+        # owns it here. Suppressing would drop the only copy.
+        create_session("s1", RunKind.LIVE)
+        assert claim_tool_output("s1", "tc_resumed", "row-1") is True
+        assert claim_tool_output("s1", "tc_resumed", "row-1") is False
+
+    def test_ownership_for_missing_session_is_safe(self) -> None:
+        note_tool_output_owner("missing", "tc_fetch", "row-1")  # must not raise
+        assert claim_tool_output("missing", "tc_fetch", None) is True
