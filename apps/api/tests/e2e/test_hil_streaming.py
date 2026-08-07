@@ -1,6 +1,6 @@
 """What the USER SEES across a HIL pause — the frames, not the semantics.
 
-``tests/service/test_hil_barrier_e2e.py`` and ``test_hil_spawn_e2e.py`` already
+``tests/e2e/test_hil_barrier_e2e.py`` and ``test_hil_spawn_e2e.py`` already
 prove the approval *semantics*: did the action run, did it run once, whose
 decision applied. Neither of them opens a stream. ``stream_id`` appears there
 only as a config value threaded through, and no ``subscribe_stream``, no

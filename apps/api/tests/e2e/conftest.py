@@ -39,6 +39,14 @@ from app.core.lazy_loader import providers
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel
+from tests.integration.real.db_fixtures import (  # noqa: F401  (fixture re-export)
+    hil_approvals_collection,
+    mongo_db,
+    mongodb_url,
+    postgres_url,
+    real_redis,
+    redis_url,
+)
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")

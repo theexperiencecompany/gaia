@@ -942,10 +942,14 @@ class TestDodoPaymentServiceInit:
                 "app.services.payments.payment_service.DodoPayments",
                 side_effect=Exception("Bad API key"),
             ):
-                # Should not raise
-                svc = DodoPaymentService()
-                # client attribute may not exist, which is expected
-                assert not hasattr(svc, "client") or svc.client is not None or True
+                with patch("app.services.payments.payment_service.log") as mock_log:
+                    # Should not raise
+                    svc = DodoPaymentService()
+
+                # Init failure leaves the service without a usable client
+                assert not hasattr(svc, "client")
+                # The failure must be surfaced in the logs, not swallowed
+                mock_log.error.assert_called_once()
 
 
 # ============================================================================

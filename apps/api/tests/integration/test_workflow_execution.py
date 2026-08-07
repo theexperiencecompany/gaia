@@ -1,6 +1,10 @@
 """
 Integration tests for Workflow Execution End-to-End.
 
+Sibling: ``tests/e2e/test_workflow_execution.py`` drives the real compiled
+agent graphs end to end; this file pins the workflow service layer itself
+(mocked I/O boundaries only).
+
 Tests the real workflow service functions with mocked I/O boundaries
 (MongoDB, Redis, ChromaDB, LLM). Verifies that:
 - CRUD lifecycle works end-to-end through real service code

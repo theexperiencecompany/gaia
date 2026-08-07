@@ -555,9 +555,9 @@ class TestTimingEdgeCases:
             def fn() -> None:
                 pass
 
-            fn()
+            result = fn()
 
-        assert True  # fn() returns None, verified by sync_timer decorator
+        assert result is None
 
     async def test_async_timer_with_none_return(self) -> None:
         with (

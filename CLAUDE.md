@@ -272,9 +272,9 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 ### Testing
 
-**Do NOT create test cases unless explicitly asked.** Do not add tests when adding a feature or refactoring unless the user specifically requests it.
+Tests are first-class: every new feature/refactor ships a test at the right tier; every bug ships a failing-then-passing test (see `apps/api/tests/CLAUDE.md` for which tier).
 
-**The one exception — every bug gets a test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
+**The bug loop — every bug ships a failing-then-passing test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
 
 1. **Ask why the suite missed it.** Name the specific gap — no test covered this path at all, a test covered it but asserted too weakly, the boundary was never exercised, or the test mocked away the very code that broke. That answer determines what to write and often exposes neighbouring blind spots.
 2. **Write the test that reproduces it, and watch it FAIL.** A test written after the fix, never observed red, proves nothing — it only asserts what the code now happens to do. Red first is the whole point.

@@ -124,7 +124,7 @@ class MockAuthMiddleware(BaseHTTPMiddleware):
     WorkOS SSO can't be driven headlessly in a test, so every API-level test in
     this repo that needs "a signed-in user" swaps this in for the real auth
     middleware instead (see tests/integration/api/conftest.py and
-    tests/service/conftest.py). It does not touch any of the business logic
+    tests/integration/real/conftest.py). It does not touch any of the business logic
     under test — only the login step no automated test can perform for real.
     """
 

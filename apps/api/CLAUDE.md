@@ -427,29 +427,33 @@ A narrower type that's provably correct beats a "complete" one that required gue
 
 ## Testing
 
-Tests run with `pytest-asyncio` in `asyncio_mode = auto` (all async tests work without `@pytest.mark.asyncio` on the function, but the class still needs the marker or `@pytest.mark.asyncio` on individual tests to satisfy strict mode).
+The single conventions doc — tiers, quality bar, run commands, naming — is **`tests/CLAUDE.md`**. Read it before writing any test. Copy-from-me scaffolds live in `tests/_template/`.
 
-Default `addopts`: `-m "not composio" --strict-markers -n 4` — four parallel workers, composio tests excluded.
+Tier summary (full table in `tests/CLAUDE.md`):
 
-**Test structure:**
+- `tests/unit/` — fast, hermetic, everything mocked. Mirrors `app/` (new service fn → `unit/services/`, new endpoint → `unit/api/`).
+- `tests/integration/` — real production code, mocked infra. Wiring between components.
+- `tests/integration/real/` — real Postgres/Redis/Mongo, `USE_REAL_SERVICES=1` + Docker (`nx run api:test:service`).
+- `tests/contracts/` — repository contracts against real Mongo + Redis (`nx run api:test:contracts`).
+- `tests/e2e/` — real compiled graphs, fake LLM via `_harness/` (`nx run api:test:e2e`).
+- `tests/stress/` / `tests/meta/` — race/retry battles, import-fence invariants (own targets).
+- `tests/composio/`, `tests/model_onboarding/` — live-credential, opt-in, excluded by default.
 
-- `tests/unit/` — no external deps, mock everything. Fast.
-- `tests/integration/` — compiles real LangGraph graphs or exercises the full FastAPI request cycle (mocked service layer, no real DBs).
-- `tests/e2e/` — marked `e2e`, require real or near-real services, not cached, run separately.
-- `tests/composio/` — require real Composio credentials, excluded by default.
+Never run a raw full `pytest` locally — use the nx targets (`nx test api`, `nx run api:test:*`); they pin the dirs, markers, and xdist settings.
+
+**Unmark the patch-away.** A caller mocking a service means that service's logic has never run — the mock is a permanent blind spot. When you see an endpoint test mocking a service it barely touches, or a service test mocking a repo call whose logic matters, prefer un-mocking: let the real component run against mocked seams one layer down. Same rule as "never mock the thing under test."
+
+Pytest mechanics: `asyncio_mode = auto` (async tests work without `@pytest.mark.asyncio`, but a class still needs `@pytest.mark.unit` etc. under `--strict-markers`). Default `addopts`: `-m "not composio and not model_onboarding" --strict-markers -n 4 --timeout=300`.
 
 **Root `conftest.py` gotchas:**
 
 - Sets `ENV=development` at import time before any app module loads. Must stay first.
-- Patches `inject_infisical_secrets` and `MongoDB.ping` globally so tests never hang on external connections.
-- Patches `tiered_limiter.check_and_increment` and `payment_service.get_user_subscription_status` globally.
+- Blanks every credential-looking env var via the `_hermetic_environment` session fixture — tests must never depend on a developer's `.env` values.
+- Patches `inject_infisical_secrets` and `MongoDB.ping` globally so tests never hang on external connections; patches `tiered_limiter.check_and_increment` and `payment_service.get_user_subscription_status` globally.
+- `USE_REAL_SERVICES` defaults to `0` — a bare local run stays offline. Set it to `1` only for the real-infra tiers.
 - Provides `client` (authenticated) and `unauthed_client` fixtures that use `ASGITransport` with a no-op lifespan.
 
 **Integration API tests** use a separate `conftest.py` in `tests/integration/api/` that provides `test_client` and `unauthenticated_client` fixtures with `_MockAuthMiddleware` / `_NoAuthMiddleware`. These are different from the root `client` fixture.
-
-Run composio tests (needs credentials): `uv run pytest tests/composio -v`
-
-Run e2e tests (needs live services): `nx run api:test:e2e`
 
 ## Native vs Dockered API (JuiceFS trade-off)
 

@@ -1,5 +1,9 @@
 """E2E tests: workflow execution, plus the agent-graph lifecycle it runs on.
 
+Sibling: ``tests/integration/test_workflow_execution.py`` covers the workflow
+service layer in isolation (mocked I/O); this file drives the real compiled
+agent graphs end to end.
+
 WHAT THIS TESTS (REAL GAIA CODE):
 - ``execute_workflow_by_id`` / ``execute_workflow_as_chat`` from
   ``app.workers.tasks.workflow_tasks`` — the real entry point a workflow fire
