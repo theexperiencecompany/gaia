@@ -33,8 +33,9 @@ TESTS="tools/alert-rules/tests"
 
 # --test-dir makes the extractor fail if any rule has no test file (or any test
 # file has no rule), so a rule that "provisions cleanly and never fires" can no
-# longer ship quietly.
-uv run tools/alert-rules/extract_promql.py -o "$RULES" --test-dir "$TESTS"
+# longer ship quietly. --no-build forbids building sdist deps from source (the
+# pinned pyyaml wheel is all this script needs).
+uv run --no-build tools/alert-rules/extract_promql.py -o "$RULES" --test-dir "$TESTS"
 echo "extracted + coverage-checked -> $RULES"
 
 echo "==> pint (offline checks)"

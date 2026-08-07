@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["pyyaml>=6"]
+# dependencies = ["pyyaml==6.0.3"]
 # ///
 """Derive a Prometheus-native rule file from the Grafana-managed alert rules.
 
@@ -34,7 +34,7 @@ COMPARISONS = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 DOC = "infra/docker/observability/CLAUDE.md → Adding an alert rule"
 # Grafana `for` durations. Single-unit to keep it honest: every rule here uses
 # m or h, and promtool check rules rejects garbage downstream anyway.
-FOR_DURATION = re.compile(r"^[0-9]+(ms|s|m|h|d|w|y)$")
+FOR_DURATION = re.compile(r"^\d+(ms|s|m|h|d|w|y)$")
 
 
 class RuleShapeError(Exception):
@@ -257,10 +257,18 @@ def main(argv: list[str]) -> int:
     )
     args = parser.parse_args(argv)
 
+    source = args.source.resolve()
+    if not source.is_file():
+        print(
+            f"\n✗ alert-rule validation failed — --source {source} is not a file", file=sys.stderr
+        )
+        return 1
+    test_dir = args.test_dir.resolve() if args.test_dir is not None else None
+
     try:
-        rules = extract(args.source)
-        if args.test_dir is not None:
-            _check_test_coverage(args.test_dir, rules)
+        rules = extract(source)
+        if test_dir is not None:
+            _check_test_coverage(test_dir, rules)
     except RuleShapeError as err:
         print(f"\n✗ alert-rule validation failed — {err}", file=sys.stderr)
         print(

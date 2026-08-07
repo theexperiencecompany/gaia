@@ -625,30 +625,30 @@ jobs:
         with:
           version: "0.8.17"
           enable-cache: true
-      - uses: actions/setup-go@v5
-        with:
-          # pint's go.mod requires 1.26; anything older makes `go install`
-          # stop to download a toolchain first.
-          go-version: "1.26"
-      - name: Install pint + promtool (pinned to the versions prod uses)
+      - name: Install pint + promtool (pinned release binaries, same versions prod runs)
         run: |
           echo "::group::install"
-          go install github.com/cloudflare/pint/cmd/pint@v0.87.0
-          # promtool cannot be `go install`ed at v3.1.0: Prometheus's go.mod
-          # declares `module github.com/prometheus/prometheus` (no `/v3` suffix),
-          # which the Go tool rejects at major version 3. Download the pinned
-          # release binary instead — same version prod runs.
-          curl -sSL -o /tmp/prometheus.tar.gz \
+          # Pinned GitHub release tarballs, not `go install`: Prometheus v3's
+          # go.mod declares `module github.com/prometheus/prometheus` (no `/v3`
+          # suffix), which the Go tool rejects at major version 3, and a
+          # lock-file-free `go install` is unpinned for transitive deps anyway.
+          # --proto '=https' keeps redirects from ever downgrading to http.
+          curl -sSL --proto '=https' -o /tmp/pint.tar.gz \
+            https://github.com/cloudflare/pint/releases/download/v0.87.0/pint-0.87.0-linux-amd64.tar.gz
+          tar -xzf /tmp/pint.tar.gz -C /tmp
+          cp /tmp/pint-linux-amd64 /usr/local/bin/pint
+          curl -sSL --proto '=https' -o /tmp/prometheus.tar.gz \
             https://github.com/prometheus/prometheus/releases/download/v3.1.0/prometheus-3.1.0.linux-amd64.tar.gz
           tar -xzf /tmp/prometheus.tar.gz -C /tmp
-          cp /tmp/prometheus-3.1.0.linux-amd64/promtool "$(go env GOPATH)/bin/promtool"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          cp /tmp/prometheus-3.1.0.linux-amd64/promtool /usr/local/bin/promtool
           echo "::endgroup::"
           echo "pint v0.87.0 + promtool v3.1.0 installed"
       - name: Extract rules and enforce test coverage (no silent skips)
         run: |
           echo "::group::extract"
-          uv run tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
+          # --no-build forbids building sdist deps from source; the pinned
+          # pyyaml wheel is all this script needs.
+          uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
             --test-dir tools/alert-rules/tests
           echo "::endgroup::"
           echo "Extraction: OK (every rule matched the A/B/C shape and has a test)"
