@@ -143,5 +143,8 @@ whole file without it. It stays at `Information` and never fails the lane.
 
 `verify.sh` uses the pinned tool images — `ghcr.io/cloudflare/pint:0.87.0` and
 `prom/prometheus:v3.1.0` (the version prod runs) — so local and CI behaviour
-cannot drift. CI installs the same two versions with `go install` and runs the
-identical commands.
+cannot drift. CI installs the same two versions by other means and runs the
+identical commands: pint via `go install github.com/cloudflare/pint/cmd/pint@v0.87.0`,
+and promtool from the pinned GitHub release tarball (Prometheus v3's go.mod
+declares `module github.com/prometheus/prometheus` without the `/v3` suffix, so
+`go install ...@v3.1.0` is rejected by the Go tool at major version 3).

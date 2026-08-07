@@ -632,9 +632,16 @@ jobs:
           go-version: "1.26"
       - name: Install pint + promtool (pinned to the versions prod uses)
         run: |
-          echo "::group::go install"
+          echo "::group::install"
           go install github.com/cloudflare/pint/cmd/pint@v0.87.0
-          go install github.com/prometheus/prometheus/cmd/promtool@v3.1.0
+          # promtool cannot be `go install`ed at v3.1.0: Prometheus's go.mod
+          # declares `module github.com/prometheus/prometheus` (no `/v3` suffix),
+          # which the Go tool rejects at major version 3. Download the pinned
+          # release binary instead — same version prod runs.
+          curl -sSL -o /tmp/prometheus.tar.gz \
+            https://github.com/prometheus/prometheus/releases/download/v3.1.0/prometheus-3.1.0.linux-amd64.tar.gz
+          tar -xzf /tmp/prometheus.tar.gz -C /tmp
+          cp /tmp/prometheus-3.1.0.linux-amd64/promtool "$(go env GOPATH)/bin/promtool"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           echo "::endgroup::"
           echo "pint v0.87.0 + promtool v3.1.0 installed"
