@@ -59,6 +59,13 @@ class MongoDB:
             sys.exit(1)
 
     def ping(self) -> None:
+        """Verify connectivity at startup over a throwaway synchronous client.
+
+        Synchronous on purpose: this runs during startup before an event loop
+        owns the Motor client, so it must not borrow one. Failure is logged, not
+        raised — reachability is reported, and the lazy providers that actually
+        need Mongo fail on their own terms.
+        """
         try:
             # Use the same URI that was used to initialize the async client
             sync_client: pymongo.MongoClient[dict[str, Any]] = pymongo.MongoClient(
@@ -81,6 +88,7 @@ class MongoDB:
             log.error(f"{LogTag.MONGO} Error while initializing indexes: {e}")
 
     def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
+        """A Motor handle for one collection of the app's database."""
         return self.database.get_collection(collection_name)
 
 
