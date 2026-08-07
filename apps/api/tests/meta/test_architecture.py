@@ -9,11 +9,14 @@ regex over import specifiers, assert offenders == []).
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 from pathlib import Path
 import subprocess
 
 os.environ.setdefault("ENV", "development")
+
+logger = logging.getLogger(__name__)
 
 APP_DIR = Path(__file__).resolve().parents[3] / "app"
 
@@ -41,7 +44,11 @@ def test_every_app_module_imports_cleanly() -> None:
             continue
         try:
             importlib.import_module(module)
-        except Exception as exc:  # noqa: BLE001 — report any import failure loudly
+        except Exception as exc:
+            # The assertion message carries only the exception summary; a
+            # circular-import chain is unreadable without the frames, so the
+            # full traceback goes to the captured log pytest prints on failure.
+            logger.exception("module failed to import: %s", module)
             failures.append(f"{module}: {type(exc).__name__}: {exc}")
     assert not failures, "import failures:\n" + "\n".join(failures[:30])
 
@@ -95,7 +102,11 @@ def test_no_stateful_service_classes() -> None:
             cls_body = text[m.end() :]
             if re.search(r"def __init__\(self|def \w+\(self", cls_body.split("\n\n")[0]):
                 # crude body slice: flag any instance method below the class line
-                body = text[m.end() : text.find("\nclass ", m.end())] if "\nclass " in text[m.end():] else text[m.end():]
+                body = (
+                    text[m.end() : text.find("\nclass ", m.end())]
+                    if "\nclass " in text[m.end() :]
+                    else text[m.end() :]
+                )
                 if re.search(r"(?:async )?def \w+\(self", body) and not re.search(
                     r"@(?:staticmethod|classmethod)", body
                 ):

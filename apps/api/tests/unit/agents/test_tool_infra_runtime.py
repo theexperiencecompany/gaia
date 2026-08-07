@@ -526,7 +526,7 @@ async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_
 async def test_create_agent_filters_subagent_from_direct_binding():
     fake_llm = _FakeLLM()
     builder = create_agent(
-        llm=fake_llm,  # type: ignore[arg-type]
+        llm=fake_llm,
         tool_registry={"normal_tool": normal_tool},
         retrieve_tools_function=_dummy_retrieve_tools,
         retrieve_tools_coroutine=_dummy_retrieve_tools_async,

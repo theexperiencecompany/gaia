@@ -127,4 +127,4 @@ async def real_redis(redis_url: str, monkeypatch):
     yield client
 
     await client.flushdb()
-    await client.aclose()  # type: ignore[attr-defined]
+    await client.aclose()

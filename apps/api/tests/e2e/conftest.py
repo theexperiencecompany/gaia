@@ -39,7 +39,7 @@ from app.core.lazy_loader import providers
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from tests.helpers import BindableToolsFakeModel
-from tests.integration.real.db_fixtures import (  # noqa: F401  (fixture re-export)
+from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
     mongo_db,
     mongodb_url,
@@ -47,6 +47,17 @@ from tests.integration.real.db_fixtures import (  # noqa: F401  (fixture re-expo
     real_redis,
     redis_url,
 )
+
+# Imported to register the fixtures for this directory; `__all__` marks them as
+# a deliberate re-export (same pattern as tests/integration/real/conftest.py).
+__all__ = [
+    "hil_approvals_collection",
+    "mongo_db",
+    "mongodb_url",
+    "postgres_url",
+    "real_redis",
+    "redis_url",
+]
 
 _USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
@@ -114,7 +125,7 @@ async def memory_saver():
             open=False,
         )
         await pool.open(wait=True, timeout=30)
-        checkpointer = AsyncPostgresSaver(conn=pool)  # type: ignore[call-arg]
+        checkpointer = AsyncPostgresSaver(conn=pool)
         await checkpointer.setup()
         yield checkpointer
         await pool.close()

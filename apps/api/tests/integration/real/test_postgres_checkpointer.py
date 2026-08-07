@@ -9,6 +9,7 @@ Requires: PostgreSQL service container (DATABASE_URL env var).
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from uuid import uuid4
 
 from langgraph.checkpoint.base import empty_checkpoint
@@ -22,11 +23,11 @@ from app.agents.core.graph_builder.checkpointer_manager import CheckpointerManag
 
 
 @pytest.fixture
-async def manager(postgres_url: str) -> CheckpointerManager:  # type: ignore[misc]
+async def manager(postgres_url: str) -> AsyncIterator[CheckpointerManager]:
     """Function-scoped CheckpointerManager for test isolation."""
     mgr = CheckpointerManager(conninfo=postgres_url)
     await mgr.setup()
-    yield mgr  # type: ignore[misc]
+    yield mgr
     await mgr.close()
 
 

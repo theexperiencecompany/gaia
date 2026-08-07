@@ -23,7 +23,7 @@ from app.models.payment_models import PlanType
 
 def _noop_create_task(coro: object, **kwargs: object) -> MagicMock:
     if asyncio.iscoroutine(coro):
-        coro.close()  # type: ignore[attr-defined]
+        coro.close()
     return MagicMock()
 
 
@@ -119,12 +119,12 @@ class TestTieredLimiterRealDecision:
 
         exc = exc_info.value
         assert exc.status_code == 429
-        assert exc.detail["error"] == "rate_limit_exceeded"  # type: ignore[index]
-        assert exc.detail["feature"] == "generate_image"  # type: ignore[index]
-        assert exc.detail["reset_time"] == reset_time.isoformat()  # type: ignore[index]
+        assert exc.detail["error"] == "rate_limit_exceeded"
+        assert exc.detail["feature"] == "generate_image"
+        assert exc.detail["reset_time"] == reset_time.isoformat()
         # FREE has nonzero daily limits for generate_image, so it is an
         # exhausted window, not a plan gate.
-        assert "plan_required" not in exc.detail  # type: ignore[operator]
+        assert "plan_required" not in exc.detail
 
     async def test_pro_only_feature_gated_for_free_user(self) -> None:
         """voice_mode: FREE (0/0) is plan-gated — raises before any Redis read."""
@@ -133,7 +133,7 @@ class TestTieredLimiterRealDecision:
 
         exc = exc_info.value
         assert exc.status_code == 429
-        assert exc.detail["plan_required"] == "pro"  # type: ignore[index]
+        assert exc.detail["plan_required"] == "pro"
         self.limiter.redis.get.assert_not_called()
 
     @patch(
