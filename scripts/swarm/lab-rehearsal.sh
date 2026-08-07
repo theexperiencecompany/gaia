@@ -21,8 +21,8 @@
 # or leave unset to use placeholders (infra services will start; app services
 # will fail Infisical auth — that's expected with fake creds).
 #
-#   INFISICAL_MACHINE_IDENTITY_CLIENT_ID=...      (used for every per-service identity)
-#   INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=...  (used for every per-service identity)
+#   INFISICAL_MACHINE_IDENTITY_CLIENT_ID=...
+#   INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=...
 #   INFISICAL_PROJECT_ID=...
 #   METRICS_TOKEN=...
 #
@@ -236,7 +236,7 @@ else
   create_secret gaia_infisical_machine_identity_client_id     "$INFISICAL_MACHINE_IDENTITY_CLIENT_ID"
   create_secret gaia_infisical_machine_identity_client_secret "$INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"
   create_secret gaia_infisical_project_id                     "$INFISICAL_PROJECT_ID"
-  create_secret gaia_metrics_token        "$METRICS_TOKEN"
+  create_secret gaia_metrics_token                            "$METRICS_TOKEN"
   # Grafana email alerting (Gmail app password). Real value in prod; placeholder
   # for the lab so the grafana service can start with GF_SMTP_PASSWORD__FILE set.
   create_secret gaia_grafana_smtp_password                    "${GRAFANA_SMTP_PASSWORD:-lab-placeholder-smtp-password}"

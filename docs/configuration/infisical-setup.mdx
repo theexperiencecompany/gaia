@@ -211,9 +211,11 @@ Check the application logs during startup — the loaders log connection, fetch,
     Team members authenticate with `infisical login`, never with shared machine
     identity credentials. Offboarding a person revokes their access instantly.
   </Card>
-  <Card title="One identity per service">
-    Each production service has its own machine identity scoped to only the
-    secrets it needs. Never reuse one identity across services.
+  <Card title="Scope identities to shrink blast radius">
+    Production currently shares one machine identity across services, so any
+    compromised container can read the whole project. Splitting it per service
+    is a compose-only change — see [Scoping per service
+    later](#scoping-per-service-later).
   </Card>
   <Card title="Environment separation">
     Use the `development`/`staging`/`production` environments within the
