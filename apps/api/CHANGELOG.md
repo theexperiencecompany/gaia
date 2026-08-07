@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.21.1](https://github.com/theexperiencecompany/gaia/compare/api-v0.21.0...api-v0.21.1) (2026-08-07)
+
+
+### Bug Fixes
+
+* **api,infra:** redis juicefs metadata + worker memory headroom ([c8bb7ef](https://github.com/theexperiencecompany/gaia/commit/c8bb7ef0501327c14a399beb32151bbe2c794605))
+* **api,infra:** redis juicefs metadata + worker memory headroom ([#896](https://github.com/theexperiencecompany/gaia/issues/896)) ([e9d3095](https://github.com/theexperiencecompany/gaia/commit/e9d3095140b4fd134a54dd954210460ae9a7d1e6))
+* **api:** repair lint errors newer ruff flags on master ([a4054bd](https://github.com/theexperiencecompany/gaia/commit/a4054bd6d1eaeb0d305df97b0100a409a865c006))
+
 ## [0.21.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.20.0...api-v0.21.0) (2026-07-03)
 
 
