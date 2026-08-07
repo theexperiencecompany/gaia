@@ -1,0 +1,118 @@
+"""Smoke suite: 3 toy cases with a fake transport.
+
+Verifies the loop end-to-end without touching the app: rotation on provider
+error (case smoke-3 fails on `nous`), journaling, resume, scoring, and the
+HTML report. The transport simulates token usage so cost tables populate.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import time
+
+from ..core.cost import EvalCostTracker
+from ..core.runner import Suite, register_suite
+from ..core.types import Case, CaseRun, ProviderError
+
+
+class SmokeTransport:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def run(self, case: Case, cfg, tracker: EvalCostTracker, provider) -> CaseRun:
+        del cfg, tracker
+        self.calls.append((case.id, provider.name))
+        await asyncio.sleep(0.05)
+        if case.id == "smoke-3" and provider.name == "nous":
+            raise ProviderError(provider.name, "simulated provider outage")
+        text = {
+            "smoke-1": "The capital of France is Paris.",
+            "smoke-2": "Your todo 'Buy milk' is created.",
+            "smoke-3": "Created the report.",
+        }[case.id]
+        messages = [{"role": "user", "content": case.prompt}, {"role": "assistant", "content": text}]
+        return CaseRun(
+            case_id=case.id,
+            messages=messages,
+            tool_calls=[{"name": "create_todo", "args": {"title": "Buy milk"}}]
+            if case.id == "smoke-2"
+            else [],
+            end_state={"todos": [{"title": "Buy milk"}]} if case.id == "smoke-2" else None,
+            text=text,
+            tokens_in=120,
+            tokens_out=40,
+            duration_s=0.05,
+        )
+
+
+@register_suite("smoke")
+class SmokeSuite(Suite):
+    name = "smoke"
+    project = "gaia-smoke"
+    label = "Smoke"
+
+    def __init__(self, cfg) -> None:
+        self._transport = SmokeTransport()
+
+    def load_cases(self, cfg) -> list[Case]:
+        return [
+            Case(
+                id="smoke-1",
+                ticket="Trivial recall — agent must answer directly.",
+                prompt="What is the capital of France?",
+                expected={
+                    "category": "SINGLE_HOP",
+                    "communicate": ["Paris"],
+                    "score": {"gates": ["communicate"]},
+                },
+            ),
+            Case(
+                id="smoke-2",
+                ticket="Tool use — create a todo and confirm it.",
+                prompt="Create a todo for buying milk.",
+                expected={
+                    "category": "TOOL_USE",
+                    "tool_calls": [{"tool": "create_todo"}],
+                    "end_state": {"todos": [{"title": "Buy milk"}]},
+                    "communicate": ["milk"],
+                    "score": {"gates": ["end_state", "communicate"]},
+                },
+            ),
+            Case(
+                id="smoke-3",
+                ticket="Provider failure — must rotate off nous and still pass.",
+                prompt="Write a one-line status report.",
+                expected={"category": "ROTATION", "communicate": ["report"]},
+            ),
+        ]
+
+    def transport(self, case: Case, cfg, tracker: EvalCostTracker, provider):
+        return self._transport.run(case, cfg, tracker, provider)
+
+    def score(self, case: Case, run: CaseRun) -> dict[str, float]:
+        from ..core.scorers import CommunicateGate, EndStateEquality, ToolCallCorrectness
+
+        scores = {}
+        if case.expected.get("communicate"):
+            scores["communicate"] = CommunicateGate().score(
+                output=run.text, messages=run.messages, expected=case.expected
+            ).value
+        if case.expected.get("end_state"):
+            scores["end_state"] = EndStateEquality().score(
+                output=run.text, end_state=run.end_state, expected=case.expected
+            ).value
+        if case.expected.get("tool_calls"):
+            scores["tool_call_correctness"] = ToolCallCorrectness().score(
+                output=run.text, tool_calls=run.tool_calls, expected=case.expected
+            ).value
+        return scores
+
+    def finalize_scorers(self, cfg) -> list:
+        from ..core.scorers import BubbleBoundary, CommunicateGate, EndStateEquality, ToolCallCorrectness
+
+        return [
+            BubbleBoundary(),
+            CommunicateGate(),
+            EndStateEquality(),
+            ToolCallCorrectness(),
+        ]

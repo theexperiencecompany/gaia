@@ -1,0 +1,47 @@
+# Eval harness config — provider catalog ("the checkbox"), budgets, pricing.
+# No secrets here: keys come from env vars (see apps/api/.env).
+
+[providers.nous]
+lane = "custom"
+base_url_env = "NOUS_BASE_URL"
+api_key_env = "NOUS_API_KEY"
+model_env = "NOUS_MODEL"
+budget_usd = 5.0
+price_in_per_1m = 0.15
+price_out_per_1m = 0.60
+
+[providers.opencode]
+lane = "custom"
+base_url_env = "DEV_LLM_BASE_URL"
+api_key_env = "DEV_LLM_API_KEY"
+model_env = "DEV_LLM_MODEL"
+budget_usd = 0.0
+price_in_per_1m = 0.0
+price_out_per_1m = 0.0
+
+[providers.openrouter]
+lane = "openrouter"
+api_key_env = "OPENROUTER_API_KEY"
+model_env = "OPENROUTER_MODEL"
+budget_usd = 0.0
+price_in_per_1m = 0.15
+price_out_per_1m = 0.60
+
+[providers.gemini]
+lane = "gemini"
+api_key_env = "GOOGLE_API_KEY"
+model_env = "GEMINI_MODEL"
+budget_usd = 0.0
+price_in_per_1m = 0.15
+price_out_per_1m = 0.60
+
+[rotation]
+order = ["nous", "opencode", "openrouter", "gemini"]
+
+[cost]
+default_max_usd = 8.0
+
+[judge]
+base_url_env = "DEV_LLM_BASE_URL"
+api_key_env = "DEV_LLM_API_KEY"
+model_env = "JUDGE_MODEL"

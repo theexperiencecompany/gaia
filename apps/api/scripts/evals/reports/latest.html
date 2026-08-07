@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Eval report — Smoke — smoke-20260807-205326-c2a326</title>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #0f1115; color: #e5e7eb; }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
+  h1 { font-size: 22px; } h2 { font-size: 16px; margin-top: 32px; border-bottom: 1px solid #26292f; padding-bottom: 6px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid #26292f; }
+  .score { font-size: 44px; font-weight: 700; } .pct { color: #9ca3af; font-size: 16px; }
+  svg text { font-size: 12px; } .lbl { fill: #d1d5db; } .val { fill: #fbbf24; }
+  .bar { fill: #34d399; } .bar.bad { fill: #f87171; }
+  details.card { border: 1px solid #26292f; border-radius: 10px; margin: 8px 0; background: #14161c; }
+  details.card summary { padding: 10px 14px; cursor: pointer; }
+  .status { text-transform: uppercase; font-size: 11px; padding: 2px 8px; border-radius: 999px; }
+  .passed .status { background: #065f46; } .failed .status { background: #7f1d1d; }
+  .chip { display: inline-block; font-size: 11px; margin: 0 3px; padding: 1px 6px; border-radius: 6px; background: #1f2937; }
+  .chip.ok { background: #065f46; } .chip.no { background: #7f1d1d; }
+  .meta { color: #6b7280; font-size: 11px; margin-left: 8px; }
+  .body { padding: 4px 14px 14px; font-size: 13px; }
+  .msg { margin: 4px 0; } .asst { color: #a7f3d0; }
+  .tool pre, .expected pre { background: #0b0d11; padding: 8px; border-radius: 8px; overflow-x: auto; font-size: 12px; }
+  .ticket { color: #fbbf24; margin: 4px 0; }
+  .error { color: #f87171; }
+  .banner { color: #9ca3af; font-size: 13px; }
+</style></head><body><div class="wrap">
+<h1>GAIA eval — Smoke</h1>
+<div class="banner">run <code>smoke-20260807-205326-c2a326</code> · finished 2026-08-07 20:53 UTC · status <b>finished</b> · experiment smoke-smoke-20260807-205326-c2a326</div>
+<div class="score">100.0%</div>
+<div class="pct">1/1 cases passed</div>
+<h2>Metrics</h2><svg viewBox="0 0 640 46" width="640" height="46"><text x="0" y="23" class="lbl">communicate</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text></svg>
+<h2>Categories</h2><svg viewBox="0 0 640 46" width="640" height="46"><text x="0" y="23" class="lbl">SINGLE_HOP</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text></svg>
+<h2>Provider usage</h2>
+<table><tr><th>provider</th><th>cases</th><th>tokens in</th><th>tokens out</th><th>est. USD</th></tr>
+<tr><td>nous</td><td>1</td><td>120</td><td>40</td><td>$0.00</td></tr>
+<tr><td><b>total</b></td><td>1</td><td>120</td><td>40</td><td>$0.00</td></tr>
+</table>
+<h2>Cases</h2>
+<details class="card passed">
+  <summary><b>smoke-1</b>
+    <span class="status">passed</span>
+    <span class="chip ok">communicate=1.00</span>
+    <span class="meta">provider=nous · 120 in /
+    40 out · 1.7s</span>
+  </summary>
+  <div class="body">
+    <div class="ticket">Trivial recall — agent must answer directly.</div>
+    <div class="prompt"><b>prompt:</b> What is the capital of France?</div>
+    <div class="expected"><b>expected:</b> <pre>{
+ &quot;category&quot;: &quot;SINGLE_HOP&quot;,
+ &quot;communicate&quot;: [
+  &quot;Paris&quot;
+ ],
+ &quot;score&quot;: {
+  &quot;gates&quot;: [
+   &quot;communicate&quot;
+  ]
+ }
+}</pre></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> What is the capital of France?</div><div class="msg asst"><b>assistant:</b> The capital of France is Paris.</div></div>
+    <div class="tools"></div>
+    <div class="error"></div>
+  </div>
+</details>
+</div></body></html>
