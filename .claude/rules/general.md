@@ -11,6 +11,15 @@ Before writing any utility, type, hook, service, or model, grep the codebase for
 - If you find the same logic in two places while working, consolidate before adding more
 - Duplicated code that diverges silently is worse than no abstraction at all
 
+### Libraries Over Hand-Rolling
+
+Standard problems have standard solutions — never hand-roll what a maintained library already does well.
+
+- Before implementing any well-known algorithm (text chunking, retries/backoff, parsing, date math, rate limiting, diffing), check the dependency tree first: the solution is often already installed or one small add away in an ecosystem we already use (e.g. LangChain, FastAPI, HeroUI)
+- A hand-rolled version starts subtly wrong and stays unmaintained — the library version has had its edge cases fixed by thousands of users
+- If you find hand-rolled logic that a library in our stack covers, replace it with the library call — deletion is the best diff
+- The bar for writing it yourself: the problem is genuinely domain-specific, or the library would be a heavy new dependency for a trivial need
+
 ## Dead Code
 
 After every change, clean up before considering work done.
