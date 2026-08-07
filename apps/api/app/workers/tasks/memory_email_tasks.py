@@ -18,7 +18,7 @@ async def process_gmail_emails_to_memory(ctx: dict[str, Any], user_id: str) -> s
     Returns:
         Processing result message
     """
-    log.set(user_id=user_id)
+    log.set(user_id=user_id, user={"id": user_id})
     result = await process_gmail_to_memory(user_id)
 
     if result.get("already_processed", False):

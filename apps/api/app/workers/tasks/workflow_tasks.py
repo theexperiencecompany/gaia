@@ -75,7 +75,7 @@ async def process_workflow_generation_task(
     Returns:
         Processing result message
     """
-    log.set(todo_id=todo_id, user_id=user_id)
+    log.set(todo_id=todo_id, user_id=user_id, user={"id": user_id})
     try:
         # Build short card description plus detailed execution prompt
         workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
@@ -678,7 +678,7 @@ async def regenerate_workflow_steps(
     Returns:
         Processing result message
     """
-    log.set(workflow_id=workflow_id, user_id=user_id)
+    log.set(workflow_id=workflow_id, user_id=user_id, user={"id": user_id})
     log.info(
         f"{LogTag.WORKER} Regenerating workflow steps",
         workflow_id=workflow_id,
