@@ -22,7 +22,13 @@ An `awards` collection SHALL store earned badges `{user_id, key, earned_at}`. v1
 
 ### Requirement: Weekly editions are beautiful rotating documents
 
-A `weekly_digest` system workflow (Sunday 5pm user-local) SHALL emit a `kind: weekly` BriefingPayload summarizing the week: completed work split by assignee, an hours-saved estimate, streak length, and what's ahead (open todos, scheduled follow-ups). It SHALL render as a designed editorial email document from a **template family** chosen by a deterministic rotation engine (no repeat within the rotation window); v1 ships 2–3 template families from the edition-template system, expanding later. The weekly edition is an emailed keepsake document — it is NOT a dashboard surface. It SHALL also appear in the briefing archive, and SHALL offer a shareable public Wrapped card at a public URL (public-slug pattern), containing only the aggregate stats the user explicitly shares.
+A `weekly_digest` system workflow (Sunday 5pm user-local) SHALL emit a `kind: weekly` BriefingPayload summarizing the week: completed work split by assignee, an hours-saved estimate, streak length, and what's ahead (open todos, scheduled follow-ups). It SHALL render as a designed editorial email document from a **template family** chosen by a shuffled-cycle rotation engine: each cycle is a random permutation of every available family, consumed in order, so no family repeats until the whole set has been used; the next cycle reshuffles (never producing the same family twice in a row across the cycle boundary). The rotation state is per-user and persisted, so the sequence survives restarts and template additions join the next cycle. v1 ships 2–3 template families from the edition-template system, expanding later.
+
+#### Scenario: No repeat until exhaustion
+- **WHEN** 3 template families exist and a user receives 6 weekly editions
+- **THEN** the first three editions use all three families in some order, the next three use all three again in a new order, and editions 3 and 4 never use the same family The weekly edition is an emailed keepsake document — it is NOT a dashboard surface. It SHALL also appear in the briefing archive.
+
+> Removed 2026-08-07: the public shareable Wrapped card is cut entirely (product decision — no public stats surface). The share-is-opt-in scenario below is retained only as the guarantee that no public URL for a user's stats ever exists.
 
 #### Scenario: Weekly email delivered
 - **WHEN** the weekly run completes for a user with email enabled

@@ -26,7 +26,23 @@ The run SHALL compare yesterday's briefing payload against what actually happene
 
 ### Requirement: One briefing message per day is law
 
-The system SHALL deliver at most one briefing message per user per day. The only permitted additional proactive messages are: a time-critical `needs_you` blocker, a completion report for a todo the user approved (which MAY carry one contextual next-step suggestion — see `retention-loop`), or replies when the user messaged first. When multiple `needs_you` blockers are pending simultaneously, they SHALL be delivered as one combined message ("3 things need your call"), never as separate pushes. For ignored items the escalation ladder SHALL be: mention in brief → one re-mention with a different angle → drop to a memory signal. The run SHALL read its own prior briefings and recent conversation history before writing and SHALL NOT re-ask a question the same way twice.
+The system SHALL deliver at most one briefing message per user per day. The only permitted additional proactive messages are: a time-critical `needs_you` blocker, an **urgent-signal alert**, a completion report for a todo the user approved (which MAY carry one contextual next-step suggestion — see `retention-loop`), or replies when the user messaged first. When multiple `needs_you` blockers are pending simultaneously, they SHALL be delivered as one combined message ("3 things need your call"), never as separate pushes.
+
+### Requirement: Urgent signals may interrupt — gated by urgency, not by count
+
+When a signal-driven run (inbox triage, calendar triggers) detects something **time-critical** — defined strictly as: waiting for the next briefing would cause a missed meeting, blown deadline, or lost opportunity ("your 2pm moved to 11am", "payment failing, card expires today") — the system SHALL send one immediate alert for it. There is NO numeric daily cap: two genuine emergencies mean two alerts. The gate is the urgency bar itself: anything that merely *could* interest the user ("newsletter you might like", "FYI a reply arrived") SHALL wait for the brief. Every urgent alert SHALL emit an analytics event (`urgent_alert_sent` with the signal kind) so leniency drift is measurable, and repeated ignored urgent alerts of a kind SHALL write the same rejection-strike memory signal as dismissed proposals — the model learns the user's bar.
+
+#### Scenario: Genuine emergency interrupts
+- **WHEN** inbox triage at 10:40 finds the user's 2pm meeting was moved to 11am
+- **THEN** one alert is sent immediately rather than waiting for tomorrow's brief
+
+#### Scenario: Two emergencies both interrupt
+- **WHEN** two independent time-critical signals arrive the same afternoon
+- **THEN** both alerts are sent — no count cap suppresses the second
+
+#### Scenario: Merely-interesting waits
+- **WHEN** triage finds a newsletter and a non-deadline reply
+- **THEN** no alert is sent; both appear in the next brief For ignored items the escalation ladder SHALL be: mention in brief → one re-mention with a different angle → drop to a memory signal. The run SHALL read its own prior briefings and recent conversation history before writing and SHALL NOT re-ask a question the same way twice.
 
 #### Scenario: Ignored item exits to memory
 - **WHEN** an item has appeared in two briefings with no user action

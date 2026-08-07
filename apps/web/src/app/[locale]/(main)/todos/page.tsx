@@ -1,4 +1,5 @@
 import TodoListPage from "@/features/todo/components/TodoListPage";
+import { TodayView } from "@/features/todo/components/today/TodayView";
 import { Priority, type TodoFilters } from "@/types/features/todoTypes";
 
 interface TodosPageProps {
@@ -26,5 +27,10 @@ export default async function TodosPage({
 
   filters.completed = completed === "true";
 
-  return <TodoListPage filters={filters} />;
+  return (
+    <div className="flex h-full min-h-0 w-full flex-col">
+      <TodayView />
+      <TodoListPage filters={filters} />
+    </div>
+  );
 }

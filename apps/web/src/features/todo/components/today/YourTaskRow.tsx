@@ -8,9 +8,9 @@ import { useRouter } from "next/navigation";
 import type React from "react";
 import { useHandoffTodo } from "@/features/todo/hooks/useHandoffTodo";
 import { useTodoStore } from "@/stores/todoStore";
-import type { TodayYourTaskItem } from "@/types/features/dashboardTypes";
+import type { TodayYourTaskItem } from "@/types/features/todayTypes";
 
-import { TODAY_QUERY_KEY } from "../hooks/useTodayQuery";
+import { TODAY_QUERY_KEY } from "../../hooks/useTodayQuery";
 
 interface YourTaskRowProps {
   item: TodayYourTaskItem;

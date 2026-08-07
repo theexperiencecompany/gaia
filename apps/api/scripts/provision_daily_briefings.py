@@ -17,21 +17,20 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import users_collection  # noqa: E402
+from app.db.repositories.users import user_repository  # noqa: E402
 from app.services.briefing.rollout import provision_existing_user  # noqa: E402
 
 
 async def rollout(dry_run: bool) -> None:
-    total = await users_collection.count_documents({})
+    user_ids = await user_repository.list_all_ids()
+    total = len(user_ids)
     print(f"users to roll out: {total}")
     if dry_run:
         return
 
     paths: dict[str, int] = {}
     processed = 0
-    cursor = users_collection.find({}, {"_id": 1})
-    async for doc in cursor:
-        user_id = str(doc["_id"])
+    for user_id in user_ids:
         try:
             path = await provision_existing_user(user_id)
         except Exception as e:  # one bad user must not abort the whole rollout

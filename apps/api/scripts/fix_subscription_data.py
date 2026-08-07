@@ -185,12 +185,15 @@ async def main():
     print("3. Update them to point to GAIA Pro Yearly")
     print("4. Show details and exit")
 
-    choice = input("\nEnter your choice (1-4): ").strip()
+    choice = (await asyncio.to_thread(input, "\nEnter your choice (1-4): ")).strip()
 
     if choice == "1":
         confirm = (
-            input(
-                f"⚠️  Are you sure you want to DELETE {len(invalid_subs)} subscriptions? (yes/no): "
+            (
+                await asyncio.to_thread(
+                    input,
+                    f"⚠️  Are you sure you want to DELETE {len(invalid_subs)} subscriptions? (yes/no): ",
+                )
             )
             .strip()
             .lower()

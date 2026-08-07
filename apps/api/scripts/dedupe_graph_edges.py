@@ -21,13 +21,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from sqlalchemy import delete, select  # noqa: E402
 
 from app.db.chroma.chromadb import init_chroma  # noqa: E402
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.db.postgresql import init_postgresql_engine  # noqa: E402
+from app.db.repositories.users import user_repository  # noqa: E402
 from app.memory.pg_store._session import memory_session  # noqa: E402
 from app.memory.pg_store.graph import _canonical_pair  # noqa: E402
 from app.models.memory_db_models import MemoryGraphEdge  # noqa: E402
-
-users_collection = get_async_collection("users")
 
 
 async def dedupe_user(user_id: str, dry_run: bool) -> int:
@@ -94,7 +92,7 @@ async def main() -> None:
     if args.user_id:
         user_ids = [args.user_id]
     else:
-        user_ids = [str(doc["_id"]) async for doc in users_collection.find({}, {"_id": 1})]
+        user_ids = await user_repository.list_all_ids()
 
     total = 0
     for user_id in user_ids:

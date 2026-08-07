@@ -71,7 +71,7 @@
 - [x] H.4 `GET /dashboard/today` rewritten to the sectioned Today payload (headline w/ noon flip, subline, runs quota via new `tiered_limiter.get_usage`, five sections); heatmap endpoint deleted (activity.py streak math retained for the briefing).
 - [x] H.5 Frontend Today view: header + five row sections, inline approve/skip/run/answer/checkbox, ws invalidation + focus refetch + in-flight-only poll; Mission Control components (TodayTimeline, ActionRail, ContributionHeatmap) deleted.
 - [x] H.6 Tracked-todo tool audit (16 findings fixed): dead `gaia-tracked` queries, references-only update no-op, unguarded block path, false docstrings, SKILL.md drift (`initial_canvas`, missing required args, facet model).
-- [ ] H.7 Badges/awards product decision: shame-audit gamification (streak framing, GAIA-vs-You split) — brainstorm, fully implement, or remove.
+- [x] H.7 Badges/awards decision — RESOLVED 2026-08-07 by the calm-surface direction: keep the v1 badge set exactly as built (5 real-event badges, once-only, notification + digest mention, no cabinet); no further gamification expansion. Aligns with the no-overwhelm principle.
 
 ## 7c. Phase I — Calm-surface consolidation (2026-08-06, in-PR)
 
@@ -81,9 +81,11 @@ Decisions: the product has exactly three user-facing surfaces (chat, todos, brie
 - [ ] I.2 Batch simultaneous `needs_you` blockers into one combined proactive message ("3 things need your call") — never separate pushes.
 - [ ] I.3 Completion-report nudge: an approved todo's completion message on the priority chat channel may carry at most one contextual next-step suggestion; no clock-based engagement pings; dismissed/ignored suggestions are not repeated.
 - [ ] I.4 Weekly editions v1: 2–3 email template families from the edition-template system + deterministic no-repeat rotation; weekly digest content = shipped (by assignee, hours-saved, streak) + ahead (open todos, scheduled follow-ups); renders to email + archive.
-- [ ] I.5 Cut the goal↔workflow linkage (`find_goal_linked_workflows`, goal-sourced workflow reads in briefing context); goals stay backstage per the revised `unified-todo-model` spec — no lane UI.
-- [ ] I.6 Verify system workflows (briefing crons, todo-execution plumbing) never appear in user-facing workflow lists; hide if they do.
-- [ ] I.7 Founder-day script (dev-only): one command replays a full user day against a live dev stack — seed → morning brief (Telegram + email) → reply-approve → execution → blocker/answer → completion nudge → weekly edition. Covers the re-opened 7.3 verification.
+- [x] I.5 Cut the goal↔workflow linkage (`find_goal_linked_workflows`, goal-sourced workflow reads in briefing context); goals stay backstage per the revised `unified-todo-model` spec — no lane UI.
+- [x] I.6 Briefing rhythm crons (`daily_briefing`/`weekly_digest`/`overnight_work`) excluded from user workflow lists at the repository query; other system workflows (inbox triage, meeting prep) stay listed and toggleable — supersedes daily-briefing-run's "manage like any workflow" for the briefing crons specifically.
+- [ ] I.7 Persona thrash harness (dev-only, extends the existing user-simulation harness): replay full user days against a live dev stack across the persona matrix (empty day-zero, goal-driven founder, ignorer/winback, streak breaker, at-quota, simultaneous blockers, slipped plan, 3×-dismissed kind, timezone edge, dormant→reactivated, nudge ignorer). Runs under --sim (plumbing assertions) and the Nous lane (judgment quality). Covers the re-opened 7.3 reply-approve verification.
+- [ ] I.9 Urgent-signal alert: strict time-criticality gate in the triage/calendar trigger prompts + `urgent_alert_sent` analytics event + rejection-strike memory write for ignored kinds. NO numeric cap — urgency is the gate (see daily-briefing-run spec).
+- [x] I.10 Wrapped card — REMOVED 2026-08-07 (product decision: no public stats surface, ever). 6.7's Wrapped clause is void; the no-public-URL guarantee stays.
 - [ ] I.8 `nx run-many -t lint type-check` across api, web, bots — green.
 
 Deferred to follow-up issues (not this PR): Gmail bulk-action tool (single scoped call for inbox cleanup), signal→todo wiring for reply-driven loops (scheduling negotiation), per-integration proactive workflow templates (Linear/Slack/Notion).

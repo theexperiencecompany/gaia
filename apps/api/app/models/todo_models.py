@@ -518,6 +518,10 @@ class TodoDocument(UserScopedDocument):
     last_run_conversation_id: str | None = None
     gaia_offer: str | None = None
     gaia_offer_dismissed: bool = False
+    # Set once this todo has been surfaced as a completion-report nudge
+    # ("Want me to <x>?") — excludes it from future nudge candidates whether
+    # the user acted on it or ignored it (see completion_nudge).
+    nudge_shown: bool = False
     pitch_expires_at: datetime | None = None
     # Set alongside execution_status == queued by ``approve``: "release" tells the
     # execution run to PERFORM the approved deliverable rather than draft/prep it.
@@ -573,6 +577,7 @@ class TodoUpdate(BaseModel):
     last_run_conversation_id: str | None = None
     gaia_offer: str | None = None
     gaia_offer_dismissed: bool | None = None
+    nudge_shown: bool | None = None
     pitch_expires_at: datetime | None = None
     execution_intent: str | None = None
     approve_instruction: str | None = None

@@ -4,8 +4,8 @@ import { Spinner } from "@heroui/spinner";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { StatusGlyph } from "@/components/shared/StatusGlyph";
-import type { TodayInFlightItem } from "@/types/features/dashboardTypes";
-import { formatClockTime } from "../utils/time";
+import type { TodayInFlightItem } from "@/types/features/todayTypes";
+import { formatClockTime } from "../../utils/time";
 
 interface InFlightRowProps {
   item: TodayInFlightItem;

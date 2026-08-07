@@ -623,6 +623,41 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             limit=limit,
         )
 
+    async def find_oldest_open_proposal(self, user_id: str) -> TodoDocument | None:
+        """Oldest still-open, not-yet-nudged proposed GAIA todo — the completion
+        nudge's first-choice suggestion (see ``services.todos.completion_nudge``)."""
+        results = await self._find(
+            {
+                "user_id": user_id,
+                "execution_status": ExecutionStatus.PROPOSED.value,
+                "kind": {"$ne": "goal"},
+                "nudge_shown": {"$ne": True},
+                **gaia_assigned_filter(),
+            },
+            sort=[("created_at", 1)],
+            limit=1,
+        )
+        return results[0] if results else None
+
+    async def list_open_user_todos_with_gaia_offer(
+        self, user_id: str, *, limit: int
+    ) -> list[TodoDocument]:
+        """Open user todos carrying an active, not-yet-nudged GAIA-takeover
+        offer — the completion nudge's fallback candidate pool (the caller
+        picks the highest-priority one)."""
+        return await self._find(
+            {
+                "user_id": user_id,
+                "completed": False,
+                "gaia_offer": {"$nin": [None, ""]},
+                "gaia_offer_dismissed": {"$ne": True},
+                "nudge_shown": {"$ne": True},
+                **user_assigned_filter(),
+            },
+            sort=[("created_at", 1)],
+            limit=limit,
+        )
+
     async def list_completed_today(
         self, user_id: str, *, day_start: datetime, day_end: datetime, limit: int
     ) -> list[TodoDocument]:

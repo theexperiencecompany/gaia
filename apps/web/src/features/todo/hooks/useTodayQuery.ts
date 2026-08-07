@@ -1,8 +1,8 @@
 import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
-import type { DashboardTodayResponse } from "@/types/features/dashboardTypes";
+import type { DashboardTodayResponse } from "@/types/features/todayTypes";
 
-import { dashboardApi } from "../api/dashboardApi";
+import { todayApi } from "../api/todayApi";
 
 export const TODAY_QUERY_KEY = ["dashboard", "today"] as const;
 
@@ -18,7 +18,7 @@ export const useTodayQuery = (
   return useQuery({
     queryKey: TODAY_QUERY_KEY,
     queryFn: async (): Promise<DashboardTodayResponse> => {
-      return await dashboardApi.fetchToday();
+      return await todayApi.fetchToday();
     },
     staleTime: 30 * 1000,
     gcTime: 10 * 60 * 1000,

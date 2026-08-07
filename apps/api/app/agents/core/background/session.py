@@ -94,6 +94,11 @@ class ExecutorRun:
     # Night-shift prep runs suppress the per-todo platform message (the morning
     # briefing reports them instead).
     suppress_platform_delivery: bool = False
+    # The tracked todo this run is bound to (set by call_executor's optional
+    # active_todo_id, inherited from trigger_context for scheduled runs). Used
+    # by result_delivery to attach a completion nudge to a released todo's
+    # finish message — see app.services.todos.completion_nudge.
+    active_todo_id: str | None = None
 
     @classmethod
     def from_configurable(
@@ -126,6 +131,7 @@ class ExecutorRun:
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
             suppress_platform_delivery=bool(configurable.get("suppress_platform_delivery", False)),
+            active_todo_id=configurable.get("active_todo_id"),
         )
 
     @property

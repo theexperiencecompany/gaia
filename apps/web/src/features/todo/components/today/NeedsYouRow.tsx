@@ -12,8 +12,8 @@ import { ApproveConfirmModal } from "@/features/todo/components/shared/ApproveCo
 import { useAnswerTodo } from "@/features/todo/hooks/useAnswerTodo";
 import { useApproveTodo } from "@/features/todo/hooks/useApproveTodo";
 import { useDismissTodo } from "@/features/todo/hooks/useDismissTodo";
-import type { TodayNeedsYouItem } from "@/types/features/dashboardTypes";
-import { TODAY_QUERY_KEY } from "../hooks/useTodayQuery";
+import type { TodayNeedsYouItem } from "@/types/features/todayTypes";
+import { TODAY_QUERY_KEY } from "../../hooks/useTodayQuery";
 
 interface NeedsYouRowProps {
   item: TodayNeedsYouItem;

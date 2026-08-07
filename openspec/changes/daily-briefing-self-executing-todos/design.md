@@ -1,5 +1,7 @@
 # Design — Daily Briefing & Self-Executing Todos
 
+> **Revisions.** §5's Telegram inline-keyboard/`actions` envelope was superseded 2026-07-10 by the reply loop (no buttons; the chat agent acts via approve/dismiss/answer tools). §6 Mission Control was superseded twice: first by the Today view (2026-07-10), then 2026-08-06 by removing `/dashboard` entirely — the Today view renders at the top of `/todos`. §7's weekly digest is now a rotating template'd email edition (shuffled full cycle; see `retention-loop` spec). Goals gained an explicit backstage-only rule (`unified-todo-model` spec). The specs are authoritative over the superseded text kept below for context.
+
 ## Design stance: reuse-first, wire don't build
 
 The building blocks already exist and are production-grade. This change builds **no new scheduler, no new execution engine, no new approval subsystem, no new notification pipeline, and no new rendering engine.** It adds thin connective tissue over existing rails and makes the existing pieces work perfectly together:

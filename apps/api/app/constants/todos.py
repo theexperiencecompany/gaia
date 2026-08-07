@@ -67,6 +67,17 @@ PROPOSAL_REJECTED_MEMORY_CATEGORY: Final[str] = "gaia/proposals/rejected"
 # registry share one source of truth.
 GAIA_TODO_EXECUTIONS_FEATURE: Final[str] = "gaia_todo_executions"
 
+# Window (user-local hours, [start, end)) in which a completion message may
+# carry a next-step nudge (retention-loop spec). Outside this window a
+# completion still delivers, just without the suggestion line.
+NUDGE_WAKING_HOUR_START: Final[int] = 9
+NUDGE_WAKING_HOUR_END: Final[int] = 22
+
+# How many open gaia_offer user todos the completion nudge considers when
+# picking the highest-priority one — small on purpose, this is a cheap
+# in-memory pick, not a paginated query.
+NUDGE_OFFER_CANDIDATE_LIMIT: Final[int] = 20
+
 
 def gaia_assigned_filter() -> dict[str, Any]:
     """Mongo fragment selecting GAIA-assigned todos (``assignee == "gaia"``).

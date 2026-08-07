@@ -23,13 +23,16 @@ from bson import json_util  # noqa: E402
 
 from app.constants.memory import MemorySourceType  # noqa: E402
 from app.core.provider_registration import unified_startup  # noqa: E402
-from app.db.mongodb.collections import todos_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.memory.engine import memory_engine  # noqa: E402
+
+todos_collection = get_async_collection("todos")
 
 
 async def seed(user_id: str, dump_path: str) -> None:
     await unified_startup("arq_worker")
-    data = json_util.loads(Path(dump_path).read_text())
+    # One-shot seed script: blocking dump read at startup is harmless.
+    data = json_util.loads(Path(dump_path).read_text())  # noqa: ASYNC240
     memories: list[str] = data.get("memories", [])
     todos: list[dict] = data.get("todos", [])
 

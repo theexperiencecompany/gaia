@@ -337,7 +337,8 @@ async def main() -> None:
         "callbacks": [meter],
     }
 
-    data = json.loads(Path(args.dataset).read_text())
+    # One-shot benchmark script: blocking dataset read at startup is harmless.
+    data = json.loads(Path(args.dataset).read_text())  # noqa: ASYNC240
     by_type: dict[str, list[dict]] = defaultdict(list)
     for item in data:
         if str(item["question_id"]).endswith("_abs"):

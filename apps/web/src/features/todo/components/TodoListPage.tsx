@@ -259,7 +259,7 @@ export default function TodoListPage({
   // Show skeleton on initial load only — subsequent filter changes keep stale todos visible
   if (initialLoading) {
     return (
-      <div className="flex h-full w-full flex-col">
+      <div className="flex min-h-0 w-full flex-1 flex-col">
         <div className="w-full flex-1 overflow-y-auto px-4">
           <TodoListSkeleton />
         </div>
@@ -268,7 +268,7 @@ export default function TodoListPage({
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex min-h-0 w-full flex-1 flex-col">
       <div
         ref={scrollContainerRef}
         className="w-full flex-1 overflow-y-auto px-4"

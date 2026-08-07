@@ -330,7 +330,7 @@ async def sync_models(dry_run: bool = False, force: bool = False, backup: bool =
     # Confirmation prompt
     if not force:
         total_changes = len(models_to_add) + len(models_to_update) + len(models_to_remove)
-        response = input(f"\n❓ Apply {total_changes} changes? (y/N): ")
+        response = await asyncio.to_thread(input, f"\n❓ Apply {total_changes} changes? (y/N): ")
         if response.lower() != "y":
             print("❌ Operation cancelled.")
             return

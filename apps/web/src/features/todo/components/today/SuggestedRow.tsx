@@ -7,8 +7,8 @@ import { useRouter } from "next/navigation";
 import type React from "react";
 import { StatusGlyph } from "@/components/shared/StatusGlyph";
 import { useHandoffTodo } from "@/features/todo/hooks/useHandoffTodo";
-import type { TodaySuggestedItem } from "@/types/features/dashboardTypes";
-import { TODAY_QUERY_KEY } from "../hooks/useTodayQuery";
+import type { TodaySuggestedItem } from "@/types/features/todayTypes";
+import { TODAY_QUERY_KEY } from "../../hooks/useTodayQuery";
 
 interface SuggestedRowProps {
   item: TodaySuggestedItem;

@@ -1417,14 +1417,17 @@ async def seed_explore_workflows(
         return
 
     if not force:
-        response = input(f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): ")
+        response = await asyncio.to_thread(
+            input, f"\n❓ Seed {len(workflow_configs)} explore workflows? (y/N): "
+        )
         if response.lower() != "y":
             print("❌ Cancelled.")
             return
 
     if existing_explore > 0 and not clear_existing and not force:
-        clear_response = input(
-            f"\n❓ Found {existing_explore} existing explore workflows. Clear and re-seed them? (y/N): "
+        clear_response = await asyncio.to_thread(
+            input,
+            f"\n❓ Found {existing_explore} existing explore workflows. Clear and re-seed them? (y/N): ",
         )
         if clear_response.lower() == "y":
             clear_existing = True

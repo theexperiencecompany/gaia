@@ -6,7 +6,6 @@ import {
   // Calendar03Icon, // Temporarily disabled
   CheckListIcon,
   ConnectIcon,
-  Home11Icon,
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
@@ -54,11 +53,6 @@ export default function SidebarTopButtons() {
   };
 
   const buttonData = [
-    {
-      route: "/dashboard",
-      icon: <Home11Icon />,
-      label: "Home",
-    },
     // Temporarily disabled — Calendar feature is not yet ready.
     // {
     //   route: "/calendar",

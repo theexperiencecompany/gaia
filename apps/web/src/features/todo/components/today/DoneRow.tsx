@@ -5,8 +5,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { StatusGlyph } from "@/components/shared/StatusGlyph";
-import type { TodayDoneItem } from "@/types/features/dashboardTypes";
-import { formatClockTime } from "../utils/time";
+import type { TodayDoneItem } from "@/types/features/todayTypes";
+import { formatClockTime } from "../../utils/time";
 
 interface DoneRowProps {
   item: TodayDoneItem;

@@ -29,8 +29,10 @@ from app.constants.todos import (  # noqa: E402
     ASSIGNEE_USER,
     GAIA_TRACKED_LABEL,
 )
-from app.db.mongodb.collections import todos_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.models.todo_models import ExecutionStatus  # noqa: E402
+
+todos_collection = get_async_collection("todos")
 
 
 async def migrate(dry_run: bool) -> None:

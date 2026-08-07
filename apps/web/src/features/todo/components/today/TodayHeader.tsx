@@ -2,9 +2,9 @@
 
 import type React from "react";
 import { Fragment } from "react";
-import type { TodayRuns, TodaySubline } from "@/types/features/dashboardTypes";
+import type { TodayRuns, TodaySubline } from "@/types/features/todayTypes";
 
-import { formatClockTime } from "../utils/time";
+import { formatClockTime } from "../../utils/time";
 
 interface TodayHeaderProps {
   headline: string;
