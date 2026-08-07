@@ -51,18 +51,39 @@ import time
 import httpx
 import pytest
 
-pytestmark = [pytest.mark.skipif(
-    os.environ.get("USE_REAL_SERVICES", "0") != "1",
-    reason="needs real services (Docker) + the real app booted; see module docstring",
-), pytest.mark.slow]
+pytestmark = [
+    pytest.mark.schemathesis,
+    pytest.mark.skipif(
+        os.environ.get("USE_REAL_SERVICES", "0") != "1",
+        reason="needs real services (Docker) + the real app booted; see module docstring",
+    ),
+    pytest.mark.slow,
+]
 
 API_ROOT = Path(__file__).resolve().parents[3]  # apps/api
 APP_MODULE = "app.main:app"
 DEV_USER = "schemathesis@gaia.local"
-PORT = 8123
 EXAMPLES_PER_OP = int(os.environ.get("SCHEMA_FUZZ_EXAMPLES", "3"))
 REQUEST_TIMEOUT = float(os.environ.get("SCHEMA_FUZZ_TIMEOUT", "30"))
 FUZZ_FULL = os.environ.get("SCHEMA_FUZZ_FULL", "0") == "1"
+
+
+def _pick_port() -> int:
+    """A free ephemeral port, chosen by binding then releasing a socket.
+
+    The bind-then-release race window is negligible for a CI job that owns the
+    runner. Overridable with SCHEMA_FUZZ_PORT for environments that need a
+    fixed port (e.g. a firewall allowlist)."""
+    if env_port := os.environ.get("SCHEMA_FUZZ_PORT"):
+        return int(env_port)
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+PORT = _pick_port()
 
 # Operations that demonstrably pass — the gate's scope. Notes/todos/reminders
 # are excluded: embedding-dependent paths need a real GOOGLE_API_KEY the
@@ -119,8 +140,22 @@ def live_api_url() -> str:
         else:
             raise RuntimeError("API server did not become ready in 60s")
 
-        mint = httpx.post(f"{url}/api/v1/dev/users", json={"email": DEV_USER}, timeout=15)
-        mint.raise_for_status()
+        # The bypass authenticates every request as DEV_USER; that user must
+        # exist in Mongo (dev router is idempotent). Under xdist the other
+        # workers hammer the same services, so a single shot can time out —
+        # retry with backoff; the server being up is already proven by the
+        # readiness poll above.
+        mint_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                mint = httpx.post(f"{url}/api/v1/dev/users", json={"email": DEV_USER}, timeout=30)
+                mint.raise_for_status()
+                break
+            except (httpx.HTTPError, httpx.TimeoutException) as exc:
+                mint_error = exc
+                time.sleep(2 * (attempt + 1))
+        else:
+            raise RuntimeError(f"could not mint dev user after 3 attempts: {mint_error}")
         yield url
     finally:
         proc.send_signal(signal.SIGTERM)

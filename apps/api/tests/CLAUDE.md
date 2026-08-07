@@ -52,3 +52,26 @@ Never run a raw full `pytest` locally — the targets pin the dirs, markers, and
   - `tests/e2e/_harness/graph_run.py` — `RecordingFakeModel` (`last_chat_messages`, `chat_messages_log`), `CallAllToolsModel`, `comms_graph` / `executor_graph`, `run_graph`, `GraphRun`
   - `tests/integration/real/db_fixtures.py` — `mongodb_url`, `redis_url`, `postgres_url`, `mongo_db`, `real_redis` (shared by e2e and real-infra suites)
 - **Copy-from-me scaffolds** live in `tests/_template/` (`_service_example.py`, `_endpoint_example.py`) — underscore-prefixed so pytest never collects them; copy and rename.
+
+## Environment & hermeticity
+
+The `_hermetic_environment` session fixture (root `conftest.py`) guarantees no
+test can use a real credential: it blanks every env var matching
+`(API_KEY|TOKEN|SECRET|_KEY|_SECRET)` at session start — a developer's `.env`
+or shell can never leak a live key into a test run, so the suite is
+deterministic and can never bill a real API.
+
+Exceptions are explicit declarations, never accidents:
+
+- The harness's own fake values (`WORKOS_API_KEY`, `MCP_ENCRYPTION_KEY`,
+  `AGENT_SECRET`, `GOOGLE_API_KEY` fake) survive by allowlist.
+- A live-credential tier declares the keys it legitimately needs by setting
+  `HERMETIC_ALLOW_KEYS` (comma-separated) in its conftest at import time —
+  e.g. `tests/composio/conftest.py` declares `COMPOSIO_KEY,
+  COMPOSIO_WEBHOOK_SECRET`; `tests/model_onboarding/conftest.py` declares
+  `OPENROUTER_API_KEY`. Nothing else survives the fence.
+
+Never hardcode real secrets in tests; never read a `~` path (the fence owns
+env, fixtures own paths). If a test needs a key, declare it via
+`HERMETIC_ALLOW_KEYS` in the tier's conftest — with a comment saying why the
+live value is genuinely required.

@@ -141,11 +141,24 @@ jobs:
         # full suite isn't paid for twice per PR; --cov-fail-under makes the
         # coverage floor a real gate, not an informational number.
         run: |
-          uv run --frozen pytest -n auto -m 'not composio and not model_onboarding' \
+          # Flake gate: a test that passes only on rerun fails the build
+          # (CPython's --fail-rerun lesson) — flakiness is a defect, not a shrug.
+          # The gate strips coverage/junit from the rerun so they never gate a
+          # 2-test subset.
+          bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers \
             --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
             --junitxml=test-results/pytest.xml --durations=50
           echo "Python tests: OK (full suite vs live services)"
+      - name: Schemathesis contract fuzz (isolated live-server run)
+        # Boots a real uvicorn server; must NOT share the parallel load that
+        # starves it. Runs serially after the main suite, excluded from it via
+        # the `schemathesis` marker.
+        if: always()
+        working-directory: apps/api
+        run: |
+          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis
+          echo "Schemathesis: OK"
       - name: Summary of failed tests
         if: always()
         working-directory: apps/api

@@ -142,6 +142,22 @@ _CREDENTIAL_ENV_RE = re.compile(r"(API_KEY|TOKEN|SECRET|_KEY|_SECRET)")
 # suite exercises. Blanking them would break the suite, not make it safer.
 _HERMETIC_ALLOWLIST = frozenset({"WORKOS_API_KEY", "MCP_ENCRYPTION_KEY", "AGENT_SECRET"})
 
+# Live-credential tiers (composio, model_onboarding) declare the keys their
+# tests legitimately need by setting HERMETIC_ALLOW_KEYS (comma-separated) in
+# their own conftest at import time — before the session fence runs. The fence
+# then leaves those keys untouched. This is the explicit opt-in: nothing is
+# allowed to survive the fence by accident, only by declaration.
+_HERMETIC_ALLOW_ENV = "HERMETIC_ALLOW_KEYS"
+
+
+def _hermetic_allowed_keys() -> frozenset[str]:
+    declared = {
+        key.strip()
+        for key in os.environ.get(_HERMETIC_ALLOW_ENV, "").split(",")
+        if key.strip()
+    }
+    return _HERMETIC_ALLOWLIST | declared
+
 # Keys that must be PRESENT (non-empty) at test time but never real. Today
 # GOOGLE_API_KEY is the only one: three pre-existing unit modules
 # (tests/unit/override/test_langgraph_bigtool.py, test_hook_chain.py and
@@ -168,9 +184,10 @@ def _hermetic_environment() -> Iterator[None]:
     get_settings.cache_clear() reload (see _create_test_app) sees no secrets.
     """
     snapshot = os.environ.copy()
+    allowed = _hermetic_allowed_keys()
     try:
         for key in list(os.environ):
-            if _CREDENTIAL_ENV_RE.search(key) and key not in _HERMETIC_ALLOWLIST:
+            if _CREDENTIAL_ENV_RE.search(key) and key not in allowed:
                 os.environ[key] = ""
         # After the blanking pass: fake keys must survive it (they match the
         # regex), and must be deterministic regardless of the developer's .env.

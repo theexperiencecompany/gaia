@@ -141,3 +141,16 @@ async def real_redis(monkeypatch):
 
     await client.flushdb()
     await client.aclose()
+
+
+# chromadb's EphemeralClient is a process-global singleton that raises
+# "already exists for ephemeral with different settings" if a later call
+# differs from the first. All test call sites use default settings, so
+# pre-creating the canonical instance at session start makes every later
+# bare call hit the reuse path — order-independent (pytest-randomly can
+# shuffle the two ephemeral-using files into any order without the clash).
+@pytest.fixture(scope="session", autouse=True)
+def _precreate_ephemeral_chroma() -> None:
+    import chromadb
+
+    chromadb.EphemeralClient()
