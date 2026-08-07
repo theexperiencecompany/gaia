@@ -43,10 +43,12 @@ If no Infisical variables are configured:
 - In production, the app refuses to start
 
 <Warning>
-  **`ENV` defaults to `production` when unset**, in both the Python and
-  TypeScript loaders. An app that forgets to set it refuses to boot rather than
-  starting silently without secrets. Every `.env.example` ships
-  `ENV=development`, so copy one rather than writing `.env` from scratch.
+  **The default when `ENV` is unset differs by runtime.** The Python apps (API,
+  voice agent) default to `production` and so refuse to boot without Infisical —
+  `apps/api/.env.example` ships `ENV=development`, so copy it rather than writing
+  `.env` from scratch. The bots default to `development`, keeping a bare checkout
+  runnable with no setup; their deployed containers cannot reach that fallback
+  because `apps/bots/Dockerfile` pins `ENV=production`.
 </Warning>
 
 ## Team Development Workflow (Recommended)
@@ -176,9 +178,10 @@ wrangler secret put BLOG_BEARER_TOKEN
 <AccordionGroup>
   <Accordion title="InfisicalConfigError: Infisical is required in production">
     **Solution**: The app resolved `ENV` to `production` — either explicitly, or
-    because `ENV` is unset and that is the default — but has no Infisical
-    credentials. Provide the machine identity credentials (in production these
-    arrive as Docker Swarm secrets), or set `ENV=development` for local work.
+    because it is unset and the Python loaders default to `production` — but has
+    no Infisical credentials. Provide the machine identity credentials (in
+    production these arrive as Docker Swarm secrets), or set `ENV=development`
+    for local work.
   </Accordion>
 
   <Accordion title="Incomplete Infisical config: missing ...">
