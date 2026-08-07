@@ -57,6 +57,7 @@ from app.constants.executor import (
 from app.constants.hil import HIL_PAUSED_LOCK_TTL_SECONDS, HIL_RESUME_CONFIG_KEY
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import StreamManager
+from app.models.agent_models import AgentConfigurable
 from app.services.hil.approvals_store import (
     list_parked_subagents_for_conversation,
     set_resume_item,
@@ -73,7 +74,7 @@ _queued_executor_tasks: set[asyncio.Task] = set()
 async def run_executor_background(
     run: ExecutorRun,
     task: str,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     resume: Command | None = None,
 ) -> None:
     """Run (or resume) the executor agent in background and hand its result to delivery.
@@ -121,7 +122,7 @@ async def run_executor_background(
 
 
 async def _record_pause(
-    run: ExecutorRun, task: str, configurable: dict[str, Any], approval_ids: tuple[str, ...]
+    run: ExecutorRun, task: str, configurable: AgentConfigurable, approval_ids: tuple[str, ...]
 ) -> bool:
     """Attach this run's re-dispatch context to every approval it paused on.
 
@@ -176,7 +177,7 @@ def _paused_approval_ids(payload: dict[str, Any]) -> tuple[str, ...]:
 
 async def _execute_executor(
     task: str,
-    configurable: dict[str, Any],
+    configurable: AgentConfigurable,
     stream_id: str,
     resume: Command | None = None,
 ) -> _ExecutorResult:

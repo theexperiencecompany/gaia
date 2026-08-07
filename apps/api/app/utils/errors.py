@@ -53,7 +53,7 @@ def create_error(
     why: str = "",
     fix: str = "",
     status_code: int = 500,
-    **meta: Any,
+    **meta: object,
 ) -> AppError:
     """Create a structured AppError with optional context metadata."""
     return AppError(

@@ -3,7 +3,7 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
-from typing import Any
+from typing import Any, Literal
 
 from dodopayments import DodoPayments
 from fastapi import HTTPException
@@ -19,6 +19,8 @@ from app.db.repositories.plans import plan_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PaymentVerificationResponse,
     PlanResponse,
     PlanType,
     SubscriptionStatus,
@@ -31,9 +33,11 @@ from shared.py.wide_events import log
 class DodoPaymentService:
     """Streamlined Dodo Payments service."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         try:
-            environment = "live_mode" if settings.ENV == "production" else "test_mode"
+            environment: Literal["live_mode", "test_mode"] = (
+                "live_mode" if settings.ENV == "production" else "test_mode"
+            )
 
             self.client = DodoPayments(
                 bearer_token=settings.DODO_PAYMENTS_API_KEY,
@@ -93,7 +97,7 @@ class DodoPaymentService:
         product_id: str,
         quantity: int = 1,
         discount_code: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> CreateSubscriptionResponse:
         """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
         log.set(payment={"event_type": "create_subscription", "status": "initiated"})
 
@@ -160,21 +164,21 @@ class DodoPaymentService:
             }
         )
 
-        return {
-            "subscription_id": checkout_session.session_id,
-            "payment_link": checkout_session.checkout_url,
-            "status": "payment_link_created",
-        }
+        return CreateSubscriptionResponse(
+            subscription_id=checkout_session.session_id,
+            payment_link=checkout_session.checkout_url,
+            status="payment_link_created",
+        )
 
-    async def verify_payment_completion(self, user_id: str) -> dict[str, Any]:
+    async def verify_payment_completion(self, user_id: str) -> PaymentVerificationResponse:
         """Check payment completion status from webhook data."""
         subscription = await subscription_repository.get_latest_active_for_user(user_id)
 
         if not subscription:
-            return {
-                "payment_completed": False,
-                "message": "No active subscription found",
-            }
+            return PaymentVerificationResponse(
+                payment_completed=False,
+                message="No active subscription found",
+            )
 
         # Send welcome email (don't fail if email fails)
         try:
@@ -187,11 +191,11 @@ class DodoPaymentService:
         except Exception as e:
             log.debug(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
 
-        return {
-            "payment_completed": True,
-            "subscription_id": subscription.dodo_subscription_id,
-            "message": "Payment completed",
-        }
+        return PaymentVerificationResponse(
+            payment_completed=True,
+            subscription_id=subscription.dodo_subscription_id,
+            message="Payment completed",
+        )
 
     async def get_user_subscription_status(self, user_id: str) -> UserSubscriptionStatus:
         """Get user subscription status."""

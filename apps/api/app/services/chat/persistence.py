@@ -25,6 +25,7 @@ from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.payment_models import PlanType
 from app.models.stream_events import ConversationInitializedFrame
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
 from app.services.payments.payment_service import payment_service
 from app.utils.artifact_utils import artifact_url_base
@@ -47,7 +48,7 @@ def user_message_content_from(body: MessageRequestWithHistory) -> str:
 
 async def initialize_new_conversation(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     user_message_id: str,
     bot_message_id: str,
@@ -71,7 +72,7 @@ async def initialize_new_conversation(
 
     init_frame = ConversationInitializedFrame(
         conversation_id=conversation_id,
-        conversation_description=conversation.get("description"),
+        conversation_description=conversation.description,
         user_message_id=user_message_id,
         user_message_content=user_message_content_from(body),
         bot_message_id=bot_message_id,
@@ -107,7 +108,7 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
 
 async def save_conversation_async(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     complete_message: str,
     tool_data: dict[str, Any],
@@ -116,6 +117,7 @@ async def save_conversation_async(
     bot_message_id: str,
     bot_timestamp: datetime | None = None,
     error: str | None = None,
+    follow_up_actions: list[str] | None = None,
 ) -> None:
     """Persist the finished turn to Mongo and bill token usage.
 
@@ -162,6 +164,10 @@ async def save_conversation_async(
         fileIds=body.fileIds,
         metadata=metadata,
         error=error,
+        # Persisted here rather than patched in afterwards: the chips are part
+        # of the turn the user saw, so a reload, a sync, or a second device must
+        # rebuild them from the saved message alone.
+        follow_up_actions=follow_up_actions,
     )
     bot_message.message_id = bot_message_id
 

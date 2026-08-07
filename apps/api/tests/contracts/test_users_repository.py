@@ -14,7 +14,14 @@ from collections.abc import Callable
 import pytest
 
 from app.db.repositories.users import UserRepository
-from app.models.user_models import UserDocument, UserUpdate
+from app.models.onboarding_models import SocialProfile
+from app.models.user_models import (
+    BioStatus,
+    OnboardingPhase,
+    OnboardingPreferences,
+    UserDocument,
+    UserUpdate,
+)
 
 
 @pytest.fixture
@@ -124,32 +131,39 @@ class TestOnboardingWrites:
         first = await repo.complete_onboarding(
             created.id,
             name="New Name",
-            phase="done",
-            bio_status="ready",
+            phase=OnboardingPhase.COMPLETED,
+            bio_status=BioStatus.COMPLETED,
             pipeline_mode="split",
-            preferences={"profession": "eng"},
+            preferences=OnboardingPreferences(profession="eng"),
         )
         assert first is not None
         assert first.name == "New Name"
         assert first.onboarding["completed"] is True
-        assert first.onboarding["phase"] == "done"
+        assert first.onboarding["phase"] == OnboardingPhase.COMPLETED.value
         # Gate misses on replay (onboarding already exists) → None, original untouched.
         second = await repo.complete_onboarding(
-            created.id, phase="x", bio_status="y", pipeline_mode="z", preferences={}
+            created.id,
+            phase=OnboardingPhase.INITIAL,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="z",
+            preferences=OnboardingPreferences(),
         )
         assert second is None
-        assert (await repo.get(created.id)).onboarding["phase"] == "done"
+        assert (await repo.get(created.id)).onboarding["phase"] == OnboardingPhase.COMPLETED.value
 
     async def test_update_preferences_patches_only_given_keys(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.complete_onboarding(
             created.id,
-            phase="p",
-            bio_status="b",
+            phase=OnboardingPhase.INITIAL,
+            bio_status=BioStatus.PENDING,
             pipeline_mode="m",
-            preferences={"profession": "eng", "response_style": "brief"},
+            preferences=OnboardingPreferences(profession="eng", response_style="brief"),
         )
-        updated = await repo.update_onboarding_preferences(created.id, {"profession": "designer"})
+        # Only `profession` is set, so exclude_unset must leave response_style alone.
+        updated = await repo.update_onboarding_preferences(
+            created.id, OnboardingPreferences(profession="designer")
+        )
         assert updated is not None
         prefs = updated.onboarding["preferences"]
         assert prefs["profession"] == "designer"
@@ -193,8 +207,11 @@ class TestOnboardingWrites:
 
     async def test_set_social_profiles_overwrites(self, repo, make_user):
         created = await repo.create(make_user())
-        await repo.set_social_profiles(created.id, [{"platform": "x"}])
-        await repo.set_social_profiles(created.id, [{"platform": "y"}, {"platform": "z"}])
+        await repo.set_social_profiles(created.id, [SocialProfile(platform="x", url="u/x")])
+        await repo.set_social_profiles(
+            created.id,
+            [SocialProfile(platform="y", url="u/y"), SocialProfile(platform="z", url="u/z")],
+        )
         assert len((await repo.get(created.id)).onboarding["social_profiles"]) == 2
 
     async def test_set_bio_status(self, repo, make_user):
@@ -211,17 +228,26 @@ class TestOnboardingWrites:
     async def test_reset_onboarding_removes_subdocument(self, repo, make_user):
         created = await repo.create(make_user())
         await repo.complete_onboarding(
-            created.id, phase="p", bio_status="b", pipeline_mode="m", preferences={}
+            created.id,
+            phase=OnboardingPhase.INITIAL,
+            bio_status=BioStatus.PENDING,
+            pipeline_mode="m",
+            preferences=OnboardingPreferences(),
         )
         await repo.reset_onboarding(created.id)
         assert (await repo.get(created.id)).onboarding is None
 
     async def test_social_profiles_written_once_then_guarded(self, repo, make_user):
         created = await repo.create(make_user())
-        await repo.set_social_profiles_if_unset(created.id, [{"platform": "x"}])
+        await repo.set_social_profiles_if_unset(
+            created.id, [SocialProfile(platform="x", url="u/x")]
+        )
         first = (await repo.get(created.id)).onboarding["social_profiles"]
         assert len(first) == 1
-        await repo.set_social_profiles_if_unset(created.id, [{"platform": "y"}, {"platform": "z"}])
+        await repo.set_social_profiles_if_unset(
+            created.id,
+            [SocialProfile(platform="y", url="u/y"), SocialProfile(platform="z", url="u/z")],
+        )
         assert (await repo.get(created.id)).onboarding["social_profiles"] == first
 
 

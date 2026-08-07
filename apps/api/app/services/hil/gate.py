@@ -1,10 +1,15 @@
-"""The HIL approval gate: every tool call passes through here before it runs.
+"""The HIL approval gate: it decides whether a tool call may run, and never runs one.
 
-One canonical ``gate_tool_call`` wraps every tool execution. Both of DynamicToolNode's
-execution paths use it via thin adapters — the middleware class in
-``app/agents/middleware/hil_approval.py`` and the composed ToolNode wrapper in
-``dynamic_tool_node.py``. Living in the service layer keeps it importable from the
-override package without a middleware↔override cycle.
+One entry point, ``decide_tool_call``: the caller asks, and runs the tool only if the
+answer is "yes". Every ``return await handler(request)`` this module used to contain is
+gone, so there is exactly one place in the system a tool can run from.
+
+A call the user has not answered pauses here. Its siblings are unaffected: each tool call
+is its own node task (``create_agent`` fans them out with ``Send``), and LangGraph
+persists the writes of the tasks that COMPLETED in an interrupting step, so they are not
+re-run on resume. That only holds while the run's checkpoint actually gets written —
+see the drain note in ``subagent_runner``, where breaking out of the stream early under
+``durability="exit"`` used to throw it away and re-run the completed siblings.
 
 The gate orchestrates; it does not decide or render. Each step is somebody else's job:
 
@@ -14,18 +19,17 @@ The gate orchestrates; it does not decide or render. Each step is somebody else'
     publish card + record   bridge.py      (what the user sees, what we keep)
     speak to the model      prompts.py     (what a blocked call is told)
 
-The pause is LangGraph's native ``interrupt()``: the run checkpoints to Postgres and
-exits, so an approval survives a restart or deploy. ``resolve_approval`` re-dispatches
-the thread with ``Command(resume=...)`` when the decision lands.
-
-Two invariants hold this together:
+Three invariants hold this together:
 
 * ``interrupt()`` raises ``GraphInterrupt``. It is control flow, never an error — it must
   never be caught here, nor by the wrappers above (see the ``GraphBubbleUp`` guards in
   ``executor.py`` / ``dynamic_tool_node.py``).
-* On resume the node re-runs from the top, so every statement *before* ``interrupt()``
-  executes twice. All of it must be idempotent, and the real tool must only ever run
-  *after* the decision comes back.
+* **A decision is a record**, never a resume payload. ``resolve_approval`` writes it to
+  Mongo; the ``Command(resume=...)`` that follows is only a wake-up, and its value is
+  deliberately ignored. That is what lets one decision wake a run with several approvals
+  outstanding without anything being lost or double-applied.
+* Everything before a pause runs again on the replay, so all of it is idempotent: every
+  pass re-reads the record instead of remembering what it did last time.
 """
 
 from collections.abc import Awaitable, Callable
@@ -40,19 +44,18 @@ from langgraph.types import Command, interrupt
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.hil import (
     HIL_EXEMPT_TOOLS,
-    HIL_RESUMABLE_STATUSES,
     HIL_STATUS_KWARG,
     HILToolMessageStatus,
 )
 from app.constants.log_tags import LogTag
-from app.models.hil_models import HILApprovalRecord
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
 from app.services.hil.approvals_store import approval_id_for, get_approval
 from app.services.hil.bridge import (
     ApprovalOutcome,
     build_summary,
-    publish_approval_outcome,
     publish_approval_request,
     publish_auto_approval,
+    publish_decision,
     recall_declined_call,
     remember_declined_call,
 )
@@ -60,7 +63,6 @@ from app.services.hil.intent import IntentDecision, judge_intent
 from app.services.hil.policy import GatingPolicy, has_pausing_sibling, resolve_policy
 from app.services.hil.preferences import set_tool_override
 from app.services.hil.prompts import (
-    ALREADY_RAN_TEMPLATE,
     DENIED_TEMPLATE,
     GATE_ERROR_TEMPLATE,
     TIMEOUT_TEMPLATE,
@@ -95,18 +97,63 @@ class GateContext:
     pausable: bool
 
 
-async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMessage | Command[Any]:
-    """Run ``handler`` unless HIL must first get the user's approval."""
+@dataclass(frozen=True)
+class _Pending:
+    """A call whose card is up and whose decision has not landed yet."""
+
+    approval_id: str
+    tool_name: str
+    summary: str
+    integration_name: str | None
+
+
+async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
+    """HIL's verdict for one call. ``None`` clears it to run.
+
+    A ToolMessage IS the call's whole result — it was denied, timed out, or the gate
+    itself failed, and nothing will execute. The gate decides and never executes: the
+    caller runs the tool, so there is exactly one place a tool can run from.
+
+    Pauses here when the user has not answered yet. The run checkpoints and EXITS on
+    that ``interrupt()``; on resume the node replays from the top and this same call
+    finds its decision on the record.
+    """
+    verdict = await _verdict(request)
+    if not isinstance(verdict, _Pending):
+        return verdict
+
+    interrupt(
+        {
+            "type": "hil_approval",
+            "approval_id": verdict.approval_id,
+            "tool_name": verdict.tool_name,
+            "summary": verdict.summary,
+            "integration_name": verdict.integration_name,
+        }
+    )
+    # Reached only on the replay, with the decision now durable on the record. Deciding
+    # again (rather than trusting the resume value) is what lets ONE decision wake a run
+    # holding several outstanding approvals without any of them being misapplied.
+    settled = await _verdict(request)
+    if isinstance(settled, _Pending):
+        log.error(
+            f"{LogTag.HIL} {settled.tool_name} resumed with no decision on its record",
+            approval_id=settled.approval_id,
+        )
+        return _unpausable_denial_message(unpack_tool_call(request))
+    return settled
+
+
+async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
+    """Where one call stands with HIL: cleared (``None``), blocked, or awaiting a user."""
     call = unpack_tool_call(request)
     if call.name in HIL_EXEMPT_TOOLS:
-        return await handler(request)
+        return None
 
     context = read_gate_context(request)
     if context is None:
-        return await handler(request)
+        return None
 
-    # Scoped to the gate's own decision I/O — never wraps ``handler``, so a tool's own
-    # failure still surfaces as a tool error rather than a spurious denial.
     try:
         policy = await resolve_policy(request, context.user_id, call.name)
     except GraphBubbleUp:
@@ -116,14 +163,14 @@ async def gate_tool_call(request: ToolCallRequest, handler: Handler) -> ToolMess
         return _gate_error_message(call)
 
     if policy == "allow":
-        return await handler(request)
+        return None
     if not context.pausable:
         # The call is gated and HIL is on, but this run (background subagent, workflow,
         # scheduled task) has no live client to approve it. Fail closed: refuse rather
         # than run it unapproved or stall on an interrupt nothing can resume.
         log.info(f"{LogTag.HIL} Denying gated {call.name}: run cannot pause for approval")
         return _unpausable_denial_message(call)
-    return await _gate(request, handler, context, policy, call)
+    return await _decide(request, context, policy, call)
 
 
 def read_gate_context(request: ToolCallRequest) -> GateContext | None:
@@ -151,24 +198,29 @@ def read_gate_context(request: ToolCallRequest) -> GateContext | None:
     return GateContext(stream_id, user_id, conversation_id, turns, pausable)
 
 
-async def _gate(
+async def _decide(
     request: ToolCallRequest,
-    handler: Handler,
     context: GateContext,
     policy: GatingPolicy,
     call: GatedCall,
-) -> ToolMessage | Command[Any]:
-    """Surface the call, then run it or pause for the user.
+) -> ToolMessage | _Pending | None:
+    """Surface the call and read where its decision stands.
 
-    Three outcomes: already declined this turn (refuse), auto-approved (receipt, then
-    run), or paused (card, then ``interrupt()`` — resuming below only once decided).
+    Idempotent by construction, because every pass re-reads the record rather than
+    remembering anything: a replay re-publishes no card and re-runs no intent judge.
     """
     approval_id = approval_id_for(context.conversation_id, call.id)
-    tool_call = {"id": call.id, "name": call.name, "args": call.args}
-    decision: IntentDecision | None = None
 
     try:
-        # The user already declined this exact call this turn. Re-asking is the loop
+        # This call's OWN decision comes first. The record is keyed by tool_call_id, so
+        # it is specific to this call in a way the decline memory (keyed by name+args)
+        # cannot be — and reading it second would let a decline shadow the very decision
+        # the user just gave, leaving its card unsettled.
+        record = await get_approval(approval_id)
+        if record is not None and record.status.settled:
+            return await _apply(record, context, call)
+
+        # A RETRY of something the user already declined this turn. Re-asking is the loop
         # we want to kill (the executor never learns its subagent was declined, so it
         # retries) — auto-deny with their original feedback instead.
         declined = await recall_declined_call(context.stream_id, call.name, call.args)
@@ -176,92 +228,65 @@ async def _gate(
             log.info(f"{LogTag.HIL} auto-denying {call.name}: declined earlier this turn")
             return _refusal_message(call, declined)
 
-        # A replay of a call auto mode already RAN. It must neither run again (the action
-        # is done, and these are irreversible by definition) nor fall through to the pause
-        # below: it never reached ``interrupt()``, so pausing now would wait on an approval
-        # that has no pending record and no card, and would swallow the resume value the
-        # sibling's own ``interrupt()`` is expecting. ``has_pausing_sibling`` keeps auto
-        # mode out of a replayable node in the first place; this is the backstop.
-        record = await get_approval(approval_id)
-        if record is not None and record.status == "auto_approved":
-            log.info(f"{LogTag.HIL} {call.name} already ran under auto mode; not repeating")
-            return _already_ran_message(call)
-
         integration_name = await _integration_name_for(call.name)
         summary = build_summary(call.name, call.args, integration_name)
 
+        decision: IntentDecision | None = None
         if policy == "auto":
             decision = await _judge(request, context, call, record, summary)
 
         if decision is not None and decision.aligned:
-            # The receipt is published BEFORE the handler runs: if the tool then fails,
-            # the user still sees that GAIA decided to act, and why.
+            log.info(f"{LogTag.HIL} auto-approved {call.name}: {decision.reason}")
+            # The receipt says GAIA decided to act, and why. It is not a claim that the
+            # action happened — the tool node runs it afterwards, like any other call.
             await publish_auto_approval(
                 approval_id=approval_id,
                 stream_id=context.stream_id,
                 user_id=context.user_id,
                 conversation_id=context.conversation_id,
-                tool_call=tool_call,
+                tool_call=call,
                 summary=summary,
                 integration_name=integration_name,
                 reason=decision.reason,
             )
-        else:
-            # Idempotent: a resume replay re-enters here, finds the record already
-            # present, and re-publishes nothing.
-            await publish_approval_request(
-                approval_id=approval_id,
-                stream_id=context.stream_id,
-                user_id=context.user_id,
-                conversation_id=context.conversation_id,
-                tool_call=tool_call,
-                summary=summary,
-                integration_name=integration_name,
-            )
+            return None
+
+        await publish_approval_request(
+            approval_id=approval_id,
+            stream_id=context.stream_id,
+            user_id=context.user_id,
+            conversation_id=context.conversation_id,
+            tool_call=call,
+            summary=summary,
+            integration_name=integration_name,
+        )
+        return _Pending(approval_id, call.name, summary, integration_name)
     except GraphBubbleUp:
         raise
     except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
         log.error(f"{LogTag.HIL} Could not publish approval for {call.name}; denying: {e}")
         return _gate_error_message(call)
 
-    # Outside the fail-closed try, so a tool's own failure surfaces as a tool error
-    # rather than a spurious gate denial.
-    if decision is not None and decision.aligned:
-        log.info(f"{LogTag.HIL} auto-approved {call.name}: {decision.reason}")
-        return await handler(request)
 
-    # The run checkpoints and EXITS here. Everything below executes only once a decision
-    # resumes the thread — never in this process invocation.
-    outcome = _outcome_from_resume(
-        interrupt(
-            {
-                "type": "hil_approval",
-                "approval_id": approval_id,
-                "tool_name": call.name,
-                "summary": summary,
-                "integration_name": integration_name,
-                "args_preview": call.args,
-            }
-        )
-    )
-    log.info(f"{LogTag.HIL} HIL decision for {call.name}: {outcome.status}")
-    await publish_approval_outcome(
-        stream_id=context.stream_id,
-        approval_id=approval_id,
-        tool_call=tool_call,
-        summary=summary,
-        integration_name=integration_name,
-        outcome=outcome,
-    )
+async def _apply(
+    record: HILApprovalRecord, context: GateContext, call: GatedCall
+) -> ToolMessage | None:
+    """Turn a settled record into the call's fate: ``None`` runs it, a message blocks it.
 
-    if outcome.status == "approved":
+    The record is the decision — never the resume payload, which is only a wake-up.
+    """
+    outcome = _outcome_from_record(record)
+    await publish_decision(
+        record, outcome.status, stream_id=context.stream_id, feedback=outcome.feedback
+    )
+    if outcome.status == HILApprovalStatus.APPROVED:
         if outcome.scope == "always_tool":
             await set_tool_override(context.user_id, call.name, False)
-        return await handler(request)
+        return None
 
     # Remember an explicit decline so a retry of the same call this turn is auto-denied
     # without prompting again. Timeouts are not remembered — the user may just be away.
-    if outcome.status == "denied":
+    if outcome.status == HILApprovalStatus.DENIED:
         await remember_declined_call(context.stream_id, call.name, call.args, outcome.feedback)
     return _refusal_message(call, outcome)
 
@@ -278,13 +303,11 @@ async def _judge(
     ``None`` means "don't auto-approve, don't spend a judge call", for the two cases where
     auto-approval is off the table before the question is even worth asking:
 
-    * **A record already exists** — a prior run published a card for this call, so this is
-      a resume replay (the node re-runs from the top, and the judge is a non-deterministic
-      LLM call). Fall through to the pause, so the resume value lands on the ``interrupt()``
-      that is expecting it. (An ``auto_approved`` record never gets here — the caller
-      short-circuits it, since that call already ran and never paused.)
-    * **A sibling call will pause** — running now would double-execute on resume; see
-      ``policy.has_pausing_sibling``.
+    * **A record already exists** — a card is already up for this call, so the user has
+      been asked and the answer is theirs to give. Re-judging would also re-run a
+      non-deterministic LLM call on every replay of this node.
+    * **A sibling call will pause** — this node will replay, and the judge is the one
+      thing in it that is not idempotent; see ``policy.has_pausing_sibling``.
     """
     if record is not None:
         return None
@@ -302,20 +325,20 @@ async def _judge(
     )
 
 
-def _outcome_from_resume(raw: Any) -> ApprovalOutcome:
-    """Interpret the value handed back by ``Command(resume=...)``.
+def _outcome_from_record(record: HILApprovalRecord) -> ApprovalOutcome:
+    """The decision as the record holds it — the one durable copy.
 
-    ``resolution.py`` sends the already-resolved status; anything unrecognised is a denial
-    — an approval must never be inferred from a malformed payload.
+    ``AUTO_APPROVED`` reads as a plain approval: it means the user was not asked, not
+    that anything happened. ``ABANDONED`` reads as a denial — the user moved on, so the
+    agent must not act.
     """
-    if not isinstance(raw, dict) or raw.get("status") not in HIL_RESUMABLE_STATUSES:
-        log.warning(f"{LogTag.HIL} Malformed HIL resume payload; denying")
-        return ApprovalOutcome(status="denied", feedback=None)
-    return ApprovalOutcome(
-        status=raw["status"],
-        feedback=raw.get("feedback"),
-        scope=str(raw.get("scope", "once")),
-    )
+    if record.status is HILApprovalStatus.AUTO_APPROVED:
+        status = HILApprovalStatus.APPROVED
+    elif record.status is HILApprovalStatus.ABANDONED:
+        status = HILApprovalStatus.DENIED
+    else:
+        status = record.status
+    return ApprovalOutcome(status=status, feedback=record.feedback, scope=record.scope)
 
 
 # --- what a blocked call tells the model (text lives in prompts.py) ---------------------
@@ -323,9 +346,10 @@ def _outcome_from_resume(raw: Any) -> ApprovalOutcome:
 
 def _refusal_message(call: GatedCall, outcome: ApprovalOutcome) -> ToolMessage:
     """Tell the model a denied or timed-out call did not run, and why."""
-    template = TIMEOUT_TEMPLATE if outcome.status == "timeout" else DENIED_TEMPLATE
+    timed_out = outcome.status is HILApprovalStatus.TIMEOUT
+    template = TIMEOUT_TEMPLATE if timed_out else DENIED_TEMPLATE
     feedback = f" The user said: {outcome.feedback!r}." if outcome.feedback else ""
-    status: HILToolMessageStatus = "timeout" if outcome.status == "timeout" else "denied"
+    status: HILToolMessageStatus = "timeout" if timed_out else "denied"
     # Each template uses only the fields it needs; format ignores the rest.
     content = template.format(tool=call.name, feedback=feedback, waited=approval_window_label())
     return _tool_message(call, content, status)
@@ -339,11 +363,6 @@ def _gate_error_message(call: GatedCall) -> ToolMessage:
 def _unpausable_denial_message(call: GatedCall) -> ToolMessage:
     """Tell the model a gated call was refused because this run cannot ask for approval."""
     return _tool_message(call, UNPAUSABLE_DENIAL_TEMPLATE.format(tool=call.name), "denied")
-
-
-def _already_ran_message(call: GatedCall) -> ToolMessage:
-    """Tell the model a replayed call already ran, so it does not ask for it again."""
-    return _tool_message(call, ALREADY_RAN_TEMPLATE.format(tool=call.name), "already_ran")
 
 
 def _tool_message(call: GatedCall, content: str, status: HILToolMessageStatus) -> ToolMessage:

@@ -1,287 +1,272 @@
-"""E2E test: filter_messages_node cleans dangling tool calls in a live GAIA graph.
+"""E2E test: sending an email through the real GAIA Gmail send path.
 
-WHAT THIS TESTS (REAL GAIA CODE):
-- ``filter_messages_node`` from ``app.agents.core.nodes.filter_messages``
-  is wired as a pre-model hook via ``create_agent`` from
-  ``app.override.langgraph_bigtool.create_agent``.
-- The GAIA ``State`` schema (``app.override.langgraph_bigtool.utils.State``)
-  is used throughout, not the generic ``MessagesState``.
-- The graph runs the real hook pipeline on every model invocation.
+Starts from the API call the web mail composer actually makes
+(``POST /api/v1/gmail/send-json`` and ``POST /api/v1/gmail/send``) and asserts
+on the response the user sees. Everything between is real production code:
 
-HOW IT'S TESTED:
-We inject AI messages with dangling tool calls (no corresponding ToolMessage)
-into the graph state and assert that ``filter_messages_node`` strips them
-before the model is called again — which is what allows the fake LLM
-to respond correctly in turn 2 without being confused by stale tool calls.
+- ``app.api.v1.endpoints.mail.send_email_json`` / ``send_email_route``
+- ``app.services.mail.mail_service.send_email`` (tool selection, parameter build)
+- ``app.services.mail.mail_service.invoke_gmail_tool``
+- ``app.services.composio.langchain_composio_service.LangchainProvider`` — the
+  real Composio→LangChain tool wrapper, including its pydantic argument schema
 
-Mock surfaces:
-- LLM: FakeMessagesListChatModel
-- Store: InMemoryStore (no ChromaDB)
-- Checkpointer: MemorySaver (no PostgreSQL)
-- email sending: a @tool stub is used, but the graph infrastructure is real
-
-DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
-DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
+The only fake is Composio's remote execution call (``execute_tool``), which is
+where the request would leave the process for Gmail. It returns recorded
+``ToolExecutionResponse`` payloads (``{"data", "error", "successful"}``).
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain_core.tools import tool
+from typing import Any
+
+from composio.types import Tool
 import pytest
 
-from app.agents.core.nodes.filter_messages import filter_messages_node
-from tests.e2e.conftest import (
-    build_gaia_test_graph,
-    make_gaia_state,
-    make_mock_store,
-    make_node_config,
-)
-from tests.helpers import BindableToolsFakeModel, assert_tool_called
+from app.services.composio.langchain_composio_service import LangchainProvider
+
+pytestmark = [pytest.mark.e2e, pytest.mark.usefixtures("_bypass_integration_check")]
+
+MAIL_BASE = "/api/v1"
+
+# Minimal but real Composio tool descriptors. Slugs and parameter names match
+# what mail_service builds, so a rename on either side breaks these tests.
+_TOOL_SCHEMAS = {
+    "GMAIL_SEND_EMAIL": {
+        "title": "SendEmailRequest",
+        "type": "object",
+        "properties": {
+            "recipient_email": {"type": "string"},
+            "subject": {"type": "string"},
+            "body": {"type": "string"},
+            "extra_recipients": {"type": "array", "items": {"type": "string"}},
+            "cc": {"type": "array", "items": {"type": "string"}},
+            "bcc": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["recipient_email"],
+    },
+    "GMAIL_REPLY_TO_THREAD": {
+        "title": "ReplyToThreadRequest",
+        "type": "object",
+        "properties": {
+            "recipient_email": {"type": "string"},
+            "subject": {"type": "string"},
+            "message_body": {"type": "string"},
+            "thread_id": {"type": "string"},
+            "extra_recipients": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": ["recipient_email", "thread_id"],
+    },
+}
 
 
-@tool
-def send_email(to: str, subject: str, body: str) -> str:
-    """Send an email via the GAIA mock email tool."""
-    return f"Email delivered to {to} re: {subject}"
+def _composio_tool(slug: str) -> Tool:
+    return Tool.model_validate(
+        {
+            "available_versions": ["latest"],
+            "deprecated": {
+                "available_versions": ["latest"],
+                "displayName": slug,
+                "is_deprecated": False,
+                "toolkit": {"logo": ""},
+                "version": "latest",
+            },
+            "description": f"{slug} (test descriptor)",
+            "input_parameters": _TOOL_SCHEMAS[slug],
+            "is_deprecated": False,
+            "name": slug,
+            "no_auth": False,
+            "output_parameters": {
+                "title": f"{slug}Response",
+                "type": "object",
+                "properties": {},
+            },
+            "scopes": [],
+            "slug": slug,
+            "tags": [],
+            "toolkit": {"logo": "", "name": "gmail", "slug": "gmail"},
+            "version": "latest",
+        }
+    )
 
 
-@pytest.mark.e2e
-class TestSendEmailFlow:
-    """E2E tests verifying filter_messages_node is active in the GAIA graph.
+class FakeGmail:
+    """Stands in for Composio's remote tool execution — the network boundary.
 
-    The real value here is that filter_messages_node (production code) is
-    exercised as part of the graph run — not just unit-tested in isolation.
+    Records every outbound call so tests can assert what would have been sent to
+    Gmail, and replays a caller-supplied ``ToolExecutionResponse``.
     """
 
-    # -------------------------------------------------------------------------
-    # The four tests below call filter_messages_node directly (unit-test style).
-    # They belong here because they exercise the real production node that is
-    # wired into the E2E graph, acting as a contract check for the node's
-    # public interface. Comprehensive unit coverage lives in:
-    #   tests/unit/agents/nodes/test_filter_messages.py
-    # -------------------------------------------------------------------------
+    def __init__(self, response: dict[str, Any] | None, known_tools: set[str] | None = None):
+        self.response = response
+        self.known_tools = known_tools if known_tools is not None else set(_TOOL_SCHEMAS)
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    def test_filter_messages_node_removes_dangling_tool_calls(self):
-        """filter_messages_node must strip AI tool_calls with no ToolMessage response.
+    def get_tool(self, tool_name: str, **_kwargs: Any):
+        if tool_name not in self.known_tools:
+            return None
+        return LangchainProvider().wrap_tool(_composio_tool(tool_name), self._execute)
 
-        Scenario: an AIMessage with a tool call for which no ToolMessage exists
-        is placed in state. After filter_messages_node runs, the tool_calls list
-        on that AI message should be empty.
+    def _execute(self, slug: str, arguments: dict[Any, Any]) -> dict[Any, Any]:
+        self.calls.append((slug, arguments))
+        assert self.response is not None
+        return self.response
 
-        This tests the real filter_messages_node function (not a mock) directly.
-        """
-        ai_with_dangling_call = AIMessage(
-            content="I'll send that email",
-            tool_calls=[
-                {
-                    "id": "dangling_call_001",
-                    "name": "send_email",
-                    "args": {
-                        "to": "alice@example.com",
-                        "subject": "Meeting",
-                        "body": "Let's catch up.",
-                    },
-                }
-            ],
-        )
-        state = make_gaia_state(messages=[ai_with_dangling_call])
-        config = make_node_config()
-        store = make_mock_store()
+    @property
+    def last_params(self) -> dict[str, Any]:
+        return self.calls[-1][1]
 
-        result = filter_messages_node(state, config, store)
 
-        filtered_ai = result["messages"][0]
-        assert isinstance(filtered_ai, AIMessage)
-        assert len(filtered_ai.tool_calls) == 0, (
-            "filter_messages_node must remove tool calls with no ToolMessage response"
-        )
+@pytest.fixture
+def _bypass_integration_check():
+    """require_integration("gmail") must pass without a live Composio connection."""
+    from unittest.mock import AsyncMock, patch
 
-    def test_filter_messages_node_preserves_answered_tool_calls(self):
-        """filter_messages_node must keep tool_calls that have a ToolMessage response."""
-        ai = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": "answered_001",
-                    "name": "send_email",
-                    "args": {"to": "bob@example.com", "subject": "Hi", "body": "Hello"},
-                }
-            ],
-        )
-        tool_response = ToolMessage(
-            content="Email delivered to bob@example.com re: Hi",
-            tool_call_id="answered_001",
-        )
-        state = make_gaia_state(messages=[ai, tool_response])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = filter_messages_node(state, config, store)
-
-        filtered_ai = result["messages"][0]
-        assert len(filtered_ai.tool_calls) == 1, (
-            "filter_messages_node must preserve tool_calls that have responses"
-        )
-        assert filtered_ai.tool_calls[0]["id"] == "answered_001"
-
-    async def test_graph_runs_filter_messages_as_pre_model_hook(
-        self, thread_config, in_memory_store, memory_saver
+    with patch(
+        "app.api.v1.dependencies.google_scope_dependencies.check_integration_status",
+        new_callable=AsyncMock,
+        return_value=True,
     ):
-        """Build a real GAIA graph and verify a tool is called end-to-end.
+        yield
 
-        The graph is built with create_agent (real production function) using
-        filter_messages_node and manage_system_prompts_node as pre-model hooks.
-        The tool execution path uses the real DynamicToolNode from the GAIA
-        override package.
-        """
-        fake_llm = BindableToolsFakeModel(
-            responses=[
-                AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": "call_email_001",
-                            "name": "send_email",
-                            "args": {
-                                "to": "carol@example.com",
-                                "subject": "Project Update",
-                                "body": "All good.",
-                            },
-                            "type": "tool_call",
-                        }
-                    ],
-                ),
-                AIMessage(content="Done! Email sent to carol@example.com."),
-            ]
+
+@pytest.fixture
+def gmail_boundary(monkeypatch):
+    """Install a FakeGmail as the Composio service mail_service resolves."""
+
+    def _install(response: dict[str, Any] | None, known_tools: set[str] | None = None) -> FakeGmail:
+        fake = FakeGmail(response, known_tools)
+        monkeypatch.setattr(
+            "app.services.mail.mail_service.get_composio_service", lambda: fake, raising=True
         )
+        return fake
 
-        graph = build_gaia_test_graph(
-            fake_llm=fake_llm,
-            tool_registry={"send_email": send_email},
-            checkpointer=memory_saver,
-            store=in_memory_store,
-        )
+    return _install
 
-        result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="Send an email to carol about the project")]},
-            config=thread_config,
-        )
 
-        messages = result["messages"]
-        assert_tool_called(messages, "send_email")
-
-        tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
-        assert len(tool_messages) >= 1
-        assert "carol@example.com" in tool_messages[0].content
-
-        final = messages[-1]
-        assert isinstance(final, AIMessage)
-        assert "carol" in final.content.lower()
-
-    async def test_graph_state_uses_gaia_state_schema(
-        self, thread_config, in_memory_store, memory_saver
+class TestSendEmailFlow:
+    async def test_send_returns_gmail_message_id_and_addresses_all_recipients(
+        self, client, gmail_boundary
     ):
-        """The compiled graph must use GAIA State (with 'todos' channel), not MessagesState.
+        """A successful send returns Gmail's message id and mails every recipient.
 
-        After invoking, the returned state should contain 'todos' (GAIA-specific)
-        in addition to 'messages'. This confirms the graph is using the real
-        GAIA State from app.override.langgraph_bigtool.utils, not a generic state.
+        ``to[0]`` becomes ``recipient_email`` and the remainder ``extra_recipients``
+        (route logic); the id lives under the Composio response envelope's ``data``.
         """
-        fake_llm = BindableToolsFakeModel(responses=[AIMessage(content="No tool needed here.")])
-
-        graph = build_gaia_test_graph(
-            fake_llm=fake_llm,
-            tool_registry={"send_email": send_email},
-            checkpointer=memory_saver,
-            store=in_memory_store,
+        fake = gmail_boundary(
+            {
+                "data": {"id": "gmail-msg-9001", "threadId": "gmail-thread-42"},
+                "error": None,
+                "successful": True,
+            }
         )
 
-        result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="Hello")]},
-            config=thread_config,
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send-json",
+            json={
+                "to": ["alice@example.com", "bob@example.com"],
+                "subject": "Q3 numbers",
+                "body": "Attached below.",
+                "cc": ["carol@example.com"],
+            },
         )
 
-        assert "messages" in result
-        # 'todos' is the GAIA-specific channel from app.override.langgraph_bigtool.utils.State
-        assert "todos" in result, (
-            "Result must contain 'todos' key — the GAIA-specific state channel. "
-            "If missing, the graph is using a generic state instead of GAIA State."
-        )
-        # Value assertions: confirm the channels hold the right types, not just
-        # that the keys are present. A wrong type here means the State schema
-        # reducers are not functioning correctly.
-        assert isinstance(result["todos"], list), (
-            "'todos' must be a list (last-write-wins reducer returns a list). "
-            f"Got {type(result['todos']).__name__!r} instead."
-        )
-        assert isinstance(result["messages"], list), (
-            "'messages' must be a list (add_messages reducer returns a list). "
-            f"Got {type(result['messages']).__name__!r} instead."
-        )
-        # The graph was invoked with one HumanMessage; the fake LLM produced one
-        # AIMessage. At minimum both must be present.
-        assert len(result["messages"]) >= 2, (
-            "Expected at least a HumanMessage and an AIMessage in the result. "
-            f"Got {len(result['messages'])} message(s)."
-        )
+        assert response.status_code == 200, response.text
+        assert response.json() == {
+            "message_id": "gmail-msg-9001",
+            "status": "Email sent successfully",
+        }
 
-    async def test_multi_turn_conversation_filter_cleans_between_turns(self):
-        """filter_messages_node must clean unanswered tool calls across turns.
+        slug, params = fake.calls[0]
+        assert slug == "GMAIL_SEND_EMAIL"
+        assert params["recipient_email"] == "alice@example.com"
+        assert params["extra_recipients"] == ["bob@example.com"]
+        assert params["cc"] == ["carol@example.com"]
+        assert params["subject"] == "Q3 numbers"
+        assert params["body"] == "Attached below."
 
-        Simulates a conversation where turn 1 left a dangling tool call, and
-        turn 2 now has a different tool call with its response. After
-        filter_messages_node, only the answered call from turn 2 remains.
+    async def test_send_reports_failure_instead_of_claiming_success(self, client, gmail_boundary):
+        """A Gmail rejection must NOT come back as "Email sent successfully".
+
+        Composio signals failure with ``successful: False`` and an ``error``. If
+        the route ignores that, the composer tells the user the mail went out
+        when nothing was delivered.
         """
-        dangling_ai = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": "stale_001",
-                    "name": "send_email",
-                    "args": {},
-                }
-            ],
+        gmail_boundary(
+            {
+                "data": {},
+                "error": "Request had insufficient authentication scopes.",
+                "successful": False,
+            }
         )
-        answered_ai = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": "live_002",
-                    "name": "send_email",
-                    "args": {},
-                }
-            ],
+
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send-json",
+            json={"to": ["alice@example.com"], "subject": "Q3 numbers", "body": "Attached."},
         )
-        live_response = ToolMessage(content="Email sent", tool_call_id="live_002")
-        state = make_gaia_state(messages=[dangling_ai, answered_ai, live_response])
-        config = make_node_config()
-        store = make_mock_store()
 
-        result = filter_messages_node(state, config, store)
-
-        # dangling_ai (index 0) should have its tool_calls cleared
-        assert len(result["messages"][0].tool_calls) == 0
-        # answered_ai (index 1) should keep its tool_call
-        assert len(result["messages"][1].tool_calls) == 1
-        assert result["messages"][1].tool_calls[0]["id"] == "live_002"
-
-    async def test_filter_messages_preserves_ai_content_on_cleanup(self):
-        """filter_messages_node must preserve AI content even when tool_calls are removed.
-
-        An AIMessage with both content and a dangling tool call: after filtering,
-        the content must be intact even though tool_calls is cleared.
-        """
-        ai = AIMessage(
-            content="I will try to send an email for you",
-            tool_calls=[{"id": "no_response_tc", "name": "send_email", "args": {}}],
+        assert response.status_code == 500, response.text
+        body = response.json()
+        assert "successfully" not in str(body).lower(), (
+            f"Gmail rejected the send but the API reported success: {body}"
         )
-        state = make_gaia_state(messages=[ai])
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = filter_messages_node(state, config, store)
-
-        filtered = result["messages"][0]
-        assert filtered.content == "I will try to send an email for you", (
-            "filter_messages_node must not modify message content when removing tool_calls"
+        assert "insufficient authentication scopes" in str(body), (
+            f"The Gmail error must reach the user, got: {body}"
         )
-        assert len(filtered.tool_calls) == 0
+
+    async def test_send_reports_failure_when_gmail_tool_is_unavailable(
+        self, client, gmail_boundary
+    ):
+        """An unresolvable GMAIL_SEND_EMAIL tool is a failure, not a silent success."""
+        gmail_boundary(None, known_tools=set())
+
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send-json",
+            json={"to": ["alice@example.com"], "subject": "Hi", "body": "There."},
+        )
+
+        assert response.status_code == 500, response.text
+        assert "successfully" not in str(response.json()).lower()
+        assert "GMAIL_SEND_EMAIL" in str(response.json())
+
+    async def test_form_send_route_reports_failure_instead_of_claiming_success(
+        self, client, gmail_boundary
+    ):
+        """The multipart send route (attachments path) must fail loud too."""
+        gmail_boundary(
+            {"data": {}, "error": "Recipient address rejected", "successful": False},
+        )
+
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "alice@example.com",
+                "subject": "Q3 numbers",
+                "body": "Attached.",
+            },
+        )
+
+        assert response.status_code == 500, response.text
+        assert "successfully" not in str(response.json()).lower()
+        assert "Recipient address rejected" in str(response.json())
+
+    async def test_reply_uses_thread_tool_and_returns_message_id(self, client, gmail_boundary):
+        """A send with thread_id replies on the thread instead of starting a new one."""
+        fake = gmail_boundary(
+            {"data": {"id": "gmail-msg-9002"}, "error": None, "successful": True},
+        )
+
+        response = await client.post(
+            f"{MAIL_BASE}/gmail/send",
+            data={
+                "to": "alice@example.com",
+                "subject": "Re: Q3 numbers",
+                "body": "Sounds good.",
+                "thread_id": "gmail-thread-42",
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["message_id"] == "gmail-msg-9002"
+
+        slug, params = fake.calls[0]
+        assert slug == "GMAIL_REPLY_TO_THREAD"
+        assert params["thread_id"] == "gmail-thread-42"
+        assert params["message_body"] == "Sounds good."

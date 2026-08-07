@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 
@@ -20,23 +20,26 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.files import FileService
 
 
 async def construct_langchain_messages(
     messages: list[MessageDict],
     files_data: list[FileData] | None = None,
-    currently_uploaded_file_ids: list[str] | None = [],
+    currently_uploaded_file_ids: list[str] | None = None,
     user_id: str | None = None,
     user_name: str | None = None,
-    user_dict: dict | None = None,
+    user_dict: AuthenticatedUser | None = None,
     query: str | None = None,
     selected_tool: str | None = None,
     tool_category: str | None = None,
     selected_workflow: SelectedWorkflowData | None = None,
     selected_calendar_event: SelectedCalendarEventData | None = None,
     reply_to_message: ReplyToMessageData | None = None,
-    trigger_context: dict | None = None,
+    # Open by construction: schedulers spread arbitrary provider trigger data
+    # through this alongside the agent's own keys, so there is no fixed shape.
+    trigger_context: dict[str, Any] | None = None,
     agent_type: Literal["comms", "executor"] = "comms",
     active_todo_id: str | None = None,
     execution_mode: Literal["interactive", "background"] = "interactive",

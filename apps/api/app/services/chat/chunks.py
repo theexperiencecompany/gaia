@@ -7,11 +7,21 @@ dispatcher; :func:`extract_tool_data`, :func:`normalize_custom_event`, and
 :func:`extract_response_text` are pure parsers reused by the dispatcher, the
 LangGraph stream processor in ``stream_utils``, and the legacy
 ``call_agent_silent`` path in ``agent_utils``.
+
+Two shapes here stay ``dict[str, Any]`` on purpose (Type Safety item 14):
+
+* the chunk payloads themselves — an agent chunk is arbitrary JSON emitted by
+  whichever tool/hook wrote it, and ``normalize_custom_event`` passes anything
+  it does not recognise straight through, so there is no closed shape to name;
+* :func:`extract_tool_data`'s ``{tool_data?, other_data?, tool_output?}``
+  envelope — it is consumed by ``utils/stream_publishers`` and
+  ``utils/agent_utils``, both of which declare it as a plain ``dict[str, Any]``
+  parameter, so naming it would have to retype those in the same pass.
 """
 
 from datetime import UTC, datetime
 import json
-from typing import Any
+from typing import Any, cast
 
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import ToolDataEntry, tool_fields
@@ -122,7 +132,7 @@ async def _forward_subagent_lifecycle(
 def _parse_chunk_json(chunk_payload: str) -> dict[str, Any] | None:
     """Parse a chunk payload as JSON, returning ``None`` on malformed input."""
     try:
-        return json.loads(chunk_payload)
+        return cast(dict[str, Any], json.loads(chunk_payload))
     except json.JSONDecodeError:
         return None
 
@@ -132,7 +142,7 @@ def extract_response_text(chunk: str) -> str:
     try:
         chunk = chunk.removeprefix("data: ")
         data = json.loads(chunk)
-        return data.get("response", "")
+        return cast(str, data.get("response", ""))
     except (json.JSONDecodeError, KeyError):
         pass
     return ""
@@ -171,7 +181,12 @@ def normalize_custom_event(payload: dict[str, Any]) -> dict[str, Any]:
 
     # Preserve non-tool keys (e.g. nextPageToken alongside email_fetch_data)
     other_keys = {k: v for k, v in payload.items() if k not in tool_fields}
-    tool_data_value: Any = entries[0] if len(entries) == 1 else entries
+    # A lone entry rides the envelope unwrapped; several ride as a list. The
+    # frontend parser accepts both, and normalizing to a list here would change
+    # the wire shape for every single-tool chunk.
+    tool_data_value: ToolDataEntry | list[ToolDataEntry] = (
+        entries[0] if len(entries) == 1 else entries
+    )
     return {**other_keys, "tool_data": tool_data_value}
 
 

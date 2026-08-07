@@ -1,11 +1,14 @@
 """Rate limiting decorators for API endpoints and LangChain tools, keyed on user plan."""
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from functools import wraps
 import inspect
-from typing import Any
+from typing import Any, ParamSpec, TypeVar, cast
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 from fastapi import HTTPException
 from langgraph.config import get_stream_writer
@@ -15,8 +18,10 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_limiter,
 )
 from app.constants.log_tags import LogTag
+from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
+from app.models.user_models import AuthenticatedUser
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
@@ -31,7 +36,7 @@ def with_rate_limiting(
     feature_key: str | None = None,
     count_tokens: bool = False,
     bypass_for_system: bool = False,
-):
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator stackable with LangChain's @tool.
 
     Args:
@@ -42,7 +47,7 @@ def with_rate_limiting(
     Raises LangChainRateLimitException (agent-friendly) when limits are exceeded.
     """
 
-    def rate_limit_decorator(func):
+    def rate_limit_decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         # 🚨 VALIDATE AT DECORATION TIME - Error happens when decorator is applied!
         sig = inspect.signature(func)
         if "config" not in sig.parameters:
@@ -52,20 +57,27 @@ def with_rate_limiting(
             )
 
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             """Enforce the feature's rate limit before running the wrapped call."""
             # Auto-derive feature key from function name if not provided
             actual_feature_key = feature_key or func.__name__
 
             # Get user context from context variable (avoid parameter pollution)
             context = user_context.get()
-            config = kwargs.get("config")
+            # Decoration-time validation above guarantees a `config` parameter; it
+            # carries LangGraph's RunnableConfig mapping.
+            config = cast(Mapping[str, Any] | None, kwargs.get("config"))
 
             if not context and config:
                 # Extract from RunnableConfig
                 context = {
                     "user_id": config.get("metadata", {}).get("user_id"),
-                    "initiator": config.get("configurable", {}).get("initiator", "frontend"),
+                    # Always user-initiated: no producer writes an "initiator" into
+                    # a run's configurable (see AgentConfigurable), so the lookup
+                    # this replaces could only ever return this default. Backend
+                    # callers announce themselves through user_context instead,
+                    # which is the branch above.
+                    "initiator": "frontend",
                 }
 
             if context and context.get("user_id"):
@@ -113,12 +125,17 @@ def with_rate_limiting(
                         detail_dict = {}
                         reset_time = None
 
-                        if hasattr(e, "detail"):
-                            if isinstance(e.detail, dict):
-                                detail_dict = e.detail
-                                reset_time = e.detail.get("reset_time")
-                            elif isinstance(e.detail, str):
-                                detail_dict = {"message": e.detail}
+                        # HTTPException.detail is typed `str` by Starlette, but
+                        # RateLimitExceededException always sets it to a dict at
+                        # runtime — cast to Any so the isinstance checks below
+                        # aren't (incorrectly) treated as statically unreachable.
+                        detail_value = cast(Any, e.detail) if hasattr(e, "detail") else None
+                        if detail_value is not None:
+                            if isinstance(detail_value, dict):
+                                detail_dict = detail_value
+                                reset_time = detail_value.get("reset_time")
+                            elif isinstance(detail_value, str):
+                                detail_dict = {"message": detail_value}
 
                         # Emit inline rate limit card via LangGraph stream writer
                         # (only available when executing inside a LangGraph graph)
@@ -143,8 +160,13 @@ def with_rate_limiting(
                                     }
                                 }
                             )
-                        except Exception:  # nosec B110
-                            pass  # Not in a streaming context (e.g. workflows, background tasks)
+                        except Exception as stream_error:
+                            # Usually just "not in a streaming context" (workflows,
+                            # background tasks); the card is decoration, the
+                            # LangChainRateLimitException below is the real outcome.
+                            log.debug(
+                                f"{LogTag.API} Rate limit card not streamed for {actual_feature_key}: {stream_error}"
+                            )
 
                         raise LangChainRateLimitException(
                             feature=actual_feature_key,
@@ -203,24 +225,31 @@ def with_rate_limiting(
     return rate_limit_decorator
 
 
-def tiered_rate_limit(feature_key: str, count_tokens: bool = False):
+def tiered_rate_limit(
+    feature_key: str, count_tokens: bool = False
+) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
     """Rate limiting decorator for API endpoints."""
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             """Enforce the tiered rate limit before running the wrapped endpoint."""
-            # Extract request and user from dependencies
-            user = None
-
-            for arg in args:
-                if isinstance(arg, dict) and "user_id" in arg:
-                    user = arg
+            # The authenticated user comes from `request.state.user` (mirrored into
+            # a ContextVar by WorkOSAuthMiddleware), NOT from the handler's
+            # parameters. Matching on a kwarg named `user` — as this used to do —
+            # meant an endpoint that named it `current_user`/`user_id`/`_user`
+            # silently skipped rate limiting entirely.
+            user = get_authenticated_user()
 
             if not user:
-                user = kwargs.get("user")
+                # Direct invocation outside the HTTP middleware stack (tests,
+                # internal callers) can still pass the auth dict explicitly.
+                user = cast(AuthenticatedUser | None, kwargs.get("user"))
+                for arg in args:
+                    if isinstance(arg, dict) and "user_id" in arg:
+                        user = cast(AuthenticatedUser, arg)
                 if not user:
-                    # If no user found, skip rate limiting (for public endpoints)
+                    # Genuinely unauthenticated — a public route has nobody to bill.
                     return await func(*args, **kwargs)
 
             user_id = user.get("user_id")
@@ -304,7 +333,7 @@ async def enforce_rate_limit(user_id: str, feature_key: str) -> dict[str, UsageI
     )
 
 
-def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
+def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: object) -> dict[str, Any]:
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
@@ -312,7 +341,7 @@ def set_user_context(user_id: str, initiator: str = "frontend", **kwargs):
     return context
 
 
-def clear_user_context():
+def clear_user_context() -> None:
     """Clear user context."""
     user_context.set(None)
     rate_limit_context.set(None)

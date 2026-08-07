@@ -15,6 +15,7 @@ run sees it as eligible and backfills it.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.constants.memory import (
     MEMORY_BACKFILL_ACTIVE_DAYS,
@@ -51,7 +52,7 @@ def _active_since() -> datetime:
     return datetime.now(UTC) - timedelta(days=MEMORY_BACKFILL_ACTIVE_DAYS)
 
 
-async def backfill_active_users(ctx: dict) -> str:
+async def backfill_active_users(ctx: dict[str, Any]) -> str:
     """Daily cron: enqueue a memory backfill for eligible users, capped per run.
 
     Capping per run drains the backlog gradually instead of spiking the
@@ -80,7 +81,7 @@ async def backfill_active_users(ctx: dict) -> str:
         return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
 
 
-async def backfill_user_memories(ctx: dict, user_id: str) -> str:
+async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:
     """Replay one user's conversations into memory, then notify them.
 
     Idempotent: re-checks the marker, and the engine's reconciliation dedups
@@ -145,7 +146,7 @@ async def backfill_user_memories(ctx: dict, user_id: str) -> str:
         return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
-def _conversation_to_messages(doc: dict) -> list[dict[str, str]]:
+def _conversation_to_messages(doc: dict[str, Any]) -> list[dict[str, str]]:
     """Map a stored conversation's embedded messages to extraction format."""
     role_map = {"user": "user", "bot": "assistant"}
     messages: list[dict[str, str]] = []
@@ -157,7 +158,7 @@ def _conversation_to_messages(doc: dict) -> list[dict[str, str]]:
     return messages
 
 
-def _conversation_date(doc: dict) -> datetime:
+def _conversation_date(doc: dict[str, Any]) -> datetime:
     """Best-effort original timestamp so replayed facts land on the right day."""
     value = doc.get("createdAt") or doc.get("updatedAt")
     if isinstance(value, datetime):

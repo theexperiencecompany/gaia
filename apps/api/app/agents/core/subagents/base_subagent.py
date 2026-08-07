@@ -6,10 +6,12 @@ end_graph_hook to learn user memories (IDs, preferences, contacts) per user.
 """
 
 import asyncio
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
@@ -23,7 +25,7 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.spawn_agent import get_spawn_graph
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.coding import bash, grep, query_json, read
-from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.core.registry import ToolRegistry, get_tool_registry
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.core.tool_runtime_config import (
     build_child_tool_runtime_config,
@@ -43,13 +45,48 @@ from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
 
+def resolve_declared_tools(
+    declared: list[str] | None,
+    scoped_tool_dict: Mapping[str, BaseTool],
+    *,
+    provider: str,
+    kind: str,
+) -> list[str]:
+    """The declared tools that actually resolved, warning about any that did not.
+
+    A subagent's ``auto_bind_tools`` / ``extra_initial_tools`` are a promise that
+    those tools are bound before its first model call. Filtering out names the
+    registry never produced is correct — binding a non-existent tool would fail
+    the build — but a name that goes missing is always an upstream fault (a
+    provider category that never registered, a renamed slug), never a normal
+    outcome. Left silent, a Gmail subagent builds with none of its Gmail tools,
+    reports healthy, and can do nothing.
+
+    Declaring nothing is normal and says nothing.
+    """
+    if not declared:
+        return []
+    resolved = [name for name in declared if name in scoped_tool_dict]
+    missing = [name for name in declared if name not in scoped_tool_dict]
+    if missing:
+        log.warning(
+            f"{LogTag.AGENT} Subagent '{provider}' declared {kind} tools that do not exist "
+            f"in its resolved tool set; they will NOT be bound. missing={missing}",
+            provider=provider,
+            declaration=kind,
+            missing_tools=missing,
+            resolved_tools=resolved,
+        )
+    return resolved
+
+
 def _build_scoped_tool_dict(
-    tool_registry: Any,
+    tool_registry: ToolRegistry,
     tool_space: str,
     mcp_tools: list[BaseTool] | None,
     include_finish_task: bool,
     authoring_only: bool = False,
-) -> tuple[dict, list[str]]:
+) -> tuple[dict[str, BaseTool], list[str]]:
     """Assemble the scoped tool dict + initial tool IDs for a subagent.
 
     Split out of `create_provider_subagent` to keep that function's cognitive
@@ -60,7 +97,7 @@ def _build_scoped_tool_dict(
     execution tools (coding/FS, web, research, memory), so it cannot try to
     *do* the work instead of describe it.
     """
-    scoped_tool_dict: dict = {}
+    scoped_tool_dict: dict[str, BaseTool] = {}
     initial_tool_ids: list[str] = []
 
     if mcp_tools is not None:
@@ -216,10 +253,11 @@ class SubAgentFactory:
             "end_graph_hooks": [memory_node],
         }
 
-        valid_auto_bind = (
-            [tool_name for tool_name in auto_bind_tools if tool_name in scoped_tool_dict]
-            if auto_bind_tools
-            else None
+        valid_auto_bind: list[str] | None = (
+            resolve_declared_tools(
+                auto_bind_tools, scoped_tool_dict, provider=provider, kind="auto_bind"
+            )
+            or None
         )
 
         # Config-declared extra initial tools (SubAgentConfig.extra_initial_tools):
@@ -228,7 +266,9 @@ class SubAgentFactory:
         # query_json/grep so triage mines an offloaded inbox directly instead of
         # falling back to read-whole-file + bash. Kept per-integration in config
         # (not branched on provider) so it scales to any subagent that offloads.
-        extra_initial = [name for name in (extra_initial_tools or []) if name in scoped_tool_dict]
+        extra_initial = resolve_declared_tools(
+            extra_initial_tools, scoped_tool_dict, provider=provider, kind="extra_initial"
+        )
         if extra_initial:
             valid_auto_bind = [*(valid_auto_bind or []), *extra_initial]
 
@@ -277,7 +317,7 @@ class SubAgentFactory:
 
         try:
             checkpointer_manager = await get_checkpointer_manager()
-            checkpointer = checkpointer_manager.get_checkpointer()
+            checkpointer: BaseCheckpointSaver = checkpointer_manager.get_checkpointer()
             log.debug(f"{LogTag.AGENT} Using PostgreSQL checkpointer for {provider} sub-agent")
         except Exception as e:
             log.warning(

@@ -40,6 +40,7 @@ from app.models.stream_events import (
     ErrorFrame,
     MainResponseCompleteFrame,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
@@ -67,7 +68,7 @@ from shared.py.wide_events import ChatContext, log, wide_task
 async def run_chat_stream_background(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
 ) -> None:
@@ -144,7 +145,7 @@ class _StreamState:
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
 ) -> None:
@@ -265,7 +266,7 @@ def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
 
 async def _resolve_pending_approval_turn(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
@@ -372,7 +373,7 @@ def _start_description_task(
     is_new_conversation: bool,
     body: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
 ) -> asyncio.Task[str] | None:
     """Create a background task to generate a conversation description if new."""
     if not is_new_conversation:
@@ -423,7 +424,7 @@ async def _wait_for_artifact_forwarder(subscribed: asyncio.Event, stream_id: str
 
 async def _publish_init_chunk(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
@@ -460,7 +461,7 @@ async def _publish_init_chunk(
 
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     source: str | None,
@@ -620,7 +621,7 @@ async def _handle_stream_error(
 async def _persist_turn(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -647,6 +648,7 @@ async def _persist_turn(
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
         error=state.error or None,
+        follow_up_actions=state.follow_up_actions or None,
     )
     state.saved = True
 
@@ -654,7 +656,7 @@ async def _persist_turn(
 async def _attach_executor_tool_data(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -682,12 +684,24 @@ async def _attach_executor_tool_data(
     if not executor_td:
         return
     try:
-        await conversation_repository.append_message_tool_data(
+        matched = await conversation_repository.append_message_tool_data(
             conversation_id,
             user_id=user.get("user_id", ""),
             message_id=state.bot_message_id,
             entries=executor_td,
         )
+        if not matched:
+            # A False return means the message_id filter matched nothing, so the
+            # write silently did not happen — every executor card the user
+            # watched live is absent from the saved turn. Nothing raises, so
+            # without this the loss is invisible (see the same check in
+            # result_delivery._persist_follow_up_actions).
+            log.error(
+                f"{LogTag.CHAT} Executor tool_data attach matched no message, dropping cards",
+                conversation_id=conversation_id,
+                message_id=state.bot_message_id,
+                entries=len(executor_td),
+            )
     except Exception as e:  # executor tool_data attach is best-effort
         log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
 
@@ -695,7 +709,7 @@ async def _attach_executor_tool_data(
 async def _finalize_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
     artifact_task: asyncio.Task[None] | None,

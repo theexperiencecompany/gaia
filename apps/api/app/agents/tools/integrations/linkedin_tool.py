@@ -10,6 +10,7 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.decorators.documentation import with_doc
 from app.models.common_models import GatherContextInput
@@ -52,7 +53,7 @@ _REST_HEADERS = {
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -64,10 +65,11 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_POST_DOC)
     def CUSTOM_CREATE_POST(
         request: CreatePostInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create a LinkedIn post with optional media (image, document, or article)."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         author_urn = get_author_urn(user_id, request.organization_id)
@@ -169,10 +171,11 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_ADD_COMMENT_DOC)
     def CUSTOM_ADD_COMMENT(
         request: AddCommentInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Add a comment to a LinkedIn post."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         author_urn = get_author_urn(user_id)
@@ -212,10 +215,11 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_POST_COMMENTS_DOC)
     def CUSTOM_GET_POST_COMMENTS(
         request: GetPostCommentsInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Retrieve comments on a LinkedIn post."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
@@ -255,10 +259,11 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_REACT_TO_POST_DOC)
     def CUSTOM_REACT_TO_POST(
         request: ReactToPostInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Add a reaction to a LinkedIn post."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         author_urn = get_author_urn(user_id)
@@ -283,10 +288,11 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_DELETE_REACTION_DOC)
     def CUSTOM_DELETE_REACTION(
         request: DeleteReactionInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Remove your reaction from a LinkedIn post."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         author_urn = get_author_urn(user_id)
@@ -312,10 +318,11 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_POST_REACTIONS_DOC)
     def CUSTOM_GET_POST_REACTIONS(
         request: GetPostReactionsInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Retrieve reactions on a LinkedIn post."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
         encoded_urn = request.post_urn.replace(":", "%3A")
 
@@ -352,7 +359,7 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="LINKEDIN")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get LinkedIn context snapshot: authenticated user profile info and recent posts.
@@ -360,6 +367,7 @@ def register_linkedin_custom_tools(composio: Composio) -> list[str]:
         Zero required parameters. Returns user identity information and up to 5
         recent posts authored by the authenticated user.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = _user_id(auth_credentials)
 
         data = (

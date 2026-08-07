@@ -5,12 +5,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.models.user_models import AuthenticatedUser
 from app.schemas.hil_schemas import (
     ApprovalDecisionRequest,
     ApprovalDecisionResponse,
     BatchApprovalDecisionRequest,
     BatchApprovalDecisionResponse,
-    BatchDecisionOutcome,
     HILPreferencesResponse,
     SetToolOverrideRequest,
     UpdateHILPreferencesRequest,
@@ -30,7 +30,7 @@ router = APIRouter(prefix="/approvals", tags=["approvals"])
 async def post_approval_decision(
     approval_id: str,
     payload: ApprovalDecisionRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> ApprovalDecisionResponse:
     """Apply a button decision and resume the paused run.
 
@@ -56,7 +56,7 @@ async def post_approval_decision(
 @router.post("/batch-decision")
 async def post_batch_decision(
     payload: BatchApprovalDecisionRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> BatchApprovalDecisionResponse:
     """Decide several pending approvals in one submission (the batch review).
 
@@ -75,15 +75,13 @@ async def post_batch_decision(
         user_id,
         [(item.approval_id, item.decision, item.feedback) for item in payload.decisions],
     )
-    log.set(hil={"resolved": sum(1 for o in outcomes if o["resolved"])})
-    return BatchApprovalDecisionResponse(
-        outcomes=[BatchDecisionOutcome(**outcome) for outcome in outcomes]
-    )
+    log.set(hil={"resolved": sum(1 for o in outcomes if o.resolved)})
+    return BatchApprovalDecisionResponse(outcomes=outcomes)
 
 
 @router.get("/preferences")
 async def get_preferences(
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
     """Return the current user's HIL approval preferences."""
     log.set(user={"id": user["user_id"]}, hil={"operation": "get_preferences"})
@@ -94,7 +92,7 @@ async def get_preferences(
 @router.put("/preferences")
 async def put_preferences(
     payload: UpdateHILPreferencesRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
     """Apply a partial update to the current user's HIL preferences."""
     log.set(user={"id": user["user_id"]}, hil={"operation": "update_preferences"})
@@ -110,7 +108,7 @@ async def put_preferences(
 async def set_tool_approval(
     tool_name: str,
     payload: SetToolOverrideRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> HILPreferencesResponse:
     """Set (``ask`` true/false) or clear (``ask`` null) one tool's approval override."""
     log.set(

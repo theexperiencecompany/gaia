@@ -46,6 +46,10 @@ NO_SUBJECT = "[No Subject]"
 
 # Email processing limits
 EMAIL_QUERY = "in:inbox"
+SENT_EMAIL_QUERY = "in:sent"
+# Ownership signals (e.g. a social handle the user themselves linked) only exist
+# in sent mail, so scans that derive them must span both mailboxes.
+INBOX_OR_SENT_EMAIL_QUERY = f"({EMAIL_QUERY} OR {SENT_EMAIL_QUERY})"
 MAX_RESULTS = 500
 BATCH_SIZE = 50
 ONBOARDING_EMAIL_SCAN_LIMIT = 200

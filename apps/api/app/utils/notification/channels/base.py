@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Any
+from typing import Generic, TypeVar
 
 from app.models.notification.notification_models import (
     ChannelDeliveryStatus,
@@ -8,9 +8,19 @@ from app.models.notification.notification_models import (
     NotificationStatus,
 )
 
+TContent = TypeVar("TContent")
 
-class ChannelAdapter(ABC):
-    """Base class for all notification channel adapters."""
+
+class ChannelAdapter(ABC, Generic[TContent]):
+    """Base class for all notification channel adapters.
+
+    Generic over the payload ``transform`` produces and ``deliver`` consumes,
+    because every channel's payload is its own shape (a WebSocket frame for
+    in-app, CommonMark parts for the bot queues). The type parameter is what
+    keeps each adapter's two halves checked against each other; the
+    orchestrator's registry holds them erased, since it only ever pipes one
+    adapter's ``transform`` straight into that same adapter's ``deliver``.
+    """
 
     @property
     @abstractmethod
@@ -22,14 +32,12 @@ class ChannelAdapter(ABC):
         pass
 
     @abstractmethod
-    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> TContent:
         """Transform notification content for this channel."""
-        pass
 
     @abstractmethod
-    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+    async def deliver(self, content: TContent, user_id: str) -> ChannelDeliveryStatus:
         """Deliver notification via this channel."""
-        pass
 
     # -- Status helpers -----------------------------------------------------
 

@@ -34,8 +34,6 @@ class SampleAfterMiddleware(AgentMiddleware):
 class NoopMiddleware(AgentMiddleware):
     """Middleware that does not override any methods."""
 
-    pass
-
 
 class SampleAsyncAfterMiddleware(AgentMiddleware):
     """Test middleware that overrides aafter_model."""

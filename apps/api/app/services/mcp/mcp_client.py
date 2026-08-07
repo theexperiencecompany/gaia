@@ -20,12 +20,14 @@ Features:
 
 import asyncio
 import base64
+from collections.abc import Awaitable, Callable
+import contextlib
 import json as _json
 import re
 import secrets
 import time
 import traceback
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 import urllib.parse
 
 import httpx
@@ -52,7 +54,16 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.helpers.mcp_helpers import get_api_base_url, get_frontend_url
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import (
+    DCRClientRegistration,
+    McpAuthChallenge,
+    MCPConfig,
+    McpProbeResult,
+    McpUiResourceDetails,
+    MCPUseConfig,
+    MCPUseServerConfig,
+    OAuthDiscovery,
+)
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
@@ -91,6 +102,7 @@ from app.utils.mcp_utils import (
     wrap_tools_with_null_filter,
 )
 from app.utils.url_safety import assert_public_http_url
+from mcp import ClientSession
 from mcp.client.auth.oauth2 import PKCEParameters
 from mcp.client.auth.utils import (
     create_client_registration_request,
@@ -102,7 +114,29 @@ from mcp.shared.auth import (
     OAuthMetadata,
     OAuthToken,
 )
+from mcp.types import (
+    CallToolResult,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListResourceTemplatesResult,
+    ReadResourceResult,
+)
 from shared.py.wide_events import McpContext, log, log_context
+
+
+class _SanitizedMcpServer(TypedDict):
+    """One ``mcpServers`` entry with credentials reduced to presence flags."""
+
+    url: str | None
+    transport: str | None
+    has_auth: bool
+    has_headers: bool
+
+
+class _SanitizedMcpConfig(TypedDict):
+    """Log-safe projection of :class:`MCPUseConfig` — never fed back to mcp_use."""
+
+    mcpServers: dict[str, _SanitizedMcpServer]
 
 
 class _ClientBranding(TypedDict, total=False):
@@ -116,8 +150,6 @@ class _ClientBranding(TypedDict, total=False):
 
 class DCRNotSupportedException(Exception):
     """Raised when Dynamic Client Registration is not supported by the server."""
-
-    pass
 
 
 class StepUpAuthRequired(Exception):
@@ -191,10 +223,10 @@ def _is_terminal_auth_failure(exception: Exception, refresh_attempted: bool = Fa
 # returned Task object is unreferenced, the GC can collect it mid-execution
 # and the work silently disappears. Tasks remove themselves from this set
 # via add_done_callback so the set stays bounded.
-_BG_TASKS: set[asyncio.Task] = set()
+_BG_TASKS: set[asyncio.Task[None]] = set()
 
 
-async def _with_wide_event(coro: Any, label: str) -> None:
+async def _with_wide_event(coro: Awaitable[None], label: str) -> None:
     """Run a background coroutine inside its own wide event boundary.
 
     Detached tasks escape the request's logging middleware, so without this
@@ -206,7 +238,7 @@ async def _with_wide_event(coro: Any, label: str) -> None:
         await coro
 
 
-def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
+def _spawn_background(coro: Awaitable[None], label: str) -> asyncio.Task[None] | None:
     """Spawn a fire-and-forget task that survives until completion.
 
     The coroutine runs inside a wide event boundary so its ``log.set()`` fields
@@ -223,7 +255,7 @@ def _spawn_background(coro: Any, label: str) -> asyncio.Task | None:
     task = loop.create_task(_with_wide_event(coro, label), name=f"mcp:{label}")
     _BG_TASKS.add(task)
 
-    def _on_done(t: asyncio.Task) -> None:
+    def _on_done(t: asyncio.Task[None]) -> None:
         _BG_TASKS.discard(t)
         if t.cancelled():
             return
@@ -270,20 +302,19 @@ class MCPClient:
         self._connecting: dict[str, asyncio.Event] = {}
         self._connect_results: dict[str, list[BaseTool] | None] = {}
 
-    def _sanitize_config(self, config: dict) -> dict:
+    def _sanitize_config(self, config: MCPUseConfig) -> _SanitizedMcpConfig:
         """Sanitize config for logging by removing sensitive data."""
-        sanitized = {}
+        sanitized: dict[str, _SanitizedMcpServer] = {}
         for server_id, server_config in config.get("mcpServers", {}).items():
-            sanitized_server = {
-                "url": server_config.get("url"),
-                "transport": server_config.get("transport"),
-                "has_auth": "auth" in server_config and server_config["auth"] is not None,
-                "has_headers": "headers" in server_config,
-            }
-            sanitized[server_id] = sanitized_server
-        return {"mcpServers": sanitized}
+            sanitized[server_id] = _SanitizedMcpServer(
+                url=server_config.get("url"),
+                transport=server_config.get("transport"),
+                has_auth=server_config.get("auth") is not None,
+                has_headers="headers" in server_config,
+            )
+        return _SanitizedMcpConfig(mcpServers=sanitized)
 
-    async def probe_connection(self, server_url: str) -> dict:
+    async def probe_connection(self, server_url: str) -> McpProbeResult:
         """Probe an MCP server to determine auth requirements."""
         return await probe_mcp_connection(server_url)
 
@@ -314,7 +345,7 @@ class MCPClient:
         self,
         integration_id: str,
         mcp_config: MCPConfig,
-        challenge_data: dict | None = None,
+        challenge_data: McpAuthChallenge | None = None,
     ) -> OAuthDiscovery:
         """Full MCP OAuth discovery flow per specification."""
         return await discover_oauth_config(
@@ -325,7 +356,7 @@ class MCPClient:
         self,
         integration_id: str,
         mcp_config: MCPConfig,
-    ) -> dict:
+    ) -> MCPUseConfig:
         """Build mcp-use config dict.
 
         Transport selection:
@@ -338,7 +369,7 @@ class MCPClient:
           without OAuth discovery. This is the proper way to pass
           already-obtained tokens to mcp-use.
         """
-        server_config: dict = {"url": mcp_config.server_url}
+        server_config: MCPUseServerConfig = {"url": mcp_config.server_url}
 
         # Transport: explicit config or let mcp_use auto-detect
         # Per MCP spec 2025-11-25, streamable HTTP is preferred over deprecated SSE
@@ -448,7 +479,9 @@ class MCPClient:
             if event:
                 event.set()
 
-    async def reconnect_and_call(self, integration_id: str, tool_name: str, kwargs: dict) -> Any:
+    async def reconnect_and_call(
+        self, integration_id: str, tool_name: str, kwargs: dict[str, object]
+    ) -> object:
         """Force a fresh connect for `integration_id` then call `tool_name` once.
 
         Invoked by the tool wrapper when a call hits a dead connector — the
@@ -531,12 +564,16 @@ class MCPClient:
 
         # Bypass our wrapper to avoid recursion if this call also fails — the
         # wrapper already retried once by invoking this method.
+        # LangChain declares BaseTool._arun as `-> Any` and the wrapper stashes the
+        # original behind a dynamic attribute, so nothing narrower than `object` is
+        # knowable here. `object` is what the sole consumer already wants: the tool
+        # wrapper's `filtered_arun` returns `object` and hands this straight back.
         underlying = getattr(fresh_tool, "_original_arun", None)
         if underlying is None:
             underlying = fresh_tool._arun
 
         try:
-            result = await underlying(**kwargs)
+            result: object = await underlying(**kwargs)
         except Exception as e:
             log.set_ns(
                 "mcp",
@@ -568,7 +605,7 @@ class MCPClient:
         Each step is swallowed so one failure doesn't block the rest.
         """
 
-        async def _swallow(coro: Any, what: str) -> None:
+        async def _swallow(coro: Awaitable[object], what: str) -> None:
             try:
                 await coro
             except Exception as e:
@@ -694,8 +731,8 @@ class MCPClient:
 
             # Build a callback to evict stale sessions on connection errors.
             # Pops from dicts AND schedules async session close via fire-and-forget task.
-            def _make_evict_callback(iid: str):
-                def _evict():
+            def _make_evict_callback(iid: str) -> Callable[[], None]:
+                def _evict() -> None:
                     # Evict in-memory client/tool cache so the next call
                     # forces a fresh _do_connect. Do NOT flip MongoDB status
                     # here — a tool-call hiccup is usually transient (server
@@ -713,8 +750,10 @@ class MCPClient:
 
                 return _evict
 
-            def _make_reconnect_callback(iid: str):
-                async def _reconnect_and_retry(tool_name: str, kwargs: dict) -> Any:
+            def _make_reconnect_callback(
+                iid: str,
+            ) -> Callable[[str, dict[str, object]], Awaitable[object]]:
+                async def _reconnect_and_retry(tool_name: str, kwargs: dict[str, object]) -> object:
                     return await self.reconnect_and_call(iid, tool_name, kwargs)
 
                 return _reconnect_and_retry
@@ -758,7 +797,9 @@ class MCPClient:
             )
 
             # Run post-connection DB operations in parallel (all independent)
-            post_tasks: list[Any] = []
+            # Awaitable, not Coroutine: update_user_integration_status is wrapped in
+            # @CacheInvalidator, whose decorator erases the coroutine type.
+            post_tasks: list[Awaitable[object]] = []
 
             # 1. Store unauthenticated record if needed
             if not mcp_config.requires_auth:
@@ -883,10 +924,8 @@ class MCPClient:
                         f"{LogTag.MCP} [{integration_id}] Token refresh failed, user may need to re-authorize"
                     )
                 finally:
-                    try:
+                    with contextlib.suppress(AttributeError):
                         delattr(self, retry_flag)
-                    except AttributeError:
-                        pass
 
             log.error(f"{LogTag.MCP} Failed to connect to MCP {integration_id}: {e}")
 
@@ -1034,7 +1073,7 @@ class MCPClient:
         integration_id: str,
         redirect_uri: str,
         redirect_path: str = "/integrations",
-        challenge_data: dict | None = None,
+        challenge_data: McpAuthChallenge | None = None,
         excluded_scopes: set[str] | None = None,
     ) -> str:
         """
@@ -1071,7 +1110,9 @@ class MCPClient:
         if not client_id:
             # Priority 2: Check for stored DCR client from a previous registration.
             # This is effectively "pre-registered" for this specific integration.
-            dcr_data = await self.token_store.get_dcr_client(integration_id)
+            dcr_data: DCRClientRegistration | None = await self.token_store.get_dcr_client(
+                integration_id
+            )
             if dcr_data:
                 client_id = dcr_data.get("client_id")
                 log.debug(f"{LogTag.MCP} Using stored DCR client for {integration_id}")
@@ -1748,7 +1789,7 @@ class MCPClient:
         server_url: str,
         tool_name: str,
         arguments: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> CallToolResult:
         """Call a specific tool on a specific MCP server identified by server_url.
 
         Finds the connected integration whose server_url matches, then calls
@@ -1758,9 +1799,6 @@ class MCPClient:
             server_url: The MCP server URL to route the call to.
             tool_name: The name of the tool to call.
             arguments: The arguments to pass to the tool.
-
-        Returns:
-            A dict with keys ``content`` (list) and optionally ``isError`` (bool).
 
         Raises:
             ValueError: If no connected integration matches the given server_url.
@@ -1788,22 +1826,16 @@ class MCPClient:
             )
         session = client.get_session(matching_integration_id)
 
-        result = await session.call_tool(name=tool_name, arguments=arguments)
+        # mcp_use ships no py.typed marker, so mypy sees MCPSession.call_tool as
+        # Any; its source (and BaseConnector.call_tool beneath it) is annotated
+        # `-> CallToolResult` and returns the SDK model straight through.
+        result = cast(CallToolResult, await session.call_tool(name=tool_name, arguments=arguments))
 
-        # Normalise the mcp CallToolResult to a plain dict
-        if hasattr(result, "model_dump"):
-            raw: dict[str, Any] = result.model_dump()
-        elif hasattr(result, "__dict__"):
-            raw = dict(result.__dict__)
-        else:
-            raw = dict(result)
+        log.set_ns("mcp", success=not result.isError)
 
-        is_error = raw.get("isError") or raw.get("is_error", False)
-        log.set_ns("mcp", success=not is_error)
+        return result
 
-        return raw
-
-    async def _get_session_for_server(self, server_url: str) -> Any:
+    async def _get_session_for_server(self, server_url: str) -> ClientSession:
         """Resolve the underlying official MCP ``ClientSession`` for ``server_url``.
 
         Returns the SDK session beneath mcp_use's wrapper so resource/prompt calls
@@ -1825,51 +1857,50 @@ class MCPClient:
         client_session = client.get_session(matching_integration_id).connector.client_session
         if client_session is None:
             raise ValueError(f"MCP integration {matching_integration_id} has no active session")
-        return client_session
+        # mcp_use ships no py.typed marker, so mypy treats its whole surface as
+        # Any; BaseConnector.client_session is genuinely typed ClientSession | None
+        # in its source (verified), narrowed to non-None by the check above.
+        return cast(ClientSession, client_session)
 
     async def list_resources_on_server(
         self,
         server_url: str,
         cursor: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ListResourcesResult:
         """List resources on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        result = await session.list_resources(cursor=cursor)
-        return result.model_dump(mode="json", by_alias=True)
+        return await session.list_resources(cursor=cursor)
 
     async def list_resource_templates_on_server(
         self,
         server_url: str,
         cursor: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ListResourceTemplatesResult:
         """List resource templates on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        result = await session.list_resource_templates(cursor=cursor)
-        return result.model_dump(mode="json", by_alias=True)
+        return await session.list_resource_templates(cursor=cursor)
 
     async def read_resource_on_server(
         self,
         server_url: str,
         uri: str,
-    ) -> dict[str, Any]:
+    ) -> ReadResourceResult:
         """Read a resource on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        result = await session.read_resource(AnyUrl(uri))
-        return result.model_dump(mode="json", by_alias=True)
+        return await session.read_resource(AnyUrl(uri))
 
     async def list_prompts_on_server(
         self,
         server_url: str,
         cursor: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> ListPromptsResult:
         """List prompts on an MCP server identified by server_url."""
         session = await self._get_session_for_server(server_url)
-        result = await session.list_prompts(cursor=cursor)
-        return result.model_dump(mode="json", by_alias=True)
+        return await session.list_prompts(cursor=cursor)
 
     async def read_ui_resource_details(
         self, server_url: str, resource_uri: str
-    ) -> dict[str, Any] | None:
+    ) -> McpUiResourceDetails | None:
         """Read a UI resource and return HTML plus content-level UI metadata.
 
         Finds the active session matching ``server_url``, then reads the resource
@@ -1883,7 +1914,7 @@ class MCPClient:
             resource_uri: Resource URI (for example ``ui://tool-name/app.html``).
 
         Returns:
-            A dict with ``html`` and optional metadata, or ``None`` on failure.
+            The resource details, or ``None`` on failure.
         """
         try:
             matching_integration_id = await self._find_integration_id_by_server_url(server_url)
@@ -1914,11 +1945,11 @@ class MCPClient:
                     raw_ui_meta = content_meta.get("ui") if isinstance(content_meta, dict) else None
                     ui_meta: dict[str, Any] = raw_ui_meta if isinstance(raw_ui_meta, dict) else {}
 
-                    return {
-                        "html": str(text),
-                        "csp": ui_meta.get("csp"),
-                        "permissions": ui_meta.get("permissions"),
-                    }
+                    return McpUiResourceDetails(
+                        html=str(text),
+                        csp=ui_meta.get("csp"),
+                        permissions=ui_meta.get("permissions"),
+                    )
 
             return None
 

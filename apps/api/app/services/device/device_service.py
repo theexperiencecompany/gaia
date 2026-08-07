@@ -43,6 +43,7 @@ from app.models.device import (
 )
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig
+from app.schemas.device.responses import PollPairingResponse, StartPairingResponse
 from app.services.device.bridge import request_revoke
 from app.services.device.device_auth import (
     generate_refresh_token,
@@ -81,7 +82,7 @@ def _generate_user_code() -> str:
 
 async def start_pairing(
     name: str, platform: str | None, daemon_version: str | None
-) -> dict[str, str | int]:
+) -> StartPairingResponse:
     """Create a pending pairing and return the codes for the daemon."""
     device_code = secrets.token_urlsafe(DEVICE_CODE_BYTES)
     user_code = _generate_user_code()
@@ -108,15 +109,15 @@ async def start_pairing(
     # this pending pairing.
     log.set(device={"operation": "start_pairing"})
     base = get_frontend_url().rstrip("/")
-    return {
-        "device_code": device_code,
-        "user_code": user_code,
+    return StartPairingResponse(
+        device_code=device_code,
+        user_code=user_code,
         # Prefill the code so an approver just confirms; they must still be signed
         # in and click Approve (the code alone grants nothing).
-        "verification_url": f"{base}{PAIRING_VERIFICATION_PATH}?code={quote(user_code)}",
-        "expires_in": PAIRING_TTL_SECONDS,
-        "interval": PAIRING_POLL_INTERVAL_SECONDS,
-    }
+        verification_url=f"{base}{PAIRING_VERIFICATION_PATH}?code={quote(user_code)}",
+        expires_in=PAIRING_TTL_SECONDS,
+        interval=PAIRING_POLL_INTERVAL_SECONDS,
+    )
 
 
 async def lookup_pending_by_user_code(user_code: str) -> dict | None:
@@ -179,25 +180,23 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
     return device_id, name
 
 
-async def poll_pairing(device_code: str) -> dict[str, str | None]:
+async def poll_pairing(device_code: str) -> PollPairingResponse:
     """Daemon poll. On ``approved`` the pairing is consumed and won't poll again."""
     record = await get_cache(_pairing_key(device_code))
     if not isinstance(record, dict):
-        # "refresh_token" is a response field name, not a hardcoded secret (B105 FP).
-        return {"status": "expired", "device_id": None, "refresh_token": None}  # nosec B105
+        return PollPairingResponse(status="expired")
 
     status = record.get("status")
     if status != "approved":
-        # "refresh_token" is a response field name, not a hardcoded secret (B105 FP).
-        return {"status": "pending", "device_id": None, "refresh_token": None}  # nosec B105
+        return PollPairingResponse(status="pending")
 
     # Consume the pairing so the refresh token is handed out exactly once.
     await redis_cache.delete(_pairing_key(device_code))
-    return {
-        "status": "approved",
-        "device_id": record.get("device_id"),
-        "refresh_token": record.get("refresh_token"),
-    }
+    return PollPairingResponse(
+        status="approved",
+        device_id=record.get("device_id"),
+        refresh_token=record.get("refresh_token"),
+    )
 
 
 async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:

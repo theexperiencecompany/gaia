@@ -64,7 +64,7 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
         returns ``True``.
         """
         updated = await self._apply_raw_update(
-            {"_id": approval_id, "status": "pending"},
+            {"_id": approval_id, "status": HILApprovalStatus.PENDING},
             {
                 "$set": {
                     "status": status,
@@ -95,7 +95,9 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
 
     async def list_expired_pending(self) -> list[HILApprovalRecord]:
         """Pending approvals past ``expires_at`` — the timeout sweep's work list."""
-        return await self._find({"status": "pending", "expires_at": {"$lt": datetime.now(UTC)}})
+        return await self._find(
+            {"status": HILApprovalStatus.PENDING, "expires_at": {"$lt": datetime.now(UTC)}}
+        )
 
     async def list_decided_unresumed(
         self, statuses: list[str], grace_seconds: float
@@ -115,7 +117,7 @@ class HilApprovalRepository(MongoRepository[HILApprovalRecord, HILApprovalUpdate
     async def list_pending_for_conversation(self, conversation_id: str) -> list[HILApprovalRecord]:
         """Every still-pending approval in a conversation, oldest first."""
         return await self._find(
-            {"conversation_id": conversation_id, "status": "pending"},
+            {"conversation_id": conversation_id, "status": HILApprovalStatus.PENDING},
             sort=[("created_at", 1)],
         )
 

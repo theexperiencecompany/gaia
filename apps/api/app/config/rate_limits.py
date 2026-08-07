@@ -347,12 +347,11 @@ def get_time_window_key(period: RateLimitPeriod) -> str:
     return now.strftime("%Y%m")
 
 
-def get_feature_info(feature_key: str) -> dict[str, str]:
+def get_feature_info(feature_key: str) -> FeatureInfo:
     """Get user-friendly feature information."""
     if feature_key in FEATURE_LIMITS:
-        info = FEATURE_LIMITS[feature_key].info
-        return {"title": info.title, "description": info.description}
-    return {
-        "title": feature_key.replace("_", " ").title(),
-        "description": f"Usage for {feature_key}",
-    }
+        return FEATURE_LIMITS[feature_key].info
+    return FeatureInfo(
+        title=feature_key.replace("_", " ").title(),
+        description=f"Usage for {feature_key}",
+    )

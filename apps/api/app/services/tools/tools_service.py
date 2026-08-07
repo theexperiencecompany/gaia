@@ -43,7 +43,8 @@ async def get_available_tools(user_id: str | None = None) -> ToolsListResponse:
     log.set(service="tools_service", operation="get_available_tools", user_id=user_id)
     if user_id is None:
         return await coalesce_request("global_tools", _build_tools_response)
-    return await _get_user_tools_catalog(user_id)
+    catalog: ToolsListResponse = await _get_user_tools_catalog(user_id)
+    return catalog
 
 
 @Cacheable(key_pattern="tools:user:{user_id}:catalog", ttl=ONE_DAY_TTL, model=ToolsListResponse)

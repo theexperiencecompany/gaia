@@ -69,9 +69,9 @@ class BigtoolRuntime(  # type: ignore[misc]  # Runtime IS frozen via _DC_KWARGS 
         cls,
         config: RunnableConfig,
         store: BaseStore | None = None,
-        context: Any = None,
+        context: object = None,
         stream_writer: StreamWriter = _noop_stream_writer,
-        previous: Any = None,
+        previous: object = None,
     ) -> "BigtoolRuntime":
         """Create runtime from graph invocation context."""
         return cls(

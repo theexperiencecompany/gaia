@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 import os
 from pathlib import Path
 import shlex
@@ -52,10 +52,8 @@ def _encryption_key_file() -> Iterator[str | None]:
         pem_path.chmod(0o600)
         yield path
     finally:
-        try:
+        with suppress(OSError):
             pem_path.unlink()
-        except OSError:
-            pass
 
 
 def format_shard(shard: int, encrypt_key_path: str | None, dry_run: bool = False) -> None:

@@ -11,6 +11,12 @@ immediately; "save it" writes the conversation-level registry (the source of
 truth) plus a lightweight ``{session_id, path, event}`` reference on the bot
 message so the card re-renders on reload. A per-turn ``mtime`` map, loaded once,
 makes whole-dir re-emits idempotent: an unchanged file is skipped entirely.
+
+The event payload itself stays ``dict[str, Any]`` here on purpose (Type Safety
+item 14): its wire contract is owned by :mod:`app.services.artifact_events`
+(the ``upsert``/``remove``/``upload`` builders) and consumed by
+``app.utils.artifact_utils``, which both declare it as a plain dict — naming
+the shape belongs in those modules, not in a rival type declared here.
 """
 
 import asyncio
@@ -19,7 +25,9 @@ import contextlib
 from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, cast
+
+from redis.asyncio.client import PubSub
 
 from app.constants.artifacts import (
     ARTIFACT_LOG_PREFIX,
@@ -35,13 +43,18 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationSource
 from app.services.artifact_events import artifact_channel
 from app.services.chat.artifacts_registry import (
+    ArtifactRegistryEntry,
     get_conversation_artifacts,
     remove_conversation_artifact,
     upsert_conversation_artifact,
 )
 from app.services.outbound_delivery import publish_outbound_file
 from app.services.storage import resolve_session_path
-from app.utils.artifact_utils import build_artifact_full_entry, build_artifact_ref_entry
+from app.utils.artifact_utils import (
+    ArtifactDataEntry,
+    build_artifact_full_entry,
+    build_artifact_ref_entry,
+)
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
@@ -71,6 +84,16 @@ async def forward_artifact_events(
     ).run()
 
 
+class _TurnStatsEvent(TypedDict):
+    """The ``artifacts`` field of the turn's canonical log line."""
+
+    conversation_id: str
+    upserts: int
+    removes: int
+    unchanged: int
+    delivered_to_bot: int
+
+
 @dataclass
 class _TurnStats:
     """Per-turn tallies, emitted as one canonical log line when the turn ends."""
@@ -80,7 +103,7 @@ class _TurnStats:
     unchanged: int = 0
     delivered: int = 0
 
-    def as_wide_event(self, conversation_id: str) -> dict[str, Any]:
+    def as_wide_event(self, conversation_id: str) -> _TurnStatsEvent:
         return {
             "conversation_id": conversation_id,
             "upserts": self.upserts,
@@ -114,7 +137,10 @@ class ArtifactForwarder:
         self.bot_message_id = bot_message_id
         self.bot_platform = _bot_source(source)
         self.subscribed = subscribed
-        self.registry_mtimes: dict[str, str | None] = {}
+        # Unix mtime, not an ISO string: every publisher stamps a float
+        # (``ArtifactInfo.mtime`` / ``time.time()`` in app.services.artifact_events),
+        # and this map is compared against the payload's raw value in _is_unchanged.
+        self.registry_mtimes: dict[str, float | None] = {}
         self.published_files: set[str] = set()
         self.stats = _TurnStats()
 
@@ -151,12 +177,13 @@ class ArtifactForwarder:
 
     async def _load_registry(self) -> None:
         """Seed the per-turn ``path → mtime`` map so re-emits dedup against it."""
-        self.registry_mtimes = {
-            artifact["path"]: artifact.get("mtime")
-            for artifact in await get_conversation_artifacts(self.user_id, self.conversation_id)
-        }
+        # @Cacheable erases its wrapped function's return type, so name it here.
+        registry: list[ArtifactRegistryEntry] = await get_conversation_artifacts(
+            self.user_id, self.conversation_id
+        )
+        self.registry_mtimes = {artifact["path"]: artifact.get("mtime") for artifact in registry}
 
-    async def _consume(self, pubsub: Any) -> None:
+    async def _consume(self, pubsub: PubSub) -> None:
         """Forward each artifact event; one bad event is logged, never fatal."""
         async for message in pubsub.listen():
             payload = _parse_artifact_message(message, self.conversation_id)
@@ -222,12 +249,12 @@ class ArtifactForwarder:
 
     # ── Pipeline steps ─────────────────────────────────────────────────────
 
-    async def _stream_entry(self, entry: dict[str, Any]) -> None:
+    async def _stream_entry(self, entry: ArtifactDataEntry) -> None:
         """Publish one ``artifact_data`` chunk to the live SSE stream."""
         chunk = "data: " + json.dumps({"tool_data": entry}) + "\n\n"
         await stream_manager.publish_chunk(self.stream_id, chunk)
 
-    async def _persist_entry(self, entry: dict[str, Any]) -> None:
+    async def _persist_entry(self, entry: ArtifactDataEntry) -> None:
         """``$push`` one ``artifact_data`` reference onto the turn's bot message.
 
         Best-effort: the live stream already delivered the card, so a failed
@@ -341,10 +368,10 @@ def _parse_artifact_message(message: dict[str, Any], conversation_id: str) -> di
         return None
     if payload.get("session_id") != conversation_id:
         return None
-    return payload
+    return cast(dict[str, Any], payload)
 
 
-async def _close_pubsub(pubsub: Any, channel: str) -> None:
+async def _close_pubsub(pubsub: PubSub, channel: str) -> None:
     """Unsubscribe and close, swallowing teardown errors (the turn is over)."""
     with contextlib.suppress(Exception):
         await pubsub.unsubscribe(channel)

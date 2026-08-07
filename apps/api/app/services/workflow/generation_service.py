@@ -19,9 +19,13 @@ from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
     GeneratedPromptOutput,
+    GeneratedPromptResult,
     GeneratedStep,
     GeneratedWorkflow,
+    PromptTriggerHint,
     SuggestedTrigger,
+    TriggerConfig,
+    WorkflowStep,
 )
 from shared.py.wide_events import log
 
@@ -68,7 +72,7 @@ def _extract_explicit_mentions(prompt: str) -> set[str]:
     return mentioned
 
 
-def _build_trigger_hint(trigger_config: dict | None) -> str:
+def _build_trigger_hint(trigger_config: PromptTriggerHint | None) -> str:
     """Build a minimal, human-readable trigger hint for the LLM.
 
     We intentionally omit raw cron/timezone/next_run so the LLM cannot
@@ -80,10 +84,10 @@ def _build_trigger_hint(trigger_config: dict | None) -> str:
             "type based on the user's intent."
         )
 
-    trigger_type = trigger_config.get("type", "manual")
+    trigger_type = trigger_config.type
 
     if trigger_type == "schedule":
-        cron = trigger_config.get("cron_expression", "")
+        cron = trigger_config.cron_expression
         hint = "User has selected a scheduled trigger"
         if cron:
             hint += f" (current cron: {cron})"
@@ -95,7 +99,7 @@ def _build_trigger_hint(trigger_config: dict | None) -> str:
             "the instructions clearly imply a recurring schedule."
         )
     # Integration triggers
-    trigger_name = trigger_config.get("trigger_name", "")
+    trigger_name = trigger_config.trigger_name
     if trigger_name:
         return f"User has selected an integration trigger ({trigger_name})."
     return f"User has selected trigger type: {trigger_type}."
@@ -127,15 +131,15 @@ def _build_available_triggers(
     return "Available integration triggers (use the slug for trigger_name):\n" + "\n".join(lines)
 
 
-def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
+def enrich_steps(generated_steps: list[GeneratedStep]) -> list[WorkflowStep]:
     """Convert minimal generated steps to the full step schema with ids."""
     return [
-        {
-            "id": f"step_{i}",
-            "title": step.title,
-            "category": step.category,
-            "description": step.description,
-        }
+        WorkflowStep(
+            id=f"step_{i}",
+            title=step.title,
+            category=step.category,
+            description=step.description,
+        )
         for i, step in enumerate(generated_steps)
     ]
 
@@ -147,11 +151,11 @@ class WorkflowGenerationService:
     async def generate_steps_with_llm(
         prompt: str,
         title: str,
-        trigger_config=None,
+        trigger_config: TriggerConfig | None = None,
         description: str | None = None,
         integration_ids: list[str] | None = None,
         user_id: str | None = None,
-    ) -> list:
+    ) -> list[WorkflowStep]:
         """Generate workflow steps using the LLM's native structured output.
 
         Raises:
@@ -340,14 +344,12 @@ class WorkflowGenerationService:
     async def generate_workflow_prompt(
         title: str | None = None,
         description: str | None = None,
-        trigger_config: dict | None = None,
+        trigger_config: PromptTriggerHint | None = None,
         existing_prompt: str | None = None,
         connected_integration_ids: set[str] | None = None,
         integration_ids: list[str] | None = None,
-    ) -> dict:
+    ) -> GeneratedPromptResult:
         """Generate or improve workflow instructions using LLM.
-
-        Returns a dict with keys: prompt, suggested_trigger (optional).
 
         If `connected_integration_ids` is provided, the available-triggers
         list shown to the LLM is restricted to those integrations.

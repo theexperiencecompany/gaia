@@ -28,7 +28,7 @@ from app.models.chat_models import (
     MessageModel,
     UpdateMessagesRequest,
 )
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import ConversationDocument, UpdateMessagesResponse
 from app.models.todo_models import (
     BulkUpdateRequest,
     Priority,
@@ -102,7 +102,7 @@ class TestConversationCreationConsistency:
         ):
             result = await create_conversation_service(conversation, FAKE_USER)
 
-        assert result["conversation_id"] == conv_id
+        assert result.conversation_id == conv_id
         document = captured["document"]
         assert document.user_id == USER_ID
         assert document.conversation_id == conv_id
@@ -177,7 +177,7 @@ class TestConversationDeletionCleanup:
         ):
             result = await delete_conversation(conv_id, FAKE_USER)
 
-        assert result["conversation_id"] == conv_id
+        assert result.conversation_id == conv_id
         assert mock_delete.await_args.args[0] == conv_id
         assert mock_delete.await_args.kwargs["user_id"] == USER_ID
 
@@ -210,7 +210,7 @@ class TestConversationDeletionCleanup:
         ):
             result = await delete_all_conversations(FAKE_USER)
 
-        assert "deleted" in result["message"].lower() or "All" in result["message"]
+        assert "deleted" in result.message.lower() or "All" in result.message
         assert mock_delete_all.await_args.args[0] == USER_ID
 
     async def test_delete_all_conversations_none_found_raises(self) -> None:
@@ -354,7 +354,7 @@ class TestConcurrentConversationUpdates:
             )
 
         assert append_count == 2
-        assert all(r["message"] == "Messages updated" for r in results)
+        assert all(r.message == "Messages updated" for r in results)
 
     async def test_concurrent_update_one_fails_one_succeeds(self) -> None:
         """If one of two concurrent updates targets a missing conversation, the other still succeeds."""
@@ -384,7 +384,7 @@ class TestConcurrentConversationUpdates:
             )
 
         exceptions = [r for r in results if isinstance(r, HTTPException)]
-        successes = [r for r in results if isinstance(r, dict)]
+        successes = [r for r in results if isinstance(r, UpdateMessagesResponse)]
         assert len(exceptions) == 1
         assert len(successes) == 1
         assert exceptions[0].status_code == 404
@@ -440,7 +440,7 @@ class TestMessageOrdering:
         ):
             result = await update_messages(request, FAKE_USER)
 
-        assert result["message_ids"] == assigned_ids
+        assert result.message_ids == assigned_ids
 
 
 # ---------------------------------------------------------------------------

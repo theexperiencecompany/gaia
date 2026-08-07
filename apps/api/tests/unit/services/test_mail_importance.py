@@ -2,7 +2,9 @@
 
 The service now delegates to ``mail_repository`` (real DB behaviour is covered by
 the MailRepository contract tests). These tests mock the repository and assert the
-service shapes the JSON-safe response dicts correctly.
+service builds the response models correctly. Each ``emails`` entry stays a
+JSON-safe dict — the analyzer stores a variable set of summary fields that the
+read endpoints return verbatim.
 """
 
 from datetime import UTC, datetime
@@ -55,12 +57,12 @@ class TestGetEmailImportanceSummaries:
 
         result = await get_email_importance_summaries("user-1", limit=50)
 
-        assert result["status"] == "success"
-        assert result["count"] == 2
-        assert result["filtered_by_importance"] is False
-        assert isinstance(result["emails"][0]["_id"], str)
-        assert isinstance(result["emails"][0]["analyzed_at"], str)  # ISO string
-        assert result["emails"][0]["subject"] == "Test email"  # extra field preserved
+        assert result.status == "success"
+        assert result.count == 2
+        assert result.filtered_by_importance is False
+        assert isinstance(result.emails[0]["_id"], str)
+        assert isinstance(result.emails[0]["analyzed_at"], str)  # ISO string
+        assert result.emails[0]["subject"] == "Test email"  # extra field preserved
 
     async def test_important_only_filter(self, mock_repo) -> None:
         mock_repo.list_for_user.return_value = [_make_email("msg-1", is_important=True)]
@@ -68,7 +70,7 @@ class TestGetEmailImportanceSummaries:
 
         result = await get_email_importance_summaries("user-1", important_only=True)
 
-        assert result["filtered_by_importance"] is True
+        assert result.filtered_by_importance is True
         assert mock_repo.list_for_user.await_args.kwargs["important_only"] is True
 
     async def test_error_propagates(self, mock_repo) -> None:
@@ -83,8 +85,8 @@ class TestGetEmailImportanceSummaries:
         from app.services.mail.email_importance_service import get_email_importance_summaries
 
         result = await get_email_importance_summaries("user-1")
-        assert result["count"] == 1
-        assert result["emails"][0]["analyzed_at"] is None
+        assert result.count == 1
+        assert result.emails[0]["analyzed_at"] is None
 
 
 class TestGetSingleEmailImportanceSummary:
@@ -94,8 +96,8 @@ class TestGetSingleEmailImportanceSummary:
 
         result = await get_single_email_importance_summary("user-1", "msg-1")
 
-        assert result is not None and result["status"] == "success"
-        assert isinstance(result["email"]["_id"], str)
+        assert result is not None and result.status == "success"
+        assert isinstance(result.email["_id"], str)
         mock_repo.get_by_message.assert_awaited_once_with("user-1", "msg-1")
 
     async def test_email_not_found(self, mock_repo) -> None:
@@ -119,9 +121,9 @@ class TestGetBulkEmailImportanceSummaries:
 
         result = await get_bulk_email_importance_summaries("user-1", ["msg-1", "msg-2"])
 
-        assert result["status"] == "success"
-        assert result["found_count"] == 2
-        assert result["missing_count"] == 0
+        assert result.status == "success"
+        assert result.found_count == 2
+        assert result.missing_count == 0
 
     async def test_partial_match(self, mock_repo) -> None:
         mock_repo.list_by_message_ids.return_value = [_make_email("msg-1")]
@@ -129,9 +131,9 @@ class TestGetBulkEmailImportanceSummaries:
 
         result = await get_bulk_email_importance_summaries("user-1", ["msg-1", "msg-2"])
 
-        assert result["found_count"] == 1
-        assert result["missing_count"] == 1
-        assert "msg-2" in result["missing_message_ids"]
+        assert result.found_count == 1
+        assert result.missing_count == 1
+        assert "msg-2" in result.missing_message_ids
 
     async def test_error_propagates(self, mock_repo) -> None:
         mock_repo.list_by_message_ids.side_effect = RuntimeError("db error")

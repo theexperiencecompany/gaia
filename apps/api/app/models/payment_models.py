@@ -55,6 +55,17 @@ class PlanResponse(BaseModel):
     updated_at: datetime = Field(..., description="Update timestamp")
 
 
+class CreateSubscriptionResponse(BaseModel):
+    """Hosted-checkout session created for a new subscription."""
+
+    # Dodo's checkout-session id, not a subscription id — the subscription only exists
+    # once the `subscription.active` webhook arrives. Field name is the wire contract
+    # the frontend already reads (apps/web/src/features/pricing/api/pricingApi.ts).
+    subscription_id: str = Field(..., description="Dodo checkout session ID")
+    payment_link: str | None = Field(None, description="Hosted checkout URL")
+    status: str = Field(..., description="Checkout creation status")
+
+
 class UserSubscriptionStatus(BaseModel):
     """Response model for user subscription status."""
 
@@ -122,11 +133,28 @@ class SubscriptionDocument(MongoDocument):
 
 
 class SubscriptionUpdate(BaseModel):
-    """Typed ``$set`` fields for a subscription (the common status transition)."""
+    """Typed ``$set`` fields for a subscription.
 
-    model_config = ConfigDict(extra="forbid")
+    Covers every field the Dodo subscription webhooks write. Types mirror
+    ``DodoSubscriptionData`` (``app/models/webhook_models.py``), which is where
+    these values come from — the billing dates are the ISO **strings** Dodo
+    sends and are stored verbatim, not parsed to ``datetime``.
+
+    ``validate_assignment`` because the renewal handler sets the billing dates by
+    assignment, only when the event carries them. Without it assignment neither
+    validates nor coerces, so a wrong-typed value would reach Mongo's ``$set``
+    unchecked — the same gap ``ReminderUpdate`` carries a flag for.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     status: str | None = None
+    product_id: str | None = None
+    quantity: int | None = None
+    recurring_pre_tax_amount: int | None = None
+    next_billing_date: str | None = None
+    previous_billing_date: str | None = None
+    cancelled_at: str | None = None
 
 
 class ProcessedWebhookDocument(MongoDocument):

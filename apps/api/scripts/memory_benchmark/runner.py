@@ -11,9 +11,9 @@ Temporal injection:
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from contextlib import suppress
+from datetime import UTC, datetime, timedelta, tzinfo
 import time
-from typing import Any
 import unittest.mock
 import uuid
 
@@ -41,7 +41,7 @@ def _make_fake_datetime(target: datetime) -> type:
 
     class _FakeDatetime(datetime):
         @classmethod
-        def now(cls, tz: Any = None) -> datetime:  # type: ignore[override]
+        def now(cls, tz: tzinfo | None = None) -> datetime:  # type: ignore[override]
             return target.replace(tzinfo=tz) if tz is not None else target
 
     return _FakeDatetime
@@ -62,7 +62,7 @@ async def _retain_at(
         )
 
 
-def _extract_text(result: Any) -> str:
+def _extract_text(result: object) -> str:
     """Pull plain text out of a MemorySearchResult (or any fallback)."""
     if hasattr(result, "memories"):
         return " | ".join(m.content for m in result.memories)
@@ -171,10 +171,10 @@ async def run_scenario(scenario: dict) -> list[dict]:
                 }
             )
     finally:
-        try:
+        # Best-effort teardown of the throwaway benchmark user; a failure here
+        # must not mask the probe results the caller is about to read.
+        with suppress(Exception):
             await memory_engine.delete_all(user_id=user_id)
-        except Exception:  # noqa: BLE001
-            pass
 
     return results
 

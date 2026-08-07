@@ -12,13 +12,15 @@ from __future__ import annotations
 import asyncio
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from shared.py.wide_events import log
 
 if TYPE_CHECKING:
+    # Import under TYPE_CHECKING only: mcp_client.py imports this module for
+    # get_mcp_client_pool, so a runtime import back would be circular.
     from app.services.mcp.mcp_client import MCPClient
 
 
@@ -76,7 +78,7 @@ class MCPClientPool:
 
         return client
 
-    async def _evict(self, user_id: str):
+    async def _evict(self, user_id: str) -> None:
         """Evict a client from the pool and close its connections."""
         if user_id not in self._clients:
             return
@@ -88,7 +90,7 @@ class MCPClientPool:
             log.warning(f"{LogTag.MCP} Error closing MCP sessions for user {user_id}: {e}")
         log.debug(f"{LogTag.MCP} Evicted MCPClient for {user_id}")
 
-    async def shutdown(self):
+    async def shutdown(self) -> None:
         """Graceful shutdown of all clients."""
         async with self._lock:
             for user_id in list(self._clients.keys()):
@@ -118,4 +120,6 @@ async def get_mcp_client_pool() -> MCPClientPool:
     pool = await providers.aget("mcp_client_pool")
     if pool is None:
         raise RuntimeError("MCPClientPool not available")
-    return pool
+    # aget() is typed Any | None; "mcp_client_pool" is always registered via
+    # init_mcp_client_pool(), which returns MCPClientPool.
+    return cast(MCPClientPool, pool)

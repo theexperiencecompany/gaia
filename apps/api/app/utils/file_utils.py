@@ -6,8 +6,9 @@ are embedded into ChromaDB for retrieval.
 
 import os
 import tempfile
-from typing import Union
+from typing import Union, cast
 
+from langchain_core.messages import BaseMessage
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
@@ -26,7 +27,7 @@ _IMAGE_SUMMARY_UNAVAILABLE = "Image description could not be generated."
 class DocumentProcessor:
     """Document processing and summarization using LlamaIndex and LlamaCloud."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the document processor with necessary components."""
         # Initialize LlamaCloud client
         self.parser = LlamaParse(
@@ -187,7 +188,9 @@ class DocumentProcessor:
                 label="file_text_summary",
             )
 
-            return response.text.strip()
+            # ainvoke_llm is typed -> Any (its return shape varies by call
+            # site); this call always resolves to a chat-model response message.
+            return cast(BaseMessage, response).text.strip()
 
         except Exception as e:
             log.error(f"{LogTag.TOOL} Failed to generate summary: {e!s}", exc_info=True)

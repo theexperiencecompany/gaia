@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter
@@ -13,7 +14,13 @@ from shared.py.wide_events import log
 
 
 class PlatformOAuthConfig:
-    """Configuration for platform-specific OAuth flows."""
+    """Configuration for platform-specific OAuth flows.
+
+    The provider payloads (``token_data``, ``user_data``) stay ``dict[str, Any]``
+    on purpose: they are Discord's and Slack's response bodies, and the accessors
+    below read only the two or three keys each flow needs. Modelling the rest
+    would be inventing a third-party schema from the fields we happen to touch.
+    """
 
     def __init__(
         self,
@@ -22,12 +29,13 @@ class PlatformOAuthConfig:
         get_client_id: Callable[[], str | None],
         get_client_secret: Callable[[], str | None],
         get_redirect_uri: Callable[[], str],
-        extract_user_id: Callable[[dict, str | None], str],
+        extract_user_id: Callable[[dict[str, Any], str | None], str],
         user_info_url: str | None = None,
-        extra_token_headers: dict | None = None,
-        get_user_access_token: Callable[[dict], str | None] | None = None,
-        extract_profile_from_user_info: Callable[[dict], dict] | None = None,
-    ):
+        extra_token_headers: dict[str, str] | None = None,
+        get_user_access_token: Callable[[dict[str, Any]], str | None] | None = None,
+        extract_profile_from_user_info: Callable[[dict[str, Any]], dict[str, str | None]]
+        | None = None,
+    ) -> None:
         self.platform = platform
         self.token_url = token_url
         self.get_client_id = get_client_id
@@ -191,7 +199,7 @@ async def _handle_platform_oauth_callback(
                     if "id" in user_data
                     else config.extract_user_id(token_data, access_token)
                 )
-                profile: dict = config.extract_profile_from_user_info(user_data)
+                profile: dict[str, str | None] = config.extract_profile_from_user_info(user_data)
         else:
             platform_user_id = config.extract_user_id(token_data, access_token)
             profile = {}
@@ -203,7 +211,7 @@ async def _handle_platform_oauth_callback(
             link_result = await PlatformLinkService.link_account(
                 user_id, config.platform, platform_user_id, profile=profile or None
             )
-            if link_result.get("is_new_link"):
+            if link_result.is_new_link:
                 await notify_account_linked(config.platform, user_id)
             log.info(
                 f"{LogTag.API} {config.platform} account {platform_user_id} linked to user {user_id} via OAuth"
@@ -248,7 +256,7 @@ async def discord_oauth_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """Handle Discord OAuth callback."""
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["discord"])
 
@@ -258,6 +266,6 @@ async def slack_oauth_callback(
     code: str | None = None,
     state: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """Handle Slack OAuth callback."""
     return await _handle_platform_oauth_callback(code, state, error, PLATFORM_CONFIGS["slack"])

@@ -112,7 +112,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/unit tests/integration -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests --ignore=tests/e2e --ignore=tests/composio -v --tb=short",
         "cwd": "{projectRoot}"
       },
       "cache": true,

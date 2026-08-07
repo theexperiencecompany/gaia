@@ -7,7 +7,6 @@ artifact stream missed. All listing is host-side JuiceFS (zero R2 ops).
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -19,7 +18,9 @@ from app.agents.workspace.paths import detect_content_type
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.db.repositories.conversations import conversation_repository
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 from app.services.storage import (
+    ArtifactInfo,
     JuiceFSUnavailable,
     list_artifacts,
     list_user_uploaded,
@@ -60,6 +61,10 @@ class PinRequest(BaseModel):
     target_name: str | None = Field(
         default=None, description="Optional filename for the pinned copy"
     )
+
+
+class PinResponse(BaseModel):
+    pinned_path: str = Field(..., description="/workspace/... path of the pinned copy")
 
 
 async def _assert_owns(user_id: str, conv_id: str) -> None:
@@ -117,8 +122,8 @@ async def _resolve_file(
 @router.get("/{conv_id}/artifacts")
 @tiered_rate_limit("session_files")
 async def list_session_artifacts(
-    conv_id: str, user: Annotated[dict, Depends(get_current_user)]
-) -> JSONResponse:
+    conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
+) -> list[ArtifactInfo]:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_artifacts"})
     await _assert_owns(user_id, conv_id)
@@ -126,7 +131,7 @@ async def list_session_artifacts(
         items = await list_artifacts(user_id, conv_id)
     except JuiceFSUnavailable:
         items = []
-    return JSONResponse(content=[asdict(i) for i in items])
+    return items
 
 
 @router.get(
@@ -139,7 +144,7 @@ async def list_session_artifacts(
 )
 @tiered_rate_limit("session_files")
 async def get_artifact_file(
-    conv_id: str, path: str, user: Annotated[dict, Depends(get_current_user)]
+    conv_id: str, path: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> FileResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_artifact"})
@@ -151,8 +156,8 @@ async def get_artifact_file(
 @router.get("/{conv_id}/uploads")
 @tiered_rate_limit("session_files")
 async def list_uploads(
-    conv_id: str, user: Annotated[dict, Depends(get_current_user)]
-) -> JSONResponse:
+    conv_id: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
+) -> list[ArtifactInfo]:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "list_uploads"})
     await _assert_owns(user_id, conv_id)
@@ -160,7 +165,7 @@ async def list_uploads(
         items = await list_user_uploaded(user_id, conv_id)
     except JuiceFSUnavailable:
         items = []
-    return JSONResponse(content=[asdict(i) for i in items])
+    return items
 
 
 @router.get(
@@ -173,7 +178,7 @@ async def list_uploads(
 )
 @tiered_rate_limit("session_files")
 async def get_upload_file(
-    conv_id: str, path: str, user: Annotated[dict, Depends(get_current_user)]
+    conv_id: str, path: str, user: Annotated[AuthenticatedUser, Depends(get_current_user)]
 ) -> FileResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "get_upload"})
@@ -195,7 +200,7 @@ async def get_upload_file(
 async def pin_artifact(
     conv_id: str,
     payload: PinRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> JSONResponse:
     user_id = user["user_id"]
     log.set(user={"id": user_id}, session={"conv": conv_id, "op": "pin"})
@@ -212,5 +217,5 @@ async def pin_artifact(
         raise HTTPException(status_code=503, detail="Workspace storage offline")
     return JSONResponse(
         status_code=status.HTTP_201_CREATED,
-        content={"pinned_path": pinned_path},
+        content=PinResponse(pinned_path=pinned_path).model_dump(),
     )

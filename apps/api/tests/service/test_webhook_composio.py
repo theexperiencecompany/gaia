@@ -7,6 +7,7 @@ and the handler to focus on the webhook routing logic.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -274,4 +275,14 @@ class TestComposioWebhookRouting:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "success"
+        # The endpoint dispatches the handler with asyncio.create_task and acks
+        # immediately, so the task has not run by the time the response returns.
+        # Yield until it does rather than asserting into the race.
+        for _ in range(100):
+            if mock_handler.process_event.await_count:
+                break
+            await asyncio.sleep(0)
+        # "Webhook accepted" is the handler branch; the no-handler branch acks
+        # "Webhook received" with the same status, so this is what distinguishes them.
+        assert data["message"] == "Webhook accepted"
         mock_handler.process_event.assert_called_once()

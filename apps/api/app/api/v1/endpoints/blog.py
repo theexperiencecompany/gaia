@@ -1,7 +1,9 @@
+from typing import cast
+
 from fastapi import APIRouter, HTTPException, Query, status
 
 from app.decorators.caching import Cacheable
-from app.models.blog_models import BlogPost
+from app.models.blog_models import BlogCountResponse, BlogPost
 from app.services.blog_service import BlogService
 from shared.py.wide_events import log
 
@@ -20,7 +22,7 @@ async def get_blogs(
         False,
         description="Include blog content in response (for list views, set to false for better performance)",
     ),
-):
+) -> list[BlogPost]:
     """Get all blog posts with pagination and populated author details."""
     log.set(operation="list_blogs")
     if search:
@@ -29,34 +31,39 @@ async def get_blogs(
         )
         log.set(result_count=len(results))
         log.set(outcome="success")
-        return results
+        # Cacheable erases the wrapped function's return type (Callable[..., Awaitable[Any]]);
+        # search_blogs is declared -> list[BlogPost], so this is correct by construction.
+        return cast(list[BlogPost], results)
     results = await BlogService.get_all_blogs(
         page=page, limit=limit, include_content=include_content
     )
     log.set(result_count=len(results))
     log.set(outcome="success")
-    return results
+    # Same Cacheable return-type erasure as above.
+    return cast(list[BlogPost], results)
 
 
 @router.get("/blogs/{slug}", response_model=BlogPost)
 @Cacheable(key_pattern="blog:{slug}", ttl=21600, model=BlogPost)  # 6 hours
-async def get_blog(slug: str):
+async def get_blog(slug: str) -> BlogPost:
     """Get a specific blog post with populated author details."""
     log.set(operation="get_blog", slug=slug)
     result = await BlogService.get_blog_by_slug(slug)
     log.set(outcome="success")
-    return result
+    # Cacheable erases the wrapped function's return type; get_blog_by_slug is
+    # declared -> BlogPost, so this is correct by construction.
+    return cast(BlogPost, result)
 
 
-@router.get("/blogs/count", response_model=dict)
-@Cacheable(smart_hash=True, ttl=21600)  # 6 hours
-async def get_blog_count():
+@router.get("/blogs/count", response_model=BlogCountResponse)
+@Cacheable(smart_hash=True, ttl=21600, model=BlogCountResponse)  # 6 hours
+async def get_blog_count() -> BlogCountResponse:
     """Get total count of blog posts."""
     log.set(operation="get_blog_count")
     count = await BlogService.get_blog_count()
     log.set(result_count=count)
     log.set(outcome="success")
-    return {"count": count}
+    return BlogCountResponse(count=count)
 
 
 @router.post("/blogs", status_code=status.HTTP_410_GONE, include_in_schema=False)
@@ -65,10 +72,10 @@ async def create_blog_deprecated() -> None:
 
 
 @router.put("/blogs/{slug}", status_code=status.HTTP_410_GONE, include_in_schema=False)
-async def update_blog_deprecated(slug: str) -> None:
+async def update_blog_deprecated() -> None:
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)
 
 
 @router.delete("/blogs/{slug}", status_code=status.HTTP_410_GONE, include_in_schema=False)
-async def delete_blog_deprecated(slug: str) -> None:
+async def delete_blog_deprecated() -> None:
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=_DEPRECATED_DETAIL)

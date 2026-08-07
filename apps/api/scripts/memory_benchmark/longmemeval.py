@@ -67,7 +67,7 @@ class CostMeter(BaseCallbackHandler):
             + self.output_tokens / 1_000_000 * _USD_PER_1M_OUTPUT
         )
 
-    def on_llm_end(self, response: LLMResult, **kwargs: object) -> None:
+    def on_llm_end(self, response: LLMResult, **_kwargs: object) -> None:
         usage = (response.llm_output or {}).get("usage_metadata") or (
             response.llm_output or {}
         ).get("token_usage")
@@ -256,13 +256,13 @@ async def _run_question(
             flush=True,
         )
         if diagnose and not correct:
-            await _print_diagnosis(user_id, item, notes, model_answer)
+            await _print_diagnosis(user_id, item, notes)
         return qtype, correct, model_answer
     finally:
         await memory_engine.delete_all(user_id)
 
 
-async def _print_diagnosis(item_user: str, item: dict, notes: list[str], answer: str) -> None:
+async def _print_diagnosis(item_user: str, item: dict, notes: list[str]) -> None:
     """Classify where the chain broke: extraction, retrieval, or answering."""
     stored = await memory_engine.list_memories(item_user, page=1, page_size=200)
     gold = str(item["answer"]).lower()

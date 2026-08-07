@@ -15,6 +15,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 import pytest
 
 from app.models.hil_models import HILApprovalRecord
+from app.services.hil.gate import decide_tool_call
 
 USER_ID = "507f1f77bcf86cd799439011"
 CONVERSATION_ID = "conv-1"
@@ -97,3 +98,15 @@ def make_record(**overrides: Any) -> HILApprovalRecord:
 @pytest.fixture
 def gated_tool() -> BaseTool:
     return make_tool()
+
+
+async def run_through_gate(request: ToolCallRequest, handler: Any) -> Any:
+    """Ask the gate, then run the tool only if it cleared — what the tool node does.
+
+    The gate itself decides and never executes (see ``services/hil/gate``), so the
+    "did the tool run?" question these tests are built around lives here, in the same
+    two lines the real adapters use (``middleware/hil_approval.py``,
+    ``dynamic_tool_node.hil_and_timeout_guarded_tool_call``).
+    """
+    blocked = await decide_tool_call(request)
+    return blocked if blocked is not None else await handler(request)

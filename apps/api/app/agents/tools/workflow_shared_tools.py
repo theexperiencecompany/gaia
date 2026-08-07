@@ -9,7 +9,7 @@ tool capabilities, instead of having the whole catalog injected up front.
 """
 
 import asyncio
-from typing import Annotated
+from typing import Annotated, Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -55,7 +55,7 @@ async def search_triggers(
     config: RunnableConfig,
     query: Annotated[str, "Describe when the workflow should trigger"],
     limit: Annotated[int, "Max number of results to return"] = 15,
-) -> dict:
+) -> dict[str, Any]:
     """
     Search for integration triggers matching your description.
 
@@ -94,7 +94,7 @@ async def list_workflows(
     config: RunnableConfig,
     page: Annotated[int, "1-indexed page number"] = 1,
     page_size: Annotated[int, "Workflows per page (1-50)"] = 20,
-) -> dict:
+) -> dict[str, Any]:
     """List the user's workflows, newest first, one page at a time.
 
     Returns a page of workflow summaries plus `page`, `page_size`, `total`, and
@@ -157,7 +157,7 @@ async def get_my_integrations(
         "Filter to integrations matching this text (e.g. 'email', 'github'). "
         "Omit to list them all.",
     ] = None,
-) -> dict:
+) -> dict[str, Any]:
     """List the integrations THIS user has: built-in and their own custom ones, each connected or not.
 
     Call this FIRST to see what the workflow can build on and to decide which
@@ -212,7 +212,7 @@ async def search_integrations(
         "What kind of integration to find in the public marketplace "
         "(e.g. 'project management', 'CRM', 'calendar').",
     ],
-) -> dict:
+) -> dict[str, Any]:
     """Search the PUBLIC integration marketplace for something the user could add.
 
     Use this ONLY when the workflow needs an integration the user does not already
@@ -262,7 +262,7 @@ async def search_integration_tools(
         "Omit to list all of the integration's tools. Required if no "
         "integration_id is given.",
     ] = None,
-) -> dict:
+) -> dict[str, Any]:
     """Inspect an integration's tools to understand what it can DO.
 
     Use this to confirm an integration can actually perform a step before you put
@@ -319,7 +319,7 @@ async def search_integration_tools(
             *(get_integration_tool_list(i.id) for i in connected),
             return_exceptions=True,
         )
-        results: list[dict] = []
+        results: list[dict[str, Any]] = []
         for integration, tools_or_error in zip(connected, tool_lists, strict=True):
             if isinstance(tools_or_error, BaseException):
                 log.warning(

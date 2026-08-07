@@ -1,9 +1,9 @@
 import asyncio
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from functools import cache
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
-from langchain_core.language_models import LanguageModelInput
+from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
@@ -40,9 +40,11 @@ from app.constants.llm import (
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
+from app.models.agent_models import AgentConfigurable
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
+_ResultT = TypeVar("_ResultT")
 
 # A fallback may be passed as a ready runnable or as a zero-arg factory, so
 # expensive preparation (e.g. re-binding the full tool list) only happens in
@@ -63,10 +65,10 @@ def with_llm_retry(runnable: Runnable, *, max_attempts: int = LLM_RETRY_MAX_ATTE
     )
 
 
-def is_default_model_config(configurable: Mapping[str, Any]) -> bool:
+def is_default_model_config(configurable: AgentConfigurable) -> bool:
     """True when the run config already selects the default model — callers use
     this to skip preparing a fallback to the very same model."""
-    return (
+    return bool(
         configurable.get("provider") == DEFAULT_LLM_PROVIDER
         and configurable.get("model_name") == DEFAULT_MODEL_NAME
     )
@@ -114,7 +116,7 @@ def _sim_llm(temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
 _MODEL_FIELD = ConfigurableField(id="model_name", name="Model", description="Which model to use")
 
 
-def _openrouter_wire_configurables(llm: ChatOpenRouter):
+def _openrouter_wire_configurables(llm: ChatOpenRouter) -> LanguageModelLike:
     """Attach the per-request configurable fields shared by every OpenRouter-wire
     client (the real OpenRouter and the env-defined custom endpoint). The field
     ids form one namespace across provider alternatives (``prefix_keys=False``),
@@ -140,7 +142,7 @@ def _openrouter_wire_configurables(llm: ChatOpenRouter):
     strategy=MissingKeyStrategy.WARN,
     warning_message="Google API key not configured. Models provided by Google Gemini will not work.",
 )
-def init_gemini_llm():
+def init_gemini_llm() -> LanguageModelLike:
     """Initialize Gemini LLM with default model."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm()
@@ -158,7 +160,7 @@ def init_gemini_llm():
     strategy=MissingKeyStrategy.WARN,
     warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
 )
-def init_openrouter_llm():
+def init_openrouter_llm() -> LanguageModelLike:
     """Initialize the OpenRouter LLM (MiniMax M3, Grok, etc.).
 
     Uses ChatOpenRouter (langchain-openrouter), not ChatOpenAI, because it parses
@@ -202,7 +204,7 @@ def init_openrouter_llm():
     strategy=MissingKeyStrategy.WARN,
     warning_message="DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL not configured. The custom dev LLM endpoint will not work.",
 )
-def init_custom_llm():
+def init_custom_llm() -> LanguageModelLike:
     """DEV-ONLY: the env-defined custom provider — any OpenRouter/OpenAI-compatible
     endpoint, with base URL, key, and model all from the DEV_LLM_* settings. Routes
     bulk test traffic to heavily discounted lanes (e.g. Nous Research's DeepSeek
@@ -228,7 +230,7 @@ def init_custom_llm():
 def init_llm(
     preferred_provider: str | None = None,
     fallback_enabled: bool = True,
-):
+) -> LanguageModelLike:
     """Initialize an LLM with configurable fallback alternatives by provider priority.
 
     Without a preferred_provider, uses the default priority order. Raises
@@ -325,7 +327,9 @@ def _get_ordered_providers(
     return ordered
 
 
-def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvider]):
+def _create_configurable_llm(
+    primary: LLMProvider, alternatives: list[LLMProvider]
+) -> LanguageModelLike:
     """Create a configurable LLM instance with fallback alternatives."""
     if not alternatives:
         # Return primary instance directly if no alternatives
@@ -344,7 +348,7 @@ def _create_configurable_llm(primary: LLMProvider, alternatives: list[LLMProvide
     )
 
 
-def register_llm_providers():
+def register_llm_providers() -> None:
     """Register LLM providers in the lazy loader."""
     init_gemini_llm()
     init_openrouter_llm()
@@ -385,7 +389,7 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
-def _stamp_fallback(result: Any) -> Any:
+def _stamp_fallback(result: _ResultT) -> _ResultT:
     """Mark a fallback-produced AIMessage so downstream layers can surface the
     downgrade (SSE event, accounting). No-op for non-message results."""
     metadata = getattr(result, "response_metadata", None)
@@ -432,6 +436,21 @@ async def ainvoke_llm(
     ``TimeoutError`` is the point: the alternative is catching it as a fallback trigger
     (``TimeoutError`` is in ``LLM_FALLBACK_EXCEPTIONS``) and starting a second,
     unbounded attempt — which is exactly the stall this exists to prevent.
+
+    The return stays ``Any``, deliberately (Type Safety item 14). The obvious fix —
+    ``primary: Runnable[LanguageModelInput, _ResultT] -> _ResultT`` — was tried and
+    measured, and it does not hold at either end:
+
+    - The fallback path resolves through ``LLMFallback``/``_resolve_fallback``, which
+      are plain unparametrized ``Runnable``, so every return trips ``warn_return_any``
+      unless those are made generic too.
+    - Callers pass both plain chat models (yielding a ``BaseMessage``) and
+      ``with_structured_output(...)`` runnables, which LangChain types as
+      ``dict[str, Any] | BaseModel`` — so the type var binds to that union and the
+      structured call sites stop type-checking against their real schema.
+
+    Callers that know their shape narrow it themselves: ``ainvoke_structured`` casts
+    to its ``schema``, and the chat-model call sites cast to ``BaseMessage``.
     """
     async with asyncio.timeout(timeout):
         try:
@@ -494,4 +513,7 @@ async def ainvoke_structured(
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
-    return await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout)
+    return cast(
+        _StructuredT,
+        await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),
+    )

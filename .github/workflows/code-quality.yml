@@ -324,8 +324,16 @@ jobs:
           echo "::group::ruff check + format --check"
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uvx --no-build ruff@0.14.13 check apps/api apps/voice-agent libs/shared/py
-            uvx --no-build ruff@0.14.13 format --check apps/api apps/voice-agent libs/shared/py
+            # Whole repo, not a list of roots. The old list was
+            # "apps/api apps/voice-agent libs/shared/py", which silently excluded
+            # tools/, .agents/skills/, apps/web/scripts/ and docs/scripts/ — and
+            # is how libs/shared/py went unlinted long enough to accumulate 15
+            # findings after a rule was switched on repo-wide. A new app or lib
+            # is now covered the moment it exists instead of when someone
+            # remembers to add it here. Exclusions live in [tool.ruff]
+            # extend-exclude, where they are visible and reviewable.
+            uvx --no-build ruff@0.14.13 check .
+            uvx --no-build ruff@0.14.13 format --check .
           elif [ -z "$FILES" ]; then
             echo "No matching changed files — skipping."
           else
@@ -340,6 +348,14 @@ jobs:
           python3 tools/lints/run.py apps/api/app
           echo "::endgroup::"
           echo "Custom lints: OK (4 rules pass)"
+      - name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        # Also a pre-commit hook, but that one is bypassable with --no-verify and
+        # the lists it guards are exactly what a red build tempts you to edit.
+        run: |
+          echo "::group::ignore ratchet"
+          python3 tools/lints/check_ignore_ratchet.py
+          echo "::endgroup::"
+          echo "ignore-ratchet: OK (no ruff rule was switched off)"
 
   # --- Python mypy --------------------------------------------------------
   python-mypy:
@@ -362,17 +378,30 @@ jobs:
           uv sync --project apps/api --group backend --group dev
           echo "::endgroup::"
           echo "deps: OK"
-      - name: mypy across api + voice-agent + shared (staged-strict + shared.* strict override)
+      - name: mypy across api + voice-agent + shared + lint tooling (staged-strict + shared.* strict override)
         run: |
           echo "::group::mypy"
           # mypy needs the whole module graph per project, so it can't be scoped
-          # to individual changed files. On PRs we instead detect which Python
+          # to individual changed files.
+          #
+          # Still uncovered, deliberately and with the cost measured: apps/api/tests
+          # (759 errors even under the loosened tests override), apps/api/scripts
+          # (45) and tools/llm-stub (27, all missing annotations on a dev fixture).
+          # Named here so the gap stays a decision instead of quietly becoming the
+          # kind of blind spot that let libs/shared/py drift. On PRs we instead detect which Python
           # projects changed (from the .py diff) and check only those project
           # roots. libs/shared/py is a dependency of both apps, so any change
           # there pulls both apps in. On push we check everything.
           FILES=$(scripts/ci/changed-files.sh py)
           if [ "$FILES" = "__FULL__" ]; then
-            uv run --project apps/api --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py --ignore-missing-imports
+            # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+            # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+            # "Wheels are required for `pysher` because building from source is disabled".
+            # No pin of ours can change that — it is upstream's to publish. --frozen already
+            # locks every resolved version from uv.lock, which is the part we do control.
+            # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+            # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+            uv run --project apps/api --frozen --group backend --group dev mypy apps/api/app apps/voice-agent/src libs/shared/py tools/lints --ignore-missing-imports
           elif [ -z "$FILES" ]; then
             echo "No changed Python files — skipping."
           else
@@ -383,10 +412,18 @@ jobs:
               echo "$FILES" | grep -q '^apps/api/'         && TARGETS="$TARGETS apps/api/app"
               echo "$FILES" | grep -q '^apps/voice-agent/' && TARGETS="$TARGETS apps/voice-agent/src"
             fi
+            echo "$FILES" | grep -q '^tools/lints/' && TARGETS="$TARGETS tools/lints"
             if [ -z "$TARGETS" ]; then
               echo "No tracked Python project changed — skipping."
             else
-              uv run --project apps/api --group backend --group dev mypy $TARGETS --ignore-missing-imports
+              # --no-build is impossible here, not forgotten. composio pulls pysher, and pysher's
+              # latest release (1.0.8) publishes no wheel at all, so uv refuses the install:
+              # "Wheels are required for `pysher` because building from source is disabled".
+              # No pin of ours can change that — it is upstream's to publish. --frozen already
+              # locks every resolved version from uv.lock, which is the part we do control.
+              # Sonar githubactions:S8541 therefore stays open here; NOSONAR is not honoured by
+              # that analyzer, so it is resolved as Accepted in the SonarCloud UI instead.
+              uv run --project apps/api --frozen --group backend --group dev mypy $TARGETS --ignore-missing-imports
             fi
           fi
           echo "::endgroup::"
@@ -490,10 +527,27 @@ jobs:
           echo "::endgroup::"
           echo "Security: OK (0 issues across all severity levels)"
       - name: pip-audit (dependency CVEs)
+        # Kept advisory (not blocking) because the resolved dependency set has
+        # real, currently-unresolved CVEs as of this lane's introduction (see
+        # PR description) — flipping this to blocking today would red every
+        # PR for pre-existing findings, not new ones this PR caused. Re-audit
+        # after the flagged packages are upgraded, then remove
+        # continue-on-error the same way the other lanes' markers were added.
         continue-on-error: true
         run: |
           echo "::group::pip-audit dependency scan"
-          uvx pip-audit --strict --skip-editable || true
+          # pip-audit has no native uv.lock reader, so export the uv workspace's
+          # fully resolved + hashed dependency set (apps/api, apps/voice-agent,
+          # libs/shared/py) and audit that snapshot. --disable-pip means no venv
+          # or network installs are needed — hashed, pinned requirements are
+          # enough for pip-audit to identify each exact release. (Auditing the
+          # bare `uvx pip-audit` tool environment, as a prior version of this
+          # step did, silently audited pip-audit's own deps instead of GAIA's.)
+          uv export --frozen --no-emit-workspace -o /tmp/gaia-requirements.txt
+          # Pinned + wheels-only: an unpinned `uvx` resolves the newest release at
+          # run time and builds sdists, so the audit tool itself is unreviewed code
+          # executing setup scripts in CI. Bump deliberately, like the ruff lane.
+          uvx --no-build pip-audit==2.10.1 --strict --skip-editable --disable-pip -r /tmp/gaia-requirements.txt
           echo "::endgroup::"
           echo "pip-audit: informational — review CVEs above (does not fail CI)"
 
@@ -527,6 +581,65 @@ jobs:
           echo "::endgroup::"
           echo "Dead code: OK (no unused TS or Python code)"
 
+  # --- Suppression ratchet (no NEW inline lint-suppression comments) ------
+  # Diff-based, not a repo-wide sweep: suppressions already on the base
+  # branch are grandfathered (removed/renamed files never re-trip this) —
+  # only lines ADDED by this diff are checked. No legacy baseline to burn
+  # down, so this lane is enforced from day one (see quality-gate below).
+  suppression-ratchet:
+    name: "Suppression ratchet (no new # noqa / # type: ignore / biome-ignore)"
+    needs: [changes]
+    if: needs.changes.outputs.has_typescript == 'true' || needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Diff vs base for newly introduced inline suppression comments
+        env:
+          # Push events have no PR base ref; diff against the pre-push SHA
+          # instead so a direct push to develop/master is ratcheted too.
+          # Through env, not inline ${{ }}, per this file's injection-safety
+          # convention (see the type-check / build.yml AFFECTED_* comments).
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: |
+          echo "::group::suppression ratchet"
+          if [ -n "${GITHUB_BASE_REF:-}" ]; then
+            timeout 60 git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=20 \
+              fetch --no-tags origin "$GITHUB_BASE_REF"
+            BASE="origin/$GITHUB_BASE_REF"
+          else
+            BASE="$EVENT_BEFORE"
+          fi
+          if [ -z "$BASE" ] || [[ "$BASE" =~ ^0+$ ]]; then
+            echo "No prior commit to diff against (new branch ref, or workflow_dispatch) — skipping."
+          else
+            scripts/ci/check-suppression-ratchet.sh "$BASE"
+          fi
+          echo "::endgroup::"
+          echo "Suppression ratchet: OK (no new inline suppression comments)"
+
+  # --- Secret scanning (gitleaks, diff-scoped) -----------------------------
+  # gitleaks-action is free for personal-account repos but requires a (free,
+  # 1-repo "Starter") license key for org-owned repos — this repo is owned by
+  # an org. Sign up at https://gitleaks.io and set the `GITLEAKS_LICENSE`
+  # repo secret, or this job fails outright regardless of findings.
+  gitleaks:
+    name: Secret scanning (gitleaks)
+    needs: [changes]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan the PR diff for committed secrets
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
     name: Quality gate (required)
@@ -548,6 +661,8 @@ jobs:
       - python-xenon
       - python-security
       - dead-code
+      - suppression-ratchet
+      - gitleaks
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -571,6 +686,8 @@ jobs:
           PYTHON_XENON: ${{ needs.python-xenon.result }}
           PYTHON_SECURITY: ${{ needs.python-security.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
+          SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
+          GITLEAKS: ${{ needs.gitleaks.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
           if [[ "$CHANGES" != "success" ]]; then
@@ -594,11 +711,13 @@ jobs:
             [python-xenon]="$PYTHON_XENON"
             [python-security]="$PYTHON_SECURITY"
             [dead-code]="$DEAD_CODE"
+            [suppression-ratchet]="$SUPPRESSION_RATCHET"
+            [gitleaks]="$GITLEAKS"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
-                 dead-code)
+                 dead-code suppression-ratchet gitleaks)
 
           # ---------------------------------------------------------------
           # RATCHET: a lane is ENFORCED (can fail this gate) if the marker

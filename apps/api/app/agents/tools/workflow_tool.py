@@ -14,7 +14,7 @@ we can create them directly without user confirmation. Integration triggers
 always require confirmation due to config_fields (calendar_ids, channel_ids, etc).
 """
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
@@ -27,6 +27,7 @@ from app.agents.tools.workflow_shared_tools import (
 )
 from app.constants.log_tags import LogTag
 from app.decorators import with_rate_limiting
+from app.models.agent_models import agent_configurable
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -56,7 +57,7 @@ async def create_workflow(
         str,
         "The user's exact words describing what workflow they want. Pass verbatim.",
     ],
-) -> dict:
+) -> dict[str, Any]:
     """
     Create a workflow from the user's description. Delegates to the workflow assistant.
 
@@ -93,7 +94,7 @@ async def create_workflow(
     try:
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
-        user_name = config.get("configurable", {}).get("user_name")
+        user_name: str | None = agent_configurable(config).get("user_name")
         # Home timezone (IANA, e.g. Asia/Kolkata) for the new workflow's schedule
         # default and the subagent's "now".
         user_timezone = home_timezone_from_config(config).value
@@ -194,7 +195,7 @@ async def create_workflow(
 async def get_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to retrieve"],
-) -> dict:
+) -> dict[str, Any]:
     """Get detailed information about a specific workflow."""
     try:
         log.set(tool={"name": "get_workflow", "action": "get"})
@@ -218,7 +219,7 @@ async def get_workflow(
 async def execute_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to execute"],
-) -> dict:
+) -> dict[str, Any]:
     """Execute a workflow immediately (run now)."""
     try:
         log.set(tool={"name": "execute_workflow", "action": "execute"})
@@ -248,7 +249,7 @@ async def execute_workflow(
 async def pause_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to pause"],
-) -> dict:
+) -> dict[str, Any]:
     """Pause (deactivate) a workflow so its schedule and integration triggers stop firing.
 
     Reversible with resume_workflow. Use list_workflows or get_workflow first to
@@ -279,7 +280,7 @@ async def pause_workflow(
 async def resume_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to resume"],
-) -> dict:
+) -> dict[str, Any]:
     """Resume (reactivate) a paused workflow so its trigger fires again.
 
     Recomputes the next scheduled run from the cron. For integration triggers the
@@ -317,7 +318,7 @@ async def edit_workflow(
     user_request: Annotated[
         str, "The user's change request in their words. Pass verbatim — do not parse it yourself."
     ],
-) -> dict:
+) -> dict[str, Any]:
     """Edit an existing workflow's behavior, schedule, or trigger.
 
     Delegates to the workflow assistant: pass the user's change request EXACTLY as
@@ -334,7 +335,7 @@ async def edit_workflow(
     try:
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
-        user_name = config.get("configurable", {}).get("user_name")
+        user_name: str | None = agent_configurable(config).get("user_name")
         user_timezone = home_timezone_from_config(config).value
 
         if not user_request or not user_request.strip():

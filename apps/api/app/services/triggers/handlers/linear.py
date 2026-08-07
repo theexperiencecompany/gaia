@@ -3,7 +3,7 @@ Linear trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -14,6 +14,7 @@ from app.models.composio_schemas import (
     LinearGetAllTeamsData,
     LinearIssueCreatedPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     LinearCommentAddedConfig,
     LinearIssueCreatedConfig,
@@ -29,19 +30,19 @@ from shared.py.wide_events import log
 class LinearTriggerHandler(TriggerHandler):
     """Handler for Linear triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "linear_issue_created",
         "linear_issue_updated",
         "linear_comment_added",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "LINEAR_ISSUE_CREATED_TRIGGER",
         "LINEAR_ISSUE_UPDATED_TRIGGER",
         "LINEAR_COMMENT_EVENT_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "linear_issue_created": "LINEAR_ISSUE_CREATED_TRIGGER",
         "linear_issue_updated": "LINEAR_ISSUE_UPDATED_TRIGGER",
         "linear_comment_added": "LINEAR_COMMENT_EVENT_TRIGGER",
@@ -62,8 +63,8 @@ class LinearTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
+        **kwargs: str,
+    ) -> list[TriggerOption]:
         """Get dynamic options for Linear trigger config fields."""
         composio_service = get_composio_service()
 
@@ -92,7 +93,7 @@ class LinearTriggerHandler(TriggerHandler):
             for team in teams:
                 if search_term and search_term not in team.name.lower():
                     continue
-                options.append({"value": team.id, "label": team.name})
+                options.append(TriggerOption(value=team.id, label=team.name))
 
             log.info(f"{LogTag.TRIGGER} Returning {len(options)} Linear team options")
             return options
@@ -102,7 +103,7 @@ class LinearTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

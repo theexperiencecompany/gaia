@@ -1,3 +1,5 @@
+from typing import cast
+
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langgraph.store.base import BaseStore
 
@@ -21,4 +23,6 @@ async def get_tools_store() -> BaseStore:
     tools_store = await providers.aget("chroma_tools_store")
     if tools_store is None:
         raise RuntimeError("Tools store not available")
-    return tools_store
+    # providers.aget declares -> Any | None; the "chroma_tools_store" provider
+    # factory (initialize_chroma_tools_store) always returns a ChromaStore(BaseStore).
+    return cast(BaseStore, tools_store)

@@ -33,6 +33,7 @@ from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     ConversationSource,
     MessageModel,
+    ToolDataEntry,
     UpdateMessagesRequest,
 )
 from app.models.message_models import ReplyToMessageData
@@ -138,7 +139,7 @@ async def _narrate_and_deliver(
     run: ExecutorRun,
     result_text: str,
     result_type: str,
-    tool_data: list[dict[str, Any]] | None,
+    tool_data: list[ToolDataEntry] | None,
     returned_note: str,
 ) -> tuple[str | None, str | None]:
     """Compose the user-facing message, save it, and route it.
@@ -366,7 +367,7 @@ def _spawn_deferred_follow_ups(
     run: ExecutorRun,
     bot_message: MessageModel,
     result_type: str,
-    tool_data: list[dict[str, Any]] | None,
+    tool_data: list[ToolDataEntry] | None,
     show_reply_quote: bool,
     user_msg_content: str,
 ) -> None:
@@ -392,7 +393,7 @@ async def _generate_and_push_follow_ups(
     run: ExecutorRun,
     bot_message: MessageModel,
     result_type: str,
-    tool_data: list[dict[str, Any]] | None,
+    tool_data: list[ToolDataEntry] | None,
     show_reply_quote: bool,
     user_msg_content: str,
 ) -> None:
@@ -529,7 +530,7 @@ async def _broadcast_bot_message(
     conversation_id: str,
     bot_message: MessageModel,
     notification_text: str,
-    tool_data: list[dict[str, Any]] | None,
+    tool_data: list[ToolDataEntry] | None,
     follow_up_actions: list[str],
     task_id: str | None,
     show_reply_quote: bool,

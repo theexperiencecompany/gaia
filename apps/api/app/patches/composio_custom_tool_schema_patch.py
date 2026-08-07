@@ -4,9 +4,13 @@ Patch for Composio CustomTool to inline $ref references in schemas.
 Uses jsonref.replace_refs() to resolve all JSON Schema $ref references.
 """
 
+from collections.abc import Callable
 import typing as t
 
 import jsonref
+
+from app.constants.log_tags import LogTag
+from shared.py.wide_events import log
 
 
 def to_std_dict(obj: t.Any) -> t.Any:
@@ -18,12 +22,14 @@ def to_std_dict(obj: t.Any) -> t.Any:
     return obj
 
 
-_original_parse_info = None
+_original_parse_info: Callable[..., t.Any] | None = None
 _applied = False
 
 
-def _patched_parse_info(self):
+def _patched_parse_info(self: t.Any) -> t.Any:
     """Patched version that inlines $ref before storing schema"""
+    if _original_parse_info is None:
+        raise RuntimeError("composio_custom_tool_schema_patch.apply() was not called")
     tool_info = _original_parse_info(self)
 
     if hasattr(tool_info, "input_parameters") and isinstance(tool_info.input_parameters, dict):
@@ -35,7 +41,7 @@ def _patched_parse_info(self):
     return tool_info
 
 
-def apply():
+def apply() -> None:
     """Apply the patch to CustomTool.__parse_info"""
     global _applied, _original_parse_info
 
@@ -45,13 +51,19 @@ def apply():
     try:
         from composio.core.models.custom_tools import CustomTool
 
-        _original_parse_info = CustomTool._CustomTool__parse_info
-        CustomTool._CustomTool__parse_info = _patched_parse_info
+        # Name-mangled private attribute (CustomTool.__parse_info) isn't a
+        # public attribute mypy can resolve on the class; the cast to Any
+        # describes that to the type checker without changing the access itself.
+        custom_tool_cls = t.cast(t.Any, CustomTool)
+        _original_parse_info = custom_tool_cls._CustomTool__parse_info
+        custom_tool_cls._CustomTool__parse_info = _patched_parse_info
 
         _applied = True
-        print("[PATCH] Applied custom_tool schema inline patch using jsonref")
+        log.info(f"{LogTag.STARTUP} Applied custom_tool schema inline patch using jsonref")
     except Exception as e:
-        print(f"[PATCH] Failed to apply custom_tool patch: {e}")
+        # See composio_langchain_patch: a silently-failed patch is a runtime
+        # behaviour change that has to be visible in structured logs.
+        log.error(f"{LogTag.STARTUP} Failed to apply custom_tool patch: {e}")
 
 
 # Apply patch

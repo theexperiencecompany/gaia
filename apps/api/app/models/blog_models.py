@@ -67,6 +67,12 @@ class BlogUpdate(BaseModel):
     image: str | None = None
 
 
+class BlogCountResponse(BaseModel):
+    """Response for the total count of blog posts."""
+
+    count: int
+
+
 class BlogAggregateRow(BaseModel):
     """One row of the blog read pipeline, before author/content normalisation.
 

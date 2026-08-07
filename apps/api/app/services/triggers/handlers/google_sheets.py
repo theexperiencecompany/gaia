@@ -3,7 +3,8 @@ Google Sheets trigger handler with cascading dropdown support.
 """
 
 import asyncio
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -17,6 +18,7 @@ from app.models.composio_schemas import (
     GoogleSheetsSearchSpreadsheetsData,
     GoogleSheetsSearchSpreadsheetsInput,
 )
+from app.models.trigger_config import TriggerOption, TriggerOptionGroup
 from app.models.trigger_configs import (
     GoogleSheetsNewRowConfig,
     GoogleSheetsNewSheetConfig,
@@ -31,18 +33,18 @@ from shared.py.wide_events import log
 class GoogleSheetsTriggerHandler(TriggerHandler):
     """Handler for Google Sheets triggers with multi-select support."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "google_sheets_new_row",
         "google_sheets_new_sheet",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLEDOCS_NEW_ROWS_TRIGGER",
         "GOOGLESHEETS_NEW_ROWS_TRIGGER",
         "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "google_sheets_new_row": "GOOGLESHEETS_NEW_ROWS_TRIGGER",
         "google_sheets_new_sheet": "GOOGLESHEETS_NEW_SHEET_ADDED_TRIGGER",
     }
@@ -62,9 +64,13 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
-        """Get dynamic options for Google Sheets trigger config fields."""
+        **_kwargs: str,
+    ) -> Sequence[TriggerOption | TriggerOptionGroup]:
+        """Get dynamic options for Google Sheets trigger config fields.
+
+        ``spreadsheet_ids`` yields flat options; ``sheet_names`` yields one
+        group per parent spreadsheet.
+        """
         try:
             composio_service = get_composio_service()
 
@@ -115,7 +121,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     if is_shared and not is_owned_by_me:
                         label = f"{sheet.name} (Shared)"
 
-                    options.append({"value": sheet.id, "label": label})
+                    options.append(TriggerOption(value=sheet.id, label=label))
 
                 log.info(
                     f"{LogTag.TRIGGER} Returning {len(options)} Google Sheets spreadsheet options"
@@ -135,7 +141,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 # Fetch sheet names for all spreadsheets in parallel
                 async def fetch_sheets_for_spreadsheet(
                     spreadsheet_id: str,
-                ) -> dict[str, Any] | None:
+                ) -> TriggerOptionGroup | None:
                     """Fetch sheet names for a single spreadsheet."""
                     input_model = GoogleSheetsGetSheetNamesInput(spreadsheet_id=spreadsheet_id)
                     sheets_result: ToolExecutionResponse = await asyncio.to_thread(
@@ -157,12 +163,14 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                         return None
 
                     # Use spreadsheet_id as group name for now
-                    options = [
-                        {"value": f"{spreadsheet_id}::{name}", "label": name}
-                        for name in sheet_names
-                        if name
-                    ]
-                    return {"group": spreadsheet_id, "options": options}
+                    return TriggerOptionGroup(
+                        group=spreadsheet_id,
+                        options=[
+                            TriggerOption(value=f"{spreadsheet_id}::{name}", label=name)
+                            for name in sheet_names
+                            if name
+                        ],
+                    )
 
                 # Run all fetches in parallel
                 results = await asyncio.gather(
@@ -171,7 +179,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 )
 
                 # Filter out None/errors and collect results
-                grouped_results = [r for r in results if isinstance(r, dict) and r is not None]
+                grouped_results = [r for r in results if isinstance(r, TriggerOptionGroup)]
 
                 log.info(f"{LogTag.TRIGGER} Returning {len(grouped_results)} grouped sheet options")
                 return grouped_results
@@ -185,7 +193,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -232,7 +240,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
         # Build list of trigger configs to register
         configs: list[dict[str, Any]] = []
-        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]  # type: ignore
+        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]
 
         for spreadsheet_id in spreadsheets_to_monitor:
             if trigger_name == "google_sheets_new_row" and sheet_names:

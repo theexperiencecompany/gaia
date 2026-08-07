@@ -91,3 +91,27 @@ class OAuthIntegration(BaseModel):
                 f"Integration {self.id!r} has managed_by='composio' but no composio_config."
             )
         return self
+
+
+class MobileLoginUrlResponse(BaseModel):
+    """The hosted authorization URL a mobile client should open."""
+
+    url: str
+
+
+class OAuthClientMetadataResponse(BaseModel):
+    """The OAuth Client ID Metadata Document authorization servers fetch.
+
+    Shape is fixed by draft-ietf-oauth-client-id-metadata-document-00 §4.1;
+    ``client_id`` MUST equal this document's own URL and
+    ``token_endpoint_auth_method`` MUST be ``"none"``.
+    """
+
+    client_id: str
+    client_name: str
+    client_uri: str
+    logo_uri: str
+    redirect_uris: list[str]
+    grant_types: list[str]
+    response_types: list[str]
+    token_endpoint_auth_method: Literal["none"] = "none"

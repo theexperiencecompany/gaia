@@ -28,10 +28,7 @@ class TestCreateConversationReal:
                 generate_description=False,
             )
 
-        assert "conversation_id" in result
-        conv_id = result["conversation_id"]
-
-        doc = await conversations_collection.find_one({"conversation_id": conv_id})
+        doc = await conversations_collection.find_one({"conversation_id": result.conversation_id})
         assert doc is not None
         assert doc["user_id"] == "create-user-1"
 
@@ -54,4 +51,4 @@ class TestCreateConversationReal:
                 generate_description=False,
             )
 
-        assert r1["conversation_id"] != r2["conversation_id"]
+        assert r1.conversation_id != r2.conversation_id

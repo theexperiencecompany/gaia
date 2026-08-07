@@ -6,8 +6,9 @@ and search across canvas context via ChromaDB.
 """
 
 import asyncio
+from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
@@ -40,7 +41,7 @@ async def _get_user_tz(user_id: str) -> str:
         user = await get_user_by_id(user_id)
         if user and user.get("timezone"):
             tz_name = user["timezone"]
-            if is_valid_timezone(tz_name):
+            if isinstance(tz_name, str) and is_valid_timezone(tz_name):
                 return tz_name
             log.debug("tracked_todo.invalid_user_tz", user_id=user_id, tz_name=tz_name)
     except Exception as e:
@@ -65,7 +66,7 @@ def _is_cron_expression(recurrence: str) -> bool:
 _background_tasks: set[asyncio.Task] = set()
 
 
-def _fire_and_forget(coro) -> None:
+def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
     task = asyncio.create_task(coro)
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
@@ -77,6 +78,8 @@ def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime 
         parsed = datetime.fromisoformat(iso_str.replace("Z", _UTC_OFFSET))
     except ValueError:
         return None, f"Error: invalid {field_name} format '{iso_str}'."
+    if parsed.tzinfo is None:
+        return None, f"Error: {field_name} '{iso_str}' must include a timezone offset."
     if parsed <= datetime.now(UTC):
         return None, f"Error: {field_name} must be in the future."
     return parsed, None
@@ -257,6 +260,8 @@ def _build_scheduled_at_update(
         parsed_at = datetime.fromisoformat(scheduled_at.replace("Z", _UTC_OFFSET))
     except ValueError:
         return f"Error: invalid scheduled_at format '{scheduled_at}'."
+    if parsed_at.tzinfo is None:
+        return f"Error: scheduled_at '{scheduled_at}' must include a timezone offset."
     if parsed_at <= datetime.now(UTC):
         return "Error: scheduled_at must be in the future."
     update_fields["scheduled_at"] = parsed_at
@@ -264,17 +269,22 @@ def _build_scheduled_at_update(
 
 
 def _validate_recurrence_format(recurrence: str) -> str | None:
-    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut."""
-    if _is_cron_expression(recurrence):
-        try:
-            _croniter(recurrence)
-        except (ValueError, KeyError):
-            return f"Error: invalid recurrence '{recurrence}'."
+    """Return a user-facing error if `recurrence` is neither a valid cron nor a known shortcut.
+
+    _is_cron_expression is defined as "not a known shortcut", so the two cases
+    are exhaustive: anything that isn't a shortcut is validated as a cron
+    expression here — there is no separate "unknown shortcut-like string"
+    branch to fall through to.
+    """
+    if not _is_cron_expression(recurrence):
         return None
-    if recurrence not in _RECURRENCE_SHORTCUTS:
+    try:
+        _croniter(recurrence)
+    except (ValueError, KeyError):
         return (
             f"Error: invalid recurrence '{recurrence}'. "
-            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, or a cron expression."
+            f"Use one of: {', '.join(sorted(_RECURRENCE_SHORTCUTS))}, "
+            "or a valid 5-field cron expression."
         )
     return None
 
@@ -364,11 +374,29 @@ def _format_tracked_todo_full(doc: TodoDocument, now: datetime) -> str:
 def _patch_canvas_section(current: str, section: str, content: str) -> str:
     """Replace (or append) a `## {section}` block within a canvas markdown string."""
     heading = f"## {section}"
-    heading_pos = current.find(f"\n{heading}")
-    if heading_pos == -1:
+    head_end: int | None = None
+    search_start = 0
+    while True:
+        pos = current.find(heading, search_start)
+        if pos == -1:
+            break
+        # A real heading match must (a) start a line — position 0 or right
+        # after a "\n" — and (b) end the heading exactly — end-of-string or
+        # right before a "\n". Without both checks a plain substring search
+        # either misses the section when it's the canvas's first line (no
+        # leading "\n" to match against), or false-positives on a DIFFERENT
+        # section whose name happens to start with this one (e.g. searching
+        # for "Current" would otherwise match inside "## Current State").
+        at_line_start = pos == 0 or current[pos - 1] == "\n"
+        end_pos = pos + len(heading)
+        is_exact_heading = end_pos == len(current) or current[end_pos] == "\n"
+        if at_line_start and is_exact_heading:
+            head_end = end_pos
+            break
+        search_start = pos + 1
+    if head_end is None:
         # Section does not exist — append it as a fresh trailing block.
         return current.rstrip() + f"\n\n{heading}\n{content}"
-    head_end = heading_pos + len(f"\n{heading}")
     next_section = current.find("\n## ", head_end + 1)
     if next_section == -1:
         return current[:head_end] + "\n" + content
@@ -725,7 +753,11 @@ async def update_tracked_todo(
     # Validate each field sequentially with short-circuit so we don't keep doing
     # work (in particular the async _get_user_tz Mongo lookup inside the
     # recurrence validator) after an earlier field has already failed.
-    if error := _build_labels_update(labels, update_fields):
+    # _build_labels_update can never actually return an error today (there is
+    # no label validation yet) — the check-and-return is kept for the same
+    # shape as every other field below, so adding label validation later
+    # doesn't require restoring this line.
+    if error := _build_labels_update(labels, update_fields):  # pragma: no cover
         return error
     if error := _build_clearable_datetime_update(due_date, "due_date", update_fields):
         return error

@@ -18,6 +18,7 @@ from app.constants.device_bridge import (
     DEVICE_TOKEN_EXPIRY_MINUTES,
     REFRESH_TOKEN_BYTES,
 )
+from app.schemas.device.responses import DeviceTokenClaims
 
 _SECRET = settings.AGENT_SECRET
 
@@ -48,7 +49,7 @@ def create_device_token(device_id: str, user_id: str) -> tuple[str, int]:
     return token, expires_in
 
 
-def verify_device_token(token: str) -> dict[str, str] | None:
+def verify_device_token(token: str) -> DeviceTokenClaims | None:
     """Verify a device connect JWT. Returns ``{user_id, device_id}`` or ``None``.
 
     The audience check is what stops a chat agent-token or any other HS256 token
@@ -69,4 +70,4 @@ def verify_device_token(token: str) -> dict[str, str] | None:
     device_id = payload.get("device_id")
     if not user_id or not device_id:
         return None
-    return {"user_id": str(user_id), "device_id": str(device_id)}
+    return DeviceTokenClaims(user_id=str(user_id), device_id=str(device_id))

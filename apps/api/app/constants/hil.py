@@ -6,7 +6,7 @@ the tool registry (``app/agents/tools/core/registry.py``), the single source of 
 for every tool in the app.
 """
 
-from typing import Literal
+from typing import Final, Literal
 
 from app.constants.cache import EXECUTOR_BUSY_TTL
 from app.constants.general import FINISH_TASK_NAME, WAIT_FOR_SUBAGENTS_NAME
@@ -127,7 +127,7 @@ LANGGRAPH_INTERRUPT_KEY = "__interrupt__"
 # subagent thread's checkpoint for a parked interrupt ONLY when this is set — a
 # parked subagent can only exist on a resume replay, so fresh runs (the ~100%
 # case) skip that per-handoff Postgres read entirely.
-HIL_RESUME_CONFIG_KEY = "hil_resume_replay"
+HIL_RESUME_CONFIG_KEY: Final = "hil_resume_replay"
 
 # How long a declined call is remembered so a retrying agent is auto-denied
 # without re-prompting. Keyed by stream_id (unique per turn), so this only

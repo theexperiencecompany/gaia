@@ -8,6 +8,7 @@ from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators.caching import Cacheable
 from app.models.chat_models import ConversationSource
 from app.models.tools_models import ToolsCategoryResponse, ToolsListResponse
+from app.models.user_models import AuthenticatedUser
 from app.services.tools.tools_service import (
     filter_tools_response,
     get_available_tools,
@@ -24,7 +25,7 @@ _CLIENT_TYPE_HEADER = "X-Client-Type"
 @router.get("/tools", response_model=ToolsListResponse)
 async def list_available_tools(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ToolsListResponse:
     """Tools the current user can use: core tools plus the tools of integrations
     in their workspace, each tagged with server-computed `locked` (added but not
@@ -49,7 +50,7 @@ async def list_available_tools(
 @router.get("/tools/categories")
 @Cacheable(smart_hash=True, ttl=21600)  # 6 hours
 async def list_tool_categories(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> dict[str, int]:
     """
     Get all tool categories with their counts.
@@ -69,7 +70,7 @@ async def list_tool_categories(
 
 @router.get("/tools/category/{category_name}", response_model=ToolsCategoryResponse)
 async def get_tools_in_category(
-    category_name: str, user: dict = Depends(get_current_user)
+    category_name: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> ToolsCategoryResponse:
     """
     Get tools filtered by category.

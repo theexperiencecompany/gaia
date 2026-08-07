@@ -7,6 +7,8 @@ Note: All Composio tool responses are wrapped in ToolExecutionResponse with
 `data`, `error`, `successful` keys. These models represent the INNER data structure.
 """
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -46,7 +48,7 @@ class SlackListAllChannelsData(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="ignore")
 
     channels: list[dict] = Field(default_factory=list)
-    response_metadata: dict | None = None
+    response_metadata: dict[str, Any] | None = None
 
     def get_channels(self) -> list[SlackChannel]:
         """Get channels as typed models."""
@@ -56,5 +58,6 @@ class SlackListAllChannelsData(BaseModel):
     def next_cursor(self) -> str | None:
         """Get next cursor for pagination."""
         if self.response_metadata:
-            return self.response_metadata.get("next_cursor")
+            cursor = self.response_metadata.get("next_cursor")
+            return cursor if isinstance(cursor, str) else None
         return None

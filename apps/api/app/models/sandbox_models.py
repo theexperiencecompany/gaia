@@ -1,10 +1,23 @@
 """Models for per-user E2B sandbox lifecycle (the ``e2b_sandboxes`` collection)."""
 
 from datetime import datetime
+from enum import Enum
 
 from pydantic import BaseModel, ConfigDict
 
 from app.db.repositories.base import MongoDocument
+
+
+class E2bSandboxState(str, Enum):
+    """Lifecycle states the repository writes to ``e2b_sandboxes.state``.
+
+    ``str``-valued so the repository's raw ``$set`` writes (plain strings) and
+    its ``{"state": {"$ne": "dead"}}`` filters keep working untouched.
+    """
+
+    ACTIVE = "active"
+    PAUSED = "paused"
+    DEAD = "dead"
 
 
 class E2bSandboxDocument(MongoDocument):
@@ -17,7 +30,7 @@ class E2bSandboxDocument(MongoDocument):
 
     user_id: str
     shard_id: int
-    state: str
+    state: E2bSandboxState
     sandbox_id: str | None = None
     template_id: str | None = None
     workspace_version: int = 0

@@ -4,7 +4,7 @@ The flat ``app.utils.search_utils`` module was replaced by the
 ``app.utils.search`` package (engine, models, providers, budget).
 
 These tests cover the public surface exported from ``app.utils.search``:
-  - ``perform_search``        — cached entry point; returns web/images/answer dict
+  - ``perform_search``        — cached entry point; returns a WebSearchResult
   - ``search_for_research``   — cached entry point; returns {"results": [...]}
 
 Provider-level unit tests live in ``tests/unit/utils/search/``.
@@ -49,7 +49,7 @@ class TestPerformSearch:
 
     @patch("app.utils.search.SearchEngine")
     async def test_returns_correct_shape(self, mock_engine_cls: MagicMock) -> None:
-        """perform_search maps SearchResponse to the wire dict consumed by the agent."""
+        """perform_search maps SearchResponse to the WebSearchResult consumed by the agent."""
         response = _make_response(
             results=[{"url": "https://a.com", "title": "A"}],
             answer="42",
@@ -61,12 +61,12 @@ class TestPerformSearch:
         fn = perform_search.__wrapped__  # type: ignore[attr-defined]
         result = await fn(query="hello", count=5)
 
-        assert result["query"] == "hello"
-        assert result["answer"] == "42"
-        assert result["images"] == ["https://img.example.com/1.png"]
-        assert result["provider"] == "tavily"
-        assert len(result["web"]) == 1
-        assert result["web"][0]["url"] == "https://a.com"
+        assert result.query == "hello"
+        assert result.answer == "42"
+        assert result.images == ["https://img.example.com/1.png"]
+        assert result.provider == "tavily"
+        assert len(result.web) == 1
+        assert result.web[0].url == "https://a.com"
 
     @patch("app.utils.search.SearchEngine")
     async def test_empty_response_returns_empty_lists(self, mock_engine_cls: MagicMock) -> None:
@@ -76,15 +76,15 @@ class TestPerformSearch:
         fn = perform_search.__wrapped__  # type: ignore[attr-defined]
         result = await fn(query="empty", count=3)
 
-        assert result["web"] == []
-        assert result["images"] == []
-        assert result["answer"] == ""
-        assert result["query"] == "empty"
-        assert result["provider"] is None
+        assert result.web == []
+        assert result.images == []
+        assert result.answer == ""
+        assert result.query == "empty"
+        assert result.provider is None
 
     @patch("app.utils.search.SearchEngine")
-    async def test_web_items_are_model_dumpd(self, mock_engine_cls: MagicMock) -> None:
-        """Each web result is a dict (model_dump), not a SearchResultItem."""
+    async def test_web_items_are_search_result_items(self, mock_engine_cls: MagicMock) -> None:
+        """Each web result is a typed SearchResultItem, not a raw dict."""
         response = _make_response(
             results=[{"url": "https://b.com", "title": "B", "content": "Some text"}],
         )
@@ -93,10 +93,10 @@ class TestPerformSearch:
         fn = perform_search.__wrapped__  # type: ignore[attr-defined]
         result = await fn(query="q", count=1)
 
-        item = result["web"][0]
-        assert isinstance(item, dict)
-        assert item["url"] == "https://b.com"
-        assert item["content"] == "Some text"
+        item = result.web[0]
+        assert isinstance(item, SearchResultItem)
+        assert item.url == "https://b.com"
+        assert item.content == "Some text"
 
     @patch("app.utils.search.SearchEngine")
     async def test_engine_called_with_query_and_count(self, mock_engine_cls: MagicMock) -> None:
@@ -123,8 +123,8 @@ class TestPerformSearch:
         fn = perform_search.__wrapped__  # type: ignore[attr-defined]
         result = await fn(query="many", count=3)
 
-        assert len(result["web"]) == 3
-        urls = [item["url"] for item in result["web"]]
+        assert len(result.web) == 3
+        urls = [item.url for item in result.web]
         assert "https://one.com" in urls
         assert "https://three.com" in urls
 

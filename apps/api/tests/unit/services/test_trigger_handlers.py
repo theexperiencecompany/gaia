@@ -119,9 +119,9 @@ class TestGetConfigOptionsSpreadsheets:
         )
 
         assert len(result) == 2
-        assert result[0]["value"] == "sp1"
-        assert result[0]["label"] == "My Sheet"
-        assert "(Shared)" in result[1]["label"]
+        assert result[0].value == "sp1"
+        assert result[0].label == "My Sheet"
+        assert "(Shared)" in result[1].label
 
     @patch("app.services.triggers.handlers.google_sheets.get_composio_service")
     async def test_returns_empty_on_tool_not_found(self, mock_get_svc: MagicMock) -> None:
@@ -182,7 +182,7 @@ class TestGetConfigOptionsSpreadsheets:
             integration_id="google_sheets",
         )
         assert len(result) == 1
-        assert result[0]["value"] == "sp2"
+        assert result[0].value == "sp2"
 
     async def test_unknown_field_returns_empty(self) -> None:
         result = await self.handler.get_config_options(
@@ -239,8 +239,8 @@ class TestGetConfigOptionsSheetNames:
         )
 
         assert len(result) == 1
-        assert result[0]["group"] == "sp1"
-        assert len(result[0]["options"]) == 2
+        assert result[0].group == "sp1"
+        assert len(result[0].options) == 2
 
     @patch("app.services.triggers.handlers.google_sheets.get_composio_service")
     async def test_sheet_names_without_parent_ids_returns_empty(

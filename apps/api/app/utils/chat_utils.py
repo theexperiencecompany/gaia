@@ -1,3 +1,5 @@
+from typing import cast
+
 from langchain_core.messages import AnyMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from langsmith import traceable
@@ -6,9 +8,10 @@ from uuid_extensions import uuid7str
 from app.agents.llm.chatbot import chatbot
 from app.agents.prompts.convo_prompts import CONVERSATION_DESCRIPTION_GENERATOR
 from app.constants.log_tags import LogTag
+from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageDict, SelectedWorkflowData
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
-    ConversationModel,
     create_conversation_service,
     update_conversation_description,
 )
@@ -51,13 +54,13 @@ async def _generate_description_from_message(
 @traceable(name="Create Conversation")
 async def create_conversation(
     last_message: MessageDict | None,
-    user: dict,
+    user: AuthenticatedUser,
     selectedTool: str | None | None,
     selectedWorkflow: SelectedWorkflowData | None | None = None,
     generate_description: bool = True,
     conversation_id: str | None = None,
     is_onboarding_demo: bool = False,
-) -> dict:
+) -> ConversationModel:
     """
     Create a new conversation with optional description generation.
 
@@ -68,9 +71,6 @@ async def create_conversation(
         selectedWorkflow: Optional workflow selection
         generate_description: If False, uses "New Chat" as placeholder
         conversation_id: Optional pre-generated conversation ID (for background streaming)
-
-    Returns:
-        dict with conversation_id and conversation_description
     """
     log.set(user_id=user.get("user_id"), selected_tool=selectedTool)
     # Use provided ID or generate new one
@@ -90,17 +90,14 @@ async def create_conversation(
 
     await create_conversation_service(conversation, user)
 
-    return {
-        "conversation_id": conversation.conversation_id,
-        "conversation_description": conversation.description,
-    }
+    return conversation
 
 
 @traceable(name="Generate Conversation Description")
 async def generate_and_update_description(
     conversation_id: str,
     last_message: MessageDict | None,
-    user: dict,
+    user: AuthenticatedUser,
     selectedTool: str | None | None,
     selectedWorkflow: SelectedWorkflowData | None | None = None,
 ) -> str:
@@ -165,4 +162,4 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
     if not user_id:
         log.error(f"{LogTag.CHAT} No user_id found in config metadata")
 
-    return user_id
+    return cast(str, user_id)

@@ -3,6 +3,7 @@
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -19,13 +20,14 @@ def register_reddit_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="REDDIT")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Reddit context snapshot: user profile, subscribed subreddits, and unread messages.
 
         Zero required parameters. Returns authenticated user's Reddit state.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = auth_credentials.get("user_id")
         if not user_id:
             raise AppError(

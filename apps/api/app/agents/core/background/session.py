@@ -23,6 +23,8 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
 
@@ -58,6 +60,22 @@ class StreamSession:
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
     voice_mode: bool = False
+    # tool_call_ids whose result has already been streamed on this stream. A
+    # subagent handed off to from an executor tool is a *nested* run, and
+    # langgraph's "messages" mode replays its chunks into the outer run's stream
+    # carrying the inner run's metadata — same node, same checkpoint namespace —
+    # so neither the payload nor its metadata says which run it belongs to. Both
+    # drivers would emit a tool_output for it, and only the subagent's copy
+    # carries a subagent_id, so the client renders the second one outside the
+    # subagent's row. A tool_call_id is unique per call, so a second sighting is
+    # always the echo — but arrival order does not say which sighting is the
+    # subagent's, so the owner below decides rather than whoever looks first.
+    streamed_tool_outputs: set[str] = field(default_factory=set)
+    # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for the
+    # executor's own calls). "updates" mode does not carry nested runs, so only
+    # the owning driver ever announces a call, and it does so before any result
+    # exists. That makes this the one fact that survives the echo.
+    tool_output_owners: dict[str, str | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -66,7 +84,7 @@ class ExecutorRun:
 
     stream_id: str
     conversation_id: str
-    user: dict
+    user: AuthenticatedUser
     kind: RunKind
     task_id: str | None
     user_message_id: str | None
@@ -77,7 +95,7 @@ class ExecutorRun:
     @classmethod
     def from_configurable(
         cls,
-        configurable: dict[str, Any],
+        configurable: AgentConfigurable,
         *,
         stream_id: str,
         conversation_id: str,
@@ -211,6 +229,41 @@ def decrement_pending_subagents(stream_id: str) -> int:
         return 0
     session.pending_subagents = max(0, session.pending_subagents - 1)
     return session.pending_subagents
+
+
+def note_tool_output_owner(stream_id: str, tool_call_id: str, subagent_id: str | None) -> None:
+    """Record which run announced this call, so only it may stream the result."""
+    session = _sessions.get(stream_id)
+    if session is None or not tool_call_id:
+        return
+    session.tool_output_owners.setdefault(tool_call_id, subagent_id)
+
+
+def claim_tool_output(stream_id: str, tool_call_id: str, subagent_id: str | None = None) -> bool:
+    """Claim the right to stream this tool result, once per stream.
+
+    Returns True for the owning caller and False for every echo. Fails open when
+    the stream has no session (a bare driver run, or any caller outside the
+    background machinery): with nowhere to record the claim there is nothing to
+    echo it either, so suppressing would only drop the sole copy.
+
+    A run that did not announce the call is always the echo, however early it
+    looks. Deciding on arrival order instead let the outer driver — which sees
+    the nested run's ToolMessage but has no ``subagent_id`` — win on a slow
+    machine and publish the result untagged, stranding the card outside the
+    subagent's row. An unannounced call still fails open, so a HIL resume (whose
+    announcement happened in the run before the pause) keeps streaming.
+    """
+    session = _sessions.get(stream_id)
+    if session is None or not tool_call_id:
+        return True
+    owner = session.tool_output_owners.get(tool_call_id, subagent_id)
+    if owner != subagent_id:
+        return False
+    if tool_call_id in session.streamed_tool_outputs:
+        return False
+    session.streamed_tool_outputs.add(tool_call_id)
+    return True
 
 
 def get_pending_subagents(stream_id: str) -> int:

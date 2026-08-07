@@ -76,6 +76,42 @@ class TestSkillsRepository:
         raw = await raw_collection.find_one({"_id": sid})
         assert isinstance(raw["updated_at"], str)  # ISO string, not a BSON date
 
+    async def test_get_for_user_is_scoped(self, repo):
+        """Owner scoping on the read path. Skill ids appear in API routes, so
+        without the ``user_id`` term any user who supplies another user's id
+        reads their skill body — there is no separate owner check upstream.
+
+        Deleting that term from the query passes every other skills test in the
+        repo, which is why this lives here.
+        """
+        sid = str(uuid.uuid4())
+        await repo.create(_skill(id=sid, user_id="u"))
+
+        assert await repo.get_for_user(sid, "other") is None
+        assert await repo.get_for_user(sid, "u") is not None
+
+    async def test_patch_is_scoped(self, repo):
+        """Owner scoping on the write path — the same exposure, but it lets one
+        user rewrite another's skill instructions rather than just read them."""
+        sid = str(uuid.uuid4())
+        await repo.create(_skill(id=sid, user_id="u", description="mine"))
+
+        assert await repo.patch("other", sid, update=SkillUpdate(description="theirs")) is None
+
+        untouched = await repo.get_for_user(sid, "u")
+        assert untouched is not None
+        assert untouched.description == "mine"
+
+    async def test_list_for_user_is_scoped(self, repo):
+        """Owner scoping on enumeration. Unscoped, one user's skill list is
+        every user's skill list."""
+        mine, theirs = str(uuid.uuid4()), str(uuid.uuid4())
+        await repo.create(_skill(id=mine, user_id="u"))
+        await repo.create(_skill(id=theirs, user_id="other"))
+
+        assert [s.id for s in await repo.list_for_user("u")] == [mine]
+        assert [s.id for s in await repo.list_for_user("other")] == [theirs]
+
     async def test_delete_for_user_is_scoped(self, repo):
         sid = str(uuid.uuid4())
         await repo.create(_skill(id=sid, user_id="u"))

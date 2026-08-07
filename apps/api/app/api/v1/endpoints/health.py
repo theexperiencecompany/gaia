@@ -6,10 +6,12 @@ This module provides routes for checking the health and status of the API.
 
 import asyncio
 import time
+from typing import Any
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import APIRouter, Response
+from fastapi.responses import FileResponse
 
+from app.models.health_models import DegradedHealthResponse, HealthResponse
 from app.utils.general_utils import get_project_info
 
 router = APIRouter()
@@ -24,44 +26,44 @@ async def measure_event_loop_lag() -> float:
     return (time.monotonic() - start) * 1000
 
 
-@router.get("/")
-@router.get("/ping")
-@router.get("/health")
-@router.get("/api/v1/")
-@router.get("/api/v1/ping")
-async def health_check() -> JSONResponse:
-    """
-    Health check endpoint for the API.
+# Typed as FastAPI declares the `responses=` parameter — the open dict[str, Any]
+# is its own contract (an entry may carry description/headers/content too), not
+# a loose annotation of ours.
+_DEGRADED_RESPONSE_SCHEMA: dict[int | str, dict[str, Any]] = {
+    503: {"model": DegradedHealthResponse}
+}
 
-    Returns:
-        JSONResponse: Status information about the API
-    """
+
+@router.get("/", responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/ping", responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/health", responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/api/v1/", responses=_DEGRADED_RESPONSE_SCHEMA)
+@router.get("/api/v1/ping", responses=_DEGRADED_RESPONSE_SCHEMA)
+async def health_check(response: Response) -> HealthResponse | DegradedHealthResponse:
+    """Report API liveness, build identity, and current event-loop responsiveness."""
     # Lazy import to avoid loading settings during module import
     from app.config.settings import settings
 
     lag_ms = await measure_event_loop_lag()
     if lag_ms > EVENT_LOOP_LAG_THRESHOLD_MS:
-        return JSONResponse(
-            status_code=503,
-            content={
-                "status": "degraded",
-                "event_loop_lag_ms": round(lag_ms, 2),
-                "detail": "Event loop is severely lagged",
-            },
+        # The 503 body is a different model than the 200 body, so the return type
+        # is a union and the status is set on the injected response rather than by
+        # handing back a JSONResponse — that would skip validation of both shapes.
+        response.status_code = 503
+        return DegradedHealthResponse(
+            event_loop_lag_ms=round(lag_ms, 2),
+            detail="Event loop is severely lagged",
         )
 
     project_info = get_project_info()
 
-    return JSONResponse(
-        content={
-            "status": "online",
-            "message": "Welcome to the GAIA API!",
-            "name": project_info["name"],
-            "version": project_info["version"],
-            "description": project_info["description"],
-            "environment": settings.ENV,
-            "event_loop_lag_ms": round(lag_ms, 2),
-        }
+    return HealthResponse(
+        message="Welcome to the GAIA API!",
+        name=project_info["name"],
+        version=project_info["version"],
+        description=project_info["description"],
+        environment=settings.ENV,
+        event_loop_lag_ms=round(lag_ms, 2),
     )
 
 

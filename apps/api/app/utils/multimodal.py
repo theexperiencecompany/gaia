@@ -54,13 +54,18 @@ def has_media_blocks(content: MessageContent) -> bool:
     return bool(media_blocks(content))
 
 
-def extract_text_content(content: MessageContent) -> str:
+def extract_text_content(content: object) -> str:
     """The text of message content that may be a list of blocks.
 
     Non-text blocks (inline media, base64 payloads) are dropped, so callers that
     log, stream, or ingest text never see megabytes of base64. Text blocks are
     rejoined with newlines, the separator their producers split on (an MCP result
     is one block per line), so extracting a block list round-trips its layout.
+
+    Typed ``object`` rather than ``MessageContent``: real callers (``msg.content``
+    on non-``BaseMessage`` objects, malformed upstream data) sometimes hand this a
+    bool/int/None, so the trailing ``str(content)`` fallback below is real,
+    reachable code, not dead code the type alias would otherwise imply.
     """
     if isinstance(content, str):
         return content
@@ -77,7 +82,7 @@ def extract_text_content(content: MessageContent) -> str:
     return str(content)
 
 
-def approx_content_chars(content: MessageContent) -> int:
+def approx_content_chars(content: object) -> int:
     """Char length of message content for context estimation.
 
     Media blocks are charged a flat cost rather than their base64 length (~350k

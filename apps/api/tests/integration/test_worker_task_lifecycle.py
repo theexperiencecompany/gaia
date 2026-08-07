@@ -383,12 +383,12 @@ class TestWorkflowTaskExecution:
                 return_value=mock_scheduler,
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 new_callable=AsyncMock,
                 return_value=mock_execution,
             ) as mock_create_exec,
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 new_callable=AsyncMock,
             ) as mock_complete_exec,
             # execute_workflow_as_chat now returns a conversation_id str (not a list of messages)
@@ -446,12 +446,12 @@ class TestWorkflowTaskExecution:
                 return_value=mock_scheduler,
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 new_callable=AsyncMock,
                 return_value=mock_execution,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 new_callable=AsyncMock,
             ) as mock_complete_exec,
             patch(

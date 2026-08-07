@@ -19,6 +19,7 @@ from app.models.todo_models import (
     SearchMode,
     SubTask,
     TodoDocument,
+    TodoLabelCount,
     TodoListResponse,
     TodoModel,
     TodoResponse,
@@ -77,8 +78,33 @@ def _ensure_subtask_ids(subtasks: list[SubTask]) -> list[SubTask]:
     return result
 
 
+def _to_todo_update(updates: TodoUpdateRequest) -> TodoUpdate:
+    """Project a partial API update onto the repository's ``$set`` model.
+
+    ``None`` means "not provided" on this API — no field can be cleared through
+    it — so None-valued fields are dropped rather than written as nulls, and the
+    resulting model's set fields are exactly what will be written.
+    """
+    update = TodoUpdate(**updates.model_dump(exclude_none=True))
+    if update.subtasks is not None:
+        update.subtasks = _ensure_subtask_ids(update.subtasks)
+    return update
+
+
+def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
+    """Rebuild ``update`` without the completion fields.
+
+    A ``TodoUpdate`` writes exactly the fields that are *set* on it, and a field
+    cannot be un-set in place, so dropping one means rebuilding from the rest.
+    """
+    fields = update.model_dump(exclude_unset=True)
+    fields.pop("completed", None)
+    fields.pop("completed_at", None)
+    return TodoUpdate(**fields)
+
+
 # Module-level set to hold references to background tasks and prevent GC
-_background_tasks: set[asyncio.Task] = set()
+_background_tasks: set[asyncio.Task[bool]] = set()
 
 
 class TodoService:
@@ -246,33 +272,23 @@ class TodoService:
                 "priority": str(updates.priority) if updates.priority is not None else None,
             },
         )
-        update_fields = {k: v for k, v in updates.model_dump().items() if v is not None}
+        update = _to_todo_update(updates)
 
-        if "project_id" in update_fields:
-            project = await project_repository.get(update_fields["project_id"], user_id=user_id)
+        if update.project_id is not None:
+            project = await project_repository.get(update.project_id, user_id=user_id)
             if not project:
-                raise ValueError(f"Project {update_fields['project_id']} not found")
-
-        if "subtasks" in update_fields:
-            update_fields["subtasks"] = [
-                s.model_dump() if isinstance(s, SubTask) else s for s in update_fields["subtasks"]
-            ]
-            for subtask in update_fields["subtasks"]:
-                if not subtask.get("id"):
-                    subtask["id"] = str(uuid.uuid4())
+                raise ValueError(f"Project {update.project_id} not found")
 
         # Track completion timestamp (explicit None clears it when un-completing).
-        if "completed" in update_fields:
-            update_fields["completed_at"] = (
-                datetime.now(UTC) if update_fields["completed"] else None
-            )
+        if update.completed is not None:
+            update.completed_at = datetime.now(UTC) if update.completed else None
 
         # Completing a tracked todo (one with a VFS canvas) must run the tracked
         # lifecycle FIRST — complete_tracked_todo archives the canvas and sets the
         # completion fields itself. So route completion through the service, then
         # strip the completion fields from this update so we don't re-trip the
         # completion guard or clobber the archived vfs_path.
-        if update_fields.get("completed") is True:
+        if update.completed is True:
             existing = await todo_repository.get(todo_id, user_id=user_id)
             if existing and existing.vfs_path:
                 try:
@@ -283,13 +299,10 @@ class TodoService:
                     )
                 except Exception as e:
                     log.warning("tracked_todo.ui_complete_failed", todo_id=todo_id, error=str(e))
-                update_fields.pop("completed", None)
-                update_fields.pop("completed_at", None)
+                update = _drop_completion_fields(update)
 
-        if update_fields:
-            updated = await todo_repository.update(
-                todo_id, user_id=user_id, update=TodoUpdate(**update_fields)
-            )
+        if update.model_fields_set:
+            updated = await todo_repository.update(todo_id, user_id=user_id, update=update)
         else:
             # Only a tracked completion happened; it already persisted + invalidated.
             updated = await todo_repository.get(todo_id, user_id=user_id)
@@ -337,28 +350,18 @@ class TodoService:
         cls, request: BulkUpdateRequest, user_id: str
     ) -> BulkOperationResponse:
         """Bulk update multiple todos."""
-        update_fields = {k: v for k, v in request.updates.model_dump().items() if v is not None}
-        if not update_fields:
+        update = _to_todo_update(request.updates)
+        if not update.model_fields_set:
             return BulkOperationResponse(
                 success=[], failed=[], total=len(request.todo_ids), message="No updates provided"
             )
 
-        if "project_id" in update_fields:
-            project = await project_repository.get(update_fields["project_id"], user_id=user_id)
+        if update.project_id is not None:
+            project = await project_repository.get(update.project_id, user_id=user_id)
             if not project:
-                raise ValueError(f"Project {update_fields['project_id']} not found")
+                raise ValueError(f"Project {update.project_id} not found")
 
-        if "subtasks" in update_fields:
-            update_fields["subtasks"] = [
-                s.model_dump() if isinstance(s, SubTask) else s for s in update_fields["subtasks"]
-            ]
-            for subtask in update_fields["subtasks"]:
-                if not subtask.get("id"):
-                    subtask["id"] = str(uuid.uuid4())
-
-        modified = await todo_repository.bulk_update(
-            user_id, request.todo_ids, TodoUpdate(**update_fields)
-        )
+        modified = await todo_repository.bulk_update(user_id, request.todo_ids, update)
 
         if modified > 0:
             try:
@@ -569,13 +572,13 @@ async def get_todo(todo_id: str, user_id: str) -> TodoResponse:
 
 async def get_all_todos(
     user_id: str,
-    project_id=None,
-    completed=None,
-    priority=None,
-    has_due_date=None,
-    overdue=None,
-    skip=0,
-    limit=50,
+    project_id: str | None = None,
+    completed: bool | None = None,
+    priority: Priority | None = None,
+    has_due_date: bool | None = None,
+    overdue: bool | None = None,
+    skip: int = 0,
+    limit: int = 50,
 ) -> list[TodoResponse]:
     """Compatibility wrapper for old get_all_todos function."""
 
@@ -584,7 +587,7 @@ async def get_all_todos(
         mode=SearchMode.TEXT,
         project_id=project_id,
         completed=completed,
-        priority=Priority(priority) if priority else None,
+        priority=priority,
         has_due_date=has_due_date,
         overdue=overdue,
         page=(skip // limit) + 1 if limit > 0 else 1,
@@ -632,7 +635,7 @@ async def search_todos(
     query: str,
     user_id: str,
     completed: bool | None = None,
-    priority: str | None = None,
+    priority: Priority | None = None,
     project_id: str | None = None,
 ) -> list[TodoResponse]:
     """Compatibility wrapper for old search_todos function."""
@@ -641,7 +644,7 @@ async def search_todos(
         mode=SearchMode.TEXT,
         project_id=project_id,
         completed=completed,
-        priority=Priority(priority) if priority else None,
+        priority=priority,
         page=1,
         per_page=100,
         include_stats=False,
@@ -652,10 +655,9 @@ async def search_todos(
 
 
 # Additional compatibility functions that might be used elsewhere
-async def get_todo_stats(user_id: str) -> dict:
+async def get_todo_stats(user_id: str) -> TodoStats:
     """Get statistics about user's todos."""
-    stats = await TodoService._calculate_stats(user_id)
-    return stats.model_dump()
+    return await TodoService._calculate_stats(user_id)
 
 
 async def get_todos_by_date_range(
@@ -677,12 +679,10 @@ async def get_todos_by_date_range(
     return response.data
 
 
-async def get_all_labels(user_id: str) -> list[dict]:
+async def get_all_labels(user_id: str) -> list[TodoLabelCount]:
     """Get all unique labels used by the user with counts."""
     stats = await TodoService._calculate_stats(user_id)
-    if stats.labels:
-        return stats.labels
-    return []
+    return stats.labels or []
 
 
 async def get_todos_by_label(user_id: str, label: str) -> list[TodoResponse]:
@@ -706,7 +706,7 @@ async def semantic_search_todos(
     limit: int = 20,
     project_id: str | None = None,
     completed: bool | None = None,
-    priority: str | None = None,
+    priority: Priority | None = None,
 ) -> list[TodoResponse]:
     """Perform semantic search on todos."""
     params = TodoSearchParams(
@@ -714,32 +714,7 @@ async def semantic_search_todos(
         mode=SearchMode.SEMANTIC,
         project_id=project_id,
         completed=completed,
-        priority=Priority(priority) if priority else None,
-        page=1,
-        per_page=limit,
-        include_stats=False,
-    )
-
-    response = await TodoService.list_todos(user_id, params)
-    return response.data
-
-
-async def hybrid_search_todos(
-    query: str,
-    user_id: str,
-    limit: int = 20,
-    project_id: str | None = None,
-    completed: bool | None = None,
-    priority: str | None = None,
-    semantic_weight: float = 0.7,
-) -> list[TodoResponse]:
-    """Perform hybrid search on todos."""
-    params = TodoSearchParams(
-        q=query,
-        mode=SearchMode.HYBRID,
-        project_id=project_id,
-        completed=completed,
-        priority=Priority(priority) if priority else None,
+        priority=priority,
         page=1,
         per_page=limit,
         include_stats=False,

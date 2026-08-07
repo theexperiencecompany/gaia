@@ -13,7 +13,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.user_models import UserDocument
+from app.models.user_models import (
+    OnboardingPreferences,
+    OnboardingStatusResponse,
+    UserDocument,
+)
 
 BASE_URL = "/api/v1/onboarding"
 STATUS_URL = f"{BASE_URL}/status"
@@ -153,27 +157,41 @@ class TestCompleteOnboarding:
 # ---------------------------------------------------------------------------
 
 
+def _status(*, completed: bool, phase: str) -> OnboardingStatusResponse:
+    return OnboardingStatusResponse(
+        completed=completed,
+        completed_at=None,
+        phase=phase,
+        preferences=OnboardingPreferences(),
+        first_message_conversation_id=None,
+    )
+
+
 @pytest.mark.unit
 class TestGetOnboardingStatus:
     """Tests for the get onboarding status endpoint."""
 
+    # BUG: the handler logged `status.get("is_complete")`, a key the service has
+    # never returned — the completion flag was always logged as False. The wire
+    # field is `completed`, which is what mobile reads.
     async def test_get_status_returns_200(self, client: AsyncClient):
-        mock_status = {"is_complete": True, "phase": "completed"}
+        mock_status = _status(completed=True, phase="completed")
         with patch(_GET_STATUS, new_callable=AsyncMock, return_value=mock_status):
             response = await client.get(STATUS_URL)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["is_complete"] is True
+        assert data["completed"] is True
+        assert data["phase"] == "completed"
 
     async def test_get_status_incomplete_user(self, client: AsyncClient):
-        mock_status = {"is_complete": False, "phase": "initial"}
+        mock_status = _status(completed=False, phase="initial")
         with patch(_GET_STATUS, new_callable=AsyncMock, return_value=mock_status):
             response = await client.get(STATUS_URL)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["is_complete"] is False
+        assert data["completed"] is False
 
     async def test_get_status_service_error(self, client: AsyncClient):
         with patch(

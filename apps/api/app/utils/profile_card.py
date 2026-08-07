@@ -2,7 +2,6 @@
 
 from datetime import UTC, datetime
 import random
-from typing import Any
 
 from bson import ObjectId
 
@@ -11,15 +10,18 @@ from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.log_tags import LogTag
 from app.constants.profession_bios import get_random_bio_for_profession
 from app.db.repositories.users import user_repository
-from app.models.onboarding_models import HoloCardLLMOutput
-from app.models.user_models import BioStatus, user_to_legacy_dict
+from app.models.onboarding_models import (
+    HOUSES,
+    HoloCardLLMOutput,
+    House,
+    ProfileCardDesign,
+    UserProfileMetadata,
+)
+from app.models.user_models import BioStatus, UserDocument
 from shared.py.wide_events import log
 
-# Available houses for user assignment
-HOUSES = ["frostpeak", "greenvale", "mistgrove", "bluehaven"]
 
-
-def assign_random_house() -> str:
+def assign_random_house() -> House:
     """
     Randomly select a house for the user.
 
@@ -99,7 +101,7 @@ def generate_random_color() -> tuple[str, int]:
     return color_string, opacity
 
 
-async def get_user_metadata(user_id: str, user: dict[str, Any] | None = None) -> dict[str, Any]:
+async def get_user_metadata(user_id: str, user: UserDocument | None = None) -> UserProfileMetadata:
     """
     Calculate user metadata for profile card.
 
@@ -109,41 +111,40 @@ async def get_user_metadata(user_id: str, user: dict[str, Any] | None = None) ->
 
     Args:
         user_id: User ID
-
-    Returns:
-        Dict with account_number and member_since
+        user: The already-loaded user, to skip the repository read
     """
     try:
         if user is None:
-            doc = await user_repository.get(user_id)
-            user = user_to_legacy_dict(doc) if doc else None
-        if not user:
-            return {
-                "account_number": 1,
-                "member_since": datetime.now(UTC).strftime("%b %d, %Y"),
-            }
+            user = await user_repository.get(user_id)
+        if user is None:
+            return UserProfileMetadata(
+                account_number=1,
+                member_since=datetime.now(UTC).strftime("%b %d, %Y"),
+            )
 
-        created_at = user.get("created_at")
+        created_at = user.created_at
 
         # Stable account number derived from the ObjectId creation timestamp.
         oid = ObjectId(user_id)
         account_number = int(oid.generation_time.timestamp()) % 1_000_000
 
-        # Format member since date
+        # Format member since date. The isinstance guard stays: a document built
+        # with model_construct (or a legacy row read outside the repository) can
+        # still carry a non-datetime created_at.
         member_since = (
             created_at.strftime("%b %d, %Y")
             if created_at and isinstance(created_at, datetime)
             else datetime.now(UTC).strftime("%b %d, %Y")
         )
 
-        return {"account_number": account_number, "member_since": member_since}
+        return UserProfileMetadata(account_number=account_number, member_since=member_since)
 
     except Exception:
         # Fallback to defaults on error
-        return {
-            "account_number": 1,
-            "member_since": datetime.now(UTC).strftime("%b %d, %Y"),
-        }
+        return UserProfileMetadata(
+            account_number=1,
+            member_since=datetime.now(UTC).strftime("%b %d, %Y"),
+        )
 
 
 def _phrase_fallback(profession: str) -> str:
@@ -164,16 +165,16 @@ def _phrase_fallback(profession: str) -> str:
 async def generate_holo_card_content(
     user_id: str,
     context_summary: str,
-    user: dict[str, Any] | None = None,
+    user: UserDocument | None = None,
 ) -> tuple[str, str, BioStatus]:
     """Generate the holo card's personality phrase and bio in one structured LLM call."""
     log.set(operation="generate_holo_card_content", user_id=user_id)
 
     if user is None:
-        doc = await user_repository.get(user_id)
-        user = user_to_legacy_dict(doc) if doc else None
-    name = (user or {}).get("name", "User")
-    profession = (user or {}).get("onboarding", {}).get("preferences", {}).get("profession", "")
+        user = await user_repository.get(user_id)
+    name = (user.name if user else None) or "User"
+    onboarding = (user.onboarding if user else None) or {}
+    profession = (onboarding.get("preferences") or {}).get("profession") or ""
 
     if not context_summary.strip():
         default_bio = get_random_bio_for_profession(name, profession or "other")
@@ -202,18 +203,13 @@ async def generate_holo_card_content(
         )
 
 
-def generate_profile_card_design() -> dict[str, Any]:
-    """
-    Generate complete profile card design (house, colors).
-
-    Returns:
-        Dict with house, overlay_color, overlay_opacity
-    """
+def generate_profile_card_design() -> ProfileCardDesign:
+    """Generate complete profile card design (house, colors)."""
     house = assign_random_house()
     overlay_color, overlay_opacity = generate_random_color()
 
-    return {
-        "house": house,
-        "overlay_color": overlay_color,
-        "overlay_opacity": overlay_opacity,
-    }
+    return ProfileCardDesign(
+        house=house,
+        overlay_color=overlay_color,
+        overlay_opacity=overlay_opacity,
+    )

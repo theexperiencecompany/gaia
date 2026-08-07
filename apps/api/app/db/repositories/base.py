@@ -80,7 +80,7 @@ def cached_query(result_model: type[Any]) -> Callable[[_TFinder], _TFinder]:
         @functools.wraps(fn)
         async def wrapper(
             self: _BaseRepository[MongoDocument, BaseModel], *args: object, **kwargs: object
-        ) -> Any:
+        ) -> object:
             policy = self.cache_policy
             if policy is None:
                 return await fn(self, *args, **kwargs)
@@ -169,10 +169,10 @@ class _BaseRepository(Generic[TDoc, TUpdate]):
             data["id"] = str(identifier) if self.uses_object_id else identifier
         return self.document_model.model_validate(data)
 
-    def _doc_scope(self, doc: TDoc) -> str:
+    def _doc_scope(self, _doc: TDoc) -> str:
         return REPO_GLOBAL_SCOPE
 
-    def _scope_filter(self, scope: str) -> dict[str, object]:
+    def _scope_filter(self, _scope: str) -> dict[str, object]:
         """Extra Mongo filter constraining an operation to ``scope``.
 
         Empty for a global repository; ``{"user_id": scope}`` for a user-scoped

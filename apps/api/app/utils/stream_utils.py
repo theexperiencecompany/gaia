@@ -1,31 +1,63 @@
 """Shared helpers for processing LangGraph stream events and tool call data.
 
-Used by agent_helpers, subagent_runner, and chat_service.
+Used by the subagent runner, the workflow subagent, the background executor
+collector, and the chat-stream orchestrator's turn finalization.
+
+Every entry these helpers move around is a :class:`ToolDataEntry` — that shape
+is closed and is what reaches MongoDB, so an emitted key it does not declare is
+dropped on persist (see the type's own docstring).
+
+The accumulator ENVELOPE around it (``{"tool_data": [...], "subagent_starts":
+{...}, "subagent_ends": {...}}``) stays ``dict[str, Any]`` deliberately: the
+chat and silent paths also merge whatever non-``tool_data`` keys a custom event
+produced (``follow_up_actions``, …) into the same dict, and
+``services/chat/persistence`` then ``setattr``s each of them onto the message.
+It is an open bag by design, so a TypedDict would misdescribe it.
 """
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict, cast
 
 from app.constants.hil import APPROVAL_REQUEST_TOOL_NAME
-from app.constants.log_tags import LogTag
-from app.core.stream_manager import stream_manager
+from app.models.chat_models import ToolDataEntry
 from app.utils.agent_utils import IntegrationMetadata, format_tool_call_entry
-from shared.py.wide_events import log
+
+
+class SubagentGroup(TypedDict):
+    """One delegated subagent's rolled-up record, persisted as the ``data`` of a
+    ``subagent_group`` tool_data entry. Built by
+    :func:`reconstruct_subagent_groups` from the turn's start/end events."""
+
+    subagent_id: str
+    subagent_name: str
+    agent_type: str
+    tool_calls: list[Any]
+    duration_ms: int | None
+    token_count: int | None
+    started_at: str
+    completed_at: str
+    icon_url: str | None
+    tool_category: str | None
+    nested_subagents: list["SubagentGroup"]
 
 
 async def extract_tool_entries_from_update(
-    state_update: dict,
+    state_update: object,
     emitted_tool_calls: set[str],
     integration_metadata: IntegrationMetadata | None = None,
-) -> list[tuple[str, dict]]:
+) -> list[tuple[str, ToolDataEntry]]:
     """Extract new tool_data entries from a LangGraph state update.
 
     Formats each tool call for frontend streaming, deduplicating against
     ``emitted_tool_calls`` (mutated in place). ``integration_metadata``, if
     given, is applied to every entry. Returns (tool_call_id, tool_entry) tuples
     for tool calls not yet emitted.
+
+    ``state_update`` is typed ``object``: callers pass whatever a node yielded
+    from an ``updates`` stream event, which is not always a mapping — the
+    ``isinstance`` guard below is load-bearing, not defensive padding.
     """
-    entries: list[tuple[str, dict]] = []
+    entries: list[tuple[str, ToolDataEntry]] = []
 
     if not isinstance(state_update, dict) or "messages" not in state_update:
         return entries
@@ -58,93 +90,18 @@ async def extract_tool_entries_from_update(
     return entries
 
 
-def aggregate_usage_metadata(usage_metadata: dict[str, Any]) -> tuple[int, int, int]:
-    """Sum input, output, and cache_read tokens across all model entries.
-
-    Returns (total_input, total_output, total_cached). ``cache_read`` lives in
-    each entry's ``input_token_details`` (LangChain canonical shape). Some
-    provider SDK versions surface it under different keys, hence the fallbacks.
-    """
-    total_input = 0
-    total_output = 0
-    total_cached = 0
-    for v in usage_metadata.values():
-        if not isinstance(v, dict):
-            continue
-        total_input += int(v.get("input_tokens") or 0)
-        total_output += int(v.get("output_tokens") or 0)
-        details = v.get("input_token_details") or {}
-        cached = details.get("cache_read") or v.get("cached_content_token_count") or 0
-        total_cached += int(cached or 0)
-    return total_input, total_output, total_cached
-
-
-def merge_tool_outputs(
-    tool_data: dict[str, Any],
-    tool_outputs: dict[str, str],
-) -> None:
-    """Merge captured tool outputs into the tool_data entries before saving."""
-    for entry in tool_data.get("tool_data", []):
-        if entry.get("tool_name") == "tool_calls_data":
-            data = entry.get("data", {})
-            if isinstance(data, dict):
-                tool_call_id = data.get("tool_call_id")
-                if tool_call_id and tool_call_id in tool_outputs:
-                    data["output"] = tool_outputs[tool_call_id]
-
-
-def inject_todo_progress(
-    tool_data: dict[str, Any],
-    todo_progress_accumulated: dict[str, Any],
-) -> None:
-    """Inject accumulated todo_progress snapshots as a single tool_data entry."""
-    if todo_progress_accumulated:
-        tool_data["tool_data"].append(
-            {
-                "tool_name": "todo_progress",
-                "data": todo_progress_accumulated,
-                "timestamp": datetime.now(UTC).isoformat(),
-            }
-        )
-
-
-async def recover_stream_state(
-    stream_id: str,
-    complete_message: str,
-    tool_data: dict[str, Any],
-) -> tuple[str, dict[str, Any]]:
-    """
-    Recover complete_message and tool_data from Redis progress when the nostream
-    marker was never delivered (e.g. on cancellation).
-    """
-    if complete_message:
-        return complete_message, tool_data
-
-    progress = await stream_manager.get_progress(stream_id)
-    if not progress:
-        return complete_message, tool_data
-
-    complete_message = progress.get("complete_message", "")
-    progress_tool_data = progress.get("tool_data")
-    if (
-        isinstance(progress_tool_data, dict)
-        and progress_tool_data.get("tool_data")
-        and not tool_data.get("tool_data")
-    ):
-        tool_data = progress_tool_data
-    log.debug(f"{LogTag.CHAT} Recovered {len(complete_message)} chars from Redis progress")
-    return complete_message, tool_data
-
-
-def _approval_id_of(entry: dict[str, Any]) -> str | None:
+def _approval_id_of(entry: ToolDataEntry) -> str | None:
     """The approval_id of a HIL ``approval_request`` tool_data entry, or None."""
     if entry.get("tool_name") != APPROVAL_REQUEST_TOOL_NAME:
         return None
     data = entry.get("data")
-    return data.get("approval_id") if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    approval_id: str | None = data.get("approval_id")
+    return approval_id
 
 
-def _append_or_upsert_tool_data(entries: list[dict[str, Any]], entry: dict[str, Any]) -> None:
+def _append_or_upsert_tool_data(entries: list[ToolDataEntry], entry: ToolDataEntry) -> None:
     """Append ``entry``, except a HIL approval frame replaces the prior frame for
     the same approval_id in place — so the persisted turn carries exactly one
     entry per approval, in its final (resolved) status rather than a stuck one."""
@@ -185,7 +142,7 @@ def absorb_collector_event(
         accumulated.setdefault("subagent_ends", {})[sid] = evt["subagent_end"]
 
 
-def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[dict[str, Any]]) -> None:
+def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[ToolDataEntry]) -> None:
     """Persist a streamed thinking delta into tool_data as a reasoning step.
 
     Mirrors the frontend (streamHandlers.handleReasoning): a reasoning step rides a
@@ -203,16 +160,17 @@ def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[dict[str, Any]]
     # single dict on the frontend — a list here would nest a tool_call with no
     # tool_name and crash the renderer.
     last = tool_data[-1] if tool_data else None
+    last_data = last.get("data") if last is not None else None
     if (
         last is not None
         and last.get("tool_name") == "tool_calls_data"
         and last.get("subagent_id") == subagent_id
-        and isinstance(last.get("data"), dict)
-        and last["data"].get("reasoning") is not None
+        and isinstance(last_data, dict)
+        and last_data.get("reasoning") is not None
     ):
-        last["data"]["reasoning"] += content
+        last_data["reasoning"] += content
         return
-    entry: dict[str, Any] = {
+    entry: ToolDataEntry = {
         "tool_name": "tool_calls_data",
         "tool_category": "reasoning",
         "data": {
@@ -228,7 +186,7 @@ def _absorb_reasoning(reasoning: dict[str, Any], tool_data: list[dict[str, Any]]
 
 
 def apply_outputs_to_tool_data(
-    entries: list[dict[str, Any]],
+    entries: list[ToolDataEntry],
     tool_outputs: dict[str, str],
     *,
     only_tool_name: str | None = None,
@@ -250,14 +208,14 @@ def apply_outputs_to_tool_data(
             data["output"] = tool_outputs[tc_id]
 
 
-def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
+def reconstruct_subagent_groups(accumulated: dict[str, Any]) -> None:
     """Group flat tool_data entries tagged with subagent_id into subagent_group
-    entries for MongoDB persistence. Mutates tool_data in place.
+    entries for MongoDB persistence. Mutates the accumulator in place.
 
     Uses subagent_starts/subagent_ends accumulated by process_data_chunk.
     """
-    subagent_starts: dict[str, Any] = tool_data.pop("subagent_starts", {})
-    subagent_ends: dict[str, Any] = tool_data.pop("subagent_ends", {})
+    subagent_starts: dict[str, Any] = accumulated.pop("subagent_starts", {})
+    subagent_ends: dict[str, Any] = accumulated.pop("subagent_ends", {})
 
     if not subagent_starts:
         return
@@ -265,30 +223,30 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
     now = datetime.now(UTC).isoformat()
 
     # Build groups from start events
-    groups: dict[str, dict[str, Any]] = {}
+    groups: dict[str, SubagentGroup] = {}
     for subagent_id, start in subagent_starts.items():
         end = subagent_ends.get(subagent_id, {})
-        groups[subagent_id] = {
-            "subagent_id": subagent_id,
-            "subagent_name": start.get("subagent_name", ""),
-            "agent_type": start.get("agent_type", "spawned"),
-            "tool_calls": [],
-            "duration_ms": end.get("duration_ms"),
-            "token_count": end.get("token_count"),
-            "started_at": start.get("started_at", now),
+        groups[subagent_id] = SubagentGroup(
+            subagent_id=subagent_id,
+            subagent_name=start.get("subagent_name", ""),
+            agent_type=start.get("agent_type", "spawned"),
+            tool_calls=[],
+            duration_ms=end.get("duration_ms"),
+            token_count=end.get("token_count"),
+            started_at=start.get("started_at", now),
             # Always set — this runs only at turn finalization, so a subagent
             # without an end event was cut short (cancelled / errored / timed
             # out), not still running. Leaving it null persists a "forever
             # spinning" card (the frontend keys its spinner on completed_at).
-            "completed_at": now,
-            "icon_url": start.get("icon_url"),
-            "tool_category": start.get("tool_category"),
-            "nested_subagents": [],
-        }
+            completed_at=now,
+            icon_url=start.get("icon_url"),
+            tool_category=start.get("tool_category"),
+            nested_subagents=[],
+        )
 
     # Route subagent-tagged entries into their group
-    flat_entries: list[dict[str, Any]] = tool_data.get("tool_data", [])
-    top_level: list[dict[str, Any]] = []
+    flat_entries: list[ToolDataEntry] = accumulated.get("tool_data", [])
+    top_level: list[ToolDataEntry] = []
     for entry in flat_entries:
         target_id: str | None = entry.get("subagent_id")
         if target_id and target_id in groups and entry.get("tool_name") == "tool_calls_data":
@@ -297,7 +255,7 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
             top_level.append(entry)
 
     # Nest child groups inside their parent
-    root_groups: list[dict[str, Any]] = []
+    root_groups: list[SubagentGroup] = []
     for subagent_id, group in groups.items():
         parent_id: str | None = subagent_starts[subagent_id].get("parent_subagent_id")
         if parent_id and parent_id in groups:
@@ -306,11 +264,12 @@ def reconstruct_subagent_groups(tool_data: dict[str, Any]) -> None:
             root_groups.append(group)
 
     # Rebuild tool_data
-    tool_data["tool_data"] = top_level + [
+    group_entries: list[ToolDataEntry] = [
         {
             "tool_name": "subagent_group",
-            "data": group,
+            "data": cast(dict[str, Any], group),
             "timestamp": group["started_at"],
         }
         for group in root_groups
     ]
+    accumulated["tool_data"] = top_level + group_entries

@@ -14,6 +14,8 @@ from app.models.support_models import (
     SupportEmailNotification,
     SupportRequestCreate,
     SupportRequestDocument,
+    SupportRequestListResponse,
+    SupportRequestPagination,
     SupportRequestPriority,
     SupportRequestResponse,
     SupportRequestStatus,
@@ -33,7 +35,7 @@ SUPPORT_EMAILS = [
 ]
 
 
-async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> None:
+async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
     """Delete uploaded files from Cloudinary."""
     for url in attachment_urls:
         try:
@@ -48,7 +50,9 @@ async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> 
                     # Remove file extension from public_id
                     public_id = f"support/{filename_with_ext.rsplit('.', 1)[0]}"
 
-                    result = cloudinary.uploader.destroy(public_id)
+                    # Cloudinary's SDK is blocking HTTP — off the loop, or every
+                    # other request on this worker waits out the round trip.
+                    result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
                     if result.get("result") != "ok":
                         log.warning(f"Failed to delete file from Cloudinary: {public_id}")
                     else:
@@ -63,8 +67,8 @@ async def _upload_single_attachment(
     current_time: datetime,
     allowed_types: list[str],
     max_file_size: int,
-) -> tuple[str, dict]:
-    """Upload a single attachment and return (file_url, attachment_metadata_dict)."""
+) -> tuple[str, SupportAttachment]:
+    """Upload a single attachment and return (file_url, attachment metadata)."""
     # Validate file type
     if attachment.content_type not in allowed_types:
         raise HTTPException(
@@ -103,7 +107,7 @@ async def _upload_single_attachment(
             uploaded_at=current_time,
         )
 
-        return file_url, attachment_info.dict()
+        return file_url, attachment_info
 
     except Exception as e:
         log.error(f"Failed to upload image {attachment.filename}: {e!s}")
@@ -236,7 +240,7 @@ async def create_support_request_with_attachments(
         attachment_count=len(attachments),
     )
     request_id = None
-    attachment_urls = []
+    attachment_urls: list[str] = []
     ticket_id = None
 
     try:
@@ -247,7 +251,7 @@ async def create_support_request_with_attachments(
         current_time = datetime.now(UTC)
 
         # Process attachments
-        processed_attachments = []
+        processed_attachments: list[SupportAttachment] = []
 
         if attachments:
             # Validate file constraints
@@ -297,7 +301,7 @@ async def create_support_request_with_attachments(
                     log.info(
                         f"Cleaning up {len(attachment_urls)} partially uploaded files for ticket {ticket_id}"
                     )
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
 
                 # Re-raise the original exception (could be HTTPException from validation or upload error)
                 raise
@@ -314,7 +318,7 @@ async def create_support_request_with_attachments(
             description=request_data.description,
             priority=SupportRequestPriority.MEDIUM,
             created_at=current_time,
-            attachments=[SupportAttachment(**att) for att in processed_attachments],
+            attachments=processed_attachments,
             metadata={
                 "source": "web_form_with_images",
                 "user_agent": None,
@@ -338,7 +342,7 @@ async def create_support_request_with_attachments(
                 description=request_data.description,
                 created_at=current_time,
                 support_emails=SUPPORT_EMAILS,
-                attachments=[SupportAttachment(**att) for att in processed_attachments],
+                attachments=processed_attachments,
             )
 
             await _send_support_email_notifications(notification_data)
@@ -350,7 +354,7 @@ async def create_support_request_with_attachments(
             # Rollback: Delete uploaded files
             if attachment_urls:
                 try:
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
                     log.info(
                         f"Successfully cleaned up {len(attachment_urls)} uploaded files for ticket {ticket_id}"
                     )
@@ -400,7 +404,7 @@ async def create_support_request_with_attachments(
         # Clean up uploaded files
         if attachment_urls and ticket_id:
             try:
-                await _delete_uploaded_files(attachment_urls, ticket_id)
+                await _delete_uploaded_files(attachment_urls)
                 log.info(
                     f"Cleaned up {len(attachment_urls)} uploaded files due to unexpected error"
                 )
@@ -443,7 +447,7 @@ async def get_user_support_requests(
     page: int = 1,
     per_page: int = 10,
     status_filter: SupportRequestStatus | None = None,
-) -> dict:
+) -> SupportRequestListResponse:
     """Get paginated support requests for a user."""
     try:
         skip = (page - 1) * per_page
@@ -457,15 +461,15 @@ async def get_user_support_requests(
 
         support_requests = [SupportRequestResponse.model_validate(doc.model_dump()) for doc in docs]
 
-        return {
-            "requests": support_requests,
-            "pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "pages": (total + per_page - 1) // per_page,
-            },
-        }
+        return SupportRequestListResponse(
+            requests=support_requests,
+            pagination=SupportRequestPagination(
+                page=page,
+                per_page=per_page,
+                total=total,
+                pages=(total + per_page - 1) // per_page,
+            ),
+        )
 
     except Exception as e:
         log.error(f"Error fetching user support requests: {e!s}")

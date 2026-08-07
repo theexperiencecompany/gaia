@@ -4,9 +4,9 @@ Base scheduler service for managing scheduled tasks.
 
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
-from arq import create_pool
+from arq import ArqRedis, create_pool
 from arq.connections import RedisSettings
 
 from app.config.settings import settings
@@ -19,6 +19,20 @@ from app.models.scheduler_models import (
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone
 from shared.py.wide_events import log
+
+
+class TriggerConfigLike(Protocol):
+    """The only two fields the base scheduler reads off a task's trigger_config.
+
+    Structural rather than an import of ``workflow_models.TriggerConfig``: this
+    scheduler serves both the reminder and the workflow domain, so it must not
+    depend on either one's concrete model. Naming the fields is what stops a
+    dict-shaped trigger_config from reaching here — on a dict, the timezone read
+    silently yields None and the recurrence re-arms at the wrong wall-clock hour.
+    """
+
+    timezone: str | None
+    next_run: datetime | None
 
 
 class BaseSchedulerService(ABC):
@@ -37,14 +51,14 @@ class BaseSchedulerService(ABC):
     def __init__(self, redis_settings: RedisSettings | None = None):
         """Initialize the scheduler service."""
         self.redis_settings = redis_settings or RedisSettings.from_dsn(settings.REDIS_URL)
-        self.arq_pool = None
+        self.arq_pool: ArqRedis | None = None
 
-    async def initialize(self):
+    async def initialize(self) -> None:
         """Initialize ARQ pool connection."""
         self.arq_pool = await create_pool(self.redis_settings)
         log.info(f"{self.__class__.__name__} initialized")
 
-    async def close(self):
+    async def close(self) -> None:
         """Close ARQ pool connection."""
         if self.arq_pool:
             await self.arq_pool.aclose()
@@ -141,7 +155,7 @@ class BaseSchedulerService(ABC):
 
         return success
 
-    async def scan_and_schedule_pending_tasks(self):
+    async def scan_and_schedule_pending_tasks(self) -> None:
         """Scan for due scheduled tasks and enqueue them in ARQ (called at startup)."""
         now = datetime.now(UTC)
         tasks = await self.get_pending_task(now)
@@ -154,7 +168,7 @@ class BaseSchedulerService(ABC):
 
         log.info(f"Scheduled {scheduled_count} pending tasks")
 
-    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int):
+    async def handle_recurring_task(self, task: BaseScheduledTask, occurrence_count: int) -> None:
         """
         Reschedule the next occurrence of a recurring task, or mark it completed
         once max_occurrences / stop_after is reached.
@@ -179,9 +193,11 @@ class BaseSchedulerService(ABC):
         # Recurrence is computed in the task's own timezone. Reminders store it on
         # the task itself; workflows store it on trigger_config (the zone the cron
         # was authored against) which therefore wins. Neither set => UTC.
-        user_timezone = getattr(task, "timezone", None)
-        trigger_config = getattr(task, "trigger_config", None)
-        trigger_timezone = getattr(trigger_config, "timezone", None) if trigger_config else None
+        # Both are read off the BaseScheduledTask by name because only some
+        # subclasses declare them.
+        user_timezone: str | None = getattr(task, "timezone", None)
+        trigger_config: TriggerConfigLike | None = getattr(task, "trigger_config", None)
+        trigger_timezone: str | None = trigger_config.timezone if trigger_config else None
         if trigger_timezone:
             user_timezone = trigger_timezone
         log.set(scheduler_recurrence_timezone=user_timezone)
@@ -226,7 +242,7 @@ class BaseSchedulerService(ABC):
         task: BaseScheduledTask,
         occurrence_count: int,
         next_run: datetime,
-        trigger_config: Any,
+        trigger_config: TriggerConfigLike | None,
     ) -> None:
         """Persist the next occurrence and re-enqueue the recurring task."""
         # Store scheduled_at as a native datetime so the `$lte` scan can match it.
@@ -234,14 +250,22 @@ class BaseSchedulerService(ABC):
             "scheduled_at": next_run,
             "occurrence_count": occurrence_count,
         }
+        # The hasattr stays despite the Protocol: this write decides what the next
+        # scheduled run fires with, and trigger_config arrives via getattr (i.e.
+        # unchecked at runtime). A task whose config genuinely has no next_run must
+        # not get a phantom `trigger_config.next_run` key written into Mongo.
         if trigger_config is not None and hasattr(trigger_config, "next_run"):
             update_fields["trigger_config.next_run"] = next_run
         await self.update_task_status(task.id, ScheduledTaskStatus.SCHEDULED, update_fields)
         await self.reschedule_task(task.id, next_run)
         log.info(f"Rescheduled recurring task {task.id} for {next_run}")
 
-    def _build_job_args(self, task_id: str) -> tuple:
-        """Positional args passed to the ARQ job. Subclasses may add context."""
+    def _build_job_args(self, task_id: str) -> tuple[object, ...]:
+        """Positional args passed to the ARQ job. Subclasses may add context.
+
+        Heterogeneous by design — ARQ takes opaque ``*args`` and the workflow
+        scheduler appends a trigger-context dict after the id.
+        """
         return (task_id,)
 
     async def _enqueue_task(self, task_id: str, scheduled_at: datetime) -> bool:
@@ -303,12 +327,10 @@ class BaseSchedulerService(ABC):
     @abstractmethod
     async def get_task(self, task_id: str, user_id: str | None = None) -> BaseScheduledTask | None:
         """Get a task by ID, or None if not found."""
-        pass
 
     @abstractmethod
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
         """Execute the actual task logic."""
-        pass
 
     @abstractmethod
     async def update_task_status(
@@ -319,14 +341,11 @@ class BaseSchedulerService(ABC):
         user_id: str | None = None,
     ) -> bool:
         """Update task status and any additional fields."""
-        pass
 
     @abstractmethod
     async def get_pending_task(self, current_time: datetime) -> list[BaseScheduledTask]:
         """Get all tasks that are due to be scheduled at current_time."""
-        pass
 
     @abstractmethod
     def get_job_name(self) -> str:
         """Get the ARQ job name for this scheduler."""
-        pass
