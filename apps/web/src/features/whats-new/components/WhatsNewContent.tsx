@@ -108,10 +108,6 @@ export function WhatsNewContent({ html }: WhatsNewContentProps) {
   }, [html]);
 
   return (
-    <div
-      className="text-sm"
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: RSS release HTML is sanitized via DOMPurify before injection
-      dangerouslySetInnerHTML={{ __html: processed }}
-    />
+    <div className="text-sm" dangerouslySetInnerHTML={{ __html: processed }} />
   );
 }

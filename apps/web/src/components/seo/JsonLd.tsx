@@ -41,7 +41,6 @@ export default function JsonLd({ data }: JsonLdProps) {
             // biome-ignore lint/suspicious/noArrayIndexKey: mapping json ld is fine
             key={`jsonld-${baseId}-${index}`}
             type="application/ld+json"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD schema serialized as inert JSON in a script tag, never rendered as HTML
             dangerouslySetInnerHTML={{ __html: json }}
           />
         );

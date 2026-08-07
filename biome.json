@@ -189,6 +189,20 @@
     },
     {
       "includes": [
+        "apps/web/src/components/seo/JsonLd.tsx",
+        "apps/web/src/components/ui/chart.tsx",
+        "apps/web/src/features/whats-new/components/WhatsNewContent.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
         "apps/web/src/features/**/index.ts",
         "apps/web/src/features/**/index.tsx",
         "apps/web/src/app/**/index.ts",

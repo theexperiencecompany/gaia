@@ -15,6 +15,16 @@
   },
   "overrides": [
     {
+      "includes": ["src/components/icons/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": [
         "src/features/chat/components/chat/voice-recorder.tsx",
         "src/features/chat/components/tool-cards/chart-card.tsx",
