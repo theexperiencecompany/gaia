@@ -1,0 +1,37 @@
+# gaia-host-inodes — fires when the root filesystem has used >85% of its inodes.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-host-inodes fires at 95% inode usage
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_files_free{mountpoint="/",fstype="xfs"}'
+        values: '500000x30'
+      - series: 'node_filesystem_files{mountpoint="/",fstype="xfs"}'
+        values: '10000000x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-host-inodes
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: host
+              mountpoint: /
+              fstype: xfs
+            exp_annotations:
+              description: >-
+                When inodes run out every write fails with ENOSPC while df -h still reports plenty of free space, so this looks like a corrupt disk rather than a full one and the disk-usage alert never fires. This box is small-file heavy — Docker layer directories, one Loki file per chunk, 30 days of Prometheus blocks, the JuiceFS cache and the embedding and voice model caches. Confirm with `df -i /`, then find the consumer with `du --inodes -d 2 /var/lib/docker` and the Loki volume.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-inodes
+
+  - name: gaia-host-inodes stays quiet at 50% inode usage
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_files_free{mountpoint="/",fstype="xfs"}'
+        values: '5000000x30'
+      - series: 'node_filesystem_files{mountpoint="/",fstype="xfs"}'
+        values: '10000000x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-host-inodes
+        exp_alerts: []

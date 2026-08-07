@@ -310,20 +310,22 @@ function DocumentSection({
 export default function MemoryCard({ items: rawItems }: MemoryCardProps) {
   // The agent may call the same memory tool repeatedly in one turn (e.g.
   // re-reading a document); identical payloads collapse to one section.
-  const items = rawItems.filter(
-    (item, index, all) =>
-      all.findIndex(
-        (other) => JSON.stringify(other) === JSON.stringify(item),
-      ) === index,
-  );
+  const items = rawItems
+    .filter(
+      (item, index, all) =>
+        all.findIndex(
+          (other) => JSON.stringify(other) === JSON.stringify(item),
+        ) === index,
+    )
+    .map((item, index) => ({ item, index }));
   if (items.length === 0) return null;
 
   return (
     <div className="flex w-full max-w-md flex-col gap-0 overflow-hidden rounded-2xl bg-zinc-800">
       <div className="flex flex-col gap-3 p-4">
-        {items.map((item, i) => (
-          <div key={`${item.action}-${i}`}>
-            {i > 0 && <Divider className="mb-3 bg-zinc-700/50" />}
+        {items.map(({ item, index }) => (
+          <div key={`${item.action}-${index}`}>
+            {index > 0 && <Divider className="mb-3 bg-zinc-700/50" />}
             {item.action === "add" && <AddSection item={item} />}
             {item.action === "search" && <SearchSection item={item} />}
             {item.action === "update" && <UpdateSection item={item} />}

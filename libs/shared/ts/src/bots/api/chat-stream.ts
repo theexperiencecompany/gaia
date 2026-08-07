@@ -204,7 +204,7 @@ async function streamChatOnce(
             if (finished) return;
             const trimmed = line.trim();
 
-            if (!trimmed || !trimmed.startsWith("data: ")) continue;
+            if (!trimmed?.startsWith("data: ")) continue;
             const raw = trimmed.slice(6);
             if (raw === "[DONE]") continue;
 

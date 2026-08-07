@@ -211,25 +211,25 @@ describe("processBotMedia — audio / voice transcription path", () => {
 });
 
 describe("processBotMedia — unsupported kinds never download", () => {
-  it.each([
-    "video",
-    "sticker",
-  ] as const)("rejects %s without invoking the download thunk", async (kind) => {
-    const download = vi.fn(async () => new Uint8Array(10));
-    const gaia = makeGaia();
-    const outcome = await processBotMedia(
-      gaia as unknown as Gaia,
-      media({ kind }),
-      download,
-      ctx,
-    );
-    expect(download).not.toHaveBeenCalled();
-    expect(gaia.uploadFile).not.toHaveBeenCalled();
-    expect(outcome).toEqual({
-      action: "reply",
-      text: unsupportedMediaMessage(kind),
-    });
-  });
+  it.each(["video", "sticker"] as const)(
+    "rejects %s without invoking the download thunk",
+    async (kind) => {
+      const download = vi.fn(async () => new Uint8Array(10));
+      const gaia = makeGaia();
+      const outcome = await processBotMedia(
+        gaia as unknown as Gaia,
+        media({ kind }),
+        download,
+        ctx,
+      );
+      expect(download).not.toHaveBeenCalled();
+      expect(gaia.uploadFile).not.toHaveBeenCalled();
+      expect(outcome).toEqual({
+        action: "reply",
+        text: unsupportedMediaMessage(kind),
+      });
+    },
+  );
 });
 
 describe("processBotMedia — propagates upload/transcribe failures", () => {

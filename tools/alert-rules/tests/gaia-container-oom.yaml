@@ -1,0 +1,33 @@
+# gaia-container-oom — fires when any container has been OOM-killed in 15m.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-container-oom fires when a container was OOM-killed
+    interval: 1m
+    input_series:
+      - series: 'container_oom_events_total{name="gaia-prod_embedding.1"}'
+        values: '1+1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-container-oom
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: host
+            exp_annotations:
+              description: >-
+                The kernel killed a container for exceeding its memory limit. Swarm silently replaces the task, so without this alert an OOM loop looks like nothing at all. The tightest limits are the embedding sidecar at 3G against roughly 2.4G of resident models, and the ARQ worker and voice agent at 2G each. Check "Memory Usage % of Limit" to see which one is at its ceiling.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-oom
+              __dashboardUid__: gaia-containers
+              __panelId__: '7'
+
+  - name: gaia-container-oom stays quiet when nothing was OOM-killed
+    interval: 1m
+    input_series:
+      - series: 'container_oom_events_total{name="gaia-prod_embedding.1"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-container-oom
+        exp_alerts: []

@@ -186,9 +186,9 @@ export function ChatMessage({
     [message.text],
   );
 
-  const messageParts = splitByBreaksPreservingFences(
-    parsedContent.cleanText,
-  ).filter(Boolean);
+  const messageParts = splitByBreaksPreservingFences(parsedContent.cleanText)
+    .filter(Boolean)
+    .map((part, index) => ({ part, index }));
 
   const _hasContent = messageParts.length > 0;
   const showLoadingState = !isUser && isLoading && !_hasContent;
@@ -250,7 +250,7 @@ export function ChatMessage({
                 isUserMessage={true}
               />
             )}
-            {messageParts.map((part, index) => {
+            {messageParts.map(({ part, index }) => {
               const { isEmojiOnly, count } = getEmojiInfo(part);
               if (isEmojiOnly && messageParts.length === 1) {
                 const emojiSize =
@@ -347,7 +347,9 @@ export function ChatMessage({
               imageData={message.imageData ?? { url: "", prompt: "" }}
               isGenerating={isGeneratingImage}
               caption={
-                messageParts.length > 0 ? messageParts.join(" ") : undefined
+                messageParts.length > 0
+                  ? messageParts.map(({ part }) => part).join(" ")
+                  : undefined
               }
             />
           </View>
@@ -373,7 +375,7 @@ export function ChatMessage({
             }
           />
         ) : messageParts.length > 0 ? (
-          messageParts.map((part, partIndex) => {
+          messageParts.map(({ part, index: partIndex }) => {
             const segments = parseOpenUISegments(part, !!isLoading);
             const grouped =
               messageParts.length === 1

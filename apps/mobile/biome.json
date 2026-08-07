@@ -1,5 +1,6 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.7/schema.json",
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "extends": "//",
   "files": {
     "includes": ["**/*.{js,jsx,ts,tsx,json,css}", "!.expo", "!**/*.d.ts"]
@@ -13,6 +14,16 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["src/components/icons/index.ts"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "noReExportAll": "off"
+          }
+        }
+      }
+    },
     {
       "includes": [
         "src/features/chat/components/chat/voice-recorder.tsx",

@@ -36,6 +36,9 @@ dependencies = [
   "fastembed>=0.7",
   "psutil>=7.0.0",
   "langchain-openrouter>=0.2.3",
+  "firecrawl-anydoc==0.1.2",
+  "pdf-inspector==0.2.6",
+  "langchain-text-splitters>=1.1.2",
 ]
 
 [tool.taskipy.tasks]

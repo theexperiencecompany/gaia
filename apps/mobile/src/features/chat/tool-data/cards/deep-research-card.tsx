@@ -113,9 +113,9 @@ function DeepResearchRunningCard({ data }: { data: DeepResearchResults }) {
       {/* Sub-steps history */}
       {subSteps.length > 1 && (
         <View className="mb-3 gap-1">
-          {subSteps.slice(0, -1).map((step, index) => (
+          {subSteps.slice(0, -1).map((step) => (
             <View
-              key={`step-${index}-${step.slice(0, 10)}`}
+              key={`step-${step}`}
               className="flex-row items-center gap-1.5"
             >
               <View className="w-1 h-1 rounded-full bg-zinc-500" />

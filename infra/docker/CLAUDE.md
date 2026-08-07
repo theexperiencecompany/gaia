@@ -9,7 +9,7 @@ Docker Compose configuration for all GAIA environments.
 | `docker-compose.yml` | Local development — profile-gated app services, infra always on |
 | `docker-compose.prod.yml` | Production — pulls pre-built images from ghcr.io |
 | `docker-compose.selfhost.yml` | Self-hosting — builds from source, includes web frontend |
-| `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox |
+| `observability/` | Config files for Prometheus, Loki, Promtail, Grafana, Blackbox — see `observability/CLAUDE.md` before adding or editing an alert rule |
 
 ## Port Mappings (defaults, overridable via .env)
 

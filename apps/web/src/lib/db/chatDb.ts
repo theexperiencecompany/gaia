@@ -82,7 +82,10 @@ class MessageQueue {
 
   async enqueue<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.queue.then(operation);
-    this.queue = result.catch(() => {}); // Don't propagate errors to queue
+    // Don't propagate errors to the queue chain; `result` still rejects for the caller.
+    this.queue = result.catch(() => {
+      /* swallowed on purpose so the chain stays alive — see comment above */
+    });
     return result;
   }
 }

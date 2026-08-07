@@ -227,6 +227,10 @@ function blockKey(block: Block, idx: number): string {
   return `${block.type}-${idx}`;
 }
 
+function listItemKey(item: InlineSegment[], idx: number): string {
+  return `li-${idx}-${item[0]?.text.slice(0, 12)}`;
+}
+
 // -- Rendering components -----------------------------------------------------
 
 function InlineContent({ segments }: { segments: InlineSegment[] }) {
@@ -471,7 +475,7 @@ function ListBlock({
     <View style={{ marginVertical: 4, paddingLeft: 16 }}>
       {items.map((item, idx) => (
         <View
-          key={`li-${idx}-${item[0]?.text.slice(0, 12)}`}
+          key={listItemKey(item, idx)}
           style={{ flexDirection: "row", marginBottom: 8, paddingRight: 8 }}
         >
           {ordered ? (
@@ -573,7 +577,9 @@ function MermaidBlock({ code }: { code: string }) {
           try {
             const data = JSON.parse(event.nativeEvent.data);
             if (data.height) setHeight(Math.max(data.height, 100));
-          } catch {}
+          } catch {
+            /* ignore: web content may post non-JSON messages */
+          }
         }}
         originWhitelist={["*"]}
         javaScriptEnabled
@@ -630,7 +636,9 @@ function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
         try {
           const data = JSON.parse(event.nativeEvent.data);
           if (data.height) setHeight(Math.max(data.height, inline ? 20 : 40));
-        } catch {}
+        } catch {
+          /* ignore: web content may post non-JSON messages */
+        }
       }}
       originWhitelist={["*"]}
       javaScriptEnabled
