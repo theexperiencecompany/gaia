@@ -132,7 +132,7 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - name: Circular dependency scan (Biome)
         run: |
-          echo "::group::biome lint --only=nursery/noImportCycles"
+          echo "::group::biome lint --only=suspicious/noImportCycles"
           pnpm run quality:circular
           echo "::endgroup::"
           echo "Circular deps: OK (no cycles found)"
