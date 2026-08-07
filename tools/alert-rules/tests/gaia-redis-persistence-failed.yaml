@@ -1,0 +1,43 @@
+# gaia-redis-persistence-failed — fires when Redis's last snapshot or AOF write
+# failed (product of both status gauges drops below 1).
+#
+# Metric existence was validated against a LOCAL Prometheus scraping the pinned
+# redis_exporter v1.66.0 pointed at a real redis running --appendonly yes: both
+# redis_rdb_last_bgsave_status and redis_aof_last_write_status are emitted
+# (pint promql/series passed), and the firing path was exercised in a live
+# Grafana. The pre-merge check for the production instance is the documented
+# local online pint pass — infra/docker/observability/CLAUDE.md.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-redis-persistence-failed fires when the AOF write failed
+    interval: 1m
+    input_series:
+      - series: 'redis_rdb_last_bgsave_status'
+        values: '1x30'
+      - series: 'redis_aof_last_write_status'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-persistence-failed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: redis
+            exp_annotations:
+              description: >-
+                Redis defaults to stop-writes-on-bgsave-error, so a failed snapshot means it is still answering PING and INFO while refusing every write. redis_up stays 1, the container healthcheck passes and no other rule notices. In practice: ARQ cannot enqueue, so reminders, workflows, tracked todos and Gmail ingestion stop; the SSE publisher cannot publish, so chat responses never reach the browser; and the rate limiter fails open or closed. The usual cause is a full or read-only disk — check the host disk alert first, then the redis container logs.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-persistence-failed
+
+  - name: gaia-redis-persistence-failed stays quiet when both writes succeed
+    interval: 1m
+    input_series:
+      - series: 'redis_rdb_last_bgsave_status'
+        values: '1x30'
+      - series: 'redis_aof_last_write_status'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-persistence-failed
+        exp_alerts: []

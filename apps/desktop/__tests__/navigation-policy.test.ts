@@ -53,11 +53,10 @@ describe("classifyNavigation", () => {
     expect(classifyNavigation(url, ALLOWED)).toBe("block");
   });
 
-  it.each([
-    "not a url",
-    "http://",
-    "://missing-scheme",
-  ])("blocks malformed URL %s", (url) => {
-    expect(classifyNavigation(url, ALLOWED)).toBe("block");
-  });
+  it.each(["not a url", "http://", "://missing-scheme"])(
+    "blocks malformed URL %s",
+    (url) => {
+      expect(classifyNavigation(url, ALLOWED)).toBe("block");
+    },
+  );
 });

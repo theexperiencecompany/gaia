@@ -273,6 +273,7 @@ per-file-ignores	apps/api/app/workers/tasks/hil_sweep_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/maintenance_sweep_tasks.py	PLC0415
 per-file-ignores	apps/api/app/workers/tasks/memory_backfill_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/memory_email_tasks.py	ARG001
+per-file-ignores	apps/api/app/workers/tasks/nurture_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/onboarding_tasks.py	PLC0415
 per-file-ignores	apps/api/app/workers/tasks/reminder_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/reminder_tasks.py	PLC0415

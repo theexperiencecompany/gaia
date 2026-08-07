@@ -556,7 +556,9 @@ class TestUserTasks:
         ):
             result = await check_inactive_users(ARQ_CTX)
 
-            mock_send.assert_awaited_once_with("inactive@example.com", "Inactive User")
+            mock_send.assert_awaited_once_with(
+                "inactive@example.com", inactive_user.id, "Inactive User"
+            )
             mock_record.assert_awaited_once_with(inactive_user.id, 1)
             assert "1 inactive users" in result
             assert "sent 1 emails" in result

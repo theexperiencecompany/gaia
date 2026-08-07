@@ -1,10 +1,11 @@
-"""Unit tests for MongoDBNotificationStorage.
+"""Unit tests for MongoDBNotificationStorage and channel preferences.
 
 Storage now delegates persistence to ``notification_repository`` (real DB
 behaviour is covered by the NotificationRepository contract tests). These tests
 mock the repository and assert the storage methods delegate correctly.
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -13,6 +14,10 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
+)
+from app.utils.notification.channel_preferences import (
+    fetch_channel_preferences,
+    normalize_channel_preferences,
 )
 from app.utils.notification.storage import MongoDBNotificationStorage
 
@@ -88,3 +93,132 @@ class TestNotificationStorageDelegation:
         mock_repo.count_for_user.assert_awaited_once_with(
             "user-1", status=NotificationStatus.PENDING, channel_type="in_app"
         )
+
+
+# ---------------------------------------------------------------------------
+# normalize_channel_preferences
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestNormalizeChannelPreferences:
+    """Tests for normalize_channel_preferences."""
+
+    def test_none_input_uses_defaults(self) -> None:
+        """None prefs fallback to DEFAULT_CHANNEL_PREFERENCES values."""
+        result = normalize_channel_preferences(None)
+        assert result == {
+            "telegram": True,
+            "discord": True,
+            "whatsapp": True,
+            "slack": True,
+            "email": True,
+        }
+
+    def test_empty_dict_uses_defaults(self) -> None:
+        """Empty dict falls back to defaults for every channel."""
+        result = normalize_channel_preferences({})
+        assert result == {
+            "telegram": True,
+            "discord": True,
+            "whatsapp": True,
+            "slack": True,
+            "email": True,
+        }
+
+    def test_explicit_false_overrides_default(self) -> None:
+        """An explicitly False value overrides the default True."""
+        result = normalize_channel_preferences({"telegram": False, "discord": True})
+        assert result["telegram"] is False
+        assert result["discord"] is True
+
+    def test_email_false_respected(self) -> None:
+        """An explicitly False email preference is respected (unsubscribe)."""
+        result = normalize_channel_preferences({"email": False})
+        assert result["email"] is False
+
+    def test_truthy_values_coerced_to_bool(self) -> None:
+        """Non-boolean truthy values are coerced to True."""
+        result = normalize_channel_preferences({"telegram": 1, "discord": "yes"})
+        assert result["telegram"] is True
+        assert result["discord"] is True
+
+    def test_falsy_values_coerced_to_bool(self) -> None:
+        """Non-boolean falsy values are coerced to False."""
+        result = normalize_channel_preferences({"telegram": 0, "discord": ""})
+        assert result["telegram"] is False
+        assert result["discord"] is False
+
+    def test_extra_keys_ignored(self) -> None:
+        """Keys not in DEFAULT_CHANNEL_PREFERENCES are not in the result."""
+        result = normalize_channel_preferences({"telegram": True, "discord": True, "sms": True})
+        assert "sms" not in result
+
+    def test_partial_prefs_fill_missing_with_defaults(self) -> None:
+        """When only some channels are provided, missing ones use defaults."""
+        result = normalize_channel_preferences({"telegram": False})
+        assert result["telegram"] is False
+        assert result["discord"] is True  # default
+
+
+# ---------------------------------------------------------------------------
+# fetch_channel_preferences
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFetchChannelPreferences:
+    """Tests for fetch_channel_preferences (async DB call)."""
+
+    async def test_user_found_with_prefs(self) -> None:
+        """Returns normalized prefs from the user document."""
+        user = SimpleNamespace(notification_channel_prefs={"telegram": False, "discord": True})
+        with patch(
+            "app.utils.notification.channel_preferences.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=user,
+        ):
+            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+
+        assert result == {
+            "telegram": False,
+            "discord": True,
+            "whatsapp": True,
+            "slack": True,
+            "email": True,
+        }
+
+    async def test_user_not_found(self) -> None:
+        """When user doc is None, use defaults (None prefs)."""
+        with patch(
+            "app.utils.notification.channel_preferences.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+
+        assert result == {
+            "telegram": True,
+            "discord": True,
+            "whatsapp": True,
+            "slack": True,
+            "email": True,
+        }
+
+    async def test_user_with_null_prefs_field(self) -> None:
+        """When notification_channel_prefs is explicitly None, use defaults."""
+        user = SimpleNamespace(notification_channel_prefs=None)
+        with patch(
+            "app.utils.notification.channel_preferences.user_repository.get",
+            new_callable=AsyncMock,
+            return_value=user,
+        ):
+            result = await fetch_channel_preferences("507f1f77bcf86cd799439011")
+
+        assert result == {
+            "telegram": True,
+            "discord": True,
+            "whatsapp": True,
+            "slack": True,
+            "email": True,
+        }

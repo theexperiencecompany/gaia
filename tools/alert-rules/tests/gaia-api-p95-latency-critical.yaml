@@ -1,0 +1,66 @@
+# gaia-api-p95-latency-critical — fires when p95 response time exceeds 3s for 5m.
+#
+# Same bucket layout as gaia-api-p95-latency; here the 95th percentile must land
+# above the 3s critical threshold, so the distribution sits between the 5s and
+# 10s buckets. The quiet case reuses the 1s-rule's trigger distribution (p95
+# ~2.4s), which stays under 3s.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-api-p95-latency-critical fires when p95 exceeds 3s
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.25"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.5"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="2.5"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="5"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="10"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="+Inf"}'
+        values: '10+10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-p95-latency-critical
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                Same signal as the warning-tier latency rule, at the point where the product is effectively unusable rather than merely slow. This tier also pages email. Treat it as an incident — check whether the API is saturated, a downstream database is slow, or an upstream LLM provider is degraded.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
+              __dashboardUid__: gaia-api-prometheus
+              __panelId__: '6'
+
+  - name: gaia-api-p95-latency-critical stays quiet when p95 is under 3s
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.25"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.5"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="2.5"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="5"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="10"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="+Inf"}'
+        values: '10+10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-p95-latency-critical
+        exp_alerts: []

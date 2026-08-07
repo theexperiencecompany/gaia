@@ -1,0 +1,45 @@
+# gaia-monitoring-target-down — fires when a monitoring-scrape job (node,
+# cadvisor, blackbox_exporter, chromadb) stops reporting, so dependent rules go
+# quiet instead of green.
+#
+# The expression excludes the app jobs, so up{job="gaia-api"}=0 must NOT alert
+# even while up{job="node"}=0 does. The noData path is Grafana-only via
+# noDataState: Alerting.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-monitoring-target-down fires for a monitoring job but not an app job
+    interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="host:9100"}'
+        values: '0x30'
+      - series: 'up{job="cadvisor",instance="host:8080"}'
+        values: '1x30'
+      - series: 'up{job="gaia-api",instance="gaia-backend:80"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-monitoring-target-down
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: monitoring
+              job: node
+              instance: host:9100
+            exp_annotations:
+              description: >-
+                Part of the monitoring stack has stopped reporting, so the rules that depend on it have gone quiet rather than green. node_exporter down silently disables the host disk, inode and memory alerts; cadvisor down silently disables OOM and restart detection; blackbox_exporter down takes ChromaDB, the public API probe and all five internal health probes with it at once, which looks like three simultaneous outages when the real fault is one container. Read the job named above before believing anything that fired alongside it.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
+
+  - name: gaia-monitoring-target-down stays quiet when monitoring jobs are up
+    interval: 1m
+    input_series:
+      - series: 'up{job="node",instance="host:9100"}'
+        values: '1x30'
+      - series: 'up{job="cadvisor",instance="host:8080"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-monitoring-target-down
+        exp_alerts: []

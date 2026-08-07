@@ -10,7 +10,7 @@ interface CalendarListFetchProps {
 export default function CalendarListFetchCard({
   calendars,
 }: CalendarListFetchProps) {
-  if (!!calendars && calendars.length > 0)
+  if (calendars && calendars.length > 0)
     return (
       <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-3 text-white">
         {/* Header */}

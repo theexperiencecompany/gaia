@@ -10,9 +10,10 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Fifteen lanes
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Eighteen lanes
   (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity, security,
-  …) behind the ratcheted `Quality gate (required)` check.
+  pint over the Grafana alert rules, …) behind the ratcheted
+  `Quality gate (required)` check.
 
 **Never add a check to both.** Every static check lives in code-quality.yml
 only. We previously ran ruff/mypy/Biome/tsc/dead-code in BOTH workflows on
@@ -78,7 +79,7 @@ intended semantic, keep it:
 ## The ratchet
 
 `code-quality.yml`'s gate enforces a lane iff a marker file exists at
-`quality-gate/enforced/<lane>`. All 15 lanes are currently enforced. New lane:
+`quality-gate/enforced/<lane>`. All 18 lanes are currently enforced. New lane:
 add it non-enforced first, burn down findings, then add its marker in its own
 PR (separate marker files never merge-conflict).
 
