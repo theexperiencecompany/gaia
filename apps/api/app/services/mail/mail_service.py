@@ -148,7 +148,11 @@ async def send_email(
 
         result = await invoke_gmail_tool(user_id, tool_name, parameters)
         if not result.successful:
-            log.error(f"{LogTag.MAIL} Error from {tool_name}: {result.error}")
+            log.error(
+                f"{LogTag.MAIL} Error from tool",
+                tool_name=tool_name,
+                error=result.error,
+            )
         log.set_ns("mail", success=result.successful)
         return result
 

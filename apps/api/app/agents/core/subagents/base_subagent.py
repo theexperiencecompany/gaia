@@ -70,8 +70,8 @@ def resolve_declared_tools(
     missing = [name for name in declared if name not in scoped_tool_dict]
     if missing:
         log.warning(
-            f"{LogTag.AGENT} Subagent '{provider}' declared {kind} tools that do not exist "
-            f"in its resolved tool set; they will NOT be bound. missing={missing}",
+            f"{LogTag.AGENT} Subagent declared tools that do not exist in its resolved "
+            "tool set; they will NOT be bound",
             provider=provider,
             declaration=kind,
             missing_tools=missing,

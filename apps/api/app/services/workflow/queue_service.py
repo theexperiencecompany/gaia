@@ -173,7 +173,11 @@ class WorkflowQueueService:
             # False means "nothing in flight", so a Redis outage here lets a second
             # generation start for the same todo. Cheap to recover from, but not
             # something to discover without a log line.
-            log.warning(f"{LogTag.WORKFLOW} Could not read workflow-generating flag: {exc}")
+            log.warning(
+                f"{LogTag.WORKFLOW} Could not read workflow-generating flag",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             return False
 
     @staticmethod

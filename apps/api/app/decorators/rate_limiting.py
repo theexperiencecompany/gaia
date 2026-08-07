@@ -172,7 +172,10 @@ def with_rate_limiting(
                             # background tasks); the card is decoration, the
                             # LangChainRateLimitException below is the real outcome.
                             log.debug(
-                                f"{LogTag.API} Rate limit card not streamed for {actual_feature_key}: {stream_error}"
+                                f"{LogTag.API} Rate limit card not streamed",
+                                actual_feature_key=actual_feature_key,
+                                error=str(stream_error),
+                                error_type=type(stream_error).__name__,
                             )
 
                         raise LangChainRateLimitException(

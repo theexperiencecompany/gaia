@@ -68,7 +68,7 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
 
     except Exception as e:
         log.error(
-            f"{LogTag.AGENT} Error in filter messages node: {e}",
+            f"{LogTag.AGENT} Error in filter messages node",
             error_type=type(e).__name__,
             error=str(e),
         )

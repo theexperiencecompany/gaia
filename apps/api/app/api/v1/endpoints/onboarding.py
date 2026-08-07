@@ -382,7 +382,12 @@ async def _load_suggested_workflows(workflow_ids: list[str]) -> list[Personaliza
             if (wf := wf_docs.get(wf_id))
         ]
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error fetching workflows: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Error fetching workflows",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return []
 
 
@@ -426,7 +431,11 @@ async def _load_onboarding_todos(user_id: str) -> list[PersonalizationTodo]:
     try:
         todos = await todo_repository.list_onboarding_todos(user_id, limit=ONBOARDING_TODO_LIMIT)
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
+        log.warning(
+            f"{LogTag.ONBOARDING} Failed to fetch onboarding todos",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []
     return [
         PersonalizationTodo(
@@ -456,7 +465,7 @@ async def get_onboarding_personalization(
         )
         if not user_id or not isinstance(user_id, str):
             raise HTTPException(status_code=400, detail="Invalid user_id")
-        log.info(f"{LogTag.ONBOARDING} Fetching personalization for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Fetching personalization for user", user_id=user_id)
         user_doc = await user_repository.get(user_id)
 
         if not user_doc:
@@ -465,7 +474,10 @@ async def get_onboarding_personalization(
         onboarding = user_doc.onboarding or {}
         phase = onboarding.get("phase", "initial")
         log.info(
-            f"{LogTag.ONBOARDING} User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
+            f"{LogTag.ONBOARDING} User onboarding state",
+            user_id=user_id,
+            phase=phase,
+            bio_status=onboarding.get("bio_status"),
         )
 
         account_number, member_since = await _resolve_account_identity(user_doc, onboarding)
@@ -509,7 +521,12 @@ async def get_onboarding_personalization(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error fetching personalization: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Error fetching personalization",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
 
 

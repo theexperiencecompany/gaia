@@ -251,7 +251,9 @@ async def format_tool_call_entry(
         # metadata from every platform tool at once, and the card just renders
         # plain with nothing to explain why.
         log.debug(
-            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata: {registry_error}"
+            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata",
+            error=str(registry_error),
+            error_type=type(registry_error).__name__,
         )
 
     if mcp_ui is None and user_id:

@@ -246,8 +246,11 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     busy_minutes += duration
                 except (ValueError, TypeError) as e:
                     log.debug(
-                        f"{LogTag.TOOL} Excluding event from busy-hours total, "
-                        f"unparseable times {start_time!r}..{end_time!r}: {e}"
+                        f"{LogTag.TOOL} Excluding event from busy-hours total, unparseable times",
+                        start_time=start_time,
+                        end_time=end_time,
+                        error=str(e),
+                        error_type=type(e).__name__,
                     )
 
         next_event: dict[str, Any] | None = None
@@ -263,7 +266,10 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
                     except (ValueError, TypeError) as e:
                         log.debug(
                             f"{LogTag.TOOL} Skipping event when resolving next_event, "
-                            f"unparseable start time {start_time!r}: {e}"
+                            "unparseable start time",
+                            start_time=start_time,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
 
         result_data = {

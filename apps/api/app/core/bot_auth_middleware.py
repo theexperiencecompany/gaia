@@ -77,11 +77,19 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
                     request.state.authenticated = True
                     authenticated = True
             except JWTError as e:
-                log.debug(f"{LogTag.API} Bot JWT rejected, trying API key: {e}")
+                log.debug(
+                    f"{LogTag.API} Bot JWT rejected, trying API key",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
             except Exception as e:
                 # Not a token problem — Redis/Mongo lookups can fail here. Still
                 # falls through to API key auth, but never silently.
-                log.warning(f"{LogTag.API} Bot JWT authentication errored, trying API key: {e}")
+                log.warning(
+                    f"{LogTag.API} Bot JWT authentication errored, trying API key",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
         # 2. Fall back to API key + platform headers
         if not authenticated:

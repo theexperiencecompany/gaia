@@ -363,5 +363,9 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         except Exception as exc:
             # 0.0 reads as "context is empty", which is the one value that stops
             # compaction from ever triggering — never let that happen quietly.
-            log.warning(f"{LogTag.AGENT} Context-usage estimate failed, treating as 0%: {exc}")
+            log.warning(
+                f"{LogTag.AGENT} Context-usage estimate failed, treating as 0%",
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
             return 0.0

@@ -95,6 +95,7 @@ async def pair_start(payload: StartPairingRequest) -> StartPairingResponse:
 @router.post("/pair/poll")
 async def pair_poll(payload: PollPairingRequest) -> PollPairingResponse:
     """Daemon polls for the user's browser approval of a pending pairing."""
+    log.set(device={"operation": "pair_poll"})
     result = await poll_pairing(payload.device_code)
     log.set_ns("device", pairing_status=result.status)
     # Audited on the terminal transition only. `approved` is where the pairing is

@@ -703,7 +703,7 @@ def _update_recurrence_rules(
     try:
         return event.recurrence.to_google_calendar_format()
     except Exception as e:
-        log.error(f"Error processing recurrence rules: {e}")
+        log.error("Error processing recurrence rules", error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
 
 

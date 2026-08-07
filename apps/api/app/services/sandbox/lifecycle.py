@@ -554,8 +554,10 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         # read site shard_router's docstring promises ("we never re-shard a user
         # without an explicit migration") and previously did not exist.
         log.info(
-            f"{LogTag.SANDBOX} honouring recorded shard user={user_id} "
-            f"recorded={doc.shard_id} computed={shard_id}"
+            f"{LogTag.SANDBOX} honouring recorded shard",
+            user_id=user_id,
+            doc_shard_id=doc.shard_id,
+            shard_id=shard_id,
         )
         shard_id = doc.shard_id
         _record(shard_id=shard_id)

@@ -270,7 +270,7 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
 
     except Exception as e:
         log.error(
-            f"{LogTag.AGENT} Error in manage system prompts node: {e}",
+            f"{LogTag.AGENT} Error in manage system prompts node",
             error_type=type(e).__name__,
             error=str(e),
         )

@@ -273,8 +273,9 @@ def _log_schedule_drift(workflow: Workflow, workflow_id: str, actual_fire_utc: d
     )
     if abs(drift) > _DRIFT_WARN_SECONDS:
         log.warning(
-            f"{LogTag.WORKER} Workflow {workflow_id} fired {drift}s off schedule "
-            f"(positive = late, negative = early)",
+            f"{LogTag.WORKER} Workflow fired off schedule (positive = late, negative = early)",
+            workflow_id=workflow_id,
+            drift=drift,
         )
 
 
@@ -388,10 +389,18 @@ async def _record_execution_failure(
         # failed-task alert. The execution is still recorded as failed and the user
         # is notified below.
         log.warning(
-            f"{LogTag.WORKER} Workflow {workflow_id} skipped — rate limit exceeded: {error}"
+            f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+            workflow_id=workflow_id,
+            error=str(error),
+            error_type=type(error).__name__,
         )
     else:
-        log.exception(f"{LogTag.WORKER} Error executing workflow {workflow_id}: {error}")
+        log.exception(
+            f"{LogTag.WORKER} Error executing workflow",
+            workflow_id=workflow_id,
+            error=str(error),
+            error_type=type(error).__name__,
+        )
 
     if execution_id:
         try:

@@ -137,8 +137,9 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
     settled = await _verdict(request)
     if isinstance(settled, _Pending):
         log.error(
-            f"{LogTag.HIL} {settled.tool_name} resumed with no decision on its record",
+            f"{LogTag.HIL} resumed with no decision on its record",
             approval_id=settled.approval_id,
+            tool_name=settled.tool_name,
         )
         return _unpausable_denial_message(unpack_tool_call(request))
     return settled
@@ -241,7 +242,11 @@ async def _decide(
             decision = await _judge(request, context, call, record, summary)
 
         if decision is not None and decision.aligned:
-            log.info(f"{LogTag.HIL} auto-approved {call.name}: {decision.reason}")
+            log.info(
+                f"{LogTag.HIL} auto-approved",
+                call_name=call.name,
+                reason=decision.reason,
+            )
             # The receipt says GAIA decided to act, and why. It is not a claim that the
             # action happened — the tool node runs it afterwards, like any other call.
             await publish_auto_approval(

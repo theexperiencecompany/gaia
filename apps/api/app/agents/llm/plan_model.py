@@ -99,8 +99,9 @@ def apply_dev_model_override(
         dev_default = settings.DEV_DEFAULT_MODEL
         if dev_default and dev_default not in DEV_MODEL_OPTIONS:
             log.warning(
-                f"{LogTag.AGENT} DEV_DEFAULT_MODEL '{dev_default}' is not a "
-                "DEV_MODEL_OPTIONS key; keeping the plan model"
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
+                "keeping the plan model",
+                dev_default=dev_default,
             )
             return
         comms_model = executor_model = dev_default
