@@ -8,12 +8,18 @@ containing the platform user ID as a non-empty plain string. Optional keys: "use
 unlinked.
 """
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import user_to_legacy_dict
+from app.models.platform_models import (
+    DisconnectPlatformResponse,
+    PlatformLinkEntry,
+    PlatformLinkResult,
+)
+from app.models.user_models import PlatformLinkRecord, user_to_legacy_dict
 
 
 class Platform(str, Enum):
@@ -66,8 +72,11 @@ class PlatformLinkService:
         platform: str,
         platform_user_id: str,
         _use_object_id: bool = False,
-        profile: dict | None = None,
-    ) -> dict:
+        # A Mapping, not a dict: the OAuth callback path builds one whose values
+        # may be None (a provider that omits a username), and dict's invariance
+        # would then reject the dict[str, str] the token path builds.
+        profile: Mapping[str, str | None] | None = None,
+    ) -> PlatformLinkResult:
         """Link a platform account to a GAIA user.
 
         Stores the link as a dict {"id", "username"?, "display_name"?}. Raises
@@ -97,7 +106,7 @@ class PlatformLinkService:
         now = datetime.now(UTC).isoformat()
 
         # Build the stored dict value
-        link_value: dict[str, Any] = {"id": platform_user_id}
+        link_value: PlatformLinkRecord = {"id": platform_user_id}
         if profile:
             if profile.get("username"):
                 link_value["username"] = str(profile["username"])
@@ -113,26 +122,28 @@ class PlatformLinkService:
             isinstance(prior_link, dict) and prior_link.get("id") == platform_user_id
         )
 
-        return {
-            "status": "linked",
-            "platform": platform,
-            "platform_user_id": platform_user_id,
-            "connected_at": now,
+        return PlatformLinkResult(
+            status="linked",
+            platform=platform,
+            platform_user_id=platform_user_id,
+            connected_at=now,
             # True only when this call created a brand-new link (not a re-link of
             # the same id) — lets the caller fire a one-off "connected" greeting.
-            "is_new_link": not previously_linked_same,
-        }
+            is_new_link=not previously_linked_same,
+        )
 
     @staticmethod
-    async def unlink_account(user_id: str, platform: str, _use_object_id: bool = False) -> dict:
+    async def unlink_account(
+        user_id: str, platform: str, _use_object_id: bool = False
+    ) -> DisconnectPlatformResponse:
         """Unlink a platform account from a GAIA user. Raises ValueError if the user is not found."""
         result = await user_repository.unlink_platform(user_id, platform)
         if result is None:
             raise ValueError("User not found")
-        return {"status": "disconnected", "platform": platform}
+        return DisconnectPlatformResponse(status="disconnected", platform=platform)
 
     @staticmethod
-    async def get_linked_platforms(user_id: str) -> dict:
+    async def get_linked_platforms(user_id: str) -> dict[str, PlatformLinkEntry]:
         """Get all linked platforms for a user, mapping platform name to connection details.
 
         Only platforms stored as a dict with a non-empty "id" are returned;
@@ -145,7 +156,7 @@ class PlatformLinkService:
         platform_links = user.platform_links or {}
         connected_at = user.platform_links_connected_at or {}
 
-        result = {}
+        result: dict[str, PlatformLinkEntry] = {}
         for platform in Platform.values():
             stored = platform_links.get(platform)
             if isinstance(stored, dict) and stored.get("id"):

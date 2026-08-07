@@ -1,8 +1,10 @@
 """Extract and save social profile URLs from email sender info and snippets."""
 
+from typing import Any
 import urllib.parse
 
 from langchain_core.messages import HumanMessage
+from pydantic import BaseModel
 
 from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.agents.llm.exceptions import LLMNotConfiguredError
@@ -15,13 +17,40 @@ from shared.py.wide_events import log
 # URLs containing these are marketing/newsletter links, not user profiles.
 _TRACKING_INDICATORS = ("utm_source=", "utm_medium=", "utm_campaign=")
 
+_MAX_CANDIDATES_PER_PLATFORM = 8
+_MAX_CONTEXTS_PER_CANDIDATE = 5
+_MAX_CONTEXT_FIELD_LEN = 100
+_MAX_CONTEXT_SNIPPET_LEN = 120
+_MAX_HANDLE_LEN = 60
+_MIN_URL_CHARS_AFTER_SCHEME = 5
+
+
+class _CandidateContext(BaseModel):
+    """One email a candidate URL appeared in, as shown to the ownership LLM."""
+
+    sender: str
+    subject: str
+    snippet: str
+
+
+class _ProfileCandidate(BaseModel):
+    """A harvested social URL plus the evidence used to judge ownership."""
+
+    platform: str
+    handle: str
+    canonical_url: str
+    frequency: int = 0
+    is_sent: bool = False
+    contexts: list[_CandidateContext] = []
+
 
 def _is_tracking_url(url: str) -> bool:
     lower = url.lower()
     return any(ind in lower for ind in _TRACKING_INDICATORS)
 
 
-# (domain_substring, canonical_platform_name)
+# (url_prefix_up_to_the_handle, canonical_platform_name). The prefix includes any
+# path segment that precedes the handle, so the handle is whatever follows it.
 _PLATFORM_DOMAINS: list[tuple[str, str]] = [
     ("twitter.com/", "twitter"),
     ("x.com/", "twitter"),
@@ -40,21 +69,23 @@ _PLATFORM_DOMAINS: list[tuple[str, str]] = [
     ("threads.net/@", "threads"),
 ]
 
-# Substrings that indicate a URL is generic (not a real profile link).
-_GENERIC_PATH_SEGMENTS: list[str] = [
-    "/share",
-    "/login",
-    "/signup",
-    "/help",
-    "/about",
-    "/settings",
-    "/intent/",
-    "/hashtag/",
-    "/search",
-    "/explore",
-    "/home",
-    "/jobs",
-]
+# Path segments that mark a URL as generic navigation rather than a profile link.
+_GENERIC_PATH_SEGMENTS: frozenset[str] = frozenset(
+    {
+        "share",
+        "login",
+        "signup",
+        "help",
+        "about",
+        "settings",
+        "intent",
+        "hashtag",
+        "search",
+        "explore",
+        "home",
+        "jobs",
+    }
+)
 
 
 def _canonicalize_social_url(url: str) -> str:
@@ -80,64 +111,49 @@ def _extract_urls_from_text(text: str) -> list[str]:
                     break
                 end += 1
             url = text[idx:end].rstrip(".,;:!?")
-            if len(url) > len(prefix) + 5:
+            if len(url) > len(prefix) + _MIN_URL_CHARS_AFTER_SCHEME:
                 urls.append(url)
             start = end
     return urls
 
 
-def _classify_url(url: str) -> str | None:
+def _match_platform(url: str) -> tuple[str, str] | None:
+    """Return (platform, the URL remainder that starts at the handle), or None."""
     lower = url.lower()
     for domain, platform in _PLATFORM_DOMAINS:
-        if domain in lower:
-            return platform
+        idx = lower.find(domain)
+        if idx != -1:
+            return platform, lower[idx + len(domain) :]
     return None
 
 
 def _is_generic_url(url: str) -> bool:
-    lower = url.lower()
-    for segment in _GENERIC_PATH_SEGMENTS:
-        if segment in lower:
-            return True
-    for prefix in ("https://", "http://"):
-        if lower.startswith(prefix):
-            path_part = lower[len(prefix) :]
-            path_part = path_part.removeprefix("www.")
-            slash_idx = path_part.find("/")
-            if slash_idx == -1:
-                return True
-            after_slash = path_part[slash_idx + 1 :].strip("/")
-            if not after_slash:
-                return True
-            break
-    return False
-
-
-def _extract_handle_from_url(url: str, platform: str) -> str | None:
     try:
-        parsed = urllib.parse.urlparse(url.lower())
-        path = parsed.path.strip("/")
-        path = path.removeprefix("@")
-        segments = path.split("/")
-        handle = segments[0] if segments else ""
-        if not handle or len(handle) > 60:
-            return None
-        for segment in _GENERIC_PATH_SEGMENTS:
-            if handle in segment.strip("/"):
-                return None
-        return handle
-    except Exception:
+        path = urllib.parse.urlparse(url.lower()).path
+    except ValueError:
+        return True
+    segments = [seg.removeprefix("@") for seg in path.split("/") if seg]
+    if not segments:
+        return True
+    return any(seg in _GENERIC_PATH_SEGMENTS for seg in segments)
+
+
+def _extract_handle(remainder: str) -> str | None:
+    """Take the handle out of the URL remainder produced by `_match_platform`."""
+    handle = remainder.split("/", maxsplit=1)[0].removeprefix("@")
+    if not handle or len(handle) > _MAX_HANDLE_LEN:
         return None
+    return handle
 
 
 async def extract_social_profiles_from_emails(
-    emails: list[dict],
+    emails: list[dict[str, Any]],
     user_name: str | None,
     user_email: str | None,
 ) -> list[SocialProfile]:
     """Extract social profiles from emails: broad URL harvest + LLM ownership
     filter to keep only profiles owned by the user."""
-    candidates: dict[tuple[str, str], dict] = {}
+    candidates: dict[tuple[str, str], _ProfileCandidate] = {}
 
     for email in emails:
         body = email.get("body", "") or email.get("snippet", "") or email.get("messageText", "")
@@ -147,65 +163,70 @@ async def extract_social_profiles_from_emails(
         if not combined.strip():
             continue
 
-        is_sent = "SENT" in email.get("labelIds", []) or bool(email.get("from_sent", False))
+        is_sent = "SENT" in (email.get("labelIds") or email.get("label_ids") or [])
 
+        seen_in_email: set[tuple[str, str]] = set()
         urls = _extract_urls_from_text(combined)
         for url in urls:
             if _is_tracking_url(url):
                 continue
-            platform = _classify_url(url)
-            if platform is None:
-                continue
-            if _is_generic_url(url):
-                continue
 
             canonical = _canonicalize_social_url(url)
-            handle = _extract_handle_from_url(canonical, platform)
+            matched = _match_platform(canonical)
+            if matched is None:
+                continue
+            platform, remainder = matched
+            if _is_generic_url(canonical):
+                continue
+
+            handle = _extract_handle(remainder)
             if not handle:
                 continue
 
             key = (platform, handle)
+            # One email counts once per profile, however often it repeats the link.
+            if key in seen_in_email:
+                continue
+            seen_in_email.add(key)
+
             if key not in candidates:
-                candidates[key] = {
-                    "platform": platform,
-                    "handle": handle,
-                    "canonical_url": canonical,
-                    "frequency": 0,
-                    "is_sent": False,
-                    "contexts": [],
-                }
+                candidates[key] = _ProfileCandidate(
+                    platform=platform,
+                    handle=handle,
+                    canonical_url=canonical,
+                )
             entry = candidates[key]
-            entry["frequency"] += 1
+            entry.frequency += 1
             if is_sent:
-                entry["is_sent"] = True
-            if len(entry["contexts"]) < 5:
-                entry["contexts"].append(
-                    {
-                        "sender": sender[:100],
-                        "subject": subject[:100],
-                        "snippet": (email.get("snippet", "") or "")[:120],
-                    }
+                entry.is_sent = True
+            if len(entry.contexts) < _MAX_CONTEXTS_PER_CANDIDATE:
+                entry.contexts.append(
+                    _CandidateContext(
+                        sender=sender[:_MAX_CONTEXT_FIELD_LEN],
+                        subject=subject[:_MAX_CONTEXT_FIELD_LEN],
+                        snippet=(email.get("snippet", "") or "")[:_MAX_CONTEXT_SNIPPET_LEN],
+                    )
                 )
 
     if not candidates:
         log.info(f"{LogTag.ONBOARDING} No social URL candidates found in emails")
         return []
 
-    by_platform: dict[str, list[dict]] = {}
+    by_platform: dict[str, list[_ProfileCandidate]] = {}
     for entry in candidates.values():
-        p = entry["platform"]
-        if p not in by_platform:
-            by_platform[p] = []
-        by_platform[p].append(entry)
+        platform_name = entry.platform
+        if platform_name not in by_platform:
+            by_platform[platform_name] = []
+        by_platform[platform_name].append(entry)
 
-    capped: list[dict] = []
+    capped: list[_ProfileCandidate] = []
     for platform_entries in by_platform.values():
         sorted_entries = sorted(
             platform_entries,
-            key=lambda e: (e["is_sent"], e["frequency"]),
+            key=lambda e: (e.is_sent, e.frequency),
             reverse=True,
         )
-        capped.extend(sorted_entries[:8])
+        capped.extend(sorted_entries[:_MAX_CANDIDATES_PER_PLATFORM])
 
     log.info(
         f"{LogTag.ONBOARDING} Harvested {len(capped)} social URL candidates "
@@ -213,24 +234,23 @@ async def extract_social_profiles_from_emails(
     )
 
     for entry in capped:
-        sent_label = "SENT" if entry["is_sent"] else "recv"
+        sent_label = "SENT" if entry.is_sent else "recv"
         log.info(
-            f"{LogTag.ONBOARDING} social profile candidate: {entry['platform']}/{entry['handle']} "
-            f"freq={entry['frequency']} {sent_label}"
+            f"{LogTag.ONBOARDING} social profile candidate: {entry.platform}/{entry.handle} "
+            f"freq={entry.frequency} {sent_label}"
         )
 
     candidates_lines: list[str] = []
     for entry in capped:
-        sent_label = "yes" if entry["is_sent"] else "no"
+        sent_label = "yes" if entry.is_sent else "no"
         header = (
-            f"Platform: {entry['platform']} | Handle: {entry['handle']} | "
-            f"Appeared in {entry['frequency']} email(s) | Sent email: {sent_label}"
+            f"Platform: {entry.platform} | Handle: {entry.handle} | "
+            f"Appeared in {entry.frequency} email(s) | Sent email: {sent_label}"
         )
         context_lines = []
-        for i, ctx in enumerate(entry["contexts"], 1):
+        for i, ctx in enumerate(entry.contexts, 1):
             context_lines.append(
-                f"  Context {i} — From: {ctx['sender']} | "
-                f'Subject: {ctx["subject"]} | "{ctx["snippet"]}"'
+                f'  Context {i} — From: {ctx.sender} | Subject: {ctx.subject} | "{ctx.snippet}"'
             )
         candidates_lines.append(header)
         candidates_lines.extend(context_lines)
@@ -239,9 +259,7 @@ async def extract_social_profiles_from_emails(
     candidates_text = "\n".join(candidates_lines).strip()
 
     sent_fallback = [
-        SocialProfile(platform=e["platform"], url=e["canonical_url"])
-        for e in capped
-        if e["is_sent"]
+        SocialProfile(platform=e.platform, url=e.canonical_url) for e in capped if e.is_sent
     ]
 
     try:
@@ -264,13 +282,14 @@ async def extract_social_profiles_from_emails(
         )
 
         url_lookup: dict[tuple[str, str], str] = {
-            (e["platform"], e["handle"]): e["canonical_url"] for e in capped
+            (e.platform, e.handle): e.canonical_url for e in capped
         }
 
         owned: list[SocialProfile] = []
         for item in result.owned_profiles:
-            item_platform = str(item.get("platform") or "")
-            item_handle = str(item.get("handle") or "")
+            # The LLM echoes back handles from the prompt; don't lose a profile to casing.
+            item_platform = item.platform.strip().lower()
+            item_handle = item.handle.strip().lower()
             canonical_url = url_lookup.get((item_platform, item_handle))
             if canonical_url:
                 owned.append(SocialProfile(platform=item_platform, url=canonical_url))
@@ -307,7 +326,7 @@ def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProf
     return result
 
 
-async def save_confirmed_profiles(user_id: str, profiles: list[dict]) -> None:
+async def save_confirmed_profiles(user_id: str, profiles: list[SocialProfile]) -> None:
     """Persist user-confirmed social profiles, overwriting extracted ones."""
     await user_repository.set_social_profiles(user_id, profiles)
     log.info(f"{LogTag.ONBOARDING} Saved {len(profiles)} confirmed social profiles for {user_id}")

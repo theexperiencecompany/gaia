@@ -1,8 +1,17 @@
 import asyncio
 import time
+from typing import cast
 
 from composio import Composio, after_execute, before_execute, schema_modifier
 from composio.types import Tool
+from composio_client.types import ConnectedAccountRetrieveResponse
+from composio_client.types.connected_account_delete_response import (
+    ConnectedAccountDeleteResponse,
+)
+from composio_client.types.connected_account_list_response import Item
+from composio_client.types.trigger_instance_upsert_response import (
+    TriggerInstanceUpsertResponse,
+)
 
 from app.config.oauth_config import get_composio_social_configs
 from app.config.settings import settings
@@ -17,7 +26,10 @@ from app.models.trigger_config import TriggerConfig
 # auth_credentials".
 import app.patches  # noqa: F401
 from app.services.composio.custom_tools.registry import custom_tools_registry
-from app.services.composio.langchain_composio_service import LangchainProvider
+from app.services.composio.langchain_composio_service import (
+    LangchainProvider,
+    StructuredTool,
+)
 from app.services.composio.proxy_client import invalidate_connected_account_cache
 from app.services.mcp.mcp_tools_service import store_mcp_tools
 from app.utils.composio_hooks.registry import (
@@ -89,7 +101,9 @@ class ComposioService:
             log.error(f"{LogTag.COMPOSIO} Error connecting {provider} for {user_id}: {e}")
             raise
 
-    async def get_tools(self, tool_kit: str, exclude_tools: list[str] | None = None):
+    async def get_tools(
+        self, tool_kit: str, exclude_tools: list[str] | None = None
+    ) -> list[StructuredTool]:
         """Get tools for a toolkit with unified master hooks."""
         log.set(composio_toolkit=tool_kit)
         log.info(f"{LogTag.COMPOSIO} Loading {tool_kit} toolkit...")
@@ -172,7 +186,7 @@ class ComposioService:
         use_before_hook: bool = True,
         use_after_hook: bool = True,
         use_schema_modifier: bool = True,
-    ):
+    ) -> list[StructuredTool]:
         """Get specific tools by names with unified master hooks."""
         log.set(composio_tool_names=tool_names, composio_tool_count=len(tool_names))
         start_time = time.time()
@@ -227,7 +241,7 @@ class ComposioService:
         first created (see ``ToolRegistry.register_provider_tools``).
         """
 
-        def _fetch():
+        def _fetch() -> list[Tool]:
             if specific_tools:
                 return self.composio.tools.get_raw_composio_tools(tools=specific_tools)
             return self.composio.tools.get_raw_composio_tools(toolkits=[tool_kit], limit=1000)
@@ -241,7 +255,7 @@ class ComposioService:
         use_after_hook: bool = True,
         use_schema_modifier: bool = True,
         user_id: str = "",
-    ):
+    ) -> StructuredTool | None:
         """Get a specific tool by name with configurable hooks."""
         try:
             modifiers = []
@@ -313,7 +327,9 @@ class ComposioService:
             )
             return result
 
-    def get_connected_account_by_id(self, connected_account_id: str):
+    def get_connected_account_by_id(
+        self, connected_account_id: str
+    ) -> ConnectedAccountRetrieveResponse | None:
         try:
             connected_account = self.composio.connected_accounts.get(
                 nanoid=connected_account_id,
@@ -361,7 +377,7 @@ class ComposioService:
             delete_tasks = []
             for account in active_accounts:
 
-                def _delete_account(acc=account):
+                def _delete_account(acc: Item = account) -> ConnectedAccountDeleteResponse:
                     return self.composio.connected_accounts.delete(nanoid=acc.id)
 
                 delete_tasks.append(loop.run_in_executor(None, _delete_account))
@@ -393,7 +409,9 @@ class ComposioService:
             if config.toolkit:
                 invalidate_connected_account_cache(user_id=user_id, toolkit=config.toolkit)
 
-    async def handle_subscribe_trigger(self, user_id: str, triggers: list[TriggerConfig]):
+    async def handle_subscribe_trigger(
+        self, user_id: str, triggers: list[TriggerConfig]
+    ) -> list[TriggerInstanceUpsertResponse] | None:
         """Subscribe to auto-active triggers for a user."""
         log.set(composio_user_id=user_id, composio_trigger_count=len(triggers))
         active_triggers = [t for t in triggers if t.auto_activate]
@@ -408,7 +426,7 @@ class ComposioService:
 
         try:
 
-            def create_trigger(trigger: TriggerConfig):
+            def create_trigger(trigger: TriggerConfig) -> TriggerInstanceUpsertResponse:
                 return self.composio.triggers.create(
                     user_id=user_id,
                     slug=trigger.slug,
@@ -423,6 +441,7 @@ class ComposioService:
             return await asyncio.gather(*tasks)
         except Exception as e:
             log.error(f"{LogTag.COMPOSIO} Error handling subscribe trigger for {user_id}: {e}")
+            return None
 
 
 @lazy_provider(
@@ -430,7 +449,7 @@ class ComposioService:
     required_keys=[settings.COMPOSIO_KEY],
     strategy=MissingKeyStrategy.WARN,
 )
-def init_composio_service():
+def init_composio_service() -> ComposioService:
     if settings.COMPOSIO_KEY is None:
         raise RuntimeError("COMPOSIO_KEY is not set in settings")
     return ComposioService(settings.COMPOSIO_KEY)
@@ -440,4 +459,6 @@ def get_composio_service() -> ComposioService:
     service = providers.get("composio_service")
     if service is None:
         raise RuntimeError("ComposioService is not available")
-    return service
+    # providers.get() is typed Any | None; "composio_service" is always
+    # registered via init_composio_service(), which returns ComposioService.
+    return cast(ComposioService, service)

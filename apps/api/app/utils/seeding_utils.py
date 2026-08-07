@@ -7,6 +7,7 @@ from app.models.chat_models import (
     ConversationModel,
 )
 from app.models.todo_models import Priority, SubTask, TodoModel
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
     create_conversation_service,
 )
@@ -111,7 +112,7 @@ async def seed_onboarding_conversation(user_id: str) -> str | None:
             is_unread=True,
         )
 
-        user_dict = {"user_id": user_id}
+        user_dict: AuthenticatedUser = {"user_id": user_id}
         await create_conversation_service(conversation, user_dict)
 
         await conversation_repository.mark_onboarding_conversation(conversation_id, user_id=user_id)

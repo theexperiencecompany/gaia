@@ -18,7 +18,7 @@ class InfisicalConfigError(Exception):
     """Raised when Infisical configuration is missing or invalid."""
 
 
-def inject_infisical_secrets():
+def inject_infisical_secrets() -> None:
     """
     Load secrets from Infisical and inject into environment.
 

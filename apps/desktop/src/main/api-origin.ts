@@ -25,7 +25,7 @@ const PROD_API_ORIGIN = "https://api.heygaia.io";
  * main process; otherwise localhost in dev, production URL when packaged.
  */
 export function getApiOrigin(): string {
-  const fromEnv = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const fromEnv = process.env["NEXT_PUBLIC_API_BASE_URL"];
   if (fromEnv) return fromEnv.replace(/\/api\/v1\/?$/, "");
 
   return isProductionServer() ? PROD_API_ORIGIN : DEV_API_ORIGIN;

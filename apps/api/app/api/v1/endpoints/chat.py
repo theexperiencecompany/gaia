@@ -10,11 +10,12 @@ from collections.abc import AsyncGenerator
 from typing import Annotated
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
+    get_user_id,
     get_user_timezone_from_preferences,
 )
 from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
@@ -22,8 +23,9 @@ from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
-from app.models.chat_models import ConversationSource
+from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.chat.stream import run_chat_stream_background
 from shared.py.wide_events import ChatContext, log
 
@@ -101,8 +103,7 @@ async def _stream_from_redis(
 async def chat_stream_endpoint(
     request: Request,
     body: MessageRequestWithHistory,
-    background_tasks: BackgroundTasks,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
     home_timezone: Annotated[str, Depends(get_user_timezone_from_preferences)],
 ) -> StreamingResponse:
     """Stream a chat turn. Continues in the background if the client disconnects."""
@@ -176,24 +177,20 @@ async def chat_stream_endpoint(
 @router.post("/cancel-stream/{stream_id}")
 async def cancel_stream_endpoint(
     stream_id: str,
-    user: dict = Depends(get_current_user),
-) -> dict:
+    user_id: str = Depends(get_user_id),
+) -> CancelStreamResponse:
     """Cancel a running stream owned by the requesting user."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=_USER_ID_REQUIRED,
-        )
     log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
+    # Progress is a free-form JSON blob deserialized from Redis, not a model —
+    # keyed access is the honest read here.
     progress = await stream_manager.get_progress(stream_id)
     if not progress:
-        return {
-            "success": False,
-            "stream_id": stream_id,
-            "error": "Stream not found",
-        }
+        return CancelStreamResponse(
+            success=False,
+            stream_id=stream_id,
+            error="Stream not found",
+        )
 
     if progress.get("user_id") != user_id:
         raise HTTPException(
@@ -204,17 +201,14 @@ async def cancel_stream_endpoint(
     success = await stream_manager.cancel_stream(stream_id)
     log.info(f"{LogTag.CHAT} Cancel stream request: stream_id={stream_id}, success={success}")
 
-    return {
-        "success": success,
-        "stream_id": stream_id,
-    }
+    return CancelStreamResponse(success=success, stream_id=stream_id)
 
 
 @router.get("/stream/{stream_id}")
 async def subscribe_executor_stream(
     stream_id: str,
     request: Request,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> StreamingResponse:
     """
     Subscribe to a background executor SSE stream by stream_id.

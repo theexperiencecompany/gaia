@@ -5,7 +5,7 @@ These models define the expected input for integration API endpoints.
 Re-exported from the original location for backwards compatibility.
 """
 
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -42,7 +42,7 @@ class CreateCustomIntegrationRequest(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_auth_type(self):
+    def validate_auth_type(self) -> Self:
         """Require an explicit ``auth_type`` whenever ``requires_auth`` is set."""
         if self.requires_auth and not self.auth_type:
             raise ValueError("auth_type must be specified when requires_auth is True")

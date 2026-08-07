@@ -1361,8 +1361,13 @@ async def create_backup() -> str:
             workflow["_id"] = str(workflow["_id"])
             existing.append(workflow)
 
-        with open(backup_file, "w") as f:
-            json.dump(existing, f, indent=2, default=str)
+        # to_thread: this is an async def, so a bare open() would block the loop
+        # while the backup is serialised (ASYNC230).
+        await asyncio.to_thread(
+            Path(backup_file).write_text,
+            json.dumps(existing, indent=2, default=str),
+            encoding="utf-8",
+        )
 
         print(f"✅ Backup created: {backup_file}")
         return backup_file

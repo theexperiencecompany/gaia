@@ -23,9 +23,11 @@ from threading import Lock
 from typing import (
     Any,
     Generic,
+    Protocol,
     TypeVar,
     Union,
     cast,
+    overload,
 )
 
 from app.constants.log_tags import LogTag
@@ -54,21 +56,23 @@ class LazyLoader(Generic[T]):
     def __init__(
         self,
         loader_func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
-        required_keys: list[Any] | None = None,
+        required_keys: list[object] | None = None,
         strategy: MissingKeyStrategy = MissingKeyStrategy.ERROR,
         warning_message: str | None = None,
         provider_name: str | None = None,
-        validate_values_func: Callable[[list[Any]], bool] | None = None,
+        validate_values_func: Callable[[list[object]], bool] | None = None,
         is_global_context: bool = False,
         auto_initialize: bool = False,
         dependencies: list[str] | None = None,
-    ):
+    ) -> None:
         """
         Initialize lazy loader.
 
         Args:
             loader_func: Function that creates the provider instance or configures global context (can be sync or async)
-            required_keys: List of direct values that are required (can be None individually)
+            required_keys: List of direct values that are required (can be None individually).
+                Typed ``object``: these are already-resolved settings values (API keys,
+                URLs, ints) and the loader only ever checks them for None/emptiness.
             strategy: How to handle missing values
             warning_message: Custom warning message
             provider_name: Name for logging/error messages
@@ -124,7 +128,7 @@ class LazyLoader(Generic[T]):
                     f"{LogTag.STARTUP} Auto-initialization failed for '{self.provider_name}': {e}"
                 )
 
-    def _check_availability_and_warn(self):
+    def _check_availability_and_warn(self) -> None:
         """Check availability at registration time and log warnings if needed."""
         missing_indices = self._check_required_keys()
 
@@ -325,7 +329,7 @@ class LazyLoader(Generic[T]):
                 missing_indices.add(i)
         return missing_indices
 
-    def _is_value_missing(self, value: Any) -> bool:
+    def _is_value_missing(self, value: object) -> bool:
         """Check if a value is considered missing/invalid."""
         if value is None:
             return True
@@ -355,7 +359,7 @@ class LazyLoader(Generic[T]):
         # For non-error strategies, just return None (warning already logged at registration)
         return None
 
-    def _log_warning(self, message: str):
+    def _log_warning(self, message: str) -> None:
         """Log warning message."""
         log.warning(f"{LogTag.STARTUP} [LazyLoader] {message}")
 
@@ -377,11 +381,11 @@ class LazyLoader(Generic[T]):
             return self._is_configured
         return self._instance is not None
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the loader (useful for testing)."""
         if self.is_async:
             # For async loaders, we need to handle the async lock
-            async def _async_reset():
+            async def _async_reset() -> None:
                 if self._async_lock is None:
                     raise RuntimeError(
                         f"Async lock not initialized for provider '{self.provider_name}'"
@@ -412,7 +416,7 @@ class LazyLoader(Generic[T]):
 
 
 class ProviderRegistry:
-    def _check_cyclic_dependency(self, name: str, visited: list | None = None):
+    def _check_cyclic_dependency(self, name: str, visited: list[str] | None = None) -> None:
         """Check for cyclic dependencies starting from provider 'name'. Raises ConfigurationError if a cycle is found."""
         if visited is None:
             visited = []
@@ -432,7 +436,7 @@ class ProviderRegistry:
     """
 
     def __init__(self) -> None:
-        self._providers: dict[str, LazyLoader] = {}
+        self._providers: dict[str, LazyLoader[Any]] = {}
         self._lock = Lock()
         self._auto_init_providers: set[str] = set()
 
@@ -440,10 +444,10 @@ class ProviderRegistry:
         self,
         name: str,
         loader_func: Union[Callable[[], T], Callable[[], Awaitable[T]]],
-        required_keys: list[Any] | None = None,
+        required_keys: list[object] | None = None,
         strategy: MissingKeyStrategy = MissingKeyStrategy.WARN,
         warning_message: str | None = None,
-        validate_values_func: Callable[[list[Any]], bool] | None = None,
+        validate_values_func: Callable[[list[object]], bool] | None = None,
         is_global_context: bool = False,
         auto_initialize: bool = False,
         dependencies: list[str] | None = None,
@@ -609,7 +613,13 @@ class ProviderRegistry:
             raise RuntimeError(f"Provider warmup failed for: {failed}")
 
     def get(self, name: str) -> Any | None:
-        """Get a provider instance by name synchronously - only works for sync providers."""
+        """Get a provider instance by name synchronously - only works for sync providers.
+
+        Returns ``Any`` because the registry is keyed by name, not by type: the
+        concrete provider type is only knowable at the call site. Callers narrow
+        with ``cast(TheProvider, ...)`` rather than ``isinstance`` (Type Safety
+        item 12) — the registered value is correct by construction.
+        """
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
         self._check_cyclic_dependency(name)
@@ -625,7 +635,10 @@ class ProviderRegistry:
         return loader.get()
 
     async def aget(self, name: str) -> Any | None:
-        """Get a provider instance by name asynchronously - works for both sync and async providers."""
+        """Get a provider instance by name asynchronously - works for both sync and async providers.
+
+        Returns ``Any`` for the same reason as :meth:`get`; narrow with ``cast``.
+        """
         if name not in self._providers:
             raise KeyError(f"Provider '{name}' not found in registry")
         self._check_cyclic_dependency(name)
@@ -670,20 +683,37 @@ class ProviderRegistry:
 providers = ProviderRegistry()
 
 
+class _ProviderDecorator(Protocol):
+    """What ``lazy_provider(...)`` hands back — a decorator that keeps ``T``.
+
+    A ``Protocol`` with an overloaded ``__call__`` rather than a plain
+    ``Callable[...]`` return: a two-step decorator factory has nothing to solve
+    ``T`` against at the *outer* call, so a plain annotation collapses every
+    decorated provider to ``LazyLoader[Any]`` (Type Safety item 9). Deferring
+    inference to ``__call__`` recovers the provider's real type. The overloads
+    (async first — a coroutine function also matches the sync form, with
+    ``T`` bound to the coroutine) are what makes ``async def`` factories infer;
+    a single union parameter leaves mypy solving ``T`` to ``Never``.
+    """
+
+    @overload
+    def __call__(self, func: Callable[[], Awaitable[T]]) -> Callable[[], LazyLoader[T]]: ...
+
+    @overload
+    def __call__(self, func: Callable[[], T]) -> Callable[[], LazyLoader[T]]: ...
+
+
 # Decorator for easy provider registration
 def lazy_provider(
     name: str,
-    required_keys: list[Any] | None = None,
+    required_keys: list[object] | None = None,
     strategy: MissingKeyStrategy = MissingKeyStrategy.WARN,
     warning_message: str | None = None,
-    validate_values_func: Callable[[list[Any]], bool] | None = None,
+    validate_values_func: Callable[[list[object]], bool] | None = None,
     is_global_context: bool = False,
     auto_initialize: bool = False,
     dependencies: list[str] | None = None,
-) -> Callable[
-    [Callable[..., Any]],
-    Callable[[], LazyLoader[Any]],
-]:
+) -> _ProviderDecorator:
     """
     Decorator to register a function as a lazy provider.
     Supports both sync and async functions.

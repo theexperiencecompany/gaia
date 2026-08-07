@@ -1,6 +1,7 @@
 """Response schemas for the device bridge."""
 
 from datetime import datetime
+from typing import TypedDict
 
 from pydantic import BaseModel
 
@@ -71,3 +72,29 @@ class RegisterServerResponse(BaseModel):
 
     integration_id: str
     server_key: str
+
+
+class DevicePairApproveResponse(BaseModel):
+    """Result of approving a pending device pairing."""
+
+    device_id: str
+    name: str
+
+
+class DeviceRevokeResponse(BaseModel):
+    """Result of revoking a device's access."""
+
+    device_id: str
+    status: str
+
+
+class DeviceTokenClaims(TypedDict):
+    """Claims carried by a device connect JWT.
+
+    A TypedDict, not a model: the dependency and its consumers read these as
+    ``info["device_id"]``, so dict semantics are preserved while mypy checks the
+    keys.
+    """
+
+    device_id: str
+    user_id: str

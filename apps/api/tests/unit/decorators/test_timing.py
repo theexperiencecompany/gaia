@@ -127,7 +127,6 @@ class TestAsyncTimer:
             @async_timer
             async def documented() -> None:
                 """My async docstring."""
-                pass
 
         assert documented.__name__ == "documented"
         assert documented.__doc__ == "My async docstring."
@@ -286,7 +285,6 @@ class TestSyncTimer:
             @sync_timer
             def documented_sync() -> None:
                 """Sync docstring."""
-                pass
 
         assert documented_sync.__name__ == "documented_sync"
         assert documented_sync.__doc__ == "Sync docstring."

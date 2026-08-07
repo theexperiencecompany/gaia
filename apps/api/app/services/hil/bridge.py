@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import hashlib
 import json
-from typing import Any
+from typing import Any, cast
 
 from app.agents.core.background.session import get_session
 from app.constants.cache import HIL_DECLINED_PREFIX
@@ -36,9 +36,11 @@ from app.constants.hil import (
 )
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.models.hil_models import HILApprovalStatus
+from app.models.hil_models import DeclinedCallRecord, HILApprovalRecord, HILApprovalStatus
+from app.models.stream_events import ApprovalRequestEntry, ApprovalRequestEntryData
 from app.services.hil.approvals_store import record_auto_approval, upsert_pending_approval
 from app.services.hil.notify import notify_approval_pending
+from app.services.hil.utils import GatedCall
 from app.utils.general_utils import clip_text
 from shared.py.wide_events import log
 
@@ -62,7 +64,7 @@ async def publish_approval_request(
     stream_id: str,
     user_id: str,
     conversation_id: str,
-    tool_call: dict[str, Any],
+    tool_call: GatedCall,
     summary: str,
     integration_name: str | None,
 ) -> None:
@@ -77,37 +79,44 @@ async def publish_approval_request(
         user_id=user_id,
         conversation_id=conversation_id,
         stream_id=stream_id,
-        tool_name=tool_call.get("name", ""),
-        tool_call_id=tool_call.get("id", ""),
-        args=tool_call.get("args", {}) or {},
+        tool_name=tool_call.name,
+        tool_call_id=tool_call.id,
+        args=tool_call.args,
         summary=summary,
         integration_name=integration_name,
     )
     if not created:
         return
 
-    log.set(hil={"approval_id": approval_id, "tool": tool_call.get("name"), "stream_id": stream_id})
+    log.set(hil={"approval_id": approval_id, "tool": tool_call.name, "stream_id": stream_id})
     await _publish_entry(
         stream_id,
-        _approval_entry(approval_id, tool_call, "pending", summary, integration_name),
+        _approval_entry(
+            approval_id, tool_call, HILApprovalStatus.PENDING, summary, integration_name
+        ),
     )
     _schedule_pending_notification(user_id, conversation_id, approval_id, summary)
 
 
-async def publish_approval_outcome(
-    *,
-    stream_id: str,
-    approval_id: str,
-    tool_call: dict[str, Any],
-    summary: str,
-    integration_name: str | None,
-    outcome: ApprovalOutcome,
+async def publish_decision(
+    record: HILApprovalRecord, status: HILApprovalStatus, *, stream_id: str, feedback: str | None
 ) -> None:
-    """Update the card to its resolved state on the stream that resumed the run."""
+    """Settle this approval's card, on the stream the user is watching NOW.
+
+    Never ``record.stream_id``: that is the stream the request was raised on, and a run
+    that paused resumes on a fresh one (``prepare_run_from_item``), leaving the original
+    closed. The client follows the new stream via ``executor.stream_started``, so a card
+    settled on the old one resolves where nobody is looking.
+    """
     await _publish_entry(
         stream_id,
         _approval_entry(
-            approval_id, tool_call, outcome.status, summary, integration_name, outcome.feedback
+            record.approval_id,
+            GatedCall(name=record.tool_name, id=record.tool_call_id, args=record.args),
+            status,
+            record.summary,
+            record.integration_name,
+            feedback,
         ),
     )
 
@@ -118,7 +127,7 @@ async def publish_auto_approval(
     stream_id: str,
     user_id: str,
     conversation_id: str,
-    tool_call: dict[str, Any],
+    tool_call: GatedCall,
     summary: str,
     integration_name: str | None,
     reason: str,
@@ -134,9 +143,9 @@ async def publish_auto_approval(
         user_id=user_id,
         conversation_id=conversation_id,
         stream_id=stream_id,
-        tool_name=tool_call.get("name", ""),
-        tool_call_id=tool_call.get("id", ""),
-        args=tool_call.get("args", {}) or {},
+        tool_name=tool_call.name,
+        tool_call_id=tool_call.id,
+        args=tool_call.args,
         summary=summary,
         integration_name=integration_name,
         reason=reason,
@@ -146,7 +155,7 @@ async def publish_auto_approval(
         _approval_entry(
             approval_id,
             tool_call,
-            "auto_approved",
+            HILApprovalStatus.AUTO_APPROVED,
             summary,
             integration_name,
             auto_reason=reason,
@@ -160,9 +169,10 @@ async def remember_declined_call(
     """Record that the user declined this exact call for the rest of the turn."""
     if not redis_cache.redis:
         return
+    record: DeclinedCallRecord = {"feedback": feedback}
     await redis_cache.set(
         _declined_key(stream_id, tool_name, args),
-        {"feedback": feedback},
+        record,
         ttl=HIL_DECLINE_MEMORY_TTL_SECONDS,
     )
 
@@ -174,10 +184,12 @@ async def recall_declined_call(
     can auto-deny a retry with the user's original feedback and never re-prompt."""
     if not redis_cache.redis:
         return None
-    record = await redis_cache.get(_declined_key(stream_id, tool_name, args))
-    if not record:
+    raw = await redis_cache.get(_declined_key(stream_id, tool_name, args))
+    if not raw:
         return None
-    return ApprovalOutcome(status="denied", feedback=record.get("feedback"))
+    # Correct by construction: the only writer is ``remember_declined_call`` above.
+    record = cast(DeclinedCallRecord, raw)
+    return ApprovalOutcome(status=HILApprovalStatus.DENIED, feedback=record.get("feedback"))
 
 
 def build_summary(tool_name: str, args: dict[str, Any], integration_name: str | None) -> str:
@@ -226,44 +238,47 @@ def _schedule_pending_notification(
     task.add_done_callback(_notify_tasks.discard)
 
 
-async def _publish_entry(stream_id: str, entry: dict[str, Any]) -> None:
+async def _publish_entry(stream_id: str, entry: ApprovalRequestEntry) -> None:
     """Deliver a frame live (replayable event log) AND record it for persistence.
 
     The session append mirrors ``make_redis_stream_writer`` so the executor
     drain path persists the card; the SSE publish reaches live/reloaded clients.
+    Both carry the same plain-dict frame the rest of the tool_data pipeline
+    (``stream_utils``, the bot bridge, the frontend parser) reads.
     """
-    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps({'tool_data': entry})}\n\n")
+    frame = {"tool_data": entry.model_dump()}
+    await stream_manager.publish_chunk(stream_id, f"data: {json.dumps(frame)}\n\n")
     session = get_session(stream_id)
     if session is not None:
-        session.tool_events.append({"tool_data": entry})
+        session.tool_events.append(frame)
 
 
 def _approval_entry(
     approval_id: str,
-    tool_call: dict[str, Any],
+    tool_call: GatedCall,
     status: HILApprovalStatus,
     summary: str,
     integration_name: str | None,
     feedback: str | None = None,
     auto_reason: str | None = None,
-) -> dict[str, Any]:
-    return {
-        "tool_name": APPROVAL_REQUEST_TOOL_NAME,
-        "tool_category": APPROVAL_TOOL_CATEGORY,
-        "data": {
-            "approval_id": approval_id,
-            "tool_call_id": tool_call.get("id", ""),
-            "gated_tool_name": tool_call.get("name", ""),
-            "integration_name": integration_name,
-            "summary": summary,
-            "args_preview": tool_call.get("args", {}),
-            "status": status,
-            "feedback": feedback,
-            "auto_reason": auto_reason,
-            "timeout_seconds": int(HIL_APPROVAL_TIMEOUT_SECONDS),
-        },
-        "timestamp": datetime.now(UTC).isoformat(),
-    }
+) -> ApprovalRequestEntry:
+    return ApprovalRequestEntry(
+        tool_name=APPROVAL_REQUEST_TOOL_NAME,
+        tool_category=APPROVAL_TOOL_CATEGORY,
+        data=ApprovalRequestEntryData(
+            approval_id=approval_id,
+            tool_call_id=tool_call.id,
+            gated_tool_name=tool_call.name,
+            integration_name=integration_name,
+            summary=summary,
+            args_preview=tool_call.args,
+            status=status,
+            feedback=feedback,
+            auto_reason=auto_reason,
+            timeout_seconds=int(HIL_APPROVAL_TIMEOUT_SECONDS),
+        ),
+        timestamp=datetime.now(UTC).isoformat(),
+    )
 
 
 def _summary_arg_parts(args: dict[str, Any]) -> list[str]:

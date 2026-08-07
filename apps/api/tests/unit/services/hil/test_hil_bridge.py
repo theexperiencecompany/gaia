@@ -22,17 +22,20 @@ import pytest
 
 from app.constants.hil import HIL_SUMMARY_MAX_ARG_CHARS, HIL_SUMMARY_MAX_ARGS
 from app.services.hil.bridge import (
+    ApprovalOutcome,
     build_summary,
     publish_approval_request,
+    publish_decision,
     recall_declined_call,
     remember_declined_call,
 )
+from app.services.hil.utils import GatedCall
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID
+from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_record
 
 MODULE = "app.services.hil.bridge"
 
-TOOL_CALL = {"id": "call-1", "name": "send_email", "args": {"to": "bob@example.com"}}
+TOOL_CALL = GatedCall(id="call-1", name="send_email", args={"to": "bob@example.com"})
 
 
 @pytest.fixture
@@ -126,6 +129,55 @@ class TestDualDelivery:
         assert data["gated_tool_name"] == "send_email"
         assert data["tool_call_id"] == "call-1"
         assert data["timeout_seconds"] > 0
+
+
+class TestTheOutcomeSettlesTheCard:
+    """The card is live UI, published ``pending`` BEFORE the run parks on interrupt().
+
+    When the decision lands and the run resumes, the same card has to be republished in
+    its settled state. Skip it and the action really happens — or is really refused —
+    while the user goes on looking at an open Approve/Deny prompt for it, with no way to
+    tell the request through from one still waiting on them. The resumed run publishes to
+    a NEW stream, which is why this is a fresh publish rather than an edit in place.
+    """
+
+    async def settle(self, outcome: ApprovalOutcome) -> None:
+        record = make_record(
+            approval_id="appr-1",
+            tool_name=TOOL_CALL.name,
+            tool_call_id=TOOL_CALL.id,
+            args=TOOL_CALL.args,
+            summary="Send email — to: bob@example.com",
+            integration_name="Gmail",
+        )
+        # STREAM_ID explicitly, never record.stream_id: a resumed run publishes to a
+        # NEW stream, and the card has to settle where the user is now watching.
+        await publish_decision(
+            record, outcome.status, stream_id=STREAM_ID, feedback=outcome.feedback
+        )
+
+    async def test_an_approval_settles_the_card(self, bridge: dict) -> None:
+        await self.settle(ApprovalOutcome(status="approved"))
+
+        data = published_frame(bridge)["data"]
+        assert data["status"] == "approved"
+        assert data["approval_id"] == "appr-1", "the settled card must replace the right one"
+
+    async def test_a_denial_settles_the_card_and_shows_why(self, bridge: dict) -> None:
+        await self.settle(ApprovalOutcome(status="denied", feedback="wrong recipient"))
+
+        data = published_frame(bridge)["data"]
+        assert data["status"] == "denied"
+        assert data["feedback"] == "wrong recipient"
+
+    async def test_the_settled_card_is_persisted_as_well_as_streamed(self, bridge: dict) -> None:
+        # Same dual-delivery contract as the pending card: stream-only means the card
+        # reverts to "pending" on reload, which is the confusing state all over again.
+        await self.settle(ApprovalOutcome(status="approved"))
+
+        bridge["stream"].publish_chunk.assert_awaited_once()
+        assert len(bridge["session"].tool_events) == 1
+        assert bridge["session"].tool_events[0]["tool_data"]["data"]["status"] == "approved"
 
 
 class TestDeclineMemory:

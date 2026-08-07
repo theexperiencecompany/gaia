@@ -51,7 +51,6 @@ async def _search_community_integrations(
         search_results = await search_public_integrations(
             query=query,
             limit=limit,
-            category=category if category != "all" else None,
         )
     except Exception as e:
         log.warning(
@@ -67,11 +66,26 @@ async def _search_community_integrations(
         by_id = {i.integration_id: i for i in integrations}
         ordered = [by_id[iid] for iid in integration_ids if iid in by_id]
 
-        return CommunityListResponse(
-            integrations=format_community_integrations(ordered),
-            total=len(ordered),
-            has_more=False,
-        )
+        # The category filter is applied here, not in the vector search: ChromaDB
+        # indexes only {"integration_id": ...} for these documents, so it has no
+        # category to filter on and returns hits from every one. Post-filtering can
+        # return fewer than `limit` rows when the top-k is dominated by other
+        # categories, which is the honest trade — the browse path beside this one
+        # filters by category (_community_search_filter), and a marketplace where
+        # picking a category only works until you also type a query is worse.
+        if category and category != "all":
+            ordered = [i for i in ordered if i.category == category]
+
+        # An empty list here means every semantic hit was in another category, so
+        # fall through to the Mongo path exactly as a no-hit search does — it
+        # filters by category itself and may reach rows the vector search ranked
+        # below the cut.
+        if ordered:
+            return CommunityListResponse(
+                integrations=format_community_integrations(ordered),
+                total=len(ordered),
+                has_more=False,
+            )
 
     # Fallback to MongoDB regex search
     log.info(

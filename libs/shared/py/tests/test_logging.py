@@ -42,7 +42,7 @@ def _reset_configured_flags():
     logging_mod._FILE_LOGGING_CONFIGURED = original_file
 
 
-@pytest.fixture()
+@pytest.fixture
 def mock_logger():
     """Provide a fully mocked loguru logger for isolated unit tests."""
     with patch.object(logging_mod, "logger") as mocked:

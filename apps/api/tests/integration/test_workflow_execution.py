@@ -630,13 +630,13 @@ class TestMultiStepWorkflowExecution:
         enriched = enrich_steps(generated)
 
         assert len(enriched) == 3
-        assert enriched[0]["id"] == "step_0"
-        assert enriched[1]["id"] == "step_1"
-        assert enriched[2]["id"] == "step_2"
-        assert enriched[0]["title"] == "Fetch data"
-        assert enriched[1]["title"] == "Process data"
-        assert enriched[2]["title"] == "Send report"
-        assert enriched[2]["category"] == "gmail"
+        assert enriched[0].id == "step_0"
+        assert enriched[1].id == "step_1"
+        assert enriched[2].id == "step_2"
+        assert enriched[0].title == "Fetch data"
+        assert enriched[1].title == "Process data"
+        assert enriched[2].title == "Send report"
+        assert enriched[2].category == "gmail"
 
 
 # ---------------------------------------------------------------------------
@@ -726,8 +726,8 @@ class TestSlugGeneration:
             slug = await generate_unique_workflow_slug("My Awesome Workflow")
 
         # Format is always "{base}-{6_hex_chars}"
-        assert slug.startswith("myawesomeworkflow-")
-        suffix = slug.split("-", 1)[1]
+        assert slug.startswith("my-awesome-workflow-")
+        suffix = slug.rsplit("-", 1)[1]
         assert len(suffix) == 6
         assert all(c in "0123456789abcdef" for c in suffix)
 
@@ -742,8 +742,8 @@ class TestSlugGeneration:
             slug = await generate_unique_workflow_slug("Daily Report")
 
         # The function retried and returned a free candidate
-        assert slug.startswith("dailyreport-")
-        suffix = slug.split("-", 1)[1]
+        assert slug.startswith("daily-report-")
+        suffix = slug.rsplit("-", 1)[1]
         assert len(suffix) == 6
         assert all(c in "0123456789abcdef" for c in suffix)
         # The conflict probe ran exactly 3 times (2 collisions + 1 free)
@@ -755,7 +755,7 @@ class TestSlugGeneration:
             slug = await generate_unique_workflow_slug("")
 
         assert slug.startswith("workflow-")
-        suffix = slug.split("-", 1)[1]
+        suffix = slug.rsplit("-", 1)[1]
         assert len(suffix) == 6
         assert all(c in "0123456789abcdef" for c in suffix)
 

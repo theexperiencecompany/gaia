@@ -71,7 +71,10 @@ dev = [
   "cfgv>=3.4.0",
   "types-pytz>=2025.2.0.20250516",
   "types-croniter>=6.0.0.20250626",
-  "types-redis",
+  # No types-redis: it is frozen at the redis 4.6 API and mypy prefers a stub
+  # package over a library's own inline types, so installing it *downgrades*
+  # what mypy knows about redis 5.2.1 — aclose() (added 5.0.1) reads as
+  # missing. redis-py ships py.typed; that is the accurate source.
   "types-requests>=2.32.4.20250611",
   "types-beautifulsoup4>=4.12.0.20250516",
   "types-python-dateutil>=2.9.0.20250708",
@@ -108,6 +111,7 @@ dev = [
   "pyyaml>=6.0.3",
   "fakeredis[aioredis]>=2.0.0",
   "pytest-xdist>=3.8.0",
+  "pika>=1.4.1",
 ]
 
 backend = [

@@ -1,6 +1,4 @@
-from typing import Any
-
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
@@ -22,6 +20,7 @@ from app.core.websocket_manager import websocket_manager
 from app.db.repositories.user_integrations import user_integration_repository
 from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable
+from app.models.oauth_models import OAuthIntegration
 from app.models.user_models import BioStatus, UserDocument, UserUpdate
 from app.services.analytics_service import track_login, track_signup
 from app.services.composio.composio_service import get_composio_service
@@ -235,7 +234,7 @@ async def check_integration_status(integration_id: str, user_id: str) -> bool:
         bool: True if the integration is connected, False otherwise
     """
     try:
-        all_statuses = await get_all_integrations_status(user_id)
+        all_statuses: dict[str, bool] = await get_all_integrations_status(user_id)
         return all_statuses.get(integration_id, False)
     except Exception as e:
         log.error(f"{LogTag.OAUTH} Error checking integration status for {integration_id}: {e}")
@@ -271,9 +270,8 @@ async def check_multiple_integrations_status(
 
 async def handle_oauth_connection(
     user_id: str,
-    integration_config: Any,
-    connected_account_id: str,
-    background_tasks: Any,
+    integration_config: OAuthIntegration,
+    background_tasks: BackgroundTasks,
 ) -> None:
     """
     Handle successful OAuth connection: setup triggers, update bio status, queue processing.
@@ -281,7 +279,6 @@ async def handle_oauth_connection(
     Args:
         user_id: The user ID
         integration_config: The integration configuration object
-        connected_account_id: The connected account ID from Composio
         background_tasks: FastAPI background tasks
     """
     log.set(auth={"user_id": user_id, "provider": integration_config.id})

@@ -3,7 +3,7 @@ Slack trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -15,6 +15,7 @@ from app.models.composio_schemas import (
     SlackListAllChannelsInput,
     SlackReceiveMessagePayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import SlackChannelCreatedConfig, SlackNewMessageConfig
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
@@ -26,12 +27,12 @@ from shared.py.wide_events import log
 class SlackTriggerHandler(TriggerHandler):
     """Handler for Slack triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "slack_new_message",
         "slack_channel_created",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "SLACK_RECEIVE_MESSAGE",
         "SLACK_RECEIVE_BOT_MESSAGE",
         "SLACK_RECEIVE_DIRECT_MESSAGE",
@@ -41,7 +42,7 @@ class SlackTriggerHandler(TriggerHandler):
         "SLACK_CHANNEL_CREATED",
     }
 
-    EXCLUSION_TO_TRIGGER = {
+    EXCLUSION_TO_TRIGGER: ClassVar[dict[str, str]] = {
         "exclude_bot_messages": "SLACK_RECEIVE_BOT_MESSAGE",
         "exclude_direct_messages": "SLACK_RECEIVE_DIRECT_MESSAGE",
         "exclude_group_messages": "SLACK_RECEIVE_GROUP_MESSAGE",
@@ -60,7 +61,7 @@ class SlackTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -265,8 +266,8 @@ class SlackTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, str]]:
+        **_kwargs: str,
+    ) -> list[TriggerOption]:
         """Get dynamic options for Slack trigger config fields."""
         if trigger_name == "slack_new_message" and field_name == "channel_ids":
             # Fetch Slack channels list with pagination
@@ -326,7 +327,7 @@ class SlackTriggerHandler(TriggerHandler):
                                 # Public channel
                                 label = f"# {channel_name}"
 
-                            all_channels.append({"value": channel_id, "label": label})
+                            all_channels.append(TriggerOption(value=channel_id, label=label))
 
                     # Check for next page
                     cursor = data.next_cursor

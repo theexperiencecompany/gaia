@@ -17,18 +17,24 @@ Two guarantees:
 
 import asyncio
 from http import HTTPStatus
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from langgraph.types import Command
 
-from app.agents.core.background.executor_queue import is_executor_busy, prepare_run_from_item
+from app.agents.core.background.executor_queue import (
+    ExecutorRunItem,
+    is_executor_busy,
+    prepare_run_from_item,
+)
 from app.agents.core.background.executor_runner import run_executor_background
 from app.constants.hil import (
     HIL_DECIDED_UNRESUMED_GRACE_SECONDS,
 )
 from app.constants.log_tags import LogTag
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.schemas.hil_schemas import BatchDecisionOutcome
 from app.services.hil.approvals_store import (
+    clear_resume_item,
     get_approval,
     list_decided_unresumed,
     list_expired_pending,
@@ -42,13 +48,17 @@ from shared.py.wide_events import log
 
 DecisionKind = Literal["approve", "deny", "timeout", "abandon"]
 
+# Recorded on approvals closed because the user cancelled the run that parked on them.
+# No run ever reads it back (there is nothing left to resume) — it is the audit trail.
+CANCELLED_FEEDBACK = "The user cancelled this task; the action was never performed."
+
 # What the record audits. The paused gate receives the same status, except
 # "abandoned" resumes as a denial — the user moved on, the agent must not act.
 _TERMINAL_STATUS: dict[str, HILApprovalStatus] = {
-    "approve": "approved",
-    "deny": "denied",
-    "timeout": "timeout",
-    "abandon": "abandoned",
+    "approve": HILApprovalStatus.APPROVED,
+    "deny": HILApprovalStatus.DENIED,
+    "timeout": HILApprovalStatus.TIMEOUT,
+    "abandon": HILApprovalStatus.ABANDONED,
 }
 
 # Prevent GC of resume tasks spawned here (create_task keeps only a weak ref).
@@ -107,7 +117,7 @@ async def resolve_approval(
 
 async def resolve_approvals_batch(
     user_id: str, decisions: list[tuple[str, DecisionKind, str | None]]
-) -> list[dict[str, Any]]:
+) -> list[BatchDecisionOutcome]:
     """Apply several decisions in one submission — the web batch review's backend.
 
     Each approval still transitions exactly once; the per-conversation resume slot
@@ -115,26 +125,34 @@ async def resolve_approvals_batch(
     round it wakes collects the rest. One failed item never blocks the others —
     its outcome is reported instead.
     """
-    outcomes: list[dict[str, Any]] = []
+    outcomes: list[BatchDecisionOutcome] = []
     for approval_id, kind, feedback in decisions:
         try:
             await resolve_approval(
                 approval_id=approval_id, user_id=user_id, kind=kind, feedback=feedback
             )
-            outcomes.append({"approval_id": approval_id, "resolved": True, "reason": None})
+            outcomes.append(BatchDecisionOutcome(approval_id=approval_id, resolved=True))
         except ApprovalRequestNotFound:
-            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "not_found"})
+            outcomes.append(
+                BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="not_found")
+            )
         except ApprovalRequestForbidden:
-            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "forbidden"})
+            outcomes.append(
+                BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="forbidden")
+            )
         except ApprovalNotResumable:
             outcomes.append(
-                {"approval_id": approval_id, "resolved": False, "reason": "not_resumable"}
+                BatchDecisionOutcome(
+                    approval_id=approval_id, resolved=False, reason="not_resumable"
+                )
             )
         except Exception as e:  # noqa: BLE001 — one item's infra failure must not strand the rest
             # The item stays pending (nothing transitioned), so the sweep retries it; the
             # rest of the batch still processes. Reported, not swallowed.
             log.error(f"{LogTag.HIL} Batch decision failed for {approval_id}: {e}")
-            outcomes.append({"approval_id": approval_id, "resolved": False, "reason": "error"})
+            outcomes.append(
+                BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="error")
+            )
     return outcomes
 
 
@@ -157,6 +175,45 @@ async def abandon_conversation_approvals(
             # never strand the conversation's other paused runs, which is the whole point.
             continue
     return abandoned
+
+
+async def cancel_conversation_approvals(conversation_id: str, user_id: str) -> list[str]:
+    """Close a cancelled run's pending approvals so nothing can restart it.
+
+    ``cancel_executor`` stops the run and drops the conversation's busy lock, but the
+    approval records are the *decision* state, and they outlive both: left pending, a
+    later "Approve" — or the timeout sweep, with no user involved at all — re-dispatches
+    the very run the user stopped, on a fresh stream the cancel flag does not cover.
+    Deciding them here is what makes a cancel stick.
+
+    Deliberately does NOT resume, which is the whole difference from
+    ``abandon_conversation_approvals``: there the run must wake up to release the lock,
+    here it is already gone. ``mark_decided`` runs first because it is the exactly-once
+    mutex — only the caller that wins the transition owns the record and may clear its
+    ``resume_item``, so a decision landing at the same instant can never lose its
+    re-dispatch context.
+    """
+    cancelled: list[str] = []
+    for record in await list_pending_for_conversation(conversation_id):
+        if record.user_id != user_id:
+            continue
+        if not await mark_decided(
+            record.approval_id,
+            HILApprovalStatus.ABANDONED,
+            feedback=CANCELLED_FEEDBACK,
+            scope="once",
+            decided_by=user_id,
+        ):
+            continue
+        await clear_resume_item(record.approval_id)
+        cancelled.append(record.approval_id)
+    if cancelled:
+        log.info(
+            f"{LogTag.HIL} Closed pending approvals for a cancelled run",
+            conversation_id=conversation_id,
+            approval_ids=cancelled,
+        )
+    return cancelled
 
 
 async def _resolve_or_close(
@@ -279,7 +336,13 @@ async def _dispatch_resume(
         )
         return
 
-    prepared = await prepare_run_from_item(record.conversation_id, record.resume_item or {})
+    # set_resume_item is the only writer of this field and now takes an
+    # ExecutorRunItem, so the stored shape is correct by construction; Mongo just
+    # hands it back as a plain dict. cast rather than isinstance (item 12) —
+    # ExecutorRunItem is total=False, so {} is a valid empty item.
+    prepared = await prepare_run_from_item(
+        record.conversation_id, cast(ExecutorRunItem, record.resume_item or {})
+    )
     if prepared is None:
         log.error(f"{LogTag.HIL} Could not prepare resume run", approval_id=record.approval_id)
         await release_resume_dispatch(record.conversation_id)

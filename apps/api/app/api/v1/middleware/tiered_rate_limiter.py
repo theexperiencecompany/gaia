@@ -12,9 +12,8 @@ Usage:
 """
 
 import asyncio
-from collections.abc import Callable
 from datetime import UTC, datetime
-from functools import wraps
+from typing import ParamSpec, TypeVar
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -38,9 +37,16 @@ from app.models.usage_models import (
     UsagePeriod,
     UserUsageSnapshot,
 )
-from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from shared.py.wide_events import log
+
+# UsageInfo is imported (not defined here) but re-exported for
+# `app.api.v1.middleware.__init__` — explicit re-export required under
+# no_implicit_reexport.
+__all__ = ["UsageInfo"]
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class RateLimitExceededException(HTTPException):
@@ -51,7 +57,7 @@ class RateLimitExceededException(HTTPException):
         feature: str,
         plan_required: str | None = None,
         reset_time: datetime | None = None,
-    ):
+    ) -> None:
         detail = {
             "error": "rate_limit_exceeded",
             "feature": feature,
@@ -71,7 +77,7 @@ class RateLimitExceededException(HTTPException):
 class TieredRateLimiter:
     """Redis-backed per-user, per-feature counters across daily/monthly windows."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis = redis_cache
 
     def _get_redis_key(self, user_id: str, feature: str, period: RateLimitPeriod) -> str:
@@ -272,7 +278,7 @@ class TieredRateLimiter:
                     feature_info = get_feature_info(check_feature_key)
                     feature_usage = FeatureUsage(
                         feature_key=check_feature_key,
-                        feature_title=feature_info["title"],
+                        feature_title=feature_info.title,
                         period=UsagePeriod(period.value),
                         used=current_usage,
                         limit=limit,
@@ -287,48 +293,7 @@ class TieredRateLimiter:
 tiered_limiter = TieredRateLimiter()
 
 
-def tiered_rate_limit(feature_key: str):
-    """Rate limiting decorator for API endpoints."""
-
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            """Resolve the user, enforce the feature's limits, then run the endpoint."""
-            # Extract request and user from dependencies
-            user = None
-
-            for arg in args:
-                if isinstance(arg, dict) and "user_id" in arg:
-                    user = arg
-
-            if not user:
-                user = kwargs.get("user")
-                if not user:
-                    # If no user found, skip rate limiting (for public endpoints)
-                    return await func(*args, **kwargs)
-
-            user_id = user.get("user_id")
-            if not user_id:
-                raise HTTPException(status_code=401, detail="User ID not found")
-
-            # Get user subscription
-            subscription = await payment_service.get_user_subscription_status(user_id)
-            user_plan = subscription.plan_type or PlanType.FREE
-
-            # Check rate limits before executing function
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key=feature_key,
-                user_plan=user_plan,
-            )
-
-            # Execute the original function
-            result = await func(*args, **kwargs)
-            return result
-
-        # Store metadata for usage tracking
-        wrapper._rate_limit_metadata = {"feature_key": feature_key}  # type: ignore[attr-defined]
-
-        return wrapper
-
-    return decorator
+# The `tiered_rate_limit` decorator lives in app/decorators/rate_limiting.py.
+# A second copy used to live here and drifted: it resolved the caller by looking
+# for a kwarg named `user`, so endpoints importing this copy silently skipped
+# rate limiting. One canonical implementation, imported from `app.decorators`.

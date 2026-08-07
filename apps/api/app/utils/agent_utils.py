@@ -2,7 +2,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 import json
 import re
-from typing import Any, TypedDict
+from typing import Any, TypedDict, cast
 
 from langchain_core.messages import ToolCall
 
@@ -14,6 +14,7 @@ from app.constants.log_tags import LogTag
 from app.constants.tool_labels import TOOL_DISPLAY_NAMES, humanize_tool_name
 from app.db.repositories.integrations import integration_repository
 from app.decorators.caching import Cacheable
+from app.models.chat_models import ToolDataEntry
 from app.models.stream_events import (
     ResponseFrame,
     SubagentEndPayload,
@@ -93,7 +94,9 @@ async def _resolve_handoff_display_name(subagent_id: str) -> str:
     if platform_subagent:
         return platform_subagent.name
 
-    cached_name = await _lookup_custom_integration_name(clean_id)
+    # @Cacheable erases the wrapped function's return type to Any (see
+    # app/decorators/caching.py); cast back to the real annotated contract.
+    cached_name = cast("str | None", await _lookup_custom_integration_name(clean_id))
     if cached_name:
         return cached_name
 
@@ -107,7 +110,7 @@ def format_subagent_start_event(
     icon_url: str | None = None,
     tool_category: str | None = None,
     parent_subagent_id: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Format a subagent_start SSE payload."""
     return SubagentStartPayload(
         subagent_id=subagent_id,
@@ -124,7 +127,7 @@ def format_subagent_end_event(
     subagent_id: str,
     duration_ms: int,
     token_count: int | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Format a subagent_end SSE payload."""
     return SubagentEndPayload(
         subagent_id=subagent_id,
@@ -139,7 +142,7 @@ async def format_tool_call_entry(
     integration_id: str | None = None,
     integration_name: str | None = None,
     user_id: str | None = None,
-) -> dict | None:
+) -> ToolDataEntry | None:
     """Format a tool call as a tool_data entry for frontend streaming.
 
     Emitted once per tool call from the 'updates' stream when complete args
@@ -230,7 +233,7 @@ async def format_tool_call_entry(
 
     # Look up mcp_ui metadata. Try the global registry first (covers platform
     # tools); fall back to MCPClient._tools for per-user MCP tools.
-    mcp_ui: dict | None = None
+    mcp_ui: dict[str, Any] | None = None
     mcp_server_url: str | None = None
     try:
         registry_tools = tool_registry.get_all_tools_for_search()
@@ -242,8 +245,14 @@ async def format_tool_call_entry(
                     mcp_ui = tool_meta.get("mcp_ui")
                     mcp_server_url = tool_meta.get("mcp_server_url")
                 break
-    except Exception:  # nosec B110
-        pass
+    except Exception as registry_error:
+        # A registry miss is recoverable — the per-user MCPClient lookup below is
+        # the fallback — but it must not be silent: an outage here strips the UI
+        # metadata from every platform tool at once, and the card just renders
+        # plain with nothing to explain why.
+        log.debug(
+            f"{LogTag.AGENT} Tool registry lookup failed for mcp_ui metadata: {registry_error}"
+        )
 
     if mcp_ui is None and user_id:
         mcp_ui, mcp_server_url = await _resolve_mcp_ui_metadata(tool_name_raw, user_id)
@@ -252,23 +261,29 @@ async def format_tool_call_entry(
     if integration_id and not is_core_tool and not icon_url and user_id:
         icon_url, integration_name = await _resolve_mcp_icon_name(integration_id)
 
-    return ToolCallsDataEntry(
-        tool_name="tool_calls_data",
-        tool_category=tool_category or "",
-        data=ToolCallsDataEntryData(
-            tool_name=tool_name_raw,
+    # ToolCallsDataEntry declares exactly the ToolDataEntry keys this variant
+    # carries, in the byte order the frontend parser expects — so its dump IS a
+    # ToolDataEntry by construction (Type Safety item 12).
+    return cast(
+        ToolDataEntry,
+        ToolCallsDataEntry(
+            tool_name="tool_calls_data",
             tool_category=tool_category or "",
-            message=tool_display_name,
-            show_category=show_category,
-            tool_call_id=tool_call.get("id"),
-            inputs=tool_call.get("args", {}),
-            icon_url=icon_url,
-            integration_name=integration_name,
-        ),
-        timestamp=timestamp,
-        mcp_ui=mcp_ui,
-        mcp_server_url=mcp_server_url,
-    ).model_dump()
+            data=ToolCallsDataEntryData(
+                tool_name=tool_name_raw,
+                tool_category=tool_category or "",
+                message=tool_display_name,
+                show_category=show_category,
+                tool_call_id=tool_call.get("id"),
+                inputs=tool_call.get("args", {}),
+                icon_url=icon_url,
+                integration_name=integration_name,
+            ),
+            timestamp=timestamp,
+            mcp_ui=mcp_ui,
+            mcp_server_url=mcp_server_url,
+        ).model_dump(),
+    )
 
 
 async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | None:
@@ -290,7 +305,9 @@ async def _resolve_mcp_integration_id(tool_name: str, user_id: str) -> str | Non
         return None
 
 
-async def _resolve_mcp_ui_metadata(tool_name: str, user_id: str) -> tuple[dict | None, str | None]:
+async def _resolve_mcp_ui_metadata(
+    tool_name: str, user_id: str
+) -> tuple[dict[str, Any] | None, str | None]:
     """Pull mcp_ui + mcp_server_url off the user's MCPClient tool object."""
     from app.services.mcp.mcp_client import get_mcp_client  # noqa: PLC0415
 
@@ -326,7 +343,7 @@ async def _resolve_mcp_icon_name(integration_id: str) -> tuple[str | None, str |
         if not integration:
             await set_cache(cache_key, {}, ttl=CUSTOM_INT_METADATA_TTL)
             return None, None
-        metadata = {
+        metadata: dict[str, str | None] = {
             "icon_url": integration.icon_url,
             "integration_id": integration_id,
             "integration_name": integration.name,
@@ -343,12 +360,12 @@ def format_sse_response(content: str) -> str:
     return f"data: {json.dumps(ResponseFrame(response=content).model_dump())}\n\n"
 
 
-def format_sse_data(data: dict) -> str:
+def format_sse_data(data: dict[str, Any]) -> str:
     """Wrap a dict as a JSON-encoded SSE ``data:`` line."""
     return f"data: {json.dumps(data)}\n\n"
 
 
-def process_custom_event_for_tools(payload) -> dict:
+def process_custom_event_for_tools(payload: dict[str, Any]) -> dict[str, Any]:
     """Extract tool execution data from a custom LangGraph event payload.
 
     Returns the extracted tool data, or an empty dict on failure / no data.
@@ -356,7 +373,7 @@ def process_custom_event_for_tools(payload) -> dict:
     try:
         serialized = json.dumps(payload) if payload else "{}"
         new_data = extract_tool_data(serialized)
-        return new_data if new_data else {}
+        return new_data or {}
     except Exception as e:
         log.error(f"{LogTag.AGENT} Error extracting tool data: {e}")
         return {}

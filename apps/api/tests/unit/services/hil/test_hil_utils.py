@@ -1,14 +1,26 @@
-"""Attacks on the HIL readers/formatters (app/services/hil/utils.py) and the approval id.
+"""Attacks on the HIL readers/formatters (app/services/hil/utils.py) and the approval
+records the store writes (app/services/hil/approvals_store.py).
 
-These are the functions that carry *untrusted* content — tool arguments the agent may have
-lifted from an email, a web page, or an MCP server — into the judge's prompt. The attacks
-are the ones that let that content escape the payload and read as instructions.
+Most of these are the functions that carry *untrusted* content — tool arguments the agent
+may have lifted from an email, a web page, or an MCP server — into the judge's prompt, and
+the attacks are the ones that let that content escape the payload and read as instructions.
+The record classes at the bottom cover the two fields the store DERIVES rather than copies
+(the status and the expiry window), which the repository contract tests cannot see because
+they are handed an already-built record.
 """
 
+from datetime import UTC, datetime
 import json
+from unittest.mock import AsyncMock, patch
 
-from app.constants.hil import HIL_JUDGE_MAX_PRIOR_CALLS
-from app.services.hil.approvals_store import approval_id_for
+import pytest
+
+from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_JUDGE_MAX_PRIOR_CALLS
+from app.services.hil.approvals_store import (
+    approval_id_for,
+    record_auto_approval,
+    upsert_pending_approval,
+)
 from app.services.hil.utils import (
     PriorCall,
     args_preview,
@@ -144,3 +156,72 @@ class TestApprovalId:
     def test_the_same_tool_call_id_in_another_conversation_is_a_different_approval(self) -> None:
         # Otherwise one user's decision could resolve another conversation's approval.
         assert approval_id_for("conv-1", "call-1") != approval_id_for("conv-2", "call-1")
+
+
+STORE = "app.services.hil.approvals_store"
+
+
+def written_record(repository: AsyncMock) -> object:
+    """The record the store actually handed the repository."""
+    return repository.create_if_absent.await_args.args[0]
+
+
+class TestTheAutoApprovalReceipt:
+    """auto mode ALREADY RAN the action without asking, so its record is a receipt, not a
+    request: born decided.
+
+    The repository contract test proves a record with ``status="auto_approved"`` resists
+    every decision and every sweep — but it builds that record itself, with the status
+    hardcoded in the test. Nothing checked that the service writes one. Born ``pending``,
+    an irreversible action that already happened would show a live Approve/Deny card, be
+    resolvable by the decision endpoint, and be expirable by the timeout sweep.
+    """
+
+    async def test_it_is_born_decided_rather_than_pending(self) -> None:
+        repository = AsyncMock()
+        with patch(f"{STORE}.hil_approval_repository", repository):
+            await record_auto_approval(
+                approval_id="a1",
+                user_id="u1",
+                conversation_id="conv-1",
+                stream_id="stream-1",
+                tool_name="send_email",
+                tool_call_id="call-1",
+                args={"to": "bob@example.com"},
+                summary="Send email — to: bob@example.com",
+                integration_name="Gmail",
+                reason="you said send the deck to bob",
+            )
+
+        record = written_record(repository)
+        assert record.status == "auto_approved", "a pending receipt is a card for a done action"
+        assert record.decided_at is not None, "no decision is coming; it must already be stamped"
+        assert record.auto_reason == "you said send the deck to bob", (
+            "the receipt is the only place the user learns WHY this ran unasked"
+        )
+
+
+class TestThePendingApprovalRecord:
+    async def test_the_approval_window_is_applied_at_creation(self) -> None:
+        # expires_at is what the timeout sweep reads. Stamped at `now`, every card the
+        # gate raises is already expired and the next sweep tick times it out before the
+        # user can plausibly answer — HIL would look like it never waits at all.
+        repository = AsyncMock()
+        with patch(f"{STORE}.hil_approval_repository", repository):
+            await upsert_pending_approval(
+                approval_id="a1",
+                user_id="u1",
+                conversation_id="conv-1",
+                stream_id="stream-1",
+                tool_name="send_email",
+                tool_call_id="call-1",
+                args={"to": "bob@example.com"},
+                summary="Send email — to: bob@example.com",
+                integration_name="Gmail",
+            )
+
+        record = written_record(repository)
+        assert record.status == "pending"
+        assert record.expires_at > datetime.now(UTC), "born expired"
+        window = (record.expires_at - record.created_at).total_seconds()
+        assert window == pytest.approx(HIL_APPROVAL_TIMEOUT_SECONDS, abs=1)

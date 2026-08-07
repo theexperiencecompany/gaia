@@ -117,9 +117,21 @@ _BASE_PATCHES = {
 @pytest.mark.unit
 class TestCreateSubagent:
     async def test_internal_integration(self):
+        # Internal subagents run on tools registered at startup: the branch must
+        # neither register Composio provider tools nor open an MCP session, and
+        # the graph must be built from this subagent's own config.
         from app.agents.core.subagents.provider_subagents import create_subagent
 
-        subagent = _make_subagent(managed_by="internal")
+        subagent = _make_subagent(
+            managed_by="internal",
+            provider="internal_provider",
+            subagent_config=_make_subagent_config(
+                agent_name="internal_agent",
+                tool_space="internal_space",
+                use_direct_tools=True,
+                disable_retrieve_tools=False,
+            ),
+        )
         mock_graph = MagicMock()
         mock_registry = AsyncMock()
 
@@ -130,6 +142,10 @@ class TestCreateSubagent:
                 return_value=mock_registry,
             ),
             patch(
+                "app.agents.core.subagents.provider_subagents.get_mcp_client",
+                new_callable=AsyncMock,
+            ) as mock_get_mcp_client,
+            patch(
                 "app.agents.core.subagents.provider_subagents.init_llm",
                 return_value=MagicMock(),
             ),
@@ -137,11 +153,21 @@ class TestCreateSubagent:
                 "app.agents.core.subagents.provider_subagents.SubAgentFactory.create_provider_subagent",
                 new_callable=AsyncMock,
                 return_value=mock_graph,
-            ),
+            ) as mock_factory,
         ):
             result = await create_subagent(subagent)
 
         assert result is mock_graph
+        mock_registry.register_provider_tools.assert_not_called()
+        mock_get_mcp_client.assert_not_called()
+
+        call_kwargs = mock_factory.call_args.kwargs
+        assert call_kwargs["provider"] == "internal_provider"
+        assert call_kwargs["tool_space"] == "internal_space"
+        assert call_kwargs["name"] == "internal_agent"
+        assert call_kwargs["use_direct_tools"] is True
+        assert call_kwargs["disable_retrieve_tools"] is False
+        assert call_kwargs["source_label"] == subagent.name
 
     async def test_mcp_integration_no_auth(self):
         from app.agents.core.subagents.provider_subagents import create_subagent
@@ -248,7 +274,13 @@ class TestCreateSubagent:
         # Composio branch still looks up the OAuthIntegration to read
         # composio_config — Subagent intentionally does not carry it.
         integration = _make_integration(managed_by="composio")
-        subagent = _make_subagent(managed_by="composio")
+        subagent = _make_subagent(
+            managed_by="composio",
+            subagent_config=_make_subagent_config(
+                specific_tools=["TEST_TOOL_INCLUDED"],
+                exclude_tools=["TEST_TOOL_EXCLUDED"],
+            ),
+        )
         mock_graph = MagicMock()
         mock_registry = AsyncMock()
         mock_registry.register_provider_tools = AsyncMock()
@@ -276,7 +308,15 @@ class TestCreateSubagent:
             result = await create_subagent(subagent)
 
         assert result is mock_graph
-        mock_registry.register_provider_tools.assert_called_once()
+        # toolkit_name comes from the OAuthIntegration's composio_config while the
+        # space/tool filters come from the Subagent's own config — a swap between
+        # the two sources is exactly what this asserts against.
+        mock_registry.register_provider_tools.assert_called_once_with(
+            toolkit_name="test_toolkit",
+            space_name="test_space",
+            specific_tools=["TEST_TOOL_INCLUDED"],
+            exclude_tools=["TEST_TOOL_EXCLUDED"],
+        )
 
     async def test_composio_without_oauth_integration_raises(self):
         # A builtin Subagent declaring managed_by="composio" but with no
@@ -745,7 +785,10 @@ class TestRegisterSubagentProviders:
             register_subagent_providers,
         )
 
-        subagent = _make_subagent(managed_by="composio")
+        subagent = _make_subagent(
+            managed_by="composio",
+            subagent_config=_make_subagent_config(agent_name="eligible_agent"),
+        )
 
         with (
             patch(
@@ -758,6 +801,7 @@ class TestRegisterSubagentProviders:
 
         assert count == 1
         mock_providers.register.assert_called_once()
+        assert mock_providers.register.call_args.kwargs["name"] == "eligible_agent"
 
     def test_skips_auth_required_mcp(self):
         from app.agents.core.subagents.provider_subagents import (
@@ -800,8 +844,10 @@ class TestRegisterSubagentProviders:
                 "app.agents.core.subagents.provider_subagents.all_subagents",
                 return_value=(sa1, sa2),
             ),
-            patch("app.agents.core.subagents.provider_subagents.providers"),
+            patch("app.agents.core.subagents.provider_subagents.providers") as mock_providers,
         ):
             count = register_subagent_providers(integration_ids=["int1"])
 
         assert count == 1
+        registered_names = [c.kwargs["name"] for c in mock_providers.register.call_args_list]
+        assert registered_names == ["agent_1"]

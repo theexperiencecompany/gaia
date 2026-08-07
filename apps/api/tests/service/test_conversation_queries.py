@@ -49,7 +49,7 @@ class TestConversationQueriesReal:
             user={"user_id": "svc-sort-user"}, page=1, limit=10
         )
 
-        conversation_ids = [c["conversation_id"] for c in result["conversations"]]
+        conversation_ids = [c.conversation_id for c in result.conversations]
         assert conversation_ids.index(newest) < conversation_ids.index(middle)
         assert conversation_ids.index(middle) < conversation_ids.index(oldest)
 
@@ -68,13 +68,13 @@ class TestConversationQueriesReal:
             user={"user_id": "svc-user-B"}, page=1, limit=10
         )
 
-        ids_a = {c["conversation_id"] for c in result_a["conversations"]}
-        ids_b = {c["conversation_id"] for c in result_b["conversations"]}
+        ids_a = {c.conversation_id for c in result_a.conversations}
+        ids_b = {c.conversation_id for c in result_b.conversations}
 
         # No overlap between the two users' results
         assert ids_a.isdisjoint(ids_b)
-        assert result_a["total"] == 2
-        assert result_b["total"] == 1
+        assert result_a.total == 2
+        assert result_b.total == 1
 
     async def test_service_pagination_total_pages(
         self, conversations_collection, make_conversation
@@ -90,9 +90,9 @@ class TestConversationQueriesReal:
         )
 
         # 5 non-starred conversations at limit=2 → ceil(5/2) = 3 pages
-        assert result["total_pages"] == 3
-        assert result["total"] == 5
-        assert len(result["conversations"]) == 2
+        assert result.total_pages == 3
+        assert result.total == 5
+        assert len(result.conversations) == 2
 
     async def test_starred_conversations_always_appear_first(
         self, conversations_collection, make_conversation
@@ -116,7 +116,7 @@ class TestConversationQueriesReal:
             user={"user_id": "starred-test-user"}, page=1, limit=10
         )
 
-        conversation_ids = [c["conversation_id"] for c in result["conversations"]]
+        conversation_ids = [c.conversation_id for c in result.conversations]
         assert conversation_ids[0] == starred, (
             "Starred conversation must appear before non-starred even if older"
         )

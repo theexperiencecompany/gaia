@@ -1,5 +1,7 @@
 """Integration config, catalog, and connection routes."""
 
+from typing import cast
+
 from bson.errors import InvalidId
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -9,6 +11,7 @@ from app.api.v1.middleware.rate_limiter import limiter
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
     ConnectIntegrationResponse,
@@ -55,7 +58,9 @@ async def get_my_integrations_endpoint(
     log.set(operation="get_my_integrations", user={"id": user_id})
     result = await get_my_integrations(user_id)
     log.set(result_count=result.total, outcome="success")
-    return result
+    # Cacheable erases the wrapped function's return type; get_my_integrations is
+    # declared -> MyIntegrationsResponse, so this is correct by construction.
+    return cast(MyIntegrationsResponse, result)
 
 
 @router.get("/{integration_id}/tools")
@@ -106,7 +111,7 @@ async def disconnect_integration_endpoint(
 async def connect_integration_endpoint(
     integration_id: str,
     request: ConnectIntegrationRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> ConnectIntegrationResponse:
     """Connect an integration for the current user, returning the next-step action."""
     user_id = user.get("user_id")

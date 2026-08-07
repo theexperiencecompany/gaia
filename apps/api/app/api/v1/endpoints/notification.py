@@ -1,4 +1,5 @@
 import asyncio
+from typing import Any
 
 from fastapi import (
     APIRouter,
@@ -21,13 +22,17 @@ from app.models.device_token_models import (
 from app.models.notification.notification_models import (
     ChannelPreferences,
     ChannelPreferencesUpdate,
+    NotificationRecord,
     NotificationStatus,
+    NotificationView,
 )
 from app.models.notification.request_models import (
     BulkActionRequest,
+    BulkActionSummary,
     NotificationResponse,
     PaginatedNotificationsResponse,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
 from app.utils.notification.channel_preferences import fetch_channel_preferences
@@ -42,8 +47,8 @@ async def get_notifications(
     limit: int = Query(50, ge=1, le=100, description="Number of notifications to return"),
     offset: int = Query(default=0, ge=0, description="Number of notifications to skip"),
     channel_type: str | None = Query(None, description="Filter by channel type (e.g., email, sms)"),
-    current_user: dict = Depends(get_current_user),
-):
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> PaginatedNotificationsResponse:
     """Get user's notifications with pagination"""
     user_id = current_user.get("user_id")
 
@@ -82,7 +87,7 @@ async def get_notifications(
 
 @router.get("/notifications/preferences/channels", response_model=ChannelPreferences)
 async def get_channel_preferences(
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ChannelPreferences:
     """Get user's notification channel preferences."""
     user_id = current_user.get("user_id")
@@ -108,7 +113,7 @@ async def get_channel_preferences(
 @router.put("/notifications/preferences/channels", response_model=ChannelPreferences)
 async def update_channel_preferences(
     preferences: ChannelPreferencesUpdate = Body(...),
-    current_user: dict = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ChannelPreferences:
     """Update user's notification channel preferences."""
     user_id = current_user.get("user_id")
@@ -147,9 +152,13 @@ async def execute_action(
     request: Request,
     notification_id: str = Path(..., description="Notification ID"),
     action_id: str = Path(..., description="Action ID"),
-    current_user: dict = Depends(get_current_user),
-):
-    """Execute a notification action"""
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> NotificationResponse[dict[str, Any]]:
+    """Execute a notification action.
+
+    ``data`` stays a free-form dict: it is whatever the matched ``ActionHandler``
+    produced (``ActionResult.data``), which is open by design.
+    """
     user_id = current_user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
@@ -186,9 +195,14 @@ async def execute_action(
 @router.post("/notifications/{notification_id}/read")
 async def mark_as_read(
     notification_id: str = Path(..., description="Notification ID"),
-    current_user: dict = Depends(get_current_user),
-):
-    """Mark notification as read"""
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> NotificationResponse[NotificationRecord]:
+    """Mark notification as read.
+
+    ``data`` is the stored record, not the flattened ``NotificationView`` that
+    ``GET /notifications/{id}`` returns — the two endpoints have always returned
+    different shapes under the same key.
+    """
     user_id = current_user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=401, detail="User not authenticated or user_id not found")
@@ -222,8 +236,8 @@ async def mark_as_read(
 @router.post("/notifications/bulk-actions")
 async def bulk_actions(
     request: BulkActionRequest = Body(...),
-    current_user: dict = Depends(get_current_user),
-):
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> NotificationResponse[BulkActionSummary]:
     """Perform bulk actions on multiple notifications"""
     user_id = current_user.get("user_id")
     if not user_id:
@@ -256,7 +270,7 @@ async def bulk_actions(
         return NotificationResponse(
             success=True,
             message=f"Bulk action completed: {successful}/{total} successful",
-            data={"results": results, "successful": successful, "total": total},
+            data=BulkActionSummary(results=results, successful=successful, total=total),
         )
 
     except Exception as e:
@@ -267,8 +281,8 @@ async def bulk_actions(
 @router.post("/notifications/register-device", response_model=DeviceTokenResponse)
 async def register_device_token(
     request: DeviceTokenRequest = Body(...),
-    current_user: dict = Depends(get_current_user),
-):
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DeviceTokenResponse:
     """
     Register a device token for push notifications
     """
@@ -324,8 +338,8 @@ async def register_device_token(
 @router.post("/notifications/unregister-device", response_model=DeviceTokenResponse)
 async def unregister_device_token(
     token: str = Body(..., embed=True),
-    current_user: dict = Depends(get_current_user),
-):
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> DeviceTokenResponse:
     """
     Unregister a device token
     """
@@ -357,8 +371,8 @@ async def unregister_device_token(
 @router.get("/notifications/{notification_id}")
 async def get_notification(
     notification_id: str = Path(..., description="Notification ID"),
-    current_user: dict = Depends(get_current_user),
-):
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> NotificationResponse[NotificationView]:
     """Get a specific notification."""
     user_id = current_user.get("user_id")
     if not user_id:

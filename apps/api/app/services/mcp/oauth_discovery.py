@@ -9,7 +9,12 @@ Handles OAuth 2.1 discovery flow per MCP specification:
 from app.constants.device_bridge import DEVICE_TRANSPORT
 from app.constants.log_tags import LogTag
 from app.constants.mcp import COMPOSIO_MCP_HOST
-from app.models.mcp_config import MCPConfig, OAuthDiscovery
+from app.models.mcp_config import (
+    McpAuthChallenge,
+    MCPConfig,
+    McpProbeResult,
+    OAuthDiscovery,
+)
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.mcp_oauth_utils import (
     OAuthDiscoveryError,
@@ -31,7 +36,7 @@ async def discover_oauth_config(
     token_store: MCPTokenStore,
     integration_id: str,
     mcp_config: MCPConfig,
-    challenge_data: dict | None = None,
+    challenge_data: McpAuthChallenge | None = None,
 ) -> OAuthDiscovery:
     """Full MCP OAuth discovery flow per specification."""
     cached = await token_store.get_oauth_discovery(integration_id)
@@ -122,7 +127,7 @@ async def discover_oauth_config(
         )
 
 
-async def probe_mcp_connection(server_url: str) -> dict:
+async def probe_mcp_connection(server_url: str) -> McpProbeResult:
     """Probe an MCP server to determine auth requirements."""
     # Device-tunnel servers are reached over the WebSocket, not HTTP: there is no
     # URL to auth-probe, and the SSRF guard below rightly rejects the device://

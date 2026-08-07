@@ -106,10 +106,12 @@ async def try_refresh_token(
             )
 
             if response.status_code != 200:
-                error_code = None
-                error_description = None
+                error_code: str | None = None
+                error_description: str | None = None
                 try:
-                    payload = response.json()
+                    # Raw token-endpoint error body (RFC 6749 §5.2) — read for
+                    # logging only, never propagated past this block.
+                    payload: object = response.json()
                     if isinstance(payload, dict):
                         error_code = payload.get("error")
                         error_description = payload.get("error_description")
@@ -181,7 +183,7 @@ async def revoke_tokens(
             client_id = dcr_data.get("client_id")
             client_secret = dcr_data.get("client_secret")
 
-    tokens_to_revoke = []
+    tokens_to_revoke: list[tuple[str, str]] = []
 
     refresh_token = await token_store.get_refresh_token(integration_id)
     if refresh_token:

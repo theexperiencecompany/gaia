@@ -6,7 +6,7 @@ even when the upstream call fails.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -28,6 +28,7 @@ from app.constants.voices import (
 )
 from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable
+from app.models.voice_models import ElevenLabsAccountVoice, ElevenLabsSharedVoice
 from app.schemas.voice_schemas import VoiceListResponse, VoiceOption
 from app.utils.errors import AppError
 from app.utils.voice_utils import (
@@ -39,8 +40,12 @@ from app.utils.voice_utils import (
 from shared.py.wide_events import log
 
 
-@Cacheable(ttl=ONE_DAY_TTL, key_pattern=ELEVENLABS_VOICES_CACHE_KEY)
-async def _fetch_elevenlabs_voices() -> list[dict[str, Any]]:
+@Cacheable(
+    ttl=ONE_DAY_TTL,
+    key_pattern=ELEVENLABS_VOICES_CACHE_KEY,
+    model=list[ElevenLabsAccountVoice],
+)
+async def _fetch_elevenlabs_voices() -> list[ElevenLabsAccountVoice]:
     """Fetch the account's voices (trimmed) from the ElevenLabs voices API.
 
     Raises on any upstream failure so a transient error is never cached as an
@@ -54,20 +59,22 @@ async def _fetch_elevenlabs_voices() -> list[dict[str, Any]]:
         resp.raise_for_status()
         payload: dict[str, Any] = resp.json()
 
+    # The provider's own voice objects — untyped until trimmed into our shape here.
+    raw_voices: list[dict[str, Any]] = payload.get("voices", [])
     return [
-        {
-            "voice_id": voice["voice_id"],
-            "name": voice.get("name") or "",
-            "preview_url": voice.get("preview_url"),
-            "labels": voice.get("labels") or {},
-            "language_codes": _verified_language_codes(voice),
-        }
-        for voice in payload.get("voices", [])
+        ElevenLabsAccountVoice(
+            voice_id=voice["voice_id"],
+            name=voice.get("name") or "",
+            preview_url=voice.get("preview_url"),
+            labels=voice.get("labels") or {},
+            language_codes=_verified_language_codes(voice),
+        )
+        for voice in raw_voices
         if isinstance(voice.get("voice_id"), str)
     ]
 
 
-async def get_elevenlabs_voices() -> list[dict[str, Any]]:
+async def get_elevenlabs_voices() -> list[ElevenLabsAccountVoice]:
     """Resolve account voices, degrading to an empty list when unavailable.
 
     The curated catalog still lists without samples or account extras when the
@@ -76,14 +83,22 @@ async def get_elevenlabs_voices() -> list[dict[str, Any]]:
     if not settings.ELEVENLABS_API_KEY:
         return []
     try:
-        return await _fetch_elevenlabs_voices()
+        # _fetch_elevenlabs_voices is wrapped in @Cacheable, whose __call__
+        # erases the return type to Awaitable[Any]; the function itself is
+        # annotated -> list[ElevenLabsAccountVoice], and the decorator's
+        # model= gives the cache-hit path the same type.
+        return cast(list[ElevenLabsAccountVoice], await _fetch_elevenlabs_voices())
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs voices", error=str(e))
         return []
 
 
-@Cacheable(ttl=ONE_DAY_TTL, key_pattern=ELEVENLABS_SHARED_VOICES_CACHE_KEY)
-async def _fetch_shared_voices() -> list[dict[str, Any]]:
+@Cacheable(
+    ttl=ONE_DAY_TTL,
+    key_pattern=ELEVENLABS_SHARED_VOICES_CACHE_KEY,
+    model=list[ElevenLabsSharedVoice],
+)
+async def _fetch_shared_voices() -> list[ElevenLabsSharedVoice]:
     """Fetch featured shared-library voices (trimmed) from ElevenLabs.
 
     Raises on any upstream failure so a transient error is never cached as an
@@ -98,30 +113,32 @@ async def _fetch_shared_voices() -> list[dict[str, Any]]:
         resp.raise_for_status()
         payload: dict[str, Any] = resp.json()
 
+    raw_voices: list[dict[str, Any]] = payload.get("voices", [])
     return [
-        {
-            "voice_id": voice["voice_id"],
-            "name": voice.get("name") or "",
-            "preview_url": voice.get("preview_url"),
-            "public_owner_id": voice.get("public_owner_id"),
-            "gender": voice.get("gender") or "",
-            "accent": voice.get("accent") or "",
-            "language": voice.get("language") or "",
-            "descriptive": voice.get("descriptive") or "",
-            "use_case": voice.get("use_case") or "",
-            "language_codes": _verified_language_codes(voice),
-        }
-        for voice in payload.get("voices", [])
+        ElevenLabsSharedVoice(
+            voice_id=voice["voice_id"],
+            name=voice.get("name") or "",
+            preview_url=voice.get("preview_url"),
+            public_owner_id=voice["public_owner_id"],
+            gender=voice.get("gender") or "",
+            accent=voice.get("accent") or "",
+            language=voice.get("language") or "",
+            descriptive=voice.get("descriptive") or "",
+            use_case=voice.get("use_case") or "",
+            language_codes=_verified_language_codes(voice),
+        )
+        for voice in raw_voices
         if isinstance(voice.get("voice_id"), str) and voice.get("public_owner_id")
     ]
 
 
-async def get_shared_voices() -> list[dict[str, Any]]:
+async def get_shared_voices() -> list[ElevenLabsSharedVoice]:
     """Resolve shared-library voices, degrading to an empty list when unavailable."""
     if not settings.ELEVENLABS_API_KEY:
         return []
     try:
-        return await _fetch_shared_voices()
+        # Same Cacheable return-type erasure as get_elevenlabs_voices above.
+        return cast(list[ElevenLabsSharedVoice], await _fetch_shared_voices())
     except (httpx.HTTPError, ValueError, KeyError) as e:
         log.warning("Failed to fetch ElevenLabs shared voices", error=str(e))
         return []
@@ -136,7 +153,7 @@ async def _known_voice_ids() -> set[str]:
     """
     account = await get_elevenlabs_voices()
     if account:
-        return {v["voice_id"] for v in account}
+        return {v.voice_id for v in account}
     return set(VOICE_IDS)
 
 
@@ -170,7 +187,7 @@ async def list_voices(user_id: str) -> VoiceListResponse:
         get_user_voice(user_id),
         get_starred_voice_ids(user_id),
     )
-    by_id = {v["voice_id"]: v for v in account}
+    by_id = {v.voice_id: v for v in account}
     voices: list[VoiceOption] = []
     for entry in VOICE_CATALOG:
         fetched = by_id.get(entry["voice_id"])
@@ -179,17 +196,15 @@ async def list_voices(user_id: str) -> VoiceListResponse:
         voices.append(
             VoiceOption(
                 **entry,
-                preview_url=(fetched or {}).get("preview_url"),
+                preview_url=fetched.preview_url if fetched else None,
                 languages=_language_names(
-                    (fetched or {}).get("language_codes") or [], entry["language"]
+                    fetched.language_codes if fetched else [], entry["language"]
                 ),
             )
         )
-    voices.extend(
-        _map_account_voice(voice) for voice in account if voice["voice_id"] not in VOICE_IDS
-    )
+    voices.extend(_map_account_voice(voice) for voice in account if voice.voice_id not in VOICE_IDS)
     listed = {v.voice_id for v in voices}
-    voices.extend(_map_shared_voice(voice) for voice in shared if voice["voice_id"] not in listed)
+    voices.extend(_map_shared_voice(voice) for voice in shared if voice.voice_id not in listed)
 
     starred_set = set(starred)
     for voice in voices:
@@ -211,10 +226,16 @@ async def list_voices(user_id: str) -> VoiceListResponse:
 async def get_starred_voice_ids(user_id: str) -> list[str]:
     """The user's starred voice ids, defaulting to the product starter set."""
     user = await user_repository.get(user_id)
-    stored = user.starred_voice_ids if user else None
-    if isinstance(stored, list):
-        return [v for v in stored if isinstance(v, str)]
-    return list(DEFAULT_STARRED_VOICE_IDS)
+    # Both absences are real: a missing user_id resolves to None, and a user who
+    # never starred anything has starred_voice_ids unset. The `is None` test says
+    # exactly that — the previous `isinstance(stored, list)` guard meant the same
+    # thing (the field is declared `list[str] | None`, so pydantic admits nothing
+    # else) but read as unreachable to mypy, which erases `| None` outside the
+    # strict-optional repository island.
+    stored: list[str] | None = user.starred_voice_ids if user else None
+    if stored is None:
+        return list(DEFAULT_STARRED_VOICE_IDS)
+    return [v for v in stored if isinstance(v, str)]
 
 
 async def set_voice_star(user_id: str, voice_id: str, starred: bool) -> list[str]:
@@ -239,7 +260,7 @@ async def set_user_voice(user_id: str, voice_id: str) -> str:
     otherwise-usable voices.
     """
     if voice_id not in await _known_voice_ids():
-        shared_ids = {v["voice_id"] for v in await get_shared_voices()}
+        shared_ids = {v.voice_id for v in await get_shared_voices()}
         if voice_id not in shared_ids:
             raise AppError(
                 message="Unknown voice",

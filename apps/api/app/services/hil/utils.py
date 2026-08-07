@@ -11,7 +11,7 @@ assistant's prose must never reach its own gate (see ``intent.py``).
 from dataclasses import dataclass
 import json
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.tools import BaseTool
@@ -23,6 +23,7 @@ from app.constants.hil import (
     HIL_JUDGE_MAX_PRIOR_CALLS,
     HIL_JUDGE_NONCE_BYTES,
 )
+from app.models.agent_models import AgentConfigurable, runtime_configurable
 from app.utils.general_utils import clip_text
 
 
@@ -48,38 +49,41 @@ class PriorCall:
 
 def unpack_tool_call(request: ToolCallRequest) -> GatedCall:
     """The pending call, whether the framework handed it over as a dict or an object."""
-    call = request.tool_call
+    # ToolCallRequest.tool_call is typed ToolCall (a dict), but dataclass fields
+    # aren't runtime-validated — some framework versions/call paths have handed
+    # this over as an object with .name/.id/.args instead. Widen to object so
+    # that branch stays a real, reachable fallback rather than dead code.
+    call = cast(object, request.tool_call)
     if isinstance(call, dict):
         return GatedCall(
             name=call.get("name", ""),
             id=call.get("id", ""),
             args=call.get("args", {}) or {},
         )
-    return GatedCall(name=call.name, id=call.id, args=call.args or {})
+    return GatedCall(
+        name=getattr(call, "name", ""),
+        id=getattr(call, "id", ""),
+        args=getattr(call, "args", None) or {},
+    )
 
 
 def tool_of(request: ToolCallRequest) -> BaseTool | None:
-    return getattr(request, "tool", None)
+    return cast("BaseTool | None", getattr(request, "tool", None))
 
 
 def tool_description(tool: BaseTool | None) -> str:
     return getattr(tool, "description", "") or ""
 
 
-def configurable_of(request: ToolCallRequest) -> dict[str, Any]:
-    """The run's ``configurable``, or an empty dict outside a graph."""
-    runtime = getattr(request, "runtime", None)
-    config = getattr(runtime, "config", {}) or {}
-    if not isinstance(config, dict):
-        return {}
-    configurable = config.get("configurable", {})
-    return configurable if isinstance(configurable, dict) else {}
+def configurable_of(request: ToolCallRequest) -> AgentConfigurable:
+    """The run's ``configurable``, under this module's HIL-facing vocabulary."""
+    return runtime_configurable(request)
 
 
 # --- reading the graph state -----------------------------------------------------------
 
 
-def current_tool_calls(state: Any) -> list[dict[str, Any]]:
+def current_tool_calls(state: object) -> list[dict[str, Any]]:
     """The tool calls of the AI message this node is executing (its last one).
 
     These are the pending call's *siblings* — what else the model asked for in the same
@@ -92,7 +96,7 @@ def current_tool_calls(state: Any) -> list[dict[str, Any]]:
     return []
 
 
-def prior_tool_calls(state: Any, exclude_id: str) -> list[PriorCall]:
+def prior_tool_calls(state: object, exclude_id: str) -> list[PriorCall]:
     """The tool calls this run already made, oldest first — names and args only.
 
     ``AIMessage.content`` (the assistant's prose) is deliberately never read: it is the
@@ -112,12 +116,12 @@ def prior_tool_calls(state: Any, exclude_id: str) -> list[PriorCall]:
     return calls[-HIL_JUDGE_MAX_PRIOR_CALLS:]
 
 
-def _messages_of(state: Any) -> list[Any]:
+def _messages_of(state: object) -> list[Any]:
     messages = _state_get(state, "messages")
     return messages if isinstance(messages, list) else []
 
 
-def _state_get(state: Any, key: str) -> Any:
+def _state_get(state: object, key: str) -> object:
     """Read a key from graph state, which may be a dict or a State model."""
     if isinstance(state, dict):
         return state.get(key)

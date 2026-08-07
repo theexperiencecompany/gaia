@@ -26,10 +26,16 @@ text as the executor's task message, where the same directives are parsed again
 and executed directly. One ``call_executor`` turn therefore stands in for every
 consecutive executor-tool directive.
 
+A tool directive's args are terminated by the JSON value itself, not by the
+first ``]]``, so args may contain a literal ``]]`` — including a whole nested
+directive, at any depth. That is what a hand-off script needs: the outer
+directive carries the next tier's script inside its ``task`` argument.
+
 Limitations (documented, not silently handled):
-- Directive JSON args must not contain a literal ``]]`` sequence (e.g. nested
-  ``[[...]]`` arrays); the closing delimiter would truncate the args and the
-  resulting invalid JSON fails loud as a ``DirectiveError``.
+- A ``[[say:…]]`` body is plain text and ends at the first ``]]``, so say text
+  cannot itself contain that sequence. Put nested scripts in tool args.
+- A directive opened but never closed raises ``DirectiveError`` rather than
+  being ignored — a truncated script must not degrade into the canned reply.
 - A single script should target one agent level. Mixing comms-only tools
   (``add_memory``/``search_memory``) with executor tools in one script is not
   supported, because forwarding replays the full script to the executor.
@@ -50,9 +56,11 @@ CALL_EXECUTOR_TOOL = "call_executor"
 # graph binds it, then emits the tool itself on the next invocation.
 RETRIEVE_TOOLS_TOOL = "retrieve_tools"
 
-# Non-greedy body capture up to the closing ``]]``. See the module limitation
-# note: a literal ``]]`` inside the body terminates the match early.
-_DIRECTIVE_RE = re.compile(r"\[\[(tool|say):(.*?)\]\]", re.DOTALL)
+_DIRECTIVE_OPEN_RE = re.compile(r"\[\[(tool|say):")
+_CLOSE = "]]"
+# Consumes exactly one JSON value and reports where it ended, so a ``]]`` inside
+# the value (a nested directive) cannot be mistaken for the closing delimiter.
+_JSON_DECODER = json.JSONDecoder()
 
 
 class DirectiveError(ValueError):
@@ -88,34 +96,67 @@ Response = ToolCallResponse | SayResponse
 
 
 def parse_directives(text: str) -> list[Directive]:
-    """Parse ordered directives out of a single message's text."""
+    """Parse ordered directives out of a single message's text.
+
+    Scans opener-first: each directive is consumed whole before the search for
+    the next one resumes, so an opener nested inside a directive's args is part
+    of those args and never starts a directive of its own.
+    """
     directives: list[Directive] = []
-    for kind, raw_body in _DIRECTIVE_RE.findall(text):
-        body = raw_body.strip()
-        if kind == "say":
-            directives.append(SayDirective(text=body))
-            continue
-        directives.append(_parse_tool_directive(body))
+    directive: Directive
+    pos = 0
+    while (opener := _DIRECTIVE_OPEN_RE.search(text, pos)) is not None:
+        if opener.group(1) == "say":
+            directive, pos = _scan_say(text, opener.end())
+        else:
+            directive, pos = _scan_tool(text, opener.end())
+        directives.append(directive)
     return directives
 
 
-def _parse_tool_directive(body: str) -> ToolDirective:
-    name, _, raw_args = body.partition(" ")
-    name = name.strip()
+def _skip_space(text: str, pos: int) -> int:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    return pos
+
+
+def _scan_say(text: str, start: int) -> tuple[SayDirective, int]:
+    """Say bodies are plain text: they end at the first ``]]``."""
+    end = text.find(_CLOSE, start)
+    if end < 0:
+        raise DirectiveError(f"unterminated say directive: [[say:{text[start : start + 60]}")
+    return SayDirective(text=text[start:end].strip()), end + len(_CLOSE)
+
+
+def _scan_tool(text: str, start: int) -> tuple[ToolDirective, int]:
+    """Tool args end where their JSON value ends, not at the first ``]]``."""
+    cursor = start
+    while cursor < len(text) and not text[cursor].isspace() and not text.startswith(_CLOSE, cursor):
+        cursor += 1
+    name = text[start:cursor]
     if not name:
-        raise DirectiveError(f"tool directive missing a name: [[tool:{body}]]")
-    raw_args = raw_args.strip() or "{}"
+        raise DirectiveError(f"tool directive missing a name: [[tool:{text[start : start + 60]}")
+
+    cursor = _skip_space(text, cursor)
+    if text.startswith(_CLOSE, cursor):
+        return ToolDirective(name=name, args={}), cursor + len(_CLOSE)
+
     try:
-        args = json.loads(raw_args)
+        args, cursor = _JSON_DECODER.raw_decode(text, cursor)
     except json.JSONDecodeError as exc:
         raise DirectiveError(
-            f"tool directive '{name}' has invalid JSON args: {raw_args!r} ({exc})"
+            f"tool directive '{name}' has invalid JSON args: {text[cursor : cursor + 120]!r} ({exc})"
         ) from exc
     if not isinstance(args, dict):
+        raise DirectiveError(f"tool directive '{name}' args must be a JSON object, got {args!r}")
+
+    cursor = _skip_space(text, cursor)
+    if not text.startswith(_CLOSE, cursor):
         raise DirectiveError(
-            f"tool directive '{name}' args must be a JSON object, got {raw_args!r}"
+            f"unterminated tool directive '{name}': expected ']]' after its JSON args, "
+            f"found {text[cursor : cursor + 60]!r}"
         )
-    return ToolDirective(name=name, args=args)
+    return ToolDirective(name=name, args=args), cursor + len(_CLOSE)
 
 
 def message_text(message: dict[str, Any]) -> str:

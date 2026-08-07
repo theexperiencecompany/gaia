@@ -43,6 +43,11 @@ import re
 from typing import Any
 from uuid import UUID
 
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg import AsyncCursor
+from psycopg.rows import TupleRow
+from psycopg_pool import AsyncConnectionPool
+
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.constants.general import (
     CHECKPOINT_EMPTY_BLOB_TYPE,
@@ -129,7 +134,7 @@ def _prune_ids_for_chain(
 
 
 async def _prune_thread_versions(
-    cur: Any, thread_id: str, ns: str, prune_ids: list[str]
+    cur: AsyncCursor[TupleRow], thread_id: str, ns: str, prune_ids: list[str]
 ) -> dict[str, int]:
     """Delete superseded ancestor checkpoints + their writes + orphaned blobs."""
     await cur.execute(
@@ -168,7 +173,9 @@ async def _prune_thread_versions(
     }
 
 
-async def sweep_orphan_threads(pool: Any, checkpointer: Any) -> dict[str, int]:
+async def sweep_orphan_threads(
+    pool: AsyncConnectionPool, checkpointer: AsyncPostgresSaver
+) -> dict[str, int]:
     """Delete every checkpoint thread whose conversation is gone from Mongo."""
     live_ids = await conversation_repository.all_conversation_ids()
     live_all = {str(c) for c in live_ids if c}
@@ -219,7 +226,9 @@ def _checkpoint_written_at(checkpoint_id: str) -> datetime | None:
     return _GREGORIAN_EPOCH + timedelta(microseconds=ticks / 10)
 
 
-async def sweep_stale_spawn_threads(pool: Any, checkpointer: Any) -> dict[str, int]:
+async def sweep_stale_spawn_threads(
+    pool: AsyncConnectionPool, checkpointer: AsyncPostgresSaver
+) -> dict[str, int]:
     """Delete spawned-subagent threads whose newest checkpoint has gone stale.
 
     A spawn's thread must outlive its own run: a later sibling tool call in the same
@@ -259,7 +268,7 @@ async def sweep_stale_spawn_threads(pool: Any, checkpointer: Any) -> dict[str, i
     }
 
 
-async def prune_thread_versions(pool: Any) -> dict[str, int]:
+async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
     """Prune superseded checkpoint versions across the busiest threads."""
     async with pool.connection() as conn, conn.cursor() as cur:
         await cur.execute(

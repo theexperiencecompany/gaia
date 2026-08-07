@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.models.feedback_models import MessageFeedbackRequest, MessageFeedbackResponse
+from app.models.user_models import AuthenticatedUser
 from app.services.feedback_service import create_message_feedback_service
 from shared.py.wide_events import log
 
@@ -24,7 +25,7 @@ router = APIRouter()
 async def submit_message_feedback(
     message_id: str,
     payload: MessageFeedbackRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> MessageFeedbackResponse:
     """Record a thumbs-up/down on an assistant reply owned by the caller."""
     user_id = user["user_id"]

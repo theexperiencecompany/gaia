@@ -31,6 +31,7 @@ from app.agents.core.background.session import (
     release_bg_integration,
 )
 from app.agents.core.background.subagent_runner import run_subagent_background
+from app.agents.core.graph_manager import CompiledAgentGraph
 from app.agents.core.subagents.provider_subagents import (
     SubagentUnavailableError,
     create_subagent_for_user,
@@ -56,7 +57,9 @@ from app.db.redis import get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.helpers.agent_helpers import build_agent_config
 from app.helpers.namespace_utils import derive_integration_namespace
-from app.models.hil_models import HILApprovalRecord
+from app.models.agent_models import AgentConfigurable, AgentUserContext, agent_configurable
+from app.models.hil_models import HILApprovalRecord, HILApprovalStatus
+from app.models.subagent_models import Subagent
 from app.services.connect_link_service import build_connect_link_url
 from app.services.hil.approvals_store import list_parked_subagents_for_conversation
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -67,6 +70,7 @@ from app.services.oauth.oauth_service import (
 from app.services.provider_metadata_service import get_provider_metadata
 from app.utils.agent_utils import (
     IntegrationMetadata,
+    StreamWriterCallable,
     format_subagent_end_event,
     format_subagent_start_event,
     parse_subagent_id,
@@ -77,7 +81,7 @@ from shared.py.wide_events import log
 SUBAGENTS_NAMESPACE = ("subagents",)
 
 
-def _extract_service_username(metadata: dict | None) -> str | None:
+def _extract_service_username(metadata: dict[str, Any] | None) -> str | None:
     if not metadata:
         return None
     for key in ("username", "login", "handle"):
@@ -146,7 +150,7 @@ async def check_integration_connection(
         return None
 
 
-async def _get_subagent_by_id(subagent_id: str):
+async def _get_subagent_by_id(subagent_id: str) -> Subagent | dict[str, Any] | None:
     """
     Get subagent by ID or short_name.
 
@@ -167,10 +171,10 @@ async def _get_subagent_by_id(subagent_id: str):
 
     # Check Redis cache for custom integrations
     cache_key = f"{SUBAGENT_CACHE_PREFIX}:{search_id}"
-    cached = await get_cache(cache_key)
+    cached: dict[str, Any] | None = await get_cache(cache_key)
     if cached is not None:
         # Return cached result (could be empty dict for negative cache)
-        return cached if cached else None
+        return cached or None
 
     # Search by integration_id (case-insensitive) or exact name
     custom = await integration_repository.find_by_id_prefix_or_name(search_id)
@@ -271,7 +275,7 @@ async def index_custom_mcp_as_subagent(
 async def _resolve_subagent(
     subagent_id: str,
     user_id: str | None,
-) -> tuple[object | None, str | None, str | None, bool]:
+) -> tuple[CompiledAgentGraph | None, str | None, str | None, bool]:
     """
     Resolve subagent from ID and get the graph.
 
@@ -427,7 +431,7 @@ def _resolve_display_metadata(
 async def prepare_subagent_execution(
     subagent_id: str,
     task: str,
-    configurable: dict,
+    configurable: AgentConfigurable,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, IntegrationMetadata | None, str | None]:
     """Resolve a subagent and build everything needed to execute it.
@@ -463,7 +467,7 @@ async def prepare_subagent_execution(
     thread_id = configurable.get("thread_id", "")
     subagent_thread_id = f"{integration_id}_{thread_id}"
 
-    user = {
+    user: AgentUserContext = {
         "user_id": user_id,
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
@@ -477,13 +481,9 @@ async def prepare_subagent_execution(
         agent_name=agent_name,
         subagent_id=agent_name,
     )
-    new_configurable = subagent_config.get("configurable", {})
+    new_configurable = agent_configurable(subagent_config)
 
-    system_message = await create_subagent_system_message(
-        integration_id=integration_id,
-        agent_name=agent_name,
-        user_id=user_id,
-    )
+    system_message = await create_subagent_system_message(integration_id=integration_id)
 
     # Avoid passing Gaia display name as a service username
     provider_meta = None
@@ -635,8 +635,8 @@ async def _has_parked_subagent(ctx: SubagentExecutionContext) -> bool:
 
 async def resume_parked_subagent(
     record: "HILApprovalRecord",
-    configurable: dict[str, Any],
-    stream_writer: Any,
+    configurable: AgentConfigurable,
+    stream_writer: StreamWriterCallable,
 ) -> SubagentOutcome:
     """Resume a HIL-parked background subagent with its decided approval.
 
@@ -654,7 +654,7 @@ async def resume_parked_subagent(
             text=f"Error resuming {agent_ref}: {int_id_or_error or 'subagent not resolvable'}"
         )
 
-    user = {
+    user: AgentUserContext = {
         "user_id": record.user_id,
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
@@ -671,7 +671,7 @@ async def resume_parked_subagent(
         subagent_graph=graph,
         agent_name=agent_name,
         config=subagent_config,
-        configurable=subagent_config.get("configurable", {}),
+        configurable=agent_configurable(subagent_config),
         integration_id=int_id_or_error,
         initial_state={},
         user_id=record.user_id,
@@ -697,15 +697,15 @@ async def resume_parked_subagent(
     )
 
 
-def _subagent_resume_status(status: str) -> str:
+def _subagent_resume_status(status: HILApprovalStatus) -> HILApprovalStatus:
     """Map a record's terminal status onto the gate's resumable statuses.
 
     ``abandoned`` resumes as a denial — the gate accepts only
     approved/denied/timeout, and abandonment means "do not act."
     """
-    if status in ("approved", "timeout"):
+    if status in (HILApprovalStatus.APPROVED, HILApprovalStatus.TIMEOUT):
         return status
-    return "denied"
+    return HILApprovalStatus.DENIED
 
 
 @tool
@@ -746,7 +746,7 @@ async def handoff(
         background: If True, run non-blocking and return immediately
     """
     try:
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
 
         # Fallback: try to get user_id from metadata if not in configurable

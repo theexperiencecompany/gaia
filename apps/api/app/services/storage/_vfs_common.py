@@ -18,13 +18,17 @@ and safe to reference from anywhere in ``app.services.storage``.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime
 import hashlib
 import json
 from pathlib import Path
 import re
 import shutil
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from _typeshed import ExcInfo
 
 # --- Filenames every materializer agrees on ---------------------------------
 
@@ -65,8 +69,13 @@ def slugify(title: str | None) -> str:
 
 
 def short_id(doc_id: str) -> str:
-    """First 8 hex chars of the ObjectId — sufficient within a user's set."""
-    return doc_id[:SHORTID_LEN]
+    """Last 8 hex chars of the ObjectId — the tail, not the timestamp head.
+
+    An ObjectId opens with a 4-byte timestamp, so the head is identical for
+    every doc minted in the same second and two same-second docs with alike
+    titles collapsed into one folder.
+    """
+    return doc_id[-SHORTID_LEN:]
 
 
 def folder_name(doc_id: str, title: str | None) -> str:
@@ -146,7 +155,7 @@ def prune_per_doc_markers(per_doc_dir: Path, active_ids: set[str]) -> None:
 # ====================================================================
 
 
-def _force_remove(func: Any, path: str, _exc_info: Any) -> None:
+def _force_remove(func: Callable[..., Any], path: str, _exc_info: ExcInfo) -> None:
     """``shutil.rmtree`` ``onerror`` hook: chmod target writable then retry.
 
     POSIX requires write permission on the file itself (not just the

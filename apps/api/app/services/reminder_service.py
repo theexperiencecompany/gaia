@@ -94,7 +94,7 @@ class ReminderScheduler(BaseSchedulerService):
         log.info(f"Created and scheduled reminder {reminder_id} for {created.scheduled_at}")
         return reminder_id
 
-    async def update_reminder(self, reminder_id: str, update_data: dict, user_id: str) -> bool:
+    async def update_reminder(self, reminder_id: str, update: ReminderUpdate, user_id: str) -> bool:
         """Update an existing reminder, rescheduling if scheduled_at changed.
 
         Returns True when a matching reminder was found. (The prior direct-Mongo path
@@ -104,21 +104,19 @@ class ReminderScheduler(BaseSchedulerService):
         """
         log.set(reminder_id=reminder_id, reminder_user_id=user_id)
 
-        updated = await reminder_repository.update_for_user(
-            reminder_id, user_id, ReminderUpdate(**update_data)
-        )
+        updated = await reminder_repository.update_for_user(reminder_id, user_id, update)
         if updated is None:
             return False
 
         log.info(f"Updated reminder {reminder_id}")
 
-        # If scheduled_at was updated, reschedule the task
-        if "scheduled_at" in update_data and "status" in update_data:
-            if update_data["status"] == ReminderStatus.SCHEDULED:
-                scheduled_at = update_data["scheduled_at"]
-                if isinstance(scheduled_at, str):
-                    scheduled_at = datetime.fromisoformat(scheduled_at)
-                await self.reschedule_task(reminder_id, new_scheduled_at=scheduled_at)
+        # If scheduled_at was updated, reschedule the task. ``model_fields_set``
+        # is what the old dict's `"key" in update_data` checked — a field the
+        # caller never touched must not trigger a reschedule.
+        touched = update.model_fields_set
+        if "scheduled_at" in touched and "status" in touched:
+            if update.status == ReminderStatus.SCHEDULED and update.scheduled_at is not None:
+                await self.reschedule_task(reminder_id, new_scheduled_at=update.scheduled_at)
 
         return True
 
@@ -128,13 +126,11 @@ class ReminderScheduler(BaseSchedulerService):
         status: ReminderStatus | None = None,
         limit: int = 100,
         skip: int = 0,
-    ) -> list[ReminderModel]:
+    ) -> list[ReminderDocument]:
         """List reminders for a user, optionally filtered by status."""
-        results: list[ReminderModel] = []
-        results.extend(
-            await reminder_repository.list_for_user(user_id, status=status, limit=limit, skip=skip)
+        return await reminder_repository.list_for_user(
+            user_id, status=status, limit=limit, skip=skip
         )
-        return results
 
     async def get_reminder(self, task_id: str, user_id: str | None = None) -> ReminderModel | None:
         """Get a reminder by ID."""

@@ -16,6 +16,7 @@ from app.agents.tools.coding._context import get_session_id, get_user_id
 from app.agents.workspace.paths import session_screenshot_relpath
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.desktop.bridge import DesktopToolOutcome, request_desktop_action
 from app.services.storage import write_session_file
@@ -48,7 +49,7 @@ async def _run_desktop_action(
     Returns an error string (for the LLM) when the conversation is not a
     desktop session or the stream context is missing.
     """
-    configurable = config.get("configurable", {})
+    configurable = agent_configurable(config)
     source = ConversationSource.coerce(configurable.get("conversation_source"))
     if source is not ConversationSource.DESKTOP:
         log.warning(f"{LogTag.TOOL} Desktop tool '{tool_name}' refused for source '{source}'")

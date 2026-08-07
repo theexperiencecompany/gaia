@@ -76,9 +76,9 @@ class TestLinkAccount:
 
         result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord456")
 
-        assert result["status"] == "linked"
-        assert result["platform_user_id"] == "discord456"
-        assert result["is_new_link"] is True
+        assert result.status == "linked"
+        assert result.platform_user_id == "discord456"
+        assert result.is_new_link is True
 
     async def test_link_with_profile_builds_link_value(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
@@ -132,8 +132,8 @@ class TestLinkAccount:
 
         result = await PlatformLinkService.link_account(sample_user_id, "discord", "discord123")
 
-        assert result["status"] == "linked"
-        assert result["is_new_link"] is False
+        assert result.status == "linked"
+        assert result.is_new_link is False
 
     async def test_stringifies_platform_user_id(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(id=sample_user_id, platform_links={})
@@ -141,7 +141,7 @@ class TestLinkAccount:
 
         result = await PlatformLinkService.link_account(sample_user_id, "telegram", 12345)
 
-        assert result["platform_user_id"] == "12345"
+        assert result.platform_user_id == "12345"
 
     async def test_legacy_non_dict_link_ignored(self, mock_repo, sample_user_id):
         mock_repo.get.return_value = _user(
@@ -151,7 +151,7 @@ class TestLinkAccount:
 
         result = await PlatformLinkService.link_account(sample_user_id, "discord", "new_id")
 
-        assert result["status"] == "linked"
+        assert result.status == "linked"
 
 
 @pytest.mark.unit
@@ -161,7 +161,8 @@ class TestUnlinkAccount:
 
         result = await PlatformLinkService.unlink_account(sample_user_id, "discord")
 
-        assert result == {"status": "disconnected", "platform": "discord"}
+        assert result.status == "disconnected"
+        assert result.platform == "discord"
         mock_repo.unlink_platform.assert_awaited_once_with(sample_user_id, "discord")
 
     async def test_raises_on_user_not_found(self, mock_repo, sample_user_id):

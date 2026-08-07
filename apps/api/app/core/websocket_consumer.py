@@ -5,7 +5,12 @@ WebSocket event consumer for processing RabbitMQ messages in the main app.
 import json
 
 from aio_pika import connect_robust
-from aio_pika.abc import AbstractIncomingMessage
+from aio_pika.abc import (
+    AbstractChannel,
+    AbstractIncomingMessage,
+    AbstractQueue,
+    AbstractRobustConnection,
+)
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -16,11 +21,11 @@ from shared.py.wide_events import log
 class WebSocketEventConsumer:
     """Consumer for WebSocket broadcast events from RabbitMQ"""
 
-    def __init__(self):
-        self.connection = None
-        self.channel = None
-        self.queue = None
-        self.consumer_tag = None
+    def __init__(self) -> None:
+        self.connection: AbstractRobustConnection | None = None
+        self.channel: AbstractChannel | None = None
+        self.queue: AbstractQueue | None = None
+        self.consumer_tag: str | None = None
 
     async def start(self) -> None:
         """Start the WebSocket event consumer"""

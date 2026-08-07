@@ -9,9 +9,9 @@ import redis.asyncio as aioredis
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     TieredRateLimiter,
-    tiered_rate_limit,
 )
-from app.config.rate_limits import RateLimitPeriod
+from app.config.rate_limits import FeatureInfo, RateLimitPeriod
+from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 
 
@@ -379,7 +379,7 @@ class TestCollectFeatureUsage:
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.get_feature_info",
-        return_value={"title": "Chat"},
+        return_value=FeatureInfo(title="Chat", description="Chat messages"),
     )
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch(
@@ -484,8 +484,8 @@ class TestCollectFeatureUsage:
 
 @pytest.mark.asyncio
 class TestTieredRateLimitDecorator:
-    @patch("app.api.v1.middleware.tiered_rate_limiter.tiered_limiter")
-    @patch("app.api.v1.middleware.tiered_rate_limiter.payment_service")
+    @patch("app.decorators.rate_limiting.tiered_limiter")
+    @patch("app.decorators.rate_limiting.payment_service")
     async def test_decorator_with_user_in_kwargs(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:
@@ -502,8 +502,8 @@ class TestTieredRateLimitDecorator:
         assert result == "ok"
         mock_limiter.check_and_increment.assert_called_once()
 
-    @patch("app.api.v1.middleware.tiered_rate_limiter.tiered_limiter")
-    @patch("app.api.v1.middleware.tiered_rate_limiter.payment_service")
+    @patch("app.decorators.rate_limiting.tiered_limiter")
+    @patch("app.decorators.rate_limiting.payment_service")
     async def test_decorator_with_user_in_args(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:
@@ -527,7 +527,7 @@ class TestTieredRateLimitDecorator:
         result = await my_endpoint()
         assert result == "ok"
 
-    @patch("app.api.v1.middleware.tiered_rate_limiter.payment_service")
+    @patch("app.decorators.rate_limiting.payment_service")
     async def test_decorator_raises_401_when_no_user_id(self, mock_pay: MagicMock) -> None:
         from fastapi import HTTPException
 
@@ -547,8 +547,8 @@ class TestTieredRateLimitDecorator:
         assert hasattr(my_endpoint, "_rate_limit_metadata")
         assert my_endpoint._rate_limit_metadata["feature_key"] == "file_upload"
 
-    @patch("app.api.v1.middleware.tiered_rate_limiter.tiered_limiter")
-    @patch("app.api.v1.middleware.tiered_rate_limiter.payment_service")
+    @patch("app.decorators.rate_limiting.tiered_limiter")
+    @patch("app.decorators.rate_limiting.payment_service")
     async def test_decorator_defaults_to_free_plan(
         self, mock_pay: MagicMock, mock_limiter: MagicMock
     ) -> None:

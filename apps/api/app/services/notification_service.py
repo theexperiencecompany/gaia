@@ -1,5 +1,3 @@
-from typing import Any
-
 from fastapi import Request
 
 from app.models.notification.notification_models import (
@@ -10,6 +8,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
+    NotificationView,
 )
 from app.utils.notification.actions import (
     ActionHandler,
@@ -22,7 +21,7 @@ from app.utils.notification.orchestrator import NotificationOrchestrator
 class NotificationService:
     """Main notification service - facade for the entire system"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.orchestrator = NotificationOrchestrator()
 
     # Expose orchestrator methods
@@ -52,7 +51,8 @@ class NotificationService:
         channel_type: str | None = None,
         notification_type: NotificationType | None = None,
         source: NotificationSourceEnum | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[NotificationView]:
+        """A user's notifications, flattened for API/tool consumers."""
         return await self.orchestrator.get_user_notifications(
             user_id,
             status,
@@ -63,7 +63,7 @@ class NotificationService:
             source,
         )
 
-    async def get_notification(self, notification_id: str, user_id: str) -> dict[str, Any] | None:
+    async def get_notification(self, notification_id: str, user_id: str) -> NotificationView | None:
         """Get a specific notification by ID for a user"""
         return await self.orchestrator.get_notification(
             notification_id=notification_id,

@@ -34,8 +34,23 @@ from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.db.repositories.base import MongoRepository, cached_query
 from app.db.repositories.cache import CachePolicy
-from app.models.user_models import OnboardingPhase, UserDocument, UserUpdate
+from app.models.onboarding_models import (
+    ClarifyAnswerRecord,
+    PersistedTriageSummary,
+    SocialProfile,
+    WritingStyleExampleBlocks,
+)
+from app.models.user_models import (
+    BioStatus,
+    OnboardingPhase,
+    OnboardingPreferences,
+    PlatformLinkRecord,
+    UserDocument,
+    UserUpdate,
+)
 from shared.py.wide_events import log
+
+_SOCIAL_PROFILES_FIELD = "onboarding.social_profiles"
 
 
 class UserRepository(MongoRepository[UserDocument, UserUpdate]):
@@ -176,15 +191,15 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         self,
         user_id: str,
         *,
-        phase: str,
-        bio_status: str,
+        phase: OnboardingPhase,
+        bio_status: BioStatus,
         pipeline_mode: str,
-        preferences: dict[str, object],
+        preferences: OnboardingPreferences,
         name: str | None = None,
         timezone: str | None = None,
         completed_at: datetime | None = None,
         focus: str | None = None,
-        clarify_answers: list[dict[str, object]] | None = None,
+        clarify_answers: list[ClarifyAnswerRecord] | None = None,
         selected_integrations: list[str] | None = None,
     ) -> UserDocument | None:
         """Atomically create the ``onboarding`` subdocument (gated on its absence).
@@ -199,7 +214,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             "onboarding.completed_at": completed_at or now,
             "onboarding.phase": phase,
             "onboarding.bio_status": bio_status,
-            "onboarding.preferences": preferences,
+            "onboarding.preferences": preferences.model_dump(),
             "onboarding.pipeline_mode": pipeline_mode,
         }
         if name is not None:
@@ -228,10 +243,13 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def update_onboarding_preferences(
-        self, user_id: str, preferences_patch: dict[str, object]
+        self, user_id: str, preferences: OnboardingPreferences
     ) -> UserDocument | None:
+        """PATCH ``onboarding.preferences`` — only the fields the caller actually
+        set are written, each at its own dotted path, so a partial save from one
+        settings surface cannot clobber a field owned by another."""
         set_fields: dict[str, object] = {}
-        for field, value in preferences_patch.items():
+        for field, value in preferences.model_dump(exclude_unset=True).items():
             set_fields[f"onboarding.preferences.{field}"] = value
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)}, {"$set": set_fields}, scope=REPO_GLOBAL_SCOPE
@@ -256,7 +274,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     # ---------------------------------------------------- intelligence writes
 
-    async def set_onboarding_phase(self, user_id: str, phase: str) -> bool:
+    async def set_onboarding_phase(self, user_id: str, phase: OnboardingPhase) -> bool:
         """Set ``onboarding.phase``; returns whether the user existed (for a 404)."""
         updated = await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
@@ -267,7 +285,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return updated is not None
 
     async def set_pipeline_completion(
-        self, user_id: str, *, phase: str, conversation_id: str | None = None
+        self, user_id: str, *, phase: OnboardingPhase, conversation_id: str | None = None
     ) -> None:
         set_fields: dict[str, object] = {"onboarding.phase": phase}
         if conversation_id is not None:
@@ -363,18 +381,18 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def set_social_profiles_if_unset(
-        self, user_id: str, profiles: list[dict[str, object]]
+        self, user_id: str, profiles: list[SocialProfile]
     ) -> None:
         """Persist social profiles only if not already set (idempotent first-write)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.social_profiles": profiles}},
+            {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
             scope=REPO_GLOBAL_SCOPE,
             extra_filter={
                 "$or": [
-                    {"onboarding.social_profiles": {"$exists": False}},
-                    {"onboarding.social_profiles": None},
-                    {"onboarding.social_profiles": []},
+                    {_SOCIAL_PROFILES_FIELD: {"$exists": False}},
+                    {_SOCIAL_PROFILES_FIELD: None},
+                    {_SOCIAL_PROFILES_FIELD: []},
                 ]
             },
             return_document=False,
@@ -385,16 +403,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         user_id: str,
         *,
         writing_style_summary: str | None = None,
-        writing_style_example: dict[str, object] | None = None,
-        triage_summary: dict[str, object] | None = None,
+        writing_style_example: WritingStyleExampleBlocks | None = None,
+        triage_summary: PersistedTriageSummary | None = None,
     ) -> None:
         set_fields: dict[str, object] = {}
         if writing_style_summary is not None:
             set_fields["onboarding.writing_style.summary"] = writing_style_summary
         if writing_style_example is not None:
-            set_fields["onboarding.writing_style.example"] = writing_style_example
+            set_fields["onboarding.writing_style.example"] = writing_style_example.model_dump()
         if triage_summary is not None:
-            set_fields["onboarding.triage_summary"] = triage_summary
+            set_fields["onboarding.triage_summary"] = triage_summary.model_dump()
         if not set_fields:
             return
         await self._apply_raw_update(
@@ -404,7 +422,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_bio_status(self, user_id: str, bio_status: str) -> None:
+    async def set_bio_status(self, user_id: str, bio_status: BioStatus) -> None:
         """Update the onboarding bio-generation status (e.g. back to processing on a
         post-onboarding Gmail reconnect)."""
         await self._apply_raw_update(
@@ -423,11 +441,11 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def set_social_profiles(self, user_id: str, profiles: list[dict[str, object]]) -> None:
+    async def set_social_profiles(self, user_id: str, profiles: list[SocialProfile]) -> None:
         """Overwrite the stored social profiles (user-confirmed selection)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"onboarding.social_profiles": profiles}},
+            {"$set": {_SOCIAL_PROFILES_FIELD: [p.model_dump() for p in profiles]}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )
@@ -439,7 +457,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         house: str,
         personality_phrase: str,
         user_bio: str,
-        bio_status: str,
+        bio_status: BioStatus,
         account_number: int,
         member_since: str,
         overlay_color: str,
@@ -631,7 +649,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     # ------------------------------------------------------- platform linking
 
     async def link_platform(
-        self, user_id: str, platform: str, link: dict[str, object], connected_at: str
+        self, user_id: str, platform: str, link: PlatformLinkRecord, connected_at: str
     ) -> UserDocument | None:
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},

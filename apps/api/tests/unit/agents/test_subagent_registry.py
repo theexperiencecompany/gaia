@@ -129,6 +129,16 @@ def _clear_registry_cache() -> None:
     all_subagents.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _restore_real_registry_after_each_test():
+    """Without this, a test that patches OAUTH_INTEGRATIONS/BUILTIN_SUBAGENTS and
+    populates the cache under the patch leaves that fake result cached for the
+    rest of the process — every other test in the suite that calls
+    all_subagents()/get_subagent_by_id() afterward would see the fake data."""
+    yield
+    all_subagents.cache_clear()
+
+
 # ---------------------------------------------------------------------------
 # all_subagents — OAuth-derived filtering
 # ---------------------------------------------------------------------------

@@ -121,6 +121,7 @@ postman/
 
 .agents/plans/
 .agents/recording/
+.agents/sim/
 
 # whatsapp-web.js
 .wwebjs_auth/

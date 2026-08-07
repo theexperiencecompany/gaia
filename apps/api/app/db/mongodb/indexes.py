@@ -11,7 +11,9 @@ Index Strategy:
 """
 
 import asyncio
+from typing import Any
 
+from motor.motor_asyncio import AsyncIOMotorCollection
 from pymongo.errors import OperationFailure
 
 from app.constants.log_tags import LogTag
@@ -19,8 +21,13 @@ from app.db.mongodb.collections import get_async_collection
 from app.db.repositories.integrations import integration_repository
 from shared.py.wide_events import log
 
+# Mirrors pymongo's private `_IndexKeyHint` (pymongo.operations) — the shape
+# every `create_index` call in this module actually passes: a single field
+# name, or an ordered list of (field, direction | "text") pairs.
+IndexKeys = str | list[tuple[str, int | str]]
 
-async def create_all_indexes():
+
+async def create_all_indexes() -> None:
     """Create all database indexes. Called during application startup."""
     try:
         log.set(db={"operation": "create_indexes", "collection": "all"})
@@ -116,7 +123,7 @@ async def create_all_indexes():
         raise
 
 
-async def create_user_indexes():
+async def create_user_indexes() -> None:
     """Create indexes for users collection."""
     users_collection = get_async_collection("users")
     try:
@@ -145,7 +152,7 @@ async def create_user_indexes():
         raise
 
 
-async def create_conversation_indexes():
+async def create_conversation_indexes() -> None:
     """Create indexes for conversations collection."""
     conversations_collection = get_async_collection("conversations")
     try:
@@ -170,7 +177,7 @@ async def create_conversation_indexes():
         raise
 
 
-async def create_todo_indexes():
+async def create_todo_indexes() -> None:
     """Create indexes for todos collection."""
     todos_collection = get_async_collection("todos")
     try:
@@ -236,7 +243,7 @@ async def create_todo_indexes():
         raise
 
 
-async def create_project_indexes():
+async def create_project_indexes() -> None:
     """Create indexes for projects collection."""
     projects_collection = get_async_collection("projects")
     try:
@@ -255,7 +262,7 @@ async def create_project_indexes():
         raise
 
 
-async def create_note_indexes():
+async def create_note_indexes() -> None:
     """Create indexes for notes collection."""
     notes_collection = get_async_collection("notes")
     try:
@@ -276,7 +283,7 @@ async def create_note_indexes():
         raise
 
 
-async def create_file_indexes():
+async def create_file_indexes() -> None:
     """Create indexes for files collection."""
     files_collection = get_async_collection("files")
     try:
@@ -297,7 +304,7 @@ async def create_file_indexes():
         raise
 
 
-async def create_mail_indexes():
+async def create_mail_indexes() -> None:
     """Create indexes for mail collection."""
     mail_collection = get_async_collection("mail")
     try:
@@ -314,7 +321,7 @@ async def create_mail_indexes():
         raise
 
 
-async def create_calendar_indexes():
+async def create_calendar_indexes() -> None:
     """Create indexes for calendar collection."""
     calendars_collection = get_async_collection("calendar")
     try:
@@ -333,7 +340,7 @@ async def create_calendar_indexes():
         raise
 
 
-async def create_blog_indexes():
+async def create_blog_indexes() -> None:
     """Create indexes for blog collection."""
     blog_collection = get_async_collection("blog")
     try:
@@ -356,7 +363,7 @@ async def create_blog_indexes():
         raise
 
 
-async def create_notification_indexes():
+async def create_notification_indexes() -> None:
     """Create indexes for notifications collection."""
     notifications_collection = get_async_collection("notifications")
     try:
@@ -377,7 +384,7 @@ async def create_notification_indexes():
         raise
 
 
-async def create_reminder_indexes():
+async def create_reminder_indexes() -> None:
     """Create indexes for the reminders collection."""
     reminders_collection = get_async_collection("reminders")
     try:
@@ -395,7 +402,7 @@ async def create_reminder_indexes():
         raise
 
 
-async def create_workflow_indexes():
+async def create_workflow_indexes() -> None:
     """Create indexes for workflows collection for optimal query performance."""
     workflows_collection = get_async_collection("workflows")
     try:
@@ -495,7 +502,7 @@ async def create_workflow_indexes():
         raise
 
 
-async def create_workflow_execution_indexes():
+async def create_workflow_execution_indexes() -> None:
     """Create indexes for workflow_executions collection."""
     workflow_executions_collection = get_async_collection("workflow_executions")
     try:
@@ -512,7 +519,7 @@ async def create_workflow_execution_indexes():
         raise
 
 
-async def create_payment_indexes():
+async def create_payment_indexes() -> None:
     """Create indexes for payment-related collections."""
     payments_collection = get_async_collection("payments")
     plans_collection = get_async_collection("subscription_plans")
@@ -547,7 +554,7 @@ async def create_payment_indexes():
         raise
 
 
-async def create_processed_webhook_indexes():
+async def create_processed_webhook_indexes() -> None:
     """
     Create indexes for processed_webhooks collection for idempotency.
 
@@ -570,7 +577,7 @@ async def create_processed_webhook_indexes():
         raise
 
 
-async def create_usage_indexes():
+async def create_usage_indexes() -> None:
     """
     Create indexes for usage_snapshots collection for optimal query performance.
     Includes TTL index for automatic cleanup after 90 days.
@@ -610,7 +617,7 @@ async def create_usage_indexes():
         raise
 
 
-async def create_ai_models_indexes():
+async def create_ai_models_indexes() -> None:
     """
     Create indexes for ai_models collection for optimal query performance.
 
@@ -647,7 +654,9 @@ async def create_ai_models_indexes():
         raise
 
 
-async def _create_index_safe(collection, keys, **kwargs):
+async def _create_index_safe(
+    collection: AsyncIOMotorCollection[dict[str, Any]], keys: IndexKeys, **kwargs: Any
+) -> None:
     """
     Create an index safely, handling IndexOptionsConflict gracefully.
 
@@ -665,7 +674,7 @@ async def _create_index_safe(collection, keys, **kwargs):
         raise
 
 
-async def create_integration_indexes():
+async def create_integration_indexes() -> None:
     """
     Create indexes for integrations collection.
 
@@ -773,7 +782,7 @@ async def _backfill_integration_slugs() -> None:
         log.warning(f"{LogTag.MONGO} Slug backfill failed (non-fatal): {e}")
 
 
-async def create_user_integration_indexes():
+async def create_user_integration_indexes() -> None:
     """
     Create indexes for user_integrations collection.
 
@@ -817,7 +826,7 @@ async def create_user_integration_indexes():
         raise
 
 
-async def create_integration_instructions_indexes():
+async def create_integration_instructions_indexes() -> None:
     """
     Create indexes for integration_instructions collection.
 
@@ -839,7 +848,7 @@ async def create_integration_instructions_indexes():
         raise
 
 
-async def create_device_token_indexes():
+async def create_device_token_indexes() -> None:
     """Create indexes for device_tokens collection for push notifications."""
     device_tokens_collection = get_async_collection("device_tokens")
     try:
@@ -857,7 +866,7 @@ async def create_device_token_indexes():
         raise
 
 
-async def create_bot_session_indexes():
+async def create_bot_session_indexes() -> None:
     """Create indexes for bot_sessions collection for optimal query performance and automatic cleanup."""
     bot_sessions_collection = get_async_collection("bot_sessions")
     try:

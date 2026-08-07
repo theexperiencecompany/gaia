@@ -13,6 +13,7 @@ from app.models.reminder_models import (
     ReminderDocument,
     ReminderModel,
     ReminderStatus,
+    ReminderUpdate,
     StaticReminderPayload,
 )
 from app.models.scheduler_models import (
@@ -262,7 +263,7 @@ class TestUpdateReminder:
         mock_repo.update_for_user.return_value = _reminder_document()
 
         result = await scheduler.update_reminder(
-            str(ObjectId()), {"status": ReminderStatus.SCHEDULED}, FAKE_USER_ID
+            str(ObjectId()), ReminderUpdate(status=ReminderStatus.SCHEDULED), FAKE_USER_ID
         )
 
         assert result is True
@@ -271,7 +272,7 @@ class TestUpdateReminder:
         mock_repo.update_for_user.return_value = None
 
         result = await scheduler.update_reminder(
-            str(ObjectId()), {"status": ReminderStatus.COMPLETED}, FAKE_USER_ID
+            str(ObjectId()), ReminderUpdate(status=ReminderStatus.COMPLETED), FAKE_USER_ID
         )
 
         assert result is False
@@ -282,10 +283,10 @@ class TestUpdateReminder:
         _, m_reschedule = mock_scheduler_base
         mock_repo.update_for_user.return_value = _reminder_document()
 
-        future_iso = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
-        update_data = {"scheduled_at": future_iso, "status": ReminderStatus.SCHEDULED}
+        future = datetime.now(UTC) + timedelta(hours=2)
+        update = ReminderUpdate(scheduled_at=future, status=ReminderStatus.SCHEDULED)
 
-        result = await scheduler.update_reminder(str(ObjectId()), update_data, FAKE_USER_ID)
+        result = await scheduler.update_reminder(str(ObjectId()), update, FAKE_USER_ID)
 
         assert result is True
         m_reschedule.assert_called_once()
@@ -297,10 +298,11 @@ class TestUpdateReminder:
         _, m_reschedule = mock_scheduler_base
         mock_repo.update_for_user.return_value = _reminder_document()
 
-        future_iso = (datetime.now(UTC) + timedelta(hours=2)).isoformat()
-        update_data = {"scheduled_at": future_iso}
+        future = datetime.now(UTC) + timedelta(hours=2)
 
-        await scheduler.update_reminder(str(ObjectId()), update_data, FAKE_USER_ID)
+        await scheduler.update_reminder(
+            str(ObjectId()), ReminderUpdate(scheduled_at=future), FAKE_USER_ID
+        )
 
         m_reschedule.assert_not_called()
 
@@ -310,7 +312,9 @@ class TestUpdateReminder:
         mock_repo.update_for_user.return_value = _reminder_document()
 
         oid = str(ObjectId())
-        await scheduler.update_reminder(oid, {"status": ReminderStatus.SCHEDULED}, FAKE_USER_ID)
+        await scheduler.update_reminder(
+            oid, ReminderUpdate(status=ReminderStatus.SCHEDULED), FAKE_USER_ID
+        )
 
         args = mock_repo.update_for_user.call_args.args
         assert args[0] == oid and args[1] == FAKE_USER_ID

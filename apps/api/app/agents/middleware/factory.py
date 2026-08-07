@@ -3,8 +3,8 @@ subagents). Centralized here so build_graph.py and base_subagent.py share one
 configuration."""
 
 from collections.abc import Mapping
-from typing import Any
 
+from langchain.agents.middleware.summarization import ContextSize
 from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
@@ -33,6 +33,7 @@ from app.constants.summarization import (
     SUMMARIZATION_KEEP_TOKENS,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
+from app.models.agent_models import AgentMiddlewareStack
 from shared.py.wide_events import log
 
 # Coding tools operate on the persistent E2B workspace; their outputs are
@@ -93,8 +94,8 @@ def create_middleware_stack(
     subagent_excluded_tools: set[str] | None = None,
     subagent_tool_space: str = "general",
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
-    summarization_trigger: tuple = ("fraction", SUMMARIZATION_TRIGGER_FRACTION),
-    summarization_keep: tuple = ("tokens", SUMMARIZATION_KEEP_TOKENS),
+    summarization_trigger: ContextSize = ("fraction", SUMMARIZATION_TRIGGER_FRACTION),
+    summarization_keep: ContextSize = ("tokens", SUMMARIZATION_KEEP_TOKENS),
     compaction_threshold: float = COMPACTION_THRESHOLD,
     max_output_chars: int = MAX_OUTPUT_CHARS,
     enable_archive: bool = True,
@@ -103,7 +104,7 @@ def create_middleware_stack(
     enable_loop_guard: bool = True,
     loop_guard_hard_stop: bool = LOOP_GUARD_HARD_STOP,
     enable_subagent_join: bool = False,
-) -> list[Any]:
+) -> AgentMiddlewareStack:
     """
     Create the standard middleware stack for agents.
 
@@ -135,7 +136,7 @@ def create_middleware_stack(
     Returns:
         List of AgentMiddleware instances in execution order
     """
-    middleware: list[Any] = []
+    middleware: AgentMiddlewareStack = []
 
     # LLM accounting middleware — emits `llm_call` wide events + recursion
     # high-water-mark signals. Inserted FIRST so it observes every model call
@@ -244,7 +245,7 @@ def create_executor_middleware(
     subagent_registry: Mapping[str, BaseTool] | None = None,
     subagent_excluded_tools: set[str] | None = None,
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
-) -> list[Any]:
+) -> AgentMiddlewareStack:
     """
     Create middleware stack for the executor agent.
 
@@ -281,7 +282,7 @@ def create_executor_middleware(
     )
 
 
-def create_comms_middleware() -> list[Any]:
+def create_comms_middleware() -> AgentMiddlewareStack:
     """Create the middleware stack for the comms agent.
 
     Comms delegates all real work to the executor, so it only gets summarization.
@@ -304,7 +305,7 @@ def create_subagent_middleware(
     subagent_tool_space: str = "general",
     subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
     enable_subagent: bool = True,
-) -> list[Any]:
+) -> AgentMiddlewareStack:
     """
     Create middleware stack for provider subagents.
 

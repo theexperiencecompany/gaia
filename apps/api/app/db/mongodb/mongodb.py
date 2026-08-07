@@ -1,8 +1,9 @@
 from datetime import UTC
 from functools import lru_cache
 import sys
+from typing import Any
 
-from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorCollection, AsyncIOMotorDatabase
 import pymongo
 from pymongo.server_api import ServerApi
 
@@ -16,8 +17,8 @@ class MongoDB:
     A class to manage the MongoDB connection using Motor.
     """
 
-    client: AsyncIOMotorClient
-    database: AsyncIOMotorDatabase
+    client: AsyncIOMotorClient[dict[str, Any]]
+    database: AsyncIOMotorDatabase[dict[str, Any]]
 
     def __init__(self, uri: str | None, db_name: str):
         """
@@ -52,16 +53,18 @@ class MongoDB:
             log.error(f"{LogTag.MONGO} An error occurred while connecting to MongoDB: {e}")
             sys.exit(1)
 
-    def ping(self):
+    def ping(self) -> None:
         try:
             # Use the same URI that was used to initialize the async client
-            sync_client = pymongo.MongoClient(settings.MONGO_DB)
+            sync_client: pymongo.MongoClient[dict[str, Any]] = pymongo.MongoClient(
+                settings.MONGO_DB
+            )
             sync_client.admin.command("ping")
             sync_client.close()
         except Exception as e:
             log.error(f"{LogTag.MONGO} Ping failed: {e}")
 
-    async def _initialize_indexes(self):
+    async def _initialize_indexes(self) -> None:
         try:
             log.info(f"{LogTag.MONGO} Initializing all indexes in MongoDB...")
             # Import here to avoid circular import
@@ -72,12 +75,12 @@ class MongoDB:
         except Exception as e:
             log.error(f"{LogTag.MONGO} Error while initializing indexes: {e}")
 
-    def get_collection(self, collection_name: str):
+    def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
         return self.database.get_collection(collection_name)
 
 
 @lru_cache(maxsize=1)
-def init_mongodb():
+def init_mongodb() -> MongoDB:
     """
     Initialize MongoDB connection and set it in the app state.
 

@@ -364,7 +364,7 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
             }
             if item.last_updated:
                 try:
-                    cutoff = datetime.fromisoformat(item.last_updated.replace("Z", "+00:00"))
+                    cutoff = datetime.fromisoformat(item.last_updated)
                     condition["$or"] = [
                         {"updatedAt": {"$gt": cutoff}},
                         {"updatedAt": {"$exists": False}},

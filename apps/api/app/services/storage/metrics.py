@@ -100,7 +100,7 @@ import contextlib
 import contextvars
 from dataclasses import dataclass, field
 import time
-from typing import Any, Final
+from typing import Any, Final, NotRequired, TypedDict, TypeVar, cast
 
 from prometheus_client import (  # noqa: F401  # Gauge used via lambda factories below
     REGISTRY,
@@ -142,7 +142,10 @@ _FS_OP_BUCKETS: Final[tuple[float, ...]] = (
 )
 
 
-def _register_once(name: str, factory: Callable[[], Any]) -> Any:
+_CollectorT = TypeVar("_CollectorT")
+
+
+def _register_once(name: str, factory: Callable[[], _CollectorT]) -> _CollectorT:
     """Register a Prometheus collector at module load, tolerating re-imports.
 
     `uvicorn --reload` and some test fixtures import this module twice in the
@@ -156,7 +159,7 @@ def _register_once(name: str, factory: Callable[[], Any]) -> Any:
         existing = REGISTRY._names_to_collectors.get(name)  # noqa: SLF001
         if existing is None:
             raise
-        return existing
+        return cast(_CollectorT, existing)
 
 
 _FS_OP_DURATION_SECONDS = _register_once(
@@ -238,6 +241,22 @@ def set_sandbox_pool_size(kind: str, shard: str, n: int) -> None:
         )
 
 
+class OpStatsSnapshot(TypedDict):
+    """One op's counters as they appear under ``fs.<op>`` on the wide event.
+
+    The ``NotRequired`` keys are the conditionally-emitted ones documented in the
+    module's wire contract — absent, not zero, when the op never reported them.
+    """
+
+    count: int
+    total_ms: float
+    max_ms: float
+    errors: int
+    bytes: NotRequired[int]
+    last_error_type: NotRequired[str]
+    labels: NotRequired[dict[str, str]]
+
+
 @dataclass(slots=True)
 class _OpStats:
     count: int = 0
@@ -246,10 +265,11 @@ class _OpStats:
     errors: int = 0
     bytes: int = 0
     last_error_type: str | None = None
-    labels: dict[str, Any] = field(default_factory=dict)
+    # ``record_fs_op`` is the only writer and declares ``**labels: str``.
+    labels: dict[str, str] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
-        out: dict[str, Any] = {
+    def to_dict(self) -> OpStatsSnapshot:
+        out: OpStatsSnapshot = {
             "count": self.count,
             "total_ms": round(self.total_ms, 3),
             "max_ms": round(self.max_ms, 3),
@@ -348,7 +368,7 @@ def record_fs_op(
     duration_ms: float,
     error: BaseException | None = None,
     bytes: int = 0,
-    **labels: Any,
+    **labels: str,
 ) -> None:
     """Record one completed FS op.
 
@@ -415,7 +435,7 @@ def add_fs_bytes(op: str, n: int) -> None:
 
 
 @contextlib.asynccontextmanager
-async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
+async def fs_timer(op: str, **labels: str) -> AsyncIterator[None]:
     """Async context manager that records the wall-clock duration of ``op``.
 
     On exception, the op is still recorded (with ``error=<exception>``) so we
@@ -453,10 +473,13 @@ async def fs_timer(op: str, **labels: Any) -> AsyncIterator[None]:
                 op=op,
                 error_type=type(e).__name__,
             )
-        record_fs_op(op, duration_ms=elapsed_ms, error=err, **labels)
+        # cast: **labels is homogeneously str, but record_fs_op also has a
+        # same-spelled `bytes: int` keyword — mypy can't rule out a collision
+        # from the splat alone, even though no caller ever passes that label.
+        record_fs_op(op, duration_ms=elapsed_ms, error=err, **cast(dict[str, Any], labels))
 
 
-def flush_fs_metrics() -> dict[str, dict[str, Any]]:
+def flush_fs_metrics() -> dict[str, OpStatsSnapshot]:
     """Return the accumulated metrics as a serializable dict, and clear the bucket.
 
     Call from inside a ``wide_task`` / request middleware just before emitting
@@ -477,7 +500,7 @@ def flush_fs_metrics() -> dict[str, dict[str, Any]]:
     return snapshot
 
 
-def peek_fs_metrics() -> dict[str, dict[str, Any]]:
+def peek_fs_metrics() -> dict[str, OpStatsSnapshot]:
     """Read the bucket without clearing it — for in-flight debugging only."""
     bucket = _metrics_var.get()
     if not bucket:

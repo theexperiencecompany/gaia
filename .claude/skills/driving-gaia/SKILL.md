@@ -97,7 +97,9 @@ Under `mise dev --sim` (one switch: `GAIA_SIM_MODE=1`, read by settings — ever
 - **Malformed directive JSON → HTTP 500** echoing the bad directive (fail loud) — e.g. `[[tool:foo {bad}]]`. Fix the JSON; don't retry blindly.
 - GAIA's two-agent front door is handled automatically: a directive naming an executor-only tool becomes one `call_executor` hand-off that replays the whole script to the executor. Keep one script to one agent level (don't mix comms-only tools like `add_memory` with executor tools).
 - The bigtool executor is also handled automatically: a scripted tool that isn't bound yet triggers a `retrieve_tools(exact_tool_names=[...])` call first — invisible to your script; the stub's stdout logs every request (`[llm-stub] roles=[...] directives=N script_msg=...`) when you need to debug a run.
-- **Limitation:** directive JSON args must not contain a literal `]]` (it closes the directive early → invalid JSON → 500).
+- **Nesting works.** A tool directive's args end where its JSON value ends, not at the first `]]`, so args may contain a literal `]]` — including a whole nested directive, at any depth. That is how you script a hand-off: `[[tool:handoff {"subagent_id":"gmail","task":"[[tool:GMAIL_FETCH_MESSAGES {\"max_results\":3}]]"}]]`. JSON-encode the args (`json.dumps`) and the escaping takes care of itself.
+- **Limitation:** a `[[say:…]]` body is plain text and ends at the first `]]`, so say text cannot contain that sequence. Put nested scripts in tool args.
+- **A directive opened but never closed → HTTP 500**, not a silent fall-through to the canned reply.
 
 Example message that files a todo then replies: `add a todo [[tool:create_todo {"title":"buy milk"}]] [[say:Added it.]]`
 

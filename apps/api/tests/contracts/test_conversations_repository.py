@@ -260,6 +260,43 @@ class TestMessages:
         assert msg.tool_data is not None and msg.tool_data[0]["tool_name"] == "weather"
         assert msg.follow_up_actions == ["do x"]
 
+    async def test_append_preserves_every_key_emitters_stamp_on_tool_data(self, repo):
+        """A persisted tool_data entry keeps the keys the emitters actually set.
+
+        ``append_messages`` writes through ``MessageModel.model_dump()``, which
+        drops any key ``ToolDataEntry`` does not declare. ``format_tool_call_entry``
+        stamps ``tool_category``/``mcp_ui``/``mcp_server_url`` and the subagent
+        path stamps ``subagent_id``; losing them on write is invisible live (the
+        SSE frame carries them) and only shows on reload — a tool card rendering
+        with the wrong icon and an MCP App that never comes back.
+        """
+        doc = _doc()
+        await repo.create(doc)
+        message = MessageModel(type="bot", response="r")
+        message.tool_data = [
+            {
+                "tool_name": "tool_calls_data",
+                "data": {"tool_name": "gmail_send", "tool_call_id": "tc-1"},
+                "timestamp": "2026-01-01",
+                "tool_category": "gmail",
+                "subagent_id": "sa-1",
+                "mcp_ui": {"resource_uri": "ui://card"},
+                "mcp_server_url": "https://mcp.example.com",
+            }
+        ]
+        ids = await repo.append_messages(
+            doc.conversation_id, user_id=doc.user_id, messages=[message]
+        )
+        assert ids is not None
+
+        stored = await repo.get_message(doc.conversation_id, ids[0], user_id=doc.user_id)
+        assert stored is not None and stored.tool_data is not None
+        entry = stored.tool_data[0]
+        assert entry.get("tool_category") == "gmail"
+        assert entry.get("subagent_id") == "sa-1"
+        assert entry.get("mcp_ui") == {"resource_uri": "ui://card"}
+        assert entry.get("mcp_server_url") == "https://mcp.example.com"
+
     async def test_find_owner_of_message(self, repo):
         doc = _doc()
         await repo.create(doc)

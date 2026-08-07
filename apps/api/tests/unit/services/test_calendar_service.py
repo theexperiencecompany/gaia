@@ -14,16 +14,22 @@ from fastapi import HTTPException
 import pytest
 
 from app.models.calendar_models import (
+    CalendarEventDisplay,
     CalendarPreferencesDocument,
+    CalendarPreferencesResponse,
+    CalendarPreferencesUpdateResponse,
     EventCreateRequest,
     EventDeleteRequest,
+    EventDeleteResponse,
     EventUpdateRequest,
+    GoogleCalendarEventDateTime,
+    GoogleCalendarEventResource,
+    GoogleCalendarEventsPage,
 )
 from app.services.calendar_service import (
     create_calendar_event,
     delete_calendar_event,
     fetch_calendar_events,
-    fetch_calendar_list,
     filter_events,
     format_event_for_frontend,
     get_calendar_events,
@@ -33,6 +39,7 @@ from app.services.calendar_service import (
     list_calendars,
     search_calendar_events_native,
     search_events_in_calendar,
+    to_calendar_summaries,
     update_calendar_event,
     update_user_calendar_preferences,
 )
@@ -77,51 +84,65 @@ def _http_error(status: int, body: dict[str, Any] | None = None) -> AppError:
 class TestFilterEvents:
     def test_drops_birthdays(self):
         events = [
-            {"eventType": "birthday", "start": {"date": "2025-01-01"}},
-            {"eventType": "default", "start": {"date": "2025-01-02"}},
+            GoogleCalendarEventResource(
+                id="b", eventType="birthday", start=GoogleCalendarEventDateTime(date="2025-01-01")
+            ),
+            GoogleCalendarEventResource(
+                id="d", eventType="default", start=GoogleCalendarEventDateTime(date="2025-01-02")
+            ),
         ]
-        assert filter_events(events) == [{"eventType": "default", "start": {"date": "2025-01-02"}}]
+        kept = filter_events(events)
+        assert [event.id for event in kept] == ["d"]
+        assert kept[0].start is not None
+        assert kept[0].start.date == "2025-01-02"
 
     def test_drops_events_without_start(self):
         events = [
-            {"eventType": "default"},
-            {"eventType": "default", "start": {}},
-            {"eventType": "default", "start": {"dateTime": "2025-01-01T10:00"}},
+            GoogleCalendarEventResource(id="no-start", eventType="default"),
+            GoogleCalendarEventResource(
+                id="empty-start", eventType="default", start=GoogleCalendarEventDateTime()
+            ),
+            GoogleCalendarEventResource(
+                id="timed",
+                eventType="default",
+                start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00"),
+            ),
         ]
-        assert filter_events(events) == [
-            {"eventType": "default", "start": {"dateTime": "2025-01-01T10:00"}}
-        ]
+        assert [event.id for event in filter_events(events)] == ["timed"]
 
 
 class TestFormatEventForFrontend:
     def test_uses_metadata_maps(self):
-        event = {
-            "summary": "Lunch",
-            "start": {"dateTime": "2025-01-15T12:00"},
-            "end": {"dateTime": "2025-01-15T13:00"},
-            "calendarId": "cal-1",
-        }
+        event = GoogleCalendarEventResource(
+            summary="Lunch",
+            start=GoogleCalendarEventDateTime(dateTime="2025-01-15T12:00"),
+            end=GoogleCalendarEventDateTime(dateTime="2025-01-15T13:00"),
+            calendarId="cal-1",
+        )
         formatted = format_event_for_frontend(event, {"cal-1": "#abc"}, {"cal-1": "Work"})
-        assert formatted == {
-            "summary": "Lunch",
-            "start_time": "2025-01-15T12:00",
-            "end_time": "2025-01-15T13:00",
-            "calendar_name": "Work",
-            "background_color": "#abc",
-        }
+        assert formatted == CalendarEventDisplay(
+            summary="Lunch",
+            start_time="2025-01-15T12:00",
+            end_time="2025-01-15T13:00",
+            calendar_name="Work",
+            background_color="#abc",
+        )
 
 
 # ---------------------------------------------------------------------------
-# fetch_calendar_list / list_calendars / metadata
+# list_calendars / metadata
 # ---------------------------------------------------------------------------
 
 
-class TestFetchCalendarList:
+class TestListCalendars:
     async def test_returns_full_data(self, mock_proxy):
         items = [{"id": "cal-1", "summary": "Work", "description": "d", "backgroundColor": "#abc"}]
         mock_proxy.return_value = {"items": items}
-        result = await fetch_calendar_list(USER_ID)
-        assert result == {"items": items}
+        result = await list_calendars(USER_ID)
+        assert [entry.id for entry in result.items] == ["cal-1"]
+        assert result.items[0].summary == "Work"
+        # Google's extra keys ride through untouched for the web client.
+        assert result.items[0].model_dump() == items[0]
         kwargs = mock_proxy.call_args.kwargs
         assert kwargs["toolkit"] == "GOOGLECALENDAR"
         assert kwargs["endpoint"].endswith("/users/me/calendarList")
@@ -130,24 +151,27 @@ class TestFetchCalendarList:
 
     async def test_short_format_returns_subset(self, mock_proxy):
         mock_proxy.return_value = {
-            "items": [{"id": "c1", "summary": "A", "description": "x", "backgroundColor": "#1"}]
+            "items": [
+                {
+                    "id": "c1",
+                    "summary": "A",
+                    "description": "x",
+                    "backgroundColor": "#1",
+                    "etag": "drop-me",
+                }
+            ]
         }
-        result = await fetch_calendar_list(USER_ID, short=True)
-        assert result == [{"id": "c1", "summary": "A", "description": "x", "backgroundColor": "#1"}]
+        result = to_calendar_summaries(await list_calendars(USER_ID))
+        assert [summary.model_dump() for summary in result] == [
+            {"id": "c1", "summary": "A", "description": "x", "backgroundColor": "#1"}
+        ]
 
     async def test_propagates_proxy_error_as_http_exception(self, mock_proxy):
         mock_proxy.side_effect = _http_error(500, {"error": {"message": "boom"}})
         with pytest.raises(HTTPException) as exc:
-            await fetch_calendar_list(USER_ID)
+            await list_calendars(USER_ID)
         assert exc.value.status_code == 500
         assert "boom" in str(exc.value.detail)
-
-
-class TestListCalendars:
-    async def test_delegates_to_fetch_calendar_list(self, mock_proxy):
-        mock_proxy.return_value = {"items": []}
-        await list_calendars(USER_ID, short=True)
-        assert mock_proxy.call_args.kwargs["user_id"] == USER_ID
 
 
 class TestGetCalendarMetadataMap:
@@ -219,7 +243,7 @@ class TestCreateCalendarEvent:
             timezone="UTC",
         )
         result = await create_calendar_event(event, USER_ID)
-        assert result["id"] == "evt-1"
+        assert result.id == "evt-1"
         kwargs = mock_proxy.call_args.kwargs
         assert kwargs["method"] == "POST"
         assert kwargs["endpoint"].endswith("/calendars/primary/events")
@@ -280,7 +304,7 @@ class TestDeleteCalendarEvent:
         result = await delete_calendar_event(
             EventDeleteRequest(event_id="evt-1", calendar_id="primary"), USER_ID
         )
-        assert result == {"success": True, "message": "Event deleted successfully"}
+        assert result == EventDeleteResponse(success=True, message="Event deleted successfully")
         kwargs = mock_proxy.call_args.kwargs
         assert kwargs["method"] == "DELETE"
         assert kwargs["endpoint"].endswith("/calendars/primary/events/evt-1")
@@ -305,7 +329,7 @@ class TestUpdateCalendarEvent:
             EventUpdateRequest(event_id="evt", calendar_id="primary", summary="New"),
             USER_ID,
         )
-        assert result["calendarId"] == "primary"
+        assert result.calendarId == "primary"
         # Two calls: GET existing + PUT update
         assert mock_proxy.call_args_list[0].kwargs["method"] == "GET"
         assert mock_proxy.call_args_list[1].kwargs["method"] == "PUT"
@@ -324,9 +348,9 @@ class TestGetCalendarEvents:
         with patch(
             "app.services.calendar_service.fetch_calendar_events", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = {"items": []}
+            mock_fetch.return_value = GoogleCalendarEventsPage()
             result = await get_calendar_events(USER_ID)
-        assert result["selectedCalendars"] == ["c1"]
+        assert result.selected_calendars == ["c1"]
 
     async def test_seeds_preferences_when_missing(self, mock_proxy, mock_calendar_repo):
         mock_proxy.return_value = {"items": [{"id": "c1"}, {"id": "c2"}]}
@@ -334,7 +358,7 @@ class TestGetCalendarEvents:
         with patch(
             "app.services.calendar_service.fetch_calendar_events", new_callable=AsyncMock
         ) as mock_fetch:
-            mock_fetch.return_value = {"items": []}
+            mock_fetch.return_value = GoogleCalendarEventsPage()
             await get_calendar_events(USER_ID)
         mock_calendar_repo.set_selected_calendars.assert_awaited_once()
 
@@ -349,9 +373,9 @@ class TestGetCalendarEventsById:
             "nextPageToken": "tk",
         }
         result = await get_calendar_events_by_id("primary", USER_ID)
-        assert len(result["events"]) == 1
-        assert result["events"][0]["id"] == "e1"
-        assert result["nextPageToken"] == "tk"
+        assert len(result.events) == 1
+        assert result.events[0].id == "e1"
+        assert result.next_page_token == "tk"
 
 
 class TestSearchCalendarEventsNative:
@@ -361,11 +385,15 @@ class TestSearchCalendarEventsNative:
         with patch(
             "app.services.calendar_service.search_events_in_calendar", new_callable=AsyncMock
         ) as mock_search:
-            mock_search.return_value = {
-                "items": [{"id": "e1", "start": {"dateTime": "2025-01-01T10:00"}}]
-            }
+            mock_search.return_value = GoogleCalendarEventsPage(
+                items=[
+                    GoogleCalendarEventResource(
+                        id="e1", start=GoogleCalendarEventDateTime(dateTime="2025-01-01T10:00")
+                    )
+                ]
+            )
             result = await search_calendar_events_native("foo", USER_ID)
-        assert result["total_matches"] == 1
+        assert result.total_matches == 1
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +404,9 @@ class TestSearchCalendarEventsNative:
 class TestPreferences:
     async def test_get_returns_selected_calendars(self, mock_calendar_repo):
         mock_calendar_repo.get_for_user.return_value = _prefs(["c1"])
-        assert await get_user_calendar_preferences(USER_ID) == {"selectedCalendars": ["c1"]}
+        assert await get_user_calendar_preferences(USER_ID) == CalendarPreferencesResponse(
+            selected_calendars=["c1"]
+        )
 
     async def test_get_raises_when_missing(self, mock_calendar_repo):
         mock_calendar_repo.get_for_user.return_value = None
@@ -386,12 +416,12 @@ class TestPreferences:
 
     async def test_update_returns_success_message(self, mock_calendar_repo):
         mock_calendar_repo.set_selected_calendars.return_value = True
-        assert await update_user_calendar_preferences(USER_ID, ["c1"]) == {
-            "message": "Calendar preferences updated successfully"
-        }
+        assert await update_user_calendar_preferences(
+            USER_ID, ["c1"]
+        ) == CalendarPreferencesUpdateResponse(message="Calendar preferences updated successfully")
 
     async def test_update_no_change_message(self, mock_calendar_repo):
         mock_calendar_repo.set_selected_calendars.return_value = False
-        assert await update_user_calendar_preferences(USER_ID, ["c1"]) == {
-            "message": "No changes made to calendar preferences"
-        }
+        assert await update_user_calendar_preferences(
+            USER_ID, ["c1"]
+        ) == CalendarPreferencesUpdateResponse(message="No changes made to calendar preferences")

@@ -163,7 +163,7 @@ async def get_location_data(
     }
 
 
-async def user_weather(location_name: str | None = None):
+async def user_weather(location_name: str | None = None) -> dict[str, Any] | str:
     """
     Fetch weather data for a specified location.
 
@@ -189,7 +189,7 @@ async def user_weather(location_name: str | None = None):
             location_data = await get_location_data(location_name=location_name)
             cache_key = location_data["cache_key"]
 
-            cached_weather = await get_cache(cache_key)
+            cached_weather: dict[str, Any] | None = await get_cache(cache_key)
             if cached_weather:
                 log.debug(f"{LogTag.TOOL} Using cached weather data for location {cached_weather}")
                 return cached_weather

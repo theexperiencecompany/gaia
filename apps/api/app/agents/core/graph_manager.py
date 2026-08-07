@@ -4,11 +4,15 @@ Graph manager module to handle LangGraph initialization and hold multiple graph 
 This module helps avoid circular imports between app.api.v1 and app.agents.agent.
 """
 
-from typing import Any
+from typing import Any, cast
+
+from langgraph.graph.state import CompiledStateGraph
 
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import providers
 from shared.py.wide_events import log
+
+CompiledAgentGraph = CompiledStateGraph[Any, Any, Any, Any]
 
 
 class GraphUnavailableError(RuntimeError):
@@ -25,7 +29,7 @@ class GraphUnavailableError(RuntimeError):
 
 class GraphManager:
     @classmethod
-    async def get_graph(cls, graph_name: str = "default_graph") -> Any:
+    async def get_graph(cls, graph_name: str = "default_graph") -> CompiledAgentGraph:
         """Get the graph instance by name.
 
         Raises:
@@ -53,4 +57,4 @@ class GraphManager:
                 graph_name, "its provider failed to initialize or returned None"
             )
         log.info(f"{LogTag.AGENT} Successfully retrieved graph '{graph_name}' from lazy provider")
-        return graph
+        return cast(CompiledAgentGraph, graph)

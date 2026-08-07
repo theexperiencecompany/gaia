@@ -35,6 +35,7 @@ and the caller's ``_recent_history``. It fails safe: an LLM error leaves approva
 pending, never approves.
 """
 
+import contextlib
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -235,7 +236,7 @@ async def _safe_resolve(
     approval_id: str, user_id: str, decision: Literal["approve", "deny"], feedback: str | None
 ) -> None:
     """Apply one decision, tolerating an already-resolved/expired approval."""
-    try:
+    with contextlib.suppress(ApprovalRequestNotFound, ApprovalRequestForbidden):
         await resolve_approval(
             approval_id=approval_id,
             user_id=user_id,
@@ -243,8 +244,6 @@ async def _safe_resolve(
             feedback=feedback,
             scope="once",
         )
-    except (ApprovalRequestNotFound, ApprovalRequestForbidden):
-        pass
 
 
 def _history_block(history: list[MessageDict] | None) -> str:

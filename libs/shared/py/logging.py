@@ -39,7 +39,7 @@ from typing import TYPE_CHECKING, TextIO, TypedDict
 from loguru import logger
 
 if TYPE_CHECKING:
-    from loguru import Message, Record
+    from loguru import Logger, Message, Record
 
 
 class _LogFormats(TypedDict):
@@ -198,7 +198,7 @@ def _worker_name_patcher(record: Record) -> None:
         record["extra"]["worker"] = name[:5]
 
 
-def configure_loguru():
+def configure_loguru() -> Logger:
     """
     Configure console logging with standard library interception.
 
@@ -412,7 +412,7 @@ def configure_file_logging(log_dir: str | Path | None = None) -> None:
     )
 
 
-def get_contextual_logger(name: str, **context: object):
+def get_contextual_logger(name: str, **context: object) -> Logger:
     """
     Create a contextual logger with automatic context injection.
 
