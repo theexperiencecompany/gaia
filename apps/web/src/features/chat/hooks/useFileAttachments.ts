@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 
 import { chatApi } from "@/features/chat/api/chatApi";
 import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
@@ -29,6 +29,9 @@ const validateFile = (file: File): string | null => {
  */
 export const useFileAttachments = (conversationId?: string) => {
   const setAuxLoading = useStreamStore((state) => state.setAuxLoading);
+  // Ref-count concurrent attachFiles invocations so a slow batch doesn't clear
+  // the global loading state while a later batch is still uploading.
+  const activeUploads = useRef(0);
 
   const attachFiles = useCallback(
     async (files: File[]) => {
@@ -72,6 +75,7 @@ export const useFileAttachments = (conversationId?: string) => {
         });
       }
 
+      activeUploads.current += 1;
       setAuxLoading(true, "Uploading files...");
       try {
         const results = await Promise.allSettled(
@@ -119,7 +123,8 @@ export const useFileAttachments = (conversationId?: string) => {
           });
         }
       } finally {
-        setAuxLoading(false);
+        activeUploads.current -= 1;
+        if (activeUploads.current === 0) setAuxLoading(false);
       }
     },
     [conversationId, setAuxLoading],

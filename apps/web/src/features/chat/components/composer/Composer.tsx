@@ -306,6 +306,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
     /* placeholder: replaced with the real handler on the next line */
   });
   handlePasteRef.current = (e: ClipboardEvent) => {
+    // Only react to pastes inside the composer input — an image pasted into
+    // any other element while Composer is mounted must not be captured.
+    if (e.target !== inputRef.current) return;
+
     const items = e.clipboardData?.items;
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
@@ -321,7 +325,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
     // Large text pasted into the composer becomes a .txt attachment instead of
     // inline text — keeps the input responsive and rides the file pipeline.
-    if (e.target !== inputRef.current) return;
     const text = e.clipboardData?.getData("text/plain");
     if (text && text.length > LARGE_PASTE_THRESHOLD_CHARS) {
       e.preventDefault();
