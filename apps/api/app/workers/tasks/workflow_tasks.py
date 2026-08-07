@@ -242,10 +242,7 @@ def _log_schedule_drift(workflow: Workflow, workflow_id: str, actual_fire_utc: d
 async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
     """Quota-exhausted copy, naming the reset time in the user's own timezone.
     Falls back to the undated wording if the reset stamp can't be rendered."""
-    body = (
-        f"'{workflow.title}' couldn't run — "
-        f"you've used all your workflow executions for today."
-    )
+    body = f"'{workflow.title}' couldn't run — you've used all your workflow executions for today."
     try:
         reset_dt = datetime.fromisoformat(reset_time_str)
         if reset_dt.tzinfo is None:

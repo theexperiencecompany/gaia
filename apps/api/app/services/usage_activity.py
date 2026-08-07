@@ -8,17 +8,18 @@ data, not the short-lived Redis rate-limit counters.
 
 from datetime import UTC, datetime, timedelta
 import json
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from pymongo import ReturnDocument
 from pymongo.errors import PyMongoError
 
 from app.config.rate_limits import FEATURE_LIMITS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import usage_daily_collection, users_collection
 from app.db.redis import redis_cache
+from app.db.repositories.usage_daily import usage_daily_repository
+from app.db.repositories.users import user_repository
+from app.models.user_models import UserDocument
 from app.services.email import send_badge_earned_email
 from shared.py.wide_events import log
 
@@ -70,11 +71,7 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
     if not user_id or amount <= 0:
         return
     try:
-        await usage_daily_collection.update_one(
-            {"user_id": user_id, "date": _day(datetime.now(UTC))},
-            {"$inc": {"count": amount}},
-            upsert=True,
-        )
+        await usage_daily_repository.increment(user_id, _day(datetime.now(UTC)), count=amount)
     except PyMongoError as e:
         log.warning(f"{LogTag.MONGO} record_activity failed for {user_id}: {e}")
 
@@ -95,11 +92,11 @@ async def record_cost(user_id: str, cost_usd: float, *, charged: bool = True) ->
     if not user_id or cost_usd <= 0:
         return
     try:
-        await usage_daily_collection.update_one(
-            {"user_id": user_id, "date": _day(datetime.now(UTC))},
-            {"$inc": {"cost" if charged else "aux_cost": cost_usd}},
-            upsert=True,
-        )
+        day = _day(datetime.now(UTC))
+        if charged:
+            await usage_daily_repository.increment(user_id, day, cost=cost_usd)
+        else:
+            await usage_daily_repository.increment(user_id, day, aux_cost=cost_usd)
     except PyMongoError as e:
         log.warning(f"{LogTag.MONGO} record_cost failed for {user_id}: {e}")
 
@@ -127,12 +124,7 @@ async def get_activity(user_id: str, days: int) -> dict[str, Any]:
     # record_cost) — deliberately NOT exposed here. Raw USD never goes to the
     # client (see get_budget_status); the cost history exists so charts can be
     # served as percentage-of-allowance once that representation lands.
-    counts: dict[str, int] = {}
-    async for doc in usage_daily_collection.find(
-        {"user_id": user_id, "date": {"$gte": _day(start)}},
-        {"date": 1, "count": 1},
-    ):
-        counts[doc["date"]] = int(doc.get("count", 0))
+    counts = await usage_daily_repository.counts_since(user_id, _day(start))
 
     day_list: list[dict[str, Any]] = []
     total = 0
@@ -185,11 +177,7 @@ async def _percentile_tier(
     here — either way the per-request cost is just the user's own recent rows.
     """
     if mine is None:
-        mine = 0
-        async for doc in usage_daily_collection.find(
-            {"user_id": user_id, "date": {"$gte": window_start}}, {"count": 1}
-        ):
-            mine += int(doc.get("count", 0))
+        mine = sum((await usage_daily_repository.counts_since(user_id, window_start)).values())
     if mine <= 0:
         return None, None
 
@@ -221,83 +209,30 @@ async def _percentile_thresholds(window_start: str) -> dict[str, float]:
     if client is not None:
         cached = await client.get(_THRESHOLDS_KEY)
         if cached:
-            return json.loads(cached)
+            return cast(dict[str, float], json.loads(cached))
 
-    # One server-side pass: sum each user's window total, sort descending, push
-    # the totals into a single Mongo-side array, then read the value at each
-    # top-X% rank position (0-based index ceil(fraction * n) - 1, floored at 0 —
-    # the same arithmetic the client used to do in Python). The sorted array is
-    # bounded by the 16MB BSON doc limit (fine for realistic user counts) and
-    # never leaves Mongo; only the four threshold scalars come back.
-    threshold_at = {
-        key: {
-            "$arrayElemAt": [
-                "$totals",
-                {
-                    "$toInt": {
-                        "$max": [
-                            0,
-                            {"$subtract": [{"$ceil": {"$multiply": [frac, "$n"]}}, 1]},
-                        ]
-                    }
-                },
-            ]
-        }
-        for key, frac in _TIER_RANK_FRACTIONS.items()
-    }
-    docs = [
-        d
-        async for d in usage_daily_collection.aggregate(
-            [
-                {"$match": {"date": {"$gte": window_start}}},
-                {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
-                {"$sort": {"total": -1}},
-                {"$group": {"_id": None, "totals": {"$push": "$total"}}},
-                {"$set": {"n": {"$size": "$totals"}}},
-                {"$project": {"_id": 0, **threshold_at}},
-            ]
-        )
-    ]
-    if not docs:
-        return {}
-    row = docs[0]
-    thresholds = {key: float(row[key]) for key in _TIER_RANK_FRACTIONS}
-    if client is not None:
+    thresholds = await usage_daily_repository.rank_thresholds(window_start, _TIER_RANK_FRACTIONS)
+    if thresholds and client is not None:
         await client.setex(_THRESHOLDS_KEY, _THRESHOLDS_TTL, json.dumps(thresholds))
     return thresholds
 
 
-async def _record_tier(user_id: str, tier: str) -> dict[str, Any] | None:
+async def _record_tier(user_id: str, tier: str) -> UserDocument | None:
     """Persist ``tier`` as the user's highest ever reached; return the user doc
     only on a FIRST-TIME promotion, else None.
 
     The guard is monotonic — a stored tier is only ever replaced by a stronger
     one — so downgrades are silent and re-crossing a boundary can never re-fire.
-    The filtered ``find_one_and_update`` is also the idempotency lock: a retried
-    job matches zero documents the second time.
+    The filtered update is also the idempotency lock: a retried job matches zero
+    documents the second time.
     """
     try:
-        oid = ObjectId(user_id)
+        ObjectId(user_id)
     except (InvalidId, TypeError):
         log.warning(f"{LogTag.MONGO} tier sync skipped non-ObjectId user_id {user_id!r}")
         return None
     lower_tiers = list(TIER_KEYS[: TIER_KEYS.index(tier)])
-    return await users_collection.find_one_and_update(
-        {
-            "_id": oid,
-            "$or": [
-                {"highest_activity_tier": {"$exists": False}},
-                {"highest_activity_tier": {"$in": lower_tiers}},
-            ],
-        },
-        {
-            "$set": {
-                "highest_activity_tier": tier,
-                "highest_activity_tier_at": datetime.now(UTC),
-            }
-        },
-        return_document=ReturnDocument.AFTER,
-    )
+    return await user_repository.record_activity_tier_promotion(user_id, tier, lower_tiers)
 
 
 async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
@@ -320,26 +255,21 @@ async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
     if not thresholds:
         return stats
 
-    async for doc in usage_daily_collection.aggregate(
-        [
-            {"$match": {"date": {"$gte": window_start}}},
-            {"$group": {"_id": "$user_id", "total": {"$sum": "$count"}}},
-        ]
-    ):
+    for user_id, total in await usage_daily_repository.user_window_totals(window_start):
         stats["scanned"] += 1
-        tier = _tier_for_total(int(doc["total"]), thresholds)
+        tier = _tier_for_total(total, thresholds)
         if tier is None:
             continue
-        user = await _record_tier(doc["_id"], tier)
+        user = await _record_tier(user_id, tier)
         if user is None:
             continue
         stats["promoted"] += 1
-        if not send_emails or not user.get("email"):
+        if not send_emails or not user.email:
             continue
         try:
             await send_badge_earned_email(
-                user_email=user["email"],
-                user_name=user.get("name"),
+                user_email=user.email,
+                user_name=user.name,
                 tier=tier,
                 top_label=_TIER_META[tier].top_label,
             )
@@ -348,5 +278,5 @@ async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
             # One bounced address must not abort the whole sweep; the tier is
             # already recorded, so this user simply misses the (nice-to-have)
             # email rather than risking a duplicate on retry.
-            log.error(f"{LogTag.MAIL} badge email failed for user {user['_id']} ({tier}): {e!s}")
+            log.error(f"{LogTag.MAIL} badge email failed for user {user.id} ({tier}): {e!s}")
     return stats

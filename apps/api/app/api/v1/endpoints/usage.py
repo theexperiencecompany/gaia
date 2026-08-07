@@ -4,6 +4,7 @@ Usage tracking API endpoints.
 
 import asyncio
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 

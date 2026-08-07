@@ -50,12 +50,12 @@ from app.services.chat.artifacts_registry import (
 )
 from app.services.outbound_delivery import publish_outbound_file
 from app.services.storage import resolve_session_path
-from app.utils.background_tasks import spawn_background_task
 from app.utils.artifact_utils import (
     ArtifactDataEntry,
     build_artifact_full_entry,
     build_artifact_ref_entry,
 )
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)

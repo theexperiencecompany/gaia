@@ -228,7 +228,7 @@ class TestFeatureLimits:
     # Cost-walled features: no daily message-count wall on free (free.day == 0)
     # because the rolling daily COST budget is the real wall. The monthly count
     # survives only as an extreme abuse backstop.
-    COST_WALLED_FEATURES = {"chat_messages"}
+    COST_WALLED_FEATURES: ClassVar[set[str]] = {"chat_messages"}
 
     def test_free_limits_are_positive(self) -> None:
         """Non-paid-only features should have at least some free tier allowance."""

@@ -2,8 +2,6 @@
 
 from datetime import UTC, datetime
 
-from bson import ObjectId
-
 from app.config.rate_limits import derive_pro_benefits, get_feature_info
 from app.config.settings import settings
 from app.constants.email import (
@@ -16,7 +14,7 @@ from app.constants.email import (
     WHATSAPP_URL,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.services.email.models import EmailMessage
 from app.services.email.providers import get_email_provider
@@ -253,13 +251,13 @@ async def send_limit_reached_email(
     plan doesn't deliver. Returns True if sent, False if skipped (dedupe or
     missing user/email).
     """
-    user = await users_collection.find_one({"_id": ObjectId(user_id)})
-    if not user or not user.get("email"):
+    user = await user_repository.get(user_id)
+    if user is None or not user.email:
         log.warning(f"{LogTag.MAIL} Limit email skipped — user {user_id} not found or no email")
         return False
 
     now = datetime.now(UTC)
-    last_sent = user.get("last_limit_email_sent")
+    last_sent = user.last_limit_email_sent
     if last_sent and last_sent.tzinfo is None:
         last_sent = last_sent.replace(tzinfo=UTC)
     # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
@@ -269,7 +267,7 @@ async def send_limit_reached_email(
     feature_title = get_feature_info(hit_feature).title
     html_content = render_email_template(
         "limit_reached.html",
-        user_name=user.get("name"),
+        user_name=user.name,
         hit_feature_title=feature_title,
         benefits=derive_pro_benefits(hit_feature),
         pricing_url=f"{settings.FRONTEND_URL}/pricing",
@@ -279,15 +277,12 @@ async def send_limit_reached_email(
     await send_email(
         EmailMessage(
             sender=FOUNDER_SENDER,
-            to=[user["email"]],
+            to=[user.email],
             subject="You hit your GAIA limit today — here's what Pro unlocks",
             html=html_content,
             reply_to=CONTACT_EMAIL,
         )
     )
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"last_limit_email_sent": now}},
-    )
+    await user_repository.record_limit_email_sent(user_id)
     log.info(f"{LogTag.MAIL} Limit-reached upsell email sent to user {user_id}")
     return True

@@ -158,7 +158,7 @@ WorkerSettings.cron_jobs = [
     # First-time badge-tier promotions (monotonic + idempotent, so a missed or
     # doubled run is harmless). After the day's rollups have settled.
     cron(
-        _promote_usage_badges,
+        cast(WorkerCoroutine, _promote_usage_badges),
         hour=5,  # Daily at 05:00 UTC
         minute=0,
         second=0,

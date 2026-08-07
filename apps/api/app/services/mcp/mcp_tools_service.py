@@ -22,6 +22,7 @@ from shared.py.wide_events import log
 # it drops nameless entries and returns real ``IntegrationTool`` models.
 RawToolMetadata = Mapping[str, Any]
 
+
 def _format_tools(tools: Sequence[RawToolMetadata]) -> list[IntegrationTool]:
     """Normalize raw tool dicts: strip whitespace, drop entries without a name."""
     formatted: list[IntegrationTool] = []

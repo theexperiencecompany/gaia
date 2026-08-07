@@ -10,7 +10,6 @@ Each handler implements its own `process_event()` method which handles:
 """
 
 import asyncio
-from typing import Any
 
 from fastapi import APIRouter, Request
 

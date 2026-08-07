@@ -18,6 +18,7 @@ from app.constants.agents import (
 )
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.models.agent_models import agent_configurable
 from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_markers
 from shared.py.wide_events import log
@@ -76,7 +77,7 @@ async def narrate_executor_result(
         # route the model by plan (Pro -> paid model, Free -> default) and stamp
         # plan_type here — matching the interactive comms path and keeping the
         # budget wall enforced on this turn.
-        await apply_plan_model(config["configurable"], user.get("user_id"))
+        await apply_plan_model(agent_configurable(config), user.get("user_id"))
         initial_state = {
             "messages": [
                 # MUST be a HumanMessage. The message type is load-bearing here:

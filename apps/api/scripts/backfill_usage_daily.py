@@ -33,11 +33,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from pymongo import UpdateOne  # noqa: E402
 
-from app.db.mongodb.collections import (  # noqa: E402
-    conversations_collection,
-    usage_daily_collection,
-)
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.services.usage_activity import sync_activity_tiers  # noqa: E402
+
+conversations_collection = get_async_collection("conversations")
+usage_daily_collection = get_async_collection("usage_daily")
 
 _USER_ROLES = {"user", "human"}
 _BATCH = 1000

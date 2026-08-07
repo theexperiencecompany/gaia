@@ -39,7 +39,6 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
-from app.decorators.rate_limiting import LangChainRateLimitException
 from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.services.hil.resolution import cancel_conversation_approvals
 from app.utils.background_tasks import spawn_background_task

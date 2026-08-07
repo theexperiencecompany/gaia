@@ -6,7 +6,7 @@ and search across canvas context via ChromaDB.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
