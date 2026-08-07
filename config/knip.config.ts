@@ -318,6 +318,11 @@ const config: KnipConfig = {
         // apps/desktop). Same handling as apps/web and apps/mobile.
         "@gaia/shared",
       ],
+      // An execFile() argument, not a module: app-icon.ts hardcodes the absolute
+      // path to the SIP-protected macOS binary precisely so it is never resolved
+      // via $PATH. knip probes the filesystem for it, so it resolves on a Mac and
+      // is "unresolved" on the Linux CI runner.
+      ignoreUnresolved: ["/usr/bin/osascript"],
     },
 
     // ── Mobile App ───────────────────────────────────────────────────
