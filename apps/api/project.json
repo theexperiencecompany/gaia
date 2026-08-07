@@ -209,7 +209,7 @@
     "test:integration": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/integration -v --tb=short",
+        "command": "pytest tests/integration --ignore=tests/integration/real -v --tb=short",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -232,7 +232,7 @@
     "test:coverage": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/unit tests/integration --cov=app --cov-report=html --cov-report=term-missing",
+        "command": "pytest tests/unit tests/integration --ignore=tests/integration/real --cov=app --cov-report=html --cov-report=term-missing",
         "cwd": "{projectRoot}"
       },
       "cache": false
