@@ -8,7 +8,6 @@ enforces the frequency caps.
 
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from app.config.settings import settings
 from app.constants.email import CONTACT_EMAIL, FOUNDER_MEETING_URL, FOUNDER_SENDER
@@ -32,28 +31,22 @@ from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
+from app.utils.timezone import Timezone, as_utc
 from shared.py.wide_events import log
 
 
-def _as_utc(dt: datetime | None) -> datetime | None:
-    # MongoDB may return naive datetimes
-    return dt.replace(tzinfo=UTC) if dt and dt.tzinfo is None else dt
-
-
 def _local_hour(tz_name: str | None, now: datetime) -> int:
-    # Missing or invalid timezone falls back to UTC by design (plan: GAIA-523).
-    try:
-        tz = ZoneInfo(tz_name) if tz_name else UTC
-    except (ZoneInfoNotFoundError, ValueError):
-        tz = UTC
-    return now.astimezone(tz).hour
+    # The user model accepts both IANA names and ±HH:MM offsets, so use the
+    # canonical Timezone parser (never ZoneInfo directly); a blank or invalid
+    # stored value falls back to UTC (plan: GAIA-523).
+    return Timezone.parse(tz_name).localize(now).hour
 
 
 def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
     sent_times = [
         sent_at
         for entry in history
-        if entry.get("status") == "sent" and (sent_at := _as_utc(entry.get("at")))
+        if entry.get("status") == "sent" and (sent_at := as_utc(entry.get("at")))
     ]
     if not sent_times:
         return True
@@ -141,7 +134,7 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
     if not normalize_channel_preferences(user.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
         return False
 
-    created_at = _as_utc(user.created_at)
+    created_at = as_utc(user.created_at)
     if not created_at:
         return False
 

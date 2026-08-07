@@ -110,8 +110,12 @@ NURTURE_BACKFILL_GRACE_DAYS = 2
 # Local hour (user timezone) at which nurture emails go out.
 NURTURE_SEND_HOUR_LOCAL = 9
 
-# Frequency guardrails across the sequence.
-NURTURE_MAX_EMAILS_PER_WEEK = 2
+# Frequency guardrails across the sequence. The step day_offsets run 1,2,3,5,8,
+# 11,14,21 — the earliest three are consecutive days — so a 2/week cap would
+# starve the day-3 and day-14 steps (their ±2-day window closes while the cap
+# is still full). 3/week with the 2-day minimum spacing fits the schedule and
+# still guarantees at most one email every two days.
+NURTURE_MAX_EMAILS_PER_WEEK = 3
 NURTURE_MIN_DAYS_BETWEEN_EMAILS = 2
 
 # UTM tags appended to every CTA so activation attribution works in PostHog.

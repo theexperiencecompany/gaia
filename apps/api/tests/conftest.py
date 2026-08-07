@@ -35,6 +35,9 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("WORKOS_API_KEY", "sk_test_fake")
 os.environ.setdefault("WORKOS_CLIENT_ID", "client_fake")
 os.environ.setdefault("WORKOS_COOKIE_PASSWORD", "a" * 32)
+os.environ.setdefault("RESEND_API_KEY", "re_test_fake")
+os.environ.setdefault("RESEND_AUDIENCE_ID", "aud_fake")
+os.environ.setdefault("EMAIL_UNSUBSCRIBE_SECRET", "test-unsubscribe-secret-" + "x" * 16)
 os.environ.setdefault(
     "MCP_ENCRYPTION_KEY",
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret

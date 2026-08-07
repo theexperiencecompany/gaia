@@ -41,31 +41,34 @@ router = APIRouter()
 
 _UNSUBSCRIBE_INVALID_HTML = (
     "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
-    "text-align: center;'><p>This unsubscribe link is invalid or has expired.</p>"
+    "text-align: center;'><p>This unsubscribe link is invalid.</p>"
     "</body></html>"
-)
-_UNSUBSCRIBE_SUCCESS_HTML = (
-    "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
-    "text-align: center;'><p>You're unsubscribed from GAIA emails.</p></body></html>"
 )
 
 
 @router.get("/notifications/unsubscribe", response_class=HTMLResponse)
-async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> HTMLResponse:
-    """One-click email unsubscribe — no login required. Flips the ``email``
-    channel preference off; other channels are unaffected."""
-    user_id = verify_unsubscribe_token(token)
-    if not user_id:
+async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLResponse:
+    """Unsubscribe confirmation page — no login required. Renders a confirm
+    button that POSTs to the same URL, so a GET (mail-client link scanner,
+    prefetch) can never silently unsubscribe the user; the POST is the
+    one-click target for RFC 8058 clients."""
+    if not verify_unsubscribe_token(token):
         return HTMLResponse(content=_UNSUBSCRIBE_INVALID_HTML, status_code=400)
 
-    log.set(user={"id": user_id}, operation="unsubscribe_email")
-    await _disable_email_channel(user_id)
-    log.set(outcome="success")
-    return HTMLResponse(content=_UNSUBSCRIBE_SUCCESS_HTML)
+    log.set(operation="unsubscribe_email_confirmation")
+    form = (
+        "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
+        "text-align: center;'><p>Want to stop receiving GAIA emails?</p>"
+        f"<form method='post' action='/api/v1/notifications/unsubscribe?token={token}'>"
+        "<button style='background-color: #00bbff; color: #ffffff; padding: 8px 16px; "
+        "border: none; border-radius: 4px; cursor: pointer;'>Unsubscribe</button>"
+        "</form></body></html>"
+    )
+    return HTMLResponse(content=form)
 
 
 @router.post("/notifications/unsubscribe")
-async def unsubscribe_from_emails_one_click(token: Annotated[str, Query()]) -> Response:
+async def unsubscribe_from_emails(token: Annotated[str, Query()]) -> Response:
     """RFC 8058 one-click unsubscribe target (List-Unsubscribe-Post). Mail
     clients POST here; the response must be a blank 200."""
     user_id = verify_unsubscribe_token(token)
