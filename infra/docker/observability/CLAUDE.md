@@ -221,14 +221,20 @@ curl -s localhost:9090/api/v1/query?query=up | head -c 200   # prove the server 
 pint --config config/pint.hcl lint --min-severity=info /tmp/gaia-rules.yaml
 ```
 
-That `curl` is not optional. Pointed at the wrong server — or at nothing —
-`promql/series` reports every rule in the file as missing, which reads like a
-catastrophe and is really a broken server.
+That `curl` is not optional — it is the difference between two readings that
+look identical. A broken tunnel or wrong target makes `promql/series` report
+**every** rule in the file as missing; a genuinely empty result means the
+metric really is absent. Resolve any connectivity/query error first — if the
+`curl` fails or the server is the wrong one, nothing else the online run says
+is trustworthy. Only when the server responds cleanly does "no series" mean
+"the metric does not exist."
 
 The online run adds, on top of the offline set: `promql/series` (metric never
 existed, or existed and disappeared, or has no series matching your label
 matchers), `alerts/count` (how many times the rule would have fired in the last
-week — **0 is the signature of a threshold that cannot be reached**),
+week — **0 is a signal to investigate threshold reachability and data
+coverage**, not proof the threshold is unreachable: a new rule, sparse
+incidents, or missing history all also read 0),
 `promql/rate` and `promql/counter` (a `rate()` over a gauge is valid PromQL and
 always wrong; offline pint cannot tell a counter from a gauge because that
 metadata lives in Prometheus), `promql/vector_matching`, and `labels/conflict`.

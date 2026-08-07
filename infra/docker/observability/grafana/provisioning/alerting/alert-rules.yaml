@@ -74,12 +74,13 @@ apiVersion: 1
 # the first route in notification-policies.yaml collapses into a single
 # "monitoring is broken" message. One true statement beats N false ones.
 #
-# The exception is the cadvisor- and Redis-derived rules — gaia-container-restarts,
-# gaia-container-oom, gaia-redis-memory, gaia-redis-evictions,
-# gaia-rabbitmq-no-consumers — which use `OK`. Their datasource already has a
-# dedicated owner: gaia-monitoring-target-down reports a dead cadvisor and
-# gaia-redis-down reports a dead Redis, so a datasource error here is that
-# owner's alert, not a second copy of it.
+# The exception is the cadvisor-, Redis- and RabbitMQ-derived rules —
+# gaia-container-restarts, gaia-container-oom, gaia-redis-memory,
+# gaia-redis-evictions, gaia-rabbitmq-no-consumers — which use `OK`. Their
+# datasource already has a dedicated owner: gaia-monitoring-target-down reports
+# a dead cadvisor, gaia-redis-down reports a dead Redis, and gaia-target-down
+# covers the rabbitmq scrape job, so a datasource error here is that owner's
+# alert, not a second copy of it.
 #
 # `noDataState` is a genuine per-rule judgement and is NOT uniform. NoData on a
 # probe or an `up` series means the target vanished, which is real and should
@@ -1342,9 +1343,11 @@ groups:
 
       # 24. Host is running out of inodes. Independent of the byte-usage rule:
       # inode exhaustion returns ENOSPC on every write while `df -h` still shows
-      # free space. clamp_min guards filesystems that report files=0 (dynamic
-      # inode allocation) — without it the division yields NaN, the series is
-      # dropped, and with noDataState OK the rule would silently stop existing.
+      # free space. No clamp_min on the denominator: a filesystem that reports
+      # files=0 (dynamic inode allocation) would otherwise read as 0/1 -> 100%
+      # and falsely page. Let it divide to NaN and drop instead — with
+      # noDataState Alerting the drop surfaces as "could not be evaluated"
+      # rather than a fake full alert.
       # 85% matches the disk-bytes threshold so the two read as one policy.
       # No dashboard link: the host dashboard charts bytes only, not inodes.
       - uid: gaia-host-inodes
@@ -1356,7 +1359,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: 100 * (1 - node_filesystem_files_free{mountpoint="/",fstype!="tmpfs"} / clamp_min(node_filesystem_files{mountpoint="/",fstype!="tmpfs"}, 1))
+              expr: 100 * (1 - node_filesystem_files_free{mountpoint="/",fstype!="tmpfs"} / node_filesystem_files{mountpoint="/",fstype!="tmpfs"})
               instant: true
           - refId: B
             datasourceUid: __expr__
