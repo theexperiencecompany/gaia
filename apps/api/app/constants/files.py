@@ -13,6 +13,15 @@ XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 CSV_MIME = "text/csv"
 PDF_MIME = "application/pdf"
+# Legacy binary Word (OLE2) — extracted locally by anydoc like DOCX.
+DOC_MIME = "application/msword"
+# Additional formats anydoc converts to Markdown (verified against real files).
+# text/rtf matches the backend upload allowlist (upload_validation.py).
+RTF_MIME = "text/rtf"
+EPUB_MIME = "application/epub+zip"
+ODT_MIME = "application/vnd.oasis.opendocument.text"
+ODS_MIME = "application/vnd.oasis.opendocument.spreadsheet"
+ODP_MIME = "application/vnd.oasis.opendocument.presentation"
 
 # Local (offline, native-code) document extraction runs synchronously on a
 # thread. This bounds how long a request waits (e.g. a decompression-bomb

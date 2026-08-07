@@ -21,13 +21,19 @@ from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
 from app.constants.files import (
     CSV_MIME,
+    DOC_MIME,
     DOCX_MIME,
+    EPUB_MIME,
     LOCAL_EXTRACTION_TIMEOUT_SECONDS,
     MAX_CHUNK_CHARS,
     MAX_INDEXED_CHUNKS,
     OCR_EXTRACTION_TIMEOUT_SECONDS,
+    ODP_MIME,
+    ODS_MIME,
+    ODT_MIME,
     PDF_MIME,
     PPTX_MIME,
+    RTF_MIME,
     SUMMARY_LLM_MAX_CONCURRENCY,
     XLSX_MIME,
 )
@@ -94,13 +100,27 @@ class DocumentProcessor:
                 return await self.process_doc(file_content)
             if content_type == DOCX_MIME:
                 return await self.process_office_document(file_content, suffix=".docx")
+            if content_type == DOC_MIME:
+                return await self.process_office_document(file_content, suffix=".doc")
             if content_type == XLSX_MIME:
                 return await self.process_office_document(file_content, suffix=".xlsx")
             if content_type == PPTX_MIME:
                 return await self.process_office_document(file_content, suffix=".pptx")
             if content_type == CSV_MIME:
                 return await self.process_office_document(file_content, suffix=".csv")
+            if content_type == RTF_MIME:
+                return await self.process_office_document(file_content, suffix=".rtf")
+            if content_type == EPUB_MIME:
+                return await self.process_office_document(file_content, suffix=".epub")
+            if content_type == ODT_MIME:
+                return await self.process_office_document(file_content, suffix=".odt")
+            if content_type == ODS_MIME:
+                return await self.process_office_document(file_content, suffix=".ods")
+            if content_type == ODP_MIME:
+                return await self.process_office_document(file_content, suffix=".odp")
             if content_type.startswith("text/"):
+                return await self.process_text(file_content)
+            if content_type == "application/json":
                 return await self.process_text(file_content)
             ext = os.path.splitext(filename)[1].lower()
             return f"File of type {ext} (no content extraction available)"

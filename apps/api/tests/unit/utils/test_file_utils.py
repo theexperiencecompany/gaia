@@ -141,9 +141,15 @@ class TestProcessFileRouting:
         ("content_type", "suffix"),
         [
             (file_utils.DOCX_MIME, ".docx"),
+            (file_utils.DOC_MIME, ".doc"),
             (file_utils.XLSX_MIME, ".xlsx"),
             (file_utils.PPTX_MIME, ".pptx"),
             (file_utils.CSV_MIME, ".csv"),
+            (file_utils.RTF_MIME, ".rtf"),
+            (file_utils.EPUB_MIME, ".epub"),
+            (file_utils.ODT_MIME, ".odt"),
+            (file_utils.ODS_MIME, ".ods"),
+            (file_utils.ODP_MIME, ".odp"),
         ],
     )
     async def test_office_and_csv_types_route_to_process_office_document(
@@ -152,6 +158,17 @@ class TestProcessFileRouting:
         processor.process_office_document = AsyncMock(return_value=[])  # type: ignore[method-assign]
         await processor.process_file(b"data", content_type, f"file{suffix}")
         processor.process_office_document.assert_awaited_once_with(b"data", suffix=suffix)
+
+    async def test_json_routes_to_process_text(self, processor: DocumentProcessor) -> None:
+        """JSON is text; it routes to process_text, not the office parser."""
+        processor.process_text = AsyncMock(  # type: ignore[method-assign]
+            return_value=DocumentSummaryModel(
+                data=DocumentPageModel(page_number=1, content='{"a": 1}'),
+                summary="summary",
+            )
+        )
+        await processor.process_file(b'{"a": 1}', "application/json", "data.json")
+        processor.process_text.assert_awaited_once_with(b'{"a": 1}')
 
     async def test_unknown_type_returns_fallback_string(self, processor: DocumentProcessor) -> None:
         result = await processor.process_file(b"binary", "application/octet-stream", "data.bin")
