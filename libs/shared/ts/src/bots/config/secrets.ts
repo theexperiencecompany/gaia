@@ -30,11 +30,10 @@ const INFISICAL_VARS = [
 
 export async function injectInfisicalSecrets(): Promise<void> {
   // ENV doubles as the Infisical environment slug (development/staging/
-  // production), same as the Python loader. NODE_ENV is only a fallback for
-  // containers that set NODE_ENV=production without an explicit ENV.
-  const env =
-    process.env.ENV ??
-    (process.env.NODE_ENV === "production" ? "production" : "development");
+  // production). Identical to the Python loader, including the default: an
+  // unset ENV means production, so a deployed container that forgets to set it
+  // refuses to boot instead of silently starting with no secrets.
+  const env = process.env.ENV ?? "production";
   const isProduction = env === "production";
 
   const present = INFISICAL_VARS.filter((k) => !!process.env[k]);
