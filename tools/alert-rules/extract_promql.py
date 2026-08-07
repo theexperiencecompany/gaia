@@ -129,6 +129,43 @@ def _assert_chains_to_query(
     _fail(uid, f"expression chain from {condition!r} never reaches the query node {query!r}")
 
 
+def _validate_annotations(uid: str, annotations: dict[str, Any]) -> None:
+    """Fail on the documented annotation-template traps.
+
+    Grafana expands these templates itself and its error path keeps the raw
+    text, so a broken one ships silently — the summary shows up verbatim in
+    Slack. The fixtures cannot cover them (the extractor drops templated
+    annotations for promtool), so validate the three documented traps
+    structurally instead: unbalanced braces, a bare ``$values.<ref>`` piped
+    into a formatter instead of ``$values.<ref>.Value``, and any ``$values`` /
+    ``$labels`` reference with no ``{{ if $values ... }}`` guard for the
+    DatasourceError/NoData path.
+    """
+    for name, value in annotations.items():
+        text = str(value)
+        if "{{" not in text:
+            continue
+        if text.count("{{") != text.count("}}"):
+            _fail(uid, f"annotation {name!r} has unbalanced {{{{/}}}}")
+        if re.search(r"\$values\.|\$labels\.", text) and not re.search(
+            r"\{\{\s*if \$values\.", text
+        ):
+            _fail(
+                uid,
+                f"annotation {name!r} references $values/$labels with no guard "
+                "({{{{ if $values.<ref> }}}})",
+            )
+        # Strip the guard(s); every remaining $values.<ref> must be a .Value access.
+        remaining = re.sub(r"\{\{\s*if \$values\.\w+", "", text)
+        for m in re.finditer(r"\$values\.\w+", remaining):
+            if remaining[m.end() : m.end() + len(".Value")] != ".Value":
+                _fail(
+                    uid,
+                    f"annotation {name!r} references {m.group()} without .Value "
+                    "(the struct is not a float)",
+                )
+
+
 def _alerting_rule(rule: dict[str, Any]) -> dict[str, Any]:
     uid = rule.get("uid")
     if not isinstance(uid, str) or not uid:
@@ -157,6 +194,7 @@ def _alerting_rule(rule: dict[str, Any]) -> dict[str, Any]:
     }
     if rule.get("labels"):
         out["labels"] = rule["labels"]
+    _validate_annotations(uid, rule.get("annotations") or {})
     # Grafana expands annotations with its own engine, whose `$values.<ref>.Value`
     # does not exist in Prometheus templates — promtool rejects the file outright
     # ("undefined variable $values"). Only literal annotations survive the

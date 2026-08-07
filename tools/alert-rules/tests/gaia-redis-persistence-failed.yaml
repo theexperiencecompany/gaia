@@ -1,5 +1,12 @@
 # gaia-redis-persistence-failed — fires when Redis's last snapshot or AOF write
 # failed (product of both status gauges drops below 1).
+#
+# Metric existence was validated against a LOCAL Prometheus scraping the pinned
+# redis_exporter v1.66.0 pointed at a real redis running --appendonly yes: both
+# redis_rdb_last_bgsave_status and redis_aof_last_write_status are emitted
+# (pint promql/series passed), and the firing path was exercised in a live
+# Grafana. The pre-merge check for the production instance is the documented
+# local online pint pass — infra/docker/observability/CLAUDE.md.
 rule_files: [../gaia-rules.yaml]
 evaluation_interval: 1m
 

@@ -1,7 +1,7 @@
 # gaia-arq-worker-down — fires when the ARQ worker stops reporting metrics.
 #
 # The noData path (no up series at all) is Grafana-only via noDataState: Alerting
-# and is not modelled by promtool; this fixture covers probe_success=0 fires.
+# and is not modelled by promtool; this fixture covers up=0 fires.
 rule_files: [../gaia-rules.yaml]
 evaluation_interval: 1m
 

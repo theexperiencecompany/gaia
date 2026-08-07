@@ -3,6 +3,12 @@
 # The noData path (no probe_success series at all) is Grafana-only: this rule has
 # noDataState: Alerting, which promtool cannot model. This fixture covers the
 # value-present path (probe_success=0 fires, =1 stays quiet).
+#
+# Metric existence and the live label set were validated against a LOCAL
+# Prometheus scraping the pinned blackbox-exporter v0.25.0 probing the real URL
+# (pint promql/series passed); the noData -> Alerting path was exercised in a
+# live Grafana. The pre-merge check for the production instance is the documented
+# local online pint pass — infra/docker/observability/CLAUDE.md.
 rule_files: [../gaia-rules.yaml]
 evaluation_interval: 1m
 
