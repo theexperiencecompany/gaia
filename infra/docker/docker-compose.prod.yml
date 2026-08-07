@@ -5,36 +5,18 @@
 # scripts/swarm/lab-rehearsal.sh.
 
 secrets:
-  # Per-service Infisical machine identities (Universal Auth). Each service
-  # authenticates with its own identity, scoped in the Infisical dashboard to
-  # only the secret paths that service needs — a compromised container cannot
-  # read the rest of the project. Services attach these with the long secret
-  # syntax, mapping each per-service secret onto the canonical
-  # /run/secrets/gaia_infisical_machine_identity_* paths that
-  # scripts/docker-entrypoint.sh reads.
-  gaia_api_infisical_client_id:
+  # One Infisical machine identity (Universal Auth), shared by every service.
+  # scripts/docker-entrypoint.sh reads these paths directly, so services attach
+  # them with the short secret syntax and need no per-service mapping.
+  #
+  # To scope access per service later, declare a secret per service here and
+  # attach it with the long syntax that maps onto these same canonical names —
+  # the entrypoint and app code stay identical:
+  #   - source: gaia_api_infisical_client_id
+  #     target: gaia_infisical_machine_identity_client_id
+  gaia_infisical_machine_identity_client_id:
     external: true
-  gaia_api_infisical_client_secret:
-    external: true
-  gaia_bot_discord_infisical_client_id:
-    external: true
-  gaia_bot_discord_infisical_client_secret:
-    external: true
-  gaia_bot_slack_infisical_client_id:
-    external: true
-  gaia_bot_slack_infisical_client_secret:
-    external: true
-  gaia_bot_telegram_infisical_client_id:
-    external: true
-  gaia_bot_telegram_infisical_client_secret:
-    external: true
-  gaia_bot_whatsapp_infisical_client_id:
-    external: true
-  gaia_bot_whatsapp_infisical_client_secret:
-    external: true
-  gaia_voice_agent_infisical_client_id:
-    external: true
-  gaia_voice_agent_infisical_client_secret:
+  gaia_infisical_machine_identity_client_secret:
     external: true
   gaia_infisical_project_id:
     external: true
@@ -89,10 +71,8 @@ services:
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
     secrets:
-      - source: gaia_api_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_api_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
       - gaia_metrics_token
     ports:
@@ -169,10 +149,8 @@ services:
       # Self-hosted SearXNG — the unlimited last-resort search fallback.
       SEARXNG_BASE_URL: http://searxng:8080
     secrets:
-      - source: gaia_api_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_api_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
       - gaia_metrics_token
     networks:
@@ -236,10 +214,8 @@ services:
       # MEMORY_EMBEDDING_SIDECAR_URL MUST stay unset here so the sidecar serves
       # from its own local models rather than calling itself.
     secrets:
-      - source: gaia_api_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_api_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     volumes:
       - embedding_models:/models
@@ -292,10 +268,8 @@ services:
       LOG_COLORIZE: "false"
       ENV: production
     secrets:
-      - source: gaia_bot_discord_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_bot_discord_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/discord/* from the public internet.
@@ -338,10 +312,8 @@ services:
       LOG_COLORIZE: "false"
       ENV: production
     secrets:
-      - source: gaia_bot_slack_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_bot_slack_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/slack/* from the public internet.
@@ -384,10 +356,8 @@ services:
       LOG_COLORIZE: "false"
       ENV: production
     secrets:
-      - source: gaia_bot_telegram_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_bot_telegram_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /bots/telegram/* from the public internet.
@@ -430,10 +400,8 @@ services:
       LOG_COLORIZE: "false"
       ENV: production
     secrets:
-      - source: gaia_bot_whatsapp_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_bot_whatsapp_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     ports:
       # Nginx proxies /api/v1/webhook/whatsapp + /bots/whatsapp/*.
@@ -914,10 +882,8 @@ services:
       # SSE endpoint the agent's CustomLLM talks to).
       GAIA_BACKEND_URL: http://gaia-backend:80
     secrets:
-      - source: gaia_voice_agent_infisical_client_id
-        target: gaia_infisical_machine_identity_client_id
-      - source: gaia_voice_agent_infisical_client_secret
-        target: gaia_infisical_machine_identity_client_secret
+      - gaia_infisical_machine_identity_client_id
+      - gaia_infisical_machine_identity_client_secret
       - gaia_infisical_project_id
     volumes:
       - voice_agent_models:/home/appuser/.cache/huggingface

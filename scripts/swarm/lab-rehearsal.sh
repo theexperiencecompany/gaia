@@ -217,8 +217,6 @@ else
   # Read from env vars — fall back to placeholder values if not set.
   # With placeholders, infra services start fine; app services will fail
   # Infisical auth (expected — use real creds for a full integration test).
-  # Production uses one machine identity PER SERVICE; the lab reuses one
-  # identity's creds for all of them (or placeholders).
   INFISICAL_MACHINE_IDENTITY_CLIENT_ID="${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-lab-placeholder-client-id}"
   INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET="${INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET:-lab-placeholder-client-secret}"
   INFISICAL_PROJECT_ID="${INFISICAL_PROJECT_ID:-lab-placeholder-project-id}"
@@ -234,12 +232,10 @@ else
     fi
   }
 
-  # Per-service machine identities (see docker-compose.prod.yml secrets block)
-  for _svc in api bot_discord bot_slack bot_telegram bot_whatsapp voice_agent; do
-    create_secret "gaia_${_svc}_infisical_client_id"     "$INFISICAL_MACHINE_IDENTITY_CLIENT_ID"
-    create_secret "gaia_${_svc}_infisical_client_secret" "$INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"
-  done
-  create_secret gaia_infisical_project_id "$INFISICAL_PROJECT_ID"
+  # Shared machine identity (see docker-compose.prod.yml secrets block)
+  create_secret gaia_infisical_machine_identity_client_id     "$INFISICAL_MACHINE_IDENTITY_CLIENT_ID"
+  create_secret gaia_infisical_machine_identity_client_secret "$INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"
+  create_secret gaia_infisical_project_id                     "$INFISICAL_PROJECT_ID"
   create_secret gaia_metrics_token        "$METRICS_TOKEN"
   # Grafana email alerting (Gmail app password). Real value in prod; placeholder
   # for the lab so the grafana service can start with GF_SMTP_PASSWORD__FILE set.
