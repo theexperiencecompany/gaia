@@ -727,8 +727,8 @@
       `<div class="t-menu__course">` +
       `<p class="t-menu__label"><span class="em">&mdash;</span>${esc(label)}<span class="em">&mdash;</span></p>` +
       `<h2 class="t-menu__dish">${esc(dish)}</h2>` +
-      `<p class="t-menu__time">${esc(time)}</p>` +
-      `<p class="t-menu__desc">${esc(desc)}</p>` +
+      (time ? `<p class="t-menu__time">${esc(time)}</p>` : "") +
+      (desc ? `<p class="t-menu__desc">${esc(desc)}</p>` : "") +
       `</div>`
     );
   }
@@ -784,30 +784,13 @@
       const dateLine = `${caps(ed.weekday)} &middot; ${ed.day} ${caps(ed.month)} ${ed.year} &middot; Service N&ordm; ${ed.editionNo}`;
 
       const courses =
-        menuCourse(
-          "First",
-          "The design review, with Dhruv",
-          "half past one",
-          "the new dashboard brief — an hour set aside to shape it",
-        ) +
-        menuCourse(
-          "Second",
-          "The investor sync, with Mehul",
-          "four o’clock",
-          "thirty minutes; the agenda already set down",
-        ) +
-        menuCourse(
-          'To finish',
-          "The approval-flow PR",
-          "before nightfall",
-          "the todos flow, shipped; its tests came back green at first light",
-        );
+        menuCourse("First", c.today[0].label, c.today[0].t24, c.today[0].note) +
+        menuCourse("Second", c.today[1].label, c.today[1].t24, c.today[1].note) +
+        menuCourse('To finish', c.today[2].label, c.today[2].t24, c.today[2].note);
 
       // mise en place — the overnight work, re-voiced small
       const miseLines = [
-        `the inbox brought to zero &mdash; ${esc(c.overnight[0].label)
-          .replace(/^Archived /, "")
-          .replace(/; inbox is at zero$/, " filed")}`,
+        `${esc(c.overnight[0].label)}${c.overnight[0].note ? ` &mdash; ${esc(c.overnight[0].note)}` : ""}`,
         `${esc(c.overnight[1].label)}${c.overnight[1].note ? ` &mdash; ${esc(c.overnight[1].note)}` : ""}`,
         `${esc(c.overnight[2].label)}${c.overnight[2].note ? `; ${esc(c.overnight[2].note)}` : ""}`,
       ];

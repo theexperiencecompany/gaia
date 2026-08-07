@@ -544,9 +544,9 @@ EXPLORER.register({
         <div class="t-playfair__rule"></div>
         <p class="t-playfair__deck">${esc(ed.deck)}</p>
 
-        ${sec(0, "The day ahead", "Three", c.today.map((it) => item(todayWhen(it), null, it.label, it.note, it.tag)).join(""))}
-        ${sec(1, "While you slept", "Three", c.overnight.map((it) => item(clockAMPM(it.t24), null, it.label, it.note, it.tag)).join(""))}
-        ${sec(2, "For your decision", "Two", c.decisions.map((it) => item(it.verb, "verb", it.label, it.note, null)).join(""))}
+        ${sec(0, "The day ahead", c.today.length, c.today.map((it) => item(todayWhen(it), null, it.label, it.note, it.tag)).join(""))}
+        ${sec(1, "While you slept", c.overnight.length, c.overnight.map((it) => item(clockAMPM(it.t24), null, it.label, it.note, it.tag)).join(""))}
+        ${sec(2, "For your decision", c.decisions.length, c.decisions.map((it) => item(it.verb, "verb", it.label, it.note, null)).join(""))}
 
         <div class="t-playfair__stats">
           <div class="t-playfair__stat">
@@ -900,7 +900,7 @@ EXPLORER.register({
 
             <div class="t-postal__addr">
               <div class="lab">TO</div>
-              <div class="to">ARYAN RANDERIYA</div>
+              <div class="to">YOU</div>
               <div class="re">Re: Your ${esc(ed.weekday)}</div>
               <div class="meta">Edition No. ${ed.editionNo} · ${esc(ed.dateLong)}</div>
               <div class="under"></div>

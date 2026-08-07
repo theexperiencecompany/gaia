@@ -34,7 +34,11 @@ FAMILY_EDITION = "edition"
 # - "dayline"/"flightplan": position items on a real time axis and drop items
 #   with no clock time; re-admit once the briefing prompt reliably emits time
 #   prefixes on calendar-anchored items (verified via the persona harness).
-EXPLORER_EXCLUDED_FAMILIES = {"weekly", "dayline", "flightplan"}
+# - "metromap" (tpl-novel-a.js): fixed-position SVG stations sized for the
+#   founder fixture's 2-3-word station names overflow/clip the canvas once
+#   fed real full-sentence item text (see explorer/README.md); needs a
+#   content-aware layout, not a content swap.
+EXPLORER_EXCLUDED_FAMILIES = {"weekly", "dayline", "flightplan", "metromap"}
 
 
 def _make_explorer_renderer(family: str) -> Callable[..., str]:

@@ -253,23 +253,23 @@
         `<circle class="mm-ring" cx="${X_IX}" cy="${YOU_Y}" r="17"/>` +
         `<circle class="mm-ring" cx="${X_IX}" cy="${GAIA_Y}" r="17"/>` +
         `<text class="mm-ixtime" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 - 20}">${esc(ov[1].t24 || "")}</text>` +
-        `<text class="mm-ixname" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 + 3}">Priyanka draft</text>` +
+        `<text class="mm-ixname" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 + 3}">${esc(ov[1].label)}</text>` +
         (full && ov[1].note
           ? `<text class="mm-ixnote" x="${X_IX + 30}" y="${(YOU_Y + GAIA_Y) / 2 + 24}">${esc(ov[1].note)}</text>`
           : "");
 
       const stations =
         // YOU termini
-        mmTermBox(X_REV, YOU_Y, "above", you[0].t24 || "", "Design review", "the dashboard brief, with Dhruv", full, "you") +
-        mmTermBox(X_SHIP, YOU_Y, "above", "EOD", "Ship the PR", you[2].note, full, "you") +
+        mmTermBox(X_REV, YOU_Y, "above", you[0].t24 || "", you[0].label, you[0].note, full, "you") +
+        mmTermBox(X_SHIP, YOU_Y, "above", "EOD", you[2].label, you[2].note, full, "you") +
         // YOU mid: investor sync
-        mmStop(X_SYNC, YOU_Y, you[1].t24 || "", "Investor sync", you[1].note, full) +
+        mmStop(X_SYNC, YOU_Y, you[1].t24 || "", you[1].label, you[1].note, full) +
         // GAIA termini
-        mmTermBox(G_DONE, GAIA_Y, "below", ov[0].t24 || "", "Inbox zero", "archived 23 newsletters", full, "gaia") +
-        mmTermBox(G_MOVE, GAIA_Y, "below", ov[2].t24 || "", "Dentist moved", "to July 10", full, "gaia") +
+        mmTermBox(G_DONE, GAIA_Y, "below", ov[0].t24 || "", ov[0].label, ov[0].note, full, "gaia") +
+        mmTermBox(G_MOVE, GAIA_Y, "below", ov[2].t24 || "", ov[2].label, ov[2].note, full, "gaia") +
         // decisions
-        mmHollow(D_A, D_Y, dec[0].verb, "Linear upgrade", "$89/mo, 2 seats", full) +
-        mmHollow(D_B, D_Y, dec[1].verb, "podcast invite", "Design Tools FM", full);
+        mmHollow(D_A, D_Y, dec[0].label, dec[0].note, full) +
+        mmHollow(D_B, D_Y, dec[1].label, dec[1].note, full);
 
       const legend =
         `<g>` +
@@ -603,18 +603,18 @@
         `<div class="t-boardingpass__stops">` +
         `<div class="t-boardingpass__stop"><div class="t-boardingpass__node"></div>` +
         `<div class="t-boardingpass__stop-t">${esc(t[0].t24 || "")}</div>` +
-        `<div class="t-boardingpass__stop-l">Boarding<br>Design review</div></div>` +
+        `<div class="t-boardingpass__stop-l">Boarding<br>${esc(t[0].label)}</div></div>` +
         `<div class="t-boardingpass__stop"><div class="t-boardingpass__node"></div>` +
         `<div class="t-boardingpass__stop-t">${esc(t[1].t24 || "")}</div>` +
-        `<div class="t-boardingpass__stop-l">Connection<br>Investor sync</div></div>` +
+        `<div class="t-boardingpass__stop-l">Connection<br>${esc(t[1].label)}</div></div>` +
         `<div class="t-boardingpass__stop"><div class="t-boardingpass__node"></div>` +
         `<div class="t-boardingpass__stop-t">EOD</div>` +
-        `<div class="t-boardingpass__stop-l">Arrival<br>Ship the PR</div></div>` +
+        `<div class="t-boardingpass__stop-l">Arrival<br>${esc(t[2].label)}</div></div>` +
         `</div></div>`;
 
       const fields =
         `<div class="t-boardingpass__fields">` +
-        bpField("Passenger", "ARYAN RANDERIYA") +
+        bpField("Passenger", "YOU") +
         bpField("Flight", flight) +
         bpField("Date", dateBody) +
         bpField("Seat", seat, "seat") +
@@ -624,9 +624,9 @@
 
       const segs =
         `<div class="t-boardingpass__segs">` +
-        bpSeg("Boarding", t[0].t24, "Design review — the dashboard brief, with Dhruv", null) +
-        bpSeg("Connection", t[1].t24, "Investor sync with Mehul", t[1].note) +
-        bpSeg("Cargo", null, "Ship the approval-flow PR", t[2].note) +
+        bpSeg("Boarding", t[0].t24, t[0].label, t[0].note) +
+        bpSeg("Connection", t[1].t24, t[1].label, t[1].note) +
+        bpSeg("Cargo", null, t[2].label, t[2].note) +
         `</div>`;
 
       const fare =
@@ -654,21 +654,21 @@
         `<div class="t-boardingpass__stub-cols">` +
         `<div class="t-boardingpass__stub-col">` +
         `<div class="t-boardingpass__await">Awaiting confirmation</div>` +
-        bpConn("Connection 1", dec[0].verb + " — Linear upgrade", "$89/mo for 2 seats") +
-        bpConn("Connection 2", dec[1].verb + " — podcast invite", "Design Tools FM, next week") +
+        bpConn("Connection 1", dec[0].verb + " — " + dec[0].label, dec[0].note) +
+        bpConn("Connection 2", dec[1].verb + " — " + dec[1].label, dec[1].note) +
         `</div>` +
         `<div class="t-boardingpass__stub-col">` +
         `<div class="t-boardingpass__transit"><b>Services completed in transit</b>` +
-        `<p>${esc(ov[0].t24 || "")} &middot; Inbox archived to zero</p>` +
-        `<p>${esc(ov[1].t24 || "")} &middot; Priyanka draft ready for review</p>` +
-        `<p>${esc(ov[2].t24 || "")} &middot; Dentist moved to July 10</p>` +
+        `<p>${esc(ov[0].t24 || "")} &middot; ${esc(ov[0].label)}</p>` +
+        `<p>${esc(ov[1].t24 || "")} &middot; ${esc(ov[1].label)}</p>` +
+        `<p>${esc(ov[2].t24 || "")} &middot; ${esc(ov[2].label)}</p>` +
         `</div>` +
         `<div class="t-boardingpass__f-l" style="margin-top:12px">Passenger / Seat / Date</div>` +
-        `<div class="t-boardingpass__conn-t">ARYAN RANDERIYA</div>` +
+        `<div class="t-boardingpass__conn-t">YOU</div>` +
         `<div class="t-boardingpass__conn-n">${esc(seat)} &middot; ${esc(dateStub)}</div>` +
         `</div></div>` +
         `<div class="t-boardingpass__code"><div class="t-boardingpass__barcode"></div>` +
-        `<p class="t-boardingpass__barnum">GA${pad3(ed.editionNo)}&nbsp;&nbsp;${esc(ed.time24.replace(":", ""))}&nbsp;&nbsp;RANDERIYA/A</p></div>` +
+        `<p class="t-boardingpass__barnum">GA${pad3(ed.editionNo)}&nbsp;&nbsp;${esc(ed.time24.replace(":", ""))}&nbsp;&nbsp;YOU</p></div>` +
         `</aside>`;
 
       const perf = `<div class="t-boardingpass__perf" aria-hidden="true"></div>`;

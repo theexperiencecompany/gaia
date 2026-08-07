@@ -70,8 +70,15 @@ async def classify_new_todo(
     log.info("todo_classification.applied", todo_id=todo_id, disposition=result.disposition)
 
 
+# Strong refs to in-flight classification tasks (asyncio holds only weak refs,
+# so an unreferenced task can be garbage-collected mid-flight).
+_background_tasks: set[asyncio.Task[None]] = set()
+
+
 def schedule_classification(
     todo_id: str, user_id: str, title: str, description: str | None
 ) -> None:
     """Fire-and-forget hook for the create path — never blocks capture."""
-    asyncio.create_task(classify_new_todo(todo_id, user_id, title, description))
+    task = asyncio.create_task(classify_new_todo(todo_id, user_id, title, description))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)

@@ -219,7 +219,7 @@ EXPLORER.register({
         ${stampEl}
         <h2 class="t-memo__title">${esc(skin.header.word)}</h2>
         <dl class="t-memo__head">
-          <dt>TO:</dt><dd>Aryan</dd>
+          <dt>TO:</dt><dd>You</dd>
           <dt>FROM:</dt><dd>GAIA</dd>
           <dt>DATE:</dt><dd>${esc(ed.dateLong)}</dd>
           <dt>RE:</dt><dd>Your ${esc(ed.weekday)} -- Edition No. ${ed.editionNo}</dd>
@@ -475,6 +475,7 @@ EXPLORER.register({
             ${plateFig}
             <div class="t-broadsheet-leadbody">
               ${dropPara}
+              ${restToday}
             </div>
           </div>
 
