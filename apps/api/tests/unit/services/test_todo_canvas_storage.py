@@ -7,7 +7,7 @@ and a write only succeeds when the repository confirms the update matched.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -50,7 +50,7 @@ def mock_repo():
 
 @pytest.fixture
 def mock_sync():
-    with patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=AsyncMock) as m:
+    with patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m:
         yield m
 
 

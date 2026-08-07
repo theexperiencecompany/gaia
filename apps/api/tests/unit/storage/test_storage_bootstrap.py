@@ -972,6 +972,7 @@ async def test_bootstrap_restarts_once_the_previous_supervisor_has_finished(
     assert bootstrap._bootstrap_thread is not first
 
 
+@pytest.mark.slow
 async def test_an_unresponsive_mount_probe_still_starts_the_bootstrap(
     cfg: Path,
     juicefs_on_path: None,

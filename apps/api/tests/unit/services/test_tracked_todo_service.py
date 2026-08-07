@@ -6,7 +6,7 @@ completion/archival, and the context-summary renderers the agent sees.
 
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -71,7 +71,7 @@ def mock_deps():
         patch(f"{_MOD}.store_canvas_embedding", new_callable=AsyncMock) as m_store,
         patch(f"{_MOD}.mark_canvas_completed", new_callable=AsyncMock) as m_mark,
         patch(f"{_MOD}.update_canvas_embedding", new_callable=AsyncMock) as m_update_emb,
-        patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=AsyncMock) as m_sync,
+        patch(f"{_MOD}.schedule_gaia_tasks_sync", new_callable=MagicMock) as m_sync,
         patch(f"{_MOD}.RedisPoolManager.get_pool", new_callable=AsyncMock) as m_pool,
         patch(f"{_MOD}.read_canvas", new_callable=AsyncMock) as m_read,
         patch(f"{_MOD}.write_canvas", new_callable=AsyncMock) as m_write,

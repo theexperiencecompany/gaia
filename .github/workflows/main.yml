@@ -148,7 +148,7 @@ jobs:
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
             --tb=short -q --override-ini=addopts=--strict-markers \
             --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
-            --junitxml=test-results/pytest.xml --durations=50
+            --junitxml=test-results/pytest.xml --durations=50 -W error::RuntimeWarning
           echo "Python tests: OK (full suite vs live services)"
       - name: Schemathesis contract fuzz (isolated live-server run)
         # Boots a real uvicorn server; must NOT share the parallel load that
