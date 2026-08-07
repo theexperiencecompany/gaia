@@ -79,8 +79,7 @@ intended semantic, keep it:
 ## The ratchet
 
 `code-quality.yml`'s gate enforces a lane iff a marker file exists at
-`quality-gate/enforced/<lane>`. 17 of the 18 lanes are currently enforced
-(`alert-rules` is reporting-only until it has passed on a real runner). New lane:
+`quality-gate/enforced/<lane>`. All 18 lanes are currently enforced. New lane:
 add it non-enforced first, burn down findings, then add its marker in its own
 PR (separate marker files never merge-conflict).
 
