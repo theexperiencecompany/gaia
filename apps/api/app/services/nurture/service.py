@@ -150,7 +150,8 @@ async def _process_user(user: UserDocument, now: datetime) -> bool:
         AnalyticsEvents.NURTURE_EMAIL_SENT,
         {"step": step.key, "day_offset": step.day_offset},
     )
-    log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent to {user.email}")
+    log.set(user={"id": user.id}, nurture={"step": step.key})
+    log.info(f"{LogTag.MAIL} Nurture email '{step.key}' sent")
     return True
 
 
