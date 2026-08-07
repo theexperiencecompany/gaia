@@ -7,9 +7,10 @@ replay task (no agent re-run) so every run becomes a comparable experiment.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import json
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import opik
 
@@ -42,7 +43,7 @@ def sync_dataset(
     opik_client: opik.Opik,
     project: str,
     cases: list[Case],
-) -> Any:
+) -> object:
     dataset = opik_client.get_or_create_dataset(
         name=f"{project}-cases", project_name=project
     )
@@ -65,12 +66,12 @@ def finalize(
     project: str,
     cases: list[Case],
     journal: RunJournal,
-    scoring_metrics: list[Any],
+    scoring_metrics: list[object],
     experiment_name: str,
     tags: list[str],
-    replay: Callable[[dict[str, Any]], dict[str, Any]],
+    replay: Callable[[dict[str, object]], dict[str, object]],
     nb_samples: int | None = None,
-) -> Any:
+) -> object:
     """Evaluate the journal's stored outputs as an Opik experiment.
 
     ``replay(item)`` returns the stored run output for a case (never calls the

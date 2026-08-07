@@ -1,0 +1,63 @@
+# Todos family — the executor's todo tools (create/list/update/bulk via the
+# todo service; end_state verified in Mongo through the same service).
+
+- id: todos-create-simple
+  ticket: "User asks to create a todo; agent must create it and confirm."
+  tags: [todos]
+  prompt: "Add a todo: buy milk"
+  expected:
+    category: todos
+    communicate: ["milk"]
+    tool_calls: [{tool: create_todo}]
+    end_state: {todos: [{title: "buy milk", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the todo was created"
+        - "the reply is concise and helpful"
+
+- id: todos-create-and-list
+  ticket: "Create a todo and list todos; both tools must fire and the title relayed."
+  tags: [todos]
+  prompt: "Add a todo: pick up dry cleaning, then list all my todos"
+  expected:
+    category: todos
+    communicate: ["dry cleaning"]
+    tool_calls: [{tool: create_todo}, {tool: list_todos}]
+    end_state: {todos: [{title: "pick up dry cleaning", completed: false}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms creation and presents the todo list"
+
+- id: todos-complete
+  ticket: "Create a todo and mark it complete; end_state must show completed=true."
+  tags: [todos]
+  prompt: "Add a todo: pay rent, then mark it as complete"
+  expected:
+    category: todos
+    communicate: ["pay rent"]
+    tool_calls: [{tool: create_todo}, {tool: update_todo}]
+    end_state: {todos: [{title: "pay rent", completed: true}]}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms the todo was created and completed"
+
+- id: todos-bulk-complete
+  ticket: "Create several todos and complete them in one bulk call."
+  tags: [todos]
+  prompt: "Add three todos: water the plants, walk the dog, take out trash. Then complete all of them."
+  expected:
+    category: todos
+    communicate: ["water the plants"]
+    tool_calls: [{tool: create_todo}, {tool: bulk_complete_todos}]
+    end_state:
+      todos:
+        - {title: "water the plants", completed: true}
+        - {title: "walk the dog", completed: true}
+        - {title: "take out trash", completed: true}
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply confirms all three todos were created and completed"

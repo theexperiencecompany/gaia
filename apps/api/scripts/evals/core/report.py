@@ -7,17 +7,17 @@ Regenerable from the journal alone.
 
 from __future__ import annotations
 
-import html
-import json
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
+import html
+import json
 from pathlib import Path
 from typing import Any
 
 from .journal import RunJournal
 
 
-def _svg_bars(rows: list[tuple[str, float]], width: int = 640, height: int = 220) -> str:
+def _svg_bars(rows: list[tuple[str, float]], width: int = 640) -> str:
     """Horizontal bar chart as inline SVG (no JS, no deps)."""
     if not rows:
         return "<p>no data</p>"
@@ -36,9 +36,11 @@ def _svg_bars(rows: list[tuple[str, float]], width: int = 640, height: int = 220
             f'class="bar{" bad" if value < 0.5 else ""}"/>'
             f'<text x="{label_w + bar_w + 6}" y="{y + 13}" class="val">{value:.2f}</text>'
         )
+    svg_height = top + len(rows) * (bar_h + gap) + 10
+    bars_svg = "".join(bars)
     return (
-        f'<svg viewBox="0 0 {width} {top + len(rows) * (bar_h + gap) + 10}" '
-        f'width="{width}" height="{top + len(rows) * (bar_h + gap) + 10}">{''.join(bars)}</svg>'
+        f'<svg viewBox="0 0 {width} {svg_height}" '
+        f'width="{width}" height="{svg_height}">{bars_svg}</svg>'
     )
 
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import sys
-from pathlib import Path
 
 sys.stdout.reconfigure(line_buffering=True)
 
@@ -13,16 +12,15 @@ from .core.opiksink import load_opik_env
 
 load_opik_env()
 
+from contextlib import suppress  # noqa: E402
+from importlib import import_module  # noqa: E402
+
 from .core import runner  # noqa: E402
 from .core.providers import load_config  # noqa: E402
 
-from importlib import import_module  # noqa: E402
-
-for _suite_module in ("smoke", "memory", "capability", "gaia_bench", "quality"):
-    try:
+for _suite_module in ("smoke", "memory", "capability", "gaia_bench", "quality", "longmemeval", "regression"):
+    with suppress(ImportError):
         import_module(f".suites.{_suite_module}", __package__)
-    except ImportError:
-        pass
 
 
 def main() -> None:
@@ -49,6 +47,13 @@ def main() -> None:
     cost_p.add_argument("--project", action="store_true")
 
     args = parser.parse_args()
+
+    if args.command == "run" and args.sim:
+        import os
+
+        os.environ["GAIA_SIM_MODE"] = "1"
+        os.environ.setdefault("OPENROUTER_BASE_URL", f"http://localhost:{os.environ.get('LLM_STUB_PORT', '9797')}/api/v1")
+
     cfg = load_config()
 
     if args.command == "run":

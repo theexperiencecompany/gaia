@@ -4,10 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .providers import EvalConfig
 
-
-def project(cfg: EvalConfig, runs_dir: Path) -> None:
+def project(runs_dir: Path) -> None:
     """Print measured spend per suite and a scaled-up forecast."""
     per_suite: dict[str, dict[str, float]] = {}
     for run_dir in sorted(runs_dir.iterdir()):

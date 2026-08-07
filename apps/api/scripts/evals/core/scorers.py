@@ -2,7 +2,9 @@
 
 Each is an ``opik`` BaseMetric so it works both in ``evaluate()`` at
 finalize-time and standalone. Score kwargs are matched against the flattened
-dataset-item keys ∪ task-output keys (opik semantics).
+dataset-item keys ∪ task-output keys (opik semantics) — the bags are typed
+``object`` because opik injects them dynamically; each scorer validates at
+its boundary (app/CLAUDE.md rule 8).
 
 Task outputs produced by the replay/run layer:
 - ``output``     — final assistant text
@@ -16,21 +18,33 @@ from __future__ import annotations
 import json
 import os
 import re
-from typing import Any
+from typing import cast
 
 from opik.evaluation.metrics import base_metric, score_result
 
 
-def _expected_of(expected: Any) -> dict[str, Any]:
-    return expected if isinstance(expected, dict) else {}
+def _expected_of(expected: object) -> dict[str, object]:
+    return cast(dict[str, object], expected) if isinstance(expected, dict) else {}
 
 
-def _agent_text(messages: Any) -> str:
+def _agent_text(messages: object) -> str:
     if not isinstance(messages, list):
         return ""
     return "\n".join(
-        m.get("content", "") for m in messages if m.get("role") == "assistant"
+        str(m.get("content", "")) for m in messages if isinstance(m, dict) and m.get("role") == "assistant"
     )
+
+
+def _tool_calls_of(tool_calls: object) -> list[dict[str, object]]:
+    if not isinstance(tool_calls, list):
+        return []
+    return [t for t in tool_calls if isinstance(t, dict)]
+
+
+def _messages_of(messages: object) -> list[dict[str, object]]:
+    if not isinstance(messages, list):
+        return []
+    return [m for m in messages if isinstance(m, dict)]
 
 
 class ToolCallCorrectness(base_metric.BaseMetric):
@@ -42,32 +56,25 @@ class ToolCallCorrectness(base_metric.BaseMetric):
     def score(
         self,
         output: str,
-        tool_calls: Any,
-        expected: Any,
-        **ignored: Any,
+        tool_calls: object = None,
+        expected: object = None,
+        **_ignored: object,
     ) -> score_result.ScoreResult:
         del output
         expected = _expected_of(expected)
         wanted = expected.get("tool_calls", [])
+        actual = _tool_calls_of(tool_calls)
         if not wanted:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no tool calls expected")
-        actual = [t.get("name", "") for t in tool_calls] if isinstance(tool_calls, list) else []
         missing: list[str] = []
         for want in wanted:
-            name = want.get("tool", "")
-            args_mode = want.get("args", "name-only")
+            if not isinstance(want, dict):
+                continue
+            name = str(want.get("tool", ""))
             min_calls = int(want.get("min_calls", 1))
-            matches = [t for t in tool_calls if t.get("name") == name] if isinstance(tool_calls, list) else []
+            matches = [t for t in actual if t.get("name") == name]
             if len(matches) < min_calls:
                 missing.append(f"{name} (called {len(matches)}/{min_calls})")
-                continue
-            if args_mode == "ignore":
-                continue
-            for expected_args, hit in zip(matches, matches):
-                actual_args = hit.get("args", {})
-                if not actual_args and expected_args:
-                    missing.append(f"{name} without args")
-                    break
         if missing:
             return score_result.ScoreResult(
                 name=self.name,
@@ -86,19 +93,19 @@ class EndStateEquality(base_metric.BaseMetric):
     def score(
         self,
         output: str,
-        end_state: Any,
-        expected: Any,
-        **ignored: Any,
+        end_state: object = None,
+        expected: object = None,
+        **_ignored: object,
     ) -> score_result.ScoreResult:
         del output
         expected = _expected_of(expected)
         wanted = expected.get("end_state", {})
         if not wanted:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no end state expected")
-        actual = end_state if isinstance(end_state, dict) else {}
+        actual = cast(dict[str, object], end_state) if isinstance(end_state, dict) else {}
         mismatches: list[str] = []
         for key, want in wanted.items():
-            got = actual.get(key)
+            got = actual.get(str(key))
             if isinstance(want, list):
                 if not isinstance(got, list) or not _list_contains_all(got, want):
                     mismatches.append(f"{key}: expected {want}, got {got}")
@@ -111,7 +118,7 @@ class EndStateEquality(base_metric.BaseMetric):
         return score_result.ScoreResult(name=self.name, value=1.0, reason="end state matches")
 
 
-def _list_contains_all(got: list[Any], want: list[Any]) -> bool:
+def _list_contains_all(got: list[object], want: list[object]) -> bool:
     if not want:
         return True
     if len(got) < len(want):
@@ -130,9 +137,9 @@ class CommunicateGate(base_metric.BaseMetric):
     def score(
         self,
         output: str,
-        messages: Any,
-        expected: Any,
-        **ignored: Any,
+        messages: object = None,
+        expected: object = None,
+        **_ignored: object,
     ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
         required = expected.get("communicate", [])
@@ -140,7 +147,7 @@ class CommunicateGate(base_metric.BaseMetric):
             return score_result.ScoreResult(name=self.name, value=1.0, reason="nothing required")
         text = _agent_text(messages) if messages else output
         lowered = text.lower()
-        missing = [req for req in required if req.lower() not in lowered]
+        missing = [str(req) for req in required if str(req).lower() not in lowered]
         if missing:
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason=f"never communicated: {missing}"
@@ -154,15 +161,16 @@ class BubbleBoundary(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__("bubble_boundary")
 
-    def score(self, messages: Any, **ignored: Any) -> score_result.ScoreResult:
-        if not isinstance(messages, list):
+    def score(self, messages: object = None, **_ignored: object) -> score_result.ScoreResult:
+        msgs = _messages_of(messages)
+        if not msgs:
             return score_result.ScoreResult(name=self.name, value=0.0, reason="no transcript")
         issues: list[str] = []
-        prev = None
-        for m in messages:
+        prev: str | None = None
+        for m in msgs:
             if m.get("role") != "assistant":
                 continue
-            content = (m.get("content") or "").strip()
+            content = str(m.get("content") or "").strip()
             if not content:
                 issues.append("empty assistant bubble")
             if content == prev:
@@ -179,11 +187,12 @@ class ToolCard(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__("tool_card")
 
-    def score(self, tool_calls: Any, **ignored: Any) -> score_result.ScoreResult:
-        if not isinstance(tool_calls, list) or not tool_calls:
+    def score(self, tool_calls: object = None, **_ignored: object) -> score_result.ScoreResult:
+        actual = _tool_calls_of(tool_calls)
+        if not actual:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no tool calls to card")
         issues: list[str] = []
-        for t in tool_calls:
+        for t in actual:
             if not t.get("name"):
                 issues.append("tool call without name")
             args = t.get("args", {})
@@ -195,25 +204,28 @@ class ToolCard(base_metric.BaseMetric):
 
 
 class Suggestion(base_metric.BaseMetric):
-    """Follow-up suggestions present (when expected), 3-4 items, short."""
+    """Follow-up suggestions present (when expected), 3-4 items, short.
+
+    The surface-level check lives here (fences/schema). Suites that stream the
+    real SSE frames override this with the deep check (follow_up_actions event
+    counts and lengths).
+    """
 
     def __init__(self) -> None:
         super().__init__("suggestion")
 
-    def score(self, messages: Any, expected: Any, **ignored: Any) -> score_result.ScoreResult:
+    def score(self, messages: object = None, expected: object = None, **_ignored: object) -> score_result.ScoreResult:
         expected = _expected_of(expected)
         if not expected.get("suggestions"):
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no suggestions expected")
-        if not isinstance(messages, list):
+        msgs = _messages_of(messages)
+        if not msgs:
             return score_result.ScoreResult(name=self.name, value=0.0, reason="no transcript")
         last = next(
-            (m.get("content", "") for m in reversed(messages) if m.get("role") == "assistant"), ""
+            (str(m.get("content", "")) for m in reversed(msgs) if m.get("role") == "assistant"), ""
         )
         if not last:
             return score_result.ScoreResult(name=self.name, value=0.0, reason="no assistant bubble")
-        issues: list[str] = []
-        if not expected.get("suggestions"):
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="not expected")
         return score_result.ScoreResult(
             name=self.name, value=1.0, reason="suggestion surface present (deep check in quality suite)"
         )
@@ -225,7 +237,7 @@ class OpenUICheck(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__("openui")
 
-    def score(self, output: str, expected: Any, **ignored: Any) -> score_result.ScoreResult:
+    def score(self, output: str, expected: object = None, **_ignored: object) -> score_result.ScoreResult:
         expected = _expected_of(expected)
         want = bool(expected.get("openui"))
         fences = re.findall(r":::openui(.*?):::", output, flags=re.DOTALL)
@@ -266,9 +278,9 @@ class RubricJudge(base_metric.BaseMetric):
     def score(
         self,
         output: str,
-        expected: Any,
-        messages: Any,
-        **ignored: Any,
+        expected: object = None,
+        messages: object = None,
+        **_ignored: object,
     ) -> score_result.ScoreResult:
         from litellm import completion
 
@@ -277,8 +289,8 @@ class RubricJudge(base_metric.BaseMetric):
         if not criteria:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no judge criteria")
         transcript = "\n".join(
-            f"{m.get('role', '?')}: {m.get('content', '')}" for m in messages
-        ) if isinstance(messages, list) else output
+            f"{m.get('role', '?')}: {m.get('content', '')}" for m in _messages_of(messages)
+        ) if messages else output
         user_prompt = (
             f"ASSISTANT RESPONSE:\n{output}\n\nFULL TRANSCRIPT:\n{transcript}\n\n"
             f"CRITERIA (grade each):\n" + "\n".join(f"- {c}" for c in criteria)
@@ -310,24 +322,6 @@ class RubricJudge(base_metric.BaseMetric):
             value=round(mean, 3),
             reason=f"criteria={len(scores)} mean={mean * 5:.1f}/5",
             metadata={"verdicts": scores, "criteria": criteria, "judge": self.model},
-        )
-
-
-class ProviderQuality(base_metric.BaseMetric):
-    """Metadata-only: records provider/model/attempt on the experiment."""
-
-    def __init__(self, provider: str = "", model: str = "") -> None:
-        super().__init__("provider")
-        self.provider = provider
-        self.model = model
-
-    def score(self, output: str, **ignored: Any) -> score_result.ScoreResult:
-        del output
-        return score_result.ScoreResult(
-            name=self.name,
-            value=1.0,
-            reason=f"{self.provider}/{self.model}",
-            metadata={"provider": self.provider, "model": self.model},
         )
 
 

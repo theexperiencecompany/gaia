@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import os
-import tomllib
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import tomllib
 
 import httpx
 

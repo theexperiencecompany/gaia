@@ -8,11 +8,11 @@ HTML report. The transport simulates token usage so cost tables populate.
 from __future__ import annotations
 
 import asyncio
-import time
 
-from ..core.cost import EvalCostTracker
-from ..core.runner import Suite, register_suite
-from ..core.types import Case, CaseRun, ProviderError
+from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.providers import EvalConfig
+from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 
 class SmokeTransport:
@@ -51,10 +51,12 @@ class SmokeSuite(Suite):
     project = "gaia-smoke"
     label = "Smoke"
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg: EvalConfig) -> None:
+        del cfg
         self._transport = SmokeTransport()
 
-    def load_cases(self, cfg) -> list[Case]:
+    def load_cases(self, cfg: EvalConfig) -> list[Case]:
+        del cfg
         return [
             Case(
                 id="smoke-1",
@@ -86,11 +88,15 @@ class SmokeSuite(Suite):
             ),
         ]
 
-    def transport(self, case: Case, cfg, tracker: EvalCostTracker, provider):
+    def transport(self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider):
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        from ..core.scorers import CommunicateGate, EndStateEquality, ToolCallCorrectness
+        from scripts.evals.core.scorers import (
+            CommunicateGate,
+            EndStateEquality,
+            ToolCallCorrectness,
+        )
 
         scores = {}
         if case.expected.get("communicate"):
@@ -107,8 +113,14 @@ class SmokeSuite(Suite):
             ).value
         return scores
 
-    def finalize_scorers(self, cfg) -> list:
-        from ..core.scorers import BubbleBoundary, CommunicateGate, EndStateEquality, ToolCallCorrectness
+    def finalize_scorers(self, cfg: EvalConfig) -> list:
+        del cfg
+        from scripts.evals.core.scorers import (
+            BubbleBoundary,
+            CommunicateGate,
+            EndStateEquality,
+            ToolCallCorrectness,
+        )
 
         return [
             BubbleBoundary(),

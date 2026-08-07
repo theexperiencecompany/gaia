@@ -1,0 +1,5 @@
+{
+  "suite": "memory",
+  "baseline": 0.0,
+  "notes": "to be set by first validated run — target: reproduce committed 69.6% on the 46-probe subset"
+}

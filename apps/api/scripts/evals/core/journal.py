@@ -7,11 +7,11 @@ status. The HTML report and cost tables rebuild from the journal alone.
 
 from __future__ import annotations
 
-import json
-import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+import json
 from pathlib import Path
+import threading
 from typing import Any
 
 TERMINAL_STATUSES = {"passed", "failed", "skipped"}
@@ -61,7 +61,7 @@ class RunJournal:
         data = json.loads(self.meta_path.read_text())
         return RunMeta(**data)
 
-    def update_meta(self, **updates: Any) -> None:
+    def update_meta(self, **updates: object) -> None:
         meta = self.load_meta()
         if meta is None:
             return
