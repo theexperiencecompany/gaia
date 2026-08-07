@@ -303,6 +303,8 @@ class AuthenticatedUser(TypedDict, total=False):
     memory_backfilled: datetime | None
     last_inactive_email_sent: datetime | None
     inactive_email_count: int | None
+    # Nurture email sequence state (workers) — completed_steps + send history.
+    nurture: dict[str, Any] | None
 
 
 class PlatformLinkRecord(TypedDict, total=False):

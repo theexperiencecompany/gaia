@@ -449,6 +449,9 @@ unfixable = [
 "apps/api/app/workers/tasks/hil_sweep_tasks.py" = ["ARG001"]
 "apps/api/app/workers/tasks/memory_backfill_tasks.py" = ["ARG001"]
 "apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]
+# ARG001: ARQ injects the job context (`ctx`) into every task function; the
+# nurture task doesn't use it.
+"apps/api/app/workers/tasks/nurture_tasks.py" = ["ARG001"]
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]
