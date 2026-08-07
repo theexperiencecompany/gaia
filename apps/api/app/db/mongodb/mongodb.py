@@ -11,6 +11,11 @@ from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
+# The app always uses this database, whatever database `MONGO_DB` names in its
+# path — so anything that has to reach the same data (tests seeding the app's
+# startup preconditions) must resolve it from here rather than from the URL.
+MONGO_DATABASE_NAME = "GAIA"
+
 
 class MongoDB:
     """
@@ -88,7 +93,7 @@ def init_mongodb() -> MongoDB:
         app (FastAPI): The FastAPI application instance.
     """
     log.info(f"{LogTag.MONGO} Initializing MongoDB...")
-    mongodb_instance = MongoDB(uri=settings.MONGO_DB, db_name="GAIA")
+    mongodb_instance = MongoDB(uri=settings.MONGO_DB, db_name=MONGO_DATABASE_NAME)
     log.info(f"{LogTag.MONGO} Created MongoDB instance")
     mongodb_instance.ping()
     log.info(f"{LogTag.MONGO} Successfully connected to MongoDB.")

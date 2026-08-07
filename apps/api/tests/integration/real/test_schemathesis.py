@@ -42,6 +42,7 @@ Run the full exploratory pass: ``SCHEMA_FUZZ_FULL=1`` sets
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 import os
 from pathlib import Path
 import shutil
@@ -52,8 +53,14 @@ import tempfile
 import time
 
 import httpx
+from pymongo import MongoClient
 import pytest
 
+from app.db.mongodb.mongodb import MONGO_DATABASE_NAME
+from app.db.repositories.ai_models import AiModelsRepository
+from app.db.repositories.plans import PlansRepository
+from app.models.models_models import ModelProvider
+from app.models.payment_models import PlanType
 from tests.helpers import pick_free_port
 
 pytestmark = [
@@ -139,7 +146,68 @@ def _tail(log_path: Path, limit: int = 20000) -> str:
 
 
 @pytest.fixture(scope="session")
-def live_api_url() -> Iterator[str]:
+def _seeded_startup_requirements(mongodb_url: str) -> Iterator[None]:
+    """Satisfy the app's own startup gate before booting it.
+
+    ``app/services/startup_validation.py`` aborts boot when the ``ai_models`` or
+    ``subscription_plans`` collections are empty, deliberately: a deployment
+    missing its catalog should fail loudly rather than serve. CI's Mongo is
+    empty and nothing seeds it, so the real server could never start there —
+    which is why this suite failed only in CI, while a developer's Mongo (seeded
+    long ago by scripts/seed_models.py) let it pass locally.
+
+    The seeded rows exist to clear that gate, nothing more: no operation in
+    ``SCOPED_OPERATIONS`` reads either collection. Only ever inserted into an
+    EMPTY collection, and only what we inserted is removed afterwards, so a
+    developer's real catalog is never touched.
+    """
+    # The app pins its database name and ignores the one in the URL path, so
+    # seeding the URL's default database would silently seed the wrong place.
+    client: MongoClient = MongoClient(mongodb_url)
+    database = client[MONGO_DATABASE_NAME]
+    now = datetime.now(UTC)
+    seeded: list[tuple[str, object]] = []
+
+    fixtures: dict[str, dict[str, object]] = {
+        AiModelsRepository.collection_name: {
+            "model_id": "schemathesis-precondition",
+            "name": "Schemathesis Precondition Model",
+            "model_provider": ModelProvider.OPENAI.value,
+            "inference_provider": ModelProvider.OPENAI.value,
+            "provider_model_name": "gpt-4o-mini",
+            "max_tokens": 1024,
+            "available_in_plans": [PlanType.FREE.value],
+            "lowest_tier": PlanType.FREE.value,
+            "is_active": True,
+            "is_default": False,
+            "created_at": now,
+            "updated_at": now,
+        },
+        PlansRepository.collection_name: {
+            "name": "Schemathesis Precondition Plan",
+            "amount": 0,
+            "currency": "USD",
+            "duration": "monthly",
+            "is_active": True,
+            "created_at": now,
+            "updated_at": now,
+        },
+    }
+
+    try:
+        for collection_name, document in fixtures.items():
+            collection = database[collection_name]
+            if collection.count_documents({}, limit=1) == 0:
+                seeded.append((collection_name, collection.insert_one(document).inserted_id))
+        yield
+    finally:
+        for collection_name, inserted_id in seeded:
+            database[collection_name].delete_one({"_id": inserted_id})
+        client.close()
+
+
+@pytest.fixture(scope="session")
+def live_api_url(_seeded_startup_requirements: None) -> Iterator[str]:
     """Boot the real API in a subprocess and wait until it serves /openapi.json.
 
     The server's output goes to a file rather than ``subprocess.PIPE``: nothing
