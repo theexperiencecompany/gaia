@@ -31,15 +31,8 @@ from app.services.nurture.context_builders import CONTEXT_BUILDERS
 from app.services.nurture.predicates import SKIP_PREDICATES
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
-from app.utils.timezone import Timezone, as_utc
+from app.utils.timezone import as_utc, is_within_local_daytime
 from shared.py.wide_events import log
-
-
-def _local_hour(tz_name: str | None, now: datetime) -> int:
-    # The user model accepts both IANA names and ±HH:MM offsets, so use the
-    # canonical Timezone parser (never ZoneInfo directly); a blank or invalid
-    # stored value falls back to UTC (plan: GAIA-523).
-    return Timezone.parse(tz_name).localize(now).hour
 
 
 def _within_frequency_caps(history: list[dict], now: datetime) -> bool:
@@ -127,7 +120,10 @@ async def _select_step(
 
 async def _process_user(user: UserDocument, now: datetime) -> bool:
     """Evaluate one user against the sequence; sends at most one email. Returns True on send."""
-    if _local_hour(user.timezone, now) != NURTURE_SEND_HOUR_LOCAL:
+    # Send only during the user's local NURTURE_SEND_HOUR_LOCAL hour.
+    if not is_within_local_daytime(
+        now, user.timezone, NURTURE_SEND_HOUR_LOCAL, NURTURE_SEND_HOUR_LOCAL + 1
+    ):
         return False
     if not user.email:
         return False
