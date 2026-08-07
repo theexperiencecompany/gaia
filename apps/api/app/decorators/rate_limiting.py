@@ -20,7 +20,6 @@ from app.api.v1.middleware.tiered_rate_limiter import (
 )
 from app.config.rate_limits import (
     RateLimitPeriod,
-    get_daily_cost_budget_usd,
     get_reset_time,
 )
 from app.constants.log_tags import LogTag
@@ -28,7 +27,7 @@ from app.core.request_context import get_authenticated_user
 from app.models.payment_models import PlanType
 from app.models.usage_models import UsageInfo
 from app.models.user_models import AuthenticatedUser
-from app.services.cost_budget import get_cost
+from app.services.cost_budget import get_cost, is_daily_budget_exhausted
 from app.services.limit_upsell import schedule_limit_upsell
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
@@ -339,7 +338,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
     # the one place on the chat path that resolves the plan before any work runs.
     log.set(user_plan=plan_type.value)
     spent = await get_cost(user_id, RateLimitPeriod.DAY)
-    if spent >= get_daily_cost_budget_usd(plan_type):
+    if is_daily_budget_exhausted(spent, plan_type):
         log.warning(
             f"{LogTag.API} Daily cost budget exhausted for user {user_id} "
             f"(plan={plan_type.value}, spent=${spent:.4f}, feature={feature_key})"
@@ -347,7 +346,7 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
         schedule_limit_upsell(user_id, feature_key, plan_type)
         raise CostBudgetExceededException(
             feature=feature_key,
-            plan_required="pro" if plan_type == PlanType.FREE else None,
+            plan_required=PlanType.PRO.value if plan_type == PlanType.FREE else None,
             reset_time=get_reset_time(RateLimitPeriod.DAY),
             current_plan=plan_type.value,
         )

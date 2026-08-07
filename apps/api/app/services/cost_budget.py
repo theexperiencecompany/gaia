@@ -232,14 +232,12 @@ async def get_budget_stop_reason(
             f"cached lookup for user {user_id} (upstream threading gap)."
         )
 
-    daily_budget = get_daily_cost_budget_usd(plan_type)
-
     # Missing root_request_id → only the daily read is needed, so skip the
     # second round trip. The threading-gap warning stays scoped to a run that
     # is otherwise proceeding (daily wall not bound), exactly as before.
     if root_request_id is None:
         spent = await get_cost(user_id, RateLimitPeriod.DAY)
-        if spent >= daily_budget:
+        if is_daily_budget_exhausted(spent, plan_type):
             return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
         log.warning(
             f"{LogTag.AGENT} Per-request ceiling skipped — missing root_request_id "
@@ -254,12 +252,24 @@ async def get_budget_stop_reason(
         get_cost(user_id, RateLimitPeriod.DAY),
         get_request_tokens(root_request_id),
     )
-    if spent >= daily_budget:
+    if is_daily_budget_exhausted(spent, plan_type):
         return DAILY_BUDGET_STOP_FREE if plan_type == PlanType.FREE else DAILY_BUDGET_STOP_PRO
     if used >= get_per_request_token_ceiling(plan_type):
         return REQUEST_CEILING_STOP_FREE if plan_type == PlanType.FREE else REQUEST_CEILING_STOP_PRO
 
     return None
+
+
+def is_daily_budget_exhausted(spent: float, plan_type: PlanType) -> bool:
+    """The daily wall's one comparison: has ``spent`` consumed the plan's budget?
+
+    Shared by the endpoint 429 gate (``enforce_daily_cost_budget``) and the
+    middleware wall (:func:`get_budget_stop_reason`) so the operator and plan
+    resolution can never drift between the two enforcement points. Takes the
+    already-read spend because each caller fetches it differently (solo read vs
+    gathered with the token counter).
+    """
+    return spent >= get_daily_cost_budget_usd(plan_type)
 
 
 def _allowance_used(spent: float, budget: float, period: RateLimitPeriod) -> BudgetWindow:

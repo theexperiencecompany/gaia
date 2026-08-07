@@ -213,7 +213,7 @@ def _stream_memory_limit_card() -> None:
                 "tool_category": "system",
                 "data": {
                     "feature": "memory",
-                    "plan_required": "pro",
+                    "plan_required": PlanType.PRO.value,
                     "reset_time": None,
                     "current_plan": PlanType.FREE.value,
                     "message": (
