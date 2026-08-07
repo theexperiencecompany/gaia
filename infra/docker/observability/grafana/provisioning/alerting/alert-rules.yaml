@@ -363,7 +363,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: up{job=~"gaia-api|arq_worker|postgres|redis|rabbitmq"}
+              expr: up{job=~"gaia-api|arq_worker|postgres|redis|jfs_meta_redis|rabbitmq"}
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -553,7 +553,10 @@ groups:
     folder: GAIA
     interval: 1m
     rules:
-      # 15. TLS cert for api.heygaia.io expires in < 14 days
+      # 15. A TLS cert expires in < 14 days. Covers api/logs.heygaia.io and the
+      # JuiceFS metadata Redis — a missed renewal there takes the filesystem
+      # offline, since every sandbox mount speaks rediss://. Per-instance so the
+      # alert names which cert.
       - uid: gaia-ssl-cert-expiry
         title: TLS certificate expiring soon
         condition: C
@@ -563,7 +566,7 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: min(probe_ssl_earliest_cert_expiry{job="blackbox_api"}) - time()
+              expr: min by (instance) (probe_ssl_earliest_cert_expiry{job=~"blackbox_api|blackbox_jfs_meta"}) - time()
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -580,7 +583,7 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: "api.heygaia.io TLS cert expires in < 14 days ({{ $values.B }}s left)"
+          summary: "TLS cert for {{ $labels.instance }} expires in < 14 days ({{ $values.B }}s left)"
         labels:
           severity: critical
           service: api
@@ -617,7 +620,9 @@ groups:
           severity: critical
           service: host
 
-      # 17. Redis memory > 85% of maxmemory (eviction risk for SSE/cache/rate-limit)
+      # 17. Redis memory > 85% of maxmemory. On the cache instance that means
+      # eviction; on jfs_meta_redis (noeviction) it means metadata writes are
+      # about to start failing — hence the job label in the summary.
       - uid: gaia-redis-memory
         title: Redis memory pressure
         condition: C
@@ -644,7 +649,7 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: Redis is using {{ $values.B | humanizePercentage }} of maxmemory
+          summary: "Redis ({{ $labels.job }}) is using {{ $values.B | humanizePercentage }} of maxmemory"
         labels:
           severity: warning
           service: redis

@@ -30,6 +30,15 @@ secrets:
   # Create once on the box: docker secret create gaia_searxng_secret <(openssl rand -hex 32)
   gaia_searxng_secret:
     external: true
+  # Create once on the box, before this lands on master (stack deploy aborts on a
+  # missing external secret):
+  #   openssl rand -hex 32 | tr -d '\n' | docker secret create gaia_jfs_redis_password_v1 -
+  # hex, not base64: this password is spliced into JUICEFS_META_URL_TEMPLATE, and
+  # a '/' in the userinfo makes urlsplit() read the rest as a path — _split_meta_url
+  # then raises ValueError on .port. Keep the alphabet URL-safe.
+  gaia_jfs_redis_password:
+    external: true
+    name: gaia_jfs_redis_password_v1
 
 services:
   # ---------------------------------------------------------------------------
@@ -165,7 +174,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      # Worker boot measured at ~130-160s (ChromaDB tool indexing + scheduler
+      # replay), and arq only writes the health key once its poll loop starts.
+      # At 120s the probe began judging mid-boot and killed the task before it
+      # ran a single job — and each restart re-enqueued the scheduler backlog,
+      # so the queue grew unboundedly. Keep this above real boot time.
+      start_period: 300s
     deploy:
       replicas: 1
       update_config:
@@ -184,7 +198,12 @@ services:
         # No max_attempts: a wedged/crashed worker must self-heal, not park at 0/1.
       resources:
         limits:
-          memory: 2G
+          # Measured load needs ~8 concurrent jobs (see max_jobs in
+          # worker_settings.py), and each holds agent graphs + LLM contexts.
+          # At 2G the worker OOM-killed with anon-rss 2-3 GB whenever the queue
+          # was deep enough to saturate max_jobs. Concurrency is memory-bound,
+          # so this is the limit that has to move, not max_jobs.
+          memory: 4G
 
   # ---------------------------------------------------------------------------
   # Embedding + reranking sidecar
@@ -509,6 +528,8 @@ services:
         constraints:
           - node.labels.type == storage
 
+  # Cache/queue only. `allkeys-lru` is safe here (regenerable data) and fatal for
+  # JuiceFS metadata — see jfs-meta-redis below.
   redis:
     image: redis:8-alpine
     command: >
@@ -536,6 +557,81 @@ services:
       placement:
         constraints:
           - node.labels.type == storage
+
+  # ---------------------------------------------------------------------------
+  # JuiceFS metadata Redis
+  # ---------------------------------------------------------------------------
+  # Holds the whole directory tree, filenames and inode→chunk mapping. R2 stores
+  # only anonymous blocks, so losing this loses the filesystem — hence
+  # noeviction, appendfsync always, and the hourly dump on the gaia_jfs volume.
+  # Internet-reachable because E2B sandboxes mount JuiceFS directly
+  # (apps/api/scripts/mount_juicefs.sh); AUTH password + firewall allowlist on
+  # 6380 are the access control.
+  jfs-meta-redis:
+    image: redis:8-alpine
+    # TLS-only (--port 0): the password crosses the public internet on every mount.
+    command: >
+      sh -c 'exec redis-server
+      --requirepass "$$(cat /run/secrets/gaia_jfs_redis_password)"
+      --port 0
+      --tls-port 6379
+      --tls-cert-file /tls/fullchain.pem
+      --tls-key-file /tls/privkey.pem
+      --tls-auth-clients no
+      --appendonly yes
+      --appendfsync always
+      --maxmemory 3gb
+      --maxmemory-policy noeviction
+      --stop-writes-on-bgsave-error yes
+      --save 900 1 --save 300 10 --save 60 10000
+      --dir /data'
+    secrets:
+      - gaia_jfs_redis_password
+    volumes:
+      - jfs_meta_data:/data
+      # Reuses the api.heygaia.io lineage, which carries jfs-meta.heygaia.io as a
+      # SAN — the lineage name is the path on disk, not the connect hostname.
+      # Bind mount, not a Swarm secret: secrets are
+      # immutable, so each renewal would need a new secret name and the next CI
+      # stack deploy would reset the service to the name pinned here, restoring
+      # an expired cert. Populated on the node by the certbot deploy hook at
+      # /etc/letsencrypt/renewal-hooks/deploy/jfs-redis.
+      - type: bind
+        source: /etc/gaia/jfs-redis
+        target: /tls
+        read_only: true
+    ports:
+      # host mode, not ingress: the routing mesh NATs away the source IP, which
+      # breaks the firewall allowlist.
+      - target: 6379
+        published: 6380
+        protocol: tcp
+        mode: host
+    networks:
+      gaia-prod-shared:
+        aliases:
+          - jfs-meta-redis
+    healthcheck:
+      # --insecure: liveness probe over loopback, cert is for api.heygaia.io.
+      test: ["CMD", "sh", "-c", "REDISCLI_AUTH=\"$$(cat /run/secrets/gaia_jfs_redis_password)\" redis-cli --tls --insecure ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          # Local volume, cert bind mount and the published 6380 all live here.
+          - node.labels.type == storage
+      resources:
+        limits:
+          # Above maxmemory (3gb) on purpose: with noeviction, hitting maxmemory
+          # returns a write error, hitting the cgroup limit gets Redis SIGKILLed.
+          # Budget ~300 bytes/file when resizing.
+          memory: 4G
 
   rabbitmq:
     # No `ports:` block — RabbitMQ (AMQP, mgmt UI, Prometheus) stays overlay-only.
@@ -600,6 +696,29 @@ services:
     image: oliver006/redis_exporter:v1.66.0
     environment:
       REDIS_ADDR: "redis://redis:6379"
+    networks:
+      - gaia-prod-shared
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      placement:
+        constraints:
+          - node.role == manager
+
+  # Feeds the memory-pressure alert: jfs-meta-redis runs noeviction, so hitting
+  # maxmemory fails every metadata write with no other early warning.
+  jfs_redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    environment:
+      # Overlay alias, so scraping stays inside the swarm. Cert is for
+      # api.heygaia.io and can't match the alias, hence skip-verify.
+      REDIS_ADDR: "rediss://jfs-meta-redis:6379"
+      REDIS_EXPORTER_SKIP_TLS_VERIFICATION: "true"
+      REDIS_PASSWORD_FILE: /run/secrets/gaia_jfs_redis_password
+    secrets:
+      - gaia_jfs_redis_password
     networks:
       - gaia-prod-shared
     deploy:
@@ -1016,10 +1135,26 @@ volumes:
   grafana_data:
   prometheus_data:
   promtail_positions:
+  # AOF survives a crash, not the loss of this node — that's what --backup-meta
+  # on gaia_jfs below covers.
+  jfs_meta_data:
   # JuiceFS volume backed by the juicedata/juicefs plugin. Pre-create per node:
-  #   docker volume create -d juicedata/juicefs -o name=gaia-0 -o metaurl=... \
-  #     -o access-key=... -o secret-key=... gaia_jfs
+  #   docker volume create -d juicedata/juicefs -o name=gaia-0 \
+  #     -o metaurl='rediss://:PASSWORD@jfs-meta.heygaia.io:6380/0' \
+  #     -o access-key=... -o secret-key=... \
+  #     -o mountFlags="--backup-meta 1h --cache-size 4096 --max-uploads 20 --prefetch 8 --buffer-size 600" \
+  #     gaia_jfs
   # (no -o mountFlags --cache-dir: that path doesn't exist in the plugin → mount EOF)
+  #
+  # metaurl is baked in here, NOT read from JUICEFS_META_URL_TEMPLATE. Changing
+  # the metadata engine in Infisical moves the API and sandboxes but leaves this
+  # mount on the old engine — the volume must be dropped and recreated per node:
+  #   docker service scale gaia-prod_gaia-backend=0 gaia-prod_arq_worker=0
+  #   docker volume rm gaia_jfs && docker volume create ... (as above)
+  #
+  # --backup-meta belongs here, not in scripts/docker-entrypoint.sh: the plugin
+  # mounts /mnt/jfs first, so the entrypoint's own mount short-circuits on
+  # `mountpoint -q` and its flags never apply in prod. Dumps land under `meta/`.
   gaia_jfs:
     external: true
 

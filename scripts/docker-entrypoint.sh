@@ -121,24 +121,45 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
     # R2 credentials ride in AWS_* env vars (juicefs honours them when the
     # --access-key/--secret-key flags are absent) so they don't appear in
     # argv visible to `ps auxww` while format is running.
+    #
+    # `juicefs status` cannot tell "unformatted" from "metadata engine
+    # unreachable" — both exit non-zero — and formatting on the second case
+    # writes an empty filesystem over a bucket still holding every user's blocks,
+    # orphaning them permanently. Gate it behind an opt-in set only on a genuine
+    # first boot. Refusing skips rather than exits: the mount is soft-fail by
+    # design (bootstrap.py `required=False`), so the app still boots.
     if ! juicefs status "$META_URL" >/dev/null 2>&1; then
-        echo "[entrypoint] Formatting JuiceFS shard 0 against $BUCKET_URL"
-        # shellcheck disable=SC2086
-        AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY" \
-        AWS_SECRET_ACCESS_KEY="$R2_SECRET_KEY" \
-        juicefs format \
-            --storage s3 \
-            --bucket "$BUCKET_URL" \
-            --shards 16 \
-            $ENCRYPT_FLAG \
-            "$META_URL" gaia-0 \
-        || echo "[entrypoint] juicefs format failed (ok if another replica formatted concurrently)"
+        if [ "${JUICEFS_ALLOW_FORMAT:-0}" != "1" ]; then
+            echo "[entrypoint] REFUSING to format: 'juicefs status' failed and JUICEFS_ALLOW_FORMAT != 1." >&2
+            echo "[entrypoint] If the metadata engine is merely unreachable, formatting would orphan" >&2
+            echo "[entrypoint] every block in $BUCKET_URL. On a genuine first boot set JUICEFS_ALLOW_FORMAT=1." >&2
+            echo "[entrypoint] Booting without JuiceFS; storage-backed features return 503." >&2
+        else
+            echo "[entrypoint] Formatting JuiceFS shard 0 against $BUCKET_URL (JUICEFS_ALLOW_FORMAT=1)"
+            # shellcheck disable=SC2086
+            AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY" \
+            AWS_SECRET_ACCESS_KEY="$R2_SECRET_KEY" \
+            juicefs format \
+                --storage s3 \
+                --bucket "$BUCKET_URL" \
+                --shards 16 \
+                $ENCRYPT_FLAG \
+                "$META_URL" gaia-0 \
+            || echo "[entrypoint] juicefs format failed (ok if another replica formatted concurrently)"
+        fi
     fi
 
     if ! mountpoint -q "$JFS_MOUNT_PATH" 2>/dev/null; then
         mkdir -p "$JFS_MOUNT_PATH" /var/cache/juicefs
         echo "[entrypoint] Mounting JuiceFS at $JFS_MOUNT_PATH"
-        # --backup-meta=0 because R2 ListObjects is not S3-sorted (see JuiceFS docs).
+        # --backup-meta=1h: the dump is the only recovery path if the metadata
+        # engine is lost. R2's unsorted ListObjects breaks *rotation* of old
+        # dumps (they accumulate and need pruning) but not writing them.
+        # Host mount only — sandbox clients pass 0 (mount_juicefs.sh) since the
+        # host is already the single GC owner.
+        # Skipped entirely in Swarm prod: the volume plugin mounts $JFS_MOUNT_PATH
+        # first so `mountpoint -q` short-circuits. Prod's interval is in the
+        # gaia_jfs mountFlags. This path serves selfhost / dockered-dev.
         # No --writeback: writeback loses data on container kill, unacceptable for agent writes.
         # `|| true`: --background's readiness probe gives up after ~10s, but on a
         # remote meta (e.g. Neon / cloud Postgres) the daemon often needs longer
@@ -149,7 +170,7 @@ if [ "$_jfs_can_mount" = "1" ] && command -v juicefs >/dev/null 2>&1; then
         # for an API host far from the bucket region. --buffer-size raises the
         # read/write buffer to match.
         juicefs mount \
-            --backup-meta=0 \
+            --backup-meta=1h \
             --cache-dir=/var/cache/juicefs \
             --cache-size=4096 \
             --max-uploads=20 \
