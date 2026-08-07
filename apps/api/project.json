@@ -209,7 +209,7 @@
     "test:integration": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pytest tests/integration --ignore=tests/integration/real -v --tb=short",
+        "command": "uv run --group backend --group dev pytest tests/integration --ignore=tests/integration/real -v --tb=short",
         "cwd": "{projectRoot}"
       },
       "cache": true,
@@ -232,7 +232,7 @@
     "test:coverage": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pytest tests/unit tests/integration --ignore=tests/integration/real --cov=app --cov-report=html --cov-report=term-missing",
+        "command": "uv run --group backend --group dev pytest tests/unit tests/integration --ignore=tests/integration/real --cov=app --cov-report=html --cov-report=term-missing",
         "cwd": "{projectRoot}"
       },
       "cache": false
@@ -247,7 +247,7 @@
     "test:schemathesis": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/integration/real/test_schemathesis.py -v --tb=short -m schemathesis",
+        "command": "uv run --group backend --group dev pytest tests/integration/real/test_schemathesis.py -v --tb=short -m schemathesis --override-ini=addopts=--strict-markers --timeout=600",
         "cwd": "{projectRoot}"
       },
       "cache": false

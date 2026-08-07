@@ -41,15 +41,20 @@ Run the full exploratory pass: ``SCHEMA_FUZZ_FULL=1`` sets
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import os
 from pathlib import Path
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 import httpx
 import pytest
+
+from tests.helpers import pick_free_port
 
 pytestmark = [
     pytest.mark.schemathesis,
@@ -66,21 +71,22 @@ DEV_USER = "schemathesis@gaia.local"
 EXAMPLES_PER_OP = int(os.environ.get("SCHEMA_FUZZ_EXAMPLES", "3"))
 REQUEST_TIMEOUT = float(os.environ.get("SCHEMA_FUZZ_TIMEOUT", "30"))
 FUZZ_FULL = os.environ.get("SCHEMA_FUZZ_FULL", "0") == "1"
+# `import app.main` alone costs ~10s warm on a developer laptop, and the
+# lifespan then dials Postgres/Redis/Mongo/Chroma before uvicorn binds — ~18s
+# warm end to end. A cold 2-core CI runner is several times that, which is how
+# the old 60s budget failed here while passing locally.
+BOOT_TIMEOUT = float(os.environ.get("SCHEMA_FUZZ_BOOT_TIMEOUT", "300"))
+# Generous per-probe timeout: a slow first response must not be misread as "not
+# listening yet" (the poll loop still exits as soon as one probe succeeds).
+PROBE_TIMEOUT = float(os.environ.get("SCHEMA_FUZZ_PROBE_TIMEOUT", "10"))
 
 
 def _pick_port() -> int:
-    """A free ephemeral port, chosen by binding then releasing a socket.
-
-    The bind-then-release race window is negligible for a CI job that owns the
-    runner. Overridable with SCHEMA_FUZZ_PORT for environments that need a
-    fixed port (e.g. a firewall allowlist)."""
+    """A free ephemeral port, or SCHEMA_FUZZ_PORT where one must be fixed
+    (e.g. a firewall allowlist)."""
     if env_port := os.environ.get("SCHEMA_FUZZ_PORT"):
         return int(env_port)
-    import socket
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
+    return pick_free_port()
 
 
 PORT = _pick_port()
@@ -104,9 +110,7 @@ def _operations_to_run(operation) -> bool:
     return key in SCOPED_OPERATIONS or FUZZ_FULL
 
 
-@pytest.fixture(scope="session")
-def live_api_url() -> str:
-    """Boot the real API in a subprocess and wait until it serves /openapi.json."""
+def _server_env() -> dict[str, str]:
     env = os.environ.copy()
     env.update(
         {
@@ -117,52 +121,108 @@ def live_api_url() -> str:
             "PYTHONPATH": str(API_ROOT),
         }
     )
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", APP_MODULE, "--host", "127.0.0.1", "--port", str(PORT)],
-        cwd=API_ROOT,
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
-    url = f"http://127.0.0.1:{PORT}"
-    deadline = time.monotonic() + 60
-    try:
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                stderr = proc.stderr.read().decode(errors="replace")[-2000:] if proc.stderr else ""
-                raise RuntimeError(f"API server exited early (code {proc.returncode}): {stderr}")
-            try:
-                if httpx.get(f"{url}/openapi.json", timeout=2).status_code == 200:
-                    break
-            except httpx.HTTPError:
-                pass
-            time.sleep(0.5)
-        else:
-            raise RuntimeError("API server did not become ready in 60s")
+    return env
 
-        # The bypass authenticates every request as DEV_USER; that user must
-        # exist in Mongo (dev router is idempotent). Under xdist the other
-        # workers hammer the same services, so a single shot can time out —
-        # retry with backoff; the server being up is already proven by the
-        # readiness poll above.
-        mint_error: Exception | None = None
-        for attempt in range(3):
-            try:
-                mint = httpx.post(f"{url}/api/v1/dev/users", json={"email": DEV_USER}, timeout=30)
-                mint.raise_for_status()
-                break
-            except (httpx.HTTPError, httpx.TimeoutException) as exc:
-                mint_error = exc
-                time.sleep(2 * (attempt + 1))
-        else:
-            raise RuntimeError(f"could not mint dev user after 3 attempts: {mint_error}")
-        yield url
-    finally:
-        proc.send_signal(signal.SIGTERM)
+
+def _tail(log_path: Path, limit: int = 4000) -> str:
+    """The end of the server's log, for a failure message."""
+    try:
+        return log_path.read_text(errors="replace")[-limit:] or "<server produced no output>"
+    except OSError as exc:
+        return f"<could not read server log {log_path}: {exc}>"
+
+
+@pytest.fixture(scope="session")
+def live_api_url() -> Iterator[str]:
+    """Boot the real API in a subprocess and wait until it serves /openapi.json.
+
+    The server's output goes to a file rather than ``subprocess.PIPE``: nothing
+    drains a pipe during the readiness poll, so once the app's startup logging
+    filled the 64 KiB pipe buffer the server would block mid-boot and never
+    bind — a hang that looks identical to a slow start. A file also means every
+    failure below can actually show what the server said.
+    """
+    # This test owns a whole uvicorn process and must not compete with xdist
+    # workers for the runner's cores. pytest.ini's addopts carry `-n 4`, so the
+    # "isolated" CI step silently ran four workers — three of them paying the
+    # ~10s app import while the fourth tried to boot the server — and the boot
+    # timed out. Fail here, naming the cause, rather than 5 minutes later with
+    # a timeout that looks like a broken app.
+    workers = int(os.environ.get("PYTEST_XDIST_WORKER_COUNT", "1"))
+    if workers > 1:
+        pytest.fail(
+            f"this suite must run serially, but pytest started {workers} xdist workers. "
+            "Pass --override-ini=addopts=--strict-markers (pytest.ini's addopts carry -n 4), "
+            "or run it via `nx run api:test:schemathesis`."
+        )
+
+    log_dir = Path(tempfile.mkdtemp(prefix="schemathesis-server-"))
+    log_path = log_dir / "server.log"
+    url = f"http://127.0.0.1:{PORT}"
+
+    with log_path.open("wb") as log_file:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                APP_MODULE,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(PORT),
+            ],
+            cwd=API_ROOT,
+            env=_server_env(),
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+        )
+        deadline = time.monotonic() + BOOT_TIMEOUT
         try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+            while time.monotonic() < deadline:
+                if proc.poll() is not None:
+                    raise RuntimeError(
+                        f"API server exited early (code {proc.returncode}):\n{_tail(log_path)}"
+                    )
+                try:
+                    if httpx.get(f"{url}/openapi.json", timeout=PROBE_TIMEOUT).status_code == 200:
+                        break
+                except httpx.HTTPError:
+                    pass
+                time.sleep(0.5)
+            else:
+                raise RuntimeError(
+                    f"API server did not become ready in {BOOT_TIMEOUT:.0f}s "
+                    f"(raise SCHEMA_FUZZ_BOOT_TIMEOUT if the host is simply slow):"
+                    f"\n{_tail(log_path)}"
+                )
+
+            # The bypass authenticates every request as DEV_USER; that user must
+            # exist in Mongo (dev router is idempotent). Retry with backoff —
+            # the server being up is already proven by the readiness poll above.
+            mint_error: Exception | None = None
+            for attempt in range(3):
+                try:
+                    mint = httpx.post(
+                        f"{url}/api/v1/dev/users", json={"email": DEV_USER}, timeout=30
+                    )
+                    mint.raise_for_status()
+                    break
+                except (httpx.HTTPError, httpx.TimeoutException) as exc:
+                    mint_error = exc
+                    time.sleep(2 * (attempt + 1))
+            else:
+                raise RuntimeError(
+                    f"could not mint dev user after 3 attempts: {mint_error}\n{_tail(log_path)}"
+                )
+            yield url
+        finally:
+            proc.send_signal(signal.SIGTERM)
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            shutil.rmtree(log_dir, ignore_errors=True)
 
 
 @pytest.fixture(scope="session")
@@ -197,7 +257,11 @@ def test_api_contract(schema) -> None:
             except BaseException as exc:
                 lines = str(exc).splitlines()
                 summary = next(
-                    (line.strip() for line in lines if "Received:" in line or "Documented:" in line),
+                    (
+                        line.strip()
+                        for line in lines
+                        if "Received:" in line or "Documented:" in line
+                    ),
                     lines[0].strip() if lines else type(exc).__name__,
                 )
                 curl_cmd = getattr(case, "as_curl_command", lambda: "")()

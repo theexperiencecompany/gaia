@@ -154,15 +154,26 @@ jobs:
         # Boots a real uvicorn server; must NOT share the parallel load that
         # starves it. Runs serially after the main suite, excluded from it via
         # the `schemathesis` marker.
+        #
+        # --override-ini is what actually makes it serial: pytest.ini's addopts
+        # carry `-n 4`, so without this the "isolated" run spun up four xdist
+        # workers that each paid the ~10s app import while one of them tried to
+        # boot uvicorn on the same two cores. The timeout is restored explicitly
+        # because overriding addopts drops pytest.ini's `--timeout=300`, which
+        # is now shorter than the server's own boot budget.
         if: always()
         working-directory: apps/api
         run: |
-          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis
+          USE_REAL_SERVICES=1 bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run pytest tests/integration/real/test_schemathesis.py -q --tb=short -m schemathesis \
+            --override-ini=addopts=--strict-markers --timeout=600
           echo "Schemathesis: OK"
       - name: Summary of failed tests
         if: always()
         working-directory: apps/api
-        run: python3 ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
+        # PEP 723 script (defusedxml pinned inline) — uv builds its own env, so
+        # --no-project keeps it off the apps/api venv it happens to run inside.
+        run: uv run --no-project ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
       - name: Upload pytest artifacts
         if: always()
         uses: actions/upload-artifact@v4
