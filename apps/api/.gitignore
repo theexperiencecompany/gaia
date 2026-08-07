@@ -1,0 +1,5 @@
+
+# Eval harness (apps/api/scripts/evals)
+scripts/evals/.env.opik
+scripts/evals/runs/
+scripts/evals/data/gaia/

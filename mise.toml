@@ -578,3 +578,40 @@ run = "bash scripts/dead-code-check.sh --verbose"
 [tasks."dead-code:strict"]
 description = "Check for dead code (fail on findings)"
 run = "bash scripts/dead-code-check.sh --strict"
+
+# ---- Eval harness (apps/api/scripts/evals) ----
+[tasks."eval:opik:up"]
+description = "Start the isolated Opik stack (evals only, UI http://localhost:5173)"
+run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml up -d"
+
+[tasks."eval:opik:down"]
+description = "Stop the isolated Opik stack (data kept in named volumes)"
+run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml down"
+
+[tasks."eval:opik:reset"]
+description = "Stop Opik and delete ALL eval data (named volumes)"
+run = "docker compose -f apps/api/scripts/evals/infra/compose.opik.yml down -v"
+
+[tasks."eval:smoke"]
+description = "Run the eval-harness smoke suite (3 toy cases; verifies rotation, journal, report)"
+run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite smoke"
+
+[tasks."eval:gate"]
+description = "Stub-driven regression gate (free) — run before pushing agent/LLM/tool changes"
+run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite regression --sim"
+
+[tasks."eval:all"]
+description = "Nightly set: memory subset + capability + quality-structural"
+run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite memory --limit 20 && uv run --group backend python -m scripts.evals run --suite capability && uv run --group backend python -m scripts.evals run --suite quality"
+
+[tasks."eval:week"]
+description = "Weekly set: GAIA subset + full memory + LongMemEval"
+run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite gaia --limit 20 && uv run --group backend python -m scripts.evals run --suite memory && uv run --group backend python -m scripts.evals run --suite longmemeval --num 500 --max-usd 25"
+
+[tasks."eval:cost"]
+description = "Project eval cost from journal history"
+run = "cd apps/api && uv run --group backend python -m scripts.evals cost --project"
+
+[tasks."eval:report"]
+description = "Regenerate HTML report for a run (mise eval:report -- <run-id>)"
+run = "cd apps/api && uv run --group backend python -m scripts.evals report $@"
