@@ -22,7 +22,7 @@ Infisical is the secret management platform the GAIA team uses to share environm
 
 ## How Infisical Works with GAIA
 
-At startup, each app (API, bots, voice agent) calls its Infisical loader (`inject_infisical_secrets()` in Python, `injectInfisicalSecrets()` in TypeScript):
+At startup, each app (API, bots, voice agent) calls its Infisical loader (`inject_infisical_secrets()` in Python, `injectInfisicalSecrets()` in TypeScript). The Next.js web app deliberately does not — see [Frontend (Web)](#frontend-web).
 
 1. **Authentication**: authenticates with a machine identity (Universal Auth client ID + secret)
 2. **Secret retrieval**: fetches all secrets for the environment matching your `ENV` value (`development`, `staging`, or `production`)
@@ -142,6 +142,27 @@ secrets:
 ```
 
 Only the compose file changes — the entrypoint and application code are identical either way.
+
+## Frontend (Web)
+
+The Next.js app is **intentionally not wired to Infisical** — it calls no loader. Its environment is six `NEXT_PUBLIC_*` variables plus one server-only secret (`BLOG_BEARER_TOKEN`, used by `src/app/api/blog/route.ts`).
+
+`NEXT_PUBLIC_*` values are compiled into the browser bundle at build time, so they are public by definition — anyone can read them from the shipped JavaScript. Storing them in Infisical adds ceremony without adding secrecy. Keep them in `apps/web/.env.local` locally and in the build environment for CI.
+
+**In development** the app still picks up Infisical values under `mise infisical dev`: the CLI injects them into the process environment before Next starts, and Next ranks `process.env` above `.env.local`.
+
+**In production** web deploys to Cloudflare Workers (OpenNext), not the Swarm, so the server-only secret belongs in Cloudflare's own store:
+
+```bash
+wrangler secret put BLOG_BEARER_TOKEN
+```
+
+<Warning>
+  Do not bootstrap Infisical into the Worker. Fetching secrets at the edge means
+  shipping the machine identity's client ID and secret into the Worker — trading
+  one narrow secret for a credential that unlocks the entire project, plus an
+  auth round-trip on cold start.
+</Warning>
 
 ## Troubleshooting
 
