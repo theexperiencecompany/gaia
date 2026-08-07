@@ -74,7 +74,9 @@ class TestInferIntegrationCategory:
     async def test_returns_lowercased_valid_category(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="Productivity")
 
-        category = await infer_integration_category("My Tool", "desc", [{"name": "a"}], "https://x.example")
+        category = await infer_integration_category(
+            "My Tool", "desc", [{"name": "a"}], "https://x.example"
+        )
 
         assert category == "productivity"
         assert mock_llm.llm.call_count == 1
@@ -85,22 +87,31 @@ class TestInferIntegrationCategory:
     async def test_unrecognized_category_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="flying-spaghetti")
 
-        assert await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+        assert (
+            await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+        )
 
     async def test_case_insensitive_match(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="  Developer  ")
 
-        assert await infer_integration_category("My Tool", "desc", [], "https://x.example") == "developer"
+        assert (
+            await infer_integration_category("My Tool", "desc", [], "https://x.example")
+            == "developer"
+        )
 
     async def test_llm_error_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.side_effect = RuntimeError("llm down")
 
-        assert await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+        assert (
+            await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+        )
 
     async def test_timeout_falls_back_to_other(self, mock_llm):
         mock_llm.invoke.side_effect = TimeoutError()
 
-        assert await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+        assert (
+            await infer_integration_category("My Tool", "desc", [], "https://x.example") == "other"
+        )
 
 
 @pytest.mark.unit
@@ -118,17 +129,26 @@ class TestInferIntegrationContent:
     async def test_incomplete_content_returns_none(self, mock_llm):
         mock_llm.structured.return_value = IntegrationContent(use_cases=["only one"])
 
-        assert await infer_integration_content("My Tool", "desc", [], "https://x.example", "other") is None
+        assert (
+            await infer_integration_content("My Tool", "desc", [], "https://x.example", "other")
+            is None
+        )
 
     async def test_llm_error_returns_none(self, mock_llm):
         mock_llm.structured.side_effect = RuntimeError("llm down")
 
-        assert await infer_integration_content("My Tool", "desc", [], "https://x.example", "other") is None
+        assert (
+            await infer_integration_content("My Tool", "desc", [], "https://x.example", "other")
+            is None
+        )
 
     async def test_timeout_returns_none(self, mock_llm):
         mock_llm.structured.side_effect = TimeoutError()
 
-        assert await infer_integration_content("My Tool", "desc", [], "https://x.example", "other") is None
+        assert (
+            await infer_integration_content("My Tool", "desc", [], "https://x.example", "other")
+            is None
+        )
 
 
 @pytest.mark.unit

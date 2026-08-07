@@ -191,9 +191,7 @@ class TestGetMyIntegrations:
             integrations=[
                 _user_integration(
                     integration_id="GITHUB",
-                    integration=_integration_response(
-                        integration_id="GITHUB", source="platform"
-                    ),
+                    integration=_integration_response(integration_id="GITHUB", source="platform"),
                 )
             ]
         )

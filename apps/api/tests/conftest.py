@@ -155,11 +155,10 @@ _HERMETIC_ALLOW_ENV = "HERMETIC_ALLOW_KEYS"
 
 def _hermetic_allowed_keys() -> frozenset[str]:
     declared = {
-        key.strip()
-        for key in os.environ.get(_HERMETIC_ALLOW_ENV, "").split(",")
-        if key.strip()
+        key.strip() for key in os.environ.get(_HERMETIC_ALLOW_ENV, "").split(",") if key.strip()
     }
     return _HERMETIC_ALLOWLIST | declared
+
 
 # Keys that must be PRESENT (non-empty) at test time but never real. Today
 # GOOGLE_API_KEY is the only one: three pre-existing unit modules

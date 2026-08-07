@@ -290,7 +290,10 @@ class TestGetSignalMatchingContext:
 
         lines = context.split("\n")
         assert lines[0] == "ACTIVE TRACKED TODOS (check if incoming signal relates to any):"
-        assert lines[1] == '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /users/507f1f77bcf86cd799439011/todos/todo-1)'
+        assert (
+            lines[1]
+            == '- "Prepare Q3 report" [work] (ID: todo-1, vfs: /users/507f1f77bcf86cd799439011/todos/todo-1)'
+        )
         assert "    thread: abc123" in lines[2]
         assert "    email: x@y.com" in lines[3]
 
@@ -355,14 +358,14 @@ class TestScheduleExecution:
         ok = await TrackedTodoService.schedule_execution(TODO_ID, when)
 
         assert ok is True
-        pool.enqueue_job.assert_awaited_once_with("execute_tracked_todo", TODO_ID, _defer_until=when)
+        pool.enqueue_job.assert_awaited_once_with(
+            "execute_tracked_todo", TODO_ID, _defer_until=when
+        )
 
     async def test_false_when_enqueue_fails(self, mock_repo, mock_deps):
         mock_deps.pool.side_effect = RuntimeError("redis down")
 
-        assert (
-            await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC)) is False
-        )
+        assert await TrackedTodoService.schedule_execution(TODO_ID, datetime.now(UTC)) is False
 
     async def test_reschedule_reuses_schedule(self, mock_repo, mock_deps):
         pool = AsyncMock()

@@ -164,15 +164,11 @@ async def test_debounced_consolidation_merges_doc_types_and_fires_once(
     while True:
         rows = await fetch_document_rows(memory_user)
         pending = await real_redis.get(CONSOLIDATION_PENDING_KEY.format(user_id=memory_user))
-        if (
-            {row.doc_type for row in rows}
-            >= {
-                MemoryDocType.PEOPLE_MD.value,
-                MemoryDocType.USER_MD.value,
-                MemoryDocType.MEMORY_MD.value,
-            }
-            and pending is None
-        ):
+        if {row.doc_type for row in rows} >= {
+            MemoryDocType.PEOPLE_MD.value,
+            MemoryDocType.USER_MD.value,
+            MemoryDocType.MEMORY_MD.value,
+        } and pending is None:
             break
         if asyncio.get_running_loop().time() > deadline:
             pytest.fail("debounced consolidation did not complete within 60s")

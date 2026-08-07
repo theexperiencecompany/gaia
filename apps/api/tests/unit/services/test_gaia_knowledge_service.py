@@ -53,14 +53,21 @@ class TestKnowledgeItemValidation:
 class TestSearchKnowledge:
     async def test_returns_scored_results(self, mock_chroma):
         mock_chroma.asimilarity_search_with_score.return_value = [
-            (SimpleNamespace(page_content="GAIA supports Gmail", metadata={"kind": "capability"}), 0.95),
+            (
+                SimpleNamespace(
+                    page_content="GAIA supports Gmail", metadata={"kind": "capability"}
+                ),
+                0.95,
+            ),
             (SimpleNamespace(page_content="GAIA has memory", metadata={}), 0.8),
         ]
 
         results = await gaia_knowledge_service.search_knowledge("can GAIA email me?", limit=2)
 
         assert results == [
-            KnowledgeResult(content="GAIA supports Gmail", relevance_score=0.95, metadata={"kind": "capability"}),
+            KnowledgeResult(
+                content="GAIA supports Gmail", relevance_score=0.95, metadata={"kind": "capability"}
+            ),
             KnowledgeResult(content="GAIA has memory", relevance_score=0.8, metadata={}),
         ]
 
@@ -109,7 +116,9 @@ class TestClearKnowledge:
         mock_chroma.delete_collection.assert_awaited_once_with(name="gaia_knowledge")
         mock_chroma.create_collection.assert_awaited_once()
         assert mock_chroma.create_collection.await_args.kwargs["name"] == "gaia_knowledge"
-        assert mock_chroma.create_collection.await_args.kwargs["metadata"] == {"hnsw:space": "cosine"}
+        assert mock_chroma.create_collection.await_args.kwargs["metadata"] == {
+            "hnsw:space": "cosine"
+        }
 
     async def test_failure_degrades_to_false(self, mock_chroma):
         mock_chroma.delete_collection.side_effect = RuntimeError("chroma down")

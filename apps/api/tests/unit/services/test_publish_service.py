@@ -88,7 +88,10 @@ class TestPublishCustomIntegration:
 
         result = await publish_custom_integration(INTEGRATION_ID, USER_ID)
 
-        assert result == {"integration_id": INTEGRATION_ID, "public_url": "/marketplace/my-integration"}
+        assert result == {
+            "integration_id": INTEGRATION_ID,
+            "public_url": "/marketplace/my-integration",
+        }
         assert mock_deps.repo.ensure_unique_slug.await_args.kwargs == {
             "name": "My Integration",
             "category": "productivity",

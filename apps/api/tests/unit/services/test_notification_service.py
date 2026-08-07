@@ -110,13 +110,17 @@ class TestNotificationService:
         orchestrator.get_notification.return_value = view
 
         assert await svc.get_notification("notif-1", "user-1") is view
-        orchestrator.get_notification.assert_awaited_once_with(notification_id="notif-1", user_id="user-1")
+        orchestrator.get_notification.assert_awaited_once_with(
+            notification_id="notif-1", user_id="user-1"
+        )
 
     async def test_get_notification_count_delegates_to_storage(self, service):
         svc, orchestrator = service
         orchestrator.storage.get_notification_count.return_value = 7
 
-        count = await svc.get_user_notifications_count("user-1", NotificationStatus.PENDING, "in_app")
+        count = await svc.get_user_notifications_count(
+            "user-1", NotificationStatus.PENDING, "in_app"
+        )
 
         assert count == 7
         orchestrator.storage.get_notification_count.assert_awaited_once_with(

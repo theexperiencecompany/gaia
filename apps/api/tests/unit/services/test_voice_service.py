@@ -82,7 +82,9 @@ class TestGetElevenlabsVoices:
         with patch(f"{_MOD}._fetch_elevenlabs_voices", AsyncMock(return_value=voices)):
             assert await get_elevenlabs_voices() == voices
 
-    @pytest.mark.parametrize("error", [httpx.HTTPError("boom"), ValueError("bad json"), KeyError("x")])
+    @pytest.mark.parametrize(
+        "error", [httpx.HTTPError("boom"), ValueError("bad json"), KeyError("x")]
+    )
     async def test_degrades_to_empty_on_upstream_failure(self, mock_settings, error):
         with patch(f"{_MOD}._fetch_elevenlabs_voices", AsyncMock(side_effect=error)):
             assert await get_elevenlabs_voices() == []
@@ -170,7 +172,10 @@ class TestSetVoiceStar:
 @pytest.mark.unit
 class TestSetUserVoice:
     async def test_accepts_account_voice(self, mock_user_repo, mock_settings):
-        with patch(f"{_MOD}.get_elevenlabs_voices", AsyncMock(return_value=[_account_voice(voice_id="acct-1")])):
+        with patch(
+            f"{_MOD}.get_elevenlabs_voices",
+            AsyncMock(return_value=[_account_voice(voice_id="acct-1")]),
+        ):
             result = await set_user_voice(USER_ID, "acct-1")
 
         assert result == "acct-1"
@@ -179,7 +184,10 @@ class TestSetUserVoice:
     async def test_accepts_library_voice(self, mock_user_repo, mock_settings):
         with (
             patch(f"{_MOD}.get_elevenlabs_voices", AsyncMock(return_value=[])),
-            patch(f"{_MOD}.get_shared_voices", AsyncMock(return_value=[_shared_voice(voice_id="lib-1")])),
+            patch(
+                f"{_MOD}.get_shared_voices",
+                AsyncMock(return_value=[_shared_voice(voice_id="lib-1")]),
+            ),
         ):
             result = await set_user_voice(USER_ID, "lib-1")
 

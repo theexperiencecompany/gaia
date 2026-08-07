@@ -78,9 +78,7 @@ class TestResendProviderSend:
         m_settings, m_send, m_contact = mock_resend
         provider = ResendEmailProvider()
 
-        await provider.send(
-            EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h")
-        )
+        await provider.send(EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h"))
 
         params = m_send.call_args[0][0]
         assert "reply_to" not in params
@@ -123,9 +121,7 @@ class TestServiceDelegation:
     async def test_send_email_delegates_to_provider(self):
         provider = AsyncMock()
         with patch(f"{SERVICE_MOD}.get_email_provider", return_value=provider):
-            await send_email(
-                EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h")
-            )
+            await send_email(EmailMessage(sender="s", to=["a@example.com"], subject="t", html="h"))
 
         message = provider.send.await_args.args[0]
         assert message.to == ["a@example.com"]
@@ -171,7 +167,9 @@ class TestSendSupportTeamNotification:
     async def test_sends_to_every_support_email(self):
         with (
             patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock) as m_send,
-            patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>ticket</h1>") as m_render,
+            patch(
+                f"{SENDERS_MOD}.render_email_template", return_value="<h1>ticket</h1>"
+            ) as m_render,
         ):
             from app.services.email.senders import send_support_team_notification
 
@@ -250,7 +248,11 @@ class TestSendSupportToUserEmail:
 
     async def test_failure_propagates(self):
         with (
-            patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock, side_effect=RuntimeError("down")),
+            patch(
+                f"{SENDERS_MOD}.send_email",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("down"),
+            ),
             patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>got it</h1>"),
         ):
             from app.services.email.senders import send_support_to_user_email
@@ -278,7 +280,11 @@ class TestSendProSubscriptionEmail:
 
     async def test_failure_propagates(self):
         with (
-            patch(f"{SENDERS_MOD}.send_email", new_callable=AsyncMock, side_effect=RuntimeError("down")),
+            patch(
+                f"{SENDERS_MOD}.send_email",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("down"),
+            ),
             patch(f"{SENDERS_MOD}.render_email_template", return_value="<h1>welcome pro</h1>"),
         ):
             from app.services.email.senders import send_pro_subscription_email

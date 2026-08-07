@@ -96,7 +96,14 @@ class TestFetchEmailProfile:
         person = _person()
         mock_http.proxy.side_effect = _proxy_side_effect(
             _search_result(person),
-            {"photos": [{"url": "https://photos.example/real.jpg", "metadata": {"source": {"type": "PROFILE"}}}]},
+            {
+                "photos": [
+                    {
+                        "url": "https://photos.example/real.jpg",
+                        "metadata": {"source": {"type": "PROFILE"}},
+                    }
+                ]
+            },
         )
 
         response = await fetch_email_profile(USER_ID, EMAIL)
@@ -218,7 +225,10 @@ class TestPersonToProfile:
         assert profile.website_name == GOOGLE_CONTACTS_SOURCE_NAME
 
     def test_returns_none_when_email_does_not_match(self):
-        assert _person_to_profile(_person(emailAddresses=[{"value": "other@example.com"}]), EMAIL) is None
+        assert (
+            _person_to_profile(_person(emailAddresses=[{"value": "other@example.com"}]), EMAIL)
+            is None
+        )
 
     def test_returns_none_without_name_or_photo(self):
         assert _person_to_profile({"emailAddresses": [{"value": EMAIL}]}, EMAIL) is None
