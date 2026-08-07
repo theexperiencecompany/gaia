@@ -19,7 +19,12 @@ it so you only see what matters, and writes replies in your tone that it
 shows you before anything goes out.<br /><br />
 It takes about a minute, and it's the last bit of setup GAIA needs to work
 ahead of you.<br /><br />
-{% else %}
+{% elif gmail_connected and calendar_connected %}
+You've connected Gmail and your calendar — GAIA can see your day the way you
+do. It sorts your inbox, drafts replies in your tone, preps you before
+meetings, and catches conflicts in your schedule.<br /><br />
+You're all set. Nothing ever gets sent without your approval.<br /><br />
+{% elif not gmail_connected and not calendar_connected %}
 GAIA is built to be proactive, but right now it can't see your inbox or your
 calendar. So it's basically working blindfolded.<br /><br />
 Once you connect Gmail and Google Calendar, it starts doing things on its
