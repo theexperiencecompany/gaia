@@ -1,0 +1,41 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Quick one today.<br /><br />
+{% if gmail_connected and not calendar_connected %}
+You've already connected Gmail, which is great. GAIA can sort through your
+inbox and draft replies for you.<br /><br />
+The other half is your calendar. Connect Google Calendar and GAIA starts
+prepping you before meetings, catching conflicts in your schedule, and
+finding time for the things on your plate so you don't have to play
+calendar tetris.<br /><br />
+It takes about a minute, and it's the last bit of setup GAIA needs to see
+your day the way you do.<br /><br />
+{% elif calendar_connected and not gmail_connected %}
+You've already connected your calendar, which is great. GAIA can prep you
+for meetings and keep an eye on your schedule.<br /><br />
+The other half is your inbox. Connect Gmail and GAIA starts sorting through
+it so you only see what matters, and writes replies in your tone that it
+shows you before anything goes out.<br /><br />
+It takes about a minute, and it's the last bit of setup GAIA needs to work
+ahead of you.<br /><br />
+{% elif gmail_connected and calendar_connected %}
+You've connected Gmail and your calendar — GAIA can see your day the way you
+do. It sorts your inbox, drafts replies in your tone, preps you before
+meetings, and catches conflicts in your schedule.<br /><br />
+You're all set. Nothing ever gets sent without your approval.<br /><br />
+{% elif not gmail_connected and not calendar_connected %}
+GAIA is built to be proactive, but right now it can't see your inbox or your
+calendar. So it's basically working blindfolded.<br /><br />
+Once you connect Gmail and Google Calendar, it starts doing things on its
+own. It sorts through your inbox so you only see what matters. It can draft
+replies in your tone for you to review before anything goes out. It
+preps you before meetings and catches conflicts in your
+schedule.<br /><br />
+The setup takes about two minutes, and honestly it's the single biggest
+upgrade you can give GAIA. Nothing ever gets sent without your
+approval.<br /><br />
+{% endif %}
+Best,<br />
+Aryan
+{% endblock %}

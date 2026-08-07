@@ -161,6 +161,11 @@ def is_valid_timezone(raw: str | None) -> bool:
     return Timezone.try_parse(raw) is not None
 
 
+def as_utc(dt: datetime | None) -> datetime | None:
+    """Normalize a possibly-naive datetime (MongoDB returns naive) to UTC-aware."""
+    return dt.replace(tzinfo=UTC) if dt and dt.tzinfo is None else dt
+
+
 class TimezoneSource(str, Enum):
     """Which input produced a resolved home timezone (emitted for observability)."""
 
