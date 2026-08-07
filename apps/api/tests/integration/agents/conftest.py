@@ -1,6 +1,7 @@
 """Agent-specific integration test fixtures."""
 
 from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 from langchain_core.language_models.fake_chat_models import (
@@ -12,8 +13,24 @@ from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 import pytest
 
+from app.config.settings import settings
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 from tests.integration.conftest import SimpleState
+
+
+@pytest.fixture
+def no_model_fallback():
+    """Build the graph with NO default-model fallback available.
+
+    ``create_agent`` resolves the fallback once, at build time, from
+    ``get_default_llm()`` — which succeeds whenever ``GOOGLE_API_KEY`` is
+    configured. A test asserting that a provider error *propagates* must
+    therefore pin the key off, or an ambient key (Infisical, a developer's
+    shell, CI secrets) silently makes the fallback available and swallows the
+    error the test exists to catch.
+    """
+    with patch.object(settings, "GOOGLE_API_KEY", None):
+        yield
 
 
 @pytest.fixture

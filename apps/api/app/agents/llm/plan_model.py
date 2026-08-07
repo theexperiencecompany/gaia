@@ -2,6 +2,9 @@
 by subscription plan. Set on the comms configurable; executor/subagents inherit it.
 """
 
+from typing import Any
+
+from app.config.settings import settings
 from app.constants.llm import (
     COMMS_REASONING,
     DEFAULT_LLM_PROVIDER,
@@ -13,19 +16,21 @@ from app.constants.llm import (
     PAID_MODEL_PROVIDER,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
+from app.models.models_models import DevModelOption
 from app.models.payment_models import PlanType
 from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import log
 
 
-def _pin_model(configurable: dict, provider: str, model: str) -> None:
+def _pin_model(configurable: AgentConfigurable, provider: str, model: str) -> None:
     # Gemini binds from ``model_name``, OpenRouter from ``model`` — set both.
     configurable["provider"] = provider
     configurable["model"] = model
     configurable["model_name"] = model
 
 
-async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
+async def apply_plan_model(configurable: AgentConfigurable, user_id: str | None) -> None:
     """Route the model by plan: free -> Gemini, any paid plan -> MiniMax. No-op without a user_id."""
     if not user_id:
         return
@@ -52,11 +57,21 @@ async def apply_plan_model(configurable: dict, user_id: str | None) -> None:
     log.set(plan_model={"plan": plan.value, "model": configurable["model"]})
 
 
-def _apply_dev_model(configurable: dict, option: dict, reasoning_cfg: dict) -> None:
+def _apply_dev_model(
+    configurable: AgentConfigurable, option: DevModelOption, reasoning_cfg: dict[str, Any]
+) -> None:
     """Pin a DEV_MODEL_OPTIONS entry onto a configurable, applying role-appropriate
     reasoning. Clears `model_kwargs`/`reasoning` for models that don't use them so a
     prior plan/inherited OpenRouter pin can't leak onto a Gemini-routed model."""
-    _pin_model(configurable, option["provider"], option["model"])
+    if option["model"]:
+        _pin_model(configurable, option["provider"], option["model"])
+    else:
+        # Entry without a pinned model (the env-defined "custom" endpoint): route
+        # by provider and clear any earlier model pin so the client's own default
+        # (DEV_LLM_MODEL) serves the request.
+        configurable["provider"] = option["provider"]
+        configurable.pop("model", None)
+        configurable.pop("model_name", None)
     if option["model_kwargs"] is not None:
         configurable["model_kwargs"] = option["model_kwargs"]
     else:
@@ -68,17 +83,27 @@ def _apply_dev_model(configurable: dict, option: dict, reasoning_cfg: dict) -> N
 
 
 def apply_dev_model_override(
-    configurable: dict,
+    configurable: AgentConfigurable,
     comms_model: str | None,
     executor_model: str | None,
     use_defaults: bool,
 ) -> None:
     """DEV-ONLY: override the comms model now and stash the executor model for the
-    executor run. No-op when use_defaults is set or an id is unknown. Runs AFTER
-    apply_plan_model so the dev selection wins over the plan model. Caller gates this
-    to ENV=development; never reached in production."""
+    executor run. Requests that don't pick a model (use_defaults) fall back to the
+    env-configured DEV_DEFAULT_MODEL for both roles, so bots/scripts/plain requests
+    route to it too; an explicit selector choice wins. No-op when neither is set or
+    an id is unknown. Runs AFTER apply_plan_model so the dev selection wins over
+    the plan model. Caller gates this to ENV=development; never reached in
+    production."""
     if use_defaults:
-        return
+        dev_default = settings.DEV_DEFAULT_MODEL
+        if dev_default and dev_default not in DEV_MODEL_OPTIONS:
+            log.warning(
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL '{dev_default}' is not a "
+                "DEV_MODEL_OPTIONS key; keeping the plan model"
+            )
+            return
+        comms_model = executor_model = dev_default
     comms_option = DEV_MODEL_OPTIONS.get(comms_model or "")
     if comms_option:
         _apply_dev_model(configurable, comms_option, COMMS_REASONING)
@@ -90,7 +115,9 @@ def apply_dev_model_override(
         log.set(dev_model_override={"comms": comms_model, "executor": executor_model})
 
 
-def apply_dev_executor_model(parent_configurable: dict, executor_configurable: dict) -> None:
+def apply_dev_executor_model(
+    parent_configurable: AgentConfigurable, executor_configurable: AgentConfigurable
+) -> None:
     """DEV-ONLY: pin the dev-selected executor model on the executor configurable,
     overriding the model inherited from comms. No-op unless the parent stashed one."""
     option = DEV_MODEL_OPTIONS.get(parent_configurable.get("__dev_executor_model__") or "")

@@ -331,7 +331,7 @@ class TestGetAvailableProviders:
     """Test _get_available_providers retrieves from the lazy provider registry."""
 
     def _build_registry(self, present_providers: dict[str, Any]) -> ProviderRegistry:
-        """Build a ProviderRegistry with all three LLM slots registered.
+        """Build a ProviderRegistry with all LLM slots registered.
 
         Providers listed in `present_providers` get a real loader that returns
         the given instance. Missing providers get a loader that returns None
@@ -342,6 +342,7 @@ class TestGetAvailableProviders:
             "openai_llm": present_providers.get("openai_llm"),
             "gemini_llm": present_providers.get("gemini_llm"),
             "openrouter_llm": present_providers.get("openrouter_llm"),
+            "custom_llm": present_providers.get("custom_llm"),
         }
         for name, instance in all_slots.items():
             if instance is not None:

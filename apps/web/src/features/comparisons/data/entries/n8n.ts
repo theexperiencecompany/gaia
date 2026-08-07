@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Open-source workflow automation platform",
   description:
     "n8n provides powerful no-code workflow automation. GAIA adds AI intelligence to understand context and make decisions, not just execute rules.",
-  metaTitle: "n8n Alternative with AI-Native Automation | GAIA vs n8n",
+  metaTitle: "n8n Alternative with AI-Native Automation — GAIA vs n8n",
   metaDescription:
     "n8n requires you to define every rule manually. GAIA is an open-source n8n alternative with AI-native automation that reads context, drafts emails, and acts proactively without predefined triggers.",
   keywords: [

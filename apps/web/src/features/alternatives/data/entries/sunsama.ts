@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Email integration imports tasks but does not auto-prioritize or act on them",
     "Focused on the planning ritual rather than proactive background intelligence",
   ],
-  metaTitle: "Best Sunsama Alternative in 2026 | GAIA",
+  metaTitle: "Best Sunsama Alternative in 2026",
   metaDescription:
     "Sunsama requires a daily planning ritual and costs $20/month. GAIA proactively manages your tasks, email, and calendar automatically. Free tier + self-hosting.",
   keywords: [

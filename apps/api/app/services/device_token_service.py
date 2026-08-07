@@ -77,6 +77,21 @@ class DeviceTokenService:
             log.error(f"Failed to get device count: {e}")
             return 0
 
+    async def get_active_tokens(self, user_id: str) -> list[str]:
+        """Every active push token registered for this user."""
+        # {"token": 1} is a MongoDB field projection (include the token field), not a secret.
+        projection = {"token": 1}  # nosec B105
+        cursor = self.collection.find({"user_id": user_id, "is_active": True}, projection)
+        return [doc["token"] async for doc in cursor if doc.get("token")]
+
+    async def deactivate_tokens(self, tokens: list[str]) -> None:
+        """Mark dead tokens inactive so ``get_active_tokens`` stops returning them."""
+        if not tokens:
+            return
+        await self.collection.update_many(
+            {"token": {"$in": tokens}}, {"$set": {"is_active": False}}
+        )
+
     async def verify_token_ownership(self, token: str, user_id: str) -> bool:
         """Verify that a token belongs to the specified user."""
         try:

@@ -1,7 +1,10 @@
-import type { ToolDataEntry } from "@gaia/shared/chat";
+import type { ApprovalDecisionPayload, ToolDataEntry } from "@gaia/shared/chat";
 import { getAuthToken } from "@/features/auth/utils/auth-storage";
-import { apiService } from "@/lib/api";
+import { ApiError, apiService } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/constants";
+
+// 410 Gone: the approval was already resolved elsewhere.
+const HTTP_GONE = 410;
 
 export interface FileUploadResponse {
   fileId: string;
@@ -254,6 +257,23 @@ export async function cancelStream(streamId: string): Promise<boolean> {
   }
 }
 
+export async function postApprovalDecision(
+  approvalId: string,
+  decision: ApprovalDecisionPayload,
+): Promise<boolean> {
+  try {
+    await apiService.post(`/approvals/${approvalId}/decision`, decision);
+    return true;
+  } catch (error) {
+    // A 410 means the approval was already resolved elsewhere — the resolved
+    // card arrives over the stream regardless, so treat it as success. Only a
+    // genuine submission failure returns false.
+    if (error instanceof ApiError && error.status === HTTP_GONE) return true;
+    console.warn("Error submitting approval decision:", error);
+    return false;
+  }
+}
+
 export interface UploadFileInput {
   uri: string;
   name: string;
@@ -340,6 +360,7 @@ export const chatApi = {
   uploadFile,
   branchConversation,
   submitMessageFeedback,
+  postApprovalDecision,
 };
 
 export * from "./chat-stream";

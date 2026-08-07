@@ -244,7 +244,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Hello world"
+        assert not result.paused
+        assert result.text == "Hello world"
 
     @pytest.mark.asyncio
     async def test_silent_messages_skipped(self):
@@ -260,7 +261,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Task completed"  # default when no content
+        assert not result.paused
+        assert result.text == "Task completed"  # default when no content
 
     @pytest.mark.asyncio
     async def test_empty_message_returns_default(self):
@@ -275,7 +277,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     @pytest.mark.asyncio
     async def test_tool_message_emits_tool_output(self):
@@ -424,7 +427,8 @@ class TestExecuteSubagentStream:
             result = await execute_subagent_stream(ctx, stream_writer=None)
 
         # Should not raise
-        assert result == "Task completed"
+        assert not result.paused
+        assert result.text == "Task completed"
 
     @pytest.mark.asyncio
     async def test_cancellation_breaks_stream(self):
@@ -455,8 +459,8 @@ class TestExecuteSubagentStream:
         # Only first chunk was accumulated before cancellation broke the loop.
         # When no tool ran the runner wraps the content in a diagnostic message;
         # verify "First " appears and "Second" does not (cancellation succeeded).
-        assert "First " in result
-        assert "Second" not in result
+        assert "First " in result.text
+        assert "Second" not in result.text
 
     @pytest.mark.asyncio
     async def test_non_tuple_events_skipped(self):
@@ -474,7 +478,8 @@ class TestExecuteSubagentStream:
         with patch("app.agents.core.subagents.subagent_runner.log"):
             result = await execute_subagent_stream(ctx)
 
-        assert result == "ok"
+        assert not result.paused
+        assert result.text == "ok"
 
     @pytest.mark.asyncio
     async def test_integration_metadata_passed_to_extract(self):
@@ -508,6 +513,18 @@ class TestExecuteSubagentStream:
 
 @pytest.mark.unit
 class TestPrepareExecutorExecution:
+    @pytest.fixture(autouse=True)
+    def _mock_uploaded_files(self):
+        # prepare_executor_execution surfaces conversation uploads via
+        # FileService.list_conversation_files (a Motor query). Unit tests must
+        # not touch the DB, so stub it out for the whole class.
+        with patch(
+            "app.agents.core.subagents.subagent_runner.FileService.list_conversation_files",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            yield
+
     @pytest.mark.asyncio
     async def test_happy_path(self):
         mock_graph = MagicMock(name="executor_graph")
@@ -745,7 +762,7 @@ class TestBuildSubagentSystemPrompt:
             ) as mock_meta,
             patch("app.agents.core.subagents.subagent_helpers.log"),
         ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
+            result = await build_subagent_system_prompt("github")
 
         assert "You are the GitHub agent." in result
         assert "USER CONTEXT FOR GITHUB" not in result
@@ -753,49 +770,36 @@ class TestBuildSubagentSystemPrompt:
         mock_meta.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_no_metadata_when_no_user_id(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-            ) as mock_meta,
-        ):
-            result = await build_subagent_system_prompt("github")
-
-        mock_meta.assert_not_awaited()
-        assert "You are the GitHub agent." in result
-
-    @pytest.mark.asyncio
     async def test_integration_not_found_uses_custom_prompt(self):
+        from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
+
         with patch(
-            "app.agents.core.subagents.subagent_helpers.get_integration_by_id",
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
             return_value=None,
         ):
             result = await build_subagent_system_prompt("custom_tool_123")
 
-        # Should return the CUSTOM_MCP_SUBAGENT_PROMPT or the base_system_prompt
-        assert isinstance(result, str)
+        assert result == CUSTOM_MCP_SUBAGENT_PROMPT
+
+    @pytest.mark.asyncio
+    async def test_integration_not_found_prefers_base_system_prompt(self):
+        with patch(
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
+            return_value=None,
+        ):
+            result = await build_subagent_system_prompt(
+                "custom_tool_123", base_system_prompt="Explicit override"
+            )
+
+        assert result == "Explicit override"
 
     @pytest.mark.asyncio
     async def test_base_system_prompt_override(self):
         integration = _make_integration("github")
 
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
+        with patch(
+            "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
+            return_value=integration,
         ):
             result = await build_subagent_system_prompt(
                 "github", base_system_prompt="Custom prompt"
@@ -804,45 +808,9 @@ class TestBuildSubagentSystemPrompt:
         assert result == "Custom prompt"
 
     @pytest.mark.asyncio
-    async def test_metadata_fetch_error_handled(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("DB down"),
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
-
-        # Should not raise, returns prompt without metadata
-        assert "You are the GitHub agent." in result
-
-    @pytest.mark.asyncio
-    async def test_empty_metadata_no_context_injected(self):
-        integration = _make_integration("github")
-
-        with (
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_subagent_by_id",
-                return_value=integration,
-            ),
-            patch(
-                "app.agents.core.subagents.subagent_helpers.get_provider_metadata",
-                new_callable=AsyncMock,
-                return_value={},
-            ),
-            patch("app.agents.core.subagents.subagent_helpers.log"),
-        ):
-            result = await build_subagent_system_prompt("github", user_id="u1")
-
-        assert "USER CONTEXT" not in result
+    async def test_blank_integration_id_returns_empty(self):
+        with patch("app.agents.core.subagents.subagent_helpers.log"):
+            assert await build_subagent_system_prompt("") == ""
 
 
 # ---------------------------------------------------------------------------
@@ -859,10 +827,7 @@ class TestCreateSubagentSystemMessage:
             new_callable=AsyncMock,
             return_value="Test prompt",
         ):
-            result = await create_subagent_system_message(
-                integration_id="github",
-                agent_name="github_agent",
-            )
+            result = await create_subagent_system_message(integration_id="github")
 
         assert isinstance(result, SystemMessage)
         assert result.content == "Test prompt"

@@ -459,8 +459,9 @@ class TestBuildExecutorGraph:
 
             kwargs = deps["mocks"][f"{_MOD}.create_agent"].call_args.kwargs
             pre_model_hooks = kwargs["pre_model_hooks"]
-            # executor: filter_messages_node, manage_system_prompts_node, todo_hook
-            assert len(pre_model_hooks) == 3
+            # executor: filter_messages_node, adapt_media_node,
+            # manage_system_prompts_node, todo_hook
+            assert len(pre_model_hooks) == 4
 
     async def test_subagent_middleware_wired_when_present(self):
         """When SubagentMiddleware is in the middleware stack, set_llm/set_tools/set_store are called."""

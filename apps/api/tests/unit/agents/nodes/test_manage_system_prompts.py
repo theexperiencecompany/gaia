@@ -7,7 +7,7 @@ shatter the implicit-cache prefix, so older ones are dropped. The legacy
 for back-compat with older persisted state.
 """
 
-from typing import cast
+from typing import Any, ClassVar, cast
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import (
@@ -55,8 +55,8 @@ class TestIsDynamicContext:
 
     def test_marker_in_model_extra(self) -> None:
         class FakeMsg:
-            additional_kwargs: dict = {}
-            model_extra = {"dynamic_context": True}
+            additional_kwargs: ClassVar[dict[str, Any]] = {}
+            model_extra: ClassVar[dict[str, Any]] = {"dynamic_context": True}
 
         assert _is_dynamic_context(cast(AnyMessage, FakeMsg())) is True
 
@@ -143,13 +143,26 @@ class TestManageSystemPrompts:
         # their original relative order.
         assert actual == ["latest prompt", "ctx2", "hello", "reply"]
 
-    def test_silent_exception_returns_unmodified_state(self) -> None:
+    def test_exception_is_logged_and_state_returned_unmodified(self) -> None:
+        """The node runs on every agent turn, so an unexpected failure degrades
+        to the untouched input state instead of crashing the graph — but it must
+        never disappear silently: the cause has to reach the logs."""
         msgs = [HumanMessage(content="hello"), _static("latest prompt")]
         state = cast(State, {"messages": msgs})
-        with patch(
-            "app.agents.core.nodes.manage_system_prompts._is_dynamic_context",
-            side_effect=RuntimeError("unexpected failure"),
+        with (
+            patch(
+                "app.agents.core.nodes.manage_system_prompts._is_dynamic_context",
+                side_effect=RuntimeError("unexpected failure"),
+            ),
+            patch("app.agents.core.nodes.manage_system_prompts.log") as mock_log,
         ):
             result = manage_system_prompts_node(state, _config(), _store())
         assert result is state
         assert result["messages"] is msgs
+
+        mock_log.error.assert_called_once()
+        logged = mock_log.error.call_args.args[0]
+        assert "manage system prompts node" in logged
+        assert "unexpected failure" in logged, (
+            f"The swallowed exception must be named in the log, got: {logged}"
+        )

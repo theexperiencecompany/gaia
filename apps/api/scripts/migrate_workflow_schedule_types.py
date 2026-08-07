@@ -44,14 +44,14 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import (  # noqa: E402
-    reminders_collection,
-    workflows_collection,
-)
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.models.scheduler_models import ScheduledTaskStatus  # noqa: E402
 from app.services.reminder_service import ReminderScheduler  # noqa: E402
 from app.services.workflow.scheduler import WorkflowScheduler  # noqa: E402
 from app.utils.cron_utils import get_next_run_time  # noqa: E402
+
+reminders_collection = get_async_collection("reminders")
+workflows_collection = get_async_collection("workflows")
 
 # Scheduling + audit datetimes that were historically persisted as ISO strings.
 _DATE_FIELDS = ("scheduled_at", "stop_after", "created_at", "updated_at")

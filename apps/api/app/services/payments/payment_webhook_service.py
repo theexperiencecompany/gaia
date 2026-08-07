@@ -6,16 +6,14 @@ Handles webhook events and updates database state accordingly.
 from datetime import UTC, datetime
 from typing import Any
 
-from bson import ObjectId
 from standardwebhooks.webhooks import Webhook
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    processed_webhooks_collection,
-    subscriptions_collection,
-    users_collection,
-)
+from app.db.repositories.processed_webhooks import processed_webhook_repository
+from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.users import user_repository
+from app.models.payment_models import SubscriptionDocument, SubscriptionUpdate
 from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
@@ -26,15 +24,15 @@ from app.services.analytics_service import (
     track_payment_event,
     track_subscription_event,
 )
+from app.services.email import send_pro_subscription_email
 from app.services.payments.payment_service import payment_service
-from app.utils.email_utils import send_pro_subscription_email
 from shared.py.wide_events import log
 
 
 class PaymentWebhookService:
     """Clean service for handling Dodo payment webhooks."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.webhook_secret = settings.DODO_WEBHOOK_PAYMENTS_SECRET
         # Initialize Standard Webhooks verifier
         if self.webhook_secret:
@@ -102,24 +100,20 @@ class PaymentWebhookService:
 
     async def _is_webhook_processed(self, webhook_id: str) -> bool:
         """Check if webhook has already been processed."""
-        processed = await processed_webhooks_collection.find_one({"webhook_id": webhook_id})
-        return processed is not None
+        return await processed_webhook_repository.is_processed(webhook_id)
 
     async def _mark_webhook_as_processed(
         self, webhook_id: str, event_type: str, result: DodoWebhookProcessingResult
     ) -> None:
         """Store webhook ID as processed in database."""
         try:
-            await processed_webhooks_collection.insert_one(
-                {
-                    "webhook_id": webhook_id,
-                    "event_type": event_type,
-                    "status": result.status,
-                    "message": result.message,
-                    "payment_id": result.payment_id,
-                    "subscription_id": result.subscription_id,
-                    "processed_at": datetime.now(UTC),
-                }
+            await processed_webhook_repository.mark_processed(
+                webhook_id,
+                event_type=event_type,
+                status=result.status,
+                message=result.message,
+                payment_id=result.payment_id,
+                subscription_id=result.subscription_id,
             )
         except Exception as e:
             log.error(f"{LogTag.PAYMENT} Failed to store processed webhook ID: {e}")
@@ -205,9 +199,9 @@ class PaymentWebhookService:
         """Get user email from metadata or database lookup."""
         user_id = metadata.get("user_id")
         if user_id:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            user = await user_repository.get(user_id)
             if user:
-                return user.get("email")
+                return user.email
         return None
 
     # Payment event handlers
@@ -309,9 +303,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         # Check if subscription already exists
-        existing = await subscriptions_collection.find_one(
-            {"dodo_subscription_id": sub_data.subscription_id}
-        )
+        existing = await subscription_repository.get_by_dodo_id(sub_data.subscription_id)
 
         if existing:
             log.info(f"{LogTag.PAYMENT} Subscription already exists: {sub_data.subscription_id}")
@@ -326,7 +318,7 @@ class PaymentWebhookService:
         user_id = sub_data.metadata.get("user_id")
         user_email = sub_data.customer.email
         if not user_id:
-            user = await users_collection.find_one({"email": user_email})
+            user = await user_repository.get_by_email(user_email)
             if not user:
                 log.error(
                     f"{LogTag.PAYMENT} User not found for subscription: {sub_data.subscription_id}"
@@ -337,7 +329,7 @@ class PaymentWebhookService:
                     message="User not found",
                     subscription_id=sub_data.subscription_id,
                 )
-            user_id = str(user["_id"])
+            user_id = str(user.id)
 
         # Create subscription record
         subscription_doc = {
@@ -359,9 +351,7 @@ class PaymentWebhookService:
             "metadata": sub_data.metadata,
         }
 
-        result = await subscriptions_collection.insert_one(subscription_doc)
-        if not result.inserted_id:
-            raise Exception("Failed to create subscription record")
+        await subscription_repository.create(SubscriptionDocument.model_validate(subscription_doc))
 
         # Track subscription activation in PostHog
         if user_email:
@@ -395,20 +385,21 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        # Update subscription billing dates
-        result = await subscriptions_collection.update_one(
-            {"dodo_subscription_id": sub_data.subscription_id},
-            {
-                "$set": {
-                    "status": "active",
-                    "next_billing_date": sub_data.next_billing_date,
-                    "previous_billing_date": sub_data.previous_billing_date,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        # Set each billing date only when the event carries one. Passing it
+        # marks the field in model_fields_set even when None, and the repository
+        # applies model_dump(exclude_unset=True) as $set — so an event that omits
+        # a date would otherwise write null over the stored value.
+        update = SubscriptionUpdate(status="active")
+        if sub_data.next_billing_date is not None:
+            update.next_billing_date = sub_data.next_billing_date
+        if sub_data.previous_billing_date is not None:
+            update.previous_billing_date = sub_data.previous_billing_date
+
+        matched = await subscription_repository.apply_update_by_dodo_id(
+            sub_data.subscription_id, update
         )
 
-        if result.matched_count == 0:
+        if not matched:
             log.warning(
                 f"{LogTag.PAYMENT} Subscription not found for renewal: {sub_data.subscription_id}"
             )
@@ -438,18 +429,13 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        update_data = {
-            "status": "cancelled",
-            "updated_at": datetime.now(UTC),
-        }
-
+        # cancelled_at is only set when Dodo supplied one — leaving it unset keeps
+        # it out of the $set rather than writing null over a stored value.
+        update = SubscriptionUpdate(status="cancelled")
         if sub_data.cancelled_at:
-            update_data["cancelled_at"] = sub_data.cancelled_at
+            update.cancelled_at = sub_data.cancelled_at
 
-        await subscriptions_collection.update_one(
-            {"dodo_subscription_id": sub_data.subscription_id},
-            {"$set": update_data},
-        )
+        await subscription_repository.apply_update_by_dodo_id(sub_data.subscription_id, update)
 
         # Track subscription cancellation in PostHog
         user_email = sub_data.customer.email if sub_data.customer else None
@@ -475,14 +461,8 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        await subscriptions_collection.update_one(
-            {"dodo_subscription_id": sub_data.subscription_id},
-            {
-                "$set": {
-                    "status": "expired",
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        await subscription_repository.apply_update_by_dodo_id(
+            sub_data.subscription_id, SubscriptionUpdate(status="expired")
         )
 
         # Track subscription expiration in PostHog
@@ -509,14 +489,8 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        await subscriptions_collection.update_one(
-            {"dodo_subscription_id": sub_data.subscription_id},
-            {
-                "$set": {
-                    "status": "failed",
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        await subscription_repository.apply_update_by_dodo_id(
+            sub_data.subscription_id, SubscriptionUpdate(status="failed")
         )
 
         return DodoWebhookProcessingResult(
@@ -534,14 +508,8 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        await subscriptions_collection.update_one(
-            {"dodo_subscription_id": sub_data.subscription_id},
-            {
-                "$set": {
-                    "status": "on_hold",
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        await subscription_repository.apply_update_by_dodo_id(
+            sub_data.subscription_id, SubscriptionUpdate(status="on_hold")
         )
 
         return DodoWebhookProcessingResult(
@@ -559,16 +527,13 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        await subscriptions_collection.update_one(
-            {"dodo_subscription_id": sub_data.subscription_id},
-            {
-                "$set": {
-                    "product_id": sub_data.product_id,
-                    "quantity": sub_data.quantity,
-                    "recurring_pre_tax_amount": sub_data.recurring_pre_tax_amount,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
+        await subscription_repository.apply_update_by_dodo_id(
+            sub_data.subscription_id,
+            SubscriptionUpdate(
+                product_id=sub_data.product_id,
+                quantity=sub_data.quantity,
+                recurring_pre_tax_amount=sub_data.recurring_pre_tax_amount,
+            ),
         )
 
         return DodoWebhookProcessingResult(
@@ -581,13 +546,13 @@ class PaymentWebhookService:
     async def _send_welcome_email(self, user_id: str) -> None:
         """Send welcome email for new subscription."""
         try:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user and user.get("email"):
+            user = await user_repository.get(user_id)
+            if user and user.email:
                 await send_pro_subscription_email(
-                    user_name=user.get("first_name", "User"),
-                    user_email=user["email"],
+                    user_name=user.first_name or "User",
+                    user_email=user.email,
                 )
-                log.info(f"{LogTag.PAYMENT} Welcome email sent to {user['email']}")
+                log.info(f"{LogTag.PAYMENT} Welcome email sent to {user.email}")
         except Exception as e:
             log.error(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
 

@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email or calendar integration for automatic knowledge capture",
     "Slower than simpler note apps for basic note-taking use cases",
   ],
-  metaTitle: "Best Mem Alternative in 2026 | GAIA",
+  metaTitle: "Best Mem Alternative in 2026",
   metaDescription:
     "Mem.ai is expensive and requires manual note input. GAIA is a proactive AI assistant that builds knowledge automatically from email and calendar. Free tier available.",
   keywords: [

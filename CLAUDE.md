@@ -132,39 +132,21 @@ nx graph
 
 ## Architecture
 
-### Monorepo Structure
+### Agent System
 
-```
-apps/
-  web/          - Next.js web application
-  desktop/      - Electron desktop app
-  mobile/       - React Native mobile app
-  api/          - FastAPI backend with LangGraph agents
-  voice-agent/  - Voice processing worker
-  bots/
-    discord/    - Discord bot
-    slack/      - Slack bot
-    telegram/   - Telegram bot
-  docs/         - Documentation site
+The full agent architecture — comms → executor → subagents, bots, voice, skills, memory, notifications, workflows, todos, sandbox, MCP — is documented in **[`ARCHITECTURE.md`](./ARCHITECTURE.md)** at the repo root. **Read it before touching any agent code**; it lists every authoritative file path so you don't have to re-derive the system per session.
 
-libs/
-  shared/       - Shared Python utilities (gaia-shared package)
-    py/         - Python shared code
-    ts/         - TypeScript shared code
-```
+Quick map:
+- **Comms agent** (user-facing, no work tools) → `apps/api/app/agents/core/graph_builder/build_graph.py` (`build_comms_*`)
+- **Executor agent** (worker tier, all tools) → same file (`build_executor_*`) + `apps/api/app/agents/tools/executor_tool.py`
+- **Subagents** (per-integration) → `apps/api/app/agents/core/subagents/` + `apps/api/app/config/oauth_config.py`
+- **Bots** → `apps/bots/{telegram,whatsapp,discord,slack}/` + `libs/shared/ts/src/bots/`
+- **Voice** → `apps/voice-agent/src/worker.py`
+- **Skills** → `apps/api/app/agents/skills/`
+- **Memory** → `apps/api/app/memory/` + `apps/api/app/agents/memory/`
+- **Workflows / Notifications / Todos / Sandbox** → `apps/api/app/services/{workflow,notification,*,sandbox}/` + `apps/api/app/agents/tools/`
 
 ### Frontend (Web/Desktop)
-
-**Tech Stack**: Next.js 16, React 19, TypeScript, Zustand, TailwindCSS, Biome
-
-**Key Directories**:
-
-- `src/app/` - Next.js App Router pages (organized by route groups)
-- `src/features/` - Feature modules (chat, todo, calendar, workflows, integrations, etc.)
-- `src/stores/` - Zustand state management stores
-- `src/components/` - Reusable React components
-- `src/lib/` - Utility functions and configurations
-- `src/types/` - TypeScript type definitions
 
 **State Management**: Uses Zustand for global state. Each feature can have its own store in `src/stores/` or `src/features/{feature}/stores/`.
 
@@ -174,27 +156,6 @@ libs/
 
 ### Backend (API)
 
-**Tech Stack**: FastAPI, LangGraph, Python 3.11+, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ
-
-**Key Directories**:
-
-- `app/main.py` - Application entry point
-- `app/core/` - Core application logic (app factory, middleware, lifespan)
-- `app/api/v1/` - API routes and endpoints
-- `app/agents/` - LangGraph agent system
-  - `core/` - Core agent logic (agent.py, state.py, graph_manager.py, nodes/, subagents/)
-  - `tools/` - Agent tools
-  - `prompts/` - Agent prompts
-  - `memory/` - Agent memory management
-  - `llm/` - LLM integrations
-- `app/models/` - Database models
-- `app/schemas/` - Pydantic schemas
-- `app/services/` - Business logic services
-- `app/db/` - Database clients (postgresql, mongodb, redis, chroma, rabbitmq)
-- `app/workers/` - Background task workers
-- `app/config/` - Configuration and settings
-- `app/utils/` - Utility functions
-
 **Database Setup**: The API depends on PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Use Docker Compose for local development.
 
 **Background Tasks**: Uses ARQ (Redis-based task queue) for async job processing. Run with `nx worker api`.
@@ -202,8 +163,6 @@ libs/
 **Dependency Management**: Uses `uv` for Python package management. Run `nx run api:sync` to install dependencies.
 
 ### Mobile App
-
-**Tech Stack**: React Native, Expo, TypeScript
 
 Similar structure to web app with React Native components. Uses React Navigation for routing.
 
@@ -313,7 +272,17 @@ When asked to find bugs or issues in the code, **only report problems that a rea
 
 ### Testing
 
-**Do NOT create test cases unless explicitly asked.** Do not add tests when fixing bugs or adding features unless the user specifically requests it.
+**Do NOT create test cases unless explicitly asked.** Do not add tests when adding a feature or refactoring unless the user specifically requests it.
+
+**The one exception — every bug gets a test, no exceptions.** The moment a real issue is found (by you, by the user, in review, or in production), stop and run this loop before fixing anything:
+
+1. **Ask why the suite missed it.** Name the specific gap — no test covered this path at all, a test covered it but asserted too weakly, the boundary was never exercised, or the test mocked away the very code that broke. That answer determines what to write and often exposes neighbouring blind spots.
+2. **Write the test that reproduces it, and watch it FAIL.** A test written after the fix, never observed red, proves nothing — it only asserts what the code now happens to do. Red first is the whole point.
+3. **Pick the tier that actually catches it** — unit for logic and boundaries, integration for wiring between layers, e2e for user-visible behaviour through the real stack. When a bug spans layers, add one at each tier: the unit test pins the logic, the e2e test proves the user-facing symptom is gone. Prefer more tiers over fewer.
+4. **Fix the root cause**, then confirm the test goes green.
+5. **Never weaken the test to get green.** If it still fails, the fix is wrong or incomplete. Softening an assertion, `skip`ping, or `xfail`ing a real failure suppresses the bug instead of fixing it.
+
+A bug that ships without a failing-then-passing test is a bug that will come back, and the second time nobody will remember why the code looked like that. See the `accurate-testing` skill for the mutation check that proves a test can actually fail.
 
 ### After Major Changes
 
@@ -338,12 +307,13 @@ Each app has its own `.env` file:
 
 Refer to `.env.example` files in each directory for required variables.
 
+## Agent-Driven E2E Testing
+
+To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout — use the `driving-gaia` skill (boot the stack, dev-bypass auth, drive API/browser/bots, verify in Mongo), `reading-gaia-logs` to debug a failing run, and `parallel-worktrees` to run branches in parallel.
+
 ## Docker
 
-Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:
-
-- `docker-compose.yml` - Development environment
-- `docker-compose.prod.yml` - Production environment
+Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`.
 
 ## Release Management
 
@@ -361,10 +331,6 @@ nx docker:build voice-agent
 ## Task Tracking
 
 Only use the `bd` CLI when the user explicitly asks for it. `bd` is a project-internal CLI for task tracking and dolt database sync — **never invoke it automatically**. Otherwise, use built-in TodoWrite/TaskCreate tools.
-
-## Implementation Plans
-
-When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
 
 ## Markdown Files
 
@@ -437,32 +403,4 @@ the codebase.** The graph is faster, cheaper (fewer tokens), and gives
 you structural context (callers, dependents, test coverage) that file
 scanning cannot.
 
-### When to use graph tools FIRST
-
-- **Exploring code**: `semantic_search_nodes` or `query_graph` instead of Grep
-- **Understanding impact**: `get_impact_radius` instead of manually tracing imports
-- **Code review**: `detect_changes` + `get_review_context` instead of reading entire files
-- **Finding relationships**: `query_graph` with callers_of/callees_of/imports_of/tests_for
-- **Architecture questions**: `get_architecture_overview` + `list_communities`
-
 Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
-
-### Key Tools
-
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
-
-### Workflow
-
-1. The graph auto-updates on file changes (via hooks).
-2. Use `detect_changes` for code review.
-3. Use `get_affected_flows` to understand impact.
-4. Use `query_graph` pattern="tests_for" to check coverage.

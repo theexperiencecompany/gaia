@@ -12,18 +12,28 @@ addresses.
   cannot await (pydantic validators). It rejects bad schemes, missing hosts, and
   literal private-IP hosts without a DNS lookup — the resolving check runs later
   on the async path.
+- ``open_public_http_url`` applies the guard across a redirect chain, which is
+  what every outbound fetch in the app actually needs.
 
 This is the single source of truth for the SSRF allow/deny policy; the async
 web-fetch guard delegates here rather than re-implementing the IP checks.
 """
 
 import asyncio
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 import ipaddress
 import socket
 
 import httpx
 
+from app.constants.search import MAX_HTTPX_REDIRECTS
+
 _ALLOWED_SCHEMES = ("http", "https")
+
+# Opens one hop and yields its response. Streaming or buffered is the caller's
+# choice; ``client.stream("GET", url)`` is already this shape.
+ResponseOpener = Callable[[str], AbstractAsyncContextManager[httpx.Response]]
 
 
 def _parse_http_host_port(url: str) -> tuple[str, int]:
@@ -86,3 +96,33 @@ async def assert_public_http_url(url: str) -> None:
         raise ValueError(f"DNS resolution failed: {e}") from e
     for address in addresses:
         _assert_ip_public(ipaddress.ip_address(address))
+
+
+@asynccontextmanager
+async def open_public_http_url(
+    url: str,
+    open_response: ResponseOpener,
+    *,
+    max_redirects: int = MAX_HTTPX_REDIRECTS,
+) -> AsyncIterator[httpx.Response]:
+    """Yield the terminal response for ``url``, re-checking the guard on every hop.
+
+    httpx's own ``follow_redirects`` would dial a redirected-to internal address
+    without re-validation, so the chain is walked by hand — here, once, rather than
+    in each fetch path. The terminal response is yielded inside ``open_response``'s
+    context so a streamed body is still open to the caller.
+
+    Raises ``ValueError`` on a blocked hop, a broken redirect, or an over-long
+    chain; callers translate it to their own error type.
+    """
+    for _ in range(max_redirects + 1):
+        await assert_public_http_url(url)
+        async with open_response(url) as response:
+            if not response.is_redirect:
+                yield response
+                return
+            location = response.headers.get("location")
+            if not location:
+                raise ValueError(f"redirect missing location header for {url}")
+            url = str(response.url.join(location))
+    raise ValueError(f"too many redirects fetching {url}")

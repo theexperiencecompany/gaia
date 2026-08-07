@@ -38,6 +38,10 @@ services:
       FORCE_COLOR: 0
       WORKER_TYPE: main_app
       PYTHONPATH: /app/apps/api
+      # Dev auth bypass: off unless the caller exports it (e.g. `mise dev:vm --agent`
+      # / `--sim`, which derive it from DEV_USER). Overrides the commented-out value
+      # in apps/api/.env; empty means real WorkOS login. Development compose only.
+      DEV_AUTH_BYPASS_EMAIL: ${DEV_AUTH_BYPASS_EMAIL:-}
       LOG_FORMAT: json
       LOG_COLORIZE: "false"
       # Share one copy of the embedding/reranker weights via the sidecar.

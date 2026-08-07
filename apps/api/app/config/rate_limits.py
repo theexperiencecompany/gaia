@@ -144,6 +144,13 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(title="Webpage Fetch", description="Fetch and analyze web pages"),
     ),
+    "download": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=200),
+        pro=RateLimitConfig(day=300, month=9000),
+        info=FeatureInfo(
+            title="File Download", description="Download a file from a URL into the workspace"
+        ),
+    ),
     # AUTOMATION (High Value)
     "workflow_operations": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),  # Keep restrictive
@@ -244,6 +251,24 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Edit files in the persistent coding workspace",
         ),
     ),
+    # Read-only miners over offloaded workspace files (mirror workspace_read's
+    # generous limits — a large-inbox triage fans these out across chunks).
+    "workspace_query_json": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Query",
+            description="Filter/aggregate offloaded JSON/JSONL files in the coding workspace",
+        ),
+    ),
+    "workspace_grep": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Grep",
+            description="Search files in the persistent coding workspace",
+        ),
+    ),
     # CREATIVE TOOLS
     "flowchart_creation": TieredRateLimits(
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
@@ -322,12 +347,11 @@ def get_time_window_key(period: RateLimitPeriod) -> str:
     return now.strftime("%Y%m")
 
 
-def get_feature_info(feature_key: str) -> dict[str, str]:
+def get_feature_info(feature_key: str) -> FeatureInfo:
     """Get user-friendly feature information."""
     if feature_key in FEATURE_LIMITS:
-        info = FEATURE_LIMITS[feature_key].info
-        return {"title": info.title, "description": info.description}
-    return {
-        "title": feature_key.replace("_", " ").title(),
-        "description": f"Usage for {feature_key}",
-    }
+        return FEATURE_LIMITS[feature_key].info
+    return FeatureInfo(
+        title=feature_key.replace("_", " ").title(),
+        description=f"Usage for {feature_key}",
+    )

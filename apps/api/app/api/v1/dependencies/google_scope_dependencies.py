@@ -17,6 +17,9 @@ Usage:
     require_integration("gmail")  # Still works but function name is misleading
 """
 
+from collections.abc import Callable, Coroutine
+from typing import Any
+
 from fastapi import Depends, HTTPException, status
 import httpx
 
@@ -30,7 +33,9 @@ from shared.py.wide_events import log
 http_async_client = httpx.AsyncClient(timeout=10.0)
 
 
-def require_integration(integration_short_name: str):
+def require_integration(
+    integration_short_name: str,
+) -> Callable[..., Coroutine[Any, Any, dict[str, Any]]]:
     """
     Unified dependency factory that creates a dependency to check for any integration.
 
@@ -61,7 +66,7 @@ def require_integration(integration_short_name: str):
     if not integration_config:
         raise ValueError(f"Integration config not found for: {integration_id}")
 
-    async def wrapper(user: dict = Depends(get_current_user)):
+    async def wrapper(user: dict[str, Any] = Depends(get_current_user)) -> dict[str, Any]:
         user_id = user.get("user_id")
         if not user_id:
             raise HTTPException(
@@ -95,5 +100,28 @@ def require_integration(integration_short_name: str):
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify integration permissions",
             )
+
+    return wrapper
+
+
+def require_integration_user_id(
+    integration_short_name: str,
+) -> Callable[..., Coroutine[Any, Any, str]]:
+    """``require_integration`` for handlers that need only the authenticated user id.
+
+    Same checks, same failure modes — it just unwraps the one field instead of
+    handing back the whole auth-context dict for each handler to dig into.
+    """
+    integration_dependency = require_integration(integration_short_name)
+
+    # NOSONAR justification: the factory's return type commits this to a coroutine
+    # (Callable[..., Coroutine[Any, Any, str]]), and as a FastAPI dependency `async def`
+    # keeps it on the event loop instead of a threadpool. Dropping `async` would change
+    # both the declared contract and where every request runs it.
+    async def wrapper(  # NOSONAR python:S7503
+        user: dict[str, Any] = Depends(integration_dependency),
+    ) -> str:
+        # require_integration has already rejected a missing/empty user_id with a 401.
+        return str(user["user_id"])
 
     return wrapper

@@ -6,11 +6,11 @@ import { sitemapIndexToXml } from "@/lib/sitemapXml";
 
 export async function GET() {
   const baseUrl = getSiteUrl();
-  const lastmod = new Date().toISOString();
 
+  // No lastmod: stamping the request time on every segment is a fake
+  // freshness signal that Google detects and ignores. Omitting it is honest.
   const sitemapUrls = ALL_SITEMAP_IDS.map((id) => ({
     loc: `${baseUrl}/sitemap/${id}.xml`,
-    lastmod,
   }));
 
   const xml = sitemapIndexToXml(sitemapUrls);

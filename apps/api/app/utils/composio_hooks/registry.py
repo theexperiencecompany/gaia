@@ -9,12 +9,21 @@ presented to agents.
 """
 
 from collections.abc import Callable
-from typing import Any, Union
+from typing import Union, cast
 
-from composio.types import Tool, ToolExecuteParams
+from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
+
+# After-hooks trim/reshape the raw Composio envelope before it reaches the LLM. Most
+# return a narrower dict built from the envelope's `data` field, but at least one hook
+# (gmail_attachment_after_hook) legitimately passes through a non-dict `data` value
+# unprocessed, so the honest type here is "whatever the tool's response payload is."
+AfterHookResponse = object
+BeforeHookFn = Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
+AfterHookFn = Callable[[str, str, ToolExecutionResponse], AfterHookResponse]
+SchemaModifierFn = Callable[[str, str, Tool], Tool]
 
 
 class ComposioHookRegistry:
@@ -28,22 +37,20 @@ class ComposioHookRegistry:
 
     def __init__(self) -> None:
         # Registry for before_execute hooks
-        self._before_hooks: list[Callable[[str, str, ToolExecuteParams], ToolExecuteParams]] = []
+        self._before_hooks: list[BeforeHookFn] = []
 
         # Registry for after_execute hooks
-        self._after_hooks: list[Callable[[str, str, Any], Any]] = []
+        self._after_hooks: list[AfterHookFn] = []
 
         # Registry for schema modifiers
-        self._schema_modifiers: list[Callable[[str, str, Tool], Tool]] = []
+        self._schema_modifiers: list[SchemaModifierFn] = []
 
-    def register_before_hook(
-        self, hook_func: Callable[[str, str, ToolExecuteParams], ToolExecuteParams]
-    ) -> None:
+    def register_before_hook(self, hook_func: BeforeHookFn) -> None:
         """Register a before_execute hook function."""
         self._before_hooks.append(hook_func)
         log.debug(f"{LogTag.COMPOSIO} Registered before_execute hook: {hook_func.__name__}")
 
-    def register_after_hook(self, hook_func: Callable[[str, str, Any], Any]) -> None:
+    def register_after_hook(self, hook_func: AfterHookFn) -> None:
         """Register an after_execute hook function."""
         self._after_hooks.append(hook_func)
         log.debug(f"{LogTag.COMPOSIO} Registered after_execute hook: {hook_func.__name__}")
@@ -64,12 +71,20 @@ class ComposioHookRegistry:
                 # Continue with other hooks even if one fails
         return modified_params
 
-    def execute_after_hooks(self, tool: str, toolkit: str, response: Any) -> Any:
+    def execute_after_hooks(
+        self, tool: str, toolkit: str, response: ToolExecutionResponse
+    ) -> AfterHookResponse:
         """Execute all registered after_execute hooks."""
-        modified_response = response
+        modified_response: AfterHookResponse = response
         for hook_func in self._after_hooks:
             try:
-                modified_response = hook_func(tool, toolkit, modified_response)
+                # Registrations are tool/toolkit-scoped and mutually exclusive, so at most
+                # one hook in the chain ever narrows the envelope — every other hook either
+                # doesn't match (passthrough) or hasn't run yet, meaning `modified_response`
+                # is still the pristine `ToolExecutionResponse` by the time a match fires.
+                modified_response = hook_func(
+                    tool, toolkit, cast(ToolExecutionResponse, modified_response)
+                )
             except Exception as e:
                 log.error(
                     f"{LogTag.COMPOSIO} Error executing after_execute hook {hook_func.__name__} for {tool}: {e}"
@@ -77,7 +92,7 @@ class ComposioHookRegistry:
                 # Continue with other hooks even if one fails
         return modified_response
 
-    def register_schema_modifier(self, modifier_func: Callable[[str, str, Tool], Tool]) -> None:
+    def register_schema_modifier(self, modifier_func: SchemaModifierFn) -> None:
         """Register a schema modifier function."""
         self._schema_modifiers.append(modifier_func)
         log.debug(f"{LogTag.COMPOSIO} Registered schema_modifier: {modifier_func.__name__}")
@@ -114,16 +129,26 @@ def master_before_execute_hook(
     return hook_registry.execute_before_hooks(tool, toolkit, params)
 
 
-def master_after_execute_hook(tool: str, toolkit: str, response: Any) -> Any:
+def master_after_execute_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> ToolExecutionResponse:
     """
     Master after_execute hook that handles ALL tools.
 
     This includes:
     1. All registered tool-specific output processing hooks
     2. Any global response transformations
+
+    Composio's own `AfterExecute` protocol declares this call signature as
+    returning `ToolExecutionResponse`, but registered hooks legitimately return a
+    trimmed dict subset for the LLM (see `AfterHookResponse`) rather than the full
+    envelope. Composio's own SDK doesn't enforce the shape at runtime either — it
+    casts the modifier chain's result straight to `Dict` before using it — so this
+    cast matches the SDK's actual behavior at the boundary it declared, not just
+    its type hint.
     """
-    # Execute all registered tool-specific hooks
-    return hook_registry.execute_after_hooks(tool, toolkit, response)
+    result = hook_registry.execute_after_hooks(tool, toolkit, response)
+    return cast(ToolExecutionResponse, result)
 
 
 def master_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
@@ -142,7 +167,7 @@ def master_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
 def register_before_hook(
     tools: Union[str, list[str]] | None = None,
     toolkits: Union[str, list[str]] | None = None,
-):
+) -> Callable[[BeforeHookFn], BeforeHookFn]:
     """
     Enhanced decorator for registering before_execute hooks.
 
@@ -169,9 +194,7 @@ def register_before_hook(
             return params
     """
 
-    def decorator(
-        func: Callable[[str, str, ToolExecuteParams], ToolExecuteParams],
-    ) -> Callable[[str, str, ToolExecuteParams], ToolExecuteParams]:
+    def decorator(func: BeforeHookFn) -> BeforeHookFn:
         # Normalize tools and toolkits to lists
         target_tools = []
         if tools:
@@ -211,7 +234,7 @@ def register_before_hook(
 def register_after_hook(
     tools: Union[str, list[str]] | None = None,
     toolkits: Union[str, list[str]] | None = None,
-):
+) -> Callable[[AfterHookFn], AfterHookFn]:
     """
     Enhanced decorator for registering after_execute hooks.
 
@@ -235,9 +258,7 @@ def register_after_hook(
             return response
     """
 
-    def decorator(
-        func: Callable[[str, str, Any], Any],
-    ) -> Callable[[str, str, Any], Any]:
+    def decorator(func: AfterHookFn) -> AfterHookFn:
         # Normalize tools and toolkits to lists
         target_tools = []
         if tools:
@@ -247,7 +268,9 @@ def register_after_hook(
         if toolkits:
             target_toolkits = [toolkits] if isinstance(toolkits, str) else toolkits
 
-        def conditional_hook(tool: str, toolkit: str, response: Any) -> Any:
+        def conditional_hook(
+            tool: str, toolkit: str, response: ToolExecutionResponse
+        ) -> AfterHookResponse:
             # Check if this hook should run for this tool/toolkit
             should_run = False
 
@@ -275,7 +298,7 @@ def register_after_hook(
 def register_schema_modifier(
     tools: Union[str, list[str]] | None = None,
     toolkits: Union[str, list[str]] | None = None,
-):
+) -> Callable[[SchemaModifierFn], SchemaModifierFn]:
     """
     Decorator for registering schema modifiers.
 
@@ -301,9 +324,7 @@ def register_schema_modifier(
             return schema
     """
 
-    def decorator(
-        func: Callable[[str, str, Tool], Tool],
-    ) -> Callable[[str, str, Tool], Tool]:
+    def decorator(func: SchemaModifierFn) -> SchemaModifierFn:
         # Normalize tools and toolkits to lists
         target_tools = []
         if tools:

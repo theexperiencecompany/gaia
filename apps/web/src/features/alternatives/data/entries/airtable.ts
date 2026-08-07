@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email or calendar integration for automatic data capture",
     "Automation features are trigger-based, not AI-reasoning-based",
   ],
-  metaTitle: "Best Airtable Alternative in 2026 | GAIA",
+  metaTitle: "Best Airtable Alternative in 2026",
   metaDescription:
     "Airtable's per-seat pricing adds up fast and has no proactive AI. GAIA manages tasks, email, and calendar with AI automatically. Free tier + self-hosting.",
   keywords: [

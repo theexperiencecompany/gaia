@@ -10,12 +10,12 @@
   },
   "dependencies": {
     "@gaia/shared": "workspace:*",
-    "@kapso/whatsapp-cloud-api": "^0.2.0"
+    "@kapso/whatsapp-cloud-api": "^0.2.2"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0",
-    "tsup": "^8.4.0",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "@types/node": "^24.13.3",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2"
   }
 }

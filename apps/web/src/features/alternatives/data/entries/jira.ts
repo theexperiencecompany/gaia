@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No personal AI layer to help individuals triage their workload",
     "Rigid workflow structures that don't adapt to changing team needs",
   ],
-  metaTitle: "Best Jira Alternative in 2026 | GAIA",
+  metaTitle: "Best Jira Alternative in 2026",
   metaDescription:
     "Is Jira too complex for your needs? GAIA is a proactive AI assistant that manages personal tasks, email, and workflows simply. Open-source, self-hostable, free tier available.",
   keywords: [

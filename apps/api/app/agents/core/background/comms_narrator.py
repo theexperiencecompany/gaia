@@ -17,6 +17,7 @@ from app.constants.agents import (
 )
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config, execute_graph_silent
+from app.models.user_models import AuthenticatedUser
 from app.utils.agent_utils import strip_internal_agent_markers
 from shared.py.wide_events import log
 
@@ -25,7 +26,7 @@ async def narrate_executor_result(
     result_text: str,
     msg_type: str,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
     returned_note: str = "",
     workflow_id: str | None = None,
 ) -> str:

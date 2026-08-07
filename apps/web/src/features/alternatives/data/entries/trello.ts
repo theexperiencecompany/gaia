@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Power-Ups add cost and complexity to what should be simple",
     "Lacks email and calendar integration without third-party tools",
   ],
-  metaTitle: "Best Trello Alternative in 2026 | GAIA",
+  metaTitle: "Best Trello Alternative in 2026",
   metaDescription:
     "Is Trello holding you back with manual cards and no AI? GAIA is a proactive AI assistant that manages tasks, email, and your calendar automatically. Free tier available.",
   keywords: [

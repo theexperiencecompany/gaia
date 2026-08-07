@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Steep learning curve for graph-based knowledge management",
     "Cannot manage email, calendar, or tasks natively",
   ],
-  metaTitle: "Best Obsidian Alternative in 2026 | GAIA",
+  metaTitle: "Best Obsidian Alternative in 2026",
   metaDescription:
     "Obsidian requires manual maintenance and has no proactive AI. GAIA is a proactive AI assistant with graph-based memory built in. Free tier + open-source self-hosting.",
   keywords: [

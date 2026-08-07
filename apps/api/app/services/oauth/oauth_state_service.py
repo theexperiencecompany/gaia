@@ -60,7 +60,7 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
         "integration_id": integration_id,
     }
 
-    await redis_client.hset(state_key, mapping=state_data)  # type: ignore[arg-type]
+    await redis_client.hset(state_key, mapping=state_data)
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
     log.info(

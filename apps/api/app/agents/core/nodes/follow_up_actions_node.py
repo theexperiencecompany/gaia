@@ -14,6 +14,7 @@ from app.agents.llm.client import ainvoke_structured
 from app.agents.tools.core.registry import get_tool_registry
 from app.constants.general import CALL_EXECUTOR_NAME
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.models.stream_events import MainResponseCompleteFrame
 from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
@@ -125,7 +126,7 @@ async def follow_up_actions_node(state: State, config: RunnableConfig, store: Ba
         _safe_write_actions(writer, [])
         return state
 
-    user_id = config.get("configurable", {}).get("user_id")
+    user_id = agent_configurable(config).get("user_id")
     recent_messages = messages[-4:] if len(messages) > 4 else messages
 
     log.set(
@@ -171,7 +172,7 @@ def _delegated_to_executor(messages: list[AnyMessage]) -> bool:
     return False
 
 
-def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages=True) -> str:
+def _pretty_print_messages(messages: list[AnyMessage], ignore_system_messages: bool = True) -> str:
     pretty = ""
     for message in messages:
         if ignore_system_messages and isinstance(message, SystemMessage):

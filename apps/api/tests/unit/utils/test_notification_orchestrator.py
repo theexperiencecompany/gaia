@@ -837,8 +837,8 @@ class TestGetNotifications:
         results = await orch.get_user_notifications("user-1")
 
         assert len(results) == 2
-        assert results[0]["id"] == "n-1"
-        assert results[1]["id"] == "n-2"
+        assert results[0].id == "n-1"
+        assert results[1].id == "n-2"
 
     async def test_get_user_notifications_passes_filters(self) -> None:
         """All filter parameters are forwarded to storage."""
@@ -867,7 +867,7 @@ class TestGetNotifications:
         )
 
     async def test_get_notification_returns_serialized(self) -> None:
-        """get_notification returns a serialized dict for a found record."""
+        """get_notification returns a NotificationView for a found record."""
         storage = AsyncMock()
         record = _make_record()
         storage.get_notification.return_value = record
@@ -876,7 +876,7 @@ class TestGetNotifications:
         result = await orch.get_notification("notif-1", "user-1")
 
         assert result is not None
-        assert result["id"] == record.id
+        assert result.id == record.id
 
     async def test_get_notification_returns_none_when_not_found(self) -> None:
         """get_notification returns None when storage returns None."""
@@ -996,7 +996,7 @@ class TestSerializeNotification:
         ]
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["id"] == record.id
         assert data["user_id"] == record.user_id
@@ -1020,7 +1020,7 @@ class TestSerializeNotification:
         record.read_at = None
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["delivered_at"] is None
         assert data["read_at"] is None
@@ -1031,7 +1031,7 @@ class TestSerializeNotification:
         record = _make_record(request=request)
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["content"]["actions"] == []
 
@@ -1041,6 +1041,6 @@ class TestSerializeNotification:
         record.channels = []
 
         orch = NotificationOrchestrator(storage=MagicMock())
-        data = await orch._serialize_notification(record)
+        data = orch._serialize_notification(record).model_dump(mode="json")
 
         assert data["channels"] == []

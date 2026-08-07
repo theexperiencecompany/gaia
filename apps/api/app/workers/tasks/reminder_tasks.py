@@ -3,13 +3,15 @@ Reminder-related ARQ tasks.
 """
 
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.db.repositories.reminders import reminder_repository
 from app.services.reminder_service import reminder_scheduler
 from shared.py.wide_events import log, wide_task
 
 
-async def process_reminder(ctx: dict, reminder_id: str) -> str:
+async def process_reminder(ctx: dict[str, Any], reminder_id: str) -> str:
     """
     Process a reminder task.
 
@@ -28,7 +30,7 @@ async def process_reminder(ctx: dict, reminder_id: str) -> str:
         return result
 
 
-async def cleanup_expired_reminders(ctx: dict) -> str:
+async def cleanup_expired_reminders(ctx: dict[str, Any]) -> str:
     """
     Cleanup expired or completed reminders (scheduled task).
 
@@ -39,18 +41,11 @@ async def cleanup_expired_reminders(ctx: dict) -> str:
         Cleanup result message
     """
     async with wide_task("cleanup_expired_reminders"):
-        from app.db.mongodb.collections import reminders_collection
-
         log.info(f"{LogTag.WORKER} Running cleanup of expired reminders")
         cutoff_date = datetime.now(UTC) - timedelta(days=30)
 
-        result = await reminders_collection.delete_many(
-            {
-                "status": {"$in": ["completed", "cancelled"]},
-                "updated_at": {"$lt": cutoff_date},
-            }
-        )
-        log.set(reminders_deleted=result.deleted_count)
-        message = f"Cleaned up {result.deleted_count} expired reminders"
+        deleted = await reminder_repository.delete_finished_before(cutoff_date)
+        log.set(reminders_deleted=deleted)
+        message = f"Cleaned up {deleted} expired reminders"
         log.info(f"{LogTag.WORKER} {message}")
         return message

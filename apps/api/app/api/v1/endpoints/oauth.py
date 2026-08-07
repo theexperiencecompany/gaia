@@ -1,8 +1,9 @@
 import secrets
+from typing import cast
 from urllib.parse import quote
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 import httpx
 from workos import WorkOSClient
 
@@ -20,6 +21,7 @@ from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.oauth_models import MobileLoginUrlResponse, OAuthClientMetadataResponse
 from app.services.composio.composio_service import get_composio_service
 from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
 from app.services.oauth.oauth_state_service import (
@@ -35,7 +37,7 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 
 
 @router.get("/client-metadata.json")
-async def get_client_metadata():
+async def get_client_metadata() -> OAuthClientMetadataResponse:
     """
     OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
 
@@ -48,25 +50,20 @@ async def get_client_metadata():
     base_url = get_api_base_url()  # e.g., https://api.heygaia.com
     metadata_url = f"{base_url}/api/v1/oauth/client-metadata.json"
 
-    return JSONResponse(
-        content={
-            # MUST match this document's URL exactly per spec Section 4.1
-            "client_id": metadata_url,
-            "client_name": "GAIA",
-            "client_uri": "https://heygaia.com",
-            "logo_uri": f"{base_url}/static/logo.png",
-            "redirect_uris": [f"{base_url}/api/v1/mcp/oauth/callback"],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-            # MUST be "none" - no client secrets allowed per spec Section 4.1
-            "token_endpoint_auth_method": "none",  # nosec B105 - OAuth spec requires literal "none"
-        },
-        media_type="application/json",
+    return OAuthClientMetadataResponse(
+        # MUST match this document's URL exactly per spec Section 4.1
+        client_id=metadata_url,
+        client_name="GAIA",
+        client_uri="https://heygaia.com",
+        logo_uri=f"{base_url}/static/logo.png",
+        redirect_uris=[f"{base_url}/api/v1/mcp/oauth/callback"],
+        grant_types=["authorization_code", "refresh_token"],
+        response_types=["code"],
     )
 
 
 @router.get("/login/workos")
-async def login_workos(return_url: str | None = None):
+async def login_workos(return_url: str | None = None) -> RedirectResponse:
     """
     Start the WorkOS SSO authentication flow.
 
@@ -102,11 +99,14 @@ async def _get_and_delete_mobile_redirect(state: str) -> str | None:
     uri = await redis_cache.client.get(key)
     if uri:
         await redis_cache.client.delete(key)
-    return uri
+    # RedisCache.client is an untyped property (app/db/redis.py), so .get() resolves
+    # to Any; the client is constructed with decode_responses=True, so this is a
+    # str (or None) by construction.
+    return cast(str | None, uri)
 
 
 @router.get("/login/workos/mobile")
-async def login_workos_mobile(redirect_uri: str | None = None):
+async def login_workos_mobile(redirect_uri: str | None = None) -> MobileLoginUrlResponse:
     """
     Start WorkOS SSO flow for mobile apps (Expo).
 
@@ -134,11 +134,11 @@ async def login_workos_mobile(redirect_uri: str | None = None):
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
     )
-    return {"url": authorization_url}
+    return MobileLoginUrlResponse(url=authorization_url)
 
 
 @router.get("/login/google/mobile")
-async def login_google_mobile(redirect_uri: str | None = None):
+async def login_google_mobile(redirect_uri: str | None = None) -> MobileLoginUrlResponse:
     """
     Start Google OAuth flow directly for mobile apps, bypassing the WorkOS hosted UI.
     Users go straight to Google's sign-in page instead of the WorkOS selection screen.
@@ -163,7 +163,7 @@ async def login_google_mobile(redirect_uri: str | None = None):
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
         state=state,
     )
-    return {"url": authorization_url}
+    return MobileLoginUrlResponse(url=authorization_url)
 
 
 @router.get("/workos/mobile/callback")
@@ -240,7 +240,7 @@ async def workos_mobile_callback(
 
 
 @router.get("/login/workos/desktop")
-async def login_workos_desktop():
+async def login_workos_desktop() -> RedirectResponse:
     """
     Start the WorkOS SSO authentication flow for desktop app.
     Uses gaia:// protocol for callback redirect.
@@ -421,7 +421,7 @@ async def composio_callback(
     background_tasks: BackgroundTasks,
     connectedAccountId: str | None = None,
     error: str | None = None,
-):
+) -> RedirectResponse:
     """
     Handle Composio OAuth callback after successful/failed connection.
 
@@ -470,7 +470,7 @@ async def composio_callback(
 
         # Extract essential information
         config_id = connected_account.auth_config.id
-        user_id = connected_account.user_id  # type: ignore
+        user_id = connected_account.user_id
 
         if not user_id:
             log.error(f"{LogTag.OAUTH} User ID missing for account: {connectedAccountId}")
@@ -505,7 +505,6 @@ async def composio_callback(
         await handle_oauth_connection(
             user_id=str(user_id),
             integration_config=integration_config,
-            connected_account_id=connectedAccountId,
             background_tasks=background_tasks,
         )
 

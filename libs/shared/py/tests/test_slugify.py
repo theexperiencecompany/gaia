@@ -42,7 +42,10 @@ class TestSlugifySpecialChars:
             ("  Spaces & Special! Chars ", "spaces-special-chars"),
             ("foo/bar/baz", "foo-bar-baz"),
             ("A + B = C", "a-b-c"),
-            ("hello@world.com", "helloworld-com"),
+            # "@" is in the separator class so it becomes a hyphen; "." is not, so
+            # it is stripped (see test_period_stripped). The old expectation of
+            # "helloworld-com" required the exact opposite of both.
+            ("hello@world.com", "hello-worldcom"),
             ("price: $100", "price-100"),
             ("50% off!", "50-off"),
             ("foo\\bar", "foo-bar"),
@@ -130,8 +133,12 @@ class TestSlugifyWhitespace:
             ("-leading-hyphen", "leading-hyphen"),
             ("trailing-hyphen-", "trailing-hyphen"),
             ("-both-sides-", "both-sides"),
-            ("tabs\there", "tabshere"),
-            ("newlines\nhere", "newlineshere"),
+            # Tabs and newlines are whitespace, so they separate words exactly
+            # like the spaces two lines up. These two previously expected them to
+            # be deleted, which recorded the run-together bug rather than the
+            # documented contract.
+            ("tabs\there", "tabs-here"),
+            ("newlines\nhere", "newlines-here"),
         ],
         ids=[
             "leading-space",

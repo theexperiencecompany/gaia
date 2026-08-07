@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No personal AI assistant; Relay is a workflow automation platform only",
     "Complexity grows with more sophisticated multi-step automations",
   ],
-  metaTitle: "Best Relay.app Alternative in 2026 | GAIA",
+  metaTitle: "Best Relay.app Alternative in 2026",
   metaDescription:
     "Relay.app is expensive and still requires manual approval steps. GAIA automates workflows with AI reasoning and manages your email, tasks, and calendar proactively.",
   keywords: [

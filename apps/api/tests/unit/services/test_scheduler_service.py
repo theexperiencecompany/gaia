@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from pydantic import ConfigDict
 import pytest
 
 from app.models.scheduler_models import (
@@ -447,7 +448,7 @@ class TestHandleRecurringTask:
         """If task has trigger_config.timezone, use it for next_run calculation."""
 
         class TaskWithTriggerConfig(BaseScheduledTask):
-            model_config = {"arbitrary_types_allowed": True}
+            model_config = ConfigDict(arbitrary_types_allowed=True)
             trigger_config: MagicMock | None = None
 
         trigger_config = MagicMock()

@@ -7,7 +7,8 @@ from app.config.settings import settings
 
 def get_worker_type() -> str:
     """Return the current worker type ('main_app', 'arq_worker', or 'unknown')."""
-    return settings.WORKER_TYPE
+    worker_type: str = settings.WORKER_TYPE
+    return worker_type
 
 
 def is_main_app() -> bool:

@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "No email or task creation from communication",
     "Natural language input helps but does not replace proactive AI",
   ],
-  metaTitle: "Best Fantastical Alternative in 2026 | GAIA",
+  metaTitle: "Best Fantastical Alternative in 2026",
   metaDescription:
     "Fantastical is Apple-only and not proactive. GAIA is a cross-platform AI assistant that manages your calendar, email, and tasks automatically. Free tier available.",
   keywords: [

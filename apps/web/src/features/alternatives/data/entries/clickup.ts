@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Frequent bugs and UI inconsistencies frustrate daily users",
     "Mobile app lags significantly behind the desktop experience",
   ],
-  metaTitle: "Best ClickUp Alternative in 2026 | GAIA",
+  metaTitle: "Best ClickUp Alternative in 2026",
   metaDescription:
     "Overwhelmed by ClickUp's complexity? GAIA is a proactive AI assistant that simplifies task management, email, and scheduling. Free tier + open-source self-hosting.",
   keywords: [

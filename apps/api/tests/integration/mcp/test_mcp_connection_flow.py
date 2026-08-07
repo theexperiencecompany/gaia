@@ -1,7 +1,7 @@
 """Integration tests for MCP client connection flow.
 
 Tests the MCPClient connect/disconnect lifecycle with only essential external
-I/O mocked (IntegrationResolver, BaseMCPClient transport, mcp_tools_store,
+I/O mocked (IntegrationResolver, BaseMCPClient transport, store_mcp_tools,
 update_user_integration_status).
 
 Principle: if MCPClient._tools dict handling logic changes, these tests break.
@@ -39,7 +39,7 @@ def _patch_external_io(
     - IntegrationResolver.resolve  – avoids MongoDB calls
     - BaseMCPClient                – avoids real HTTP transport
     - ResilientLangChainAdapter    – avoids real MCP session tool listing
-    - get_mcp_tools_store          – avoids MongoDB writes
+    - store_mcp_tools              – avoids MongoDB writes
     - update_user_integration_status – avoids MongoDB writes
     - delete_cache                 – avoids Redis calls
 
@@ -99,15 +99,15 @@ class _MockExternalIO:
             side_effect=lambda tools, **_kw: tools,
         )
         # Patch post-connection DB tasks
-        p_tools_store_cls = patch(
-            "app.services.mcp.mcp_client.get_mcp_tools_store",
-            return_value=MagicMock(store_tools=AsyncMock()),
+        p_tools_store = patch(
+            "app.services.mcp.mcp_client.store_mcp_tools",
+            new=AsyncMock(),
         )
         p_status = patch(
             "app.services.mcp.mcp_client.update_user_integration_status",
             new=AsyncMock(),
         )
-        for p in (p_resolver, p_base, p_adapter, p_wrap, p_tools_store_cls, p_status):
+        for p in (p_resolver, p_base, p_adapter, p_wrap, p_tools_store, p_status):
             p.start()
             self._patches.append(p)
         return self
@@ -214,7 +214,8 @@ class TestMCPConnectionFlow:
 
     @patch("app.services.mcp.mcp_client.delete_cache", new_callable=AsyncMock)
     @patch(
-        "app.services.mcp.mcp_client.integrations_collection",
+        "app.services.mcp.mcp_client.integration_repository.clear_tools",
+        new_callable=AsyncMock,
     )
     @patch(
         "app.services.mcp.mcp_client.update_user_integration_status",
@@ -224,15 +225,11 @@ class TestMCPConnectionFlow:
         "app.services.mcp.mcp_client.IntegrationResolver.resolve",
         new=AsyncMock(return_value=None),
     )
-    async def test_disconnect_removes_client_from_pool(
-        self, mock_integrations_col, mock_delete_cache
-    ):
+    async def test_disconnect_removes_client_from_pool(self, mock_clear_tools, mock_delete_cache):
         """disconnect() must pop the integration from both _clients and _tools.
 
         If either del statement is removed from disconnect(), this test fails.
         """
-        mock_integrations_col.update_one = AsyncMock()
-
         client = _build_client_with_no_auth("user-disconnect")
 
         # Pre-populate state as if connect() had already run
@@ -289,8 +286,8 @@ class TestMCPConnectionFlow:
                 side_effect=lambda tools, **_kw: tools,
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
@@ -372,8 +369,8 @@ class TestMCPConnectionFlow:
                 side_effect=lambda tools, **_kw: tools,
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
@@ -452,8 +449,8 @@ class TestMCPConnectionFlow:
                 side_effect=lambda tools, **_kw: tools,
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
@@ -573,8 +570,8 @@ class TestMCPConnectionFlow:
                 side_effect=lambda tools, **_kw: tools,
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
@@ -659,8 +656,8 @@ class TestMCPConnectionFlow:
                 side_effect=lambda tools, **_kw: tools,
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",
@@ -758,8 +755,8 @@ class TestMCPConnectionFlow:
                 return_value=MagicMock(create_tools=AsyncMock(return_value=[real_tool])),
             ),
             patch(
-                "app.services.mcp.mcp_client.get_mcp_tools_store",
-                return_value=MagicMock(store_tools=AsyncMock()),
+                "app.services.mcp.mcp_client.store_mcp_tools",
+                new=AsyncMock(),
             ),
             patch(
                 "app.services.mcp.mcp_client.update_user_integration_status",

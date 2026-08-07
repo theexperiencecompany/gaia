@@ -1,17 +1,22 @@
 from datetime import UTC, datetime
-
-from bson import ObjectId
+from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
-from app.db.mongodb.collections import todos_collection
-from app.db.utils import serialize_document
+from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoResponse
 from shared.py.wide_events import log
 
 
-def create_todo_content_for_embedding(todo_data: dict) -> str:
-    """Build a text representation of a todo for embedding generation."""
+def create_todo_content_for_embedding(todo_data: dict[str, Any]) -> str:
+    """Build a text representation of a todo for embedding generation.
+
+    Takes a dict rather than the ``TodoResponse`` its callers dump, because
+    every field is read defensively: the indexers are expected to cope with a
+    partial todo (no title, no subtasks, a string ``created_at``) and still
+    produce something embeddable. Narrowing to the model would delete that
+    tolerance, not just describe it (Type Safety items 13/14).
+    """
     parts = []
 
     # Add title (most important)
@@ -50,7 +55,7 @@ def create_todo_content_for_embedding(todo_data: dict) -> str:
     return " | ".join(parts)
 
 
-async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> bool:
+async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id: str) -> bool:
     """Generate and store a todo's embedding in ChromaDB. Returns success."""
     log.set(operation="store_todo_embedding", todo_id=todo_id, user_id=user_id)
     try:
@@ -113,7 +118,7 @@ async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> b
         return False
 
 
-async def update_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> bool:
+async def update_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id: str) -> bool:
     """Replace a todo's embedding in ChromaDB. Returns success."""
     try:
         # Delete existing embedding
@@ -196,19 +201,19 @@ async def semantic_search_todos(
         todo_ids = []
         for doc, score in results:
             if hasattr(doc, "metadata") and "todo_id" in doc.metadata:
-                todo_ids.append(ObjectId(doc.metadata["todo_id"]))
+                todo_ids.append(doc.metadata["todo_id"])
 
         if not todo_ids:
             # No vector results found
             log.info(f"{LogTag.CHROMA} No vector results for query '{query}'")
             return []
 
-        # Fetch full todo documents from MongoDB in the order of similarity
+        # Fetch full todo documents in the order of similarity
         todos = []
         for todo_id in todo_ids:
-            todo_doc = await todos_collection.find_one({"_id": todo_id, "user_id": user_id})
+            todo_doc = await todo_repository.get(todo_id, user_id=user_id)
             if todo_doc:
-                todos.append(TodoResponse(**serialize_document(todo_doc)))
+                todos.append(TodoResponse.from_document(todo_doc))
 
         log.info(f"{LogTag.CHROMA} Semantic search returned {len(todos)} todos for query '{query}'")
         return todos
@@ -227,12 +232,17 @@ async def semantic_search_todos(
 
 
 async def hybrid_search_todos(
-    query: str, user_id: str, top_k: int = 10, semantic_weight: float = 0.7, **filters
+    query: str,
+    user_id: str,
+    top_k: int = 10,
+    semantic_weight: float = 0.7,
+    completed: bool | None = None,
+    priority: str | None = None,
+    project_id: str | None = None,
 ) -> list[TodoResponse]:
     """Hybrid search combining semantic and traditional results.
 
-    ``semantic_weight`` (0.0-1.0) weights the semantic ranking; ``**filters``
-    accepts completed/priority/project_id.
+    ``semantic_weight`` (0.0-1.0) weights the semantic ranking.
     """
     try:
         # Get semantic results
@@ -240,8 +250,10 @@ async def hybrid_search_todos(
             query=query,
             user_id=user_id,
             top_k=top_k,
+            completed=completed,
+            priority=priority,
+            project_id=project_id,
             include_traditional_search=False,
-            **filters,
         )
 
         # Get traditional search results
@@ -250,18 +262,12 @@ async def hybrid_search_todos(
         traditional_results = await search_todos(query, user_id)
 
         # Apply filters to traditional results
-        if filters.get("completed") is not None:
-            traditional_results = [
-                t for t in traditional_results if t.completed == filters["completed"]
-            ]
-        if filters.get("priority"):
-            traditional_results = [
-                t for t in traditional_results if t.priority == filters["priority"]
-            ]
-        if filters.get("project_id"):
-            traditional_results = [
-                t for t in traditional_results if t.project_id == filters["project_id"]
-            ]
+        if completed is not None:
+            traditional_results = [t for t in traditional_results if t.completed == completed]
+        if priority:
+            traditional_results = [t for t in traditional_results if t.priority == priority]
+        if project_id:
+            traditional_results = [t for t in traditional_results if t.project_id == project_id]
 
         # Combine results with scoring
         combined_scores: dict[str, float] = {}
@@ -294,4 +300,11 @@ async def hybrid_search_todos(
     except Exception as e:
         log.error(f"{LogTag.CHROMA} Error in hybrid search: {e!s}")
         # Fallback to semantic search only
-        return await semantic_search_todos(query, user_id, top_k, **filters)
+        return await semantic_search_todos(
+            query,
+            user_id,
+            top_k,
+            completed=completed,
+            priority=priority,
+            project_id=project_id,
+        )

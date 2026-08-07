@@ -8,11 +8,12 @@ Two concerns share the ``/desktop`` prefix:
   desktop binary so its buttons link straight to the right platform/arch asset.
 """
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.models.user_models import AuthenticatedUser
 from app.schemas.desktop_schemas import (
     DesktopReleaseResponse,
     DesktopToolResultRequest,
@@ -35,13 +36,15 @@ async def latest_desktop_release() -> DesktopReleaseResponse:
     log.set(desktop_release={"operation": "resolve_latest"})
     release = await get_latest_desktop_release()
     log.set(desktop_release={"tag": release.tag, "asset_count": len(release.assets)})
-    return release
+    # Cacheable erases the wrapped function's return type; get_latest_desktop_release
+    # is declared -> DesktopReleaseResponse, so this is correct by construction.
+    return cast(DesktopReleaseResponse, release)
 
 
 @router.post("/tool-result")
 async def desktop_tool_result(
     payload: DesktopToolResultRequest,
-    user: Annotated[dict, Depends(get_current_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_current_user)],
 ) -> DesktopToolResultResponse:
     """Accept a desktop tool result and relay it to the awaiting agent tool.
 

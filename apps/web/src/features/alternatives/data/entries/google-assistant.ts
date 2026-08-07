@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Cannot manage professional email, complex task lists, or work calendars",
     "Privacy concerns with always-on microphone and Google data processing",
   ],
-  metaTitle: "Best Google Assistant Alternative in 2026 | GAIA",
+  metaTitle: "Best Google Assistant Alternative in 2026",
   metaDescription:
     "Google Assistant is being retired. GAIA is a proactive AI assistant for professionals that manages email, calendar, and tasks across all devices. Free tier available.",
   keywords: [

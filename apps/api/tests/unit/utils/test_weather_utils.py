@@ -654,7 +654,6 @@ class TestUserWeather:
     def _patch_log(self) -> None:
         """Suppress structured logging in tests."""
         # log.set / log.debug / log.error are called; just let them pass
-        pass
 
     async def test_missing_api_key_returns_error(self) -> None:
         mock_settings = MagicMock()

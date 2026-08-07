@@ -14,13 +14,14 @@ Tests cover:
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 import pytest
 
 if TYPE_CHECKING:
+    from app.agents.skills.github_discovery import DiscoveredSkill
     from app.agents.skills.models import Skill
 
 BASE_URL = "/api/v1/skills"
@@ -38,12 +39,19 @@ _GET_SKILL = "app.api.v1.endpoints.skills.get_skill"
 _ENABLE_SKILL = "app.api.v1.endpoints.skills.enable_skill"
 _DISABLE_SKILL = "app.api.v1.endpoints.skills.disable_skill"
 _UNINSTALL_SKILL = "app.api.v1.endpoints.skills.uninstall_skill_full"
+_GET_SKILL_TARGETS = "app.api.v1.endpoints.skills.get_skill_targets"
+_GET_CONNECTED_INTEGRATION_IDS = "app.agents.skills.targets.get_connected_integration_ids"
+_LOAD_BUILTIN_SKILLS = "app.api.v1.endpoints.skills.load_builtin_skills"
+_GET_CONNECTED_INTEGRATION_IDS_ENDPOINT = (
+    "app.api.v1.endpoints.skills.get_connected_integration_ids"
+)
+_UPDATE_SKILL_INLINE = "app.api.v1.endpoints.skills.update_skill_inline"
 
 
 def _make_skill_mock(**overrides) -> Skill:
     from app.agents.skills.models import Skill
 
-    base: dict[str, object] = {
+    base: dict[str, Any] = {
         "id": "sk_abc123",
         "user_id": "507f1f77bcf86cd799439011",
         "name": "my-skill",
@@ -63,21 +71,21 @@ def _make_skill_mock(**overrides) -> Skill:
         "files": ["SKILL.md"],
     }
     base.update(overrides)
-    return Skill(**base)  # type: ignore[arg-type]
+    return Skill(**base)
 
 
-def _make_discovered_skill(**overrides) -> MagicMock:
-    base = {
+def _make_discovered_skill(**overrides) -> DiscoveredSkill:
+    from app.agents.skills.github_discovery import DiscoveredSkill
+
+    base: dict[str, Any] = {
         "name": "my-skill",
         "description": "Discovered skill",
         "path": "skills/my-skill",
+        "repo_url": "https://github.com/owner/repo",
+        "subagent_id": "executor",
     }
     base.update(overrides)
-    mock = MagicMock()
-    for k, v in base.items():
-        setattr(mock, k, v)
-    mock.to_dict = MagicMock(return_value=base)
-    return mock
+    return DiscoveredSkill(**base)
 
 
 # ---------------------------------------------------------------------------
@@ -101,8 +109,17 @@ class TestDiscoverSkills:
         assert response.status_code == 200
         data = response.json()
         assert data["repo"] == "owner/repo"
+        assert data["branch"] == "main"
         assert data["count"] == 1
-        assert len(data["skills"]) == 1
+        assert data["skills"] == [
+            {
+                "name": "my-skill",
+                "description": "Discovered skill",
+                "path": "skills/my-skill",
+                "repo_url": "https://github.com/owner/repo",
+                "subagent_id": "executor",
+            }
+        ]
 
     async def test_discover_skills_custom_branch(self, client: AsyncClient):
         with patch(
@@ -612,3 +629,211 @@ class TestUninstallSkill:
             response = await client.delete(f"{BASE_URL}/sk_abc123")
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# GET /skills/targets
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestListSkillTargets:
+    """Tests for the skill-targets endpoint. Mocks only get_connected_integration_ids
+    (the true I/O boundary) so get_skill_targets' own executor+connected-subagent
+    assembly logic runs for real."""
+
+    async def test_returns_executor_plus_connected_integration(self, client: AsyncClient):
+        with patch(
+            _GET_CONNECTED_INTEGRATION_IDS,
+            new_callable=AsyncMock,
+            return_value=["gmail"],
+        ):
+            response = await client.get(f"{BASE_URL}/targets")
+
+        assert response.status_code == 200
+        values = [t["value"] for t in response.json()["targets"]]
+        assert "executor" in values
+        # Target value is the subagent's agent_name, not the raw integration id.
+        assert "gmail_agent" in values
+
+    async def test_no_connected_integrations_returns_executor_only(self, client: AsyncClient):
+        with patch(
+            _GET_CONNECTED_INTEGRATION_IDS,
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            response = await client.get(f"{BASE_URL}/targets")
+
+        assert response.status_code == 200
+        targets = response.json()["targets"]
+        assert [t["value"] for t in targets] == ["executor"]
+
+    async def test_unknown_connected_integration_id_is_skipped(self, client: AsyncClient):
+        """An id with no subagent registration (or no subagent config) must be
+        skipped, not surfaced as a broken/blank target the UI can select."""
+        with patch(
+            _GET_CONNECTED_INTEGRATION_IDS,
+            new_callable=AsyncMock,
+            return_value=["not-a-real-integration"],
+        ):
+            response = await client.get(f"{BASE_URL}/targets")
+
+        assert response.status_code == 200
+        targets = response.json()["targets"]
+        assert [t["value"] for t in targets] == ["executor"]
+
+
+# ---------------------------------------------------------------------------
+# GET /skills/builtin
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestListBuiltinSkills:
+    """Tests for the builtin-skills endpoint, including the _is_available /
+    _group_label branch logic (executor-always-available, integration-backed
+    needs a connection, non-integration builtin subagents always available)."""
+
+    def _builtin(self, **overrides):
+        from app.agents.workspace.skill_loader import BuiltinSkill
+
+        base: dict[str, Any] = {
+            "slug": "test-skill",
+            "name": "Test Skill",
+            "description": "does a thing",
+            "target": "executor",
+            "subagent_id": "executor",
+            "body": "# Test Skill\nDo the thing.",
+        }
+        base.update(overrides)
+        return BuiltinSkill(**base)
+
+    async def test_executor_skill_is_always_connected(self, client: AsyncClient):
+        with (
+            patch(_LOAD_BUILTIN_SKILLS, return_value=(self._builtin(),)),
+            patch(
+                _GET_CONNECTED_INTEGRATION_IDS_ENDPOINT,
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            response = await client.get(f"{BASE_URL}/builtin")
+
+        assert response.status_code == 200
+        skills = response.json()["skills"]
+        assert len(skills) == 1
+        assert skills[0]["connected"] is True
+        assert skills[0]["group_label"] == "General assistant"
+
+    async def test_integration_backed_skill_reflects_connection_state(self, client: AsyncClient):
+        """A skill mapped to a real integration subagent (gmail) must show
+        connected=True only when that integration is in the connected-ids set —
+        the whole reason this endpoint exists is to let the UI grey out skills
+        for integrations the user hasn't connected."""
+        with (
+            patch(_LOAD_BUILTIN_SKILLS, return_value=(self._builtin(subagent_id="gmail"),)),
+            patch(
+                _GET_CONNECTED_INTEGRATION_IDS_ENDPOINT,
+                new_callable=AsyncMock,
+                return_value=[],
+            ),
+        ):
+            response = await client.get(f"{BASE_URL}/builtin")
+
+        assert response.status_code == 200
+        assert response.json()["skills"][0]["connected"] is False
+
+        with (
+            patch(_LOAD_BUILTIN_SKILLS, return_value=(self._builtin(subagent_id="gmail"),)),
+            patch(
+                _GET_CONNECTED_INTEGRATION_IDS_ENDPOINT,
+                new_callable=AsyncMock,
+                return_value=["gmail"],
+            ),
+        ):
+            response = await client.get(f"{BASE_URL}/builtin")
+
+        assert response.status_code == 200
+        assert response.json()["skills"][0]["connected"] is True
+
+
+# ---------------------------------------------------------------------------
+# PUT /skills/{skill_id}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestUpdateSkill:
+    """Tests for the update-skill endpoint, including _validate_target's real
+    400-rejection — every prior test that touched this path mocked
+    _validate_target itself into a no-op, so its rejection was never actually
+    proven through a real request."""
+
+    async def test_update_returns_200(self, client: AsyncClient):
+        with patch(
+            _UPDATE_SKILL_INLINE,
+            new_callable=AsyncMock,
+            return_value=_make_skill_mock(description="updated"),
+        ):
+            response = await client.put(
+                f"{BASE_URL}/sk_abc123",
+                json={"description": "updated"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["description"] == "updated"
+
+    async def test_update_not_found_returns_404(self, client: AsyncClient):
+        with patch(
+            _UPDATE_SKILL_INLINE,
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            response = await client.put(
+                f"{BASE_URL}/sk_missing",
+                json={"description": "updated"},
+            )
+
+        assert response.status_code == 404
+
+    async def test_update_with_disallowed_target_returns_400(self, client: AsyncClient):
+        """Mocks only get_skill_targets (the I/O boundary _validate_target
+        depends on), not _validate_target itself — this is what proves the
+        400-rejection actually fires through a real request."""
+        with patch(
+            _GET_SKILL_TARGETS,
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            response = await client.put(
+                f"{BASE_URL}/sk_abc123",
+                json={"target": "an-unconnected-integration"},
+            )
+
+        assert response.status_code == 400
+        assert "not available" in response.json()["detail"]
+
+    async def test_update_with_allowed_target_succeeds(self, client: AsyncClient):
+        from app.agents.skills.models import SkillTarget
+
+        with (
+            patch(
+                _GET_SKILL_TARGETS,
+                new_callable=AsyncMock,
+                return_value=[
+                    SkillTarget(value="executor", label="General assistant", icon="executor")
+                ],
+            ),
+            patch(
+                _UPDATE_SKILL_INLINE,
+                new_callable=AsyncMock,
+                return_value=_make_skill_mock(target="executor"),
+            ),
+        ):
+            response = await client.put(
+                f"{BASE_URL}/sk_abc123",
+                json={"target": "executor"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["target"] == "executor"

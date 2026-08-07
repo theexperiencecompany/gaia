@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Cloud version is expensive for what self-hosted n8n provides",
     "No memory or context awareness between workflow executions",
   ],
-  metaTitle: "Best n8n Alternative in 2026 | GAIA",
+  metaTitle: "Best n8n Alternative in 2026",
   metaDescription:
     "n8n is powerful but technical. GAIA is an open-source proactive AI assistant with built-in automation that non-technical users can actually use. Free tier available.",
   keywords: [

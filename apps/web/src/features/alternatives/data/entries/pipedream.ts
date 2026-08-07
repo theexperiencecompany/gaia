@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "Debugging workflow errors requires developer-level understanding",
     "Not designed for non-technical users who want natural language automation",
   ],
-  metaTitle: "Best Pipedream Alternative in 2026 | GAIA",
+  metaTitle: "Best Pipedream Alternative in 2026",
   metaDescription:
     "Pipedream requires coding knowledge and has no AI assistant. GAIA automates workflows via natural language and manages email, tasks, and calendar. Free tier available.",
   keywords: [

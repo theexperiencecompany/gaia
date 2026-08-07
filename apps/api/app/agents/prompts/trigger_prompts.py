@@ -6,6 +6,14 @@ Simple template that accepts raw trigger config data as JSON.
 import json
 from typing import Any
 
+from app.models.workflow_models import TriggerConfig
+
+# The one caller passes a validated ``TriggerConfig``, but both functions also
+# handle the raw-dict form the workflow/scheduler codebase still produces
+# elsewhere (see the scheduler_service.py ANN401 note). Naming both is honest
+# about what they accept without deleting a live branch.
+TriggerConfigInput = TriggerConfig | dict[str, Any]
+
 TRIGGER_CONTEXT_TEMPLATE = """## TRIGGER CONTEXT:
 
 **Trigger Configuration:**
@@ -23,7 +31,7 @@ TRIGGER_CONTEXT_TEMPLATE = """## TRIGGER CONTEXT:
 """
 
 
-def generate_trigger_specific_guidance(trigger_config) -> str:
+def generate_trigger_specific_guidance(trigger_config: TriggerConfigInput | None) -> str:
     """Generate specific guidance based on trigger type."""
     if not trigger_config:
         return "No specific trigger guidance - this is a manual workflow."
@@ -68,7 +76,7 @@ def generate_trigger_specific_guidance(trigger_config) -> str:
 """
 
 
-def generate_trigger_context(trigger_config: Any | None = None) -> str:
+def generate_trigger_context(trigger_config: TriggerConfigInput | None = None) -> str:
     """
     Generate trigger context for workflow prompts.
 

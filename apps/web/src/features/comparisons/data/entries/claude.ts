@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Claude excels at reasoning and conversation. GAIA goes beyond conversation to proactively manage your work, integrations, and daily workflows.",
   metaTitle:
-    "Claude Alternative with Email & Calendar Management | GAIA vs Claude",
+    "Claude Alternative with Email & Calendar Management — GAIA vs Claude",
   metaDescription:
     "Claude is a powerful conversational AI but doesn't proactively manage your inbox or automate workflows. GAIA is an open-source Claude alternative with email triage, calendar management, and proactive task automation across 50+ tools.",
   keywords: [

@@ -1,7 +1,7 @@
 """Unit tests for reminder_tasks ARQ worker."""
 
 from datetime import UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -57,68 +57,56 @@ class TestCleanupExpiredReminders:
     def ctx(self) -> dict:
         return {}
 
-    async def test_cleanup_returns_deleted_count_in_message(self, ctx):
-        mock_result = MagicMock()
-        mock_result.deleted_count = 7
+    # The status/date filter is the repository's contract (proven in
+    # tests/contracts/test_reminders_repository.py::test_delete_finished_before);
+    # here we assert delegation and that the worker owns the 30-day cutoff.
 
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(return_value=mock_result)
+    async def test_cleanup_returns_deleted_count_in_message(self, ctx):
+        with patch(
+            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
+            new_callable=AsyncMock,
+            return_value=7,
+        ) as mock_delete:
             result = await cleanup_expired_reminders(ctx)
 
-        assert mock_col.delete_many.called
+        assert mock_delete.await_count == 1
         assert result == "Cleaned up 7 expired reminders"
 
     async def test_cleanup_zero_deletions_message(self, ctx):
-        mock_result = MagicMock()
-        mock_result.deleted_count = 0
-
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(return_value=mock_result)
+        with patch(
+            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
+            new_callable=AsyncMock,
+            return_value=0,
+        ):
             result = await cleanup_expired_reminders(ctx)
 
-        assert mock_col.delete_many.called
         assert result == "Cleaned up 0 expired reminders"
 
-    async def test_cleanup_query_filters_completed_and_cancelled(self, ctx):
-        mock_result = MagicMock()
-        mock_result.deleted_count = 3
-
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(return_value=mock_result)
-            await cleanup_expired_reminders(ctx)
-
-        call_args = mock_col.delete_many.call_args
-        query = call_args[0][0]
-        assert "$in" in query["status"]
-        assert "completed" in query["status"]["$in"]
-        assert "cancelled" in query["status"]["$in"]
-
-    async def test_cleanup_query_uses_thirty_day_cutoff(self, ctx):
-        """The cutoff date in the query must be approx 30 days in the past."""
+    async def test_cleanup_uses_thirty_day_cutoff(self, ctx):
+        """The cutoff handed to the repository must be approx 30 days in the past."""
         from datetime import datetime, timedelta
 
-        mock_result = MagicMock()
-        mock_result.deleted_count = 0
-
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(return_value=mock_result)
+        with patch(
+            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as mock_delete:
             before_call = datetime.now(UTC)
             await cleanup_expired_reminders(ctx)
             after_call = datetime.now(UTC)
 
-        query = mock_col.delete_many.call_args[0][0]
-        cutoff = query["updated_at"]["$lt"]
-
+        cutoff = mock_delete.call_args.args[0]
         expected_lower = before_call - timedelta(days=30)
         expected_upper = after_call - timedelta(days=30)
-
-        # Allow a 5 second window for the cutoff to account for test execution time
         assert (
             expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
         )
 
     async def test_cleanup_exception_propagates(self, ctx):
-        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
-            mock_col.delete_many = AsyncMock(side_effect=Exception("MongoDB unavailable"))
+        with patch(
+            "app.workers.tasks.reminder_tasks.reminder_repository.delete_finished_before",
+            new_callable=AsyncMock,
+            side_effect=Exception("MongoDB unavailable"),
+        ):
             with pytest.raises(Exception, match="MongoDB unavailable"):
                 await cleanup_expired_reminders(ctx)

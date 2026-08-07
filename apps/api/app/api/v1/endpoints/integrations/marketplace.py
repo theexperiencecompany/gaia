@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.constants.log_tags import LogTag
-from app.schemas.integrations.responses import IntegrationResponse, MarketplaceResponse
+from app.models.integration_models import IntegrationResponse, MarketplaceResponse
 from app.services.integrations.marketplace import (
     get_all_integrations,
     get_integration_details,
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("", response_model=MarketplaceResponse)
-async def list_marketplace_integrations(category: str | None = None):
+async def list_marketplace_integrations(category: str | None = None) -> MarketplaceResponse:
     try:
         log.set(operation="list_marketplace_integrations", category=category)
         result = await get_all_integrations(category=category)
@@ -27,7 +27,7 @@ async def list_marketplace_integrations(category: str | None = None):
 
 
 @router.get("/{integration_id}", response_model=IntegrationResponse)
-async def get_marketplace_integration(integration_id: str):
+async def get_marketplace_integration(integration_id: str) -> IntegrationResponse:
     log.set(operation="get_marketplace_integration", integration_id=integration_id)
     integration = await get_integration_details(integration_id)
     if not integration:

@@ -2,6 +2,8 @@
  * WebSocket message types for onboarding feature
  */
 
+import type { IntegrationRef } from "@/types/features/workflowTypes";
+
 export type OnboardingPhase =
   | "initial"
   | "personalization_pending"
@@ -36,6 +38,7 @@ export interface PersonalizationData {
       cron_expression?: string;
       timezone?: string;
     };
+    missing_integrations?: IntegrationRef[];
   }>;
   writing_style?: {
     style_summary: string;

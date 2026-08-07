@@ -13,7 +13,7 @@ import {
 import GetStartedButton from "../shared/GetStartedButton";
 import { TextSoftBlurIn } from "../shared/TextSoftBlurIn";
 
-export const SOCIAL_LINKS = [
+const SOCIAL_LINKS = [
   {
     href: "https://twitter.com/trygaia",
     ariaLabel: "Twitter",

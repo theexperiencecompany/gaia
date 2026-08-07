@@ -14,7 +14,7 @@ export const entry: AlternativeData = {
     "AI features are writing-focused, not cross-tool workflow automation",
     "Overkill for individuals who do not need shared inbox or team assignment features",
   ],
-  metaTitle: "Best Missive Alternative in 2026 | GAIA",
+  metaTitle: "Best Missive Alternative in 2026",
   metaDescription:
     "Missive is expensive and team-focused. GAIA is a proactive AI assistant for personal email, calendar, and task management. Free tier + open-source self-hosting.",
   keywords: [

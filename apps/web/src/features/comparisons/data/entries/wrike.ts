@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Enterprise work management and project collaboration platform",
   description:
     "Wrike is a powerful enterprise project management platform with advanced workflow customization, resource management, and reporting. GAIA complements structured project management with proactive AI that manages email, automates workflows, and surfaces what matters most.",
-  metaTitle: "Wrike Alternative with Proactive AI Assistance | GAIA vs Wrike",
+  metaTitle: "Wrike Alternative with Proactive AI Assistance — GAIA vs Wrike",
   metaDescription:
     "Wrike is built for enterprise PM, but it won't proactively manage your inbox or automate cross-tool workflows. GAIA is an open-source alternative with AI-driven task management and 50+ integrations — free tier available.",
   keywords: [

@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Habit tracking and Pomodoro are useful but don't reduce decision fatigue",
     "Premium features require subscription; free tier is quite limited",
   ],
-  metaTitle: "Best TickTick Alternative in 2026 | GAIA",
+  metaTitle: "Best TickTick Alternative in 2026",
   metaDescription:
     "TickTick requires manual task entry. GAIA is a proactive AI assistant that auto-creates tasks from email and manages your full productivity stack. Free tier available.",
   keywords: [

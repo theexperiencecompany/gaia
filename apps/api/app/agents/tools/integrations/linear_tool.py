@@ -8,10 +8,12 @@ user's OAuth token server-side; tools only need `user_id` from
 Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
+import contextlib
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 from langgraph.config import get_config
 
 from app.decorators import with_doc
@@ -65,6 +67,7 @@ from app.utils.linear_utils import (
     format_issue_summary,
     fuzzy_match,
     graphql_request,
+    history_label_names,
     priority_to_int,
     priority_to_str,
 )
@@ -90,10 +93,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_RESOLVE_CONTEXT_DOC)
     def CUSTOM_RESOLVE_CONTEXT(
         request: ResolveContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Resolve fuzzy names to Linear IDs."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         result: dict[str, Any] = {}
 
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
@@ -147,10 +151,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_MY_TASKS_DOC)
     def CUSTOM_GET_MY_TASKS(
         request: GetMyTasksInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get the current user's assigned issues."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer_id = viewer_data.get("viewer", {}).get("id")
 
@@ -176,10 +181,8 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             due_str = issue.get("dueDate")
             due_date = None
             if due_str:
-                try:
-                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
-                except ValueError:
-                    pass
+                with contextlib.suppress(ValueError):
+                    due_date = datetime.fromisoformat(due_str).date()
 
             priority = issue.get("priority", 0)
             state_type = issue.get("state", {}).get("type", "")
@@ -223,10 +226,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_SEARCH_ISSUES_DOC)
     def CUSTOM_SEARCH_ISSUES(
         request: SearchIssuesInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Search issues using natural language queries."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         issues_data = graphql_request(
             QUERY_SEARCH_ISSUES,
             {"query": request.query, "first": min(request.limit * 2, 100)},
@@ -270,10 +274,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_ISSUE_FULL_CONTEXT_DOC)
     def CUSTOM_GET_ISSUE_FULL_CONTEXT(
         request: GetIssueFullContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get complete issue details in one call."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         if not request.issue_id and not request.issue_identifier:
             raise ValueError("Provide either issue_id or issue_identifier")
 
@@ -374,12 +379,12 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
                     entry["change"] = "assignee"
                     entry["from"] = (h.get("fromAssignee") or {}).get("name")
                     entry["to"] = (h.get("toAssignee") or {}).get("name")
-                elif (h.get("addedLabels") or {}).get("nodes"):
+                elif history_label_names(h.get("addedLabels")):
                     entry["change"] = "labels_added"
-                    entry["labels"] = [label.get("name") for label in h["addedLabels"]["nodes"]]
-                elif (h.get("removedLabels") or {}).get("nodes"):
+                    entry["labels"] = history_label_names(h.get("addedLabels"))
+                elif history_label_names(h.get("removedLabels")):
                     entry["change"] = "labels_removed"
-                    entry["labels"] = [label.get("name") for label in h["removedLabels"]["nodes"]]
+                    entry["labels"] = history_label_names(h.get("removedLabels"))
                 else:
                     continue
                 result["activity"].append(entry)
@@ -396,10 +401,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_ISSUE_DOC)
     def CUSTOM_CREATE_ISSUE(
         request: CreateIssueInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create an issue with full field support and optional sub-issues."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         # Build input data
         input_data: dict[str, Any] = {
             "teamId": request.team_id,
@@ -488,10 +494,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_SUB_ISSUES_DOC)
     def CUSTOM_CREATE_SUB_ISSUES(
         request: CreateSubIssuesInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create multiple sub-issues under a parent issue."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         parent_id = request.parent_issue_id
 
         if not parent_id and request.parent_identifier:
@@ -565,10 +572,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_ISSUE_RELATION_DOC)
     def CUSTOM_CREATE_ISSUE_RELATION(
         request: CreateIssueRelationInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Create a relationship between two issues."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         type_mapping = {
             "blocks": "blocks",
             "is_blocked_by": "blocked_by",
@@ -605,10 +613,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_ISSUE_ACTIVITY_DOC)
     def CUSTOM_GET_ISSUE_ACTIVITY(
         request: GetIssueActivityInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get the change history for an issue."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         issue_id = request.issue_id
 
         if not issue_id and request.issue_identifier:
@@ -659,12 +668,12 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
                 entry["change_type"] = "priority"
                 entry["from"] = priority_to_str(h.get("fromPriority", 0))
                 entry["to"] = priority_to_str(h.get("toPriority", 0))
-            elif (h.get("addedLabels") or {}).get("nodes"):
+            elif history_label_names(h.get("addedLabels")):
                 entry["change_type"] = "labels_added"
-                entry["labels"] = [label.get("name") for label in h["addedLabels"]["nodes"]]
-            elif (h.get("removedLabels") or {}).get("nodes"):
+                entry["labels"] = history_label_names(h.get("addedLabels"))
+            elif history_label_names(h.get("removedLabels")):
                 entry["change_type"] = "labels_removed"
-                entry["labels"] = [label.get("name") for label in h["removedLabels"]["nodes"]]
+                entry["labels"] = history_label_names(h.get("removedLabels"))
             else:
                 continue
             activities.append(entry)
@@ -679,10 +688,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_ACTIVE_SPRINT_DOC)
     def CUSTOM_GET_ACTIVE_SPRINT(
         request: GetActiveSprintInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get the current/active sprint context."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         data = graphql_request(QUERY_ACTIVE_CYCLES, None, auth_credentials)
         cycles = data.get("cycles", {}).get("nodes", [])
 
@@ -737,10 +747,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_BULK_UPDATE_ISSUES_DOC)
     def CUSTOM_BULK_UPDATE_ISSUES(
         request: BulkUpdateIssuesInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Batch update multiple issues at once."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         if not request.issue_ids:
             raise ValueError("No issue IDs provided")
 
@@ -782,10 +793,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_NOTIFICATIONS_DOC)
     def CUSTOM_GET_NOTIFICATIONS(
         request: GetNotificationsInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get the current user's notifications."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         data = graphql_request(
             QUERY_NOTIFICATIONS,
             {"first": request.limit},
@@ -823,10 +835,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_GET_WORKSPACE_CONTEXT_DOC)
     def CUSTOM_GET_WORKSPACE_CONTEXT(
         request: GetWorkspaceContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get full workspace context for session initialization."""
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer = viewer_data.get("viewer", {})
         assigned_count = len(viewer.get("assignedIssues", {}).get("nodes", []))
@@ -854,7 +867,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             due_str = issue.get("dueDate")
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
+                    due_date = datetime.fromisoformat(due_str).date()
                     if due_date < today:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:
@@ -897,13 +910,14 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="linear")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Linear workspace context snapshot: current user, teams, and urgent items.
 
         Zero required parameters. Returns full workspace state for session initialization.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
         viewer = viewer_data.get("viewer", {})
 
@@ -928,7 +942,7 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
             due_str = issue.get("dueDate")
             if due_str:
                 try:
-                    due_date = datetime.fromisoformat(due_str.replace("Z", "+00:00")).date()
+                    due_date = datetime.fromisoformat(due_str).date()
                     if due_date < today:
                         overdue.append(format_issue_summary(issue))
                 except ValueError:

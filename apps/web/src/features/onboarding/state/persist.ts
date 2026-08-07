@@ -19,6 +19,8 @@ interface PersistedShape {
   clarifyCustomDrafts: Record<string, string>;
   clarifyOtherSelected: Record<string, boolean>;
   clarifySubmitted: boolean;
+  integrationSelectDone: boolean;
+  selectedIntegrations: string[];
   // todoExecutionMessage is deliberately omitted — persisting it re-sends on reload.
   todoExecutionStarted: boolean;
   todoExecutionConvoId: string | null;
@@ -46,6 +48,8 @@ function pick(state: OnboardingState): PersistedShape {
     clarifyCustomDrafts: state.clarifyCustomDrafts,
     clarifyOtherSelected: state.clarifyOtherSelected,
     clarifySubmitted: state.clarifySubmitted,
+    integrationSelectDone: state.integrationSelectDone,
+    selectedIntegrations: state.selectedIntegrations,
     todoExecutionStarted: state.todoExecutionStarted,
     todoExecutionConvoId: state.todoExecutionConvoId,
     todoExecutionTodo: state.todoExecutionTodo,
@@ -75,6 +79,8 @@ export function loadPersisted(): Partial<OnboardingState> | null {
       clarifyCustomDrafts: parsed.clarifyCustomDrafts ?? {},
       clarifyOtherSelected: parsed.clarifyOtherSelected ?? {},
       clarifySubmitted: parsed.clarifySubmitted ?? false,
+      integrationSelectDone: parsed.integrationSelectDone ?? false,
+      selectedIntegrations: parsed.selectedIntegrations ?? [],
       todoExecutionStarted: parsed.todoExecutionStarted ?? false,
       todoExecutionConvoId: parsed.todoExecutionConvoId ?? null,
       todoExecutionTodo: parsed.todoExecutionTodo ?? null,

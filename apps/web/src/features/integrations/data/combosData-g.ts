@@ -9,8 +9,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "slack",
     tagline:
       "Bridge your Discord community and Slack work channels automatically",
-    metaTitle:
-      "Discord + Slack Automation - Community to Work Channel Bridge | GAIA",
+    metaTitle: "Discord + Slack Automation - Community to Work Channel Bridge",
     metaDescription:
       "Connect Discord and Slack with GAIA. Route community signals to Slack teams, mirror announcements, and keep community managers and internal teams aligned.",
     keywords: [
@@ -89,7 +88,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
     tagline: "Schedule Discord events and get calendar reminders automatically",
-    metaTitle: "Discord + Google Calendar Automation - Event Scheduling | GAIA",
+    metaTitle: "Discord + Google Calendar Automation - Event Scheduling",
     metaDescription:
       "Connect Discord and Google Calendar with GAIA. Auto-create calendar events from Discord scheduling, send reminders in Discord, and keep your community on schedule.",
     keywords: [
@@ -168,7 +167,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "todoist",
     tagline:
       "Create Todoist tasks from Discord messages without leaving the conversation",
-    metaTitle: "Discord + Todoist Automation - Capture Tasks from Chat | GAIA",
+    metaTitle: "Discord + Todoist Automation - Capture Tasks from Chat",
     metaDescription:
       "Connect Discord and Todoist with GAIA. Turn Discord messages into Todoist tasks instantly, assign owners, set due dates, and never lose an action item in chat.",
     keywords: [
@@ -248,8 +247,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "trello",
     tagline:
       "Track community projects on Trello straight from Discord channels",
-    metaTitle:
-      "Discord + Trello Automation - Community Project Tracking | GAIA",
+    metaTitle: "Discord + Trello Automation - Community Project Tracking",
     metaDescription:
       "Connect Discord and Trello with GAIA. Create Trello cards from Discord messages, post card updates to Discord, and keep community projects moving without leaving chat.",
     keywords: [
@@ -328,8 +326,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Surface Jira issue updates in Discord engineering channels automatically",
-    metaTitle:
-      "Discord + Jira Automation - Engineering Channel Issue Updates | GAIA",
+    metaTitle: "Discord + Jira Automation - Engineering Channel Issue Updates",
     metaDescription:
       "Connect Discord and Jira with GAIA. Post Jira issue updates to Discord channels, create Jira tickets from Discord, and keep open-source engineers informed.",
     keywords: [
@@ -408,7 +405,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolB: "Asana",
     toolBSlug: "asana",
     tagline: "Turn Zoom meeting action items into Asana tasks automatically",
-    metaTitle: "Zoom + Asana Automation - Meeting Action Items to Tasks | GAIA",
+    metaTitle: "Zoom + Asana Automation - Meeting Action Items to Tasks",
     metaDescription:
       "Connect Zoom and Asana with GAIA. Auto-create Asana tasks from Zoom meeting summaries, assign owners, set due dates, and ensure every action item gets tracked.",
     keywords: [
@@ -487,8 +484,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "linear",
     tagline:
       "Post Zoom sprint summaries to Linear issues and keep engineering on track",
-    metaTitle:
-      "Zoom + Linear Automation - Sprint Meeting Summaries to Issues | GAIA",
+    metaTitle: "Zoom + Linear Automation - Sprint Meeting Summaries to Issues",
     metaDescription:
       "Connect Zoom and Linear with GAIA. Auto-post sprint meeting summaries to Linear, create issues from action items, and keep your engineering cycle updated after every call.",
     keywords: [
@@ -569,7 +565,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Log Zoom sprint meeting summaries directly to Jira sprints and epics",
-    metaTitle: "Zoom + Jira Automation - Sprint Summaries to Jira | GAIA",
+    metaTitle: "Zoom + Jira Automation - Sprint Summaries to Jira",
     metaDescription:
       "Connect Zoom and Jira with GAIA. Auto-log Zoom sprint meeting outcomes to Jira, create issues from action items, and keep your Jira board current after every ceremony.",
     keywords: [
@@ -648,8 +644,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolB: "Microsoft Teams",
     toolBSlug: "microsoft-teams",
     tagline: "Bridge Zoom and Microsoft Teams for dual-platform organizations",
-    metaTitle:
-      "Zoom + Microsoft Teams Automation - Dual Platform Bridge | GAIA",
+    metaTitle: "Zoom + Microsoft Teams Automation - Dual Platform Bridge",
     metaDescription:
       "Connect Zoom and Microsoft Teams with GAIA. Share meeting summaries across platforms, notify Teams channels of Zoom events, and keep both platforms in sync.",
     keywords: [
@@ -729,7 +724,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "google-drive",
     tagline:
       "Auto-save Zoom recordings and notes to organized Google Drive folders",
-    metaTitle: "Zoom + Google Drive Automation - Auto-Save Recordings | GAIA",
+    metaTitle: "Zoom + Google Drive Automation - Auto-Save Recordings",
     metaDescription:
       "Connect Zoom and Google Drive with GAIA. Automatically save Zoom recordings to Drive, organize by meeting type, and keep your team's video archive structured.",
     keywords: [
@@ -809,7 +804,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Schedule Zoom design reviews from Figma milestones and share feedback automatically",
-    metaTitle: "Zoom + Figma Automation - Design Review Scheduling | GAIA",
+    metaTitle: "Zoom + Figma Automation - Design Review Scheduling",
     metaDescription:
       "Connect Zoom and Figma with GAIA. Auto-schedule Zoom design reviews when Figma milestones are hit, post meeting feedback to Figma files, and streamline design workflows.",
     keywords: [
@@ -888,7 +883,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Log Zoom customer calls to HubSpot CRM and keep every deal updated",
-    metaTitle: "Zoom + HubSpot Automation - Log Customer Calls to CRM | GAIA",
+    metaTitle: "Zoom + HubSpot Automation - Log Customer Calls to CRM",
     metaDescription:
       "Connect Zoom and HubSpot with GAIA. Auto-log Zoom customer calls to HubSpot contacts and deals, capture action items, and keep your CRM current after every call.",
     keywords: [
@@ -967,8 +962,7 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolB: "ClickUp",
     toolBSlug: "clickup",
     tagline: "Post Zoom meeting action items to ClickUp tasks automatically",
-    metaTitle:
-      "Zoom + ClickUp Automation - Meeting Action Items to Tasks | GAIA",
+    metaTitle: "Zoom + ClickUp Automation - Meeting Action Items to Tasks",
     metaDescription:
       "Connect Zoom and ClickUp with GAIA. Auto-create ClickUp tasks from Zoom meeting action items, assign owners, set due dates, and keep your workspace current after every call.",
     keywords: [

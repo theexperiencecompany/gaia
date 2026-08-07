@@ -9,8 +9,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "asana",
     tagline:
       "Bridge engineering issues with cross-team project management automatically",
-    metaTitle:
-      "Linear + Asana Automation - Sync Engineering and Projects | GAIA",
+    metaTitle: "Linear + Asana Automation - Sync Engineering and Projects",
     metaDescription:
       "Connect Linear and Asana with GAIA. Automatically mirror Linear issues to Asana tasks, sync status updates across both tools, and give every team a unified view of engineering work without manual duplication.",
     keywords: [
@@ -97,8 +96,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "notion",
     tagline:
       "Sync sprint notes to Notion and link Linear issues to living docs",
-    metaTitle:
-      "Linear + Notion Integration - Issues Meets Documentation | GAIA",
+    metaTitle: "Linear + Notion Integration - Issues Meets Documentation",
     metaDescription:
       "Connect Linear and Notion with GAIA. Automatically sync Linear issues to Notion databases, embed issue status in sprint docs, and keep engineering documentation aligned with actual work.",
     keywords: [
@@ -187,7 +185,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Sync issues between Linear engineering and ClickUp project management",
     metaTitle:
-      "Linear + ClickUp Integration - Engineering Meets Project Management | GAIA",
+      "Linear + ClickUp Integration - Engineering Meets Project Management",
     metaDescription:
       "Connect Linear and ClickUp with GAIA. Automatically sync Linear engineering issues to ClickUp tasks, keep status current across both tools, and eliminate manual handoffs between engineering and project teams.",
     keywords: [
@@ -275,7 +273,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Turn Linear issues assigned to you into personal Todoist tasks automatically",
     metaTitle:
-      "Linear + Todoist Integration - Engineering Issues in Your Personal Tasks | GAIA",
+      "Linear + Todoist Integration - Engineering Issues in Your Personal Tasks",
     metaDescription:
       "Connect Linear and Todoist with GAIA. Automatically create Todoist tasks when Linear issues are assigned to you, sync completions back, and manage your engineering workload alongside personal tasks in one place.",
     keywords: [
@@ -363,7 +361,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Link Trello product roadmap cards to Linear engineering issues seamlessly",
     metaTitle:
-      "Linear + Trello Integration - Roadmap Cards Meet Engineering Issues | GAIA",
+      "Linear + Trello Integration - Roadmap Cards Meet Engineering Issues",
     metaDescription:
       "Connect Linear and Trello with GAIA. Automatically link Trello roadmap cards to Linear engineering issues, propagate status updates, and keep product and engineering aligned without manual syncing.",
     keywords: [
@@ -448,8 +446,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "figma",
     tagline:
       "Link Figma designs to Linear issues and notify designers of engineering updates",
-    metaTitle:
-      "Linear + Figma Integration - Design and Engineering in Sync | GAIA",
+    metaTitle: "Linear + Figma Integration - Design and Engineering in Sync",
     metaDescription:
       "Connect Linear and Figma with GAIA. Automatically attach Figma frame links to Linear issues, notify designers when implementation starts, and surface design feedback directly in your issue tracker.",
     keywords: [
@@ -535,7 +532,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline: "Post Linear issue updates to dev Discord channels automatically",
     metaTitle:
-      "Linear + Discord Integration - Engineering Updates in Your Dev Server | GAIA",
+      "Linear + Discord Integration - Engineering Updates in Your Dev Server",
     metaDescription:
       "Connect Linear and Discord with GAIA. Automatically post Linear issue updates, sprint completions, and blocker alerts to your Discord engineering channels so the team stays informed without checking Linear.",
     keywords: [
@@ -623,7 +620,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Attach design docs and specs from Google Drive to Linear issues automatically",
     metaTitle:
-      "Linear + Google Drive Integration - Docs Attached to Engineering Issues | GAIA",
+      "Linear + Google Drive Integration - Docs Attached to Engineering Issues",
     metaDescription:
       "Connect Linear and Google Drive with GAIA. Automatically attach relevant Drive documents to Linear issues, create spec docs from issue descriptions, and keep engineering documentation linked to the work it supports.",
     keywords: [
@@ -712,7 +709,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Link customer feature requests from HubSpot to Linear engineering issues",
     metaTitle:
-      "Linear + HubSpot Integration - Customer Requests Drive Engineering | GAIA",
+      "Linear + HubSpot Integration - Customer Requests Drive Engineering",
     metaDescription:
       "Connect Linear and HubSpot with GAIA. Automatically create Linear issues from HubSpot customer feature requests, link deals to issues, and notify sales when engineering ships customer-requested features.",
     keywords: [
@@ -801,7 +798,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Schedule sprint ceremonies and post Zoom summaries to Linear issues automatically",
     metaTitle:
-      "Linear + Zoom Integration - Sprint Meetings Meet Issue Tracking | GAIA",
+      "Linear + Zoom Integration - Sprint Meetings Meet Issue Tracking",
     metaDescription:
       "Connect Linear and Zoom with GAIA. Automatically schedule sprint ceremonies from Linear cycle dates, post Zoom meeting summaries to Linear issues, and capture action items as new issues.",
     keywords: [
@@ -889,7 +886,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "airtable",
     tagline: "Sync engineering metrics and issue data to Airtable dashboards",
     metaTitle:
-      "Linear + Airtable Integration - Engineering Metrics in Airtable | GAIA",
+      "Linear + Airtable Integration - Engineering Metrics in Airtable",
     metaDescription:
       "Connect Linear and Airtable with GAIA. Automatically sync Linear issues and sprint metrics to Airtable bases, build engineering dashboards, and give non-technical stakeholders a structured view of engineering output.",
     keywords: [
@@ -977,7 +974,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Link payment bugs to Linear and prioritize issues by revenue impact",
     metaTitle:
-      "Linear + Stripe Integration - Revenue-Aware Engineering Prioritization | GAIA",
+      "Linear + Stripe Integration - Revenue-Aware Engineering Prioritization",
     metaDescription:
       "Connect Linear and Stripe with GAIA. Automatically create Linear issues from Stripe payment failures, attach revenue context to bugs, and surface the engineering issues with the highest customer impact.",
     keywords: [
@@ -1065,8 +1062,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "notion",
     tagline:
       "Sync Jira epics to Notion project pages and document sprint retros automatically",
-    metaTitle:
-      "Jira + Notion Integration - Issue Tracking Meets Documentation | GAIA",
+    metaTitle: "Jira + Notion Integration - Issue Tracking Meets Documentation",
     metaDescription:
       "Connect Jira and Notion with GAIA. Automatically sync Jira epics to Notion project pages, populate sprint retrospective templates, and keep engineering documentation linked to active Jira work.",
     keywords: [
@@ -1155,7 +1151,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Create personal Todoist tasks from Jira issues and sync completions back",
     metaTitle:
-      "Jira + Todoist Integration - Jira Issues in Your Personal Task List | GAIA",
+      "Jira + Todoist Integration - Jira Issues in Your Personal Task List",
     metaDescription:
       "Connect Jira and Todoist with GAIA. Automatically create Todoist tasks when Jira issues are assigned to you, sync completions back to Jira, and manage your engineering workload alongside personal tasks.",
     keywords: [
@@ -1244,7 +1240,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Bridge Jira development tracking with ClickUp product planning seamlessly",
     metaTitle:
-      "Jira + ClickUp Integration - Development and Product Planning in Sync | GAIA",
+      "Jira + ClickUp Integration - Development and Product Planning in Sync",
     metaDescription:
       "Connect Jira and ClickUp with GAIA. Automatically sync Jira stories to ClickUp tasks, propagate status updates across both tools, and eliminate manual handoffs between product and engineering teams.",
     keywords: [
@@ -1330,8 +1326,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolB: "Trello",
     toolBSlug: "trello",
     tagline: "Sync Jira bugs to a Trello bug tracker board automatically",
-    metaTitle:
-      "Jira + Trello Integration - Bug Tracking Across Both Tools | GAIA",
+    metaTitle: "Jira + Trello Integration - Bug Tracking Across Both Tools",
     metaDescription:
       "Connect Jira and Trello with GAIA. Automatically sync Jira bugs to Trello bug tracker boards, keep status current in both tools, and give non-technical stakeholders visibility into bug resolution progress.",
     keywords: [
@@ -1417,7 +1412,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Add Jira sprint dates and due dates to Google Calendar automatically",
     metaTitle:
-      "Jira + Google Calendar Integration - Sprint Dates in Your Calendar | GAIA",
+      "Jira + Google Calendar Integration - Sprint Dates in Your Calendar",
     metaDescription:
       "Connect Jira and Google Calendar with GAIA. Automatically add Jira sprint start and end dates, issue due dates, and release milestones to Google Calendar so engineering deadlines are always visible alongside the rest of your schedule.",
     keywords: [
@@ -1507,7 +1502,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Link Figma designs to Jira tickets and streamline design review workflows",
     metaTitle:
-      "Jira + Figma Integration - Design and Engineering Tickets in Sync | GAIA",
+      "Jira + Figma Integration - Design and Engineering Tickets in Sync",
     metaDescription:
       "Connect Jira and Figma with GAIA. Automatically attach Figma designs to Jira tickets, notify designers when tickets enter development, and route design feedback from Jira directly into Figma comments.",
     keywords: [
@@ -1593,7 +1588,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "discord",
     tagline: "Post Jira issue updates to Discord dev channels automatically",
     metaTitle:
-      "Jira + Discord Integration - Engineering Updates in Your Dev Server | GAIA",
+      "Jira + Discord Integration - Engineering Updates in Your Dev Server",
     metaDescription:
       "Connect Jira and Discord with GAIA. Automatically post Jira ticket updates, sprint summaries, and blocker alerts to your Discord engineering channels so the team stays informed without monitoring Jira.",
     keywords: [
@@ -1682,7 +1677,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Attach requirement docs from Google Drive to Jira epics automatically",
     metaTitle:
-      "Jira + Google Drive Integration - Requirements Docs Linked to Epics | GAIA",
+      "Jira + Google Drive Integration - Requirements Docs Linked to Epics",
     metaDescription:
       "Connect Jira and Google Drive with GAIA. Automatically attach Drive requirement documents to Jira epics, create post-mortem docs from resolved incidents, and keep engineering documentation linked to active work.",
     keywords: [
@@ -1771,7 +1766,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Sync customer bug reports from HubSpot to Jira tickets automatically",
     metaTitle:
-      "Jira + HubSpot Integration - Customer Bugs Reach Engineering Fast | GAIA",
+      "Jira + HubSpot Integration - Customer Bugs Reach Engineering Fast",
     metaDescription:
       "Connect Jira and HubSpot with GAIA. Automatically create Jira tickets from HubSpot customer bug reports, attach deal context to engineering issues, and notify account owners when bugs are resolved.",
     keywords: [
@@ -1860,7 +1855,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     canonicalSlug: "jira-linear",
     tagline:
       "Sync Linear and Jira so modern and enterprise dev teams stay aligned",
-    metaTitle: "Linear + Jira Integration - Cross-Team Issue Sync | GAIA",
+    metaTitle: "Linear + Jira Integration - Cross-Team Issue Sync",
     metaDescription:
       "Automate Linear and Jira with GAIA. Sync issues between Linear and Jira, keep cross-team projects aligned, and eliminate friction managing work across two engineering tools.",
     keywords: [
@@ -1951,8 +1946,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "salesforce",
     tagline:
       "Connect Linear engineering sprints to Salesforce opportunities and cases",
-    metaTitle:
-      "Linear + Salesforce Integration - Engineering and CRM Sync | GAIA",
+    metaTitle: "Linear + Salesforce Integration - Engineering and CRM Sync",
     metaDescription:
       "Automate Linear and Salesforce with GAIA. Link engineering issues to Salesforce opportunities, update cases with bug fix status, and align product delivery with revenue goals.",
     keywords: [
@@ -2044,8 +2038,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "teams",
     tagline:
       "Surface Linear issue updates and sprint progress inside Microsoft Teams",
-    metaTitle:
-      "Linear + Microsoft Teams Integration - Dev Updates in Teams | GAIA",
+    metaTitle: "Linear + Microsoft Teams Integration - Dev Updates in Teams",
     metaDescription:
       "Automate Linear and Microsoft Teams with GAIA. Post sprint summaries, issue notifications, and PR updates to Teams channels so your engineering team stays aligned without leaving chat.",
     keywords: [
@@ -2138,7 +2131,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Attach Loom video walkthroughs to Linear issues for richer async context",
     metaTitle:
-      "Linear + Loom Integration - Video Context for Engineering Issues | GAIA",
+      "Linear + Loom Integration - Video Context for Engineering Issues",
     metaDescription:
       "Automate Linear and Loom with GAIA. Attach Loom bug recordings to Linear issues, send video updates on blocked issues, and replace status meetings with async Loom summaries.",
     keywords: [
@@ -2232,7 +2225,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     canonicalSlug: "asana-jira",
     tagline:
       "Sync Jira engineering tickets with Asana project tasks automatically",
-    metaTitle: "Jira + Asana Integration - Product and Engineering Sync | GAIA",
+    metaTitle: "Jira + Asana Integration - Product and Engineering Sync",
     metaDescription:
       "Automate Jira and Asana with GAIA. Sync Jira tickets with Asana tasks, keep product and engineering aligned, and eliminate manual status updates between project management tools.",
     keywords: [
@@ -2322,7 +2315,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Connect Jira engineering tickets to Salesforce cases and opportunities",
     metaTitle:
-      "Jira + Salesforce Integration - Enterprise CRM and Dev Alignment | GAIA",
+      "Jira + Salesforce Integration - Enterprise CRM and Dev Alignment",
     metaDescription:
       "Automate Jira and Salesforce with GAIA. Link Jira tickets to Salesforce cases and opportunities, update CRM records as bugs are fixed, and give sales teams live engineering status.",
     keywords: [
@@ -2414,7 +2407,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolB: "Zoom",
     toolBSlug: "zoom",
     tagline: "Turn Zoom meeting action items into Jira tickets automatically",
-    metaTitle: "Jira + Zoom Integration - Meeting Action Items to Jira | GAIA",
+    metaTitle: "Jira + Zoom Integration - Meeting Action Items to Jira",
     metaDescription:
       "Automate Jira and Zoom with GAIA. Convert sprint planning and standup action items into Jira tickets, attach meeting summaries to issues, and schedule ceremonies linked to active sprints.",
     keywords: [
@@ -2506,8 +2499,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "teams",
     tagline:
       "Deliver Jira sprint updates and issue alerts directly in Microsoft Teams",
-    metaTitle:
-      "Jira + Microsoft Teams Integration - Dev Updates in Teams | GAIA",
+    metaTitle: "Jira + Microsoft Teams Integration - Dev Updates in Teams",
     metaDescription:
       "Automate Jira and Microsoft Teams with GAIA. Post sprint summaries, issue notifications, and blocker alerts to Teams channels so stakeholders stay informed without accessing Jira.",
     keywords: [
@@ -2600,7 +2592,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     tagline:
       "Sync Jira sprint data with Airtable for cross-functional reporting",
     metaTitle:
-      "Jira + Airtable Integration - Engineering Data in Your Database | GAIA",
+      "Jira + Airtable Integration - Engineering Data in Your Database",
     metaDescription:
       "Automate Jira and Airtable with GAIA. Sync Jira issues to Airtable, build cross-functional dashboards, and give ops and product teams a live database view of engineering work.",
     keywords: [
@@ -2692,8 +2684,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "loom",
     tagline:
       "Attach Loom video context to Jira tickets for faster issue resolution",
-    metaTitle:
-      "Jira + Loom Integration - Video Bug Reports and Sprint Updates | GAIA",
+    metaTitle: "Jira + Loom Integration - Video Bug Reports and Sprint Updates",
     metaDescription:
       "Automate Jira and Loom with GAIA. Attach Loom bug recordings to Jira tickets, create issues from video reports, and link sprint demo recordings to completed tickets automatically.",
     keywords: [
@@ -2783,8 +2774,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "stripe",
     tagline:
       "Escalate Stripe billing failures into Jira tickets with revenue context",
-    metaTitle:
-      "Jira + Stripe Integration - Revenue-Critical Bug Tracking | GAIA",
+    metaTitle: "Jira + Stripe Integration - Revenue-Critical Bug Tracking",
     metaDescription:
       "Automate Jira and Stripe with GAIA. Convert Stripe payment failures into Jira tickets, annotate issues with revenue impact, and ensure billing-critical bugs reach engineering fast.",
     keywords: [

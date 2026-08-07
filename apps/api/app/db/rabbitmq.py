@@ -23,7 +23,7 @@ class RabbitMQPublisher:
         self.declared_queues: set[str] = set()
         self._outbound_topology_declared: bool = False
 
-    async def connect(self):
+    async def connect(self) -> None:
         """Connect to RabbitMQ and create channel."""
         if self.connection is None:
             log.debug(f"{LogTag.STARTUP} Establishing RabbitMQ connection")
@@ -32,7 +32,7 @@ class RabbitMQPublisher:
             log.set(db={"connection_status": "connected", "backend": "rabbitmq"})
             log.info(f"{LogTag.STARTUP} RabbitMQ connection established")
 
-    async def declare_queue(self, queue_name: str):
+    async def declare_queue(self, queue_name: str) -> None:
         """Declare a queue if not already declared."""
         if queue_name not in self.declared_queues and self.channel:
             await self.channel.declare_queue(queue_name, durable=True)
@@ -159,7 +159,7 @@ class RabbitMQPublisher:
                 )
         await self._publish_with_retry(queue_name, body, declare=False)
 
-    async def close(self):
+    async def close(self) -> None:
         """Close RabbitMQ connection and channel."""
         if self.channel:
             await self.channel.close()
@@ -185,7 +185,7 @@ async def init_rabbitmq_publisher() -> RabbitMQPublisher:
     """
     log.debug(f"{LogTag.STARTUP} Initializing RabbitMQ publisher")
 
-    rabbitmq_url: str = settings.RABBITMQ_URL  # type: ignore
+    rabbitmq_url: str = settings.RABBITMQ_URL
     publisher = RabbitMQPublisher(rabbitmq_url)
     await publisher.connect()
 

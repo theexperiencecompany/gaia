@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Requires team adoption to see the full benefit",
     "Does not manage communication or tasks outside of calendar",
   ],
-  metaTitle: "Best Clockwise Alternative in 2026 | GAIA",
+  metaTitle: "Best Clockwise Alternative in 2026",
   metaDescription:
     "Clockwise only optimizes your calendar. GAIA is a proactive AI assistant that manages email, tasks, and scheduling automatically. Free tier + self-hosting available.",
   keywords: [

@@ -6,14 +6,17 @@ and only updated when their configuration changes.
 """
 
 import hashlib
-from typing import Any
+from typing import cast
 
+from chromadb.api.models.AsyncCollection import AsyncCollection
 from langgraph.store.base import PutOp
 
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
+from app.models.oauth_models import OAuthIntegration
+from app.models.trigger_config import TriggerConfig
 from shared.py.wide_events import VectorContext, log
 
 from .chroma_store import ChromaStore
@@ -22,7 +25,7 @@ from .chroma_store import ChromaStore
 TRIGGERS_NAMESPACE = "workflow_triggers"
 
 
-def _compute_trigger_hash(integration_id: str, trigger: Any) -> str:
+def _compute_trigger_hash(integration_id: str, trigger: TriggerConfig) -> str:
     """Compute hash for a trigger based on its configuration.
 
     Args:
@@ -49,7 +52,7 @@ def _compute_trigger_hash(integration_id: str, trigger: Any) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def _build_trigger_description(integration: Any, trigger: Any) -> str:
+def _build_trigger_description(integration: OAuthIntegration, trigger: TriggerConfig) -> str:
     """Build description for semantic matching using native trigger info.
 
     Args:
@@ -97,7 +100,7 @@ def _get_current_triggers_with_hashes() -> dict[str, dict]:
     return current_triggers
 
 
-async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
+async def _get_existing_triggers_from_chroma(collection: AsyncCollection) -> dict[str, dict]:
     """Fetch existing triggers from ChromaDB collection.
 
     Args:
@@ -312,4 +315,6 @@ async def get_triggers_store() -> ChromaStore:
     store = await providers.aget("chroma_triggers_store")
     if store is None:
         raise RuntimeError("Triggers store not initialized")
-    return store
+    # aget() is typed Any | None; "chroma_triggers_store" is always registered
+    # as a ChromaStore instance (see initialize_chroma_triggers_store above).
+    return cast(ChromaStore, store)

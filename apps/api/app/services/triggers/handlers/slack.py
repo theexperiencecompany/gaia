@@ -3,20 +3,21 @@ Slack trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import workflows_collection
+from app.db.repositories.workflows import workflow_repository
 from app.models.composio_schemas import (
     SlackChannelCreatedPayload,
     SlackListAllChannelsData,
     SlackListAllChannelsInput,
     SlackReceiveMessagePayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import SlackChannelCreatedConfig, SlackNewMessageConfig
-from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
@@ -26,12 +27,12 @@ from shared.py.wide_events import log
 class SlackTriggerHandler(TriggerHandler):
     """Handler for Slack triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "slack_new_message",
         "slack_channel_created",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "SLACK_RECEIVE_MESSAGE",
         "SLACK_RECEIVE_BOT_MESSAGE",
         "SLACK_RECEIVE_DIRECT_MESSAGE",
@@ -41,7 +42,7 @@ class SlackTriggerHandler(TriggerHandler):
         "SLACK_CHANNEL_CREATED",
     }
 
-    EXCLUSION_TO_TRIGGER = {
+    EXCLUSION_TO_TRIGGER: ClassVar[dict[str, str]] = {
         "exclude_bot_messages": "SLACK_RECEIVE_BOT_MESSAGE",
         "exclude_direct_messages": "SLACK_RECEIVE_DIRECT_MESSAGE",
         "exclude_group_messages": "SLACK_RECEIVE_GROUP_MESSAGE",
@@ -60,7 +61,7 @@ class SlackTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -212,23 +213,9 @@ class SlackTriggerHandler(TriggerHandler):
             except Exception as e:
                 log.debug(f"{LogTag.TRIGGER} Slack payload validation failed: {e}")
 
-            query = {
-                "activated": True,
-                "trigger_config.type": TriggerType.INTEGRATION,
-                "trigger_config.enabled": True,
-                "trigger_config.composio_trigger_ids": trigger_id,
-            }
-
-            cursor = workflows_collection.find(query)
             workflows: list[Workflow] = []
-
-            async for workflow_doc in cursor:
+            for workflow in await workflow_repository.find_active_by_composio_trigger(trigger_id):
                 try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-
                     # Get trigger config
                     trigger_config = workflow.trigger_config
                     if hasattr(trigger_config, "dict"):
@@ -279,8 +266,8 @@ class SlackTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, str]]:
+        **_kwargs: str,
+    ) -> list[TriggerOption]:
         """Get dynamic options for Slack trigger config fields."""
         if trigger_name == "slack_new_message" and field_name == "channel_ids":
             # Fetch Slack channels list with pagination
@@ -340,7 +327,7 @@ class SlackTriggerHandler(TriggerHandler):
                                 # Public channel
                                 label = f"# {channel_name}"
 
-                            all_channels.append({"value": channel_id, "label": label})
+                            all_channels.append(TriggerOption(value=channel_id, label=label))
 
                     # Check for next page
                     cursor = data.next_cursor

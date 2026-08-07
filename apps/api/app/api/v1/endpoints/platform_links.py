@@ -13,6 +13,7 @@ from app.models.platform_models import (
     LinkPlatformRequest,
     LinkPlatformResponse,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.services.outbound_delivery import notify_account_linked
 from app.services.platform_link_service import Platform, PlatformLinkService
@@ -21,9 +22,9 @@ from shared.py.wide_events import log
 router = APIRouter()
 
 
-@router.get("", response_model=GetPlatformLinksResponse)
+@router.get("")
 async def get_platform_links(
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> GetPlatformLinksResponse:
     """Get user's connected platform accounts."""
     if not current_user:
@@ -36,14 +37,16 @@ async def get_platform_links(
     platform_links = await PlatformLinkService.get_linked_platforms(user_id)
     log.set(outcome="success", result_count=len(platform_links))
 
+    # Constructing the response is the validation boundary — see PlatformLinkEntry
+    # on why the service hands these over unvalidated.
     return GetPlatformLinksResponse(platform_links=platform_links)
 
 
-@router.post("/{platform}", response_model=LinkPlatformResponse)
+@router.post("/{platform}")
 async def link_platform(
     platform: str,
     body: LinkPlatformRequest,
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> LinkPlatformResponse:
     """Link a platform account to the authenticated GAIA user.
 
@@ -88,7 +91,7 @@ async def link_platform(
         raise ValueError("user_id must be a string")
     log.set(user={"id": user_id}, operation="link_platform", platform=platform)
 
-    profile: dict = {}
+    profile: dict[str, str] = {}
     if token_data.get("username"):
         profile["username"] = token_data["username"]
     if token_data.get("display_name"):
@@ -98,18 +101,25 @@ async def link_platform(
         result = await PlatformLinkService.link_account(
             user_id, platform, platform_user_id, profile=profile or None
         )
-        if result.get("is_new_link"):
+        if result.is_new_link:
             await notify_account_linked(platform, user_id)
         log.set(outcome="success")
-        return LinkPlatformResponse(**result)
+        # is_new_link is an internal signal for the greeting above, not part of
+        # the payload the client reads — build the response field by field.
+        return LinkPlatformResponse(
+            status=result.status,
+            platform=result.platform,
+            platform_user_id=result.platform_user_id,
+            connected_at=result.connected_at,
+        )
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
 
-@router.delete("/{platform}", response_model=DisconnectPlatformResponse)
+@router.delete("/{platform}")
 async def disconnect_platform(
     platform: str,
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DisconnectPlatformResponse:
     """Disconnect a platform from user account."""
     if not current_user:
@@ -138,13 +148,13 @@ async def disconnect_platform(
         cache_key = f"bot_user:{platform}:{platform_user_id}"
         await redis_cache.client.delete(cache_key)
 
-    return DisconnectPlatformResponse(**result)
+    return result
 
 
-@router.get("/{platform}/connect", response_model=InitiatePlatformConnectResponse)
+@router.get("/{platform}/connect")
 async def initiate_platform_connect(
     platform: str,
-    current_user: dict | None = Depends(get_current_user),
+    current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> InitiatePlatformConnectResponse:
     """Initiate platform connection via OAuth or manual instructions.
 

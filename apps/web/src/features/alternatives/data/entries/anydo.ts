@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "AI assistant features are shallow compared to full AI agents",
     "Sync issues reported across platforms by long-term users",
   ],
-  metaTitle: "Best Any.do Alternative in 2026 | GAIA",
+  metaTitle: "Best Any.do Alternative in 2026",
   metaDescription:
     "Any.do's AI is surface-level. GAIA is a fully proactive AI assistant that manages tasks, email, and calendar with deep integrations. Free tier + self-hosting available.",
   keywords: [

@@ -15,8 +15,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 from app.agents.workspace.system_docs import USER_TODOS_GUIDE_MD
-from app.constants.todos import GAIA_TRACKED_LABEL
-from app.db.mongodb.collections import todos_collection
+from app.db.repositories.todos import todo_repository
+from app.models.todo_models import TodoDocument
 from app.services._vfs_scheduler import make_scheduler, run_hashed_sync
 from app.services.storage.metrics import FsOps
 from app.services.storage.user_todos_vfs import (
@@ -59,44 +59,28 @@ async def _fetch_active_projections(user_id: str) -> list[UserTodoProjection]:
     completed within the last 7 days).
     """
     cutoff = datetime.now(UTC) - timedelta(days=ACTIVE_WINDOW_DAYS)
-    cursor = todos_collection.find(
-        {
-            "user_id": user_id,
-            "labels": {"$nin": [GAIA_TRACKED_LABEL]},
-            "$or": [
-                {"completed": {"$ne": True}},
-                {"completed_at": {"$gte": cutoff}},
-            ],
-        }
-    )
-    return [_project(doc) async for doc in cursor]
+    docs = await todo_repository.list_active_user_todos_since(user_id, completed_since=cutoff)
+    return [_project(doc) for doc in docs]
 
 
-def _project(doc: dict) -> UserTodoProjection:
-    """Mongo doc → ``UserTodoProjection`` (no canvas/log here)."""
-    subtasks = [
-        {
-            "id": s.get("id"),
-            "title": s.get("title"),
-            "completed": bool(s.get("completed", False)),
-        }
-        for s in (doc.get("subtasks") or [])
-    ]
+def _project(doc: TodoDocument) -> UserTodoProjection:
+    """``TodoDocument`` → ``UserTodoProjection`` (no canvas/log here)."""
+    subtasks = [{"id": s.id, "title": s.title, "completed": s.completed} for s in doc.subtasks]
     return {
-        "id": str(doc["_id"]),
+        "id": doc.id,
         "meta": {
-            "title": doc.get("title"),
-            "description": doc.get("description"),
-            "completed": bool(doc.get("completed", False)),
-            "completed_at": doc.get("completed_at"),
-            "priority": doc.get("priority"),
-            "due_date": doc.get("due_date"),
-            "due_date_timezone": doc.get("due_date_timezone"),
-            "labels": doc.get("labels", []),
-            "project_id": doc.get("project_id"),
+            "title": doc.title,
+            "description": doc.description,
+            "completed": doc.completed,
+            "completed_at": doc.completed_at,
+            "priority": doc.priority.value,
+            "due_date": doc.due_date,
+            "due_date_timezone": doc.due_date_timezone,
+            "labels": doc.labels,
+            "project_id": doc.project_id,
             "subtasks": subtasks,
-            "workflow_id": doc.get("workflow_id"),
-            "created_at": doc.get("created_at"),
-            "updated_at": doc.get("updated_at"),
+            "workflow_id": doc.workflow_id,
+            "created_at": doc.created_at,
+            "updated_at": doc.updated_at,
         },
     }

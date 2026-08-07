@@ -13,7 +13,7 @@ export const entry: AlternativeData = {
     "Cannot manage tasks, set reminders, or take multi-step actions autonomously",
     "Memory and context retention across sessions is limited",
   ],
-  metaTitle: "Best Google Gemini Alternative in 2026 | GAIA",
+  metaTitle: "Best Google Gemini Alternative in 2026",
   metaDescription:
     "Google Gemini doesn't take action for you. GAIA is a proactive AI assistant that manages your Gmail, Google Calendar, and tasks automatically. Open-source, free tier.",
   keywords: [

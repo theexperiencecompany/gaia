@@ -8,7 +8,7 @@ export const entry: ComparisonData = {
   description:
     "Microsoft Copilot is an AI assistant deeply embedded in the Microsoft 365 ecosystem — Word, Excel, PowerPoint, Outlook, and Teams. GAIA takes a cross-platform, open-source approach that works across Gmail, Google Calendar, Slack, Notion, GitHub, and 50+ other tools regardless of your existing stack.",
   metaTitle:
-    "Microsoft Copilot Alternative with Proactive AI | GAIA vs Copilot",
+    "Microsoft Copilot Alternative with Proactive AI — GAIA vs Copilot",
   metaDescription:
     "Microsoft Copilot is locked to Microsoft 365 and stays reactive. GAIA is an open-source Copilot alternative that works across Gmail, Slack, Notion, and 50+ tools — proactively managing email, calendar, and tasks with a free tier.",
   keywords: [

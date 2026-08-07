@@ -69,7 +69,7 @@ def sync_execute_hooks(
     if not hooks:
         return state
 
-    async def _run_with_hooks():
+    async def _run_with_hooks() -> State:
         return await execute_hooks(hooks, state, config, store)
 
     loop = asyncio.new_event_loop()
