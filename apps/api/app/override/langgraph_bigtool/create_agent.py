@@ -55,10 +55,10 @@ from app.agents.llm.client import (
     is_default_model_config,
 )
 from app.agents.llm.exceptions import LLMNotConfiguredError
+from app.agents.middleware.completion import work_looks_unfinished
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import (
-    COMPLETION_MIN_TOOL_CALLS,
     COMPLETION_NUDGE_MESSAGE,
     MAX_COMPLETION_NUDGES,
     RECURSION_WRAPUP_THRESHOLD_STEPS,
@@ -101,21 +101,6 @@ def _prepare_fallback(
     if fallback_llm is None or is_default_model_config(model_configurations):
         return None
     return lambda: fallback_llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-
-
-def _work_looks_unfinished(state: State) -> bool:
-    """Evidence-based prematurity check for the executor's plain-text stop.
-
-    True on a concrete "too shallow" signal: a tracked todo still pending, or
-    fewer than COMPLETION_MIN_TOOL_CALLS tools executed on a delegated task (the
-    "one lookup then assert a conclusion" failure a good model digs past). Bounded
-    by MAX_COMPLETION_NUDGES so a genuinely quick task costs one reconsideration.
-    """
-    todos = state.get("todos") or []
-    if any(isinstance(t, dict) and t.get("status") in ("pending", "in_progress") for t in todos):
-        return True
-    tool_calls = sum(1 for m in state.get("messages", []) if isinstance(m, ToolMessage))
-    return tool_calls < COMPLETION_MIN_TOOL_CALLS
 
 
 def create_agent(
@@ -569,7 +554,7 @@ def create_agent(
             if (
                 require_finish_to_end
                 and state.get("completion_nudges", 0) < MAX_COMPLETION_NUDGES
-                and _work_looks_unfinished(state)
+                and work_looks_unfinished(state)
             ):
                 return "nudge_continue"
             return "end_graph_hooks" if end_graph_hooks else END

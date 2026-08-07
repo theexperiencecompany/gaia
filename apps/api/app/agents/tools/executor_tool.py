@@ -28,6 +28,7 @@ from app.agents.core.background.session import (
     RunKind,
     mark_executor_spawned,
 )
+from app.agents.core.subagents.subagent_runner import compose_executor_brief
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_QUEUE_PREFIX,
@@ -95,21 +96,6 @@ async def _acquire_lock_through_redirect(
     return False
 
 
-def _compose_task_brief(task: str, acceptance_criteria: list[str]) -> str:
-    """Fold structured acceptance criteria into the free-text executor brief.
-
-    When comms fills ``acceptance_criteria``, the executor gets an explicit,
-    checkable definition of done that the executor loop's completion guard then
-    holds it to (it won't accept a shallow plain-text stop while work is
-    unfinished). No criteria: the brief is the task unchanged.
-    """
-    criteria = [c.strip() for c in acceptance_criteria if c and c.strip()]
-    if not criteria:
-        return task
-    lines = "\n".join(f"- {c}" for c in criteria)
-    return f"{task}\n\nDefinition of done (every item must be true before you finish):\n{lines}"
-
-
 @tool
 async def call_executor(
     config: RunnableConfig,
@@ -121,9 +107,15 @@ async def call_executor(
         list[str],
         "What must be TRUE for this task to count as done, as a checklist (e.g. "
         "['the 3 promo emails archived', 'the offer letter flagged']). Give the "
-        "executor a concrete target so it doesn't stop after one step. Omit only "
-        "for a trivial single-step ask.",
-    ] = [],  # noqa: B006
+        "executor a concrete target so it doesn't stop after one step. NEVER "
+        "omit — even a single-step ask needs a concrete done state.",
+    ],
+    verbatim_request: Annotated[
+        str | None,
+        "The user's exact original request, word for word, as they typed it "
+        "(not your rewritten task). Pass it through so the executor sees the "
+        "verbatim ask alongside your composed task.",
+    ] = None,
     active_todo_id: Annotated[
         str | None,
         "Optional tracked-todo ID to BIND this executor run to. When set, "
@@ -157,7 +149,11 @@ async def call_executor(
         return "Internal error: conversation context unavailable. Please try again."
 
     task_id = str(uuid4())
-    composed_task = _compose_task_brief(task, acceptance_criteria)
+    composed_task = compose_executor_brief(
+        task,
+        acceptance_criteria,
+        verbatim_request=verbatim_request,
+    )
 
     try:
         return await _dispatch_executor(
