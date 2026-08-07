@@ -19,6 +19,7 @@ from app.models.todo_models import (
     SearchMode,
     SubTask,
     TodoDocument,
+    TodoLabelCount,
     TodoSearchParams,
     TodoUpdate,
 )
@@ -214,7 +215,7 @@ class TestTodosRepository(UserScopedRepositoryContract):
         assert stats.completed == 1
         assert stats.pending == 2
         assert stats.by_priority == {"high": 1, "low": 2}
-        assert stats.labels == [{"name": "x", "count": 2}]
+        assert stats.labels == [TodoLabelCount(name="x", count=2)]
 
     async def test_compute_counts(self, repo, make_doc):
         now = datetime.now(UTC)

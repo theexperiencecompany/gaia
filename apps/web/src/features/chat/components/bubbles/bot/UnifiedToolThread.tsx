@@ -136,7 +136,7 @@ export default function UnifiedToolThread({
           }
           return (
             <div
-              key={`${d.category}-${i}`}
+              key={d.category}
               className="relative flex min-w-8 items-center justify-center"
               style={{
                 rotate,

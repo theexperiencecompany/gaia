@@ -43,6 +43,14 @@ repos:
         pass_filenames: false
         priority: 0
 
+      - id: gaia-ignore-ratchet
+        name: Ruff ignore-list ratchet (ignore / per-file-ignores may only shrink)
+        language: system
+        entry: python3 tools/lints/check_ignore_ratchet.py
+        files: ^(pyproject\.toml|tools/lints/(check_ignore_ratchet\.py|ignore_ratchet_baseline\.txt))$
+        pass_filenames: false
+        priority: 0
+
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.13.0
     hooks:

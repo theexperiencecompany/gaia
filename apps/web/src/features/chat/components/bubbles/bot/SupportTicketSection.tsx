@@ -6,7 +6,9 @@ export default function SupportTicketSection({
 }: {
   support_ticket_data: SupportTicketData[];
 }) {
-  const handleTicketSubmitted = () => {};
+  const handleTicketSubmitted = () => {
+    /* card manages its own submitted state; nothing to act on from the bubble */
+  };
 
   return (
     <div className="mt-3 w-full space-y-3">

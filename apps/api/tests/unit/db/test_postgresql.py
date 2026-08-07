@@ -7,6 +7,7 @@ Covers:
 - close_postgresql_db: disposal when initialized, error handling
 """
 
+from contextlib import suppress
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -32,10 +33,11 @@ def _get_original_init_fn():
 
     # Calling the decorated name triggers registration and returns a LazyLoader
     if not providers.is_available("postgresql_engine"):
-        try:
+        # Called for the registration side effect only — whether connecting to a
+        # real Postgres succeeds is irrelevant here, and there is none under unit
+        # tests. suppress() says that; a bare except/pass just looks like a bug.
+        with suppress(Exception):
             init_postgresql_engine()
-        except Exception:
-            pass
     try:
         loader = providers._providers["postgresql_engine"]
         return loader.loader_func

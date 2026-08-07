@@ -16,10 +16,11 @@ module that composes middleware stacks is also the one that constructs
 
 import asyncio
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, cast
+from typing import cast
 
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.tools import BaseTool
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 
@@ -35,15 +36,22 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.finish_task_tool import finish_task
 from app.constants.general import FINISH_TASK_NAME, SPAWN_AGENT_NAME
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AnyAgentMiddleware
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from shared.py.wide_events import log
 
-_graph_cache: dict[tuple, CompiledStateGraph] = {}
+#: What ``_cache_key`` produces: (model identity, tool space, initial tool names,
+#: retrieve-tools enabled, subagents-in-retrieve enabled).
+SpawnGraphCacheKey = tuple[str, str, tuple[str, ...], bool, bool]
+
+_graph_cache: dict[SpawnGraphCacheKey, CompiledStateGraph] = {}
 _cache_lock = asyncio.Lock()
 
 
-def _cache_key(llm: LanguageModelLike, tool_space: str, runtime: ToolRuntimeConfig) -> tuple:
+def _cache_key(
+    llm: LanguageModelLike, tool_space: str, runtime: ToolRuntimeConfig
+) -> SpawnGraphCacheKey:
     """What makes two spawn graphs interchangeable.
 
     The model belongs in the key: it is bound into the compiled graph, so two
@@ -68,7 +76,7 @@ async def get_spawn_graph(
     excluded_tool_names: set[str],
     tool_space: str,
     runtime: ToolRuntimeConfig,
-    middleware_factory: Callable[[], Sequence[Any]],
+    middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
 ) -> CompiledStateGraph:
     """The compiled graph for this parent's spawn configuration, built once."""
     key = _cache_key(llm, tool_space, runtime)
@@ -93,7 +101,7 @@ async def _build_spawn_graph(
     excluded_tool_names: set[str],
     tool_space: str,
     runtime: ToolRuntimeConfig,
-    middleware_factory: Callable[[], Sequence[Any]],
+    middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
 ) -> CompiledStateGraph:
     store = await get_tools_store()
 
@@ -131,7 +139,7 @@ async def _build_spawn_graph(
 
     try:
         checkpointer_manager = await get_checkpointer_manager()
-        checkpointer = checkpointer_manager.get_checkpointer()
+        checkpointer: BaseCheckpointSaver = checkpointer_manager.get_checkpointer()
     except Exception as e:
         # A spawn's thread must be durable while it is parked on an approval —
         # the decision can arrive hours later in another process. In-memory means

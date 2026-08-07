@@ -51,7 +51,7 @@ class _EmitRecorder:
         self.events.append({**self._pending, "_level": level, "_message": message})
 
 
-@pytest.fixture()
+@pytest.fixture
 def emitted():
     recorder = _EmitRecorder()
     with patch("app.api.v1.middleware.logging.request_logger", recorder):
@@ -295,9 +295,7 @@ def test_json_sink_is_total(hostile_extra, capsys):
     """
     circular: dict[str, Any] = {}
     circular["self"] = circular
-    _json_stdout_sink(
-        type("M", (), {"record": _record({**hostile_extra, "circular": circular})})()
-    )
+    _json_stdout_sink(type("M", (), {"record": _record({**hostile_extra, "circular": circular})})())
     line = capsys.readouterr().out.strip()
     parsed = json.loads(line)
     assert parsed["level"] == "ERROR"

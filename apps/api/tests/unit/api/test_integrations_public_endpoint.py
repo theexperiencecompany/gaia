@@ -533,7 +533,7 @@ class TestSearchIntegrations:
             patch(f"{_PUBLIC}.integration_repository") as mock_repo,
             patch(
                 f"{_PUBLIC}.generate_integration_slug",
-                side_effect=lambda name, category, integration_id: f"slug-{integration_id}",
+                side_effect=lambda name, category: f"slug-{name}-{category}",
             ),
         ):
             mock_repo.find_public_by_ids = AsyncMock(return_value=[doc1, doc2])

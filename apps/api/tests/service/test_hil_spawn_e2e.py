@@ -39,7 +39,8 @@ from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.constants.general import FINISH_TASK_NAME
 from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
-from app.models.hil_models import HILPreferences
+from app.models.hil_models import HILApprovalStatus, HILPreferences
+from app.services.hil.approvals_store import list_pending_for_conversation, mark_decided
 
 SLACK_TASK = "post the release note to #eng"
 NOTE_TASK = "ALPHA: record the meeting note"
@@ -212,9 +213,35 @@ class SpawnDriver:
         middleware.set_spawn_graph_provider(self._provider)
         return middleware
 
+    async def _settle(self, conv: str, decision: dict[str, Any]) -> None:
+        """File the decision on its record, the way the resolution layer does.
+
+        The gate reads its verdict from the record and treats the resume payload as
+        nothing but a wake-up, so a decision that was never filed leaves the call
+        pending and the replay refuses it. An explicit ``approval_id`` settles that one
+        approval and leaves a gated sibling still pending, which is how a turn holding
+        two approvals can decide them differently.
+        """
+        approval_id = decision.get("approval_id")
+        targets = (
+            [approval_id]
+            if approval_id
+            else [record.approval_id for record in await list_pending_for_conversation(conv)]
+        )
+        for target in targets:
+            await mark_decided(
+                target,
+                HILApprovalStatus(decision["status"]),
+                feedback=decision.get("feedback"),
+                scope=decision.get("scope", "once"),
+                decided_by=self._user_id,
+            )
+
     async def run(self, conv: str, tasks: list[tuple[str, str]], resume: Any | None = None) -> list:
         """Drive ``tasks`` as [(task, tool_call_id), ...] in ONE parent node."""
         middleware = self._middleware()
+        if resume is not None:
+            await self._settle(conv, resume)
 
         async def tool_node(_state: MessagesState, config: RunnableConfig) -> dict:
             texts = [

@@ -1,6 +1,7 @@
 """Unit tests for the support service (app/services/support_service.py)."""
 
 from datetime import UTC, datetime
+import threading
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException, UploadFile
@@ -230,6 +231,25 @@ class TestDeleteUploadedFiles:
         await _delete_uploaded_files([], "TICKET")
         mock_cloudinary.destroy.assert_not_called()
 
+    async def test_destroy_runs_off_the_event_loop(self, mock_cloudinary):
+        """Cloudinary's SDK is blocking HTTP. Called inline from a coroutine it
+        stalls the whole worker for the length of the round trip — every other
+        request on that process waits behind a support-ticket cleanup."""
+        loop_thread = threading.current_thread()
+        call_threads: list[threading.Thread] = []
+
+        def record_calling_thread(public_id: str) -> dict[str, str]:
+            call_threads.append(threading.current_thread())
+            return {"result": "ok"}
+
+        mock_cloudinary.destroy.side_effect = record_calling_thread
+
+        urls = ["https://res.cloudinary.com/demo/image/upload/support/TICKET_file.png"]
+        await _delete_uploaded_files(urls, "TICKET")
+
+        assert call_threads, "destroy was never called"
+        assert call_threads[0] is not loop_thread
+
 
 # ===========================================================================
 # _upload_single_attachment
@@ -256,10 +276,10 @@ class TestUploadSingleAttachment:
         )
 
         assert file_url == mock_upload_file_to_cloudinary.return_value
-        assert attachment_meta["filename"] == "screenshot.png"
-        assert attachment_meta["file_size"] == 100
-        assert attachment_meta["content_type"] == "image/png"
-        assert attachment_meta["file_url"] == file_url
+        assert attachment_meta.filename == "screenshot.png"
+        assert attachment_meta.file_size == 100
+        assert attachment_meta.content_type == "image/png"
+        assert attachment_meta.file_url == file_url
 
     async def test_wrong_content_type_raises_400(self):
         """Non-image content type raises 400."""
@@ -1002,12 +1022,12 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
-        assert len(result["requests"]) == 1
-        assert isinstance(result["requests"][0], SupportRequestResponse)
-        assert result["pagination"]["page"] == 1
-        assert result["pagination"]["per_page"] == 10
-        assert result["pagination"]["total"] == 1
-        assert result["pagination"]["pages"] == 1
+        assert len(result.requests) == 1
+        assert isinstance(result.requests[0], SupportRequestResponse)
+        assert result.pagination.page == 1
+        assert result.pagination.per_page == 10
+        assert result.pagination.total == 1
+        assert result.pagination.pages == 1
 
     async def test_with_status_filter(self, mock_support_repo):
         """Status filter is passed through to the repository."""
@@ -1032,7 +1052,7 @@ class TestGetUserSupportRequests:
             is SupportRequestStatus.RESOLVED
         )
         assert mock_support_repo.page_for_user.await_args.args[0] == USER_ID
-        assert result["requests"] == []
+        assert result.requests == []
 
     async def test_empty_results(self, mock_support_repo):
         """No matching documents returns empty list."""
@@ -1042,9 +1062,9 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
-        assert result["requests"] == []
-        assert result["pagination"]["total"] == 0
-        assert result["pagination"]["pages"] == 0
+        assert result.requests == []
+        assert result.pagination.total == 0
+        assert result.pagination.pages == 0
 
     async def test_pagination_calculation(self, mock_support_repo):
         """Pagination pages are calculated correctly with ceiling division."""
@@ -1054,8 +1074,8 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=2, per_page=10)
 
-        assert result["pagination"]["pages"] == 3
-        assert result["pagination"]["page"] == 2
+        assert result.pagination.pages == 3
+        assert result.pagination.page == 2
 
     async def test_pagination_skip_value(self, mock_support_repo):
         """The repository page query uses the correct skip/limit for page 3."""
@@ -1088,6 +1108,6 @@ class TestGetUserSupportRequests:
         with patch("app.services.support_service.log"):
             result = await get_user_support_requests(user_id=USER_ID, page=1, per_page=10)
 
-        assert len(result["requests"]) == 3
-        for req in result["requests"]:
+        assert len(result.requests) == 3
+        for req in result.requests:
             assert isinstance(req, SupportRequestResponse)

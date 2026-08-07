@@ -31,7 +31,10 @@ class TestBaseAppSettingsDefaults:
             settings = BaseAppSettings()
         assert settings.ENV == "development"
 
-    def test_env_can_be_staging(self):
+    def test_env_accepts_staging(self):
+        # ENV doubles as the Infisical environment slug, which has three values.
+        # This previously asserted "staging" was rejected, but the Literal has
+        # allowed it since the slug was introduced (see shared/py/secrets.py).
         with patch.dict(os.environ, {"ENV": "staging"}, clear=True):
             settings = BaseAppSettings()
         assert settings.ENV == "staging"

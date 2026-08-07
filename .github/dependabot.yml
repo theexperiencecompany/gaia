@@ -1,0 +1,46 @@
+version: 2
+
+updates:
+  # --- JavaScript/TypeScript (pnpm workspace) ------------------------------
+  # Single pnpm-lock.yaml at the repo root covers every workspace member
+  # (apps/*, apps/bots/*, packages/*, libs/*, libs/shared/* — see
+  # pnpm-workspace.yaml); Dependabot resolves the whole workspace from the
+  # root directory, so one entry is enough.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # --- Python (uv workspace) ------------------------------------------------
+  # Single uv.lock at the repo root covers every uv workspace member
+  # (apps/api, apps/voice-agent, libs — see [tool.uv.workspace] in the root
+  # pyproject.toml); Dependabot resolves the whole workspace from the root
+  # directory, so one entry is enough.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # --- GitHub Actions --------------------------------------------------------
+  # "/" covers .github/workflows/*.yml. Composite actions under
+  # .github/actions/*/action.yml are NOT reliably picked up by that entry
+  # alone, so each one that itself pins other actions gets its own entry.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/setup-node-pnpm"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/restore-nextjs-cache"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/setup-python-test-env"
+    schedule:
+      interval: "weekly"

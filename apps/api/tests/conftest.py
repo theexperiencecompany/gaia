@@ -41,6 +41,23 @@ os.environ.setdefault(
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
 
+# LangChain ships every graph run to LangSmith when these are truthy, and a
+# developer's .env turns them on. That makes the suite depend on an external
+# service it never asserts against: runs get rate-limited (429s), the exporter
+# retries on shutdown, and each agent test pays the latency. Forced off rather
+# than setdefault — the point is to override the .env, not defer to it.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+# Same reasoning for Langfuse, which activates only when all three of these are
+# set (app/config/langfuse.py) — so blanking one disables it. A developer's .env
+# supplies them, and the exporter then blocks on shutdown retrying spans against
+# a host the suite has no business contacting.
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
+os.environ["LANGFUSE_HOST"] = ""
+
 # Imported AFTER the env setup above, not with the top-level imports: document
 # models now extend MongoDocument, so importing any of them pulls in
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which

@@ -23,7 +23,8 @@ from uuid import uuid4
 
 from langchain.agents.middleware.types import AgentMiddleware, AgentState
 from langchain_core.messages import AIMessage
-from langgraph.runtime import Runtime, get_config
+from langgraph.config import get_config
+from langgraph.runtime import Runtime
 
 from app.agents.core.background.bg_results import has_bg_subagent_results
 from app.agents.core.background.session import get_pending_subagents

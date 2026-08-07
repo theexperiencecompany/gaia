@@ -1,7 +1,5 @@
 """Unit tests for calendar Pydantic models."""
 
-from datetime import datetime
-
 from pydantic import ValidationError
 import pytest
 
@@ -596,9 +594,11 @@ class TestFetchEventsInput:
 # ---------------------------------------------------------------------------
 @pytest.mark.unit
 class TestGetDaySummaryInput:
-    def test_default_date_is_today(self):
+    def test_date_is_unset_by_default(self):
+        # Deliberately not datetime.now(): "today" depends on the user's home
+        # timezone, which only the tool knows, so the model must leave it unset.
         m = GetDaySummaryInput()
-        assert m.date == datetime.now().strftime("%Y-%m-%d")
+        assert m.date is None
 
     def test_custom_date(self):
         m = GetDaySummaryInput(date="2025-03-15")

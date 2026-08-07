@@ -519,6 +519,12 @@ services:
     container_name: promtail
     profiles: ["observability", "all"]
     user: root
+    # The config expands ${LOKI_PUSH_URL:-...} — promtail only expands env vars
+    # when told to, and the image default doesn't. Without this flag promtail
+    # dies at startup parsing the unexpanded URL.
+    command:
+      - -config.file=/etc/promtail/config.yaml
+      - -config.expand-env=true
     # Prevent log feedback loop — Promtail's own stdout must not be captured by
     # Docker, or JSON parse errors spiral into tens of GB of disk usage.
     logging:
@@ -550,7 +556,6 @@ services:
       - ../../apps/bots/slack/logs:/var/log/gaia-slack-bot:ro
       - ../../apps/bots/telegram/logs:/var/log/gaia-telegram-bot:ro
       - ../../apps/bots/whatsapp/logs:/var/log/gaia-whatsapp-bot:ro
-    command: -config.file=/etc/promtail/config.yaml
     restart: unless-stopped
     depends_on:
       loki:
@@ -578,7 +583,10 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
       # Use the provisioned GAIA Overview dashboard as the home page
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
-      # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
+      # Slack webhook consumed by contact-points.yaml. Empty = no alerts; Grafana
+      # 11 still validates provisioning cleanly with an empty webhook (verified).
+      # A real webhook enables alert delivery when set. No placeholder is used —
+      # a fake hooks.slack.com URL trips GitHub push protection's secret scanner.
       SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
       # Destination for the email contact point ($__env{GRAFANA_ALERT_EMAIL} in

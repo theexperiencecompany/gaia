@@ -2,7 +2,7 @@
 Google Docs trigger handler.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -21,19 +21,19 @@ from shared.py.wide_events import log
 class GoogleDocsTriggerHandler(TriggerHandler):
     """Handler for Google Docs triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "google_docs_new_document",
         "google_docs_document_deleted",
         "google_docs_document_updated",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
         "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
         "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "google_docs_new_document": "GOOGLEDOCS_PAGE_ADDED_TRIGGER",
         "google_docs_document_deleted": "GOOGLEDOCS_DOCUMENT_DELETED_TRIGGER",
         "google_docs_document_updated": "GOOGLEDOCS_DOCUMENT_UPDATED_TRIGGER",
@@ -50,7 +50,7 @@ class GoogleDocsTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

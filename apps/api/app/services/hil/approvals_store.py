@@ -15,6 +15,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
+from app.agents.core.background.executor_queue import ExecutorRunItem
 from app.constants.hil import HIL_APPROVAL_TIMEOUT_SECONDS, HIL_UNRESUMED_SWEEP_STATUSES
 from app.db.repositories.hil import hil_approval_repository
 from app.models.hil_models import HILApprovalRecord, HILApprovalStatus, HILApprovalUpdate
@@ -96,7 +97,7 @@ async def record_auto_approval(
         args=args,
         summary=summary,
         integration_name=integration_name,
-        status="auto_approved",
+        status=HILApprovalStatus.AUTO_APPROVED,
         auto_reason=reason,
         decided_at=now,
         created_at=now,
@@ -129,9 +130,19 @@ async def mark_decided(
     )
 
 
-async def set_resume_item(approval_id: str, item: dict[str, Any]) -> None:
+async def set_resume_item(approval_id: str, item: ExecutorRunItem) -> None:
     """Attach the paused run's re-dispatch context to its approval record."""
     await hil_approval_repository.update(approval_id, HILApprovalUpdate(resume_item=item))
+
+
+async def clear_resume_item(approval_id: str) -> None:
+    """Drop a record's re-dispatch context — the run it pointed at is gone.
+
+    Written when a cancellation ends the paused run: with no ``resume_item`` the
+    decided-unresumed sweep can no longer bring it back, the same signal a record
+    that never registered a pause already relies on.
+    """
+    await hil_approval_repository.update(approval_id, HILApprovalUpdate(resume_item=None))
 
 
 async def stamp_subagent_resume(

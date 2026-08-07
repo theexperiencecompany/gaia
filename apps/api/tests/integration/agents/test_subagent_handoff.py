@@ -16,6 +16,9 @@ Real production classes and functions are imported so tests fail if code moves.
 
 from __future__ import annotations
 
+import asyncio
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -26,13 +29,20 @@ from langchain_core.messages import (
     HumanMessage,
     SystemMessage,
 )
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, StateGraph
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.store.memory import InMemoryStore
+from langgraph.types import Command, interrupt
 import pytest
 
-from app.agents.core.subagents.handoff_tools import _resolve_subagent
+from app.agents.core.subagents.base_subagent import SubAgentFactory
+from app.agents.core.subagents.handoff_tools import (
+    _resolve_subagent,
+    handoff,
+    resume_parked_subagent,
+)
 from app.agents.core.subagents.provider_subagents import SubagentUnavailableError
 from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.core.subagents.subagent_runner import (
@@ -40,9 +50,14 @@ from app.agents.core.subagents.subagent_runner import (
     SubagentOutcome,
     build_initial_messages,
     execute_subagent_stream,
+    interrupt_payload,
 )
+from app.constants.hil import HIL_RESUME_CONFIG_KEY, LANGGRAPH_INTERRUPT_KEY
+from app.models.hil_models import HILApprovalRecord
 from tests.helpers import create_fake_llm
-from tests.integration.conftest import SimpleState
+
+HANDOFF_MODULE = "app.agents.core.subagents.handoff_tools"
+BASE_SUBAGENT_MODULE = "app.agents.core.subagents.base_subagent"
 
 # ---------------------------------------------------------------------------
 # Stub LangChain tools (DynamicToolNode requires real tool objects, not MagicMock)
@@ -84,19 +99,6 @@ def _make_mock_tool_registry():
     return registry
 
 
-def _make_minimal_subagent_graph() -> Any:
-    """Return a trivial compiled graph that mimics a subagent."""
-
-    def respond(state: SimpleState) -> dict[str, Any]:
-        return {"messages": [AIMessage(content="subagent completed task")]}
-
-    builder = StateGraph(SimpleState)
-    builder.add_node("respond", respond)
-    builder.set_entry_point("respond")
-    builder.add_edge("respond", END)
-    return builder.compile(checkpointer=MemorySaver())
-
-
 # ---------------------------------------------------------------------------
 # Test: SubAgentFactory is importable and its static method is callable
 # ---------------------------------------------------------------------------
@@ -109,13 +111,11 @@ class TestSubAgentCanBeInstantiated:
 
     def test_subagent_factory_class_is_importable(self):
         """Importing SubAgentFactory must not raise; the class must exist."""
-        from app.agents.core.subagents.base_subagent import SubAgentFactory  # noqa: F401
 
         assert SubAgentFactory is not None
 
     def test_create_provider_subagent_method_exists(self):
         """SubAgentFactory.create_provider_subagent must be a static async method."""
-        from app.agents.core.subagents.base_subagent import SubAgentFactory
 
         method = getattr(SubAgentFactory, "create_provider_subagent", None)
         assert method is not None, "create_provider_subagent not found on SubAgentFactory"
@@ -124,7 +124,6 @@ class TestSubAgentCanBeInstantiated:
     async def test_create_provider_subagent_compiles_graph(self):
         """SubAgentFactory.create_provider_subagent must yield a compiled graph
         when all external calls are mocked."""
-        from app.agents.core.subagents.base_subagent import SubAgentFactory
 
         fake_llm = create_fake_llm(["subagent answer"])
         mock_store = _make_mock_store()
@@ -198,19 +197,16 @@ class TestHandoffToolStructure:
 
     def test_handoff_tool_is_importable(self):
         """handoff must be importable from handoff_tools."""
-        from app.agents.core.subagents.handoff_tools import handoff  # noqa: F401
 
         assert handoff is not None
 
     def test_handoff_tool_name(self):
         """handoff.name must be 'handoff'."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         assert handoff.name == "handoff"
 
     def test_handoff_tool_schema_contains_required_params(self):
         """handoff schema must expose subagent_id and task as required inputs."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         schema = handoff.args_schema.schema() if handoff.args_schema else {}
         # args_schema may not be set; fall back to tool.schema()
@@ -237,8 +233,6 @@ class TestHandoffToolStructure:
         """handoff must be an async function (coroutine function)."""
         import inspect
 
-        from app.agents.core.subagents.handoff_tools import handoff
-
         # For async @tool-decorated functions LangChain stores the original coroutine
         # in `.coroutine`; `.func` is used for sync tools.
         underlying = (
@@ -248,7 +242,6 @@ class TestHandoffToolStructure:
 
     def test_handoff_tool_has_docstring(self):
         """handoff must have a non-empty description for the LLM."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         description = handoff.description
         assert description and len(description) > 10, "handoff tool description must be informative"
@@ -364,58 +357,119 @@ class TestSubagentExecutionContext:
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture
+async def real_subagent_seams():
+    """Build ONE real compiled subagent graph via SubAgentFactory (production
+    code, not a graph built from scratch in the test), shared across both
+    handoff() calls — isolation must come from handoff()'s own thread_id
+    derivation and the real checkpointer, not from using separate graph
+    objects per thread."""
+    fake_llm = create_fake_llm(["ack"])
+    mock_store = _make_mock_store()
+    mock_registry = _make_mock_tool_registry()
+    saver = InMemorySaver()
+
+    with (
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tool_registry", AsyncMock(return_value=mock_registry)),
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tools_store", AsyncMock(return_value=mock_store)),
+        patch(
+            f"{BASE_SUBAGENT_MODULE}.get_checkpointer_manager",
+            AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: saver)),
+        ),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_subagent_middleware", return_value=[]),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_tools", return_value=[]),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_pre_model_hook", return_value=None),
+    ):
+        graph = await SubAgentFactory.create_provider_subagent(
+            provider="gmail",
+            name="gmail_agent",
+            llm=fake_llm,
+            tool_space="gmail_delegated",
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+        )
+
+    with (
+        patch(
+            f"{HANDOFF_MODULE}._resolve_subagent",
+            AsyncMock(return_value=(graph, "gmail_agent", "gmail", False)),
+        ),
+        patch(
+            f"{HANDOFF_MODULE}.create_subagent_system_message",
+            AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
+        ),
+        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(
+            f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
+            AsyncMock(return_value=[]),
+        ),
+        # handoff() is invoked directly here (no parent graph node), so there is
+        # no active LangGraph runnable context for get_stream_writer() to hook.
+        patch(f"{HANDOFF_MODULE}.get_stream_writer", return_value=MagicMock()),
+        patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            AsyncMock(return_value=SystemMessage(content="ctx")),
+        ),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
+        ),
+    ):
+        yield graph
+
+
 @pytest.mark.integration
 class TestSubagentThreadIsolation:
-    """Verify that two subagent graphs sharing the same MemorySaver instance
-    but using different thread IDs do not share state."""
+    """A handoff to the SAME subagent from two different parent conversations
+    must not leak state between them. Drives the real handoff() tool and a
+    real SubAgentFactory-built graph — proving GAIA's own thread-id derivation
+    and checkpointer isolate state, not just LangGraph's MemorySaver in a toy
+    graph built from scratch for the test."""
 
-    async def test_subagent_thread_isolation(self):
-        """Subagent invocations with different thread IDs must produce
-        independent checkpointed states."""
-        graph_a = _make_minimal_subagent_graph()
-        graph_b = _make_minimal_subagent_graph()
+    async def test_handoff_from_different_parent_threads_is_isolated(
+        self, real_subagent_seams
+    ) -> None:
+        graph = real_subagent_seams
+        parent_a = str(uuid4())
+        parent_b = str(uuid4())
 
-        thread_a = {"configurable": {"thread_id": f"subagent_gmail_{uuid4()}"}}
-        thread_b = {"configurable": {"thread_id": f"subagent_notion_{uuid4()}"}}
-
-        await graph_a.ainvoke(
-            {"messages": [HumanMessage(content="Task A")]},
-            config=thread_a,
+        result_a = await handoff.coroutine(
+            subagent_id="gmail",
+            task="Summarize thread Alpha",
+            config={"configurable": {"user_id": "user-iso-1", "thread_id": parent_a}},
         )
-        await graph_b.ainvoke(
-            {"messages": [HumanMessage(content="Task B")]},
-            config=thread_b,
+        result_b = await handoff.coroutine(
+            subagent_id="gmail",
+            task="Summarize thread Bravo",
+            config={"configurable": {"user_id": "user-iso-1", "thread_id": parent_b}},
         )
 
-        state_a = await graph_a.aget_state(thread_a)
-        state_b = await graph_b.aget_state(thread_b)
+        assert result_a
+        assert result_b
 
-        # Human messages should differ
-        human_a = [m for m in state_a.values["messages"] if isinstance(m, HumanMessage)]
-        human_b = [m for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
+        # Real format from handoff_tools.py: f"{integration_id}_{parent_thread_id}"
+        thread_id_a = f"gmail_{parent_a}"
+        thread_id_b = f"gmail_{parent_b}"
+        assert thread_id_a != thread_id_b
 
-        assert human_a[0].content == "Task A"
-        assert human_b[0].content == "Task B"
+        state_a = await graph.aget_state({"configurable": {"thread_id": thread_id_a}})
+        state_b = await graph.aget_state({"configurable": {"thread_id": thread_id_b}})
 
-    async def test_same_graph_different_threads_are_isolated(self):
-        """The same compiled graph object with different thread configs
-        must maintain independent state per thread."""
-        graph = _make_minimal_subagent_graph()
+        content_a = " ".join(
+            m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)
+        )
+        content_b = " ".join(
+            m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)
+        )
 
-        config_x = {"configurable": {"thread_id": f"thread-x-{uuid4()}"}}
-        config_y = {"configurable": {"thread_id": f"thread-y-{uuid4()}"}}
-
-        await graph.ainvoke({"messages": [HumanMessage(content="From X")]}, config=config_x)
-        await graph.ainvoke({"messages": [HumanMessage(content="From Y")]}, config=config_y)
-
-        state_x = await graph.aget_state(config_x)
-        state_y = await graph.aget_state(config_y)
-
-        human_x = [m for m in state_x.values["messages"] if isinstance(m, HumanMessage)]
-        human_y = [m for m in state_y.values["messages"] if isinstance(m, HumanMessage)]
-
-        assert human_x[0].content == "From X"
-        assert human_y[0].content == "From Y"
+        assert "Summarize thread Alpha" in content_a
+        assert "Summarize thread Bravo" not in content_a, (
+            "thread A's checkpointed state must not contain thread B's task"
+        )
+        assert "Summarize thread Bravo" in content_b
+        assert "Summarize thread Alpha" not in content_b, (
+            "thread B's checkpointed state must not contain thread A's task"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -813,9 +867,6 @@ class TestHandoffFunctionDirectly:
     async def test_handoff_function_directly(self):
         """Calling handoff() directly must return the subagent's response
         string and must route state through execute_subagent_stream."""
-        from app.agents.core.subagents.handoff_tools import (
-            handoff,
-        )
 
         user_id = str(uuid4())
         thread_id = str(uuid4())
@@ -889,7 +940,6 @@ class TestHandoffFunctionDirectly:
     async def test_handoff_passes_task_in_state(self):
         """The task argument supplied to handoff() must appear in the initial
         messages forwarded to execute_subagent_stream."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1021,7 +1071,6 @@ class TestCustomMCPPath:
         will fall through to the platform-integration branch which raises
         AttributeError (dict has no .subagent_config attribute).
         """
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1189,7 +1238,6 @@ class TestHandoffThreadIsolation:
         inside the handoff() coroutine itself; we capture it by intercepting
         build_agent_config to record the thread_id argument it receives.
         """
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1273,7 +1321,6 @@ class TestHandoffThreadIsolation:
         The thread_id is assembled as '{int_id}_{thread_id}' in handoff() before
         being passed to build_agent_config(); we capture it there.
         """
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1354,7 +1401,6 @@ class TestHandoffWithToolCallArgs:
     async def test_handoff_with_tool_call_args(self):
         """subagent_id and task arguments must reach _resolve_subagent and
         build_initial_messages unchanged."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1430,7 +1476,6 @@ class TestHandoffWithToolCallArgs:
     async def test_handoff_user_id_passed_to_resolve_subagent(self):
         """user_id from configurable must be forwarded to _resolve_subagent
         so auth checks inside the custom MCP / MCP-auth paths receive it."""
-        from app.agents.core.subagents.handoff_tools import handoff
 
         underlying = getattr(handoff, "coroutine", None) or handoff
 
@@ -1490,4 +1535,437 @@ class TestHandoffWithToolCallArgs:
         assert len(captured) == 1
         assert captured[0] == user_id, (
             f"Expected user_id='{user_id}' passed to _resolve_subagent, got '{captured[0]}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: HIL approval pause / resume through a real handoff
+# ---------------------------------------------------------------------------
+
+HANDOFF_APPROVAL_ID = "approval-handoff-1"
+GATED_TASK = "post the release note to #eng"
+GATED_ANSWER = "release note posted to #eng"
+
+
+class _GatedSubagentLLM:
+    """Posts the note, then finishes with the result. Message-driven, never counted.
+
+    A HIL resume replays the executor's tool node and shows the model the same
+    messages, so it must produce the same output — a call-sequence-driven fake
+    would desync on the replay.
+    """
+
+    def __init__(self) -> None:
+        self.invocations = 0
+
+    def with_config(self, **_kwargs: Any) -> _GatedSubagentLLM:
+        return self
+
+    def bind_tools(self, _tools: Any, **_kwargs: Any) -> _GatedSubagentLLM:
+        return self
+
+    def with_retry(self, **_kwargs: Any) -> _GatedSubagentLLM:
+        return self
+
+    async def ainvoke(self, messages: Any, **_kwargs: Any) -> AIMessage:
+        self.invocations += 1
+        if any(getattr(m, "type", "") == "tool" for m in messages):
+            return AIMessage(
+                content="",
+                tool_calls=[
+                    {"id": "tc-finish-1", "name": "finish_task", "args": {"result": GATED_ANSWER}}
+                ],
+            )
+        return AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "tc-post-1", "name": "post_release_note", "args": {"channel": "#eng"}}
+            ],
+        )
+
+
+@pytest.fixture
+def gated_effects() -> dict[str, int]:
+    return {"post": 0}
+
+
+@pytest.fixture
+def gated_tool(gated_effects: dict[str, int]):
+    @tool
+    async def post_release_note(channel: str) -> str:
+        """Post the release note to a channel, pausing for approval first."""
+        decision = interrupt(
+            {
+                "type": "hil_approval",
+                "approval_id": HANDOFF_APPROVAL_ID,
+                "tool_name": "post_release_note",
+            }
+        )
+        gated_effects["post"] += 1
+        return f"posted to {channel} after {decision['status']}"
+
+    return post_release_note
+
+
+@pytest.fixture
+async def gated_subagent(gated_tool):
+    """A real provider subagent graph whose only integration tool gates on approval.
+
+    Built through the production factory so the real middleware stack is in
+    play — it is that stack's tool-invocation wrap chain that re-raises the
+    GraphInterrupt as control flow; a bare tool node converts the pause into an
+    error ToolMessage and no approval ever happens.
+    """
+    llm = _GatedSubagentLLM()
+    saver = InMemorySaver()
+    registry = SimpleNamespace(
+        get_category_by_space=lambda _space: SimpleNamespace(
+            tools=[SimpleNamespace(name=gated_tool.name, tool=gated_tool)]
+        ),
+        get_tool_dict=lambda: {gated_tool.name: gated_tool},
+        get_category_of_tool=lambda _name: "general",
+    )
+    with (
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tool_registry", AsyncMock(return_value=registry)),
+        patch(f"{BASE_SUBAGENT_MODULE}.get_tools_store", AsyncMock(return_value=InMemoryStore())),
+        patch(
+            f"{BASE_SUBAGENT_MODULE}.get_checkpointer_manager",
+            AsyncMock(return_value=SimpleNamespace(get_checkpointer=lambda: saver)),
+        ),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_tools", return_value=[]),
+        patch(f"{BASE_SUBAGENT_MODULE}.create_todo_pre_model_hook", return_value=None),
+        patch("app.agents.core.nodes.memory_node.memory_engine", MagicMock()),
+    ):
+        graph = await SubAgentFactory.create_provider_subagent(
+            provider="gmail",
+            name="gmail_agent",
+            llm=llm,
+            tool_space="gmail_delegated",
+            use_direct_tools=True,
+            disable_retrieve_tools=True,
+        )
+    return SimpleNamespace(graph=graph, llm=llm)
+
+
+@pytest.fixture
+def handoff_seams(gated_subagent):
+    """External I/O only: provider lookup, prompt/context retrieval, Mongo reads."""
+    with (
+        patch(
+            f"{HANDOFF_MODULE}._resolve_subagent",
+            AsyncMock(return_value=(gated_subagent.graph, "gmail_agent", "gmail", False)),
+        ),
+        patch(
+            f"{HANDOFF_MODULE}.create_subagent_system_message",
+            AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
+        ),
+        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(
+            f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            AsyncMock(return_value=SystemMessage(content="ctx")),
+        ),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
+        ),
+    ):
+        yield
+
+
+def _interrupt_payloads(events: list) -> list[dict[str, Any]]:
+    """The HIL payloads the parent graph paused on during ``events``."""
+    return [
+        interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
+        for mode, payload in events
+        if mode == "updates" and isinstance(payload, dict) and LANGGRAPH_INTERRUPT_KEY in payload
+    ]
+
+
+class _ExecutorDriver:
+    """Calls the real handoff tool from inside a parent node, as the executor does.
+
+    A handoff drives its subagent imperatively, so the subagent's GraphInterrupt
+    only becomes a pause if ``_run_blocking_handoff`` re-raises it into a parent
+    runtime — which needs a real checkpointed parent graph around the call.
+    """
+
+    def __init__(self) -> None:
+        self.results: list[str] = []
+        underlying = handoff.coroutine
+
+        async def tool_node(_state: MessagesState, config: RunnableConfig) -> dict:
+            text = await underlying(
+                subagent_id="gmail",
+                task=GATED_TASK,
+                config=config,
+                tool_call_id="parent-tc-1",
+            )
+            self.results.append(text)
+            return {"messages": [AIMessage(content=text)]}
+
+        builder = StateGraph(MessagesState)
+        builder.add_node("tools", tool_node)
+        builder.add_edge(START, "tools")
+        builder.add_edge("tools", END)
+        self.graph = builder.compile(checkpointer=InMemorySaver())
+        self.conversation_id = f"handoff-hil-{uuid4()}"
+
+    @property
+    def subagent_thread_id(self) -> str:
+        return f"gmail_executor_{self.conversation_id}"
+
+    async def run(self, resume: Any | None = None) -> list:
+        configurable: dict[str, Any] = {
+            "thread_id": f"executor_{self.conversation_id}",
+            "conversation_id": self.conversation_id,
+            "user_id": "user-hil-1",
+        }
+        if resume is not None:
+            # The production contract: the executor's resume re-dispatch sets this,
+            # and it is what arms the parked-checkpoint probe inside handoff().
+            configurable[HIL_RESUME_CONFIG_KEY] = True
+        payload = (
+            Command(resume=resume)
+            if resume is not None
+            else {"messages": [HumanMessage(content="go")]}
+        )
+        return [
+            event
+            async for event in self.graph.astream(
+                payload,
+                config={"configurable": configurable},
+                stream_mode=["updates", "custom"],
+            )
+        ]
+
+
+def _approval_record(conversation_id: str, thread_id: str) -> HILApprovalRecord:
+    return HILApprovalRecord(
+        approval_id=HANDOFF_APPROVAL_ID,
+        user_id="user-hil-1",
+        conversation_id=conversation_id,
+        stream_id="stream-hil-1",
+        tool_name="post_release_note",
+        status="approved",
+        subagent_thread_id=thread_id,
+        subagent_agent_name="gmail",
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+
+
+@pytest.mark.integration
+class TestHandoffHILPauseResume:
+    """A gated tool inside a handed-off subagent must pause the executor and,
+    once decided, resume from the subagent's checkpoint instead of re-running it."""
+
+    async def test_a_gated_subagent_tool_parks_the_handoff_instead_of_answering(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        driver = _ExecutorDriver()
+
+        events = await driver.run()
+
+        paused = _interrupt_payloads(events)
+        assert paused, "a gated tool inside a handoff must pause the executor, not answer"
+        assert paused[0]["tool_name"] == "post_release_note"
+        assert paused[0]["approval_id"] == HANDOFF_APPROVAL_ID
+        assert gated_effects["post"] == 0, "nothing may run before the approval"
+        assert driver.results == [], "handoff must not return a result while parked"
+        snapshot = await gated_subagent.graph.aget_state(
+            {"configurable": {"thread_id": driver.subagent_thread_id}}
+        )
+        assert snapshot.next, "the parked subagent is checkpointed so a decision can resume it"
+
+    async def test_an_approved_handoff_resumes_the_checkpoint_and_acts_exactly_once(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        driver = _ExecutorDriver()
+        await driver.run()
+        calls_at_park = gated_subagent.llm.invocations
+
+        events = await driver.run(resume={"status": "approved", "approval_id": HANDOFF_APPROVAL_ID})
+
+        assert not _interrupt_payloads(events), "the executor finishes without re-pausing"
+        assert gated_effects["post"] == 1, "the approved action runs exactly once"
+        assert driver.results == [GATED_ANSWER], "the handoff returns the subagent's answer"
+        assert gated_subagent.llm.invocations == calls_at_park + 1, (
+            "the replay resumes the parked thread — it must not re-drive the model "
+            "from the first turn"
+        )
+
+    async def test_resume_parked_subagent_continues_the_parked_thread(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        """The background-park collection path: everything is rebuilt from the
+        approval record, and the subagent picks up at its interrupt."""
+        driver = _ExecutorDriver()
+        await driver.run()
+        calls_at_park = gated_subagent.llm.invocations
+        record = _approval_record(driver.conversation_id, driver.subagent_thread_id)
+
+        outcome = await resume_parked_subagent(record, {"user_id": "user-hil-1"}, None)
+
+        assert not outcome.paused
+        assert outcome.text == GATED_ANSWER
+        assert gated_effects["post"] == 1, "the approved action runs exactly once"
+        assert gated_subagent.llm.invocations == calls_at_park + 1, (
+            "resumed from the checkpoint, not restarted from an empty initial state"
+        )
+
+    async def test_resume_parked_subagent_refuses_when_the_checkpoint_is_gone(
+        self, gated_subagent, gated_effects: dict[str, int], handoff_seams
+    ) -> None:
+        """Starting fresh would re-run the whole task from an empty state, so a
+        record pointing at a thread with no checkpoint must fail loudly instead."""
+        record = _approval_record("handoff-hil-missing", "gmail_executor_handoff-hil-missing")
+
+        outcome = await resume_parked_subagent(record, {"user_id": "user-hil-1"}, None)
+
+        assert "checkpoint is missing" in outcome.text
+        assert gated_effects["post"] == 0, "nothing may run when there is nothing to resume"
+
+
+# ---------------------------------------------------------------------------
+# Test: background=True dispatch and dedup
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+async def background_dispatch_seams():
+    """External I/O only: subagent resolution, prompt/context retrieval, and the
+    actual background execution (asyncio.create_task'd, never awaited by the
+    caller — mocked so the test verifies dispatch/dedup mechanics, not a real
+    subagent run). try_claim_bg_dispatch's real Redis call is intentionally NOT
+    mocked — the durable dedup guard is the point of this test — but the shared
+    redis_cache singleton is a client bound to whichever event loop first
+    touched it, which is a DIFFERENT (closed) loop once other tests in this
+    file have run. Force a fresh client on this test's own loop instead."""
+    from app.db.redis import redis_cache
+
+    redis_cache.redis = None  # next `.client` access lazily reconnects on THIS loop
+    fresh_client = redis_cache.client
+    await fresh_client.ping()
+
+    mock_graph = MagicMock()
+    run_bg = AsyncMock(return_value=None)
+    spawned: list[asyncio.Task] = []
+    real_create_task = asyncio.create_task
+
+    def _tracking_create_task(coro, **kwargs):
+        task = real_create_task(coro, **kwargs)
+        spawned.append(task)
+        return task
+
+    with (
+        patch(
+            f"{HANDOFF_MODULE}._resolve_subagent",
+            AsyncMock(return_value=(mock_graph, "gmail_agent", "gmail", False)),
+        ),
+        patch(
+            f"{HANDOFF_MODULE}.create_subagent_system_message",
+            AsyncMock(return_value=SystemMessage(content="You are the Gmail agent.")),
+        ),
+        patch(f"{HANDOFF_MODULE}.get_provider_metadata", AsyncMock(return_value=None)),
+        patch(
+            f"{HANDOFF_MODULE}.list_parked_subagents_for_conversation",
+            AsyncMock(return_value=[]),
+        ),
+        patch(
+            "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+            AsyncMock(return_value=SystemMessage(content="ctx")),
+        ),
+        patch(
+            "app.utils.agent_utils.get_tool_registry",
+            AsyncMock(return_value=SimpleNamespace(get_category_of_tool=lambda _name: "general")),
+        ),
+        patch(f"{HANDOFF_MODULE}.run_subagent_background", run_bg),
+        patch(f"{HANDOFF_MODULE}.asyncio.create_task", side_effect=_tracking_create_task),
+    ):
+        yield run_bg
+        # handoff(background=True) fire-and-forgets its subagent task via
+        # asyncio.create_task — drain exactly the task(s) THIS test spawned
+        # (captured via the wrapper above) so none outlive this test's event
+        # loop and raise "Event loop is closed" as an orphaned-task warning.
+        pending = [t for t in spawned if not t.done()]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        await fresh_client.aclose()
+        redis_cache.redis = None
+
+
+@pytest.mark.integration
+class TestBackgroundSubagentDispatch:
+    """A background=True handoff must spawn exactly once per distinct tool call
+    and reject a second dispatch for the same (conversation, tool_call_id) pair —
+    the node re-runs on a HIL-join replay, and re-spawning would double the
+    subagent's real-world side effects."""
+
+    async def test_background_dispatch_returns_started_message_and_spawns_once(
+        self, background_dispatch_seams
+    ) -> None:
+        stream_id = f"stream-bg-{uuid4()}"
+        conversation_id = f"conv-bg-{uuid4()}"
+        config = {
+            "configurable": {
+                "user_id": "user-bg-1",
+                "thread_id": conversation_id,
+                "conversation_id": conversation_id,
+                "stream_id": stream_id,
+            }
+        }
+
+        result = await handoff.coroutine(
+            subagent_id="gmail",
+            task="triage overnight email",
+            config=config,
+            background=True,
+            tool_call_id="tc-bg-1",
+        )
+
+        assert "started in background" in result
+        assert "gmail_agent" in result
+        background_dispatch_seams.assert_called_once()
+
+    async def test_duplicate_dispatch_same_tool_call_id_is_deduplicated(
+        self, background_dispatch_seams
+    ) -> None:
+        """Simulates a HIL-join replay: the node re-runs with a fresh stream_id
+        (a new SSE connection on resume), but conversation_id and tool_call_id
+        are checkpointed and stable — the durable Redis guard, not the in-memory
+        per-stream integration claim, is what must catch this duplicate."""
+        conversation_id = f"conv-bg-{uuid4()}"
+
+        def _config(stream_id: str) -> dict:
+            return {
+                "configurable": {
+                    "user_id": "user-bg-1",
+                    "thread_id": conversation_id,
+                    "conversation_id": conversation_id,
+                    "stream_id": stream_id,
+                }
+            }
+
+        first = await handoff.coroutine(
+            subagent_id="gmail",
+            task="triage overnight email",
+            config=_config(f"stream-bg-{uuid4()}"),
+            background=True,
+            tool_call_id="tc-bg-dup-1",
+        )
+        second = await handoff.coroutine(
+            subagent_id="gmail",
+            task="triage overnight email",
+            config=_config(f"stream-bg-{uuid4()}"),
+            background=True,
+            tool_call_id="tc-bg-dup-1",
+        )
+
+        assert "started in background" in first
+        assert "started in background" in second
+        assert background_dispatch_seams.call_count == 1, (
+            "the second dispatch with the same tool_call_id must not re-spawn the subagent"
         )

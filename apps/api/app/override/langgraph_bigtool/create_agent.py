@@ -36,11 +36,16 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage, ToolCall, ToolMessage
 from langchain_core.runnables import Runnable, RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
+
+# Imported from the defining module, as langgraph's own prebuilt/ package does.
+# langgraph.utils.runnable is a compat shim ("to be removed in v1" — we are on
+# 1.2.7) that re-exports without __all__, so it is both deprecated and invisible
+# to no_implicit_reexport.
+from langgraph._internal._runnable import RunnableCallable
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import RetryPolicy, Send
-from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.llm.client import (
@@ -53,6 +58,7 @@ from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import FINISH_TASK_NAME, NEW_MESSAGE_BREAKER
 from app.constants.llm import RECURSION_WRAPUP_THRESHOLD_STEPS
+from app.models.agent_models import AgentConfigurable, agent_configurable
 from app.override.langgraph_bigtool.dynamic_tool_node import (
     DynamicToolNode,
     format_tool_error,
@@ -80,7 +86,7 @@ RetrieveToolsResponse = RetrieveToolsResult | list[str]
 def _prepare_fallback(
     fallback_llm: Runnable | None,
     tools_to_bind: list[BaseTool],
-    model_configurations: Mapping[str, Any],
+    model_configurations: AgentConfigurable,
 ) -> Callable[[], Runnable] | None:
     """Factory that binds the default fallback model with the same tools as the
     primary. Returned as a zero-arg callable so the (per-turn, tool-list-sized)
@@ -103,7 +109,7 @@ def create_agent(
     retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]] | None = None,
     initial_tool_ids: list[str] | None = None,
     disable_retrieve_tools: bool = False,
-    context_schema=None,
+    context_schema: type[Any] | None = None,
     agent_name: str = "main_agent",
     middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
@@ -212,8 +218,10 @@ def create_agent(
                 "Use the async graph execution path (ainvoke/astream)."
             )
 
-        model_configurations = config.get("configurable", {})
-        _llm = llm.with_config(configurable=model_configurations)
+        # The raw bag goes back to LangChain untouched (it owns the keys it
+        # merged in); the typed view is what GAIA reads its own keys through.
+        _llm = llm.with_config(configurable=config.get("configurable", {}))
+        model_configurations = agent_configurable(config)
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         fallback = _prepare_fallback(fallback_llm, tools_to_bind, model_configurations)
@@ -263,8 +271,10 @@ def create_agent(
 
         state = _maybe_inject_wrapup(state)
 
-        model_configurations = config.get("configurable", {})
-        _llm = llm.with_config(configurable=model_configurations)
+        # The raw bag goes back to LangChain untouched (it owns the keys it
+        # merged in); the typed view is what GAIA reads its own keys through.
+        _llm = llm.with_config(configurable=config.get("configurable", {}))
+        model_configurations = agent_configurable(config)
 
         tools_to_bind = build_tools_to_bind(state)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
@@ -340,7 +350,7 @@ def create_agent(
             if store_arg:
                 kwargs[store_arg] = store
             if config:
-                user_id = config.get("configurable", {}).get("user_id")
+                user_id = agent_configurable(config).get("user_id")
                 if user_id:
                     kwargs["user_id"] = user_id
 
@@ -388,7 +398,7 @@ def create_agent(
             if store_arg:
                 kwargs[store_arg] = store
             if config:
-                user_id = config.get("configurable", {}).get("user_id")
+                user_id = agent_configurable(config).get("user_id")
                 if user_id:
                     kwargs["user_id"] = user_id
 
@@ -472,14 +482,68 @@ def create_agent(
     async def areject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
         return reject_unbound_tools(tool_calls, store=store)
 
-    def should_continue(state: State, *, store: BaseStore):
+    def _last_tool_calling_message(state: State) -> AIMessage | None:
+        """The AI message whose calls this turn is executing.
+
+        NOT ``messages[-1]``: a resume prepends a current-time HumanMessage
+        (``subagent_runner._with_current_time``), so by the time the approvals node has
+        paused and woken, the tool-calling message is no longer last. Matches
+        ``hil/utils.current_tool_calls``, which the gate resolves siblings with — the two
+        must agree on which message is being executed or they gate different call sets.
+        """
+        for message in reversed(state["messages"]):
+            if isinstance(message, AIMessage) and message.tool_calls:
+                return message
+        return None
+
+    def _executable_calls(state: State) -> list[ToolCall]:
+        """The message's tool calls that the tools node will run, names canonicalized.
+
+        Mutates each call's name in place when it maps to a bound tool, so the tools
+        node's registry lookup hits the actual BaseTool. Separate from routing because
+        both the router and the approvals node's outgoing edge need this same list.
+        """
+        last_message = _last_tool_calling_message(state)
+        if last_message is None:
+            return []
+        bound_names = _get_bound_tool_names(state)
+        canonical_to_bound = canonical_tool_name_map(bound_names)
+        runnable: list[ToolCall] = []
+        for call in last_message.tool_calls:
+            if retrieve_tools is not None and call["name"] == retrieve_tools.name:
+                continue
+            if call["name"] not in bound_names:
+                canonical = canonical_to_bound.get(call["name"].replace("-", "_"))
+                if canonical is None:
+                    continue
+                call["name"] = canonical
+            runnable.append(call)
+        return runnable
+
+    def dispatch_tools(state: State, *, store: BaseStore) -> list[Send]:
+        """Fan the message's calls out to the tools node, one task each.
+
+        ToolCallWithContext carries the full state dict so ToolNode can do InjectedState
+        injection. Each call becomes its own task, and a task that pauses for approval
+        leaves its completed siblings alone — LangGraph persists their writes.
+        """
+        del store
+        return [
+            Send(
+                "tools",
+                ToolCallWithContext(__type="tool_call_with_context", tool_call=call, state=state),
+            )
+            for call in _executable_calls(state)
+        ]
+
+    def should_continue(state: State, *, store: BaseStore) -> str | Send | list[Send]:
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
             return "end_graph_hooks" if end_graph_hooks else END
         bound_names = _get_bound_tool_names(state)
         canonical_to_bound = canonical_tool_name_map(bound_names)
-        destinations = []
+        destinations: list[Send] = []
         unbound_calls: list[ToolCall] = []
 
         finish_calls: list[ToolCall] = [
@@ -492,27 +556,16 @@ def create_agent(
             if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                 destinations.append(Send("select_tools", [call]))
                 continue
-            if call["name"] not in bound_names:
-                canonical = canonical_to_bound.get(call["name"].replace("-", "_"))
-                if canonical is None:
-                    unbound_calls.append(call)
-                    continue
-                # Rewrite to the canonical name so the tools node's
-                # registry lookup hits the actual BaseTool.
-                call["name"] = canonical
-            # Wrap each tool call with ToolCallWithContext so that ToolNode
-            # receives the full state dict (including "todos") for
-            # InjectedState injection.
-            destinations.append(
-                Send(
-                    "tools",
-                    ToolCallWithContext(
-                        __type="tool_call_with_context",
-                        tool_call=call,
-                        state=state,
-                    ),
-                )
-            )
+            if call["name"] not in bound_names and not canonical_to_bound.get(
+                call["name"].replace("-", "_")
+            ):
+                unbound_calls.append(call)
+
+        # ONE task for the whole message, and it runs before any tool: the approvals node
+        # settles every HIL decision in its own superstep, then fans out to the tools node.
+        # Sending straight to "tools" here is what used to let an ungated call execute
+        # beside one that paused — and a pause discards and replays that whole step.
+        destinations.extend(dispatch_tools(state, store=store))
 
         if unbound_calls:
             destinations.append(Send("reject_unbound_tools", unbound_calls))

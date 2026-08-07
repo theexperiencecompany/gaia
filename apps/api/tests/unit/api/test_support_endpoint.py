@@ -7,10 +7,18 @@ Tests cover:
 - GET  /api/v1/support/rate-limit-status
 """
 
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
 import pytest
+
+from app.models.support_models import (
+    SupportRequestListResponse,
+    SupportRequestPagination,
+    SupportRequestResponse,
+    SupportRequestType,
+)
 
 SUBMIT_URL = "/api/v1/support/requests"
 SUBMIT_WITH_ATTACHMENTS_URL = "/api/v1/support/requests/with-attachments"
@@ -32,6 +40,36 @@ def _make_submission_response(**overrides) -> MagicMock:
     }
     base.update(overrides)
     return MagicMock(**base)
+
+
+def _make_support_request(ticket_id: str = "GAIA-001") -> SupportRequestResponse:
+    now = datetime(2025, 1, 1, tzinfo=UTC)
+    return SupportRequestResponse(
+        id="req-1",
+        ticket_id=ticket_id,
+        user_id="507f1f77bcf86cd799439011",
+        user_email="test@example.com",
+        user_name="Test User",
+        type=SupportRequestType.SUPPORT,
+        title="Help needed",
+        description="I have an issue that needs to be looked at.",
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def _make_list_response(
+    requests: list[SupportRequestResponse] | None = None,
+    *,
+    page: int = 1,
+    per_page: int = 10,
+    total: int = 0,
+    pages: int = 0,
+) -> SupportRequestListResponse:
+    return SupportRequestListResponse(
+        requests=requests or [],
+        pagination=SupportRequestPagination(page=page, per_page=per_page, total=total, pages=pages),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -248,30 +286,22 @@ class TestGetMySupportRequests:
     """Tests for the get user support requests endpoint."""
 
     async def test_get_my_requests_returns_200(self, client: AsyncClient):
-        mock_result = {
-            "requests": [],
-            "total": 0,
-            "page": 1,
-            "per_page": 10,
-        }
         with patch(
             _GET_USER_REQUESTS,
             new_callable=AsyncMock,
-            return_value=mock_result,
+            return_value=_make_list_response(),
         ):
             response = await client.get(MY_REQUESTS_URL)
 
         assert response.status_code == 200
         data = response.json()
-        assert data["total"] == 0
+        assert data["requests"] == []
+        assert data["pagination"] == {"page": 1, "per_page": 10, "total": 0, "pages": 0}
 
     async def test_get_my_requests_with_pagination(self, client: AsyncClient):
-        mock_result = {
-            "requests": [{"ticket_id": "GAIA-001"}],
-            "total": 1,
-            "page": 2,
-            "per_page": 5,
-        }
+        mock_result = _make_list_response(
+            [_make_support_request()], page=2, per_page=5, total=1, pages=1
+        )
         with patch(
             _GET_USER_REQUESTS,
             new_callable=AsyncMock,
@@ -280,6 +310,9 @@ class TestGetMySupportRequests:
             response = await client.get(MY_REQUESTS_URL, params={"page": 2, "per_page": 5})
 
         assert response.status_code == 200
+        body = response.json()
+        assert [r["ticket_id"] for r in body["requests"]] == ["GAIA-001"]
+        assert body["pagination"]["page"] == 2
         mock_get.assert_awaited_once_with(
             user_id="507f1f77bcf86cd799439011",
             page=2,
@@ -291,7 +324,7 @@ class TestGetMySupportRequests:
         with patch(
             _GET_USER_REQUESTS,
             new_callable=AsyncMock,
-            return_value={"requests": [], "total": 0, "page": 1, "per_page": 10},
+            return_value=_make_list_response(),
         ) as mock_get:
             await client.get(MY_REQUESTS_URL, params={"status": "open"})
 

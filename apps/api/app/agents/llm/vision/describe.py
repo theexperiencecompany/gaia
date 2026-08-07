@@ -1,5 +1,9 @@
 """The text-description fallback — how a model that cannot see gets to "see"."""
 
+from typing import cast
+
+from langchain_core.messages import BaseMessage
+
 from app.agents.llm.client import ainvoke_llm, get_default_llm
 from app.constants.log_tags import LogTag
 from app.utils.multimodal import image_content_block
@@ -38,5 +42,7 @@ async def describe_image(
         return None
     # `.text` flattens the message's content blocks to a string; `.content` may
     # be a list (Gemini), whose repr would leak into the description.
-    description = response.text.strip()
+    # ainvoke_llm is typed -> Any (its return shape varies by call site); this
+    # call always resolves to a chat-model response message.
+    description = cast(BaseMessage, response).text.strip()
     return description or None

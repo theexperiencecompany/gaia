@@ -86,13 +86,13 @@ class TestSearchMessagesHappyPath:
 
         result = await search_messages("Python", FAKE_USER_ID)
 
-        assert len(result["messages"]) == 2
-        assert len(result["conversations"]) == 1
-        assert len(result["notes"]) == 2
-        assert all("snippet" in m for m in result["messages"])
-        assert all("snippet" in n for n in result["notes"])
-        assert result["messages"][0]["conversation_id"] == "conv1"
-        assert result["notes"][0]["id"] == "n1"
+        assert len(result.messages) == 2
+        assert len(result.conversations) == 1
+        assert len(result.notes) == 2
+        assert all(m.snippet == "...matched text..." for m in result.messages)
+        assert all(n.snippet == "...matched text..." for n in result.notes)
+        assert result.messages[0].conversation_id == "conv1"
+        assert result.notes[0].id == "n1"
 
 
 @pytest.mark.unit
@@ -105,9 +105,9 @@ class TestSearchMessagesEmpty:
 
         result = await search_messages("nonexistent", FAKE_USER_ID)
 
-        assert result["messages"] == []
-        assert result["conversations"] == []
-        assert result["notes"] == []
+        assert result.messages == []
+        assert result.conversations == []
+        assert result.notes == []
 
 
 @pytest.mark.unit

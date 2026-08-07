@@ -10,7 +10,7 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Eighteen lanes
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Nineteen lanes
   (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity, security,
   evlog-map observability score, wide-event cross-runtime conformance, …)
   behind the ratcheted `Quality gate (required)` check.
@@ -79,7 +79,7 @@ intended semantic, keep it:
 ## The ratchet
 
 `code-quality.yml`'s gate enforces a lane iff a marker file exists at
-`quality-gate/enforced/<lane>`. All 18 lanes are currently enforced. New lane:
+`quality-gate/enforced/<lane>`. All 19 lanes are currently enforced. New lane:
 add it non-enforced first, burn down findings, then add its marker in its own
 PR (separate marker files never merge-conflict). A lane that is already green
 on the commit introducing it has nothing to burn down and may ship enforced —

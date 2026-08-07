@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, TypedDict, cast
 
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import EmbeddingFunction, Metadata
+from chromadb.api.types import EmbeddingFunction, Embeddings, Metadata
 
 from app.constants.memory import (
     CHROMA_CONVERSATION_CHUNKS_COLLECTION,
@@ -38,8 +38,8 @@ class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
         # explicitly to upsert/query calls.
         pass
 
-    def __call__(self, input: list[str]) -> Any:
-        return [[0.0] * EMBEDDING_DIM for _ in input]
+    def __call__(self, input: list[str]) -> Embeddings:
+        return cast(Embeddings, [[0.0] * EMBEDDING_DIM for _ in input])
 
 
 _NOOP_EF = _NoOpEmbeddingFunction()

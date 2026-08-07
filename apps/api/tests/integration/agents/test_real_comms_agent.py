@@ -196,7 +196,7 @@ def _apply_all_patches(
         yield
 
 
-@pytest.fixture()
+@pytest.fixture
 async def comms_graph_simple():
     """
     Build the REAL comms agent graph with:
@@ -216,7 +216,7 @@ async def comms_graph_simple():
             yield graph
 
 
-@pytest.fixture()
+@pytest.fixture
 async def comms_graph_with_tool_call():
     """
     Build the REAL comms agent graph whose fake LLM first returns a tool call

@@ -1,6 +1,6 @@
 """Request/response schemas for the dev-only identity + seeding endpoints."""
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class CreateDevUserRequest(BaseModel):
@@ -8,18 +8,6 @@ class CreateDevUserRequest(BaseModel):
 
     email: str = Field(min_length=3, max_length=320, description="User email (unique key)")
     name: str | None = Field(default=None, max_length=200, description="Display name")
-
-
-class DevUserResponse(BaseModel):
-    """The minted user document (Mongo fields spread through)."""
-
-    # The full user document is returned; only the identifying fields are typed
-    # so the OpenAPI schema stays honest while the dynamic Mongo doc passes through.
-    model_config = ConfigDict(extra="allow")
-
-    id: str
-    email: str
-    name: str | None = None
 
 
 class SeedDevDataRequest(BaseModel):
@@ -47,12 +35,21 @@ class SeedDevDataResponse(BaseModel):
     platform_user_ids: dict[str, str]
 
 
+class DevDeletedCounts(BaseModel):
+    """How many rows teardown removed, per collection."""
+
+    todos: int
+    conversations: int
+    projects: int
+    user: int
+
+
 class DeleteDevUserResponse(BaseModel):
     """Summary of the user + owned data removed during teardown."""
 
     email: str
     user_id: str
-    deleted: dict[str, int]
+    deleted: DevDeletedCounts
 
 
 class RunDevAgentRequest(BaseModel):

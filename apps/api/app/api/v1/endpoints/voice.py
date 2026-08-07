@@ -12,8 +12,8 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
 )
 from app.api.v1.middleware.agent_auth import create_agent_token
-from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
 from app.config.settings import settings
+from app.decorators import tiered_rate_limit
 from app.schemas.voice_schemas import (
     StarredVoicesResponse,
     StarVoiceRequest,

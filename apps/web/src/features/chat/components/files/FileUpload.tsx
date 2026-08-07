@@ -40,15 +40,29 @@ interface FileWithPreview {
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_FILES = 5;
+// Mirrors the backend allowlist in apps/api/app/utils/upload_validation.py so
+// every type the API accepts (and now parses locally — XLSX/PPTX/CSV/ODF/RTF/EPUB
+// via anydoc, PDF via pdf-inspector) is selectable in the picker.
 const ALLOWED_FILE_TYPES = [
   "image/jpeg",
   "image/png",
   "image/gif",
   "image/webp",
+  "image/bmp",
   "application/pdf",
   "text/plain",
+  "text/markdown",
+  "text/csv",
+  "text/rtf",
+  "application/json",
+  "application/epub+zip",
+  "application/vnd.oasis.opendocument.text",
+  "application/vnd.oasis.opendocument.spreadsheet",
+  "application/vnd.oasis.opendocument.presentation",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
 ];
 
 export default function FileUpload({
@@ -358,9 +372,9 @@ export default function FileUpload({
                     : "Click to upload or drag and drop"}
                 </p>
                 <p className="text-center text-xs text-zinc-500">
-                  Images, PDF, TXT, DOC, DOCX (max{" "}
-                  {MAX_FILE_SIZE / (1024 * 1024)}MB per file, {MAX_FILES} files
-                  max)
+                  Images, PDF, TXT, MD, JSON, CSV, DOC, DOCX, XLSX, PPTX, RTF,
+                  EPUB, ODT, ODS, ODP (max {MAX_FILE_SIZE / (1024 * 1024)}MB per
+                  file, {MAX_FILES} files max)
                 </p>
               </>
             ) : isUploading ? (

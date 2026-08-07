@@ -92,6 +92,7 @@ function discoverEnvVarNames(command: string, args: string[]): string[] {
   const names: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === undefined) continue;
     if (arg === "-e" || arg === "--env") {
       const next = args[i + 1];
       if (next && !next.includes("=")) names.push(next);

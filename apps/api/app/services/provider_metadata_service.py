@@ -83,7 +83,7 @@ async def fetch_tool_response(
             return data
         if isinstance(data, str):
             try:
-                return json.loads(data)
+                parsed = json.loads(data)
             except json.JSONDecodeError:
                 log.warning(
                     "Could not parse tool response as JSON",
@@ -91,13 +91,20 @@ async def fetch_tool_response(
                     response_length=len(data),
                 )
                 return None
-        else:
+            if isinstance(parsed, dict):
+                return parsed
             log.warning(
-                "Unexpected response type from tool",
+                "Tool response JSON was not an object",
                 tool_name=tool_name,
-                data_type=type(data).__name__,
+                data_type=type(parsed).__name__,
             )
             return None
+        log.warning(
+            "Unexpected response type from tool",
+            tool_name=tool_name,
+            data_type=type(data).__name__,
+        )
+        return None
 
     except Exception as e:
         log.error(
@@ -198,8 +205,8 @@ async def get_provider_metadata(user_id: str, provider: str) -> dict[str, str] |
         if not user:
             return None
 
-        provider_metadata = user.provider_metadata or {}
-        return provider_metadata.get(provider)
+        metadata = (user.provider_metadata or {}).get(provider)
+        return metadata if isinstance(metadata, dict) else None
 
     except Exception as e:
         log.error(
@@ -238,4 +245,5 @@ async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -
 
     # Store metadata in database
     # Use provider name for storage (matches handoff tool lookup)
-    return await store_provider_metadata(user_id, integration.provider, metadata)
+    stored: bool = await store_provider_metadata(user_id, integration.provider, metadata)
+    return stored

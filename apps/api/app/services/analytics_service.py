@@ -7,6 +7,8 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
 
+from posthog import Posthog
+
 from app.constants.auth import LOGIN_METHOD_WORKOS
 from app.core.lazy_loader import providers
 from app.models.payment_models import PlanType, SubscriptionStatus
@@ -35,9 +37,10 @@ class AnalyticsEvents(StrEnum):
     SUBSCRIPTION_FAILED = "subscription:failed"
 
 
-def _get_posthog_client():
+def _get_posthog_client() -> Posthog | None:
     """Get the PostHog client from providers."""
-    return providers.get("posthog")
+    client: Posthog | None = providers.get("posthog")
+    return client
 
 
 def identify_user(

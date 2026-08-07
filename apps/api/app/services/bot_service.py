@@ -12,6 +12,7 @@ from app.db.redis import redis_cache
 from app.db.repositories.bot_sessions import bot_session_repository
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import ConversationModel, ConversationSource
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import create_conversation_service
 from shared.py.wide_events import log
 
@@ -82,7 +83,7 @@ class BotService:
         platform: str,
         platform_user_id: str,
         channel_id: str | None,
-        user: dict,
+        user: AuthenticatedUser,
     ) -> str:
         """
         Get existing bot session or create a new one.
@@ -158,7 +159,7 @@ class BotService:
 
     @staticmethod
     async def reset_session(
-        platform: str, platform_user_id: str, channel_id: str | None, user: dict
+        platform: str, platform_user_id: str, channel_id: str | None, user: AuthenticatedUser
     ) -> str:
         """
         Reset bot session (delete existing and create new).

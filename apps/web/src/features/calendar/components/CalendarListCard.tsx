@@ -24,7 +24,7 @@ export default function CalendarListCard({
     return groupFetchDataByDate(events);
   }, [events]);
 
-  if (!!events && events.length > 0) {
+  if (events && events.length > 0) {
     const content = (
       <div className="w-full max-w-md rounded-3xl bg-zinc-800 p-4 text-white">
         <ScrollShadow className="mt-2 max-h-[400px] space-y-3">

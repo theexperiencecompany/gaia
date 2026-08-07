@@ -55,7 +55,7 @@ from app.agents.core.subagents.subagent_runner import (
 from app.agents.tools.wait_for_subagents_tool import wait_for_subagents
 from app.models.hil_models import HILPreferences
 from app.services.hil import resolution
-from app.services.hil.gate import gate_tool_call
+from app.services.hil.gate import decide_tool_call
 from app.services.hil.resume_slot import release_resume_dispatch
 
 GMAIL = "gmail"
@@ -128,7 +128,10 @@ class TestCoalescedApprovalBarrier:
                             name=tool_name,
                         )
 
-                    return {"messages": [await gate_tool_call(request, handler)]}
+                    # The gate decides and never executes, so the node runs the tool
+                    # itself — the same two lines every real adapter uses.
+                    blocked = await decide_tool_call(request)
+                    return {"messages": [blocked or await handler(request)]}
 
                 g = StateGraph(MessagesState)
                 g.add_node("act", act)

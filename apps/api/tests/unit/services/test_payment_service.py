@@ -514,9 +514,9 @@ class TestCreateSubscription:
             product_id="prod_abc123",
         )
 
-        assert result["subscription_id"] == "sess_001"
-        assert result["payment_link"] == "https://checkout.dodo.dev/sess_001"
-        assert result["status"] == "payment_link_created"
+        assert result.subscription_id == "sess_001"
+        assert result.payment_link == "https://checkout.dodo.dev/sess_001"
+        assert result.status == "payment_link_created"
 
     async def test_raises_404_if_user_not_found(
         self,
@@ -667,7 +667,7 @@ class TestCreateSubscription:
         )
 
         # Just verify it doesn't raise and returns the link
-        assert result["status"] == "payment_link_created"
+        assert result.status == "payment_link_created"
 
     async def test_custom_quantity_passed_to_checkout(
         self,
@@ -721,8 +721,8 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is True
-        assert result["subscription_id"] == "sub_xyz789"
+        assert result.payment_completed is True
+        assert result.subscription_id == "sub_xyz789"
         mock_send_email.assert_awaited_once()
 
     async def test_no_subscription_returns_not_completed(
@@ -735,8 +735,8 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is False
-        assert "No active subscription" in result["message"]
+        assert result.payment_completed is False
+        assert "No active subscription" in result.message
 
     async def test_email_failure_does_not_raise(
         self,
@@ -757,7 +757,7 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is True
+        assert result.payment_completed is True
 
     async def test_no_email_on_user_without_email(
         self,
@@ -798,7 +798,7 @@ class TestVerifyPaymentCompletion:
 
         result = await payment_service.verify_payment_completion(FAKE_USER_ID)
 
-        assert result["payment_completed"] is True
+        assert result.payment_completed is True
         mock_send_email.assert_not_awaited()
 
 
@@ -1421,10 +1421,40 @@ class TestHandleSubscriptionRenewed:
         assert "renewed" in result.message.lower()
         mock_webhook_subscription_repository.apply_update_by_dodo_id.assert_awaited_once()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "active"
         assert "next_billing_date" in set_data
         assert "previous_billing_date" in set_data
+
+    async def test_omitted_billing_dates_are_not_written_as_null(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+    ):
+        """A renewal that omits the billing dates must leave the stored ones alone.
+
+        Passing them to SubscriptionUpdate marks them in model_fields_set even
+        when None, so the repository's model_dump(exclude_unset=True) emits
+        ``next_billing_date: None`` and the $set overwrites good stored values
+        with null.
+        """
+        payload = {
+            **SUBSCRIPTION_DATA_PAYLOAD,
+            "next_billing_date": None,
+            "previous_billing_date": None,
+        }
+        event_data = _make_webhook_event("subscription.renewed", payload)
+
+        result = await webhook_service.process_webhook(event_data, "wh_renew_nulls")
+
+        assert result.status == "processed"
+        update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        assert set_data["status"] == "active"
+        assert "next_billing_date" not in set_data
+        assert "previous_billing_date" not in set_data
 
     async def test_warns_when_subscription_not_found(
         self,
@@ -1476,7 +1506,7 @@ class TestHandleSubscriptionCancelled:
         assert result.status == "processed"
         assert "cancelled" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "cancelled"
 
     async def test_includes_cancelled_at_when_present(
@@ -1495,7 +1525,7 @@ class TestHandleSubscriptionCancelled:
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_002")
 
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["cancelled_at"] == "2025-06-15T00:00:00Z"
 
     async def test_no_cancelled_at_when_absent(
@@ -1511,7 +1541,7 @@ class TestHandleSubscriptionCancelled:
         await webhook_service.process_webhook(event_data, "wh_cancel_sub_003")
 
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert "cancelled_at" not in set_data
 
     async def test_tracks_cancellation_analytics(
@@ -1546,7 +1576,7 @@ class TestHandleSubscriptionExpired:
         assert result.status == "processed"
         assert "expired" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "expired"
 
     async def test_tracks_expiry_analytics(
@@ -1580,7 +1610,7 @@ class TestHandleSubscriptionFailed:
         assert result.status == "processed"
         assert "failed" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "failed"
 
 
@@ -1600,7 +1630,7 @@ class TestHandleSubscriptionOnHold:
         assert result.status == "processed"
         assert "on hold" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["status"] == "on_hold"
 
 
@@ -1620,7 +1650,7 @@ class TestHandleSubscriptionPlanChanged:
         assert result.status == "processed"
         assert "plan changed" in result.message.lower()
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
-        set_data = update_call.kwargs
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
         assert set_data["product_id"] == "prod_abc123"
         assert set_data["quantity"] == 1
         assert set_data["recurring_pre_tax_amount"] == 999

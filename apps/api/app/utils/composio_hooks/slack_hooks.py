@@ -22,7 +22,10 @@ def slack_search_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     - count: default to 20 (reasonable number of results)
     - Add guidance about using recent results first
     """
-    input_params = schema.input_parameters
+    # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
+    # (including this codebase's own test doubles) don't always hand us a real,
+    # validated `Tool`, so this stays defensive against a non-dict value.
+    input_params: object = schema.input_parameters
     if not isinstance(input_params, dict):
         return schema
 

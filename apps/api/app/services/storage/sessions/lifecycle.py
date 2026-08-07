@@ -164,6 +164,9 @@ async def list_session_ids(user_id: str) -> list[str]:
         sessions_dir = _mount_root() / "users" / user_id / "sessions"
         if not sessions_dir.is_dir():
             return []
+        # Directories only. A stray file here (an editor swapfile, a stale
+        # download) was otherwise returned as a conversation id, and the artifact
+        # watcher then rescanned a "session" that has no artifacts dir to stat.
         return sorted(p.name for p in sessions_dir.iterdir() if p.is_dir())
 
     async with fs_timer(FsOps.LIST_SESSION_IDS):

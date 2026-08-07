@@ -76,17 +76,19 @@ def _base_names(cls: ast.ClassDef) -> set[str]:
     return names
 
 
+def _decorator_name(node: ast.expr) -> str | None:
+    """Bare name of a decorator, whether written ``@foo`` or ``@foo(...)``."""
+    base = node.func if isinstance(node, ast.Call) else node
+    return base.id if isinstance(base, ast.Name) else None
+
+
 def _instance_methods(cls: ast.ClassDef) -> list[str]:
     """Methods whose first arg is ``self`` and which are not static/class methods."""
     found: list[str] = []
     for item in cls.body:
         if not isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        deco_names = {
-            (d.func if isinstance(d, ast.Call) else d).id
-            for d in item.decorator_list
-            if isinstance((d.func if isinstance(d, ast.Call) else d), ast.Name)
-        }
+        deco_names = {name for name in map(_decorator_name, item.decorator_list) if name}
         if deco_names & {"staticmethod", "classmethod"}:
             continue
         # posonlyargs first: `def method(self, /)` stores self there, not in args.

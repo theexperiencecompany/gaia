@@ -284,7 +284,6 @@ class IntegrationResponse(BaseModel):
         slug = generate_integration_slug(
             name=integration.name,
             category=integration.category,
-            integration_id=integration.integration_id,
         )
 
         return cls(

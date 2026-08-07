@@ -14,7 +14,7 @@ T = TypeVar("T", bound="WebSocketManager")
 class WebSocketManager:
     """Manages WebSocket connections for real-time notifications"""
 
-    _instance: ClassVar[Any] = None
+    _instance: ClassVar["WebSocketManager | None"] = None
 
     def __new__(cls: type[T]) -> T:
         if cls._instance is None:

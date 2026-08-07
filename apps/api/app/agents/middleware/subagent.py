@@ -7,9 +7,9 @@ the HIL gate, so a gated tool inside a spawn pauses for the user's approval and
 bubbles that pause up to the parent, exactly as ``handoff`` does.
 """
 
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import time
-from typing import Annotated, Any
+from typing import Annotated, Any, Protocol
 
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -47,13 +47,34 @@ from app.constants.hil import HIL_RESUME_CONFIG_KEY
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.models.agent_models import AnyAgentMiddleware, agent_configurable
 from app.utils.agent_utils import (
+    StreamWriterCallable,
     format_subagent_end_event,
     format_subagent_start_event,
 )
 from shared.py.wide_events import log
 
-SpawnGraphProvider = Callable[..., Awaitable[CompiledStateGraph]]
+
+class SpawnGraphProvider(Protocol):
+    """Compiles the graph a spawn runs on.
+
+    A Protocol rather than ``Callable[..., ...]`` because this is an injection
+    seam: every call site passes these six by keyword, and an erased signature
+    turns a renamed or dropped argument into a runtime ``TypeError`` instead of a
+    type error. Satisfied by ``core.subagents.spawn_agent.get_spawn_graph``,
+    which is injected rather than imported (see :meth:`set_spawn_graph_provider`).
+    """
+
+    async def __call__(
+        self,
+        llm: LanguageModelLike,
+        registry: Mapping[str, BaseTool],
+        excluded_tool_names: set[str],
+        tool_space: str,
+        runtime: ToolRuntimeConfig,
+        middleware_factory: Callable[[], Sequence[AnyAgentMiddleware]],
+    ) -> CompiledStateGraph: ...
 
 
 class SubagentState(AgentState[Any]):
@@ -78,8 +99,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         tool_space: str = "general",
         store: BaseStore | None = None,
         tool_runtime_config: ToolRuntimeConfig | None = None,
-        spawn_middleware_factory: Callable[[str], Sequence[Any]] | None = None,
-    ):
+        spawn_middleware_factory: Callable[[str], Sequence[AnyAgentMiddleware]] | None = None,
+    ) -> None:
         super().__init__()
         self._llm = llm
         self._spawn_middleware_factory = spawn_middleware_factory
@@ -107,7 +128,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         self.tools = [self._create_spawn_subagent_tool()]
 
-    def _create_spawn_subagent_tool(self):
+    def _create_spawn_subagent_tool(self) -> BaseTool:
         middleware = self
 
         @tool(description=SPAWN_SUBAGENT_DESCRIPTION)
@@ -180,7 +201,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         inherited_tool_names: list[str] | None,
     ) -> str:
         """Run one spawned subagent to completion, pausing the parent for approvals."""
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         # A fresh spawn has a brand-new tool_call_id, so nothing can already exist on
         # its thread — only a resume replay can, which is why the checkpoint probe is
         # gated on it and effectively every spawn skips that Postgres read.
@@ -237,7 +258,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
     async def _drive(
         self,
         ctx: SubagentExecutionContext,
-        writer: Any,
+        writer: StreamWriterCallable,
         sa_id: str,
         probe_parked: bool,
     ) -> SubagentOutcome:
@@ -277,7 +298,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         if self._spawn_middleware_factory is None or self._spawn_graph_provider is None:
             raise ValueError("Spawn graph not configured for subagent execution")
 
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id")
         conversation_id = str(configurable.get("conversation_id") or "")
 
@@ -313,7 +334,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             subagent_id=SPAWN_AGENT_NAME,
             recursion_limit=self._max_turns,
         )
-        new_configurable = spawn_config.get("configurable", {})
+        new_configurable = agent_configurable(spawn_config)
 
         user_content = f"Context:\n{context}\n\nTask:\n{task}" if context else f"Task:\n{task}"
         messages = await build_initial_messages(

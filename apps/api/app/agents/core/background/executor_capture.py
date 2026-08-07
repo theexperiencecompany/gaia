@@ -23,7 +23,7 @@ from app.agents.core.background.session import (
 from app.constants.agents import RETURNED_TO_FRONTEND_MARKER
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT
 from app.constants.log_tags import LogTag
-from app.models.chat_models import tool_fields
+from app.models.chat_models import ToolDataEntry, tool_fields
 from app.services.chat.chunks import normalize_custom_event
 from app.utils.stream_utils import (
     absorb_collector_event,
@@ -72,7 +72,7 @@ async def await_executor_done(
         )
 
 
-def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
+def drain_executor_tool_data(stream_id: str) -> list[ToolDataEntry]:
     """Drain the session's tool events into reconstructed tool_data.
 
     Non-destructive read. Mirrors the comms-graph accumulation path:
@@ -84,7 +84,12 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
     session = get_session(stream_id)
     if session is None or not session.tool_events:
         return []
-    accumulated: dict[str, Any] = {"tool_data": []}
+    entries: list[ToolDataEntry] = []
+    # The accumulator envelope is an open bag (see utils/stream_utils); only its
+    # "tool_data" list has a fixed shape, and it is this list object throughout —
+    # seeded here, mutated in place by every helper below, and rebound by
+    # reconstruct_subagent_groups, hence the re-read at the end.
+    accumulated: dict[str, Any] = {"tool_data": entries}
     outputs: dict[str, str] = {}
     for evt in session.tool_events:
         # Hooks (e.g. GMAIL_FETCH_MESSAGES) emit raw field payloads like
@@ -94,7 +99,8 @@ def drain_executor_tool_data(stream_id: str) -> list[dict[str, Any]]:
         absorb_collector_event(normalize_custom_event(evt), accumulated, outputs)
     apply_outputs_to_tool_data(accumulated["tool_data"], outputs, only_tool_name="tool_calls_data")
     reconstruct_subagent_groups(accumulated)
-    return accumulated.get("tool_data", [])
+    grouped: list[ToolDataEntry] = accumulated["tool_data"]
+    return grouped
 
 
 def build_returned_to_frontend_note(stream_id: str) -> str:

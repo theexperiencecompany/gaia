@@ -40,7 +40,7 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
 async def execute_reminder_by_agent(
     reminder: ReminderModel,
-):
+) -> None:
     """
     Execute a static reminder task.
 

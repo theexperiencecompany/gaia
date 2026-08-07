@@ -7,6 +7,7 @@ Covers three surfaces:
 """
 
 from contextlib import asynccontextmanager
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -18,6 +19,7 @@ import pytest
 
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.models.user_models import UserDocument
+from app.schemas.dev_schemas import DevAgentRunResponse, SeedDevDataResponse
 
 DEV_EMAIL = "dev@gaia.local"
 
@@ -86,7 +88,9 @@ class TestDevRouterMounting:
         with patch(
             "app.api.v1.endpoints.dev.mint_dev_user",
             new_callable=AsyncMock,
-            return_value={"id": "u1", "email": DEV_EMAIL, "name": "dev"},
+            return_value=UserDocument.model_validate(
+                {"id": "u1", "email": DEV_EMAIL, "name": "dev"}
+            ),
         ) as mock_mint:
             client = await _client(app)
             async with client:
@@ -103,7 +107,7 @@ class TestDevRouterMounting:
     # refactor that registers any of these on a router assembled outside the
     # ENV+bypass gate (e.g. a stray include_router at import time) fails here
     # instead of silently exposing account-takeover-grade endpoints.
-    HIGH_BLAST_RADIUS_ROUTES = [
+    HIGH_BLAST_RADIUS_ROUTES: ClassVar[list[tuple[str, str, dict[str, str] | None]]] = [
         ("POST", "/api/v1/dev/executor", {"email": DEV_EMAIL, "task": "noop"}),
         ("POST", "/api/v1/dev/subagents/some_agent", {"email": DEV_EMAIL, "task": "noop"}),
         ("GET", "/api/v1/dev/subagents", None),
@@ -136,13 +140,13 @@ class TestDevRouterMounting:
         monkeypatch.setattr(app_settings, "DEV_AUTH_BYPASS_EMAIL", DEV_EMAIL)
         app = _build_app()
 
-        agent_result = {
-            "user_id": "u1",
-            "conversation_id": "c1",
-            "thread_id": "t1",
-            "agent": "executor",
-            "message": "ok",
-        }
+        agent_result = DevAgentRunResponse(
+            user_id="u1",
+            conversation_id="c1",
+            thread_id="t1",
+            agent="executor",
+            message="ok",
+        )
         with (
             patch(
                 "app.api.v1.endpoints.dev.run_executor_direct",
@@ -152,7 +156,7 @@ class TestDevRouterMounting:
             patch(
                 "app.api.v1.endpoints.dev.run_subagent_direct",
                 new_callable=AsyncMock,
-                return_value={**agent_result, "agent": "some_agent"},
+                return_value=agent_result.model_copy(update={"agent": "some_agent"}),
             ) as mock_sub,
         ):
             client = await _client(app)
@@ -179,13 +183,14 @@ class TestDevRouterMounting:
         with patch(
             "app.api.v1.endpoints.dev.seed_dev_data",
             new_callable=AsyncMock,
-            return_value={
-                "email": DEV_EMAIL,
-                "user_id": "u1",
-                "todos_created": 3,
-                "conversations_created": 2,
-                "platforms_linked": ["telegram"],
-            },
+            return_value=SeedDevDataResponse(
+                email=DEV_EMAIL,
+                user_id="u1",
+                todos_created=3,
+                conversations_created=2,
+                platforms_linked=["telegram"],
+                platform_user_ids={"telegram": "dev-telegram-u1"},
+            ),
         ) as mock_seed:
             client = await _client(app)
             async with client:
@@ -236,8 +241,8 @@ class TestDevServiceLogic:
             first = await dev_service.mint_dev_user(DEV_EMAIL)
             second = await dev_service.mint_dev_user(DEV_EMAIL)
 
-        assert first["id"] == second["id"] == str(oid)
-        assert first["email"] == DEV_EMAIL
+        assert first.id == second.id == str(oid)
+        assert first.email == DEV_EMAIL
 
     async def test_seed_creates_expected_counts(self):
         """Seed calls the real create paths exactly N times each."""
@@ -269,10 +274,10 @@ class TestDevServiceLogic:
         assert mock_todo.await_count == 3
         assert mock_convo.await_count == 2
         assert mock_link.await_count == 2
-        assert result["todos_created"] == 3
-        assert result["conversations_created"] == 2
-        assert result["platforms_linked"] == ["telegram", "slack"]
-        assert result["user_id"] == str(oid)
+        assert result.todos_created == 3
+        assert result.conversations_created == 2
+        assert result.platforms_linked == ["telegram", "slack"]
+        assert result.user_id == str(oid)
 
         # Seeding marks onboarding complete via the gated repository method.
         assert mock_complete.await_args.args[0] == str(oid)

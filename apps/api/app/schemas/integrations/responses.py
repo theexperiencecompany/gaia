@@ -24,7 +24,7 @@ class CloneCountMixin(BaseModel):
 
     @field_validator("clone_count", mode="before", check_fields=False)
     @classmethod
-    def coerce_clone_count(cls, v):
+    def coerce_clone_count(cls, v: object) -> object:
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 

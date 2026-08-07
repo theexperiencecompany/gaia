@@ -4,7 +4,7 @@ Flow:
 1. Two independent parallel tracks start simultaneously:
 
    TRACK A - Email Scanning & Storage:
-   - Fetch recent emails from Gmail API (in:inbox, up to 700 emails in batches of 50)
+   - Fetch recent emails from Gmail API (in:inbox, up to 200 emails in batches of 100)
    - Clean email content: HTML → plain text, remove invisible chars
    - Queue emails for memory storage (background ARQ job)
 
@@ -30,7 +30,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import re
 import time
-from typing import Any
+from typing import Any, TypedDict
 
 from app.agents.memory.profile_crawler import crawl_profile_url
 from app.agents.memory.profile_extractor import (
@@ -42,6 +42,7 @@ from app.agents.memory.profile_extractor import (
 from app.constants.email import (
     BATCH_SIZE,
     EMAIL_QUERY,
+    INBOX_OR_SENT_EMAIL_QUERY,
     MAX_RESULTS,
     ONBOARDING_EMAIL_SCAN_LIMIT,
 )
@@ -57,6 +58,51 @@ from app.helpers.email_helpers import (
 from app.memory.engine import memory_engine
 from app.services.mail.mail_service import search_messages
 from shared.py.wide_events import log
+
+
+class ExtractedProfile(TypedDict):
+    """One social profile the extraction track resolved and stored."""
+
+    platform: str
+    url: str
+
+
+class PlatformProcessResult(TypedDict, total=False):
+    """Outcome of processing one platform.
+
+    ``total=False`` because the two outcomes are disjoint: success carries
+    ``platform``/``url``/``discovery_task``, every skip carries only ``error``.
+    """
+
+    success: bool
+    platform: str
+    url: str
+    #: Follow-up crawl of profiles linked from this one; resolves to the count stored.
+    discovery_task: asyncio.Task[int]
+    error: str
+
+
+class ProfileExtractionResult(TypedDict, total=False):
+    """Stats from the parallel profile-extraction track (TRACK B)."""
+
+    profiles_stored: int
+    extracted_profiles: list[ExtractedProfile]
+
+
+class GmailProcessingStats(TypedDict, total=False):
+    """Stats returned by :func:`process_gmail_to_memory`.
+
+    ``total=False`` because the already-processed short-circuit returns only
+    ``already_processed``/``processing_complete`` and the zeroed counters.
+    """
+
+    total: int
+    successful: int
+    failed: int
+    profiles_stored: int
+    processing_complete: bool
+    already_processed: bool
+    extracted_profiles: list[ExtractedProfile]
 
 
 @dataclass
@@ -90,7 +136,7 @@ class _StepTimer:
         return "\n".join(lines)
 
 
-async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]]:
+async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict[str, Any]]]:
     """
     Search Gmail API in parallel for emails from all platform domains.
 
@@ -122,7 +168,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]
     results = await asyncio.gather(*[task for _, task in search_tasks], return_exceptions=True)
 
     # Build platform -> emails mapping
-    platform_emails: dict[str, list[dict]] = {}
+    platform_emails: dict[str, list[dict[str, Any]]] = {}
     for (platform, _), result in zip(search_tasks, results):
         if isinstance(result, Exception):
             log.error(
@@ -153,7 +199,7 @@ async def _search_platform_emails_parallel(user_id: str) -> dict[str, list[dict]
 
 async def _search_platform_emails(
     user_id: str, platform: str, query: str, max_results: int = 10
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """
     Search Gmail for emails from a specific platform.
 
@@ -173,8 +219,7 @@ async def _search_platform_emails(
             max_results=max_results,
         )
 
-        emails = result.get("messages", [])
-        return emails
+        return result.messages
 
     except Exception as e:
         log.error(
@@ -203,18 +248,24 @@ async def fetch_emails_for_onboarding(
     max_total: int = ONBOARDING_EMAIL_SCAN_LIMIT,
     on_batch: Callable[[int, str | None], Awaitable[None]] | None = None,
     fmt: str = "metadata",
-    into: list[dict] | None = None,
-) -> list[dict]:
-    """Fetch the last `months` months of received emails for onboarding.
+    into: list[dict[str, Any]] | None = None,
+    include_sent: bool = False,
+) -> list[dict[str, Any]]:
+    """Fetch the last `months` months of emails for onboarding.
 
     Uses Gmail metadata format by default (no body) so batches can be 100 wide.
-    Callers that need bodies (writing style, social profile regex) pass fmt="full".
+    Callers that need bodies (social profile regex) pass fmt="full".
+    `include_sent` widens the scan to the sent mailbox as well, which is what
+    makes each message's SENT label — and any ownership signal derived from it —
+    observable at all. Inbox triage leaves it off so the user's own outgoing
+    mail is not scored as something needing their attention.
     on_batch receives (running_count, latest_sender_display_name_or_None).
     If `into` is provided, batches are appended to it live so concurrent
     consumers can observe partial progress.
     """
-    query = f"in:inbox newer_than:{months * 30}d"
-    all_emails: list[dict] = into if into is not None else []
+    scope = INBOX_OR_SENT_EMAIL_QUERY if include_sent else EMAIL_QUERY
+    query = f"{scope} newer_than:{months * 30}d"
+    all_emails: list[dict[str, Any]] = into if into is not None else []
     page_token: str | None = None
     metadata_mode = fmt == "metadata"
 
@@ -230,7 +281,7 @@ async def fetch_emails_for_onboarding(
                 include_payload=not metadata_mode,
                 verbose=not metadata_mode,
             )
-            batch = result.get("messages", [])
+            batch = result.messages
             if not batch:
                 break
             all_emails.extend(batch)
@@ -239,7 +290,7 @@ async def fetch_emails_for_onboarding(
                     batch[-1].get("from") or batch[-1].get("sender") or ""
                 )
                 await on_batch(len(all_emails), latest_sender or None)
-            page_token = result.get("nextPageToken")
+            page_token = result.next_page_token
             if not page_token:
                 break
     except Exception as e:
@@ -261,7 +312,7 @@ async def fetch_emails_for_onboarding(
     return all_emails
 
 
-async def process_gmail_to_memory(user_id: str) -> dict:
+async def process_gmail_to_memory(user_id: str) -> GmailProcessingStats:
     """
     Process user's Gmail emails into memories.
 
@@ -339,18 +390,18 @@ async def process_gmail_to_memory(user_id: str) -> dict:
                 f"{LogTag.MEMORY} Gmail fetch batch completed",
                 batch=batch_count,
                 duration_s=round(fetch_elapsed, 1),
-                fetched_so_far=total_fetched + len(result.get("messages", [])),
+                fetched_so_far=total_fetched + len(result.messages),
                 user_id=user_id,
             )
             timer.record(f"Gmail API fetch — batch {batch_count}", fetch_elapsed)
 
-            batch_emails = result.get("messages", [])
+            batch_emails = result.messages
 
             if not batch_emails:
                 break
 
             # Update page token for next iteration
-            page_token = result.get("nextPageToken")
+            page_token = result.next_page_token
 
             # Update stats
             total_fetched += len(batch_emails)
@@ -404,7 +455,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
         task_count=len(email_storage_tasks),
         email_count=total_parsed,
     )
-    storage_results: list[Any] = []
+    storage_results: list[BaseException | None] = []
     storage_errors = 0
     if email_storage_tasks:
         try:
@@ -420,14 +471,14 @@ async def process_gmail_to_memory(user_id: str) -> dict:
                 duration_s=round(storage_elapsed, 1),
             )
 
-            for idx, result in enumerate(storage_results):
-                if isinstance(result, Exception):
+            for idx, storage_result in enumerate(storage_results):
+                if isinstance(storage_result, Exception):
                     storage_errors += 1
                     log.warning(
                         f"{LogTag.MEMORY} Email storage task failed",
                         task_index=idx + 1,
-                        error_type=type(result).__name__,
-                        error=str(result),
+                        error_type=type(storage_result).__name__,
+                        error=str(storage_result),
                     )
 
             successful_batches = len(storage_results) - storage_errors
@@ -448,10 +499,10 @@ async def process_gmail_to_memory(user_id: str) -> dict:
 
     # Wait for profile extraction task (also with error handling)
     profiles_stored = 0
-    extracted_profiles: list[dict] = []
+    extracted_profiles: list[ExtractedProfile] = []
     try:
         t0_profile = time.monotonic()
-        profile_result: dict = await profile_extraction_task
+        profile_result = await profile_extraction_task
         profile_elapsed = time.monotonic() - t0_profile
         timer.record("Profile extraction track (wait for completion)", profile_elapsed)
         log.info(
@@ -529,7 +580,7 @@ async def process_gmail_to_memory(user_id: str) -> dict:
     }
 
 
-async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
+async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtractionResult:
     """
     Extract and store profiles using parallel Gmail searches for each platform.
 
@@ -599,7 +650,7 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
 
         # Step 3: Count successful profiles, collect pairs and discovery tasks
         profiles_stored = 0
-        extracted_profiles: list[dict] = []
+        extracted_profiles: list[ExtractedProfile] = []
         for (platform, _), result in zip(platform_tasks, results):
             if isinstance(result, Exception):
                 log.error(
@@ -626,16 +677,19 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
                 f"{LogTag.MEMORY} Discovered profile tasks gather finished",
                 duration_s=round(time.monotonic() - t0_discovery, 1),
             )
-            for result in discovery_results:
-                if isinstance(result, int):  # Discovery task returns count of profiles stored
-                    discovered_count += result
-                elif isinstance(result, Exception):
+            for discovery_result in discovery_results:
+                # Discovery task returns count of profiles stored
+                if isinstance(discovery_result, int):
+                    discovered_count += discovery_result
+                elif isinstance(discovery_result, Exception):
                     log.error(
                         f"{LogTag.MEMORY} Discovery task failed",
-                        error_type=type(result).__name__,
-                        error=str(result),
+                        error_type=type(discovery_result).__name__,
+                        error=str(discovery_result),
                         user_id=user_id,
                     )
+
+            profiles_stored += discovered_count
 
         elapsed = time.time() - extraction_start
         log.info(
@@ -665,11 +719,11 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> dict:
 async def _process_single_platform(
     user_id: str,
     platform: str,
-    emails: list[dict],
+    emails: list[dict[str, Any]],
     semaphore: asyncio.Semaphore,
     user_name: str | None = None,
-    crawled_urls: set | None = None,
-) -> dict:
+    crawled_urls: set[str] | None = None,
+) -> PlatformProcessResult:
     """
     Process a single platform: Extract -> Crawl -> Return content.
     Returns dict with profile content or error.
@@ -791,7 +845,7 @@ async def _discover_and_store_linked_profiles(
     profile_content: str,
     source_platform: str,
     semaphore: asyncio.Semaphore,
-    crawled_urls: set | None = None,
+    crawled_urls: set[str] | None = None,
 ) -> int:
     """
     Parse profile content for other social media links and store them.

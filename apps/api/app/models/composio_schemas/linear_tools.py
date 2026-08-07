@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class LinearGetAllTeamsInput(BaseModel):
     """Input for LINEAR_GET_ALL_LINEAR_TEAMS."""
 
-    pass  # No input parameters required
+    # No input parameters required
 
 
 class LinearMember(BaseModel):

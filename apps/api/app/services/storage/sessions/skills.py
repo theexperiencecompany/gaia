@@ -90,6 +90,10 @@ def _write_skill_dir(slug_dir: Path, skill: BuiltinSkill) -> int:
     for existing in slug_dir.rglob("*"):
         if existing.is_symlink() or not existing.is_file():
             continue
+        # Compare the skill-relative path, not the basename: `expected` holds
+        # entries like "templates/report.md", so matching on `.name` pruned every
+        # nested resource immediately after writing it — a multi-file skill's
+        # SKILL.md pointed at templates/ that was already deleted.
         if existing.relative_to(slug_dir).as_posix() not in expected:
             existing.unlink(missing_ok=True)
     return written

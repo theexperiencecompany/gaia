@@ -23,7 +23,6 @@ export function QuestionsComposer({ state, dispatch }: QuestionsProps) {
   const user = useUser();
   const currentQuestion = questions[state.questionIndex];
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only seed
   useEffect(() => {
     if (
       currentQuestion?.fieldName === FIELD_NAMES.NAME &&

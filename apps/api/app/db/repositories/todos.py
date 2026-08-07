@@ -211,7 +211,9 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
             by_priority={g.key: g.count for g in facet.by_priority if g.key is not None},
             by_project={g.key: g.count for g in facet.by_project if g.key is not None},
             completion_rate=round((completed / total * 100) if total > 0 else 0, 2),
-            labels=[{"name": g.key, "count": g.count} for g in facet.labels if g.key is not None],
+            labels=[
+                TodoLabelCount(name=g.key, count=g.count) for g in facet.labels if g.key is not None
+            ],
         )
 
     @cached_query(TodoCounts)

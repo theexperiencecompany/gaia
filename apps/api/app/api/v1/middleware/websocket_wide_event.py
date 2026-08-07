@@ -23,7 +23,11 @@ from typing import Any
 from shared.py.wide_events import log_context
 
 ASGIApp = Callable[
-    [dict[str, Any], Callable[[], Awaitable[dict[str, Any]]], Callable[[dict[str, Any]], Awaitable[None]]],
+    [
+        dict[str, Any],
+        Callable[[], Awaitable[dict[str, Any]]],
+        Callable[[dict[str, Any]], Awaitable[None]],
+    ],
     Awaitable[None],
 ]
 
@@ -69,5 +73,5 @@ def _header(scope: dict[str, Any], key: bytes) -> str | None:
     """The value of a header in a raw ASGI scope, if present."""
     for name, value in scope.get("headers", ()):  # type: ignore[attr-defined]
         if name == key:
-            return value.decode("latin-1")
+            return str(value.decode("latin-1"))
     return None

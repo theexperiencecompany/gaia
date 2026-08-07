@@ -1,0 +1,40 @@
+# gaia-arq-worker-down — fires when the ARQ worker stops reporting metrics.
+#
+# The noData path (no up series at all) is Grafana-only via noDataState: Alerting
+# and is not modelled by promtool; this fixture covers up=0 fires.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-arq-worker-down fires when the worker reports 0
+    interval: 1m
+    input_series:
+      - series: 'up{job="arq_worker",instance="gaia-arq-worker:9100"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-arq-worker-down
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: arq_worker
+              incident: availability
+              job: arq_worker
+              instance: gaia-arq-worker:9100
+            exp_annotations:
+              summary: No ARQ worker replica has reported metrics for 2 minutes
+              description: >-
+                Nothing scheduled is running. Reminders will not fire, workflows will not execute, tracked todos will not advance, Gmail-to-memory ingestion has stopped, and the housekeeping crons are no longer reclaiming idle sandboxes, stale sessions or checkpoint bloat. Users see silence rather than an error, which is why this is critical. The worker also disappears here if its poll loop wedges, not only if the container dies.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-worker-down
+              __dashboardUid__: gaia-arq-worker
+              __panelId__: '1'
+
+  - name: gaia-arq-worker-down stays quiet when the worker reports 1
+    interval: 1m
+    input_series:
+      - series: 'up{job="arq_worker",instance="gaia-arq-worker:9100"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-arq-worker-down
+        exp_alerts: []

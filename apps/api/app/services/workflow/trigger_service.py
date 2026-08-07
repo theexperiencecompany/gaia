@@ -5,11 +5,10 @@ Provides high-level trigger operations that delegate to provider-specific handle
 Handles Composio trigger reference counting to prevent premature deletion.
 """
 
-from typing import Any
-
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
+from app.models.trigger_config import WorkflowTriggerResponse
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
 from app.utils.exceptions import TriggerRegistrationError
@@ -24,7 +23,7 @@ class TriggerService:
     """
 
     @staticmethod
-    async def get_all_workflow_triggers() -> list[dict[str, Any]]:
+    async def get_all_workflow_triggers() -> list[WorkflowTriggerResponse]:
         """
         Get all available workflow triggers from OAuth integrations.
 
@@ -37,25 +36,15 @@ class TriggerService:
                 if trigger_config.workflow_trigger_schema:
                     schema = trigger_config.workflow_trigger_schema
                     triggers.append(
-                        {
-                            "slug": schema.slug,
-                            "composio_slug": schema.composio_slug,
-                            "name": schema.name,
-                            "description": schema.description,
-                            "provider": integration.provider,
-                            "integration_id": integration.id,
-                            "config_schema": {
-                                field_name: {
-                                    "type": field_schema.type,
-                                    "default": field_schema.default,
-                                    "min": field_schema.min,
-                                    "max": field_schema.max,
-                                    "options_endpoint": field_schema.options_endpoint,
-                                    "description": field_schema.description,
-                                }
-                                for field_name, field_schema in schema.config_schema.items()
-                            },
-                        }
+                        WorkflowTriggerResponse(
+                            slug=schema.slug,
+                            composio_slug=schema.composio_slug,
+                            name=schema.name,
+                            description=schema.description,
+                            provider=integration.provider,
+                            integration_id=integration.id,
+                            config_schema=schema.config_schema,
+                        )
                     )
 
         return triggers

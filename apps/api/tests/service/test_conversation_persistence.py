@@ -43,8 +43,8 @@ class TestUpdateMessagesReal:
 
         result = await update_messages(request, user)
 
-        assert result["modified_count"] == 1
-        assert len(result["message_ids"]) == 2
+        assert result.modified_count == 1
+        assert len(result.message_ids) == 2
 
         doc = await conversations_collection.find_one({"conversation_id": conv_id})
         assert len(doc["messages"]) == 2

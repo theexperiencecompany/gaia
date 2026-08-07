@@ -128,7 +128,7 @@ class FirecrawlFetcher(WebpageFetcher):
             document = await asyncio.to_thread(
                 client.scrape, url, formats=["markdown"], proxy="stealth"
             )
-        markdown = getattr(document, "markdown", None)
+        markdown: str | None = getattr(document, "markdown", None)
         if markdown:
             return markdown
         raise FetchError("firecrawl returned no markdown", url=url)

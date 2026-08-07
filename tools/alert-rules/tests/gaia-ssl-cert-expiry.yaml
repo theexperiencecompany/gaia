@@ -1,0 +1,39 @@
+# gaia-ssl-cert-expiry — fires when the api.heygaia.io TLS cert is <14 days from
+# expiry.
+#
+# The expression uses time(); with the default start_timestamp of 0, time() at
+# eval_time 30m returns 1800. The trigger expiry (7 days from epoch) leaves
+# ~6.99 days of runway — under the 14-day threshold — while the quiet expiry
+# (30 days) leaves ~29.98 days.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-ssl-cert-expiry fires when the cert expires in ~7 days
+    interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_api",instance="https://api.heygaia.io"}'
+        values: '604800x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-ssl-cert-expiry
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: api
+            exp_annotations:
+              description: >-
+                When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
+              __dashboardUid__: gaia-api-prometheus
+              __panelId__: '13'
+
+  - name: gaia-ssl-cert-expiry stays quiet when the cert expires in ~30 days
+    interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox_api",instance="https://api.heygaia.io"}'
+        values: '2592000x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-ssl-cert-expiry
+        exp_alerts: []

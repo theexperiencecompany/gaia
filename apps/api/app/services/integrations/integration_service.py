@@ -87,7 +87,6 @@ def format_community_integrations(
         slug = integration.slug or generate_integration_slug(
             name=integration.name,
             category=integration.category,
-            integration_id=integration.integration_id,
         )
 
         result.append(

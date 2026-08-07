@@ -1,11 +1,10 @@
 from collections.abc import Mapping
-from typing import Any
 
 from app.constants.notifications import DEFAULT_CHANNEL_PREFERENCES
 from app.db.repositories.users import user_repository
 
 
-def normalize_channel_preferences(prefs: Mapping[str, Any] | None) -> dict[str, bool]:
+def normalize_channel_preferences(prefs: Mapping[str, object] | None) -> dict[str, bool]:
     """Apply default channel settings and coerce values to booleans."""
     source = prefs or {}
     return {

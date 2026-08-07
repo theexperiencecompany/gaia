@@ -1,5 +1,7 @@
 """ARQ worker task for post-onboarding personalization."""
 
+from typing import Any
+
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingPhase
@@ -10,7 +12,7 @@ from app.services.onboarding.intelligence_job import (
 from shared.py.wide_events import log
 
 
-async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
+async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str) -> str:
     """ARQ background task for the full onboarding intelligence pipeline."""
     log.set(user_id=user_id, user={"id": user_id})
     from app.services.onboarding.intelligence_service import (
@@ -35,7 +37,7 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
             split_mode = ((doc.onboarding if doc else None) or {}).get("pipeline_mode") == "split"
             if not split_mode:
                 await user_repository.set_pipeline_completion(
-                    user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE.value
+                    user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE
                 )
                 log.info(
                     f"{LogTag.WORKER} Set phase to PERSONALIZATION_COMPLETE after failure",
@@ -67,7 +69,7 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
     return f"Onboarding intelligence completed for user {user_id}"
 
 
-async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
+async def process_onboarding_workflows_task(ctx: dict[str, Any], user_id: str) -> str:
     """ARQ background task for the split-pipeline workflows phase."""
     log.set(user_id=user_id, user={"id": user_id})
     from app.services.onboarding.intelligence_service import (
@@ -89,7 +91,7 @@ async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
         # state exactly like the full pipeline's failure path.
         try:
             await user_repository.set_pipeline_completion(
-                user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE.value
+                user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE
             )
         except Exception as db_err:
             log.error(

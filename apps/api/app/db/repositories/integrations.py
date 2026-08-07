@@ -343,7 +343,7 @@ class IntegrationsRepository(MongoRepository[Integration, IntegrationUpdate]):
         Appends -2, -3, … to the canonical slug until a free one is found (the
         slug-uniqueness probe, folded in from generate_unique_integration_slug).
         """
-        base_slug = generate_integration_slug(name, category, integration_id)
+        base_slug = generate_integration_slug(name, category)
         if await self._slug_free(base_slug, integration_id):
             return base_slug
         suffix = 2

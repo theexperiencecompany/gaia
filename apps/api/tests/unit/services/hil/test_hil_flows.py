@@ -4,7 +4,7 @@ The existing gate tests attack its *edges* — malformed resume payloads, missin
 broken dependencies. This file attacks the **journeys**: ask → approve → the tool runs,
 ask → deny → it never does, expiry → the model is told it expired, auto → receipt → run.
 
-Each drives the real ``gate_tool_call``, so the assertions are about the seam between its
+Each drives the real ``decide_tool_call``, so the assertions are about the seam between its
 steps rather than any one of them: does an approval actually reach the handler, does a
 denial actually stop it, does an expiry produce a *different* message from a refusal, and
 does the receipt land before the action rather than after it.
@@ -17,14 +17,15 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import ToolMessage
+from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG
-from app.services.hil.gate import gate_tool_call
+from app.models.hil_models import HILApprovalStatus
 from app.services.hil.intent import IntentDecision
 from app.services.hil.utils import approval_window_label
 
-from .conftest import make_request
+from .conftest import make_record, make_request, run_through_gate
 
 MODULE = "app.services.hil.gate"
 
@@ -53,16 +54,19 @@ def gate():
     log: list[str] = []
     with (
         patch(f"{MODULE}.log"),
-        patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)),
+        patch(f"{MODULE}.get_approval", new=AsyncMock(return_value=None)) as approval,
         patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=None)),
         patch(f"{MODULE}.remember_declined_call", new=AsyncMock()) as remember,
         patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)),
         patch(f"{MODULE}.set_tool_override", new=AsyncMock()) as override,
-        patch(f"{MODULE}.publish_approval_outcome", new=AsyncMock()) as outcome,
+        patch(f"{MODULE}.publish_decision", new=AsyncMock()) as outcome,
         patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="ask")) as policy,
         patch(f"{MODULE}.judge_intent", new=AsyncMock()) as judge,
         patch(f"{MODULE}.has_pausing_sibling", new=AsyncMock(return_value=False)),
-        patch(f"{MODULE}.interrupt") as interrupt,
+        # Raises, exactly as LangGraph's does: it is control flow that EXITS the run,
+        # not a call that returns a decision. A mock that returned one would let
+        # ``settle_message_approvals`` spin forever on a still-pending approval.
+        patch(f"{MODULE}.interrupt", side_effect=GraphInterrupt(())) as interrupt,
         patch(f"{MODULE}.publish_approval_request", new=AsyncMock()) as request_card,
         patch(f"{MODULE}.publish_auto_approval", new=AsyncMock()) as receipt,
     ):
@@ -77,6 +81,7 @@ def gate():
         receipt.side_effect = _record_receipt
         yield {
             "log": log,
+            "approval": approval,
             "policy": policy,
             "judge": judge,
             "interrupt": interrupt,
@@ -88,9 +93,29 @@ def gate():
         }
 
 
-def decides(gate: dict, **payload: Any) -> None:
-    """The user's decision, as ``Command(resume=...)`` hands it back to the replayed gate."""
-    gate["interrupt"].return_value = payload
+async def asks(gate: dict, request: Any) -> None:
+    """Pass one: the card goes up and the run parks on ``interrupt()``.
+
+    Every journey below starts here, because that is the only place a card is ever
+    published. Skipping it would let a test assert an approval the user was never shown.
+    ``interrupt`` is patched to RAISE, exactly as LangGraph's does — it is control flow
+    that exits the run, not a call that returns a decision.
+    """
+    del gate
+    with pytest.raises(GraphInterrupt):
+        await run_through_gate(request, Handler([]))
+
+
+def decides(gate: dict, *, status: str, scope: str = "once", feedback: str | None = None) -> None:
+    """The user's decision, as the gate reads it: a SETTLED RECORD.
+
+    Never a resume payload. ``resolve_approval`` writes the decision to Mongo and the
+    ``Command(resume=...)`` that follows is only a wake-up whose value is ignored — so a
+    test that fed a payload would be exercising a path production no longer has.
+    """
+    gate["approval"].return_value = make_record(
+        status=HILApprovalStatus(status), scope=scope, feedback=feedback
+    )
 
 
 def status_of(result: ToolMessage) -> str:
@@ -100,9 +125,10 @@ def status_of(result: ToolMessage) -> str:
 class TestApproveJourney:
     async def test_an_approval_actually_reaches_the_tool(self, gate: dict) -> None:
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="approved", scope="once")
 
-        result = await gate_tool_call(make_request(), handler)
+        result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 1
         assert result.content == "the tool really ran"
@@ -113,18 +139,20 @@ class TestApproveJourney:
         # interrupt() on the first pass never runs, so the user would be asked to approve
         # something they can never see.
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="approved")
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         gate["card"].assert_awaited_once()
         assert gate["log"].index("card") < gate["log"].index("handler")
 
     async def test_always_allow_this_tool_writes_the_override(self, gate: dict) -> None:
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="approved", scope="always_tool")
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         assert handler.runs == 1
         gate["override"].assert_awaited_once()
@@ -135,17 +163,19 @@ class TestApproveJourney:
     async def test_a_one_off_approval_changes_no_preference(self, gate: dict) -> None:
         # Approving once must not silently disarm the gate for every future call.
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="approved", scope="once")
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         gate["override"].assert_not_awaited()
 
     async def test_an_approval_is_not_remembered_as_a_decline(self, gate: dict) -> None:
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="approved")
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         gate["remember"].assert_not_awaited()
 
@@ -153,9 +183,10 @@ class TestApproveJourney:
 class TestDenyJourney:
     async def test_a_denial_stops_the_tool_and_says_so(self, gate: dict) -> None:
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="denied", feedback="wrong recipient")
 
-        result = await gate_tool_call(make_request(), handler)
+        result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 0
         assert status_of(result) == "denied"
@@ -167,9 +198,10 @@ class TestDenyJourney:
         # With no feedback, "adjust your approach" reads as "find another way" — the one
         # thing a decline must not license. The refusal has to say so explicitly.
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="denied", feedback=None)
 
-        result = await gate_tool_call(make_request(), handler)
+        result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 0
         assert "another tool" in result.content
@@ -178,9 +210,10 @@ class TestDenyJourney:
         # The executor never learns its subagent was declined, so it retries. Re-prompting
         # the user for the same call is the loop this kills.
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="denied", feedback="no")
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         gate["remember"].assert_awaited_once()
         args = gate["remember"].await_args.args
@@ -193,9 +226,10 @@ class TestExpiryJourney:
         # A timeout is not a decision. Telling the model "the user declined" would make it
         # report a refusal the user never made.
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="timeout")
 
-        result = await gate_tool_call(make_request(), handler)
+        result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 0
         assert status_of(result) == "timeout"
@@ -203,9 +237,10 @@ class TestExpiryJourney:
 
     async def test_the_model_is_told_how_long_it_waited(self, gate: dict) -> None:
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="timeout")
 
-        result = await gate_tool_call(make_request(), handler)
+        result = await run_through_gate(make_request(), handler)
 
         assert approval_window_label() in result.content
 
@@ -213,9 +248,10 @@ class TestExpiryJourney:
         # THE distinction: the user was away, not opposed. Remembering it would auto-deny
         # every later retry in the turn without ever asking them again.
         handler = Handler(gate["log"])
+        await asks(gate, make_request())
         decides(gate, status="timeout")
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         gate["remember"].assert_not_awaited()
 
@@ -252,7 +288,7 @@ class TestAutoJourney:
         gate["judge"].return_value = IntentDecision(True, "you said send the deck to bob")
         handler = Handler(gate["log"])
 
-        result = await gate_tool_call(make_request(), handler)
+        result = await run_through_gate(make_request(), handler)
 
         assert handler.runs == 1
         assert result.content == "the tool really ran"
@@ -267,7 +303,7 @@ class TestAutoJourney:
         handler = Handler(gate["log"], explode=True)
 
         with pytest.raises(RuntimeError):
-            await gate_tool_call(make_request(), handler)
+            await run_through_gate(make_request(), handler)
 
         gate["receipt"].assert_awaited_once()
         assert gate["log"] == ["receipt", "handler"]
@@ -277,17 +313,18 @@ class TestAutoJourney:
         gate["policy"].return_value = "auto"
         gate["judge"].return_value = IntentDecision(True, "you said send the deck to bob")
 
-        await gate_tool_call(make_request(), Handler(gate["log"]))
+        await run_through_gate(make_request(), Handler(gate["log"]))
 
         assert gate["receipt"].await_args.kwargs["reason"] == "you said send the deck to bob"
 
     async def test_an_unauthorized_call_falls_back_to_asking(self, gate: dict) -> None:
         gate["policy"].return_value = "auto"
         gate["judge"].return_value = IntentDecision(False, "you never asked for this")
+        await asks(gate, make_request())
         decides(gate, status="approved")
         handler = Handler(gate["log"])
 
-        await gate_tool_call(make_request(), handler)
+        await run_through_gate(make_request(), handler)
 
         gate["receipt"].assert_not_awaited()
         gate["card"].assert_awaited_once()
@@ -297,9 +334,10 @@ class TestAutoJourney:
         # The judge is an LLM call on the tool-call hot path. In always_ask it decides
         # nothing, so paying for it would be pure latency.
         gate["policy"].return_value = "ask"
+        await asks(gate, make_request())
         decides(gate, status="approved")
 
-        await gate_tool_call(make_request(), Handler(gate["log"]))
+        await run_through_gate(make_request(), Handler(gate["log"]))
 
         gate["judge"].assert_not_awaited()
 
@@ -323,7 +361,7 @@ class TestUnpausableRun:
     async def test_a_gated_call_is_refused_rather_than_run(self, gate: dict) -> None:
         handler = Handler(gate["log"])
 
-        result = await gate_tool_call(self.background_request(), handler)
+        result = await run_through_gate(self.background_request(), handler)
 
         assert handler.runs == 0
         assert status_of(result) == "denied"
@@ -331,7 +369,7 @@ class TestUnpausableRun:
     async def test_nobody_is_asked_and_nothing_is_parked(self, gate: dict) -> None:
         # Publishing a card to a user who cannot answer it, or pausing a run nothing can
         # resume, are the two ways this could fail while still refusing the call.
-        await gate_tool_call(self.background_request(), Handler(gate["log"]))
+        await run_through_gate(self.background_request(), Handler(gate["log"]))
 
         gate["card"].assert_not_awaited()
         gate["interrupt"].assert_not_called()
@@ -342,7 +380,7 @@ class TestUnpausableRun:
         gate["policy"].return_value = "allow"
         handler = Handler(gate["log"])
 
-        result = await gate_tool_call(self.background_request(), handler)
+        result = await run_through_gate(self.background_request(), handler)
 
         assert handler.runs == 1
         assert result.content == "the tool really ran"

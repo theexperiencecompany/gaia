@@ -15,27 +15,20 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _common import iter_python_files, report_rule
+import no_service_classes
+import no_silent_fallback
+import repository_boundaries
+import route_contract
+import wide_events_logging
 
-from _common import Violation, display, iter_python_files  # noqa: E402
-import no_service_classes  # noqa: E402
-import repository_boundaries  # noqa: E402
-import route_contract  # noqa: E402
-import wide_events_logging  # noqa: E402
-
-RULES = (route_contract, no_service_classes, wide_events_logging, repository_boundaries)
-
-
-def _report(module: object, violations: list[Violation]) -> None:
-    rule = module.RULE
-    why = module.WHY
-    doc = module.DOC
-    print(f"\n✗ {rule} — {len(violations)} violation(s)", file=sys.stderr)
-    print(f"  why:  {why}", file=sys.stderr)
-    print(f"  docs: {doc}", file=sys.stderr)
-    for v in violations:
-        print(f"  {display(v.path)}:{v.line}  {v.detail}", file=sys.stderr)
-        print(f"      fix: {v.fix}", file=sys.stderr)
+RULES = (
+    route_contract,
+    no_service_classes,
+    wide_events_logging,
+    repository_boundaries,
+    no_silent_fallback,
+)
 
 
 def main(argv: list[str]) -> int:
@@ -47,7 +40,7 @@ def main(argv: list[str]) -> int:
         violations = module.check(files)
         if violations:
             total += len(violations)
-            _report(module, violations)
+            report_rule(module.RULE, module.WHY, module.DOC, violations)
 
     if total:
         print(

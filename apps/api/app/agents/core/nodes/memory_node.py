@@ -20,6 +20,7 @@ from app.constants.memory import (
     MemorySourceType,
 )
 from app.memory.engine import memory_engine
+from app.models.agent_models import agent_configurable
 from app.override.langgraph_bigtool.utils import State
 from app.utils.multimodal import extract_text_content
 from shared.py.wide_events import UserContext, log, wide_task
@@ -34,26 +35,6 @@ _background_tasks: set[asyncio.Task] = set()
 def _task_done_callback(task: asyncio.Task) -> None:
     """Callback to remove completed tasks from the background tasks set."""
     _background_tasks.discard(task)
-
-
-def _get_user_id(config: RunnableConfig) -> str | None:
-    """Extract user_id from config for user memory namespace."""
-    return config.get("configurable", {}).get("user_id")
-
-
-def _get_user_name(config: RunnableConfig) -> str | None:
-    """Extract the user's display name from config for fact attribution."""
-    return config.get("configurable", {}).get("user_name")
-
-
-def _get_subagent_id(config: RunnableConfig) -> str | None:
-    """Extract subagent ID from config for memory namespace."""
-    return config.get("configurable", {}).get("subagent_id")
-
-
-def _get_session_id(config: RunnableConfig) -> str | None:
-    """Extract session/thread ID for memory correlation."""
-    return config.get("configurable", {}).get("thread_id")
 
 
 def _check_worth_learning(messages: list[AnyMessage]) -> tuple[bool, str]:
@@ -171,10 +152,11 @@ async def memory_node(
     messages = state.get("messages", [])
 
     # Extract all config values upfront
-    user_id = _get_user_id(config)
-    subagent_id = _get_subagent_id(config)
-    session_id = _get_session_id(config)
-    user_name = _get_user_name(config)
+    configurable = agent_configurable(config)
+    user_id = configurable.get("user_id")
+    subagent_id = configurable.get("subagent_id")
+    session_id = configurable.get("thread_id")
+    user_name = configurable.get("user_name")
 
     # Look up extraction prompt from registry using subagent_id
     extraction_prompt = get_memory_extraction_prompt(subagent_id) if subagent_id else None

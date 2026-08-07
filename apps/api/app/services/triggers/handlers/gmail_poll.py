@@ -11,7 +11,7 @@ This handler is used by system workflows that should poll Gmail on a schedule
 rather than fire on every single incoming email.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -32,10 +32,10 @@ class GmailPollTriggerHandler(TriggerHandler):
     workflows. This avoids overwriting the event routing in the registry.
     """
 
-    SUPPORTED_TRIGGERS = ["gmail_poll_inbox"]
-    SUPPORTED_EVENTS: set[str] = set()
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["gmail_poll_inbox"]
+    SUPPORTED_EVENTS: ClassVar[set[str]] = set()
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "gmail_poll_inbox": "GMAIL_NEW_GMAIL_MESSAGE",
     }
 
@@ -50,7 +50,7 @@ class GmailPollTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -88,7 +88,7 @@ class GmailPollTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching this polling trigger event.
 

@@ -30,7 +30,9 @@ import asyncio
 import contextlib
 import re
 import time
-from typing import Any, Literal
+from typing import Literal
+
+from e2b import AsyncCommandHandle, AsyncSandbox, AsyncWatchHandle, FilesystemEvent
 
 from app.agents.workspace.paths import (
     SESSIONS_DIRNAME,
@@ -109,11 +111,13 @@ def _strip_artifacts_prefix(abs_path: str, conv_id: str) -> str:
 class ArtifactWatcher:
     """One instance per pooled sandbox. Owned by `PooledSandbox.watcher`."""
 
-    def __init__(self, user_id: str, sandbox: Any) -> None:
+    def __init__(self, user_id: str, sandbox: AsyncSandbox) -> None:
         self.user_id = user_id
         self.sandbox = sandbox
         self._mode: DetectionMode = settings.ARTIFACT_DETECTION_MODE
-        self._handle: Any = None
+        # A watch_dir subscription in "watch_dir" mode, the backgrounded `tail`
+        # in "accesslog" mode; None whenever the watcher is stopped or dead.
+        self._handle: AsyncWatchHandle | AsyncCommandHandle | None = None
         self._stopped = True
         # per-conv snapshot {rel_path: (size, mtime)} for diffing
         self._snapshots: dict[str, dict[str, tuple[int, float]]] = {}
@@ -234,7 +238,7 @@ class ArtifactWatcher:
                 error_type=type(exc).__name__ if exc else None,
             )
 
-    async def _on_fs_event(self, ev: Any) -> None:
+    async def _on_fs_event(self, ev: FilesystemEvent) -> None:
         async with log_context(
             "sandbox_artifact_event",
             user={"id": self.user_id},
@@ -292,7 +296,7 @@ class ArtifactWatcher:
             sandbox={"artifact_mode": self._mode},
         )
 
-    async def _watch_accesslog_exit(self, handle: Any) -> None:
+    async def _watch_accesslog_exit(self, handle: AsyncCommandHandle) -> None:
         """Mark the watcher dead when the background tail stream ends.
 
         The tail handle has no exit callback (unlike watch_dir's on_exit), so a
@@ -420,7 +424,7 @@ class ArtifactWatcher:
             self._snapshots[conv] = current
 
 
-async def start_watcher_for(user_id: str, sandbox: Any) -> ArtifactWatcher:
+async def start_watcher_for(user_id: str, sandbox: AsyncSandbox) -> ArtifactWatcher:
     """Construct + start a watcher for a freshly acquired sandbox."""
     watcher = ArtifactWatcher(user_id, sandbox)
     await watcher.start()

@@ -2,6 +2,7 @@
 Sentry configuration for error tracking and performance monitoring.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 from loguru import logger as _loguru
@@ -28,7 +29,7 @@ def _scrub_pii(extra: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _make_sentry_loguru_sink():
+def _make_sentry_loguru_sink() -> Callable[[object], None]:
     """Return a Loguru sink that forwards ERROR+ records to Sentry.
 
     Loguru does not emit through Python's stdlib logging, so Sentry's
@@ -77,7 +78,7 @@ def _make_sentry_loguru_sink():
     return _sink
 
 
-def init_sentry():
+def init_sentry() -> None:
     """Initialize Sentry error tracking if DSN is configured."""
 
     if not settings.SENTRY_DSN:

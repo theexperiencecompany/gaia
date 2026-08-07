@@ -86,7 +86,7 @@ def _is_background_executor(msg: AnyMessage) -> bool:
     in its own slot at the tail of ``system_instruction`` alongside
     ``todo_context`` so the cacheable [static, dynamic] prefix is preserved.
     """
-    return getattr(msg, "name", None) == "background_executor"
+    return bool(getattr(msg, "name", None) == "background_executor")
 
 
 def _is_executor_status(msg: AnyMessage) -> bool:

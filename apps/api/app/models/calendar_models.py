@@ -1,13 +1,15 @@
 from datetime import datetime
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    SerializerFunctionWrapHandler,
     ValidationInfo,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -16,6 +18,250 @@ from app.db.repositories.base import MongoDocument
 
 class CalendarPreferencesUpdateRequest(BaseModel):
     selected_calendars: list[str]
+
+
+class GooglePassthroughModel(BaseModel):
+    """Base for Google payloads that GAIA forwards to the web client verbatim.
+
+    Subclasses declare only the fields GAIA reads or writes and rely on
+    ``extra="allow"`` for the rest of Google's schema. Serialization drops any
+    declared field that was never set, so the payload the client receives contains
+    exactly the keys Google sent (plus anything GAIA explicitly assigned) — a
+    declared-but-absent field must not surface as an invented ``null``.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    @model_serializer(mode="wrap")
+    def _drop_unset_fields(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        dumped = handler(self)
+        return {key: value for key, value in dumped.items() if key in self.model_fields_set}
+
+
+class GoogleCalendarEventDateTime(GooglePassthroughModel):
+    """The ``start``/``end`` object of a Google Calendar ``events`` resource.
+
+    An event carries either ``date`` (all-day) or ``dateTime`` + ``timeZone``; both
+    are declared optional so a single type covers both.
+    """
+
+    date: str | None = None
+    dateTime: str | None = None
+    timeZone: str | None = None
+
+
+class GoogleCalendarEventResource(GooglePassthroughModel):
+    """A single Google Calendar ``events`` resource, forwarded to the client verbatim.
+
+    Only the fields GAIA itself reads (filtering, sorting, display) or injects
+    (``calendarId``/``calendarTitle``) are declared. Google owns the rest of this
+    schema and varies it by event type, so everything else passes through untouched
+    rather than guessing at a structure that would silently drop fields the web
+    client reads.
+    """
+
+    id: str | None = None
+    summary: str | None = None
+    description: str | None = None
+    eventType: str | None = None
+    start: GoogleCalendarEventDateTime | None = None
+    end: GoogleCalendarEventDateTime | None = None
+    recurrence: list[str] | None = None
+    # Injected by GAIA when events are merged across several calendars; absent from
+    # a raw single-event response.
+    calendarId: str | None = None
+    calendarTitle: str | None = None
+
+
+class GoogleCalendarEventsPage(BaseModel):
+    """One page of Google's ``events.list`` response.
+
+    Internal only — the service unpacks ``items``/``nextPageToken`` and never
+    forwards this envelope to a client.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    items: list[GoogleCalendarEventResource] = Field(default_factory=list)
+    nextPageToken: str | None = None
+
+
+class GoogleCalendarListEntry(GooglePassthroughModel):
+    """One entry of Google's ``calendarList.list`` payload, forwarded to the client
+    verbatim.
+
+    Only ``id`` and ``summary`` are declared — the fields the service reads.
+    Everything else (``description``, ``backgroundColor``, ``primary``, ...) rides
+    through as extras and is projected into ``CalendarSummary`` where it is needed.
+    """
+
+    id: str
+    summary: str | None = None
+
+
+class CalendarSummary(BaseModel):
+    """Trimmed calendar-list entry — the four fields GAIA's agent tools and colour
+    maps need, without the rest of Google's envelope."""
+
+    id: str | None = None
+    summary: str | None = None
+    description: str | None = None
+    backgroundColor: str | None = None
+
+
+class CalendarListResponse(BaseModel):
+    """Response for ``GET /calendar/list`` — Google's ``calendarList.list`` payload.
+
+    ``extra="allow"`` keeps the envelope keys Google sends alongside ``items``
+    (``kind``, ``etag``, ``nextSyncToken``).
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+    items: list[GoogleCalendarListEntry] = Field(default_factory=list)
+
+
+class CalendarEventsResponse(BaseModel):
+    """Response for the multi-calendar reads (``POST /calendar/events/query`` and
+    ``GET /calendar/events``)."""
+
+    events: list[GoogleCalendarEventResource]
+    selected_calendars: list[str] = Field(serialization_alias="selectedCalendars")
+    has_more: bool
+    calendars_truncated: list[str]
+
+
+class CalendarEventPageResponse(BaseModel):
+    """Response for ``GET /calendar/{calendar_id}/events``."""
+
+    events: list[GoogleCalendarEventResource]
+    next_page_token: str | None = Field(default=None, serialization_alias="nextPageToken")
+
+
+class CalendarEventFetchResult(BaseModel):
+    """Result of paging one calendar's events to exhaustion — internal to the
+    calendar service."""
+
+    items: list[GoogleCalendarEventResource]
+    truncated: bool
+    total_fetched: int
+
+
+class CalendarEventDisplay(BaseModel):
+    """Flattened event shape streamed to the web client as ``calendar_fetch_data``."""
+
+    summary: str
+    start_time: str
+    end_time: str
+    calendar_name: str
+    background_color: str
+
+
+class CalendarSearchResult(BaseModel):
+    """Result of a native Google Calendar search across the user's calendars."""
+
+    query: str
+    matching_events: list[GoogleCalendarEventResource]
+    total_matches: int
+    total_events_searched: int
+    searched_calendars: list[str]
+
+
+class GoogleConferenceSolutionKey(BaseModel):
+    type: str
+
+
+class GoogleConferenceCreateRequest(BaseModel):
+    requestId: str
+    conferenceSolutionKey: GoogleConferenceSolutionKey
+
+
+class GoogleConferenceData(BaseModel):
+    """``conferenceData`` asking Google to attach a Meet link to a new event."""
+
+    createRequest: GoogleConferenceCreateRequest
+
+
+class GoogleCalendarAttendee(BaseModel):
+    email: str
+
+
+class GoogleCalendarEventWrite(BaseModel):
+    """Request body GAIA sends to Google's ``events.insert`` / ``events.update``.
+
+    Serialized with ``exclude_none=True`` so an unset field is omitted rather than
+    sent as an explicit ``null``, which Google rejects.
+    """
+
+    summary: str
+    description: str
+    start: GoogleCalendarEventDateTime | None = None
+    end: GoogleCalendarEventDateTime | None = None
+    recurrence: list[str] | None = None
+    attendees: list[GoogleCalendarAttendee] | None = None
+    conferenceData: GoogleConferenceData | None = None
+
+
+class CalendarPreferencesResponse(BaseModel):
+    """Response for ``GET /calendar/preferences``."""
+
+    selected_calendars: list[str] = Field(serialization_alias="selectedCalendars")
+
+
+class CalendarPreferencesUpdateResponse(BaseModel):
+    """Response for ``PUT /calendar/preferences``."""
+
+    message: str
+
+
+class EventDeleteResponse(BaseModel):
+    """Response for ``DELETE /calendar/event``."""
+
+    success: bool
+    message: str
+
+
+class BatchEventCreateFailure(BaseModel):
+    """One failed entry of a batch create — identified by summary, since a failed
+    create never produced an event id."""
+
+    event: str
+    error: str
+
+
+class BatchEventFailure(BaseModel):
+    """One failed entry of a batch update or delete."""
+
+    event_id: str
+    error: str
+
+
+class BatchEventDeleteSuccess(BaseModel):
+    """One successfully deleted entry of a batch delete."""
+
+    event_id: str
+    calendar_id: str
+
+
+class BatchEventCreateResponse(BaseModel):
+    """Response for ``POST /calendar/events/batch``."""
+
+    successful: list[GoogleCalendarEventResource]
+    failed: list[BatchEventCreateFailure]
+
+
+class BatchEventUpdateResponse(BaseModel):
+    """Response for ``PUT /calendar/events/batch``."""
+
+    successful: list[GoogleCalendarEventResource]
+    failed: list[BatchEventFailure]
+
+
+class BatchEventDeleteResponse(BaseModel):
+    """Response for ``DELETE /calendar/events/batch``."""
+
+    successful: list[BatchEventDeleteSuccess]
+    failed: list[BatchEventFailure]
 
 
 class CalendarEventsQueryRequest(BaseModel):
@@ -128,10 +374,9 @@ class RecurrenceRule(BaseModel):
 
         if self.until:
             try:
-                if "T" in self.until:  # ISO datetime format
-                    datetime.fromisoformat(self.until.replace("Z", "+00:00"))
-                else:  # Simple date format
-                    datetime.fromisoformat(self.until)
+                # Both a bare date and a full datetime (with or without a Z
+                # suffix) are ISO 8601, and fromisoformat parses all of them.
+                datetime.fromisoformat(self.until)
             except ValueError:
                 raise ValueError(
                     "Invalid 'until' date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS±HH:MM)"
@@ -502,7 +747,6 @@ class EventCreateRequest(BaseCalendarEvent):
                 if "fromisoformat" not in str(e):
                     raise e
                 # This means the format validation failed, which is handled by the field validator
-                pass
 
         return self
 
@@ -571,7 +815,7 @@ class GetDaySummaryInput(BaseModel):
     """Input for getting a day's schedule summary."""
 
     date: str | None = Field(
-        default_factory=lambda: datetime.now().strftime("%Y-%m-%d"),
+        default=None,
         description="Date to get summary for (YYYY-MM-DD format). Defaults to today.",
     )
 

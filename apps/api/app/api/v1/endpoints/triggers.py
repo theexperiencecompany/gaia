@@ -5,11 +5,11 @@ Provides endpoints for fetching available trigger schemas
 that can be used in workflow configuration.
 """
 
-from typing import Any, Union
-
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.models.trigger_config import TriggerOptionsResponse, WorkflowTriggerResponse
+from app.models.user_models import AuthenticatedUser
 from app.services.triggers import get_handler_by_name
 from app.services.workflow.trigger_service import TriggerService
 from shared.py.wide_events import log
@@ -17,10 +17,10 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/triggers")
 
 
-@router.get("/schema", response_model=list[dict[str, Any]])
+@router.get("/schema")
 async def get_trigger_schemas(
-    _: dict = Depends(get_current_user),
-) -> list[dict[str, Any]]:
+    _: AuthenticatedUser = Depends(get_current_user),
+) -> list[WorkflowTriggerResponse]:
     """
     Get all available workflow trigger schemas.
 
@@ -41,8 +41,8 @@ async def get_trigger_options(
     trigger_slug: str,
     field_name: str = "",
     parent_values: str = "",
-    current_user: dict = Depends(get_current_user),
-) -> dict[str, list[Union[dict[str, str], dict[str, Any]]]]:
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> TriggerOptionsResponse:
     """
     Get dynamic options for a trigger configuration field.
     Passes any additional query parameters to the handler.
@@ -53,9 +53,6 @@ async def get_trigger_options(
         trigger_slug: The trigger slug (e.g., 'slack_new_message')
         field_name: The config field name (e.g., 'channel_id'), optional
         parent_values: Comma-separated parent IDs for cascading options (e.g., 'workspace1,workspace2')
-
-    Returns:
-        {"options": [{"value": "...", "label": "..."} | {"group": "...", "options": [...]}]}
     """
     log.set(
         operation="get_trigger_options",
@@ -95,4 +92,4 @@ async def get_trigger_options(
 
     log.set(result_count=len(options))
     log.set(outcome="success")
-    return {"options": options}
+    return TriggerOptionsResponse(options=list(options))

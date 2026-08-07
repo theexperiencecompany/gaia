@@ -1369,6 +1369,46 @@ class TestLinearGetIssueActivity:
         result = fn(GetIssueActivityInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)
         assert result["activities"][0]["change_type"] == "labels_added"
 
+    @patch(f"{LINEAR_MODULE}.graphql_request")
+    def test_get_activity_labels_added_as_a_plain_list(self, mock_gql: MagicMock) -> None:
+        """QUERY_ISSUE_HISTORY selects `addedLabels { id name }`, so a non-empty
+        label change arrives as a list of label objects, not a {nodes: [...]}
+        connection. Every fixture in this repo used the connection shape *and*
+        left it empty, so the branch that reads `["addedLabels"]["nodes"]` was
+        never executed against real data.
+        """
+        mock_gql.return_value = {
+            "issue": {
+                "history": {
+                    "nodes": [
+                        {
+                            "createdAt": "2024-01-01",
+                            "actor": {"name": "Alice"},
+                            "fromState": None,
+                            "toState": None,
+                            "fromAssignee": None,
+                            "toAssignee": None,
+                            "fromPriority": None,
+                            "toPriority": None,
+                            "addedLabels": [{"id": "l1", "name": "Bug"}],
+                            "removedLabels": None,
+                        },
+                    ]
+                }
+            },
+        }
+
+        from app.agents.tools.integrations.linear_tool import (
+            register_linear_custom_tools,
+        )
+
+        tools = _capture_tools(register_linear_custom_tools)
+        fn = tools["CUSTOM_GET_ISSUE_ACTIVITY"]
+
+        result = fn(GetIssueActivityInput(issue_id="i1"), EXECUTE_REQUEST, AUTH_CREDS)
+        assert result["activities"][0]["change_type"] == "labels_added"
+        assert result["activities"][0]["labels"] == ["Bug"]
+
 
 class TestLinearGetActiveSprint:
     @patch(f"{LINEAR_MODULE}.graphql_request")

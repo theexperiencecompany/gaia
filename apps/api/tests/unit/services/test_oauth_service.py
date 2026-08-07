@@ -808,7 +808,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -835,7 +834,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -859,7 +857,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -885,7 +882,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id=user_id,
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -911,7 +907,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id=user_id,
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -935,7 +930,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id=user_id,
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -960,7 +954,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -982,7 +975,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1007,7 +999,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1023,7 +1014,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1046,7 +1036,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1071,7 +1060,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1096,7 +1084,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1122,7 +1109,6 @@ class TestHandleOAuthConnection:
         await handle_oauth_connection(
             user_id="user123",
             integration_config=config,
-            connected_account_id="acc_123",
             background_tasks=background_tasks,
         )
 
@@ -1148,7 +1134,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1172,7 +1157,6 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )
 
@@ -1196,6 +1180,5 @@ class TestHandleOAuthConnection:
             await handle_oauth_connection(
                 user_id="user123",
                 integration_config=config,
-                connected_account_id="acc_123",
                 background_tasks=background_tasks,
             )

@@ -265,6 +265,110 @@ class TestBuildAgentConfig:
         assert config["configurable"]["vfs_session_id"] == "vfs-sess-1"
 
     @patch("app.helpers.agent_helpers.providers")
+    def test_every_parent_fallback_key_fills_only_its_own_blank(self, mock_providers):
+        """Each fallback key inherits from the SAME key on the parent, and no other.
+
+        The seven fallback keys are written out one per line in
+        ``_inherit_from_parent_configurable``. Two of them crossed (a line
+        reading ``subagent_id`` into ``tool_category``) type-checks fine — both
+        are declared ``str | None`` on ``AgentConfigurable`` — so only distinct
+        values per key can catch it. Giving every key a unique value is what
+        makes a swap visible.
+        """
+        mock_providers.get.return_value = None
+        base = {
+            "selected_tool": "parent-tool",
+            "tool_category": "parent-category",
+            "subagent_id": "parent-subagent",
+            "vfs_session_id": "parent-vfs",
+            "active_todo_id": "parent-todo",
+            "execution_mode": "background",
+            "conversation_source": "telegram",
+        }
+
+        inherited = build_agent_config(
+            conversation_id=CONV_ID, user=FAKE_USER, agent_name="executor", base_configurable=base
+        )["configurable"]
+        assert {key: inherited[key] for key in base} == base
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_child_value_wins_over_parent_for_fallback_keys(self, mock_providers):
+        """The parent only fills a blank — an explicit child value is never clobbered."""
+        mock_providers.get.return_value = None
+
+        configurable = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,
+            agent_name="executor",
+            base_configurable={
+                "selected_tool": "parent-tool",
+                "tool_category": "parent-category",
+                "subagent_id": "parent-subagent",
+                "vfs_session_id": "parent-vfs",
+                "active_todo_id": "parent-todo",
+                "execution_mode": "background",
+                "conversation_source": "telegram",
+            },
+            selected_tool="child-tool",
+            tool_category="child-category",
+            subagent_id="child-subagent",
+            vfs_session_id="child-vfs",
+            active_todo_id="child-todo",
+            execution_mode="interactive",
+            source="web",
+        )["configurable"]
+
+        assert configurable["selected_tool"] == "child-tool"
+        assert configurable["tool_category"] == "child-category"
+        assert configurable["subagent_id"] == "child-subagent"
+        assert configurable["vfs_session_id"] == "child-vfs"
+        assert configurable["active_todo_id"] == "child-todo"
+        assert configurable["execution_mode"] == "interactive"
+        assert configurable["conversation_source"] == "web"
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_parent_overrides_child_for_conversation_id_and_user_messages(self, mock_providers):
+        """The TRUE conversation id and the user's verbatim turns are established
+        once by comms; a child passing its own wrapped thread id or an
+        agent-authored paraphrase must not overwrite them (the HIL intent judge
+        grounds gated calls against the user's own words)."""
+        mock_providers.get.return_value = None
+
+        configurable = build_agent_config(
+            conversation_id="github_executor_conv-1",
+            user=FAKE_USER,
+            agent_name="executor",
+            base_configurable={
+                "conversation_id": "conv-1",
+                "user_messages": ["delete the repo"],
+            },
+            user_messages=["the agent's paraphrase"],
+        )["configurable"]
+
+        assert configurable["conversation_id"] == "conv-1"
+        assert configurable["user_messages"] == ["delete the repo"]
+        # thread_id still tracks the wrapped graph thread, unlike conversation_id.
+        assert configurable["thread_id"] == "github_executor_conv-1"
+
+    @patch("app.helpers.agent_helpers.providers")
+    def test_stream_id_always_comes_from_the_parent(self, mock_providers):
+        """Pass-through, not a fallback: a child never invents its own stream."""
+        mock_providers.get.return_value = None
+
+        with_parent = build_agent_config(
+            conversation_id=CONV_ID,
+            user=FAKE_USER,
+            agent_name="executor",
+            base_configurable={"stream_id": "stream-9"},
+        )["configurable"]
+        without_parent = build_agent_config(
+            conversation_id=CONV_ID, user=FAKE_USER, agent_name="comms_agent"
+        )["configurable"]
+
+        assert with_parent["stream_id"] == "stream-9"
+        assert without_parent["stream_id"] is None
+
+    @patch("app.helpers.agent_helpers.providers")
     def test_posthog_callback_added(self, mock_providers):
         mock_providers.get.return_value = MagicMock()  # posthog client present
 

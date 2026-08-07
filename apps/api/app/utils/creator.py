@@ -8,7 +8,7 @@ apps/web/src/features/workflows/utils/creator.ts.
 
 from typing import Any
 
-from app.models.workflow_models import PublicWorkflowRow
+from app.models.workflow_models import PublicWorkflowRow, WorkflowCreator
 
 SYSTEM_CREATOR_ID = "system"
 SYSTEM_CREATOR_NAME = "GAIA Team"
@@ -23,6 +23,10 @@ def creator_lookup_stage(
     against the `users` collection's ObjectId `_id`. Uses `$convert` with
     `onError: None` so non-OID values (like the literal "system") don't crash
     the aggregation — they simply yield no match.
+
+    Stays `dict[str, Any]`: this is Mongo's aggregation DSL, an arbitrarily
+    nested expression grammar with no fixed key set to model (Type Safety
+    item 14).
     """
     return {
         "$lookup": {
@@ -57,7 +61,7 @@ def format_creator(
     row: PublicWorkflowRow,
     *,
     default_name: str | None = None,
-) -> dict[str, Any]:
+) -> WorkflowCreator:
     """Build the public-facing `creator` dict from a hydrated public-workflow row,
     given its joined `creator_info`. Falls back to `SYSTEM_CREATOR_NAME` when the
     creator id is "system" (or `default_name` is set), else `UNKNOWN_CREATOR_NAME`.

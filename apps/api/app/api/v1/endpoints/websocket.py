@@ -10,7 +10,7 @@ router = APIRouter(prefix="/ws", tags=["WebSocket"])
 
 
 @router.websocket("/connect")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket) -> None:
     """
     Endpoint to establish WebSocket connection for authenticated users.
     Each user can have multiple connections (e.g., from different devices).

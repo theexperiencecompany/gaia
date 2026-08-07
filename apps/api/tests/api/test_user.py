@@ -13,7 +13,11 @@ from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
 
-from app.models.user_models import UserDocument
+from app.models.user_models import (
+    OnboardingPreferences,
+    OnboardingStatusResponse,
+    UserDocument,
+)
 from tests.conftest import FAKE_USER
 
 
@@ -21,10 +25,19 @@ class TestGetMe:
     """GET /api/v1/user/me"""
 
     async def test_returns_current_user(self, client: AsyncClient):
+        # Must be the real return type. A bare dict silently passed while the field
+        # was dict[str, Any]; it can never validate as OnboardingStatusResponse, so
+        # this asserted a shape get_user_onboarding_status cannot produce.
         with patch(
             "app.api.v1.endpoints.user.get_user_onboarding_status",
             new_callable=AsyncMock,
-            return_value={"completed": True, "phase": "done"},
+            return_value=OnboardingStatusResponse(
+                completed=True,
+                completed_at=None,
+                phase="done",
+                preferences=OnboardingPreferences(),
+                first_message_conversation_id=None,
+            ),
         ):
             resp = await client.get("/api/v1/user/me")
 

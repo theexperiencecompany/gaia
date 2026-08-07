@@ -1,10 +1,24 @@
 """Builders for the ``artifact_data`` chunks streamed and persisted per turn."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, TypedDict
 
 from app.config.settings import settings
 from app.constants.artifacts import ARTIFACT_URL_PATH_TEMPLATE
+
+
+class ArtifactDataEntry(TypedDict):
+    """One ``artifact_data`` tool_data entry — streamed live and/or persisted.
+
+    ``data`` stays ``dict[str, Any]``: the live variant carries the watcher's raw
+    artifact payload, whose keys are the sandbox's to define (see the module
+    docstring of ``app/services/chat/artifact_forwarder.py``).
+    """
+
+    tool_name: str
+    data: dict[str, Any]
+    timestamp: str
+    tool_category: str
 
 
 def artifact_url_base(conversation_id: str) -> str:
@@ -17,7 +31,7 @@ def artifact_url_base(conversation_id: str) -> str:
     return f"{settings.HOST}{ARTIFACT_URL_PATH_TEMPLATE.format(conversation_id=conversation_id)}"
 
 
-def build_artifact_full_entry(payload: dict[str, Any]) -> dict[str, Any]:
+def build_artifact_full_entry(payload: dict[str, Any]) -> ArtifactDataEntry:
     """A live-stream ``artifact_data`` chunk carrying the file's full data."""
     return {
         "tool_name": "artifact_data",
@@ -27,7 +41,9 @@ def build_artifact_full_entry(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build_artifact_ref_entry(conversation_id: str, path: str, event: str | None) -> dict[str, Any]:
+def build_artifact_ref_entry(
+    conversation_id: str, path: str, event: str | None
+) -> ArtifactDataEntry:
     """A lightweight ``artifact_data`` reference for a persisted message.
 
     Full artifact data lives in the conversation registry; the message stores

@@ -154,7 +154,6 @@ function TextInner({
       >
         {parts.map((part, i) => (
           <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: stable id + index
             key={baseId ? `${baseId}-${i}` : i}
             className="sbi-anim"
             style={buildCharStyle(i)}

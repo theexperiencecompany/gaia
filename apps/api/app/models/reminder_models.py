@@ -348,7 +348,14 @@ class UpdateReminderRequest(BaseModel):
 
 
 class ReminderResponse(BaseModel):
-    """Response model for reminder operations."""
+    """Response model for reminder operations.
+
+    ``from_attributes`` so the endpoints can project a ``ReminderModel`` onto
+    this without a dict round-trip. Declared here rather than passed at each
+    call site: it is a property of this model, not of one conversion.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: str = Field(..., description="Reminder ID")
     user_id: str = Field(..., description="User ID who owns this reminder")
@@ -375,6 +382,20 @@ class ReminderResponse(BaseModel):
         return None
 
 
+class CronValidationResponse(BaseModel):
+    """Result of validating a cron expression."""
+
+    expression: str = Field(..., description="The cron expression that was checked")
+    valid: bool = Field(..., description="Whether the expression parses as a valid cron")
+    next_runs: list[str] = Field(
+        default_factory=list,
+        description="ISO timestamps of the next few runs; empty unless the expression is valid",
+    )
+    error: str | None = Field(
+        default=None, description="Why the expression could not be evaluated, if it raised"
+    )
+
+
 # Repository persistence models (Wave E migration)
 
 
@@ -395,9 +416,16 @@ class ReminderDocument(ReminderModel, MongoDocument):
 
 class ReminderUpdate(BaseModel):
     """Partial ``$set`` update for a reminder — the fields the update and
-    scheduler-status paths mutate. All optional, ``extra="forbid"``."""
+    scheduler-status paths mutate. All optional, ``extra="forbid"``.
 
-    model_config = ConfigDict(extra="forbid")
+    ``validate_assignment`` because the reminder tool builds this by assigning
+    one field at a time (only touched fields land in ``model_fields_set``, which
+    is what the repository's ``exclude_unset`` ``$set`` relies on). Without it,
+    assignment would skip the coercion the constructor performs and write an
+    unconverted value straight to Mongo.
+    """
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     agent: AgentType | None = None
     repeat: str | None = None

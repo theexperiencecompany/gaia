@@ -1,5 +1,6 @@
 """Unit tests for app.agents.skills.parser — SKILL.md parsing and generation."""
 
+from pydantic import ValidationError
 import pytest
 
 from app.agents.skills.parser import (
@@ -134,12 +135,12 @@ class TestParseSkillMd:
 
     def test_parse_missing_name_raises(self) -> None:
         content = "---\ndescription: no name\n---\nBody"
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="name"):
             parse_skill_md(content)
 
     def test_parse_missing_description_raises(self) -> None:
         content = "---\nname: no-desc\n---\nBody"
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError, match="description"):
             parse_skill_md(content)
 
     def test_parse_body_is_stripped(self) -> None:
@@ -306,7 +307,7 @@ class TestGenerateSkillMd:
         assert metadata.target == "gmail_agent"
 
     def test_invalid_name_raises(self) -> None:
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValidationError, match="name"):
             generate_skill_md(
                 name="Invalid Name!",
                 description="Bad name.",
@@ -314,7 +315,7 @@ class TestGenerateSkillMd:
             )
 
     def test_empty_description_raises(self) -> None:
-        with pytest.raises((ValueError, Exception)):
+        with pytest.raises(ValidationError, match="description"):
             generate_skill_md(
                 name="valid-name",
                 description="",

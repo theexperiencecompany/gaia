@@ -6,18 +6,26 @@ avoiding a cyclic dependency.
 """
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from langchain_core.messages import (
     AIMessageChunk,
+    AnyMessage,
+    BaseMessage,
     HumanMessage,
     SystemMessage,
     ToolMessage,
 )
-from langgraph.types import Command, interrupt
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import Command, StateSnapshot, interrupt
 
-from app.agents.core.graph_manager import GraphManager, GraphUnavailableError
+from app.agents.core.background.session import claim_tool_output, note_tool_output_owner
+from app.agents.core.graph_manager import (
+    CompiledAgentGraph,
+    GraphManager,
+    GraphUnavailableError,
+)
 from app.agents.core.subagents.registry import get_subagent_by_id
 from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
@@ -37,6 +45,12 @@ from app.helpers.message_helpers import (
     build_current_time_message,
     create_system_message,
     format_files_list,
+)
+from app.models.agent_models import (
+    AgentConfigurable,
+    AgentRunnableConfig,
+    AgentUserContext,
+    agent_configurable,
 )
 from app.models.stream_events import ReasoningPayload, ToolOutputPayload
 from app.services.chat.chunks import normalize_custom_event
@@ -118,7 +132,7 @@ def subagent_row_id(tool_call_id: str) -> str:
     return str(uuid5(NAMESPACE_URL, f"subagent_row:{tool_call_id}"))
 
 
-def resume_for_gate(interrupt_payload: dict[str, Any]) -> Any:
+def resume_for_gate(interrupt_payload: dict[str, Any]) -> object:
     """The decision belonging to the subagent gate now paused.
 
     A synchronous spawn/handoff drives its subagent imperatively, bubbling each HIL
@@ -151,15 +165,15 @@ class SubagentExecutionContext:
 
     def __init__(
         self,
-        subagent_graph,
+        subagent_graph: CompiledAgentGraph,
         agent_name: str,
-        config: dict,
-        configurable: dict,
+        config: AgentRunnableConfig,
+        configurable: AgentConfigurable,
         integration_id: str,
-        initial_state: dict,
+        initial_state: dict[str, Any],
         user_id: str | None = None,
         stream_id: str | None = None,
-    ):
+    ) -> None:
         self.subagent_graph = subagent_graph
         self.agent_name = agent_name
         self.config = config
@@ -173,7 +187,7 @@ class SubagentExecutionContext:
 async def build_initial_messages(
     system_message: SystemMessage,
     agent_name: str,
-    configurable: dict,
+    configurable: AgentConfigurable,
     task: str,
     user_id: str | None = None,
     subagent_id: str | None = None,
@@ -181,9 +195,9 @@ async def build_initial_messages(
     integration_id: str | None = None,
     memories_text: str | None = None,
     skills_text: str | None = None,
-    provider_metadata: dict | None = None,
+    provider_metadata: dict[str, str] | None = None,
     include_connected_integrations: bool = False,
-) -> list:
+) -> list[AnyMessage]:
     """Build the [static_prompt, dynamic_context, human_task] triplet.
 
     The static system prompt is byte-identical across users/channels. The
@@ -247,7 +261,7 @@ async def build_initial_messages(
     ]
 
 
-def _with_current_time(resume: Command, configurable: dict[str, Any]) -> Command:
+def _with_current_time(resume: Command, configurable: AgentConfigurable) -> Command:
     """Re-clock a resumed run.
 
     A resume replaces ``initial_state``, so the fresh time message
@@ -268,15 +282,36 @@ def _with_current_time(resume: Command, configurable: dict[str, Any]) -> Command
 
 
 def _process_messages_payload(
-    payload: tuple,
+    # "messages"-mode payloads are always (message chunk, metadata); the driver
+    # above holds them as `Any` only because the shape varies per stream mode.
+    payload: tuple[BaseMessage, dict[str, Any]],
     complete_message: str,
     stream_writer: StreamWriterCallable | None,
     subagent_id: str | None,
+    stream_id: str,
 ) -> str:
     """Handle one "messages"-mode stream event, returning the updated message.
 
     Accumulates AI content, streams reasoning deltas, and emits tool_output for
     ToolMessages — all gated on a non-silent payload and an available writer.
+
+    ``claim_tool_output`` keeps each result to one emission per stream. A
+    subagent invoked from a tool of this graph is a nested run, and "messages"
+    mode carries its chunks up to this stream annotated with the *inner* run's
+    metadata — same ``langgraph_node``, same ``langgraph_checkpoint_ns`` — so
+    nothing about the payload distinguishes it from our own. Ungated, the
+    executor re-emits every result the subagent already reported, and the second
+    copy carries no ``subagent_id``, so the client renders it a second time
+    outside the subagent's row. The "updates" branch has the equivalent
+    protection in its ``node_name != "agent"`` gate, which is why tool_data
+    never doubled and only tool_output did.
+
+    The claim goes to whichever run ANNOUNCED the call (``note_tool_output_owner``,
+    in the "updates" branch), not to whichever looks first: both drivers race for
+    the same ToolMessage, and on a slow machine the executor won and published the
+    untagged copy. A call nobody announced still fails open, so a HIL resume — where
+    the announcement happened in the run before the pause — keeps its result rather
+    than trading a duplicate card for a missing one.
     """
     chunk, metadata = payload
     if metadata.get("silent"):
@@ -305,7 +340,7 @@ def _process_messages_payload(
     elif chunk and isinstance(chunk, ToolMessage):
         content_str = extract_text_content(chunk.content)
         complete_message = _capture_finish_task_content(chunk, complete_message)
-        if stream_writer:
+        if stream_writer and claim_tool_output(stream_id, chunk.tool_call_id, subagent_id):
             tool_output_payload = ToolOutputPayload(
                 tool_call_id=chunk.tool_call_id,
                 output=content_str,
@@ -338,23 +373,33 @@ async def execute_subagent_stream(
     complete_message = ""
     emitted_tool_calls: set[str] = set()
     tool_ran = False
-    pending_interrupt: dict[str, Any] | None = None
+    pending_approvals: list[dict[str, Any]] = []
 
     # Inject the UUID subagent_id into configurable so nested spawn_subagent
     # tool calls can read the correct parent_subagent_id via
     # configurable.get("subagent_id").
     run_config = ctx.config
     if subagent_id:
-        base_configurable = ctx.config.get("configurable", {})
+        base_configurable = agent_configurable(ctx.config)
         run_config = {
             **ctx.config,
             "configurable": {**base_configurable, "subagent_id": subagent_id},
         }
 
+    if resume is not None:
+        resume = await _address_resume(ctx.subagent_graph, cast(RunnableConfig, run_config), resume)
+        if resume is None:
+            # The thread has already consumed this decision. Running it would execute
+            # nothing and return empty, which the caller cannot tell apart from a
+            # finished task — an empty outcome says "nothing to deliver" outright.
+            return SubagentOutcome(text="")
+
     async for event in ctx.subagent_graph.astream(
         _with_current_time(resume, ctx.configurable) if resume is not None else ctx.initial_state,
         stream_mode=["messages", "custom", "updates"],
-        config=run_config,
+        # build_agent_config returns an AgentRunnableConfig, but run_config may be
+        # rebuilt above as a dict spread, which mypy widens back to a plain dict.
+        config=cast(RunnableConfig, run_config),
         # Persist checkpoints only when this executor/subagent run exits, not
         # after every step (langgraph's default durability="async"). The
         # executor/subagent path is a single logical unit of work whose
@@ -373,15 +418,26 @@ async def execute_subagent_stream(
         # Handle 2-tuple format only (no subgraphs)
         if len(event) != 2:
             continue
-        stream_mode, payload = event
+        # A list `stream_mode` makes astream yield (mode, payload) tuples, which
+        # langgraph's own overload return type does not express.
+        stream_mode, payload = cast(tuple[str, Any], event)
 
         if stream_mode == "updates":
-            # The HIL gate paused this run. LangGraph has already checkpointed
-            # it; capture the approval payload and stop consuming the stream.
+            # The run paused. Record the approval and KEEP DRAINING — never break.
+            #
+            # Under durability="exit" the run-exit save is the only checkpoint write
+            # there is, and abandoning the generator early skips it: the writes of
+            # every task that COMPLETED in the interrupting step are lost, so those
+            # tasks re-run on resume. That is how an ungated tool call beside a gated
+            # one used to execute twice. Verified in isolation — break + "exit" is the
+            # only combination that loses them; either alone is fine.
             if LANGGRAPH_INTERRUPT_KEY in payload:
-                pending_interrupt = interrupt_payload(payload[LANGGRAPH_INTERRUPT_KEY])
+                # ONE event per paused task, so two gated calls in a message arrive as
+                # two events. Accumulate: the caller stamps re-dispatch context onto
+                # every id here, and an approval left out of that can never be applied.
+                pending_approvals.extend(interrupt_values(payload[LANGGRAPH_INTERRUPT_KEY]))
                 log.info(f"{LogTag.HIL} Subagent paused on approval", agent=ctx.agent_name)
-                break
+                continue
             for node_name, state_update in payload.items():
                 # Only emit tool_data from the LLM ("agent") node.
                 # Pre-model hooks (filter_messages_node, manage_system_prompts_node,
@@ -397,8 +453,11 @@ async def execute_subagent_stream(
                     integration_metadata=integration_metadata,
                 )
                 for tc_id, tool_entry in entries:
+                    # Announcing the call is what claims its result: "messages" mode
+                    # will replay this ToolMessage into the outer run's stream too.
+                    note_tool_output_owner(ctx.stream_id or "", tc_id, subagent_id)
                     if stream_writer:
-                        chunk_data: dict = {"tool_data": tool_entry}
+                        chunk_data: dict[str, Any] = {"tool_data": tool_entry}
                         if subagent_id:
                             chunk_data["tool_data"] = {**tool_entry, "subagent_id": subagent_id}
                         stream_writer(chunk_data)
@@ -406,7 +465,7 @@ async def execute_subagent_stream(
 
         if stream_mode == "messages":
             complete_message = _process_messages_payload(
-                payload, complete_message, stream_writer, subagent_id
+                payload, complete_message, stream_writer, subagent_id, ctx.stream_id or ""
             )
             if isinstance(payload[0], ToolMessage):
                 tool_ran = True
@@ -418,8 +477,8 @@ async def execute_subagent_stream(
 
     # A pause is not a result: the narration-only heuristic below would misread a
     # half-finished run as "planning text" and tell the parent to re-issue it.
-    if pending_interrupt is not None:
-        return SubagentOutcome(text=complete_message, interrupt=pending_interrupt)
+    if pending_approvals:
+        return SubagentOutcome(text=complete_message, interrupt=merge_approvals(pending_approvals))
 
     # A subagent that only narrated and never ran a tool didn't do the work — return
     # an actionable signal so the parent re-issues the handoff instead of treating the
@@ -432,7 +491,7 @@ async def execute_subagent_stream(
             "explicit instruction to perform the action."
         )
     else:
-        final_message = complete_message if complete_message else "Task completed"
+        final_message = complete_message or "Task completed"
     log.set(
         subagent={
             "name": ctx.agent_name,
@@ -444,14 +503,14 @@ async def execute_subagent_stream(
     return SubagentOutcome(text=final_message)
 
 
-def _snapshot_messages(snapshot: Any) -> list[Any]:
+def _snapshot_messages(snapshot: StateSnapshot) -> list[AnyMessage]:
     """The messages a checkpoint holds. Empty means the thread has never run."""
     values = getattr(snapshot, "values", None) or {}
     messages = values.get("messages") if isinstance(values, dict) else None
     return messages if isinstance(messages, list) else []
 
 
-def _final_text_from_snapshot(snapshot: Any) -> str:
+def _final_text_from_snapshot(snapshot: StateSnapshot) -> str:
     messages = _snapshot_messages(snapshot)
     if not messages:
         return ""
@@ -473,7 +532,7 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
       checkpointed final answer: re-running would repeat every action it took.
     * **Never ran** — no state at all. ``None``, so the caller starts it normally.
     """
-    snapshot = await ctx.subagent_graph.aget_state(ctx.config)
+    snapshot = await ctx.subagent_graph.aget_state(cast(RunnableConfig, ctx.config))
     if snapshot.next:
         return SubagentOutcome(
             text="", interrupt=interrupt_payload(getattr(snapshot, "interrupts", ()) or ())
@@ -483,21 +542,124 @@ async def recover_from_checkpoint(ctx: SubagentExecutionContext) -> SubagentOutc
     return SubagentOutcome(text=_final_text_from_snapshot(snapshot) or "Task completed.")
 
 
-def interrupt_payload(raw: Any) -> dict[str, Any]:
+async def _address_resume(
+    graph: CompiledAgentGraph, config: RunnableConfig, resume: Command
+) -> Command | None:
+    """Aim a resume at the one interrupt it answers, or ``None`` if there is none left.
+
+    A bare ``Command(resume=value)`` feeds the next interrupt positionally, and
+    LangGraph refuses it outright once a thread holds more than one pending
+    interrupt — which is the ordinary case here, because two destructive calls
+    in one AI message both reach the gate in a single node pass and both park.
+    Left bare, the user approves, the dispatch raises, the approved action never
+    runs, LangGraph's own error text reaches them, and the second approval stays
+    pending forever with every retry re-entering the same failure.
+
+    ``None`` means the thread has already consumed this decision and finished: a
+    resume dispatched at it would run no node at all, and the caller would read the
+    empty result as a completed task and tell the user an action succeeded that this
+    run never performed. The sweep re-dispatches any decision it cannot prove reached
+    a run (``list_decided_unresumed``), so a crash between resuming and stamping the
+    record puts a second, redundant resume on a thread that is already done.
+
+    The interrupts are read from the live checkpoint rather than from anything
+    recorded at pause time: the id has to match the interrupt that is actually
+    pending now, and a stored copy can only disagree with it.
+
+    Falls through unchanged when the thread holds exactly one interrupt, or when none
+    of them carries this decision's ``approval_id`` — a bare resume is correct in the
+    first case, and in the second there is nothing better to do than let the existing
+    path report the mismatch.
+    """
+    snapshot = await graph.aget_state(config)
+    interrupts = getattr(snapshot, "interrupts", ()) or ()
+    if not interrupts and not snapshot.next:
+        log.error(
+            f"{LogTag.HIL} Resume arrived for a thread with no pending work; "
+            "the decision was already applied and this run has nothing to do",
+            approval_id=str(_approval_id_of(resume) or ""),
+        )
+        return None
+
+    approval_id = _approval_id_of(resume)
+    if not approval_id or len(interrupts) < 2:
+        return resume
+    payload = resume.resume
+
+    for item in interrupts:
+        value = getattr(item, "value", None)
+        interrupt_id = getattr(item, "id", None)
+        if interrupt_id and isinstance(value, dict) and value.get("approval_id") == approval_id:
+            log.info(
+                f"{LogTag.HIL} Addressing resume to its interrupt",
+                approval_id=str(approval_id),
+                pending_interrupts=len(interrupts),
+            )
+            return Command(resume={interrupt_id: payload}, update=resume.update, goto=resume.goto)
+
+    log.warning(
+        f"{LogTag.HIL} No pending interrupt matches this decision",
+        approval_id=str(approval_id),
+        pending_interrupts=len(interrupts),
+    )
+    return resume
+
+
+def _approval_id_of(resume: Command) -> str | None:
+    """Which gate this decision answers, when the payload carries one."""
+    payload = resume.resume
+    if not isinstance(payload, dict):
+        return None
+    approval_id = payload.get("approval_id")
+    return str(approval_id) if approval_id else None
+
+
+def interrupt_payload(raw: object) -> dict[str, Any]:
     """The HIL payload inside LangGraph Interrupt object(s) — from a stream event's
-    ``__interrupt__`` tuple or a state snapshot's ``interrupts``. ``{}`` when the
-    objects carry no dict value (downstream treats that as malformed → deny)."""
+    ``__interrupt__`` tuple or a state snapshot's ``interrupts``.
+
+    Carries EVERY pending approval, not just the first. Two destructive calls in one AI
+    message park two tasks in the same step, and the caller stamps re-dispatch context
+    onto each id this returns (``executor_runner._record_pause``). Returning only the
+    first left the second with no ``resume_item`` at all, so approving it raised
+    ``ApprovalNotResumable`` and the decision could never be applied.
+
+    The first payload's own fields stay at the top level, so callers that read a single
+    approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch
+    readers use. ``{}`` when no object carries a dict value (downstream treats that as
+    malformed → deny).
+    """
+    return merge_approvals(interrupt_values(raw))
+
+
+def interrupt_values(raw: object) -> list[dict[str, Any]]:
+    """The dict payloads inside one or more LangGraph ``Interrupt`` objects."""
     items = raw if isinstance(raw, (list, tuple)) else (raw,)
-    for item in items:
-        value = getattr(item, "value", item)
-        if isinstance(value, dict):
-            return value
-    return {}
+    return [
+        value
+        for value in (getattr(item, "value", item) for item in items)
+        if isinstance(value, dict)
+    ]
+
+
+def merge_approvals(payloads: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fold several pending approvals into one payload carrying ALL their ids.
+
+    The first payload's own fields stay at the top level, so callers reading a single
+    approval (``resume_for_gate``) are unaffected; ``approval_ids`` is what the batch
+    readers use (``executor_runner._paused_approval_ids``).
+    """
+    if not payloads:
+        return {}
+    ids = [str(payload["approval_id"]) for payload in payloads if payload.get("approval_id")]
+    if len(ids) < 2:
+        return payloads[0]
+    return {**payloads[0], "approval_ids": ids}
 
 
 async def prepare_executor_execution(
     task: str,
-    configurable: dict,
+    configurable: AgentConfigurable,
     stream_id: str | None = None,
 ) -> tuple[SubagentExecutionContext | None, str | None]:
     """Prepare execution context for the executor agent.
@@ -535,7 +697,7 @@ async def prepare_executor_execution(
         return None, "Executor agent not available"
 
     # Build user dict for config
-    user = {
+    user: AgentUserContext = {
         "user_id": user_id,
         "email": configurable.get("email"),
         "name": configurable.get("user_name"),
@@ -552,7 +714,7 @@ async def prepare_executor_execution(
         vfs_session_id=vfs_session_id,
         recursion_limit=EXECUTOR_RECURSION_LIMIT,
     )
-    new_configurable = config.get("configurable", {})
+    new_configurable = agent_configurable(config)
 
     # DEV-ONLY: if the chat-header selector chose an executor model, pin it here —
     # after the inherit-from-comms copy, so it overrides the comms model for the

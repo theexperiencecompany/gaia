@@ -11,6 +11,7 @@ the upload, so the blob + metadata are still persisted.
 
 import asyncio
 import io
+from typing import cast
 import uuid
 
 import cloudinary
@@ -39,7 +40,8 @@ async def upload_to_cloudinary(content: bytes, resource_type: str, public_id: st
     if not url:
         log.error("[files] cloudinary upload returned no secure_url")
         raise HTTPException(status_code=500, detail="Invalid response from file upload service")
-    return url
+    # cloudinary ships no type stubs; secure_url is documented as a string.
+    return cast(str, url)
 
 
 def destroy_in_cloudinary(public_id: str) -> None:

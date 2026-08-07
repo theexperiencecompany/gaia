@@ -1176,7 +1176,7 @@ function MapRoute({
   }, [isLoaded, map, coordinates, sourceId]);
 
   useEffect(() => {
-    if (!isLoaded || !map || !map.getLayer(layerId)) return;
+    if (!isLoaded || !map?.getLayer(layerId)) return;
 
     map.setPaintProperty(layerId, "line-color", color);
     map.setPaintProperty(layerId, "line-width", width);
@@ -1759,7 +1759,7 @@ function MapArc<T extends MapArcDatum = MapArcDatum>({
 
   // Sync paint/layout when they change.
   useEffect(() => {
-    if (!isLoaded || !map || !map.getLayer(layerId)) return;
+    if (!isLoaded || !map?.getLayer(layerId)) return;
     for (const [key, value] of Object.entries(mergedPaint)) {
       map.setPaintProperty(
         layerId,

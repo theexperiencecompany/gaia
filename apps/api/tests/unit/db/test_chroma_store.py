@@ -180,16 +180,15 @@ class TestNamespaceConversion:
 
 @pytest.mark.unit
 class TestBatch:
-    def test_raises_in_async_context(self):
-        """batch() checks if event loop is running and raises accordingly.
-        In pytest-asyncio the loop state depends on the runner, so we test
-        via a synchronous call where no loop is running -- it should succeed
-        (delegate to run_until_complete) or raise RuntimeError."""
+    def test_delegates_to_abatch_when_no_loop_is_running(self):
         store = _make_store(collection=_make_collection())
-        # In a synchronous context with no running loop, batch delegates to
-        # run_until_complete. We just verify it doesn't crash.
         results = store.batch([])
         assert results == []
+
+    async def test_raises_when_called_from_a_running_event_loop(self):
+        store = _make_store(collection=_make_collection())
+        with pytest.raises(RuntimeError, match="cannot be called from async context"):
+            store.batch([])
 
 
 # ---------------------------------------------------------------------------

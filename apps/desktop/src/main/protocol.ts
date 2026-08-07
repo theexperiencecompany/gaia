@@ -36,9 +36,10 @@ const PROTOCOL = "gaia";
  */
 export function registerProtocol(): void {
   if (process.defaultApp) {
-    if (process.argv.length >= 2) {
+    const scriptPath = process.argv[1];
+    if (scriptPath) {
       app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [
-        resolve(process.argv[1]),
+        resolve(scriptPath),
       ]);
     }
   } else {

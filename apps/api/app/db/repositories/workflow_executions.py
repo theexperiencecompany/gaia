@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from app.db.repositories.base import MongoRepository
 from app.models.workflow_execution_models import (
     WorkflowExecutionDocument,
+    WorkflowExecutionStatus,
     WorkflowExecutionUpdate,
 )
 
@@ -28,7 +29,7 @@ class WorkflowExecutionsRepository(
         self,
         execution_id: str,
         *,
-        status: str,
+        status: WorkflowExecutionStatus,
         summary: str | None = None,
         error_message: str | None = None,
         conversation_id: str | None = None,

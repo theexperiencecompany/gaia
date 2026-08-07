@@ -7,6 +7,12 @@ from app.db.repositories.ai_models import ai_model_repository
 from app.db.repositories.plans import plan_repository
 from shared.py.wide_events import log
 
+SEED_MODELS_COMMAND = "uv run --group backend python scripts/seed_models.py --force"
+SEED_PLANS_COMMAND = (
+    "uv run --group backend python scripts/payment_setup.py "
+    "--monthly-product-id <dodo_id> --yearly-product-id <dodo_id>"
+)
+
 
 # @Cacheable(key="startup:models_seeded", ttl=2592000)  # 30 days cache
 async def are_models_seeded() -> bool:
@@ -44,9 +50,13 @@ async def validate_startup_requirements() -> None:
     if models_ok and payment_ok:
         return
 
-    log.error("Setup incomplete! Please run: ./scripts/setup.sh")
+    remedies: list[str] = []
     if not models_ok:
-        log.error("AI models not seeded")
+        remedies.append(f"AI models not seeded — run: {SEED_MODELS_COMMAND}")
     if not payment_ok:
-        log.error("Payment plans not set up")
-    raise RuntimeError("Startup requirements not met. Please run: ./scripts/setup.sh")
+        remedies.append(f"Payment plans not set up — run: {SEED_PLANS_COMMAND}")
+
+    log.error("Setup incomplete!")
+    for remedy in remedies:
+        log.error(remedy)
+    raise RuntimeError("Startup requirements not met. " + " ".join(remedies))

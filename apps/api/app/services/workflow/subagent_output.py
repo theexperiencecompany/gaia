@@ -11,7 +11,7 @@ The expected JSON block format lives in the subagent prompt
 
 import json
 import re
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -79,7 +79,7 @@ class FinalizedOutput(BaseModel):
         """This draft's trigger in the vocabulary the rest of the system uses."""
         return TRIGGER_TYPE_BY_DRAFT_TYPE.get(self.trigger_type, TriggerType.MANUAL)
 
-    def to_stream_payload(self) -> dict:
+    def to_stream_payload(self) -> dict[str, Any]:
         """Convert to the format expected by frontend stream handler."""
         return {
             "workflow_draft": {
@@ -123,7 +123,7 @@ class ParseResult:
 # =============================================================================
 
 
-def _result_from_payload(data: dict, response: str) -> ParseResult | None:
+def _result_from_payload(data: dict[str, Any], response: str) -> ParseResult | None:
     """Turn one decoded JSON object into a ParseResult, or None if it isn't ours."""
     output_type = data.get("type")
 

@@ -17,8 +17,6 @@ Add env vars
 2) Add a `SettingsGroup` in `_register_predefined_groups()` with matching key names.
 """
 
-from typing import Any
-
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
@@ -34,7 +32,7 @@ class SettingsGroup:
         all_required: bool = True,
         docs_url: str | None = None,
         alternative_group: str | None = None,
-    ):
+    ) -> None:
         """
         Initialize a settings group.
 
@@ -322,7 +320,18 @@ class SettingsValidator:
         self.is_production = is_production
         self.missing_groups = []
 
-    def validate_settings(self, settings_obj: Any) -> list[tuple[SettingsGroup, list[str]]]:
+    def validate_settings(
+        # Deliberately `object`, not `CommonSettings`: the body below only ever
+        # does hasattr()/getattr() with dynamic string keys, so it works on any
+        # object and never needs the concrete settings type. Importing
+        # CommonSettings here would also require a TYPE_CHECKING-guarded import
+        # to avoid a circular dependency with app.config.settings -- see
+        # apps/api/CLAUDE.md's Type Safety section, item 9, for why that's
+        # avoided rather than reached for. Do not "fix" this back to
+        # CommonSettings; it is not an imprecision.
+        self,
+        settings_obj: object,
+    ) -> list[tuple[SettingsGroup, list[str]]]:
         """
         Validate settings against registered groups.
 

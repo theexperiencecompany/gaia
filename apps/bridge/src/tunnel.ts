@@ -24,8 +24,10 @@ interface Frame {
   data?: string;
   error?: string;
   // Consumer pod id from mcp.open; echoed on every up-frame so the owning pod
-  // routes replies to the pod running the session.
-  pod?: string;
+  // routes replies to the pod running the session. Explicitly `| undefined`
+  // (not just optional) because call sites forward `frame.pod` verbatim,
+  // which is itself `string | undefined`.
+  pod?: string | undefined;
 }
 
 export class Tunnel {

@@ -101,6 +101,48 @@ class TestAttachExecutorToolData:
                 "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=True)
             )
 
+    async def test_a_write_that_matched_no_message_is_reported(self) -> None:
+        """``append_message_tool_data`` returns False when its
+        ``messages.message_id`` filter matched nothing — nothing was written and
+        nothing raised. Swallowing that means every executor tool card the user
+        watched live is missing after a reload, with no trace in the logs.
+
+        The sibling write in ``result_delivery._persist_follow_up_actions``
+        already checks the same flag and logs; this path must not be quieter.
+        """
+        _ready_session_with_cards("s1")
+        body = MagicMock()
+        body.voice_mode = False
+
+        with (
+            patch.object(chat_stream, "conversation_repository") as repo,
+            patch.object(chat_stream, "log") as log,
+        ):
+            repo.append_message_tool_data = AsyncMock(return_value=False)
+            await _attach_executor_tool_data(
+                "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=False)
+            )
+
+        assert log.error.called, "a silently dropped tool_data write was never reported"
+
+    async def test_a_successful_write_is_not_reported_as_a_failure(self) -> None:
+        """Control: without it, unconditionally logging an error would satisfy
+        the test above."""
+        _ready_session_with_cards("s1")
+        body = MagicMock()
+        body.voice_mode = False
+
+        with (
+            patch.object(chat_stream, "conversation_repository") as repo,
+            patch.object(chat_stream, "log") as log,
+        ):
+            repo.append_message_tool_data = AsyncMock(return_value=True)
+            await _attach_executor_tool_data(
+                "s1", body, {"user_id": "u1"}, "conv-1", _state(cancelled=False)
+            )
+
+        assert not log.error.called
+
 
 @pytest.mark.unit
 class TestFinalizeStreamBackstop:

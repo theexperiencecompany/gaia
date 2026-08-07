@@ -1,0 +1,53 @@
+# gaia-rabbitmq-no-consumers — fires when >100 messages are queued AND no
+# consumer is attached.
+#
+# Two quiet cases: a connected consumer (even with a backlog) and a small
+# backlog (even with no consumer).
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-rabbitmq-no-consumers fires with a backlog and no consumers
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="outbound.slack",vhost="/"}'
+        values: '500x30'
+      - series: 'rabbitmq_queue_consumers{queue="outbound.slack",vhost="/"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-rabbitmq-no-consumers
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: rabbitmq
+            exp_annotations:
+              description: >-
+                Every bot consumer has died or lost its connection while the API kept publishing, so all four platforms have stopped delivering. Messages are persistent with a dead-letter exchange, so the backlog drains on its own once a consumer reconnects — but until then users are getting silence. Check whether the bot containers are running before restarting anything.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-no-consumers
+              __dashboardUid__: gaia-rabbitmq
+              __panelId__: '7'
+
+  - name: gaia-rabbitmq-no-consumers stays quiet when a consumer is attached
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="outbound.slack",vhost="/"}'
+        values: '500x30'
+      - series: 'rabbitmq_queue_consumers{queue="outbound.slack",vhost="/"}'
+        values: '2x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-rabbitmq-no-consumers
+        exp_alerts: []
+
+  - name: gaia-rabbitmq-no-consumers stays quiet with a small backlog
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="outbound.slack",vhost="/"}'
+        values: '50x30'
+      - series: 'rabbitmq_queue_consumers{queue="outbound.slack",vhost="/"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-rabbitmq-no-consumers
+        exp_alerts: []

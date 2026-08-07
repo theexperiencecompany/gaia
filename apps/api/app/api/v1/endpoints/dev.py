@@ -7,14 +7,13 @@ is set, so every route here 404s in production.
 """
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse
 
+from app.models.user_models import UserDocument
 from app.schemas.dev_schemas import (
     CreateDevUserRequest,
     DeleteDevUserResponse,
     DevAgentRunResponse,
     DevSubagentInfo,
-    DevUserResponse,
     RunDevAgentRequest,
     SeedDevDataRequest,
     SeedDevDataResponse,
@@ -30,17 +29,17 @@ from shared.py.wide_events import log
 router = APIRouter(prefix="/dev", tags=["Dev"])
 
 
-@router.post("/users", response_model=DevUserResponse)
-async def create_dev_user(payload: CreateDevUserRequest) -> JSONResponse:
+@router.post("/users")
+async def create_dev_user(payload: CreateDevUserRequest) -> UserDocument:
     """Idempotently mint (find-or-create) a dev user by email."""
     log.set(dev={"operation": "mint_user", "email": payload.email})
     user = await mint_dev_user(payload.email, payload.name)
-    log.set(dev={"user_id": user["id"]})
-    return JSONResponse(content=user)
+    log.set(dev={"user_id": user.id})
+    return user
 
 
-@router.post("/seed", response_model=SeedDevDataResponse)
-async def seed_dev_user_data(payload: SeedDevDataRequest) -> JSONResponse:
+@router.post("/seed")
+async def seed_dev_user_data(payload: SeedDevDataRequest) -> SeedDevDataResponse:
     """Seed deterministic todos/conversations/platform links for an existing dev user."""
     log.set(
         dev={
@@ -53,43 +52,43 @@ async def seed_dev_user_data(payload: SeedDevDataRequest) -> JSONResponse:
     result = await seed_dev_data(
         payload.email, payload.todos, payload.conversations, payload.platform_links
     )
-    log.set(dev={"user_id": result["user_id"]})
-    return JSONResponse(content=result)
+    log.set(dev={"user_id": result.user_id})
+    return result
 
 
-@router.delete("/users/{email}", response_model=DeleteDevUserResponse)
-async def remove_dev_user(email: str) -> JSONResponse:
+@router.delete("/users/{email}")
+async def remove_dev_user(email: str) -> DeleteDevUserResponse:
     """Remove a dev user and the data it owns (teardown for tests)."""
     log.set(dev={"operation": "delete_user", "email": email})
     result = await delete_dev_user(email)
-    log.set(dev={"user_id": result["user_id"]})
-    return JSONResponse(content=result)
+    log.set(dev={"user_id": result.user_id})
+    return result
 
 
-@router.get("/subagents", response_model=list[DevSubagentInfo])
-async def list_subagents() -> JSONResponse:
+@router.get("/subagents")
+async def list_subagents() -> list[DevSubagentInfo]:
     """List every registered subagent runnable via POST /dev/subagents/{id}."""
     log.set(dev={"operation": "list_subagents"})
     subagents = list_dev_subagents()
     log.set(dev={"count": len(subagents)})
-    return JSONResponse(content=subagents)
+    return subagents
 
 
-@router.post("/executor", response_model=DevAgentRunResponse)
-async def run_executor(payload: RunDevAgentRequest) -> JSONResponse:
+@router.post("/executor")
+async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, skipping the comms agent."""
     log.set(dev={"operation": "run_executor", "email": payload.email})
     result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
-    log.set(dev={"user_id": result["user_id"], "thread_id": result["thread_id"]})
-    return JSONResponse(content=result)
+    log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
+    return result
 
 
-@router.post("/subagents/{subagent_id}", response_model=DevAgentRunResponse)
-async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> JSONResponse:
+@router.post("/subagents/{subagent_id}")
+async def run_subagent(subagent_id: str, payload: RunDevAgentRequest) -> DevAgentRunResponse:
     """Run one subagent directly with a task, skipping comms and the executor."""
     log.set(dev={"operation": "run_subagent", "email": payload.email, "subagent_id": subagent_id})
     result = await run_subagent_direct(
         payload.email, subagent_id, payload.task, payload.conversation_id
     )
-    log.set(dev={"user_id": result["user_id"], "thread_id": result["thread_id"]})
-    return JSONResponse(content=result)
+    log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
+    return result

@@ -61,12 +61,17 @@ async def is_gated(prefs: HILPreferences, tool_name: str, tool: BaseTool | None)
 async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_id: str) -> bool:
     """Whether another call in this same AI message can pause the run.
 
-    If one can, this call must not auto-run. The tool node executes a message's calls in a
-    sequential loop, the sibling will ``interrupt()``, and LangGraph re-runs the *whole
-    node* on resume — so a handler that ran before the pause runs a second time (verified:
-    one send became two). Auto-approval therefore applies only when a call is the turn's
-    only pausing action; several destructive actions in one turn are confirmed together,
-    which is the behaviour worth having anyway.
+    If one can, this call cannot simply run and be done with it. The sibling will
+    ``interrupt()``, and LangGraph discards the writes of every task in that step and
+    replays them on resume — so a handler that ran before the pause runs a second time
+    (verified: one send became two). Two callers act on that:
+
+    * **auto mode** does not auto-approve, because a call it approved would run before
+      the pause and then again on the replay. Auto-approval therefore applies only when
+      a call is the turn's only pausing action; several destructive actions in one turn
+      are confirmed together, which is the behaviour worth having anyway.
+    * **an ungated call** remembers its result under its tool_call_id, so the replay
+      reuses it rather than repeating the work (``gate._run_once_across_replays``).
 
     A sibling pauses in one of two ways. It is **gated**, and pauses at its own gate:
     siblings arrive as bare tool-call dicts, so each one's tool object is resolved from
@@ -87,10 +92,17 @@ async def has_pausing_sibling(request: ToolCallRequest, user_id: str, tool_call_
         for call in current_tool_calls(request.state)
         if call.get("name") and call.get("id") != tool_call_id
     ]
+    if not siblings:
+        return False
     if any(call["name"] in HIL_PAUSING_TOOLS for call in siblings):
         return True
 
     prefs = await get_hil_preferences(user_id)
+    if prefs.mode == "always_allow":
+        # HIL is off for this user, so no sibling gate can pause. Answered before the
+        # per-sibling classification below because every ungated call now asks this
+        # (see gate._run_once_across_replays) and that is ~100% of traffic.
+        return False
     registry = await get_tool_registry()
     for call in siblings:
         name = str(call["name"])

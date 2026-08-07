@@ -79,11 +79,11 @@ class TestExecuteWorkflowById:
                 mock_scheduler_cls,
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_execution,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_execution,
             ),
         ):
@@ -118,11 +118,11 @@ class TestExecuteWorkflowById:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_exec,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
         ):
@@ -163,11 +163,11 @@ class TestExecuteWorkflowById:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_exec,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
         ):
@@ -206,11 +206,11 @@ class TestExecuteWorkflowById:
                 "app.workers.tasks.workflow_tasks.notification_service",
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_exec,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
         ):
@@ -247,11 +247,11 @@ class TestExecuteWorkflowById:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_exec,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
         ):
@@ -289,11 +289,11 @@ class TestExecuteWorkflowById:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 mock_create_exec,
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
         ):
@@ -330,11 +330,11 @@ class TestExecuteWorkflowById:
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch("app.workers.tasks.workflow_tasks.notification_service"),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=mock_execution),
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 AsyncMock(),
             ),
         ):
@@ -690,7 +690,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": expected_conv_id},
+                return_value=expected_conv_id,
             ) as mock_get_conv,
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -733,7 +733,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_123"},
+                return_value="conv_123",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -765,7 +765,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_ctx"},
+                return_value="conv_ctx",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -797,7 +797,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_1"},
+                return_value="conv_1",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -827,7 +827,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_fallback"},
+                return_value="conv_fallback",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -865,7 +865,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_steps"},
+                return_value="conv_steps",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -902,7 +902,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_none"},
+                return_value="conv_none",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -935,7 +935,7 @@ class TestExecuteWorkflowAsChat:
             patch(
                 "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
                 new_callable=AsyncMock,
-                return_value={"conversation_id": "conv_usermsg"},
+                return_value="conv_usermsg",
             ),
             patch(
                 "app.workers.tasks.workflow_tasks.add_workflow_execution_messages",
@@ -1052,11 +1052,11 @@ class TestExecuteWorkflowByIdNotifications:
             AsyncMock(side_effect=error),
         )
         p_create = patch(
-            "app.services.workflow.execution_service.create_execution",
+            "app.workers.tasks.workflow_tasks.create_execution",
             AsyncMock(return_value=mock_execution),
         )
         p_complete = patch(
-            "app.services.workflow.execution_service.complete_execution",
+            "app.workers.tasks.workflow_tasks.complete_execution",
             AsyncMock(),
         )
         return p_scheduler, p_chat, p_create, p_complete
@@ -1235,11 +1235,11 @@ class TestExecuteWorkflowByIdNotifications:
                 AsyncMock(side_effect=RuntimeError("LLM crash")),
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=mock_execution),
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 AsyncMock(side_effect=RuntimeError("DB write failure")),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
@@ -1273,11 +1273,11 @@ class TestExecuteWorkflowByIdNotifications:
                 AsyncMock(side_effect=RuntimeError("LLM crash")),
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=mock_execution),
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 AsyncMock(),
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
@@ -1309,11 +1309,11 @@ class TestExecuteWorkflowByIdNotifications:
                 mock_scheduler_cls,
             ),
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(side_effect=RuntimeError("DB unavailable")),
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
@@ -1353,11 +1353,11 @@ class TestExecuteWorkflowByIdNotifications:
             ),
             patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
-                "app.services.workflow.execution_service.create_execution",
+                "app.workers.tasks.workflow_tasks.create_execution",
                 AsyncMock(return_value=mock_execution),
             ),
             patch(
-                "app.services.workflow.execution_service.complete_execution",
+                "app.workers.tasks.workflow_tasks.complete_execution",
                 mock_complete_exec,
             ),
         ):

@@ -16,6 +16,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.tools import BaseTool
 from mcp.shared.auth import OAuthMetadata, ProtectedResourceMetadata
+from mcp.types import (
+    CallToolResult,
+    ListPromptsResult,
+    ListResourcesResult,
+    ListResourceTemplatesResult,
+    ReadResourceResult,
+    Resource,
+    ResourceTemplate,
+    TextContent,
+    TextResourceContents,
+)
+from pydantic import AnyUrl
 import pytest
 
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
@@ -725,11 +737,11 @@ class TestMCPClientCallToolOnServer:
         client = MCPClient(user_id=USER_ID)
         mock_base = MagicMock()
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(
-            return_value={"content": [{"text": "result"}], "isError": False}
+        mock_session.call_tool = AsyncMock(
+            return_value=CallToolResult(
+                content=[TextContent(type="text", text="result")], isError=False
+            )
         )
-        mock_session.call_tool = AsyncMock(return_value=mock_result)
         mock_base.get_session = MagicMock(return_value=mock_session)
         client._clients[INTEGRATION_ID] = mock_base
         client._tools[INTEGRATION_ID] = [_mock_tool()]
@@ -739,7 +751,8 @@ class TestMCPClientCallToolOnServer:
         client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
 
         result = await client.call_tool_on_server(SERVER_URL, "test_tool", {"arg": "val"})
-        assert result["isError"] is False
+        assert result.isError is False
+        assert result.content[0].text == "result"
 
     async def test_raises_when_no_matching_integration(self):
         client = MCPClient(user_id=USER_ID)
@@ -2323,20 +2336,20 @@ class TestMCPClientListResourcesOnServer:
     async def test_list_resources(self):
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(return_value={"resources": [{"name": "r1"}]})
-        mock_session.list_resources = AsyncMock(return_value=mock_result)
+        mock_session.list_resources = AsyncMock(
+            return_value=ListResourcesResult(
+                resources=[Resource(uri=AnyUrl("file://r1"), name="r1")]
+            )
+        )
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         result = await client.list_resources_on_server(SERVER_URL)
-        assert "resources" in result
+        assert [r.name for r in result.resources] == ["r1"]
 
     async def test_list_resources_with_cursor(self):
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(return_value={"resources": []})
-        mock_session.list_resources = AsyncMock(return_value=mock_result)
+        mock_session.list_resources = AsyncMock(return_value=ListResourcesResult(resources=[]))
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         await client.list_resources_on_server(SERVER_URL, cursor="next_page")
@@ -2348,13 +2361,17 @@ class TestMCPClientReadResourceOnServer:
     async def test_read_resource(self):
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(return_value={"contents": [{"text": "hello"}]})
-        mock_session.read_resource = AsyncMock(return_value=mock_result)
+        mock_session.read_resource = AsyncMock(
+            return_value=ReadResourceResult(
+                contents=[
+                    TextResourceContents(uri=AnyUrl("file://test.txt"), text="hello"),
+                ]
+            )
+        )
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         result = await client.read_resource_on_server(SERVER_URL, "file://test.txt")
-        assert result["contents"][0]["text"] == "hello"
+        assert result.contents[0].text == "hello"
 
 
 @pytest.mark.unit
@@ -2362,13 +2379,11 @@ class TestMCPClientListPromptsOnServer:
     async def test_list_prompts(self):
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(return_value={"prompts": []})
-        mock_session.list_prompts = AsyncMock(return_value=mock_result)
+        mock_session.list_prompts = AsyncMock(return_value=ListPromptsResult(prompts=[]))
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         result = await client.list_prompts_on_server(SERVER_URL)
-        assert "prompts" in result
+        assert result.prompts == []
 
 
 @pytest.mark.unit
@@ -2703,20 +2718,22 @@ class TestMCPClientListResourceTemplatesOnServer:
     async def test_list_templates(self):
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(return_value={"resourceTemplates": [{"name": "t1"}]})
-        mock_session.list_resource_templates = AsyncMock(return_value=mock_result)
+        mock_session.list_resource_templates = AsyncMock(
+            return_value=ListResourceTemplatesResult(
+                resourceTemplates=[ResourceTemplate(uriTemplate="file://{p}", name="t1")]
+            )
+        )
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         result = await client.list_resource_templates_on_server(SERVER_URL)
-        assert "resourceTemplates" in result
+        assert [t.name for t in result.resourceTemplates] == ["t1"]
 
     async def test_list_templates_with_cursor(self):
         client = MCPClient(user_id=USER_ID)
         mock_session = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.model_dump = MagicMock(return_value={"resourceTemplates": []})
-        mock_session.list_resource_templates = AsyncMock(return_value=mock_result)
+        mock_session.list_resource_templates = AsyncMock(
+            return_value=ListResourceTemplatesResult(resourceTemplates=[])
+        )
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
         await client.list_resource_templates_on_server(SERVER_URL, cursor="page2")
@@ -3130,13 +3147,15 @@ class TestMCPClientHandleCustomIntegrationConnect:
 
 @pytest.mark.unit
 class TestMCPClientCallToolOnServerAdditional:
-    async def test_call_tool_with_dict_result(self):
+    async def test_call_tool_surfaces_server_error_flag(self):
+        """A tool result flagged isError comes back with the flag intact."""
         client = MCPClient(user_id=USER_ID)
         mock_base = MagicMock()
         mock_session = AsyncMock()
-        # Return a plain dict without model_dump
         mock_session.call_tool = AsyncMock(
-            return_value={"content": [{"text": "ok"}], "isError": False}
+            return_value=CallToolResult(
+                content=[TextContent(type="text", text="boom")], isError=True
+            )
         )
         mock_base.get_session = MagicMock(return_value=mock_session)
         client._clients[INTEGRATION_ID] = mock_base
@@ -3146,28 +3165,8 @@ class TestMCPClientCallToolOnServerAdditional:
         client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
 
         result = await client.call_tool_on_server(SERVER_URL, "test_tool", {"arg": "val"})
-        assert result["isError"] is False
-
-    async def test_call_tool_with_object_result(self):
-        client = MCPClient(user_id=USER_ID)
-        mock_base = MagicMock()
-        mock_session = AsyncMock()
-
-        class FakeResult:
-            def __init__(self):
-                self.content = [{"text": "ok"}]
-                self.is_error = False
-
-        mock_session.call_tool = AsyncMock(return_value=FakeResult())
-        mock_base.get_session = MagicMock(return_value=mock_session)
-        client._clients[INTEGRATION_ID] = mock_base
-        client._tools[INTEGRATION_ID] = [_mock_tool()]
-
-        client._find_integration_id_by_server_url = AsyncMock(return_value=INTEGRATION_ID)
-        client.ensure_connected = AsyncMock(return_value=[_mock_tool()])
-
-        result = await client.call_tool_on_server(SERVER_URL, "test_tool", {})
-        assert "content" in result
+        assert result.isError is True
+        assert result.content[0].text == "boom"
 
 
 @pytest.mark.unit

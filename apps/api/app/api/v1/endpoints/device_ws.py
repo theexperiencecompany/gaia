@@ -78,9 +78,7 @@ async def device_ws(websocket: WebSocket) -> None:
         await websocket.close(code=1008)
         return
 
-    uses_subprotocol = websocket.headers.get("sec-websocket-protocol", "").startswith(
-        "Bearer, "
-    )
+    uses_subprotocol = websocket.headers.get("sec-websocket-protocol", "").startswith("Bearer, ")
     await websocket.accept(subprotocol="Bearer" if uses_subprotocol else None)
 
     device_connection_manager.add(device_id, websocket)

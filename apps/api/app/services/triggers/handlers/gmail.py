@@ -4,7 +4,7 @@ Gmail trigger handler.
 Handles Gmail new message trigger processing.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -23,9 +23,9 @@ class GmailTriggerHandler(TriggerHandler):
     via Composio (no per-resource registration like calendars).
     """
 
-    SUPPORTED_TRIGGERS = ["gmail_new_message"]
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["gmail_new_message"]
 
-    SUPPORTED_EVENTS = {"GMAIL_NEW_GMAIL_MESSAGE"}
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {"GMAIL_NEW_GMAIL_MESSAGE"}
 
     @property
     def trigger_names(self) -> list[str]:
@@ -37,7 +37,7 @@ class GmailTriggerHandler(TriggerHandler):
 
     async def register(
         self,
-        user_id: str,
+        _user_id: str,
         workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,

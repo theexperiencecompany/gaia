@@ -22,19 +22,6 @@ from app.agents.skills.github_discovery import (
 
 
 class TestDiscoveredSkill:
-    def test_to_dict(self):
-        skill = DiscoveredSkill(
-            name="my-skill",
-            description="A skill",
-            path="skills/my-skill",
-            repo_url="https://github.com/owner/repo",
-            subagent_id="executor",
-        )
-        d = skill.to_dict()
-        assert d["name"] == "my-skill"
-        assert d["path"] == "skills/my-skill"
-        assert d["subagent_id"] == "executor"
-
     def test_default_subagent_id(self):
         skill = DiscoveredSkill(name="s", description="d", path="p", repo_url="r")
         assert skill.subagent_id == "global"
