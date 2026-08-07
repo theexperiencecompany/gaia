@@ -69,6 +69,8 @@ def _first_count(buckets: list[_FacetCount]) -> int:
 
 
 class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
+    """The ``todos`` collection repository (user-scoped, cached)."""
+
     collection_name = "todos"
     document_model = TodoDocument
     update_model = TodoUpdate

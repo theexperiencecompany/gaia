@@ -39,6 +39,9 @@ from shared.py.wide_events import log
 
 
 class UserRepository(MongoRepository[UserDocument, UserUpdate]):
+    """The ``users`` collection repository — see the module docstring for the
+    caching contract that makes reads here safe."""
+
     collection_name = "users"
     document_model = UserDocument
     update_model = UserUpdate
@@ -49,6 +52,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
 
     @cached_query(UserDocument)
     async def get_by_email(self, email: str) -> UserDocument | None:
+        """A user by email — the authentication hot path."""
         return await self._find_one({"email": email})
 
     async def find_by_ids(self, user_ids: list[str]) -> list[UserDocument]:
@@ -60,6 +64,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return await self._find({"_id": {"$in": oids}})
 
     async def get_by_platform_id(self, platform: str, platform_user_id: str) -> UserDocument | None:
+        """A user linked to ``platform_user_id`` on ``platform``."""
         return await self._find_one({f"platform_links.{platform}.id": platform_user_id})
 
     async def list_all_ids(self) -> list[str]:
@@ -140,6 +145,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         return [doc.id for doc in docs]
 
     async def list_platform_user_ids(self, platform: str, *, limit: int = 500) -> list[str]:
+        """External ids of every user linked to ``platform``."""
         field = f"platform_links.{platform}.id"
         docs = await self._find({field: {"$exists": True}}, limit=limit)
         ids: list[str] = []
@@ -228,6 +234,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def set_selected_integrations(self, user_id: str, integrations: list[str]) -> None:
+        """Persist the user's selected integrations (onboarding)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.selected_integrations": integrations}},
@@ -238,6 +245,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def update_onboarding_preferences(
         self, user_id: str, preferences_patch: dict[str, object]
     ) -> UserDocument | None:
+        """Merge ``preferences_patch`` into the user's onboarding preferences."""
         set_fields: dict[str, object] = {}
         for field, value in preferences_patch.items():
             set_fields[f"onboarding.preferences.{field}"] = value
@@ -246,6 +254,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def reset_onboarding(self, user_id: str) -> None:
+        """Wipe the user's onboarding subdocument."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {"onboarding": ""}},
@@ -277,6 +286,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def set_pipeline_completion(
         self, user_id: str, *, phase: str, conversation_id: str | None = None
     ) -> None:
+        """Advance the onboarding pipeline phase (optionally tying the first conversation)."""
         set_fields: dict[str, object] = {"onboarding.phase": phase}
         if conversation_id is not None:
             set_fields["onboarding.first_message_conversation_id"] = conversation_id
@@ -288,6 +298,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def set_first_message(self, user_id: str, first_message: str) -> None:
+        """Store the user's first message on their onboarding subdocument."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.first_message": first_message}},
@@ -296,6 +307,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def mark_early_intelligence_done(self, user_id: str) -> None:
+        """Stamp the early-intelligence onboarding completion."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.early_intelligence_done_at": _now()}},
@@ -363,6 +375,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._invalidate(REPO_GLOBAL_SCOPE)
 
     async def set_suggested_workflows(self, user_id: str, workflow_ids: list[str]) -> None:
+        """Persist the suggested workflows shown to the user during onboarding."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {"onboarding.suggested_workflows": workflow_ids}},
@@ -396,6 +409,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         writing_style_example: dict[str, object] | None = None,
         triage_summary: dict[str, object] | None = None,
     ) -> None:
+        """Persist any provided writing-style / triage summaries on onboarding."""
         set_fields: dict[str, object] = {}
         if writing_style_summary is not None:
             set_fields["onboarding.writing_style.summary"] = writing_style_summary
@@ -525,6 +539,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     # --------------------------------------------------- background-job markers
 
     async def set_active_job(self, user_id: str, field: str, job_id: str) -> None:
+        """Mark an in-flight background job for the user (``field`` → ``job_id``)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$set": {field: job_id}},
@@ -533,6 +548,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def clear_active_job(self, user_id: str, field: str) -> None:
+        """Clear the user's in-flight background-job marker."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {field: ""}},
@@ -661,6 +677,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
     async def link_platform(
         self, user_id: str, platform: str, link: dict[str, object], connected_at: str
     ) -> UserDocument | None:
+        """Link the user to an external platform account."""
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {
@@ -673,6 +690,7 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         )
 
     async def unlink_platform(self, user_id: str, platform: str) -> UserDocument | None:
+        """Remove the user's link to an external platform account."""
         return await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {
