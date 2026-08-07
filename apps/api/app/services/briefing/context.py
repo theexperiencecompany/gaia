@@ -18,7 +18,6 @@ from app.constants.todos import (
 from app.db.repositories.briefings import briefing_repository
 from app.db.repositories.todos import todo_repository
 from app.db.repositories.workflow_executions import workflow_executions_repository
-from app.db.repositories.workflows import workflow_repository
 from app.memory.engine import memory_engine
 from app.memory.mappers import entry_to_note
 from app.models.briefing_models import BriefingKind, BriefingMood, BriefingPayload
@@ -135,15 +134,6 @@ async def format_goal_block(user_id: str, user: dict) -> tuple[str, bool]:
 
 
 @dataclass
-class LaneWorkflow:
-    """One goal-linked workflow's latest run state — the brief's per-lane line."""
-
-    title: str
-    last_status: str | None
-    last_run: datetime | None
-
-
-@dataclass
 class GoalLane:
     """One goal's world: the lane the nightly pass advances and the brief reports."""
 
@@ -155,7 +145,6 @@ class GoalLane:
     running: list[TodoDocument] = field(default_factory=list)
     failed: list[TodoDocument] = field(default_factory=list)
     needs_you: list[TodoDocument] = field(default_factory=list)
-    workflows: list[LaneWorkflow] = field(default_factory=list)
 
 
 _LANE_CANVAS_EXCERPT_CHARS = 700
@@ -210,10 +199,12 @@ def _excerpt_canvas(notes: str) -> str:
 
 
 async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
-    """Every active goal with its children, linked workflows, and latest runs.
+    """Every active goal with its children by execution state.
 
     This is the deterministic world the briefing reports and the night shift
-    advances: state lives here, never in per-run memory recall.
+    advances: state lives here, never in per-run memory recall. Goals are
+    backstage data only — recurring goal work is a GAIA todo with recurrence,
+    never a goal-linked workflow (see the unified-todo-model spec).
     """
     lanes: list[GoalLane] = []
     for goal in await todo_repository.list_open_goals(user_id):
@@ -236,15 +227,6 @@ async def gather_goal_lanes(user_id: str, since: datetime) -> list[GoalLane]:
                 lane.failed.append(child)
             elif status == "needs_you":
                 lane.needs_you.append(child)
-        for wf in await workflow_repository.find_goal_linked_workflows(user_id, goal.id):
-            last = await workflow_executions_repository.get_latest_for_workflow(wf.id)
-            lane.workflows.append(
-                LaneWorkflow(
-                    title=wf.title or "workflow",
-                    last_status=last.status if last else None,
-                    last_run=last.started_at if last else None,
-                )
-            )
         lanes.append(lane)
     return lanes
 
@@ -267,8 +249,6 @@ def format_goal_lanes_block(lanes: list[GoalLane]) -> str:
         ):
             if docs:
                 lines.append(label + ": " + "; ".join(d.title or "?" for d in docs))
-        for wf in lane.workflows:
-            lines.append(f"workflow '{wf.title}': last run {wf.last_status or 'never'}")
         parts.append("\n".join(lines))
     return "\n\n".join(parts)
 

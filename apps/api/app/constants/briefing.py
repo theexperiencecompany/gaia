@@ -14,6 +14,14 @@ DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
 OVERNIGHT_WORK_WORKFLOW_KEY: Final[str] = "overnight_work"
 WEEKLY_DIGEST_WORKFLOW_KEY: Final[str] = "weekly_digest"
 
+# Briefing rhythm crons are product plumbing, never user automations: the
+# workflow list excludes them so briefings don't present as user workflows.
+BRIEFING_RHYTHM_WORKFLOW_KEYS: Final[tuple[str, ...]] = (
+    DAILY_BRIEFING_WORKFLOW_KEY,
+    WEEKLY_DIGEST_WORKFLOW_KEY,
+    OVERNIGHT_WORK_WORKFLOW_KEY,
+)
+
 # Schedules (user-local timezone; the provisioner stamps the tz onto the trigger).
 DAILY_BRIEFING_CRON: Final[str] = "0 8 * * *"  # every day 08:00
 # The night shift runs well before the briefing so the 8am brief reports real,

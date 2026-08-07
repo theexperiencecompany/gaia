@@ -64,12 +64,6 @@ class WorkflowExecutionsRepository(
         executions = await self._find(filter_, sort=[("started_at", -1)], limit=limit, skip=offset)
         return executions, total
 
-    async def get_latest_for_workflow(self, workflow_id: str) -> WorkflowExecutionDocument | None:
-        """A workflow's most recent execution, no user scoping — the briefing
-        engine's per-lane last-run read."""
-        docs = await self._find({"workflow_id": workflow_id}, sort=[("started_at", -1)], limit=1)
-        return docs[0] if docs else None
-
     async def list_since(
         self, user_id: str, since: datetime, *, limit: int
     ) -> list[WorkflowExecutionDocument]:

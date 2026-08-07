@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 import re
 from typing import Any
 
+from app.constants.briefing import BRIEFING_RHYTHM_WORKFLOW_KEYS
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.scheduler_models import ScheduledTaskStatus
@@ -83,8 +84,17 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
     def _list_query(user_id: str, *, exclude_todo_workflows: bool) -> dict[str, Any]:
         """The shared filter for a user's listed workflows — the single source of
         truth for both ``list_for_user`` and ``count_for_user`` so a paginated
-        list and its total can never drift out of the same predicate."""
-        query: dict[str, Any] = {"user_id": user_id}
+        list and its total can never drift out of the same predicate.
+
+        Briefing rhythm crons are product plumbing, never user automations, so
+        they are excluded unconditionally (calm-surface rule: briefings must not
+        present as workflows). Other system workflows (inbox triage, meeting
+        prep) stay listed — the user may toggle those.
+        """
+        query: dict[str, Any] = {
+            "user_id": user_id,
+            "system_workflow_key": {"$nin": list(BRIEFING_RHYTHM_WORKFLOW_KEYS)},
+        }
         if exclude_todo_workflows:
             query["$or"] = [
                 {"is_todo_workflow": {"$exists": False}},
@@ -130,20 +140,6 @@ class WorkflowsRepository(MongoRepository[WorkflowDocument, WorkflowUpdate]):
         if not workflow_ids:
             return []
         return await self._find({"_id": {"$in": workflow_ids}})
-
-    async def find_goal_linked_workflows(
-        self, user_id: str, goal_id: str
-    ) -> list[WorkflowDocument]:
-        """A goal's activated rhythm workflows (excludes per-todo execution
-        plumbing) — the briefing engine's per-lane workflow read."""
-        return await self._find(
-            {
-                "user_id": user_id,
-                "source_todo_id": goal_id,
-                "activated": True,
-                "is_todo_workflow": {"$ne": True},
-            }
-        )
 
     async def find_by_ids_for_user(
         self, workflow_ids: list[str], user_id: str

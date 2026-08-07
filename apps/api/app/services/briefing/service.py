@@ -402,9 +402,6 @@ def _lane_items(lane: context.GoalLane) -> list[dict]:
         )
     for d in lane.needs_you:
         items.append({"text": f"Needs you: {d.title}", "todo_id": d.id, "kind": "you"})
-    for wf in lane.workflows:
-        status = wf.last_status or "has not run yet"
-        items.append({"text": f"Workflow '{wf.title}': last run {status}.", "kind": "note"})
     return items
 
 
