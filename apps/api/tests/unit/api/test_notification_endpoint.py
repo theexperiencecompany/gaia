@@ -159,6 +159,7 @@ class TestGetChannelPreferences:
             "discord": False,
             "whatsapp": False,
             "slack": False,
+            "email": False,
         }
         response = await client.get(f"{NOTIF_BASE}/preferences/channels")
         assert response.status_code == 200
@@ -204,6 +205,7 @@ class TestUpdateChannelPreferences:
             "discord": True,
             "whatsapp": False,
             "slack": False,
+            "email": False,
         }
         response = await client.put(
             f"{NOTIF_BASE}/preferences/channels",

@@ -130,11 +130,11 @@ def facet_from_doc(doc: dict[str, Any], facet: str, *, allow_canvas_fallback: bo
     """
     value = doc.get(FACET_FIELDS[facet])
     if value:
-        return value
+        return str(value)
     if facet == FACET_NOTES:
-        return doc.get(_LEGACY_CANVAS_FIELD) or ""
+        return str(doc.get(_LEGACY_CANVAS_FIELD) or "")
     if facet == FACET_DELIVERABLE and allow_canvas_fallback:
-        return doc.get(_LEGACY_CANVAS_FIELD) or ""
+        return str(doc.get(_LEGACY_CANVAS_FIELD) or "")
     return ""
 
 

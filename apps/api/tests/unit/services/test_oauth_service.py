@@ -1,5 +1,6 @@
 """Unit tests for OAuth service operations."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from bson import ObjectId
@@ -308,6 +309,10 @@ class TestStoreUserInfo:
 
         await store_user_info("Bob", "bob@test.com", None)
 
+        # Welcome email goes out on a background task so a slow ESP can't block
+        # signup; yield once so the task can complete.
+        await asyncio.sleep(0)
+
         mock_send_welcome_email.assert_awaited_once_with("bob@test.com", "Bob")
 
     async def test_new_user_adds_contact_to_resend(
@@ -321,6 +326,10 @@ class TestStoreUserInfo:
         mock_user_repo.create.return_value = UserDocument(id=str(ObjectId()))
 
         await store_user_info("Bob", "bob@test.com", None)
+
+        # Marketing contact is added on the same background task as the welcome
+        # email; yield once so the task can complete.
+        await asyncio.sleep(0)
 
         mock_add_marketing_contact.assert_awaited_once_with("bob@test.com", "Bob")
 

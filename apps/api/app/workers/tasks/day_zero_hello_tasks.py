@@ -11,12 +11,14 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import json
 import re
+from typing import cast
 from uuid import uuid4
 
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
 from app.models.message_models import MessageDict, MessageRequestWithHistory
+from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context
 from app.services.outbound_delivery import OutboundResult, publish_outbound_message
 from app.services.platform_link_service import PlatformLinkService
@@ -82,7 +84,7 @@ async def _run_silent(user: dict, prompt: str) -> str:
     message, _ = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
-        user=user_data,
+        user=cast(AuthenticatedUser, user_data),
         trigger_context={"execution_mode": "background"},
         source="day_zero_hello",
     )

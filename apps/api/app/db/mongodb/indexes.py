@@ -11,6 +11,7 @@ Index Strategy:
 """
 
 import asyncio
+from contextlib import suppress
 from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorCollection
@@ -1059,10 +1060,9 @@ async def create_short_link_indexes() -> None:
         )
         if legacy.deleted_count:
             log.info(f"{LogTag.MONGO} Deleted {legacy.deleted_count} legacy per-user short links")
-        try:
+        # index (or the collection itself) never existed — nothing to drop
+        with suppress(OperationFailure):
             await short_links_collection.drop_index("user_slug_unique")
-        except OperationFailure:
-            pass  # index (or the collection itself) never existed — nothing to drop
         await short_links_collection.create_index(
             [("slug", 1)],
             unique=True,

@@ -1,6 +1,6 @@
 """Unit tests for onboarding service and post-onboarding service."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 from bson import ObjectId
 from fastapi import BackgroundTasks, HTTPException
@@ -22,6 +22,7 @@ from app.services.onboarding.post_onboarding_service import (
     save_personalization_data,
     seed_initial_user_data,
 )
+from app.services.system_workflows.provisioner import provision_briefing_workflows
 
 
 @pytest.fixture
@@ -102,7 +103,14 @@ class TestCompleteOnboarding:
         assert result["_id"] == sample_user_id
         assert result["user_id"] == sample_user_id
         mock_enqueue_intelligence_job.assert_awaited_once_with(sample_user_id)
-        sample_background_tasks.add_task.assert_called_once()
+        # Deferred work: seed user data + provision briefing workflows. A goal
+        # memory seed is only scheduled when the request carries a focus.
+        expected_calls = [
+            call(seed_initial_user_data, sample_user_id),
+            call(provision_briefing_workflows, sample_user_id),
+        ]
+        sample_background_tasks.add_task.assert_has_calls(expected_calls)
+        assert sample_background_tasks.add_task.call_count == len(expected_calls)
 
     async def test_user_not_found(
         self, mock_repo, sample_user_id, sample_onboarding_request, sample_background_tasks

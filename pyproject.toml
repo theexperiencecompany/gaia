@@ -449,6 +449,14 @@ unfixable = [
 "apps/api/app/workers/tasks/hil_sweep_tasks.py" = ["ARG001"]
 "apps/api/app/workers/tasks/memory_backfill_tasks.py" = ["ARG001"]
 "apps/api/app/workers/tasks/memory_email_tasks.py" = ["ARG001"]
+# ARG001: ARQ's mandated first positional param on registered cron tasks.
+"apps/api/app/workers/tasks/day_zero_hello_tasks.py" = ["ARG001"]
+# ARG001: FastAPI injects `request: Request` even when the handler body only
+# needs the path param (short-link resolver reads no headers).
+"apps/api/app/api/v1/endpoints/short_links.py" = ["ARG001"]
+# ARG002: ChannelAdapter protocol method — `notification` is structurally
+# required by the interface even though this adapter always claims delivery.
+"apps/api/app/utils/notification/channels/email.py" = ["ARG002"]
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]

@@ -57,7 +57,7 @@ _DEV_SHORTLINK_BASE = "http://localhost:3000/l"
 def _shortlink_base() -> str:
     if settings.ENV == "development" and settings.SHORTLINK_BASE_URL == _PROD_SHORTLINK_DEFAULT:
         return _DEV_SHORTLINK_BASE
-    return settings.SHORTLINK_BASE_URL
+    return str(settings.SHORTLINK_BASE_URL)
 
 
 def _build_url(slug: str) -> str:

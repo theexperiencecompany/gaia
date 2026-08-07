@@ -10,7 +10,8 @@ design: an "I can't help" banner is noise.
 
 import asyncio
 
-from app.agents.llm.client import LLMNotConfiguredError, get_default_llm
+from app.agents.llm.client import get_default_llm
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import TodoClassificationOutput, TodoUpdate
 from shared.py.wide_events import log

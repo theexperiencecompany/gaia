@@ -199,6 +199,7 @@ per-file-ignores	apps/api/app/api/v1/endpoints/payments.py	ARG001
 per-file-ignores	apps/api/app/api/v1/endpoints/platform_auth.py	PLC0415
 per-file-ignores	apps/api/app/api/v1/endpoints/reminders.py	PLC0415
 per-file-ignores	apps/api/app/api/v1/endpoints/search.py	ARG001
+per-file-ignores	apps/api/app/api/v1/endpoints/short_links.py	ARG001
 per-file-ignores	apps/api/app/api/v1/endpoints/support.py	ARG001
 per-file-ignores	apps/api/app/api/v1/endpoints/todos.py	ARG001
 per-file-ignores	apps/api/app/api/v1/endpoints/todos.py	PLC0415
@@ -262,6 +263,7 @@ per-file-ignores	apps/api/app/utils/context_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/general_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/google_docs_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/notification/actions.py	ARG002
+per-file-ignores	apps/api/app/utils/notification/channels/email.py	ARG002
 per-file-ignores	apps/api/app/utils/notification/channels/external.py	ARG002
 per-file-ignores	apps/api/app/utils/notification/channels/inapp.py	ARG002
 per-file-ignores	apps/api/app/utils/redis_utils.py	PLC0415
@@ -269,6 +271,7 @@ per-file-ignores	apps/api/app/utils/todo_vector_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/weather_utils.py	PLC0415
 per-file-ignores	apps/api/app/utils/workflow_utils.py	PLC0415
 per-file-ignores	apps/api/app/workers/tasks/cleanup_tasks.py	ARG001
+per-file-ignores	apps/api/app/workers/tasks/day_zero_hello_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/hil_sweep_tasks.py	ARG001
 per-file-ignores	apps/api/app/workers/tasks/maintenance_sweep_tasks.py	PLC0415
 per-file-ignores	apps/api/app/workers/tasks/memory_backfill_tasks.py	ARG001

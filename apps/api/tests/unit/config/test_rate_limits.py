@@ -181,6 +181,7 @@ class TestFeatureLimits:
         "notification_operations",
         "integration_publish",
         "integration_clone",
+        "gaia_todo_executions",
     ]
 
     def test_all_expected_features_present(self) -> None:
@@ -225,6 +226,8 @@ class TestFeatureLimits:
 
     # Features intentionally restricted to paid-only (free limits are 0).
     PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode"}
+    # Features metered monthly-only on free (no daily allowance; each use is felt).
+    MONTHLY_ONLY_FREE_FEATURES: ClassVar[set[str]] = {"gaia_todo_executions"}
 
     def test_free_limits_are_positive(self) -> None:
         """Non-paid-only features should have at least some free tier allowance."""
@@ -233,6 +236,10 @@ class TestFeatureLimits:
                 # Paid-only features deliberately have free.day == free.month == 0
                 assert limits.free.day == 0, f"{key}: expected free day == 0 (paid-only)"
                 assert limits.free.month == 0, f"{key}: expected free month == 0 (paid-only)"
+            elif key in self.MONTHLY_ONLY_FREE_FEATURES:
+                # Metered monthly-only: no daily allowance, but a real monthly one
+                assert limits.free.day == 0, f"{key}: expected free day == 0 (monthly-only)"
+                assert limits.free.month > 0, f"{key}: expected free month > 0 (monthly-only)"
             else:
                 assert limits.free.day > 0, f"{key}: free day is 0"
                 assert limits.free.month > 0, f"{key}: free month is 0"

@@ -136,7 +136,7 @@ async def _headline(user_id: str, tz: ZoneInfo, fallback: str) -> str:
     return fallback
 
 
-async def _next_event(user_id: str, start: datetime, end: datetime) -> dict[str, Any] | None:
+async def _next_event(user_id: str, end: datetime) -> dict[str, Any] | None:
     """First calendar event still ahead today; an outage degrades to None."""
     try:
         data = await fetch_calendar_events(
@@ -149,10 +149,11 @@ async def _next_event(user_id: str, start: datetime, end: datetime) -> dict[str,
     except Exception as e:
         log.warning("dashboard.calendar_fetch_failed", user_id=user_id, error=str(e))
         return None
-    for ev in data.get("items", []):
-        when = ev.get("start", {}).get("dateTime") or ev.get("start", {}).get("date")
+    for ev in data.items:
+        start = ev.start
+        when = start.dateTime if start and start.dateTime else (start.date if start else None)
         if when:
-            return {"time": when, "title": ev.get("summary", "(no title)")}
+            return {"time": when, "title": ev.summary or "(no title)"}
     return None
 
 
@@ -193,7 +194,7 @@ async def build_today_payload(
         _your_tasks(user_id, start, end),
         _done_today(user_id, start, end),
         _runs(user_id, user_plan),
-        _next_event(user_id, start, end),
+        _next_event(user_id, end),
     )
 
     fallback = _fallback_headline(len(needs_you), len(in_flight), len(done_today))

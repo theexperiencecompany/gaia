@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
 import re
+from typing import cast
 from uuid import uuid4
 
 from app.agents.prompts.briefing_prompts import (
@@ -47,6 +48,7 @@ from app.models.notification.notification_models import (
     RedirectConfig,
 )
 from app.models.todo_models import ExecutionStatus, TodoDocument
+from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
@@ -126,7 +128,7 @@ async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_ke
     message, _ = await call_agent_silent(
         request=request,
         conversation_id=conversation_id,
-        user=user_data,
+        user=cast(AuthenticatedUser, user_data),
         trigger_context={"execution_mode": "background"},
         source="briefing",
     )
@@ -495,7 +497,7 @@ def _parse_voice(raw: str) -> dict:
     )
 
 
-def _bootstrap_should_skip(user: dict, clock: UserClock, has_goal: bool) -> bool:
+def _bootstrap_should_skip(user: dict, has_goal: bool) -> bool:
     """Existing-user rollout gate: hold the first briefing until a goal is known.
 
     Returns True to skip this run entirely. Once a goal memory arrives OR the
@@ -593,7 +595,7 @@ async def run_daily_briefing(user_id: str) -> None:
             return
 
     goal_block, has_goal = await context.format_goal_block(user_id, user)
-    if _bootstrap_should_skip(user, clock, has_goal):
+    if _bootstrap_should_skip(user, has_goal):
         log.info("briefing.bootstrap_pending_skip", user_id=user_id)
         return
 

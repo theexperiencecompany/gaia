@@ -26,7 +26,10 @@ def build_unsubscribe_url(user_id: str) -> str:
 
 def verify_unsubscribe_token(token: str) -> str | None:
     """Returns the user_id a token was signed for, or None if invalid/tampered."""
+    if not settings.EMAIL_UNSUBSCRIBE_SECRET:
+        return None
     try:
-        return _serializer().loads(token)
+        decoded = _serializer().loads(token)
     except BadSignature:
         return None
+    return decoded if isinstance(decoded, str) else None

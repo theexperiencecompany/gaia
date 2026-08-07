@@ -237,7 +237,9 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
         return f"retry:{todo_id} (attempt {new_retry_count})"
 
 
-async def _run_execution(doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser) -> str | None:
+async def _run_execution(
+    doc: TodoDocument, user_id: str, *, user_data: AuthenticatedUser
+) -> str | None:
     """
     Dispatch execution to the correct path:
     - If the todo has a workflow_id, queue the workflow (no summary to return).

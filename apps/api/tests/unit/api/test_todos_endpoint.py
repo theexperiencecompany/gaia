@@ -11,7 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
-from app.models.todo_models import TodoWorkflowStatus, TodoWorkflowStatusResponse
+from app.models.todo_models import (
+    Priority,
+    TodoResponse,
+    TodoWorkflowStatus,
+    TodoWorkflowStatusResponse,
+)
 from app.models.workflow_models import WorkflowWithIntegrations
 from tests.conftest import FAKE_USER
 
@@ -28,26 +33,27 @@ def _todo_response(
     todo_id: str = "abc123",
     title: str = "Buy groceries",
     completed: bool = False,
-) -> dict:
-    """Return a dict matching TodoResponse shape."""
-    return {
-        "id": todo_id,
-        "user_id": USER_ID,
-        "title": title,
-        "description": None,
-        "labels": [],
-        "due_date": None,
-        "due_date_timezone": None,
-        "priority": "none",
-        "project_id": None,
-        "completed": completed,
-        "subtasks": [],
-        "workflow_id": None,
-        "created_at": NOW.isoformat(),
-        "updated_at": NOW.isoformat(),
-        "completed_at": None,
-        "workflow_categories": [],
-    }
+    description: str | None = None,
+) -> TodoResponse:
+    """Return a TodoResponse matching the service contract."""
+    return TodoResponse(
+        id=todo_id,
+        user_id=USER_ID,
+        title=title,
+        description=description,
+        labels=[],
+        due_date=None,
+        due_date_timezone=None,
+        priority=Priority.NONE,
+        project_id=None,
+        completed=completed,
+        subtasks=[],
+        workflow_id=None,
+        created_at=NOW,
+        updated_at=NOW,
+        completed_at=None,
+        workflow_categories=[],
+    )
 
 
 def _todo_list_response(todos: list | None = None) -> MagicMock:
@@ -170,9 +176,14 @@ class TestCreateTodo:
         with patch(
             "app.services.todos.todo_service.TodoService.create_todo",
             new_callable=AsyncMock,
-            return_value={**_todo_response(), **payload},
+            return_value=_todo_response(
+                title="Full todo",
+                description="Detailed description",
+            ),
         ):
             resp = await client.post(f"{API}/todos", json=payload)
+        assert resp.status_code == 201
+        assert resp.json()["title"] == "Full todo"
         assert resp.status_code == 201
 
     async def test_create_todo_validation_error_empty_title(self, client: AsyncClient) -> None:

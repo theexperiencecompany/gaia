@@ -1,8 +1,8 @@
 """Unit tests for app.workers.tasks.tracked_todo_tasks.
 
 The ARQ side of tracked todos: the lock-guarded entrypoint, the retry/backoff
-ladder, the recurrence re-enqueue, the agent execution path (canvas timeline
-markers), and the orphan safety net.
+ladder, the recurrence re-enqueue, the agent execution path (activity markers),
+and the orphan safety net.
 
 The bug these tests pin down: ``scheduled_at`` was only ever moved forward for a
 *recurring* todo. After a one-shot run — and during the exponential-backoff
@@ -139,6 +139,8 @@ class TestExecuteTodoWithRetryEarlyExits:
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._run_execution", run_execution),
             patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})),
+            patch(f"{MODULE}.lifecycle.mark_execution_status", AsyncMock()),
+            patch(f"{MODULE}.tracked_todo_service.complete_tracked_todo", AsyncMock()),
         ):
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, run_execution
@@ -195,6 +197,9 @@ class TestExecuteTodoWithRetrySuccess:
                 f"{MODULE}.get_user_by_id",
                 AsyncMock(return_value={"timezone": tz}),
             ),
+            patch(f"{MODULE}.lifecycle.mark_execution_status", AsyncMock()),
+            patch(f"{MODULE}.tracked_todo_service.complete_tracked_todo", AsyncMock()),
+            patch(f"{MODULE}._notify_done_if_scoped", AsyncMock()),
         ):
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, pool
@@ -264,6 +269,9 @@ class TestExecuteTodoWithRetryFailure:
             patch(f"{MODULE}._run_execution", AsyncMock(side_effect=RuntimeError("boom"))),
             patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})),
             patch(f"{MODULE}._mark_todo_failed", mark_failed),
+            patch(f"{MODULE}.lifecycle.mark_execution_status", AsyncMock()),
+            patch(f"{MODULE}.tracked_todo_service.complete_tracked_todo", AsyncMock()),
+            patch(f"{MODULE}._notify_done_if_scoped", AsyncMock()),
         ):
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, pool, mark_failed
@@ -391,13 +399,13 @@ class TestExtractLearnings:
 
 
 class TestCollectReferenceContext:
-    async def _run(self, ref_ids, *, docs, canvases):
+    async def _run(self, ref_ids, *, docs, notes_facets):
         repo = MagicMock()
         repo.get_by_id = AsyncMock(side_effect=lambda rid: docs.get(rid))
-        read = AsyncMock(side_effect=lambda rid, _uid: canvases[rid])
+        read = AsyncMock(side_effect=lambda rid, _uid, _facet: notes_facets[rid])
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.read_canvas", read),
+            patch(f"{MODULE}.read_facet", read),
         ):
             return await _collect_reference_context(ref_ids, "user-1"), repo, read
 
@@ -410,8 +418,8 @@ class TestCollectReferenceContext:
 
     async def test_includes_the_referenced_todo_title_and_its_learnings(self):
         docs = {"r1": _doc(id="r1", title="Last quarter's rollout")}
-        canvases = {"r1": "## Learnings\n- ship on Tuesdays\n"}
-        result, _repo, _read = await self._run(["r1"], docs=docs, canvases=canvases)
+        notes_facets = {"r1": "## Learnings\n- ship on Tuesdays\n"}
+        result, _repo, _read = await self._run(["r1"], docs=docs, notes_facets=notes_facets)
 
         assert result.startswith("\n\nPast experience (from similar completed todos):\n")
         assert 'From past todo "Last quarter\'s rollout":' in result
@@ -420,8 +428,8 @@ class TestCollectReferenceContext:
     async def test_caps_reference_reads_at_five(self):
         ids = [f"r{i}" for i in range(9)]
         docs = {i: _doc(id=i, title=i) for i in ids}
-        canvases = {i: f"## Learnings\n- lesson {i}" for i in ids}
-        result, repo, _read = await self._run(ids, docs=docs, canvases=canvases)
+        notes_facets = {i: f"## Learnings\n- lesson {i}" for i in ids}
+        result, repo, _read = await self._run(ids, docs=docs, notes_facets=notes_facets)
 
         assert repo.get_by_id.await_count == 5
         assert "- lesson r4" in result
@@ -429,12 +437,12 @@ class TestCollectReferenceContext:
 
     async def test_a_deleted_reference_is_skipped_and_the_rest_still_load(self):
         docs = {"gone": None, "r2": _doc(id="r2", title="Kept")}
-        canvases = {"gone": "## Learnings\n- never read", "r2": "## Learnings\n- kept lesson"}
-        result, _repo, read = await self._run(["gone", "r2"], docs=docs, canvases=canvases)
+        notes_facets = {"gone": "## Learnings\n- never read", "r2": "## Learnings\n- kept lesson"}
+        result, _repo, read = await self._run(["gone", "r2"], docs=docs, notes_facets=notes_facets)
 
         assert "- never read" not in result
         assert "- kept lesson" in result
-        # A missing doc must short-circuit before the canvas read.
+        # A missing doc must short-circuit before the notes read.
         assert read.await_count == 1
 
     async def test_a_canvas_read_failure_does_not_abort_the_remaining_references(self):
@@ -442,14 +450,14 @@ class TestCollectReferenceContext:
         repo = MagicMock()
         repo.get_by_id = AsyncMock(side_effect=lambda rid: docs[rid])
 
-        async def _read(ref_id: str, _user_id: str) -> str:
+        async def _read(ref_id: str, _user_id: str, _facet: str) -> str:
             if ref_id == "bad":
-                raise RuntimeError("canvas unavailable")
+                raise RuntimeError("notes unavailable")
             return "## Learnings\n- good lesson"
 
         with (
             patch(f"{MODULE}.todo_repository", repo),
-            patch(f"{MODULE}.read_canvas", AsyncMock(side_effect=_read)),
+            patch(f"{MODULE}.read_facet", AsyncMock(side_effect=_read)),
         ):
             result = await _collect_reference_context(["bad", "good"], "user-1")
 
@@ -458,14 +466,14 @@ class TestCollectReferenceContext:
 
     async def test_references_without_learnings_produce_no_context_block(self):
         docs = {"r1": _doc(id="r1", title="No lessons")}
-        canvases = {"r1": "## Current State\nnothing learned"}
-        result, _repo, _read = await self._run(["r1"], docs=docs, canvases=canvases)
+        notes_facets = {"r1": "## Current State\nnothing learned"}
+        result, _repo, _read = await self._run(["r1"], docs=docs, notes_facets=notes_facets)
         assert result == ""
 
     async def test_a_null_canvas_is_tolerated(self):
         docs = {"r1": _doc(id="r1", title="Empty canvas")}
-        canvases = {"r1": None}
-        result, _repo, _read = await self._run(["r1"], docs=docs, canvases=canvases)
+        notes_facets = {"r1": None}
+        result, _repo, _read = await self._run(["r1"], docs=docs, notes_facets=notes_facets)
         assert result == ""
 
 
@@ -476,32 +484,36 @@ class TestCollectReferenceContext:
 
 class TestBuildExecutionPrompt:
     def test_title_only(self):
-        assert (
-            _build_execution_prompt(
-                title="Ship it", description="", canvas_content=None, reference_context=""
-            )
-            == "Execute the following scheduled task: Ship it"
+        prompt = _build_execution_prompt(
+            title="Ship it", description="", notes=None, deliverable=None, reference_context=""
         )
+        # The task line always leads; the authoring directive follows.
+        assert prompt.startswith("Execute the following scheduled task: Ship it")
 
     def test_all_sections_appear_in_order(self):
         prompt = _build_execution_prompt(
             title="Ship it",
             description="the release",
-            canvas_content="## Current State\nblocked",
+            notes="## Current State\nblocked",
+            deliverable=None,
             reference_context="past stuff",
         )
-        assert prompt.split("\n\n") == [
+        sections = prompt.split("\n\n")
+        assert sections[:4] == [
             "Execute the following scheduled task: Ship it",
             "Details: the release",
-            "Canvas context:\n## Current State\nblocked",
+            "Working notes:\n## Current State\nblocked",
             "past stuff",
         ]
+        assert sections[0] == "Execute the following scheduled task: Ship it"
+        assert "Current deliverable" not in prompt
 
     def test_empty_canvas_string_is_omitted_not_rendered_as_an_empty_header(self):
         prompt = _build_execution_prompt(
-            title="Ship it", description="", canvas_content="", reference_context=""
+            title="Ship it", description="", notes="", deliverable="", reference_context=""
         )
-        assert "Canvas context" not in prompt
+        assert "Working notes" not in prompt
+        assert "Current deliverable" not in prompt
 
 
 # ---------------------------------------------------------------------------
@@ -514,26 +526,30 @@ class TestExecuteViaAgent:
         self,
         *,
         agent,
-        canvas="## Current State\nall good",
+        notes="## Current State\nall good",
+        deliverable="",
         model_side_effect=None,
-        canvas_side_effect=None,
+        facet_side_effect=None,
     ):
         self.timeline = AsyncMock(return_value=True)
         read = (
-            AsyncMock(side_effect=canvas_side_effect)
-            if canvas_side_effect
-            else AsyncMock(return_value=canvas)
+            AsyncMock(side_effect=facet_side_effect)
+            if facet_side_effect
+            else AsyncMock(return_value=notes)
         )
         model = (
             AsyncMock(side_effect=model_side_effect)
             if model_side_effect
             else AsyncMock(return_value={"model": "test-model"})
         )
+        repo = MagicMock()
+        repo.update = AsyncMock()
         return (
             patch(f"{MODULE}.call_agent_silent", agent),
-            patch(f"{MODULE}.read_canvas", read),
+            patch(f"{MODULE}.read_facet", read),
             patch(f"{MODULE}.get_default_model", model),
-            patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", self.timeline),
+            patch(f"{MODULE}.tracked_todo_service.append_activity_marker", self.timeline),
+            patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._collect_reference_context", AsyncMock(return_value="")),
         )
 
@@ -542,8 +558,8 @@ class TestExecuteViaAgent:
 
     async def test_writes_start_and_success_markers_around_the_agent_call(self):
         agent = AsyncMock(return_value=("Deploy verified.\nAll green.", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, p6:
             result = await _execute_via_agent(_doc(), "user-1", user_data={"user_id": "user-1"})
 
         assert result == "Deploy verified.\nAll green."
@@ -558,11 +574,14 @@ class TestExecuteViaAgent:
         order: list[str] = []
         timeline = AsyncMock(side_effect=lambda **kw: order.append("timeline"))
         agent = AsyncMock(side_effect=lambda **kw: (order.append("agent"), ("ok", {}))[1])
+        repo = MagicMock()
+        repo.update = AsyncMock()
         with (
             patch(f"{MODULE}.call_agent_silent", agent),
-            patch(f"{MODULE}.read_canvas", AsyncMock(return_value="")),
+            patch(f"{MODULE}.read_facet", AsyncMock(return_value="")),
             patch(f"{MODULE}.get_default_model", AsyncMock(return_value=None)),
-            patch(f"{MODULE}.tracked_todo_service.append_canvas_timeline", timeline),
+            patch(f"{MODULE}.tracked_todo_service.append_activity_marker", timeline),
+            patch(f"{MODULE}.todo_repository", repo),
         ):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -570,8 +589,8 @@ class TestExecuteViaAgent:
 
     async def test_prompt_and_trigger_context_carry_the_todo_identity(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent, canvas="## Current State\nblocked")
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent, notes="## Current State\nblocked")
+        with p1, p2, p3, p4, p5, p6:
             await _execute_via_agent(
                 _doc(description="verify staging"), "user-1", user_data={"user_id": "user-1"}
             )
@@ -583,18 +602,19 @@ class TestExecuteViaAgent:
             "todo_title": "Check the deploy",
             "active_todo_id": "todo-1",
             "execution_mode": "background",
+            "suppress_platform_delivery": False,
         }
         assert kwargs["user"] == {"user_id": "user-1"}
         assert kwargs["user_model_config"] == {"model": "test-model"}
         prompt = kwargs["request"].message
         assert "Execute the following scheduled task: Check the deploy" in prompt
         assert "Details: verify staging" in prompt
-        assert "Canvas context:\n## Current State\nblocked" in prompt
+        assert "Working notes:\n## Current State\nblocked" in prompt
 
     async def test_each_run_gets_a_fresh_conversation_id(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, p6:
             await _execute_via_agent(_doc(), "user-1", user_data={})
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
@@ -603,10 +623,10 @@ class TestExecuteViaAgent:
 
     async def test_a_model_config_lookup_failure_does_not_abort_the_run(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(
+        p1, p2, p3, p4, p5, p6 = self._patches(
             agent=agent, model_side_effect=RuntimeError("model registry down")
         )
-        with p1, p2, p3, p4, p5:
+        with p1, p2, p3, p4, p5, p6:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "ok"
@@ -614,21 +634,22 @@ class TestExecuteViaAgent:
 
     async def test_a_canvas_read_failure_does_not_abort_the_run(self):
         agent = AsyncMock(return_value=("ok", {}))
-        p1, p2, p3, p4, p5 = self._patches(
-            agent=agent, canvas_side_effect=RuntimeError("mongo down")
+        p1, p2, p3, p4, p5, p6 = self._patches(
+            agent=agent, facet_side_effect=RuntimeError("mongo down")
         )
-        with p1, p2, p3, p4, p5:
+        with p1, p2, p3, p4, p5, p6:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "ok"
-        assert "Canvas context" not in agent.await_args.kwargs["request"].message
+        assert "Working notes" not in agent.await_args.kwargs["request"].message
+        assert "Current deliverable" not in agent.await_args.kwargs["request"].message
 
     async def test_an_agent_error_string_is_promoted_to_a_raised_failure(self):
         """call_agent_silent swallows its own errors into the message; the
         scheduled run must still count as failed so the retry ladder engages."""
         agent = AsyncMock(return_value=("Error when calling silent agent: boom", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5, pytest.raises(RuntimeError, match="Error when calling"):
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, p6, pytest.raises(RuntimeError, match="Error when calling"):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
         _start, end = self._entries()
@@ -637,8 +658,8 @@ class TestExecuteViaAgent:
 
     async def test_an_agent_exception_writes_a_failure_marker_and_propagates(self):
         agent = AsyncMock(side_effect=TimeoutError("llm timeout"))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5, pytest.raises(TimeoutError):
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, p6, pytest.raises(TimeoutError):
             await _execute_via_agent(_doc(), "user-1", user_data={})
 
         _start, end = self._entries()
@@ -646,8 +667,8 @@ class TestExecuteViaAgent:
 
     async def test_an_empty_agent_response_is_not_an_error(self):
         agent = AsyncMock(return_value=("", {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, p6:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == ""
@@ -655,8 +676,8 @@ class TestExecuteViaAgent:
 
     async def test_a_long_response_is_truncated_for_the_return_value_and_the_marker(self):
         agent = AsyncMock(return_value=("x" * 500, {}))
-        p1, p2, p3, p4, p5 = self._patches(agent=agent)
-        with p1, p2, p3, p4, p5:
+        p1, p2, p3, p4, p5, p6 = self._patches(agent=agent)
+        with p1, p2, p3, p4, p5, p6:
             result = await _execute_via_agent(_doc(), "user-1", user_data={})
 
         assert result == "x" * 200
@@ -673,13 +694,16 @@ class TestMarkTodoFailed:
         repo = MagicMock()
         repo.add_labels = AsyncMock()
         notify = AsyncMock()
+        mark_status = AsyncMock()
         with (
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}.notification_service.create_notification", notify),
+            patch(f"{MODULE}.lifecycle.mark_execution_status", mark_status),
         ):
             await _mark_todo_failed("todo-1", "user-1", _doc(title="Nightly backup"))
 
         repo.add_labels.assert_awaited_once_with("todo-1", user_id="user-1", labels=[FAILED_LABEL])
+        mark_status.assert_awaited_once()
         request = notify.await_args.args[0]
         assert request.user_id == "user-1"
         assert request.source == NotificationSourceEnum.BACKGROUND_JOB
@@ -697,6 +721,7 @@ class TestMarkTodoFailed:
                 f"{MODULE}.notification_service.create_notification",
                 AsyncMock(side_effect=RuntimeError("notification bus down")),
             ),
+            patch(f"{MODULE}.lifecycle.mark_execution_status", AsyncMock()),
         ):
             await _mark_todo_failed("todo-1", "user-1", _doc())
 

@@ -77,7 +77,7 @@ def _action_items(payload: dict) -> list[dict]:
 def _resolve_link(link: str | None) -> str | None:
     if not link:
         return None
-    if link.startswith("http://") or link.startswith("https://"):
+    if link.startswith(("http://", "https://")):
         return link
     base = _public_app_url()
     return f"{base}/{link.lstrip('/')}"

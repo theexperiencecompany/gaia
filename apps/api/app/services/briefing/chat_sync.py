@@ -14,6 +14,7 @@ sessions that would drown the briefing context.
 """
 
 from datetime import UTC, datetime
+from typing import cast
 
 from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
@@ -22,6 +23,7 @@ from app.models.chat_models import (
     MessageModel,
     UpdateMessagesRequest,
 )
+from app.models.user_models import AuthenticatedUser
 from app.services.bot_service import BotService
 from app.services.conversation_service import update_messages
 from app.services.platform_link_service import PlatformLinkService
@@ -44,14 +46,15 @@ async def persist_bot_message(user_id: str, user: dict, platform: str, parts: li
     if not parts:
         return
     linked = await PlatformLinkService.get_linked_platforms(user_id)
-    platform_user_id = (linked.get(platform) or {}).get("platformUserId")
-    if not platform_user_id:
+    entry = linked.get(platform)
+    if not entry:
         return
+    platform_user_id = entry["platformUserId"]
     date_iso = datetime.now(UTC).isoformat()
     try:
         # Resolve through bot_sessions (never cache): /new re-mints the id.
         conversation_id = await BotService.get_or_create_session(
-            platform, str(platform_user_id), None, user
+            platform, str(platform_user_id), None, cast(AuthenticatedUser, user)
         )
         await update_messages(
             UpdateMessagesRequest(

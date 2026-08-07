@@ -28,7 +28,9 @@ def mock_repo():
         repo.link_platform = AsyncMock()
         repo.unlink_platform = AsyncMock()
         repo.list_platform_user_ids = AsyncMock(return_value=[])
-        yield repo
+        with patch("app.services.first_steps_service.user_repository") as first_steps_repo:
+            first_steps_repo.set_first_step = AsyncMock(return_value=False)
+            yield repo
 
 
 @pytest.fixture

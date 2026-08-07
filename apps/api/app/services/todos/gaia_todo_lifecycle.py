@@ -15,7 +15,7 @@ this module — never the reverse.
 
 from datetime import UTC, datetime, timedelta
 import re
-from typing import Any
+from typing import Any, cast
 
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
@@ -350,7 +350,9 @@ async def approve(
             "upgrade_prompt_shown",
             {"todo_id": todo_id, "feature": GAIA_TODO_EXECUTIONS_FEATURE, "channel": channel},
         )
-        detail: dict = e.detail if isinstance(e.detail, dict) else {}
+        # RateLimitExceededException always assigns a dict to detail at runtime
+        # (HTTPException types it str | None) — cast per Type Safety item 12.
+        detail: dict = cast(dict, e.detail) if e.detail is not None else {}
         raise ExecutionQuotaError(
             todo_id=todo_id,
             reset_time=detail.get("reset_time"),

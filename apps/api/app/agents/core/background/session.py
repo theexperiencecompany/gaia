@@ -125,7 +125,7 @@ class ExecutorRun:
             workflow_id=configurable.get("workflow_id"),
             workflow_title=configurable.get("workflow_title", ""),
             workflow_notify_on_completion=configurable.get("workflow_notify_on_completion", True),
-            suppress_platform_delivery=configurable.get("suppress_platform_delivery", False),
+            suppress_platform_delivery=bool(configurable.get("suppress_platform_delivery", False)),
         )
 
     @property
