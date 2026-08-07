@@ -297,6 +297,10 @@ function findSuppression(suppressions, checkId, anchorLines) {
 function registrationLabel(arg, sf) {
   if (!arg) return "<none>";
   if (arg.type === "StringLiteral") return arg.value;
+  // No-substitution template literal — same as a plain string label.
+  if (arg.type === "TemplateLiteral" && arg.expressions.length === 0) {
+    return arg.quasis[0]?.value.raw ?? "<dynamic>";
+  }
   if (arg.type === "MemberExpression" && arg.property.type === "Identifier") {
     return arg.property.name;
   }
