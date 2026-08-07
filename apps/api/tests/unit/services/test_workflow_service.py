@@ -106,26 +106,16 @@ def mock_executions_repo():
 
 
 @pytest.fixture
-def mock_redis_pool():
-    """Patch RedisPoolManager.get_pool used by WorkflowQueueService."""
-    with (
-        patch("app.services.workflow.queue_service.RedisPoolManager.get_pool") as mock_get_pool,
-        patch(
-            "app.services.workflow.queue_service.enqueue_worker_job", new=AsyncMock()
-        ) as mock_enqueue,
-    ):
+def mock_redis_pool(route_enqueue_via_pool):
+    """Patch RedisPoolManager.get_pool used by WorkflowQueueService.
+
+    ``route_enqueue_via_pool`` (shared conftest) routes the wide-event enqueue
+    wrapper through pool.enqueue_job, so the tests' existing pool mocks and
+    assertions stay authoritative.
+    """
+    with patch("app.services.workflow.queue_service.RedisPoolManager.get_pool") as mock_get_pool:
         mock_pool = AsyncMock()
         mock_get_pool.return_value = mock_pool
-
-        # The service enqueues via the wide-event wrapper (enqueue_worker_job),
-        # which forwards to pool.enqueue_job with the same args the direct call
-        # used (the pool itself is the wrapper's first arg, dropped on forward).
-        # Route the wrapper through pool.enqueue_job so the tests' existing
-        # mocks and assertions stay authoritative.
-        async def _forward(pool, *args, **kwargs):
-            return await pool.enqueue_job(*args, **kwargs)
-
-        mock_enqueue.side_effect = _forward
         yield mock_pool
 
 

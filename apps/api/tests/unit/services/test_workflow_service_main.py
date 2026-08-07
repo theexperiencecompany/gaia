@@ -1999,17 +1999,10 @@ class TestWorkflowQueueService:
     """Tests for WorkflowQueueService."""
 
     @pytest.fixture(autouse=True)
-    def _route_enqueue_through_pool(self):
-        """The service enqueues via the wide-event wrapper (enqueue_worker_job),
-        which forwards to pool.enqueue_job — route it through the pool mock the
-        tests already set up, so their assertions stay authoritative."""
-        with patch("app.services.workflow.queue_service.enqueue_worker_job") as mock_enqueue:
-
-            async def _forward(pool, *args, **kwargs):
-                return await pool.enqueue_job(*args, **kwargs)
-
-            mock_enqueue.side_effect = _forward
-            yield
+    def _route_enqueue_through_pool(self, route_enqueue_via_pool):
+        """Shared conftest fixture routes the wide-event enqueue wrapper through
+        pool.enqueue_job so the tests' pool mocks stay authoritative."""
+        return
 
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_generation_success(self, mock_redis):

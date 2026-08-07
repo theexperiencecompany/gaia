@@ -129,6 +129,10 @@ class TestExecuteTrackedTodoLock:
 
 
 class TestExecuteTodoWithRetryEarlyExits:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
     async def _run(self, doc, *, pool=None):
         pool = pool or _pool()
         repo = MagicMock()
@@ -139,15 +143,7 @@ class TestExecuteTodoWithRetryEarlyExits:
             patch(f"{MODULE}.todo_repository", repo),
             patch(f"{MODULE}._run_execution", run_execution),
             patch(f"{MODULE}.get_user_by_id", AsyncMock(return_value={"timezone": "UTC"})),
-            patch(f"{MODULE}.enqueue_worker_job") as mock_enqueue,
         ):
-            # The retry path enqueues via the wide-event wrapper
-            # (enqueue_worker_job), which forwards to pool.enqueue_job — route
-            # it through the pool mock so assertions stay authoritative.
-            async def _forward(p, *args, **kwargs):
-                return await p.enqueue_job(*args, **kwargs)
-
-            mock_enqueue.side_effect = _forward
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, run_execution
 
@@ -191,6 +187,10 @@ class TestExecuteTodoWithRetryEarlyExits:
 
 
 class TestExecuteTodoWithRetrySuccess:
+    @pytest.fixture(autouse=True)
+    def _route_enqueue(self, route_enqueue_via_pool):
+        return
+
     async def _run(self, doc, *, tz="UTC"):
         pool = _pool()
         repo = MagicMock()
@@ -203,15 +203,7 @@ class TestExecuteTodoWithRetrySuccess:
                 f"{MODULE}.get_user_by_id",
                 AsyncMock(return_value={"timezone": tz}),
             ),
-            patch(f"{MODULE}.enqueue_worker_job") as mock_enqueue,
         ):
-            # The retry path enqueues via the wide-event wrapper
-            # (enqueue_worker_job), which forwards to pool.enqueue_job — route
-            # it through the pool mock so assertions stay authoritative.
-            async def _forward(p, *args, **kwargs):
-                return await p.enqueue_job(*args, **kwargs)
-
-            mock_enqueue.side_effect = _forward
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, pool
 
