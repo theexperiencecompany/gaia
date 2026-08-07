@@ -216,6 +216,11 @@ def scan(
         for handler in file_facts.handlers:
             if handler.kind == "worker" and handler.name not in worker_registry:
                 continue
+            if handler.kind == "worker":
+                # worker.py wraps every registered task in arq_task, the
+                # wide-event + metrics envelope — the boundary is provided by
+                # the wrapper, not by a wide_task() inside the task file.
+                handler.has_boundary = True
             sensitivity = classify(handler, file_facts)
             entry = RouteEntry(handler=handler, file=file, sensitivity=sensitivity)
             if _is_infra(handler):
