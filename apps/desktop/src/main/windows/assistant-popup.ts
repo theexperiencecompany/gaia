@@ -190,11 +190,12 @@ function islandOptions(
     // glass material regardless of key-window status. Regular windows
     // render the faded inactive material unless focused — the cause of
     // the glass changing when clicking between the islands.
-    type: process.platform === "darwin" ? "panel" : undefined,
+    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     transparent: useLiquidGlass,
     backgroundColor: "#00000000",
-    vibrancy:
-      process.platform === "darwin" && !useLiquidGlass ? "hud" : undefined,
+    ...(process.platform === "darwin" && !useLiquidGlass
+      ? { vibrancy: "hud" as const }
+      : {}),
     visualEffectState: "active",
     roundedCorners: true,
     webPreferences: {

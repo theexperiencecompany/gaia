@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.utils.redis_utils import RedisPoolManager
@@ -36,7 +37,7 @@ class WorkflowQueueService:
 
     @staticmethod
     async def queue_workflow_execution(
-        workflow_id: str, user_id: str, context: dict | None = None
+        workflow_id: str, user_id: str, context: dict[str, Any] | None = None
     ) -> bool:
         """Queue workflow execution as a background task.
 
@@ -139,7 +140,11 @@ class WorkflowQueueService:
             pool = await RedisPoolManager.get_pool()
             result = await pool.get(f"todo_workflow_generating:{todo_id}")
             return result is not None
-        except Exception:
+        except Exception as exc:
+            # False means "nothing in flight", so a Redis outage here lets a second
+            # generation start for the same todo. Cheap to recover from, but not
+            # something to discover without a log line.
+            log.warning(f"{LogTag.WORKFLOW} Could not read workflow-generating flag: {exc}")
             return False
 
     @staticmethod

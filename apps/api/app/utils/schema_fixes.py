@@ -4,23 +4,28 @@ Some MCP servers return schemas with edge cases that cause conversion issues.
 This module provides utilities to normalize schemas before conversion.
 """
 
-from typing import Any
+from mcp.types import Tool
 
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
 
-def normalize_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
+def normalize_schema_refs(schema: object) -> object:
     """Normalize $ref references in a JSON schema.
 
     Some MCP servers use numeric keys in $defs (like '0', '1') which can cause
     issues with reference resolution. This function normalizes such schemas.
 
+    ``schema`` is typed ``object``, not ``dict``, because some MCP servers hand
+    back a non-dict ``inputSchema`` (bool/None/etc.) — the isinstance guard
+    below is a real, load-bearing check, not dead code.
+
     Args:
-        schema: JSON schema dict
+        schema: JSON schema value (expected to be a dict, but not guaranteed)
 
     Returns:
-        Normalized schema with fixed $refs
+        Normalized schema with fixed $refs, or the original value unchanged
+        when it isn't a dict
     """
     log.set(operation="normalize_schema_refs")
     if not isinstance(schema, dict):
@@ -68,7 +73,7 @@ def normalize_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:
     return schema
 
 
-def _update_refs_recursive(obj: Any, key_mapping: dict[str, str], defs_key: str) -> None:
+def _update_refs_recursive(obj: object, key_mapping: dict[str, str], defs_key: str) -> None:
     """Recursively update $ref values in a schema.
 
     Args:
@@ -98,7 +103,7 @@ def _update_refs_recursive(obj: Any, key_mapping: dict[str, str], defs_key: str)
             _update_refs_recursive(item, key_mapping, defs_key)
 
 
-def patch_tool_schema(tool: Any) -> Any:
+def patch_tool_schema(tool: Tool) -> Tool:
     """Patch a tool's input schema to fix common issues.
 
     Args:

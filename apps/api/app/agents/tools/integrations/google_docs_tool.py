@@ -7,10 +7,11 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 """
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.decorators import with_doc
@@ -35,7 +36,7 @@ DOCS_TOOLKIT = "GOOGLEDOCS"
 
 def _user_id(auth_credentials: dict[str, Any]) -> str:
     user_id = auth_credentials.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("Missing user_id in auth_credentials")
     return user_id
 
@@ -47,10 +48,11 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_SHARE_DOC_DOC)
     def CUSTOM_SHARE_DOC(
         request: ShareDocInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Share a Google Doc with one or more recipients."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "share_doc"})
         user_id = _user_id(auth_credentials)
 
@@ -104,9 +106,10 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_CREATE_TOC_DOC)
     def CUSTOM_CREATE_TOC(
         request: CreateTOCInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "create_toc"})
         try:
             get_doc_result: ToolExecutionResponse = composio.tools.execute(
@@ -124,7 +127,9 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
         if not get_doc_result["successful"]:
             raise ValueError(f"Failed to get document: {get_doc_result.get('error')}")
 
-        doc_data = get_doc_result["data"]
+        # ToolExecutionResponse.data is typed as a plain Dict, but Composio can
+        # return it stringified — widen the type here to keep that handling live.
+        doc_data = cast("dict[str, Any] | str", get_doc_result["data"])
         # Handle double wrapping if data is stringified JSON
         if isinstance(doc_data, str):
             try:
@@ -180,10 +185,11 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     @with_doc(CUSTOM_DELETE_DOC_DOC)
     def CUSTOM_DELETE_DOC(
         request: DeleteDocInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Delete a file permanently using Drive API."""
+        del execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "delete_doc"})
         user_id = _user_id(auth_credentials)
 
@@ -206,13 +212,14 @@ def register_google_docs_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLEDOCS")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Google Docs context snapshot: recently viewed/modified documents.
 
         Zero required parameters. Returns user's recently accessed Google Docs.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         log.set(tool={"integration": "google_docs", "action": "gather_context"})
         user_id = _user_id(auth_credentials)
 

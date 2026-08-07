@@ -34,6 +34,7 @@ from pydantic import PydanticDeprecatedSince20
 from app.agents.core.graph_builder.build_graph import build_graphs
 from app.agents.core.graph_builder.checkpointer_manager import init_checkpointer_manager
 from app.agents.llm.client import register_llm_providers
+from app.agents.llm.model_catalog import init_openrouter_model_catalog
 from app.agents.tools.core.registry import init_tool_registry
 from app.agents.tools.core.store import init_embeddings
 from app.config.cloudinary import init_cloudinary
@@ -185,6 +186,7 @@ def register_lazy_providers(context: Literal["main_app", "arq_worker"]) -> None:
         init_postgresql_engine,
         init_rabbitmq_publisher,
         register_llm_providers,
+        init_openrouter_model_catalog,
         build_graphs,
         init_chroma,
         init_checkpointer_manager,
@@ -270,12 +272,20 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     startup_services: list[StartupService] = list(eager_services)
     startup_services.append(
         StartupService(
+            # strict=True honors each provider's declared strategy: only an
+            # ERROR-strategy provider that fails to initialize propagates (WARN/SILENT
+            # return None and degrade), so a provider declared ERROR to fail loud —
+            # e.g. tool_registry — aborts a blocking boot instead of coming up broken
+            # and 500ing the first request. required=True is what lets that abort
+            # reach _process_results; without it the failure would be logged and
+            # swallowed. The background warmup path (warmup_all below) stays lenient:
+            # the server is already serving, so a warmup failure must not crash it.
             lambda: providers.initialize_auto_providers(
                 concurrency=AUTO_PROVIDER_CONCURRENCY,
-                strict=False,
+                strict=True,
             ),
             "lazy_providers_auto_initializer",
-            required=False,
+            required=True,
         )
     )
     startup_services.append(

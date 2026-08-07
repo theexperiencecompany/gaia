@@ -1,17 +1,15 @@
 """Helper functions for email processing."""
 
-from datetime import UTC, datetime
 import time
 import unicodedata
 
-from bson import ObjectId
 import html2text
 
 from app.agents.memory.profile_extractor import PLATFORM_CONFIG
 from app.agents.prompts.email_filter_prompts import EMAIL_MEMORY_EXTRACTION_PROMPT
 from app.constants.email import NO_SUBJECT, UNKNOWN_SENDER
 from app.constants.memory import MemorySourceType
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.memory.engine import memory_engine
 from shared.py.wide_events import log
 
@@ -177,16 +175,7 @@ async def mark_email_processing_complete(user_id: str, memory_count: int) -> Non
         user_id: User ID
         memory_count: Number of memories stored
     """
-    await users_collection.update_one(
-        {"_id": ObjectId(user_id)},
-        {
-            "$set": {
-                "email_memory_processed": True,
-                "email_memory_processed_at": datetime.now(UTC),
-                "email_memory_count": memory_count,
-            }
-        },
-    )
+    await user_repository.mark_email_processing_complete(user_id, memory_count)
 
 
 async def store_single_profile(

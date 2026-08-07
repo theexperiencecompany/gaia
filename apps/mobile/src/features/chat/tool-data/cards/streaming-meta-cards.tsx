@@ -810,7 +810,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
 
           return (
             <View
-              key={`${artifact.path || artifact.filename || "artifact"}-${artifact.size_bytes || 0}-${index}`}
+              key={artifact.path || artifact.filename || "artifact"}
               className={`rounded-xl bg-white/5 border border-white/8 px-3 py-3 ${index > 0 ? "mt-2" : ""}`}
             >
               <View className="flex-row items-center gap-3">

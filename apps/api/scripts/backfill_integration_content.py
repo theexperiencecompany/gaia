@@ -31,10 +31,12 @@ import json
 import sys
 from typing import Any
 
-from app.db.mongodb.collections import integrations_collection
+from app.db.mongodb.collections import get_async_collection
 from app.db.redis import delete_cache_by_pattern
 from app.models.oauth_models import IntegrationContent
 from app.services.integrations.integration_inference_service import infer_integration_content
+
+integrations_collection = get_async_collection("integrations")
 
 # Cache pattern invalidated by the publish flow when marketplace content changes.
 MARKETPLACE_CACHE_PATTERN = "marketplace:community:*"

@@ -1,6 +1,6 @@
 [project]
 name = "gaia"
-version = "0.19.0"
+version = "0.21.0"
 description = "Backend of GAIA - The personal AI assistant"
 readme = "../README.md"
 requires-python = ">=3.11"
@@ -36,6 +36,9 @@ dependencies = [
   "fastembed>=0.7",
   "psutil>=7.0.0",
   "langchain-openrouter>=0.2.3",
+  "firecrawl-anydoc==0.1.2",
+  "pdf-inspector==0.2.6",
+  "langchain-text-splitters>=1.1.2",
 ]
 
 [tool.taskipy.tasks]
@@ -54,6 +57,15 @@ pip_audit = "uvx pip-audit"
 detect_secrets = "uvx detect-secrets scan --all-files"  # pragma: allowlist secret
 
 
+# NOTE: mypy config for the API lives in the ROOT /pyproject.toml, not here.
+# mypy discovers the nearest pyproject.toml with a [tool.mypy] table and does not
+# merge with a parent — an app-level [tool.mypy] here would shadow the root
+# baseline (strict_optional, follow_imports, the builtin-skill exclude, the tests
+# override). The strict-repository island lives as a [[tool.mypy.overrides]] block
+# in the root config so `nx type-check api` (which runs mypy from this directory)
+# picks up one merged config.
+
+
 [dependency-groups]
 dev = [
   "mypy>=1.16.1",
@@ -62,7 +74,10 @@ dev = [
   "cfgv>=3.4.0",
   "types-pytz>=2025.2.0.20250516",
   "types-croniter>=6.0.0.20250626",
-  "types-redis",
+  # No types-redis: it is frozen at the redis 4.6 API and mypy prefers a stub
+  # package over a library's own inline types, so installing it *downgrades*
+  # what mypy knows about redis 5.2.1 — aclose() (added 5.0.1) reads as
+  # missing. redis-py ships py.typed; that is the accurate source.
   "types-requests>=2.32.4.20250611",
   "types-beautifulsoup4>=4.12.0.20250516",
   "types-python-dateutil>=2.9.0.20250708",
@@ -99,6 +114,7 @@ dev = [
   "pyyaml>=6.0.3",
   "fakeredis[aioredis]>=2.0.0",
   "pytest-xdist>=3.8.0",
+  "pika>=1.4.1",
 ]
 
 backend = [

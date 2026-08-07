@@ -12,13 +12,25 @@ Flow:
 import asyncio
 import time
 import traceback
+from typing import TypedDict
 
 from app.constants.log_tags import LogTag
 from app.utils.crawl4ai_utils import get_browser_semaphore, managed_crawler
 from shared.py.wide_events import log
 
 
-async def crawl_profile_url(url: str, platform: str, semaphore: asyncio.Semaphore) -> dict:
+class ProfileCrawlResult(TypedDict):
+    """Outcome of one profile crawl. Exactly one of ``content``/``error`` is set."""
+
+    url: str
+    platform: str
+    content: str | None
+    error: str | None
+
+
+async def crawl_profile_url(
+    url: str, platform: str, semaphore: asyncio.Semaphore
+) -> ProfileCrawlResult:
     """
     Crawl a single profile URL using crawl4ai.
 

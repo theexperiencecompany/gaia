@@ -26,8 +26,8 @@ import contextlib
 from datetime import UTC, datetime
 from pathlib import Path
 import time
-from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from typing import Any, cast
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 from e2b import AsyncSandbox
 
@@ -41,8 +41,9 @@ from app.constants.sandbox import (
     SANDBOX_LIFETIME_SECONDS,
     SANDBOX_TIMEOUT_REFRESH_SECONDS,
 )
-from app.db.mongodb.collections import e2b_sandboxes_collection
+from app.db.repositories.e2b_sandboxes import e2b_sandbox_repository
 from app.decorators import enforce_rate_limit
+from app.models.sandbox_models import E2bSandboxDocument
 from app.services.sandbox.artifact_watcher import start_watcher_for
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for, shard_meta_url
@@ -63,6 +64,8 @@ MOUNT_SCRIPT_PATH = "/etc/gaia/mount.sh"  # template-baked copy (runtime-ship fa
 # mount-readiness poll (primary + skills + system, ~105s worst case) plus margin.
 MOUNT_SCRIPT_FILE = Path(__file__).resolve().parents[3] / "scripts" / "mount_juicefs.sh"
 MOUNT_SCRIPT_TIMEOUT_SECONDS = 120
+# Graceful JuiceFS unmount before a hard kill — short, best-effort.
+JFS_UNMOUNT_TIMEOUT_SECONDS = 15
 SANDBOX_CREATION_FEATURE_KEY = "sandbox_creation"
 
 
@@ -78,7 +81,7 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _record(**fields: Any) -> None:
+def _record(**fields: object) -> None:
     """Merge ``fields`` into the wide event's ``sandbox`` namespace.
 
     Thin wrapper over ``log.set_ns`` so the multi-step acquire path accumulates
@@ -103,7 +106,9 @@ def _split_meta_url(url: str) -> tuple[str, str]:
     if not url:
         return "", ""
     parts = urlsplit(url)
-    password = parts.password or ""
+    # urlsplit() does not decode userinfo, and JuiceFS treats META_PASSWORD as
+    # literal — so a password with a reserved char must be decoded here.
+    password = unquote(parts.password) if parts.password else ""
     if not password:
         return url, ""
     # Rebuild netloc without the password but with the username intact.
@@ -160,7 +165,11 @@ async def _enforce_creation_limit(user_id: str) -> None:
     try:
         await enforce_rate_limit(user_id, SANDBOX_CREATION_FEATURE_KEY)
     except RateLimitExceededException as e:
-        detail: dict[str, Any] = e.detail if isinstance(e.detail, dict) else {}
+        # HTTPException.detail is typed `str` by Starlette, but
+        # RateLimitExceededException always sets it to a dict at runtime — cast
+        # to Any so the isinstance check isn't (incorrectly) statically unreachable.
+        raw_detail = cast(Any, e.detail)
+        detail: dict[str, Any] = raw_detail if isinstance(raw_detail, dict) else {}
         _record(
             rate_limited=True,
             rate_limit_reset=detail.get("reset_time"),
@@ -178,7 +187,7 @@ async def _enforce_creation_limit(user_id: str) -> None:
         raise SandboxAcquisitionError(f"sandbox creation limit check failed: {e}") from e
 
 
-async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
+async def _create_fresh_sandbox(user_id: str, shard_id: int) -> AsyncSandbox:
     """Provision a new E2B sandbox for the user, run mount script, return handle."""
     if not settings.E2B_API_KEY:
         raise SandboxAcquisitionError("E2B_API_KEY is not configured")
@@ -192,7 +201,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     # there's no implicit reliance on sandbox-wide identity for security.
     log.info(
         f"{LogTag.SANDBOX} creating fresh sandbox user={user_id} shard={shard_id} "
-        f"template={settings.E2B_TEMPLATE_ID}"
+        f"template={settings.E2B_TEMPLATE_ID} domain={settings.E2B_DOMAIN}"
     )
     async with fs_timer(FsOps.SBX_CREATE):
         sbx = await async_sandbox_cls.create(
@@ -214,7 +223,7 @@ async def _create_fresh_sandbox(user_id: str, shard_id: int) -> Any:
     return sbx
 
 
-async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
+async def _run_mount_script(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
     """Run the JuiceFS mount script in the sandbox as root.
 
     Ships the API's CURRENT copy of ``mount_juicefs.sh`` at acquire time
@@ -267,7 +276,7 @@ async def _run_mount_script(sbx: Any, mount_env: dict[str, str]) -> None:
 # deadline forwarded to `sbx.commands.run`; when it fires the SDK stops
 # streaming and raises. An asyncio.timeout() would only cancel the local
 # coroutine, not bound the remote command, which is why S7483 doesn't apply.
-async def _run_silent(sbx: Any, cmd: str, *, timeout: int = 10) -> tuple[int, str, str]:
+async def _run_silent(sbx: AsyncSandbox, cmd: str, *, timeout: int = 10) -> tuple[int, str, str]:
     """Run a command, returning (exit_code, stdout, stderr) without raising.
 
     `sbx.commands.run` raises `CommandExitException` on any non-zero exit,
@@ -288,20 +297,29 @@ async def _run_silent(sbx: Any, cmd: str, *, timeout: int = 10) -> tuple[int, st
         return 1, "", msg
 
 
-async def _ensure_mounted(sbx: Any, mount_env: dict[str, str]) -> None:
-    """No-op if /workspace is mounted, else re-run mount script.
+async def _ensure_mounted(sbx: AsyncSandbox, mount_env: dict[str, str]) -> None:
+    """No-op if /workspace is a HEALTHY mount, else re-run mount script.
 
-    Handles stale FUSE mounts after pause/resume. ``mount_env`` is required
-    because the credentials are no longer sandbox-wide — every call site
-    that may re-run the script must supply them (see ``_mount_env``).
+    Handles stale FUSE mounts after pause/resume. A wedged JuiceFS endpoint
+    (dead/stuck daemon, or a mount that came up against a misconfigured meta/R2)
+    still passes ``mountpoint -q`` but returns EIO on every I/O, so we probe real
+    I/O (``stat``, ``timeout``-bounded) rather than just the mount-table entry —
+    otherwise a wedged ``/workspace`` is never re-mounted and keeps erroring.
+    ``mount.sh`` tears the stale mount down and remounts when re-run.
+
+    ``mount_env`` is required because the credentials are no longer sandbox-wide
+    — every call site that may re-run the script must supply them (see
+    ``_mount_env``).
     """
     async with fs_timer(FsOps.SBX_ENSURE_MOUNTED):
-        exit_code, _, _ = await _run_silent(sbx, "mountpoint -q /workspace", timeout=5)
+        exit_code, _, _ = await _run_silent(
+            sbx, "mountpoint -q /workspace && timeout 5 stat /workspace", timeout=8
+        )
         if exit_code != 0:
             await _run_mount_script(sbx, mount_env)
 
 
-async def _write_canary(sbx: Any) -> str:
+async def _write_canary(sbx: AsyncSandbox) -> str:
     """Write a fresh canary timestamp and return its value.
 
     Native `files.write` auto-creates the `.gaia/` parent and treats the
@@ -312,10 +330,10 @@ async def _write_canary(sbx: Any) -> str:
     return ts
 
 
-async def _read_canary(sbx: Any) -> str | None:
+async def _read_canary(sbx: AsyncSandbox) -> str | None:
     """Return the canary contents, or None if the file is missing/unreadable."""
     try:
-        content = await sbx.files.read(CANARY_PATH)
+        content = cast(str, await sbx.files.read(CANARY_PATH))
     except Exception:
         # Missing (NotFoundException) or any read failure → treat as stale.
         return None
@@ -337,7 +355,7 @@ async def _verify_canary_or_die(entry: PooledSandbox) -> bool:
         return actual == entry.last_canary_ts
 
 
-async def _connect_sandbox(sandbox_id: str) -> Any | None:
+async def _connect_sandbox(sandbox_id: str) -> AsyncSandbox | None:
     """Connect to a recorded sandbox, auto-resuming it if paused. None on failure.
 
     `AsyncSandbox.connect` already resumes a paused sandbox — there is no
@@ -357,7 +375,7 @@ async def _connect_sandbox(sandbox_id: str) -> Any | None:
             return None
 
 
-async def _health_probe(sbx: Any) -> bool:
+async def _health_probe(sbx: AsyncSandbox) -> bool:
     """Return True if the sandbox responds within a short window.
 
     Uses the official E2B health endpoint (HTTP GET /health) which is faster
@@ -460,9 +478,13 @@ async def _reuse_cached_entry(user_id: str, mount_env: dict[str, str]) -> Pooled
     return entry
 
 
-async def _resume_existing_sandbox(doc: dict[str, Any], mount_env: dict[str, str]) -> Any | None:
+async def _resume_existing_sandbox(
+    doc: E2bSandboxDocument, mount_env: dict[str, str]
+) -> AsyncSandbox | None:
     """Connect to a recorded sandbox (auto-resuming if paused); None if unusable."""
-    sandbox_id = doc["sandbox_id"]
+    sandbox_id = doc.sandbox_id
+    if sandbox_id is None:
+        return None
     log.info(f"{LogTag.SANDBOX} resuming sandbox {sandbox_id}")
     sbx = await _connect_sandbox(sandbox_id)
     if sbx is None:
@@ -498,15 +520,30 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
         )
         return cached
 
-    doc = await e2b_sandboxes_collection.find_one({"user_id": user_id})
+    doc = await e2b_sandbox_repository.get_for_user(user_id)
 
-    sbx: Any | None = None
+    sbx: AsyncSandbox | None = None
     workspace_version = 0
     source = "create"
 
-    if doc and doc.get("sandbox_id"):
+    if doc is not None and doc.shard_id != shard_id:
+        # An existing user is pinned to the shard their workspace actually lives
+        # on. `shard_for` recomputes from the CURRENT JUICEFS_NUM_SHARDS, so
+        # raising the shard count would otherwise silently route them at a
+        # different meta DB and their workspace would read as empty. This is the
+        # read site shard_router's docstring promises ("we never re-shard a user
+        # without an explicit migration") and previously did not exist.
+        log.info(
+            f"{LogTag.SANDBOX} honouring recorded shard user={user_id} "
+            f"recorded={doc.shard_id} computed={shard_id}"
+        )
+        shard_id = doc.shard_id
+        _record(shard_id=shard_id)
+        mount_env = _mount_env(user_id, shard_id)
+
+    if doc is not None and doc.sandbox_id:
         sbx = await _resume_existing_sandbox(doc, mount_env)
-        workspace_version = doc.get("workspace_version", 0)
+        workspace_version = doc.workspace_version
         if sbx is not None:
             source = "resume"
 
@@ -528,23 +565,14 @@ async def _acquire_or_create(user_id: str) -> PooledSandbox:
 
     canary_ts = await _write_canary(sbx)
 
-    await e2b_sandboxes_collection.update_one(
-        {"user_id": user_id},
-        {
-            "$set": {
-                "user_id": user_id,
-                "sandbox_id": getattr(sbx, "sandbox_id", None),
-                "template_id": settings.E2B_TEMPLATE_ID,
-                "shard_id": shard_id,
-                "state": "active",
-                "workspace_version": workspace_version,
-                "last_used_at": _now(),
-                "last_canary_ts": canary_ts,
-            },
-            "$setOnInsert": {"created_at": _now()},
-            "$inc": {"total_invocations": 1},
-        },
-        upsert=True,
+    await e2b_sandbox_repository.record_acquisition(
+        user_id=user_id,
+        sandbox_id=getattr(sbx, "sandbox_id", None),
+        template_id=settings.E2B_TEMPLATE_ID,
+        shard_id=shard_id,
+        workspace_version=workspace_version,
+        last_canary_ts=canary_ts,
+        timestamp=_now(),
     )
 
     # create()/connect() just set the kill timer to a full lifetime, so stamp
@@ -576,10 +604,7 @@ async def _pause_sandbox(user_id: str, entry: PooledSandbox) -> bool:
     """
     try:
         await entry.sandbox.beta_pause()
-        await e2b_sandboxes_collection.update_one(
-            {"user_id": user_id},
-            {"$set": {"state": "paused", "paused_at": _now()}},
-        )
+        await e2b_sandbox_repository.mark_paused(user_id, timestamp=_now())
         log.info(f"{LogTag.SANDBOX} paused idle sandbox user={user_id}")
         return True
     except Exception as e:
@@ -606,12 +631,39 @@ def _schedule_pause(user_id: str, entry: PooledSandbox) -> None:
     entry.pause_task = asyncio.create_task(_pause_after_delay())
 
 
+async def _release_juicefs_sessions(sbx: AsyncSandbox) -> None:
+    """Unmount the in-sandbox JuiceFS daemons so they deregister their metadata
+    sessions before the sandbox is killed.
+
+    A hard ``sandbox.kill()`` SIGKILLs the juicefs daemons without a clean
+    unmount, so their sessions stay registered in the metadata engine until the
+    stale-session timeout — and the volume's GC owner keeps re-scanning those
+    dead sessions (``SMEMBERS``/``ZSCORE`` per session) the whole time. A clean
+    ``juicefs umount`` lets each daemon close its session immediately. Bind
+    mounts are detached first so the underlying FUSE mounts aren't busy.
+
+    Best-effort: any failure just defers cleanup to the GC owner's stale reaper,
+    so this never blocks or fails eviction.
+    """
+    cmd = (
+        "for m in /workspace/skills /workspace/.system /workspace; do "
+        'umount -l "$m" 2>/dev/null || true; done; '
+        "for m in /mnt/jfs-skills /mnt/jfs-system /mnt/jfs; do "
+        'juicefs umount "$m" 2>/dev/null || true; done'
+    )
+    with contextlib.suppress(Exception):
+        await sbx.commands.run(cmd, timeout=JFS_UNMOUNT_TIMEOUT_SECONDS, user="root")
+
+
 async def _hard_evict(user_id: str, entry: PooledSandbox) -> None:
     """Drop a sandbox from the pool and best-effort kill it."""
     log.info(f"{LogTag.SANDBOX} evicting sandbox user={user_id}")
     get_sandbox_pool().evict(user_id)
     await _cancel_pause_task(entry)
     await _stop_watcher(entry)
+    # Let the JuiceFS daemons close their metadata sessions before the kill so
+    # dead sessions don't linger and get re-scanned by the volume's GC owner.
+    await _release_juicefs_sessions(entry.sandbox)
     # `kill()` returns False (never raises) if the sandbox is already gone.
     with contextlib.suppress(Exception):
         await entry.sandbox.kill()
@@ -625,10 +677,7 @@ async def mark_sandbox_dead(user_id: str) -> None:
     entry = get_sandbox_pool().get(user_id)
     if entry is not None:
         await _hard_evict(user_id, entry)
-    await e2b_sandboxes_collection.update_one(
-        {"user_id": user_id},
-        {"$set": {"state": "dead", "last_used_at": _now()}},
-    )
+    await e2b_sandbox_repository.mark_dead(user_id, timestamp=_now())
 
 
 async def pause_sandbox_for_user(user_id: str) -> bool:
@@ -642,7 +691,7 @@ async def pause_sandbox_for_user(user_id: str) -> bool:
 
 
 @contextlib.asynccontextmanager
-async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
+async def acquire_sandbox(user_id: str) -> AsyncIterator[AsyncSandbox]:
     """Context manager that yields a live `AsyncSandbox` for the user.
 
     Serializes against concurrent calls for the same user. Schedules a
@@ -680,10 +729,7 @@ async def acquire_sandbox(user_id: str) -> AsyncIterator[Any]:
                     await mark_sandbox_dead(user_id)
             else:
                 with contextlib.suppress(Exception):
-                    await e2b_sandboxes_collection.update_one(
-                        {"user_id": user_id},
-                        {"$set": {"last_used_at": _now()}},
-                    )
+                    await e2b_sandbox_repository.touch_last_used(user_id, timestamp=_now())
                 if entry.refcount <= 0:
                     _schedule_pause(user_id, entry)
     finally:

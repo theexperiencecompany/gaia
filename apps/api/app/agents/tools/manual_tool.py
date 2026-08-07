@@ -26,10 +26,20 @@ async def read_manual(topic: ManualTopic) -> str:
     - ``tracked-todos`` — create/search/update/schedule/complete tracked todos;
       canvas conventions; recurrence; institutional memory.
     - ``user-todos`` — the user's own todo list and external task providers.
+    - ``goals`` — long-term goals and AI-generated roadmaps; tracking progress.
+    - ``reminders`` — one-off and recurring time-based nudges to the user; how a
+      reminder differs from a workflow and a tracked todo.
     - ``sessions-and-artifacts`` — working in a session; producing artifacts.
-    - ``notifications`` — notification channels and delivery.
+    - ``notifications`` — reading the inbox and sending the user a message on a
+      channel (``send_notification``); channel linking.
+    - ``workflows`` — saved automations that fire on a schedule or integration
+      event; what ``create_workflow`` does and doesn't do; result delivery.
     - ``memory`` — long-term memory about the user: the ``/workspace/memory/``
       layout, journal, core documents, and the memory tools.
+    - ``skills`` — install (from GitHub) or author skills inline; scope and
+      manage them; how skills extend GAIA.
+    - ``documents`` — generate downloadable files (PDF, Word, slides,
+      spreadsheets, CSV) from a request and its data.
 
     Pass one of the topic names above; returns that topic's full doc. Passing an
     unknown topic returns the list of valid topics.

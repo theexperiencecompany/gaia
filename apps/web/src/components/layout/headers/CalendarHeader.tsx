@@ -10,6 +10,7 @@ import {
   CalendarIcon,
 } from "@icons";
 import { useHotkeys } from "react-hotkeys-hook";
+import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import {
   useCreateEventAction,
   useDaysToShow,
@@ -20,8 +21,6 @@ import {
   useVisibleMonth,
   useVisibleYear,
 } from "@/stores/calendarStore";
-
-import { SidebarHeaderButton } from "./HeaderManager";
 import { HeaderTitle } from "./HeaderTitle";
 
 const dayOptions = [

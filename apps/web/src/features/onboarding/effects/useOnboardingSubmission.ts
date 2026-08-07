@@ -8,13 +8,19 @@ import { useUserStore } from "@/stores/userStore";
 
 import { completeOnboarding } from "../api/onboardingApi";
 import { FIELD_NAMES } from "../constants";
-import { isResponsesComplete } from "../state/derive";
+import { hasGmail, isResponsesComplete } from "../state/derive";
 import type { OnboardingState } from "../state/types";
 
 // Idempotency needs both the in-flight ref AND the persisted `completed`
 // flag: remounts create a fresh ref while `state.server` is still null. The
 // phase guard checks `phase !== "initial"` (not `server != null`) so the
 // no-Gmail path, which resolves a snapshot before submit, isn't trapped.
+//
+// Gmail path fires the moment responses are complete (right after the Gmail
+// connect) with `defer_workflows: true` so the backend starts inbox
+// intelligence immediately; workflows wait for POST /onboarding/integrations
+// (see useIntegrationsSubmission). The no-Gmail path still waits for
+// integration selection and runs the full pipeline in one job.
 export function useOnboardingSubmission(
   state: OnboardingState,
   onSuccess?: (user: UserInfo) => void,
@@ -51,6 +57,11 @@ export function useOnboardingSubmission(
       });
       return;
     }
+    const gmailConnected = hasGmail(state);
+    if (!gmailConnected && !state.integrationSelectDone) {
+      console.debug("[onboarding:submit] skip — integration selection pending");
+      return;
+    }
     console.debug("[onboarding:submit] FIRING POST /onboarding");
 
     inFlightRef.current = true;
@@ -73,6 +84,10 @@ export function useOnboardingSubmission(
       timezone: getBrowserTimezone(),
       focus: responses[FIELD_NAMES.FOCUS] ?? "",
       ...(clarifyAnswers ? { clarify_answers: clarifyAnswers } : {}),
+      ...(state.selectedIntegrations.length > 0
+        ? { selected_integrations: state.selectedIntegrations }
+        : {}),
+      ...(gmailConnected ? { defer_workflows: true } : {}),
     };
 
     completeOnboarding(body)
@@ -81,7 +96,9 @@ export function useOnboardingSubmission(
           onSuccess?.(response.user);
         }
       })
-      .catch(() => {})
+      .catch((error) => {
+        console.error("[onboarding:submit] completion request failed:", error);
+      })
       .finally(() => {
         inFlightRef.current = false;
       });

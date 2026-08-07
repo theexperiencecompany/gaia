@@ -16,8 +16,6 @@ from shared.py.wide_events import log
 class CronError(Exception):
     """Exception raised for cron-related errors."""
 
-    pass
-
 
 def validate_cron_expression(cron_expr: str) -> bool:
     """Validate a cron expression.

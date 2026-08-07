@@ -115,6 +115,31 @@ from app.config.oauth_content import (
     YELP_CONTENT,
     ZOOM_CONTENT,
 )
+from app.constants.hil_destructive_tools import (
+    AIRTABLE_DESTRUCTIVE_TOOLS,
+    ASANA_DESTRUCTIVE_TOOLS,
+    CLICKUP_DESTRUCTIVE_TOOLS,
+    GITHUB_DESTRUCTIVE_TOOLS,
+    GMAIL_DESTRUCTIVE_TOOLS,
+    GOOGLE_MAPS_DESTRUCTIVE_TOOLS,
+    GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
+    GOOGLEDOCS_DESTRUCTIVE_TOOLS,
+    GOOGLEMEET_DESTRUCTIVE_TOOLS,
+    GOOGLESHEETS_DESTRUCTIVE_TOOLS,
+    GOOGLETASKS_DESTRUCTIVE_TOOLS,
+    HUBSPOT_DESTRUCTIVE_TOOLS,
+    INSTAGRAM_DESTRUCTIVE_TOOLS,
+    LINEAR_DESTRUCTIVE_TOOLS,
+    LINKEDIN_DESTRUCTIVE_TOOLS,
+    MICROSOFT_TEAMS_DESTRUCTIVE_TOOLS,
+    NOTION_DESTRUCTIVE_TOOLS,
+    REDDIT_DESTRUCTIVE_TOOLS,
+    SLACK_DESTRUCTIVE_TOOLS,
+    TODOIST_DESTRUCTIVE_TOOLS,
+    TRELLO_DESTRUCTIVE_TOOLS,
+    TWITTER_DESTRUCTIVE_TOOLS,
+    ZOOM_DESTRUCTIVE_TOOLS,
+)
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
 from app.langchain.core.subgraphs.slack_subgraph import SLACK_TOOLS
@@ -161,6 +186,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLECALENDAR",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLECALENDAR_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
@@ -253,6 +279,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLEDOCS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLEDOCS_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLEDOCS_PAGE_ADDED_TRIGGER",
@@ -421,6 +448,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GMAIL",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GMAIL_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GMAIL_NEW_GMAIL_MESSAGE",
@@ -465,17 +493,30 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             tool_space="gmail",
             handoff_tool_name="call_gmail_agent",
             domain="email",
-            capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, and automating email workflows",
+            capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, server-side paginating inbox scans with timeframe shortcuts (today/7d/this_week), and automating email workflows",
             use_cases="any email-related task including sending, reading, organizing, or automating email operations",
             system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
                 "GMAIL_CUSTOM_GATHER_CONTEXT",
-                "GMAIL_FETCH_EMAILS",
+                "GMAIL_FETCH_MESSAGES",
+                "GMAIL_FETCH_THREAD",
                 "GMAIL_CREATE_EMAIL_DRAFT",
                 "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
-                "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
+            # A large inbox scan offloads to a JSONL file; bind the sandbox-free
+            # miners into the agent AND its spawned chunk-readers so triage mines
+            # the offload with query_json/grep instead of read-whole-file + bash.
+            extra_initial_tools=["query_json", "grep"],
+            # Custom read tools supersede the stock ones and are the agent's
+            # single canonical path: GMAIL_FETCH_MESSAGES (paginating, renders
+            # the card) replaces GMAIL_FETCH_EMAILS, whose fixed page size
+            # silently capped inbox reads; GMAIL_FETCH_THREAD (normalized,
+            # offloading) replaces GMAIL_FETCH_MESSAGE_BY_THREAD_ID's raw,
+            # unshaped thread view. Exclude the stock tools so they are neither
+            # bound nor retrievable by the agent. (The REST mail layer still
+            # invokes them by name — exclude_tools gates agent retrieval only.)
+            exclude_tools=["GMAIL_FETCH_EMAILS", "GMAIL_FETCH_MESSAGE_BY_THREAD_ID"],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
@@ -506,6 +547,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="NOTION",
             toolkit_version="20260225_01",
         ),
+        destructive_tools=NOTION_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="NOTION_PAGE_ADDED_TO_DATABASE",
@@ -609,6 +651,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="TWITTER",
             toolkit_version="20260130_00",
         ),
+        destructive_tools=TWITTER_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="twitter_agent",
@@ -658,6 +701,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLESHEETS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLESHEETS_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GOOGLESHEETS_NEW_ROWS_TRIGGER",
@@ -741,6 +785,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="LINKEDIN",
             toolkit_version="20260225_00",
         ),
+        destructive_tools=LINKEDIN_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="linkedin_agent",
@@ -780,6 +825,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GITHUB",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GITHUB_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="GITHUB_COMMIT_EVENT",
@@ -927,6 +973,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="REDDIT",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=REDDIT_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="reddit_agent",
@@ -965,6 +1012,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="AIRTABLE",
             toolkit_version="20260130_00",
         ),
+        destructive_tools=AIRTABLE_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="airtable_agent",
@@ -1003,6 +1051,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="LINEAR",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=LINEAR_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="LINEAR_ISSUE_CREATED_TRIGGER",
@@ -1113,6 +1162,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="SLACK",
             toolkit_version="20260204_00",
         ),
+        destructive_tools=SLACK_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="SLACK_RECEIVE_MESSAGE",
@@ -1224,6 +1274,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="HUBSPOT",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=HUBSPOT_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="hubspot_agent",
@@ -1262,6 +1313,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLETASKS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLETASKS_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_tasks_agent",
@@ -1300,6 +1352,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="TODOIST",
             toolkit_version="20260227_00",
         ),
+        destructive_tools=TODOIST_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="TODOIST_NEW_TASK_CREATED",
@@ -1353,6 +1406,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="MICROSOFT_TEAMS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=MICROSOFT_TEAMS_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="microsoft_teams_agent",
@@ -1391,6 +1445,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="ZOOM",
             toolkit_version="20260130_00",
         ),
+        destructive_tools=ZOOM_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="zoom_agent",
@@ -1419,6 +1474,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLEMEET",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLEMEET_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_meet_agent",
@@ -1452,6 +1508,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="GOOGLE_MAPS",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=GOOGLE_MAPS_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="google_maps_agent",
@@ -1490,6 +1547,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="ASANA",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=ASANA_DESTRUCTIVE_TOOLS,
         associated_triggers=[
             TriggerConfig(
                 slug="ASANA_TASK_TRIGGER",
@@ -1554,6 +1612,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="TRELLO",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=TRELLO_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="trello_agent",
@@ -1592,6 +1651,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="INSTAGRAM",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=INSTAGRAM_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="instagram_agent",
@@ -1630,6 +1690,7 @@ OAUTH_INTEGRATIONS: list[OAuthIntegration] = [
             toolkit="CLICKUP",
             toolkit_version="20260107_00",
         ),
+        destructive_tools=CLICKUP_DESTRUCTIVE_TOOLS,
         subagent_config=SubAgentConfig(
             has_subagent=True,
             agent_name="clickup_agent",
@@ -1991,23 +2052,3 @@ def get_memory_extraction_prompt(integration_id: str) -> str | None:
     if not integration or not integration.subagent_config:
         return None
     return integration.subagent_config.memory_prompt
-
-
-@cache
-def get_toolkit_to_integration_map() -> dict[str, str]:
-    """Map Composio toolkit names (e.g. 'GMAIL') to integration IDs (e.g. 'gmail').
-
-    Single source of truth for tool-prefix -> integration-category mapping; used by the
-    workflow context extractor to infer categories from tool names.
-    """
-    mapping = {}
-    for integration in OAUTH_INTEGRATIONS:
-        # From composio_config.toolkit (e.g., 'GMAIL' -> 'gmail')
-        if integration.composio_config and integration.composio_config.toolkit:
-            mapping[integration.composio_config.toolkit] = integration.id
-
-        # Also add uppercase ID for internal integrations (e.g., 'TODO' -> 'todos')
-        # and for agent name patterns
-        mapping[integration.id.upper()] = integration.id
-
-    return mapping

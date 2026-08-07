@@ -1,18 +1,33 @@
-from typing import Any
+from typing import Any, cast
 
+from starlette.datastructures import Headers
 from workos import AsyncWorkOSClient
 
 from app.config.settings import settings
+from app.constants.auth import DEV_USER_HEADER
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser, UserDocument, user_to_legacy_dict
 from shared.py.wide_events import log
 
-# T is the return type of the wrapped function
+
+async def resolve_dev_bypass_user(headers: Headers) -> tuple[str, UserDocument | None]:
+    """Resolve the dev-bypass target to its Mongo user.
+
+    The single definition of bypass semantics for BOTH the HTTP middleware and
+    the WebSocket dependency: the ``X-Dev-User`` header (per-request
+    impersonation) wins over ``DEV_AUTH_BYPASS_EMAIL``. Callers own their own
+    failure handling (HTTP 401 vs WS close) but must not re-implement the
+    resolution. ``headers`` is any Mapping-like with ``.get`` (Starlette
+    ``Headers`` for both HTTP and WS).
+    """
+    target_email: str = headers.get(DEV_USER_HEADER) or settings.DEV_AUTH_BYPASS_EMAIL or ""
+    return target_email, await user_repository.get_by_email(target_email)
 
 
 def build_user_context(
-    user_data: dict[str, Any], *, auth_provider: str, **extra: Any
-) -> dict[str, Any]:
+    user_data: dict[str, Any], *, auth_provider: str, **extra: bool
+) -> AuthenticatedUser:
     """Build the canonical ``request.state.user`` dict from a Mongo user doc.
 
     Every auth path (WorkOS session, agent token, bots) MUST construct the user
@@ -33,12 +48,15 @@ def build_user_context(
         **extra,
     }
     context.pop("_id", None)
-    return context
+    # Correct by construction: assembled right above from an already-validated
+    # UserDocument plus the auth-path flags. cast(), not isinstance() (item 12) —
+    # the spread of `user_data` is what mypy can't follow, not the shape itself.
+    return cast(AuthenticatedUser, context)
 
 
 async def authenticate_workos_session(
     session_token: str, workos_client: AsyncWorkOSClient | None = None
-) -> tuple[dict[str, Any], str | None]:
+) -> tuple[AuthenticatedUser, str | None]:
     """
     Authenticate a WorkOS session and refresh if needed.
     This is a shared utility function used by both HTTP middleware and WebSocket connections.
@@ -116,9 +134,9 @@ async def authenticate_workos_session(
         try:
             user_email = workos_user.email
             log.set(auth_provider="workos", user_email=user_email)
-            user_data = await users_collection.find_one({"email": user_email})
+            user_doc = await user_repository.get_by_email(user_email)
 
-            if not user_data:
+            if user_doc is None:
                 # User doesn't exist in our database
                 log.warning(
                     f"{LogTag.AGENT} User {user_email} authenticated but not found in database"
@@ -126,7 +144,7 @@ async def authenticate_workos_session(
                 return {}, new_session
 
             # Prepare user info for return
-            user_info = build_user_context(user_data, auth_provider="workos")
+            user_info = build_user_context(user_to_legacy_dict(user_doc), auth_provider="workos")
             return user_info, new_session
 
         except Exception as e:

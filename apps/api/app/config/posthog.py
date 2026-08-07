@@ -13,7 +13,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
     is_global_context=False,
     strategy=MissingKeyStrategy.SILENT,
 )
-def init_posthog():
+def init_posthog() -> Posthog:
     """
     Initialize and configure the PostHog client.
 

@@ -22,13 +22,15 @@ from sqlalchemy import update  # noqa: E402
 
 from app.agents.llm.client import register_llm_providers  # noqa: E402
 from app.db.chroma.chromadb import init_chroma  # noqa: E402
-from app.db.mongodb.collections import users_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.db.postgresql import init_postgresql_engine  # noqa: E402
 from app.memory import pg_store  # noqa: E402
 from app.memory.engine import memory_engine  # noqa: E402
 from app.memory.extraction import categorize_fact  # noqa: E402
 from app.memory.pg_store._session import memory_session  # noqa: E402
 from app.models.memory_db_models import MemoryRecord  # noqa: E402
+
+users_collection = get_async_collection("users")
 
 # Re-file against the canonical taxonomy, not the user's existing folders, so a
 # fact wrongly sitting in (say) work/gaia is judged afresh.

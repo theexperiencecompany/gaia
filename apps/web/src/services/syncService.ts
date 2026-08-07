@@ -6,6 +6,7 @@ import {
 } from "@/features/chat/api/chatApi";
 import { MAX_SYNC_CONVERSATIONS } from "@/features/chat/constants";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
+import { useChatStore } from "@/stores/chatStore";
 import {
   hasAnyLiveTurn,
   isConversationStreamingNow,
@@ -273,6 +274,7 @@ export const batchSyncConversations = async (): Promise<void> => {
       freshConversations.map(async (conversation) => {
         const conversationId = conversation.conversation_id;
         const messages = conversation.messages ?? [];
+        const artifacts = conversation.artifacts ?? [];
 
         // Skip syncing if streaming or pending save (e.g., after abort)
         if (shouldBlockSyncForConversation(conversationId)) return;
@@ -287,11 +289,19 @@ export const batchSyncConversations = async (): Promise<void> => {
             conversation.is_onboarding_conversation ?? false,
           systemPurpose: conversation.system_purpose ?? null,
           isUnread: conversation.is_unread ?? false,
+          artifacts,
           createdAt: new Date(conversation.createdAt),
           updatedAt: conversation.updatedAt
             ? new Date(conversation.updatedAt)
             : new Date(conversation.createdAt),
         };
+
+        // Refresh the runtime lookup map from the server-authoritative registry.
+        // Safe from clobbering a live turn: streaming conversations are filtered
+        // out by shouldBlockSync above.
+        useChatStore
+          .getState()
+          .setConversationArtifacts(conversationId, artifacts);
 
         const remoteMessages = mapApiMessagesToStored(messages, conversationId);
         const localMessages =
@@ -352,6 +362,7 @@ export const applySyncedConversation = async (
   }
 
   const messages = conversation.messages ?? [];
+  const artifacts = conversation.artifacts ?? [];
 
   // Map conversation to IndexedDB format
   const mappedConversation: IConversation = {
@@ -363,11 +374,16 @@ export const applySyncedConversation = async (
     isOnboardingConversation: conversation.is_onboarding_conversation ?? false,
     systemPurpose: conversation.system_purpose ?? null,
     isUnread: conversation.is_unread ?? false,
+    artifacts,
     createdAt: new Date(conversation.createdAt),
     updatedAt: conversation.updatedAt
       ? new Date(conversation.updatedAt)
       : new Date(conversation.createdAt),
   };
+
+  // Refresh the runtime lookup map from the server-authoritative registry. The
+  // store stamps session_id onto each entry so artifact fetch URLs resolve.
+  useChatStore.getState().setConversationArtifacts(conversationId, artifacts);
 
   // Map messages
   const remoteMessages = mapApiMessagesToStored(messages, conversationId);

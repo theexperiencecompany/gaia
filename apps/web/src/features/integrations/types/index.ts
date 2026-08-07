@@ -10,7 +10,6 @@
 export type {
   IntegrationStatusRecord as IntegrationStatus,
   IntegrationToolsResponse,
-  MyIntegrationItem,
   MyIntegrationsResponse,
 } from "@shared/types";
 

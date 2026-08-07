@@ -6,6 +6,90 @@ apiVersion: 1
 # All rules use the Prometheus datasource (uid: prometheus) with a reduce step
 # that compares the instant query result against the threshold. Conditions are
 # expressed with a math expression on the reduced value.
+#
+# ---------------------------------------------------------------------------
+# Authoring conventions — read before editing an annotation
+# ---------------------------------------------------------------------------
+# `title`       Plain-language name of what is wrong, not the metric. This is
+#               the Slack message title and the on-call's first read.
+# `summary`     One line: the measured value and the threshold it crossed. The
+#               probe/`up` rules (gaia-chromadb-down, gaia-api-external-down,
+#               gaia-arq-worker-down) are the exception: their signal is binary
+#               (0/1) and they can fire on NoData where no value exists, so their
+#               summary is a static sentence rather than a measured value.
+# `description` What breaks for users, and the first thing to check. Both
+#               annotations render in Slack and email, summary first.
+# `runbook_url` https://docs.lab.heygaia.io/production/runbooks/<uid> — required
+#               on every rule. The page lives in the internal-docs repo at
+#               docs/production/runbooks/<uid>.mdx; a rule whose page does not
+#               exist yet is unfinished.
+#
+# Templating rules (all three were violated here before and fail *silently*):
+#
+#   1. Always use `$values.<ref>.Value`, never bare `$values.<ref>`.
+#      `$values.B` is a struct; piping it into humanize*/printf either errors
+#      or prints garbage. When an annotation template errors, Grafana keeps the
+#      raw `{{ ... }}` text as the annotation value — the broken template is
+#      what lands in Slack, with no error surfaced anywhere.
+#   2. Format every number. `{{ $values.B.Value }}` prints full float64
+#      precision (`1.3333333333333333`). Use `printf "%.2f"` for plain numbers,
+#      `humanizePercentage` for 0..1 ratios (it multiplies by 100 — do not use
+#      it on a value the PromQL already scaled by 100), `humanize1024` for
+#      bytes, `humanizeDuration` for seconds.
+#   3. Guard every `$values` reference with
+#      `{{ if $values.B }}…{{ else }}…{{ end }}`. On DatasourceError and NoData
+#      there is no `$values` at all, so `printf "%.2f"` renders the literal Go
+#      error `%!f(<nil>)` and `| humanizeDuration` fails outright, leaving the
+#      raw `{{ ... }}` in the Slack message — the summary breaks exactly when
+#      monitoring breaks. The guard is safe at a measured value of 0
+#      (`$values.B` is a struct, which Go templates always treat as true); it is
+#      falsy only when the ref is genuinely absent, because Grafana expands
+#      annotations with `missingkey=invalid`. The else-branch must say the rule
+#      could not be evaluated, not restate the threshold.
+#
+# `__dashboardUid__` + `__panelId__` are ANNOTATIONS, not top-level rule fields.
+# Grafana turns them into the Dashboard/Panel links in the notification. Written
+# as top-level `dashboardUid:`/`panelId:` they are silently dropped by file
+# provisioning and no link is ever rendered. Both are required: `__panelId__`
+# alone is inert, and `__dashboardUid__` alone aborts the whole alerting
+# provisioner at startup. `__panelId__` must be a quoted string.
+#
+# Only `sum(...)`-free expressions carry per-series labels. Rules that
+# aggregate with `sum()` collapse to a single unlabeled series, so
+# `$labels.instance` is empty there and must not be referenced.
+#
+# `$labels` needs the same guard as `$values`. On DatasourceError and NoData the
+# label set is gone too, so `{{ $labels.job }}` renders the literal string
+# `[no value]` — a rule that can reach an alerting state on those paths
+# (`noDataState`/`execErrState` of `Alerting`) would send "Prometheus can no
+# longer scrape [no value] at [no value]" during the exact outage it exists to
+# report. Put every `$labels` reference inside the `{{ if $values.B }}` branch;
+# `$values` and `$labels` are present and absent together.
+#
+# `execErrState` is `Error` on every rule that owns a distinct failure mode,
+# deliberately. With `Alerting`, a Prometheus outage makes each rule assert its
+# own subject has failed — "No ARQ worker replica has reported metrics for 2
+# minutes" when the worker is perfectly healthy and only the datasource is
+# unreachable. `Error` instead raises Grafana's `DatasourceError` alert, which
+# the first route in notification-policies.yaml collapses into a single
+# "monitoring is broken" message. One true statement beats N false ones.
+#
+# The exception is the cadvisor-, Redis- and RabbitMQ-derived rules —
+# gaia-container-restarts, gaia-container-oom, gaia-redis-memory,
+# gaia-redis-evictions, gaia-rabbitmq-no-consumers — which use `OK`. Their
+# datasource already has a dedicated owner: gaia-monitoring-target-down reports
+# a dead cadvisor, gaia-redis-down reports a dead Redis, and gaia-target-down
+# covers the rabbitmq scrape job, so a datasource error here is that owner's
+# alert, not a second copy of it.
+#
+# `noDataState` is a genuine per-rule judgement and is NOT uniform. NoData on a
+# probe or an `up` series means the target vanished, which is real and should
+# alert; NoData on a counter usually just means no traffic, which should not.
+# The exception is gaia-host-disk and gaia-host-inodes, which are `Alerting`:
+# their metrics are expected unconditionally on any real host, so NoData means
+# the rule's selector matches nothing (an unusual mount layout, or a filesystem
+# that does not report inodes) — a silent dead rule that `up{job="node"}` cannot
+# see. `for` absorbs an exporter restart.
 
 groups:
   - orgId: 1
@@ -15,7 +99,7 @@ groups:
     rules:
       # 1. API 5xx rate >1% for 5m
       - uid: gaia-api-5xx
-        title: API 5xx error rate high
+        title: API is returning server errors
         condition: C
         data:
           - refId: A
@@ -49,14 +133,28 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: API 5xx error rate is {{ $values.B }}% over the last 5 minutes
+          summary: >-
+            {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}% of API requests are
+            failing with 5xx errors over the last 5 minutes (threshold
+            1%){{ else }}Unable to read the API 5xx error rate — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Every product surface goes through this API — web and desktop chat,
+            mobile, all four bots, and the voice agent. Users are seeing failed
+            sends, blank conversations and broken integrations. Check the API
+            Logs dashboard to find which handler is erroring, then the
+            application logs for the exception behind it.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-5xx
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "2"
         labels:
           severity: critical
           service: api
 
       # 2. API p95 latency >1s for 10m
       - uid: gaia-api-p95-latency
-        title: API p95 latency high
+        title: API responses are slow
         condition: C
         data:
           - refId: A
@@ -85,14 +183,26 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: API p95 latency is {{ $values.B }}s
+          summary: >-
+            {{ if $values.B }}API p95 response time is
+            {{ printf "%.2f" $values.B.Value }}s (threshold 1s){{ else }}Unable to read
+            the API p95 response time — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            One request in twenty is taking over a second, so chat feels stalled
+            and the first SSE token arrives late. Use the "Slowest Endpoints
+            (p95)" and "P95 Latency by Endpoint" panels to find which handler is
+            responsible before looking at database or LLM latency.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "6"
         labels:
           severity: warning
           service: api
 
       # 3. RabbitMQ ready messages backlog >1000 for 5m
       - uid: gaia-rabbitmq-backlog
-        title: RabbitMQ queue backlog
+        title: Bot replies are piling up undelivered
         condition: C
         data:
           - refId: A
@@ -121,14 +231,28 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: "{{ $values.B }} messages ready in RabbitMQ queues"
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} messages are queued in
+            RabbitMQ waiting to be delivered (threshold 1000){{ else }}Unable to read
+            the RabbitMQ queue depth — this rule could not be evaluated, which almost
+            always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            RabbitMQ carries outbound bot delivery on the durable
+            outbound.discord/slack/telegram/whatsapp queues. Assistant replies
+            have been generated but are not reaching users on those platforms.
+            This total is aggregated across queues — open the "Queue Depth by
+            Queue" panel to see which platform is stuck, then check whether that
+            bot's consumer is still connected.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-backlog
+          __dashboardUid__: gaia-rabbitmq
+          __panelId__: "4"
         labels:
           severity: warning
           service: rabbitmq
 
       # 4. ARQ failed tasks >5 in 15m
       - uid: gaia-arq-failures
-        title: ARQ worker failed tasks
+        title: Background jobs are failing
         condition: C
         data:
           - refId: A
@@ -157,14 +281,27 @@ groups:
         execErrState: Error
         for: 0m
         annotations:
-          summary: "{{ $values.B }} ARQ tasks failed in the last 15 minutes"
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} background tasks
+            raised errors in the last 15 minutes (threshold 5){{ else }}Unable to read
+            the background task error count — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            These are the jobs that make GAIA proactive — reminder delivery,
+            workflow generation and execution, tracked-todo runs, Gmail-to-memory
+            ingestion and the housekeeping crons. Failures here are invisible to
+            users until something they scheduled never happens. The
+            "Task Rate by Name" panel breaks failures down by task_name.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-failures
+          __dashboardUid__: gaia-arq-worker
+          __panelId__: "2"
         labels:
           severity: warning
           service: arq_worker
 
       # 5. Postgres connections >80% of max
       - uid: gaia-postgres-connections
-        title: Postgres connection pool saturation
+        title: Postgres is running out of connections
         condition: C
         data:
           - refId: A
@@ -193,14 +330,28 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: Postgres is using {{ $values.B | humanizePercentage }} of max connections
+          summary: >-
+            {{ if $values.B }}Postgres is using
+            {{ $values.B.Value | humanizePercentage }} of its connection limit
+            (threshold 80%){{ else }}Unable to read Postgres connection usage — this
+            rule could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            The langgraph database is the LangGraph checkpointer — it holds
+            conversation thread state. Once connections are exhausted new chat
+            turns cannot check one out and fall back to in-memory state, which
+            loses thread continuity. Check "Connections by State" for idle or
+            idle-in-transaction connections that are not being released.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-connections
+          __dashboardUid__: gaia-databases
+          __panelId__: "1"
         labels:
           severity: warning
           service: postgres
 
       # 6. ChromaDB probe failing for 2m
       - uid: gaia-chromadb-down
-        title: ChromaDB probe failing
+        title: ChromaDB is not responding
         condition: C
         data:
           - refId: A
@@ -229,14 +380,25 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
-          summary: ChromaDB HTTP probe is failing
+          summary: ChromaDB has been failing its heartbeat probe for 2 minutes
+          description: >-
+            ChromaDB is the vector store behind executor-agent tool retrieval,
+            workflow trigger matching, and search over notes, files and
+            knowledge. While it is down the agent cannot retrieve its tool set at
+            inference time, so complex requests silently degrade to plain
+            answers with no tools. Chroma exposes no metrics of its own, so this
+            probe against /api/v2/heartbeat is the only signal.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chromadb-down
+          __dashboardUid__: gaia-databases
+          __panelId__: "19"
         labels:
           severity: critical
           service: chromadb
+          incident: availability
 
       # 7. Host disk root >85%
       - uid: gaia-host-disk
-        title: Host disk usage high
+        title: Host disk is nearly full
         condition: C
         data:
           - refId: A
@@ -261,18 +423,38 @@ groups:
               expression: B
               conditions:
                 - evaluator: { type: gt, params: [85] }
-        noDataState: OK
+        # Alerting, deliberately: unlike the counter rules, this metric is
+        # expected unconditionally whenever node_exporter is healthy. NoData here
+        # means the root mountpoint selector matches nothing (an unusual host
+        # layout) — a silent blind spot `up{job="node"}` cannot see. Firing is
+        # the misconfiguration being surfaced, and the `for` absorbs an exporter
+        # restart.
+        noDataState: Alerting
         execErrState: Error
         for: 5m
         annotations:
-          summary: Host root disk is {{ $values.B }}% full
+          summary: >-
+            {{ if $values.B }}Host root filesystem is
+            {{ printf "%.1f" $values.B.Value }}% full (threshold 85%){{ else }}Unable to
+            read host root filesystem usage — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Every stateful volume shares this one disk — Postgres data, Redis,
+            RabbitMQ, Chroma, 30 days of Prometheus history, Loki logs and the
+            cached embedding and voice models. Filling it takes down Postgres
+            writes, RabbitMQ persistence and log ingestion at the same time.
+            Prometheus retention and Loki are usually the largest reclaimable
+            consumers.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-disk
+          __dashboardUid__: gaia-host
+          __panelId__: "3"
         labels:
           severity: warning
           service: host
 
       # 8. Host memory >90% for 10m
       - uid: gaia-host-memory
-        title: Host memory usage high
+        title: Host is running out of memory
         condition: C
         data:
           - refId: A
@@ -301,14 +483,27 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: Host memory is {{ $values.B }}% used
+          summary: >-
+            {{ if $values.B }}Host memory is {{ printf "%.1f" $values.B.Value }}% used
+            (threshold 90%){{ else }}Unable to read host memory usage — this rule could
+            not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Sustained memory pressure on the single production node is what
+            precedes kernel OOM kills and the Swarm restarts that follow them.
+            The largest limits on this box are the API at 4G, the embedding
+            sidecar at 3G, and the ARQ worker and voice agent at 2G each — check
+            "Memory Usage per Container" to see which one is growing.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-memory
+          __dashboardUid__: gaia-host
+          __panelId__: "2"
         labels:
           severity: warning
           service: host
 
       # 9. External API uptime (blackbox probe) failing for 2m
       - uid: gaia-api-external-down
-        title: External API uptime probe failing
+        title: Public API is unreachable
         condition: C
         data:
           - refId: A
@@ -337,10 +532,22 @@ groups:
         execErrState: Error
         for: 2m
         annotations:
-          summary: api.heygaia.io /health probe is failing
+          summary: https://api.heygaia.io/health has not returned 200 for 2 minutes
+          description: >-
+            This is the public entry point, so this is a full outage for web,
+            desktop, mobile, bots and voice. It fires for three different causes:
+            the API container being gone, TLS or the host nginx failing in front
+            of a healthy container, or the app returning 503 because event-loop
+            lag exceeded 2000ms. Compare against the "Internal Uptime" panel —
+            internal healthy plus external down means the edge is at fault, not
+            the app.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-external-down
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "10"
         labels:
           severity: critical
           service: api
+          incident: availability
 
   # Availability: a Prometheus scrape target being down means the container or
   # its metrics endpoint is unreachable. This is the class of failure that went
@@ -352,10 +559,13 @@ groups:
     interval: 1m
     rules:
       # 10. Any core service target down for 2m (multi-dimensional: one alert
-      # instance per failing job). voice_agent is intentionally excluded — it is
-      # scaled to 0 by default, so its target is legitimately down.
+      # instance per failing job). voice_agent is intentionally excluded because
+      # gaia-voice-agent-down below owns it with a longer dwell and voice-specific
+      # copy — NOT because it is scaled to 0, which is stale (see that rule).
+      # Every other job is covered by gaia-monitoring-target-down's negative
+      # regex, so the three rules together provably cover every scrape job.
       - uid: gaia-target-down
-        title: Service target down
+        title: A monitored service stopped responding
         condition: C
         data:
           - refId: A
@@ -381,20 +591,36 @@ groups:
               conditions:
                 - evaluator: { type: lt, params: [1] }
         noDataState: Alerting
-        execErrState: Alerting
+        execErrState: Error
         for: 2m
         annotations:
-          summary: "Target {{ $labels.job }} ({{ $labels.instance }}) is DOWN — container or metrics endpoint unreachable"
+          summary: >-
+            {{ if $values.B }}Prometheus can no longer scrape {{ $labels.job }} at
+            {{ $labels.instance }}{{ else }}Unable to read scrape target health — this
+            rule could not be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            The container is gone or its metrics endpoint is unreachable. What
+            this means depends on the job — gaia-api means the API container is
+            down or /metrics is rejecting the bearer token; arq_worker means
+            background jobs have stopped; rabbitmq is the broker itself. Note
+            that postgres and redis scrape their exporter sidecars, not the
+            databases, so those two mean the exporter died and say nothing about
+            whether the database is healthy.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-target-down
+          __dashboardUid__: gaia-overview
+          __panelId__: "5"
         labels:
           severity: critical
           service: availability
+          incident: availability
 
       # 11. ARQ worker has no running replica: the worker exports its own metrics
       # on :9100, so `absent()` / up==0 on that job is a direct "background jobs
       # are not processing" signal. Kept separate from rule 10 so it carries a
       # worker-specific summary even if the regex above is ever narrowed.
       - uid: gaia-arq-worker-down
-        title: ARQ worker down
+        title: Background worker is down
         condition: C
         data:
           - refId: A
@@ -420,20 +646,73 @@ groups:
               conditions:
                 - evaluator: { type: lt, params: [1] }
         noDataState: Alerting
-        execErrState: Alerting
+        execErrState: Error
         for: 2m
         annotations:
-          summary: ARQ worker is not reporting metrics — background tasks (reminders, workflows, memory) are not processing
+          summary: No ARQ worker replica has reported metrics for 2 minutes
+          description: >-
+            Nothing scheduled is running. Reminders will not fire, workflows will
+            not execute, tracked todos will not advance, Gmail-to-memory
+            ingestion has stopped, and the housekeeping crons are no longer
+            reclaiming idle sandboxes, stale sessions or checkpoint bloat. Users
+            see silence rather than an error, which is why this is critical. The
+            worker also disappears here if its poll loop wedges, not only if the
+            container dies.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-arq-worker-down
+          __dashboardUid__: gaia-arq-worker
+          __panelId__: "1"
         labels:
           severity: critical
           service: arq_worker
+          incident: availability
 
-      # 12. A container in the stack is restarting repeatedly (crash loop). cadvisor
-      # exports container_start_time_seconds; `changes()` over 15m counts how many
-      # times a container's start time moved = its restart count. >3 in 15m flags a
-      # flapping service before it settles (or while it crash-loops like arq did).
+      # 12. A container in the stack is restarting repeatedly (crash loop).
+      #
+      # This rule previously read `changes(container_start_time_seconds{...}[15m])`
+      # and could never fire. Swarm does not restart a container in place — it
+      # creates a replacement task with a new id, so cadvisor's `name` label
+      # changes and every incarnation is a *separate* time series. Within one
+      # series `container_start_time_seconds` is a constant, so `changes()` over it
+      # is always 0. A crash loop produced N short-lived series each reporting 0,
+      # never one series reporting N: verified against Prometheus 3.1.0 with
+      # synthetic Swarm-named series, where a 5-restart loop returned 0 for all
+      # five. The rule written to catch the arq_worker crash loop would have
+      # stayed silent through it.
+      #
+      # The fix counts distinct container incarnations per service instead of
+      # value changes per container: `last_over_time` materialises every series
+      # that existed anywhere in the window (not just the one alive right now),
+      # `label_replace` derives the stable Swarm service name from `name`
+      # (`<stack>_<service>.<slot>.<taskid>`), and `count by` collapses the
+      # incarnations onto it.
+      #
+      # `name` is used deliberately rather than
+      # `container_label_com_docker_swarm_service_name`. cadvisor v0.54.1 does
+      # default `--store_container_labels` to true, so that label is in fact
+      # exported today — but it disappears the moment anyone sets that flag to
+      # false, which is the standard fix for the container_env_* cardinality and
+      # secret-exposure problem the same default causes. The selector would then
+      # match nothing and, with noDataState OK, this rule would go silently blind
+      # again. `name` is cadvisor's own container alias, cannot be switched off,
+      # and is what every containers dashboard panel already keys on.
+      #
+      # The derived label must NOT be called `service`: this rule already carries
+      # `service: availability` in its labels block, Grafana lets rule labels win
+      # that collision, and the two crash-looping services would then produce
+      # label-identical instances and collapse into a single alert. Verified on
+      # Grafana 11.4.0 — `service` yields 1 alert instance for 2 failing services,
+      # `swarm_service` yields 2. The annotation's `$labels` comes from the query
+      # result, so `$labels.swarm_service` resolves either way.
+      #
+      # Threshold: measured baselines are 1 for a steady replicas:1 service, 2 for
+      # a normal `order: start-first` deploy (old and new task overlap in the
+      # window) and 3 for a deploy that Swarm then rolls back. >3 clears all
+      # three and still catches the 5-incarnation crash loop. Every service in
+      # docker-compose.prod.yml is replicas:1, so no service has a baseline above
+      # 1 — a multi-replica service would need this threshold revisited, because
+      # its baseline is its replica count.
       - uid: gaia-container-restarts
-        title: Container restart loop
+        title: A container is restarting repeatedly
         condition: C
         data:
           - refId: A
@@ -441,7 +720,13 @@ groups:
             datasourceUid: prometheus
             model:
               refId: A
-              expr: changes(container_start_time_seconds{name=~"gaia-prod_.*"}[15m])
+              expr: |
+                count by (swarm_service) (
+                  label_replace(
+                    last_over_time(container_start_time_seconds{name=~"gaia-prod_.*"}[15m]),
+                    "swarm_service", "$1", "name", "(gaia-prod_[^.]+).*"
+                  )
+                )
               instant: true
           - refId: B
             datasourceUid: __expr__
@@ -462,7 +747,22 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
-          summary: "Container {{ $labels.name }} appears to be restarting repeatedly"
+          summary: >-
+            {{ if $values.B }}{{ $labels.swarm_service }} has run as
+            {{ printf "%.0f" $values.B.Value }} different containers in the last 15
+            minutes, so Swarm is replacing it repeatedly (threshold 3){{ else }}Unable to
+            read container restart counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            A crash-looping container is being replaced by Swarm faster than it
+            can serve traffic, so the service flaps rather than staying cleanly
+            down. The count is distinct container incarnations, not restarts, so
+            a healthy service reads 1 and a service mid-deploy reads 2. Check
+            that service's logs for the startup exception — a failing dependency,
+            a bad migration or a missing secret at boot are the usual causes.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-restarts
+          __dashboardUid__: gaia-containers
+          __panelId__: "1"
         labels:
           severity: warning
           service: availability
@@ -473,7 +773,7 @@ groups:
       # HTTP health endpoint is unreachable. Multi-dimensional: one instance per
       # failing target, with the URL in $labels.instance.
       - uid: gaia-internal-service-down
-        title: Bot or sidecar down
+        title: A bot or the embedding sidecar is down
         condition: C
         data:
           - refId: A
@@ -499,19 +799,35 @@ groups:
               conditions:
                 - evaluator: { type: lt, params: [1] }
         noDataState: Alerting
-        execErrState: Alerting
+        execErrState: Error
         for: 2m
         annotations:
-          summary: "{{ $labels.instance }} is DOWN — container or /health endpoint unreachable"
+          summary: >-
+            {{ if $values.B }}{{ $labels.instance }} has been failing its health check
+            for 2 minutes{{ else }}Unable to read the internal service health probes —
+            this rule could not be evaluated, which almost always means Prometheus is
+            down or unreachable.{{ end }}
+          description: >-
+            These five targets have no metrics of their own and are health-probed
+            instead. If this is embedding-sidecar:8200, both the API and the ARQ
+            worker lose embedding and reranking, so memory storage and semantic
+            memory search break product-wide — there is no in-process fallback,
+            the worker cannot fit the models in its memory limit. If it is one of
+            the discord, slack, telegram or whatsapp bots, that platform's users
+            get no replies even though the API itself is healthy.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-internal-service-down
+          __dashboardUid__: gaia-containers
+          __panelId__: "1"
         labels:
           severity: critical
           service: availability
+          incident: availability
 
       # 14. API severely slow: p95 > 3s for 5m. The warning-tier latency rule
       # (gaia-api-p95-latency, >1s) goes to Slack only; this critical tier also
       # pages email so a real latency incident isn't missed.
       - uid: gaia-api-p95-latency-critical
-        title: API p95 latency critical
+        title: API responses are critically slow
         condition: C
         data:
           - refId: A
@@ -540,10 +856,254 @@ groups:
         execErrState: Error
         for: 5m
         annotations:
-          summary: API p95 latency is {{ $values.B }}s (critical threshold 3s)
+          summary: >-
+            {{ if $values.B }}API p95 response time is
+            {{ printf "%.2f" $values.B.Value }}s (critical threshold 3s){{ else }}Unable
+            to read the API p95 response time — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Same signal as the warning-tier latency rule, at the point where the
+            product is effectively unusable rather than merely slow. This tier
+            also pages email. Treat it as an incident — check whether the API is
+            saturated, a downstream database is slow, or an upstream LLM provider
+            is degraded.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency-critical
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "6"
         labels:
           severity: critical
           service: api
+
+      # 20. Postgres itself is refusing connections. `up{job="postgres"}` (rule
+      # 10) scrapes postgres_exporter:9187 — the sidecar, which keeps answering
+      # scrapes while the database behind it is dead, so rule 10 stays green.
+      # pg_up is the exporter's own connect result and is the only signal for the
+      # database itself. noDataState is OK deliberately: pg_up vanishing means the
+      # *exporter* died, and rule 10 already owns that — alerting here would print
+      # a false cause. No dashboard link: no panel charts pg_up.
+      - uid: gaia-postgres-down
+        title: Postgres is not accepting connections
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: pg_up
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Postgres has not accepted a connection from its exporter
+            for 2 minutes (pg_up is {{ printf "%.0f" $values.B.Value }}, healthy is
+            1){{ else }}Unable to read Postgres connectivity — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            The langgraph database is the LangGraph checkpointer holding
+            conversation thread state. While it is unreachable every chat turn
+            fails to check out a connection and silently falls back to in-memory
+            state, so users lose thread continuity with no error shown. The
+            connection-saturation rule cannot see this — its metric disappears
+            along with the database. This is the database, not its exporter:
+            the exporter is still up and answering scrapes. Check the postgres
+            container and its logs first.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-postgres-down
+        labels:
+          severity: critical
+          service: postgres
+          incident: availability
+
+      # 21. Redis itself is refusing connections. Same structural blind spot as
+      # rule 20: `up{job="redis"}` scrapes redis_exporter:9121, not Redis.
+      # redis_up is emitted on every scrape and goes 0 when the exporter cannot
+      # reach Redis. noDataState OK for the same reason as rule 20 — an absent
+      # redis_up means the exporter died, which rule 10 owns.
+      - uid: gaia-redis-down
+        title: Redis is not accepting connections
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: redis_up
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 2m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Redis has not accepted a connection from its exporter for
+            2 minutes (redis_up is {{ printf "%.0f" $values.B.Value }}, healthy is
+            1){{ else }}Unable to read Redis connectivity — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Redis is not a cache here — it is the ARQ job queue, the SSE chat
+            stream channels, the stream-cancellation flags and the rate limiter.
+            While it is unreachable chat responses never reach the browser and
+            nothing scheduled runs: reminders, workflows, tracked todos and
+            Gmail-to-memory ingestion all stop. The Redis memory and eviction
+            rules go silent during this outage because their metrics disappear
+            with it, so this is the only signal. Check the redis container and
+            its logs; a full disk is a common cause.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-down
+        labels:
+          severity: critical
+          service: redis
+          incident: availability
+
+      # 22. Monitoring has gone blind on part of the stack. The negative regex is
+      # the complement of rule 10 + rule 23, so every job in prometheus.yml is
+      # covered by exactly one of the three and a job added later lands here
+      # automatically instead of being silently unmonitored. noDataState is
+      # Alerting because `up` can only go absent if the job was removed from the
+      # scrape config, which is precisely the failure this rule exists to catch.
+      # No `incident` label: monitoring going blind is a different conversation
+      # from a user-facing outage and must not be mixed into that thread.
+      - uid: gaia-monitoring-target-down
+        title: Monitoring has lost sight of part of the stack
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job!~"gaia-api|arq_worker|postgres|redis|rabbitmq|voice_agent"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Prometheus has not been able to scrape {{ $labels.job }}
+            at {{ $labels.instance }} for 10 minutes (up is
+            {{ printf "%.0f" $values.B.Value }}, healthy is 1){{ else }}Unable to read
+            monitoring scrape-target health — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Part of the monitoring stack has stopped reporting, so the rules that
+            depend on it have gone quiet rather than green. node_exporter down
+            silently disables the host disk, inode and memory alerts; cadvisor
+            down silently disables OOM and restart detection; blackbox_exporter
+            down takes ChromaDB, the public API probe and all five internal
+            health probes with it at once, which looks like three simultaneous
+            outages when the real fault is one container. Read the job named
+            above before believing anything that fired alongside it.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-monitoring-target-down
+        labels:
+          severity: warning
+          service: monitoring
+
+      # 23. Voice agent worker is not running. prometheus.yml's comment claims
+      # this service is "scaled to 0 by default" — that is stale.
+      # docker-compose.prod.yml:910 declares `replicas: 1`, `docker stack deploy`
+      # reconciles the replica count back to the compose file on every deploy, and
+      # .github/workflows/deploy-swarm-prod.yml:96-121 hard-fails the deploy
+      # unless voice-agent-worker has at least one running task. The service runs
+      # in production, so this rule is not a permanent firing state.
+      # No dashboard link: the voice-agent dashboard charts lk_agents_* only,
+      # nothing charts `up` for this job.
+      - uid: gaia-voice-agent-down
+        title: Voice agent worker is not running
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: up{job="voice_agent"}
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: reduce
+              expression: A
+              reducer: last
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}The voice agent worker has not reported metrics for 5
+            minutes (up is {{ printf "%.0f" $values.B.Value }}, healthy is
+            1){{ else }}Unable to read voice agent worker health — this rule could not
+            be evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            No worker is registered with LiveKit to take a voice job, so a user
+            who starts a voice session joins the room and gets dead air — no
+            error, no fallback, and nothing in the API logs to show for it. The
+            worker loads its HuggingFace models from the voice_agent_models
+            volume at startup, so a slow first boot is normal and the 5 minute
+            dwell covers it. Check the voice-agent-worker service and its logs
+            for a model-load failure or missing LiveKit credentials.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-voice-agent-down
+        labels:
+          severity: critical
+          service: voice_agent
+          incident: availability
 
   # Extended coverage: failure modes that historically went unmonitored
   # (cert expiry, OOM kills, Redis memory pressure, stuck queues). All metrics
@@ -555,7 +1115,7 @@ groups:
     rules:
       # 15. TLS cert for api.heygaia.io expires in < 14 days
       - uid: gaia-ssl-cert-expiry
-        title: TLS certificate expiring soon
+        title: TLS certificate is expiring soon
         condition: C
         data:
           - refId: A
@@ -580,14 +1140,28 @@ groups:
         execErrState: Error
         for: 10m
         annotations:
-          summary: "api.heygaia.io TLS cert expires in < 14 days ({{ $values.B }}s left)"
+          summary: >-
+            {{ if $values.B }}The api.heygaia.io TLS certificate expires in
+            {{ $values.B.Value | humanizeDuration }} (threshold 14 days){{ else }}Unable
+            to read the api.heygaia.io TLS certificate expiry — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            When this certificate expires every HTTPS client fails at the TLS
+            handshake — web, desktop, mobile and any external integration — with
+            no graceful degradation. Renewal is normally automatic, so this
+            firing means the renewal path itself is broken and needs a look
+            before the deadline.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-ssl-cert-expiry
+          __dashboardUid__: gaia-api-prometheus
+          __panelId__: "13"
         labels:
           severity: critical
           service: api
 
       # 16. A container was OOM-killed in the last 15m
       - uid: gaia-container-oom
-        title: Container OOM killed
+        title: A container was killed for using too much memory
         condition: C
         data:
           - refId: A
@@ -612,14 +1186,28 @@ groups:
         execErrState: OK
         for: 0m
         annotations:
-          summary: "{{ $values.B }} container OOM-kill event(s) in the last 15m"
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} container OOM-kill
+            event(s) in the last 15 minutes{{ else }}Unable to read container OOM-kill
+            events — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            The kernel killed a container for exceeding its memory limit. Swarm
+            silently replaces the task, so without this alert an OOM loop looks
+            like nothing at all. The tightest limits are the embedding sidecar
+            at 3G against roughly 2.4G of resident models, and the ARQ worker and
+            voice agent at 2G each. Check "Memory Usage % of Limit" to see which
+            one is at its ceiling.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-container-oom
+          __dashboardUid__: gaia-containers
+          __panelId__: "7"
         labels:
           severity: critical
           service: host
 
       # 17. Redis memory > 85% of maxmemory (eviction risk for SSE/cache/rate-limit)
       - uid: gaia-redis-memory
-        title: Redis memory pressure
+        title: Redis is close to its memory limit
         condition: C
         data:
           - refId: A
@@ -644,14 +1232,27 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: Redis is using {{ $values.B | humanizePercentage }} of maxmemory
+          summary: >-
+            {{ if $values.B }}Redis is using {{ $values.B.Value | humanizePercentage }}
+            of its 2GB memory limit (threshold 85%){{ else }}Unable to read Redis memory
+            usage — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Redis holds more than a cache here — it is the ARQ job queue itself,
+            the SSE chat stream channels, stream-cancellation flags, response
+            caching and rate-limit counters. The eviction policy is allkeys-lru,
+            so crossing the limit starts dropping any of those at random. This is
+            the warning before that happens.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-memory
+          __dashboardUid__: gaia-databases
+          __panelId__: "8"
         labels:
           severity: warning
           service: redis
 
       # 18. Redis evicting keys (memory full — data being dropped)
       - uid: gaia-redis-evictions
-        title: Redis evicting keys
+        title: Redis is dropping keys to free memory
         condition: C
         data:
           - refId: A
@@ -676,14 +1277,27 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: "Redis evicted {{ $values.B }} keys in 10m — memory full"
+          summary: >-
+            {{ if $values.B }}Redis evicted {{ printf "%.0f" $values.B.Value }} keys in
+            the last 10 minutes because memory is full{{ else }}Unable to read the Redis
+            eviction count — this rule could not be evaluated, which almost always means
+            Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Data loss is happening now, not merely threatened. Enqueued ARQ jobs
+            can vanish so reminders and workflows silently never run, in-flight
+            SSE buffers can be evicted mid-response so chat replies truncate, and
+            rate-limit counters reset. This is the companion to the Redis memory
+            warning — that one predicts, this one confirms.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-evictions
+          __dashboardUid__: gaia-databases
+          __panelId__: "12"
         labels:
           severity: warning
           service: redis
 
       # 19. RabbitMQ backlog with NO consumers (a consumer died; work stuck)
       - uid: gaia-rabbitmq-no-consumers
-        title: RabbitMQ backlog with no consumers
+        title: Bot messages are queued with nothing consuming them
         condition: C
         data:
           - refId: A
@@ -708,7 +1322,133 @@ groups:
         execErrState: OK
         for: 5m
         annotations:
-          summary: "RabbitMQ has {{ $values.B }} ready messages but zero consumers"
+          summary: >-
+            {{ if $values.B }}{{ printf "%.0f" $values.B.Value }} messages are queued
+            and no consumer is attached to drain them{{ else }}Unable to read the
+            RabbitMQ queue and consumer counts — this rule could not be evaluated, which
+            almost always means Prometheus is down or unreachable.{{ end }}
+          description: >-
+            Every bot consumer has died or lost its connection while the API kept
+            publishing, so all four platforms have stopped delivering. Messages
+            are persistent with a dead-letter exchange, so the backlog drains on
+            its own once a consumer reconnects — but until then users are getting
+            silence. Check whether the bot containers are running before
+            restarting anything.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-no-consumers
+          __dashboardUid__: gaia-rabbitmq
+          __panelId__: "7"
         labels:
           severity: critical
           service: rabbitmq
+
+      # 24. Host is running out of inodes. Independent of the byte-usage rule:
+      # inode exhaustion returns ENOSPC on every write while `df -h` still shows
+      # free space. No clamp_min on the denominator: a filesystem that reports
+      # files=0 (dynamic inode allocation) would otherwise read as 0/1 -> 100%
+      # and falsely page. Let it divide to NaN and drop instead — with
+      # noDataState Alerting the drop surfaces as "could not be evaluated"
+      # rather than a fake full alert.
+      # 85% matches the disk-bytes threshold so the two read as one policy.
+      # No dashboard link: the host dashboard charts bytes only, not inodes.
+      - uid: gaia-host-inodes
+        title: Host is running out of inodes
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: 100 * (1 - node_filesystem_files_free{mountpoint="/",fstype!="tmpfs"} / node_filesystem_files{mountpoint="/",fstype!="tmpfs"})
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: gt, params: [85] }
+        # Alerting, deliberately: same reasoning as gaia-host-disk —
+        # node_filesystem_files is absent on filesystems that do not report
+        # inode counts (btrfs and friends), and a missing metric here would
+        # otherwise be a silent dead rule. Firing surfaces the misconfiguration.
+        noDataState: Alerting
+        execErrState: Error
+        for: 10m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Host root filesystem has used
+            {{ printf "%.1f" $values.B.Value }}% of its inodes (threshold
+            85%){{ else }}Unable to read host inode usage — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            When inodes run out every write fails with ENOSPC while df -h still
+            reports plenty of free space, so this looks like a corrupt disk
+            rather than a full one and the disk-usage alert never fires. This
+            box is small-file heavy — Docker layer directories, one Loki file per
+            chunk, 30 days of Prometheus blocks, the JuiceFS cache and the
+            embedding and voice model caches. Confirm with `df -i /`, then find
+            the consumer with `du --inodes -d 2 /var/lib/docker` and the Loki
+            volume.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-inodes
+        labels:
+          severity: warning
+          service: host
+
+      # 25. Redis cannot write to disk. Prod runs `--appendonly yes` alongside
+      # `--save 60 1000` (docker-compose.prod.yml:515-519), so both status gauges
+      # are present in INFO persistence. The product form is 1 only when both are
+      # 1 and 0 if either fails — a single scalar with no set-operator semantics
+      # to get wrong — and it degrades to an empty result if Redis is unreachable,
+      # which rule 21 already owns. No dashboard link: nothing charts the
+      # persistence status gauges.
+      - uid: gaia-redis-persistence-failed
+        title: Redis cannot write to disk
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              expr: min(redis_rdb_last_bgsave_status) * min(redis_aof_last_write_status)
+              instant: true
+          - refId: B
+            datasourceUid: __expr__
+            model: { refId: B, type: reduce, expression: A, reducer: last }
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: B
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: OK
+        execErrState: Error
+        for: 5m
+        annotations:
+          summary: >-
+            {{ if $values.B }}Redis last snapshot or append-only write failed
+            (combined persistence status {{ printf "%.0f" $values.B.Value }}, healthy is
+            1){{ else }}Unable to read Redis persistence status — this rule could not be
+            evaluated, which almost always means Prometheus is down or
+            unreachable.{{ end }}
+          description: >-
+            Redis defaults to stop-writes-on-bgsave-error, so a failed snapshot
+            means it is still answering PING and INFO while refusing every write.
+            redis_up stays 1, the container healthcheck passes and no other rule
+            notices. In practice: ARQ cannot enqueue, so reminders, workflows,
+            tracked todos and Gmail ingestion stop; the SSE publisher cannot
+            publish, so chat responses never reach the browser; and the rate
+            limiter fails open or closed. The usual cause is a full or read-only
+            disk — check the host disk alert first, then the redis container logs.
+          runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-persistence-failed
+        labels:
+          severity: critical
+          service: redis

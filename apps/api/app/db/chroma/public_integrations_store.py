@@ -59,7 +59,6 @@ async def remove_public_integration(integration_id: str) -> None:
 async def search_public_integrations(
     query: str,
     limit: int = 20,
-    category: str | None = None,
 ) -> list[dict]:
     """Search public integrations. Returns list of {integration_id, relevance_score}."""
     log.set(vector=VectorContext(operation="query", collection=COLLECTION_NAME, n_results=limit))

@@ -19,7 +19,7 @@ import hashlib
 import math
 import re
 import time
-from typing import Any
+from typing import cast
 
 from app.constants.memory import (
     ANN_CANDIDATES,
@@ -71,7 +71,7 @@ class EpisodeHit:
     score: float | None = None
 
 
-def _recall_cache_key(_func_name: str, *args: Any, **kwargs: Any) -> str:
+def _recall_cache_key(_func_name: str, *args: object, **kwargs: object) -> str:
     """Cache key for ``recall``: user:{id}:memories:{digest}.
 
     The ``user:{user_id}:memories:*`` prefix must match
@@ -86,7 +86,7 @@ def _recall_cache_key(_func_name: str, *args: Any, **kwargs: Any) -> str:
     query = args[1] if len(args) > 1 else kwargs["query"]
     limit = kwargs.get("limit", DEFAULT_RECALL_LIMIT)
     category_prefix = kwargs.get("category_prefix")
-    kinds = kwargs.get("kinds")
+    kinds = cast(list[MemoryKind] | None, kwargs.get("kinds"))
     include_graph_expansion = kwargs.get("include_graph_expansion", True)
 
     kinds_part = ",".join(sorted(kind.value for kind in kinds)) if kinds else ""
@@ -133,8 +133,16 @@ async def recall(
     candidates = await _hydrate_candidates(
         user_id, fused_ids, fts_hits, category_prefix=category_prefix, kinds=kinds
     )
-    if include_graph_expansion and candidates:
-        candidates = await _with_graph_siblings(user_id, candidates, kinds=kinds)
+    siblings = (
+        await _graph_siblings(user_id, candidates, kinds=kinds)
+        if include_graph_expansion and candidates
+        else []
+    )
+    # The rerank budget caps the BASE pool only. Siblings are appended last, so
+    # capping the combined pool would discard every sibling as soon as base
+    # retrieval alone fills the budget — silently disabling graph expansion for
+    # exactly the corpus sizes where it matters.
+    candidates = candidates[:RERANK_CANDIDATES] + siblings
     timings["hydrate_ms"] = _elapsed_ms(stage)
 
     stage = time.perf_counter()
@@ -143,10 +151,7 @@ async def recall(
     ann_similarity = dict(ann_hits)
     fts_ids = {str(row.id) for row, _ in fts_hits}
     scored = await _rerank_and_boost(
-        query,
-        candidates[:RERANK_CANDIDATES],
-        ann_similarity=ann_similarity,
-        fts_ids=fts_ids,
+        query, candidates, ann_similarity=ann_similarity, fts_ids=fts_ids
     )
     timings["rerank_ms"] = _elapsed_ms(stage)
 
@@ -373,13 +378,13 @@ def _importance_boost(row: MemoryRecord) -> float:
     return IMPORTANCE_BOOST_BASE + IMPORTANCE_BOOST_WEIGHT * row.importance
 
 
-async def _with_graph_siblings(
+async def _graph_siblings(
     user_id: str,
     candidates: list[MemoryRecord],
     *,
     kinds: list[MemoryKind] | None,
 ) -> list[MemoryRecord]:
-    """Add 1-hop entity siblings to the candidate pool (before reranking).
+    """1-hop entity siblings for the candidate pool, excluding the pool itself.
 
     The top ``GRAPH_EXPANSION_SOURCE_RESULTS`` candidates supply source
     entities; their other memories join the pool so the reranker scores them on
@@ -395,15 +400,14 @@ async def _with_graph_siblings(
         {entity.id for entities in entities_by_memory.values() for entity in entities}
     )
     if not entity_ids:
-        return candidates
-    siblings = await pg_store.get_memories_for_entities(
+        return []
+    return await pg_store.get_memories_for_entities(
         user_id,
         entity_ids,
         exclude_memory_ids=[row.id for row in candidates],
         limit=GRAPH_EXPANSION_MAX_SIBLINGS,
         kinds=[kind.value for kind in kinds] if kinds else None,
     )
-    return candidates + siblings
 
 
 async def _build_entries(scored: list[tuple[MemoryRecord, float]]) -> list[MemoryEntry]:

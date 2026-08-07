@@ -2,11 +2,12 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import conversations_collection
+from app.db.repositories.conversations import conversation_repository
 from app.models.chat_models import (
     ConversationModel,
 )
 from app.models.todo_models import Priority, SubTask, TodoModel
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
     create_conversation_service,
 )
@@ -111,13 +112,10 @@ async def seed_onboarding_conversation(user_id: str) -> str | None:
             is_unread=True,
         )
 
-        user_dict = {"user_id": user_id}
+        user_dict: AuthenticatedUser = {"user_id": user_id}
         await create_conversation_service(conversation, user_dict)
 
-        await conversations_collection.update_one(
-            {"conversation_id": conversation_id},
-            {"$set": {"is_onboarding_conversation": True}},
-        )
+        await conversation_repository.mark_onboarding_conversation(conversation_id, user_id=user_id)
 
         log.info(
             f"{LogTag.STARTUP} Seeded onboarding conversation {conversation_id} for user {user_id}"

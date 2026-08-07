@@ -5,12 +5,11 @@ This module is separated to avoid circular imports between
 oauth_service.py and integration_service.py.
 """
 
-from datetime import UTC, datetime
-from typing import Any, Literal
+from typing import Literal
 
 from app.constants.cache import USER_INTEGRATION_CACHE_PATTERNS
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import user_integrations_collection
+from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators.caching import CacheInvalidator
 from app.services.integrations_fs import schedule_user_integrations_sync
 from shared.py.wide_events import log
@@ -37,26 +36,10 @@ async def update_user_integration_status(
         True if operation was successful (update, insert, or matched existing)
     """
     log.set(integration={"provider": integration_id, "action": "update_status"})
-    update_data: dict[str, Any] = {
-        "status": status,
-        "user_id": user_id,
-        "integration_id": integration_id,
-    }
-    if status == "connected":
-        update_data["connected_at"] = datetime.now(UTC)
 
-    result = await user_integrations_collection.update_one(
-        {"user_id": user_id, "integration_id": integration_id},
-        {
-            "$set": update_data,
-            "$setOnInsert": {"created_at": datetime.now(UTC)},
-        },
-        upsert=True,
-    )
+    success = await user_integration_repository.set_status(user_id, integration_id, status=status)
 
-    # Operation is successful if document was modified, inserted, or matched
-    # (matched_count > 0 means document exists with same values - still success)
-    if result.modified_count > 0 or result.upserted_id or result.matched_count > 0:
+    if success:
         log.info(
             f"{LogTag.INTEGRATION} Updated user {user_id} integration {integration_id} status to {status}"
         )

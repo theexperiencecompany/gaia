@@ -1,13 +1,9 @@
 import type {
   NotificationActionStyle,
   NotificationActionType,
-  PlatformLink,
-  PlatformLinksResponse,
   NotificationStatus as SharedNotificationStatus,
 } from "@shared/types";
 import type { NotificationSource } from "../notifications";
-
-export type { PlatformLink, PlatformLinksResponse };
 
 export enum NotificationType {
   INFO = "info",

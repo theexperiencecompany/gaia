@@ -157,8 +157,8 @@ export function ArtifactCard({ data }: { data: ArtifactData[] }) {
   // aligned with other mobile tool renderers in the chat stream.
   return (
     <View className="mx-4 my-1 gap-2">
-      {artifacts.map((artifact, index) => (
-        <ArtifactRow key={`${artifact.path}-${index}`} artifact={artifact} />
+      {artifacts.map((artifact) => (
+        <ArtifactRow key={artifact.path} artifact={artifact} />
       ))}
     </View>
   );

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.7.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.6.1...mobile-v0.7.0) (2026-07-03)
+
+
+### Features
+
+* **openui:** adopt @openuidev/react-ui, themed to GAIA ([#830](https://github.com/theexperiencecompany/gaia/issues/830)) ([83f392b](https://github.com/theexperiencecompany/gaia/commit/83f392ba569d3ca85d53a99a07b925d0f4810c3b))
+
+## [0.6.1](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.6.0...mobile-v0.6.1) (2026-06-21)
+
+
+### Bug Fixes
+
+* **agents:** agent prompt clarity — OpenUI reliability, result surfacing, orchestration discipline ([#776](https://github.com/theexperiencecompany/gaia/issues/776)) ([1846fd7](https://github.com/theexperiencecompany/gaia/commit/1846fd75cc62f1db92d3a399dd826b3e4eb3ac8c))
+
 ## [0.6.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.5.0...mobile-v0.6.0) (2026-06-12)
 
 

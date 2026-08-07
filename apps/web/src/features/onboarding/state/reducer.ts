@@ -242,5 +242,11 @@ export function reducer(
 
     case "clarifySubmit":
       return { ...state, clarifySubmitted: true };
+
+    case "integrationSelectUpdate":
+      return { ...state, selectedIntegrations: action.integrations };
+
+    case "integrationSelectConfirm":
+      return { ...state, integrationSelectDone: true };
   }
 }

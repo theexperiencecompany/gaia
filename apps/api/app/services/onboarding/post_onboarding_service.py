@@ -1,13 +1,8 @@
 """Post-onboarding personalization service."""
 
-from datetime import UTC, datetime
-from typing import Any
-
-from bson import ObjectId
-
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
-from app.models.user_models import BioStatus, OnboardingPhase
+from app.db.repositories.users import user_repository
+from app.models.user_models import BioStatus
 from app.utils.seeding_utils import seed_onboarding_todo
 from shared.py.wide_events import log
 
@@ -40,23 +35,17 @@ async def save_personalization_data(
         overlay_opacity: Opacity percentage
     """
     try:
-        update_fields: dict[str, Any] = {
-            "onboarding.house": house,
-            "onboarding.personality_phrase": personality_phrase,
-            "onboarding.user_bio": user_bio,
-            "onboarding.bio_status": bio_status,
-            "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
-            "onboarding.account_number": account_number,
-            "onboarding.member_since": member_since,
-            "onboarding.overlay_color": overlay_color,
-            "onboarding.overlay_opacity": overlay_opacity,
-            "updated_at": datetime.now(UTC),
-        }
-        if workflow_ids:
-            update_fields["onboarding.suggested_workflows"] = workflow_ids
-        await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": update_fields},
+        await user_repository.save_personalization(
+            user_id,
+            house=house,
+            personality_phrase=personality_phrase,
+            user_bio=user_bio,
+            bio_status=bio_status,
+            account_number=account_number,
+            member_since=member_since,
+            overlay_color=overlay_color,
+            overlay_opacity=overlay_opacity,
+            workflow_ids=workflow_ids,
         )
         log.info(f"{LogTag.ONBOARDING} Saved personalization data for user {user_id}")
 

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 interface SettingsSectionProps {
   title?: string;
+  titleAccessory?: ReactNode;
   description?: string;
   children: ReactNode;
   className?: string;
@@ -9,6 +10,7 @@ interface SettingsSectionProps {
 
 export function SettingsSection({
   title,
+  titleAccessory,
   description,
   children,
   className = "",
@@ -16,7 +18,10 @@ export function SettingsSection({
   return (
     <div>
       {title && (
-        <p className="mb-2 text-sm font-medium text-zinc-300">{title}</p>
+        <div className="mb-2 flex items-center gap-2">
+          <p className="text-sm font-medium text-zinc-300">{title}</p>
+          {titleAccessory}
+        </div>
       )}
       {description && (
         <p className="mb-3 text-sm text-zinc-500">{description}</p>

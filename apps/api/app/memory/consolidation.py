@@ -13,8 +13,6 @@ import contextlib
 from datetime import UTC, datetime, timedelta
 import time
 
-from bson import ObjectId
-
 from app.constants.memory import (
     CONSOLIDATION_DEBOUNCE_SECONDS,
     CONSOLIDATION_EPISODE_DAYS,
@@ -26,8 +24,8 @@ from app.constants.memory import (
     MemoryEntityType,
     MemoryKind,
 )
-from app.db.mongodb.collections import users_collection
 from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
+from app.db.repositories.users import user_repository
 from app.memory import pg_store
 from app.memory.extraction import rewrite_core_document
 from app.memory.management import update_document
@@ -248,10 +246,10 @@ def _system_prompt(doc_type: MemoryDocType, user_name: str) -> str:
 async def _get_user_name(user_id: str) -> str:
     """The user's display name, so prompts can tell the user apart from others."""
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user = await user_repository.get(user_id)
     except Exception:
         user = None
-    return (user or {}).get("name") or "the user"
+    return (user.name if user else None) or "the user"
 
 
 def _prefixes_for(doc_type: MemoryDocType) -> list[str]:

@@ -30,3 +30,6 @@ export const RECONNECT_SPREAD_MS = 5_000;
 
 // Cap read_file responses so a huge file can't blow up the tunnel.
 export const MAX_READ_BYTES = 1_000_000;
+// Images ride the tunnel as base64 MCP image blocks; allow them a larger cap —
+// the backend downsizes before anything is inlined into model context.
+export const MAX_IMAGE_READ_BYTES = 5_000_000;

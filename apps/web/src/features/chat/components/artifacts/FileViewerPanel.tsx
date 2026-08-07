@@ -11,6 +11,7 @@ import {
   File01Icon,
 } from "@icons";
 import { formatFileSize } from "@shared/utils";
+import Image from "next/image";
 import { useCallback, useEffect, useState, type WheelEvent } from "react";
 import { sessionFilesApi } from "@/features/chat/api/sessionFilesApi";
 import MarkdownRenderer from "@/features/chat/components/interface/MarkdownRenderer";
@@ -198,10 +199,13 @@ function FileViewerBody({
   if (isImage) {
     return (
       <div className="flex h-full items-center justify-center bg-zinc-950 p-4">
-        <img
+        <Image
           src={sessionFilesApi.artifactUrl(conversationId, path)}
           alt={filename}
+          width={500}
+          height={500}
           className="max-h-full max-w-full object-contain"
+          unoptimized
         />
       </div>
     );

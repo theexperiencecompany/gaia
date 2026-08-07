@@ -130,8 +130,23 @@ console.log(`Limit: <= ${THRESHOLD}% (SonarCloud is authoritative).`);
 
 if (density > THRESHOLD) {
   console.error(
-    `\nDuplication on changed lines ${density.toFixed(2)}% exceeds the ` +
-      `${THRESHOLD}% limit. Dedupe the files listed above.`,
+    `\n❌ duplicates gate FAILED — ${density.toFixed(2)}% of your changed lines` +
+      ` sit inside copy-pasted blocks (limit ${THRESHOLD}%).`,
+  );
+  console.error(
+    "\nWhy: copy-pasted logic drifts — one copy gets fixed, the other rots into a" +
+      " bug — and forces every reader to learn which variant to trust.",
+  );
+  console.error(
+    "\nFix: for each file under 'Files contributing duplicated changed lines'" +
+      " above, extract the duplicated block into a single shared function and call" +
+      " it from both sites — put cross-app helpers in libs/shared/ts/src (imported" +
+      " as @gaia/shared), feature-local ones in that feature's utils. Do not paste" +
+      " the block a third time.",
+  );
+  console.error(
+    '\nRule: .claude/rules/general.md § "DRY — Search Before You Build" and root' +
+      " CLAUDE.md (never write the same code twice). SonarCloud stays authoritative.",
   );
   process.exit(1);
 }

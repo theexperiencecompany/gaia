@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from app.config.oauth_config import get_integration_by_id
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import integrations_collection
+from app.db.repositories.integrations import integration_repository
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
 from shared.py.wide_events import log
@@ -78,17 +78,16 @@ class IntegrationResolver:
             )
 
         # Try custom integration from MongoDB
-        custom_doc = await integrations_collection.find_one({"integration_id": integration_id})
+        integration = await integration_repository.get(integration_id)
 
-        if custom_doc:
-            mcp_config = None
-            requires_auth = custom_doc.get("requires_auth", False)
-            auth_type = custom_doc.get("auth_type", "none")
+        if integration:
+            mcp_config = integration.mcp_config
+            requires_auth = integration.requires_auth
+            auth_type = integration.auth_type or "none"
 
-            if custom_doc.get("mcp_config"):
-                mcp_config = MCPConfig(**custom_doc["mcp_config"])
+            if mcp_config:
                 # mcp_config is authoritative, but log if document-level values conflict
-                doc_requires_auth = custom_doc.get("requires_auth", False)
+                doc_requires_auth = integration.requires_auth
                 mcp_requires_auth = mcp_config.requires_auth
                 mcp_auth_type = mcp_config.auth_type or ("oauth" if mcp_requires_auth else "none")
 
@@ -100,14 +99,8 @@ class IntegrationResolver:
                     )
                     # Sync MongoDB document to match authoritative mcp_config
                     try:
-                        await integrations_collection.update_one(
-                            {"integration_id": integration_id},
-                            {
-                                "$set": {
-                                    "requires_auth": mcp_requires_auth,
-                                    "auth_type": mcp_auth_type,
-                                }
-                            },
+                        await integration_repository.heal_top_level_auth(
+                            integration_id, mcp_requires_auth, mcp_auth_type
                         )
                     except Exception as sync_err:
                         log.warning(
@@ -119,16 +112,16 @@ class IntegrationResolver:
 
             return ResolvedIntegration(
                 integration_id=integration_id,
-                name=custom_doc.get("name", integration_id),
-                description=custom_doc.get("description", ""),
-                category=custom_doc.get("category", "custom"),
-                managed_by=custom_doc.get("managed_by", "mcp"),
+                name=integration.name or integration_id,
+                description=integration.description,
+                category=integration.category,
+                managed_by=integration.managed_by,
                 source="custom",
                 requires_auth=requires_auth,
                 auth_type=auth_type,
                 mcp_config=mcp_config,
                 platform_integration=None,
-                custom_doc=custom_doc,
+                custom_doc=integration.model_dump(),
             )
 
         return None

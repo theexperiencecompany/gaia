@@ -2,18 +2,20 @@
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 import uuid
 
 import cloudinary
 import cloudinary.uploader
 from fastapi import HTTPException, UploadFile
 
-from app.db.mongodb.collections import support_collection
+from app.db.repositories.support_requests import support_request_repository
 from app.models.support_models import (
     SupportAttachment,
     SupportEmailNotification,
     SupportRequestCreate,
+    SupportRequestDocument,
+    SupportRequestListResponse,
+    SupportRequestPagination,
     SupportRequestPriority,
     SupportRequestResponse,
     SupportRequestStatus,
@@ -33,7 +35,7 @@ SUPPORT_EMAILS = [
 ]
 
 
-async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> None:
+async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
     """Delete uploaded files from Cloudinary."""
     for url in attachment_urls:
         try:
@@ -48,7 +50,9 @@ async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> 
                     # Remove file extension from public_id
                     public_id = f"support/{filename_with_ext.rsplit('.', 1)[0]}"
 
-                    result = cloudinary.uploader.destroy(public_id)
+                    # Cloudinary's SDK is blocking HTTP — off the loop, or every
+                    # other request on this worker waits out the round trip.
+                    result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
                     if result.get("result") != "ok":
                         log.warning(f"Failed to delete file from Cloudinary: {public_id}")
                     else:
@@ -63,8 +67,8 @@ async def _upload_single_attachment(
     current_time: datetime,
     allowed_types: list[str],
     max_file_size: int,
-) -> tuple[str, dict]:
-    """Upload a single attachment and return (file_url, attachment_metadata_dict)."""
+) -> tuple[str, SupportAttachment]:
+    """Upload a single attachment and return (file_url, attachment metadata)."""
     # Validate file type
     if attachment.content_type not in allowed_types:
         raise HTTPException(
@@ -103,7 +107,7 @@ async def _upload_single_attachment(
             uploaded_at=current_time,
         )
 
-        return file_url, attachment_info.dict()
+        return file_url, attachment_info
 
     except Exception as e:
         log.error(f"Failed to upload image {attachment.filename}: {e!s}")
@@ -133,32 +137,25 @@ async def create_support_request(
         current_time = datetime.now(UTC)
 
         # Create support request document
-        support_request_doc: dict[str, Any] = {
-            "_id": request_id,
-            "ticket_id": ticket_id,
-            "user_id": user_id,
-            "user_email": user_email,
-            "user_name": user_name,
-            "type": request_data.type.value,
-            "title": request_data.title,
-            "description": request_data.description,
-            "status": SupportRequestStatus.OPEN.value,
-            "priority": SupportRequestPriority.MEDIUM.value,  # Default priority
-            "created_at": current_time,
-            "updated_at": current_time,
-            "resolved_at": None,
-            "tags": [],
-            "metadata": {
+        support_request = SupportRequestDocument(
+            id=request_id,
+            ticket_id=ticket_id,
+            user_id=user_id,
+            user_email=user_email,
+            user_name=user_name,
+            type=request_data.type,
+            title=request_data.title,
+            description=request_data.description,
+            priority=SupportRequestPriority.MEDIUM,
+            created_at=current_time,
+            metadata={
                 "source": "web_form",
                 "user_agent": None,  # Could be added from request headers
             },
-        }
+        )
 
         # Store in database first
-        result = await support_collection.insert_one(support_request_doc)
-
-        if not result.inserted_id:
-            raise HTTPException(status_code=500, detail="Failed to create support request")
+        created = await support_request_repository.create(support_request)
 
         log.info(f"Support request created in database: {ticket_id}")
 
@@ -184,8 +181,7 @@ async def create_support_request(
 
             try:
                 # Delete the support request from database
-                delete_result = await support_collection.delete_one({"_id": request_id})
-                if delete_result.deleted_count > 0:
+                if await support_request_repository.delete(request_id, user_id=user_id):
                     log.info(f"Successfully rolled back support request {ticket_id} from database")
                 else:
                     log.error(f"Failed to rollback support request {ticket_id} from database")
@@ -199,23 +195,7 @@ async def create_support_request(
             )
 
         # Create response object
-        support_request_response = SupportRequestResponse(
-            id=request_id,
-            ticket_id=ticket_id,
-            user_id=user_id,
-            user_email=user_email,
-            user_name=user_name,
-            type=request_data.type,
-            title=request_data.title,
-            description=request_data.description,
-            status=SupportRequestStatus.OPEN,
-            priority=SupportRequestPriority.MEDIUM,
-            created_at=current_time,
-            updated_at=current_time,
-            resolved_at=None,
-            tags=[],
-            metadata=dict(support_request_doc["metadata"]),
-        )
+        support_request_response = SupportRequestResponse.model_validate(created.model_dump())
 
         log.info(f"Support request created successfully: {ticket_id} for user {user_id}")
 
@@ -233,7 +213,7 @@ async def create_support_request(
         # For any other unexpected errors, also try to rollback if request was created
         if request_id:
             try:
-                await support_collection.delete_one({"_id": request_id})
+                await support_request_repository.delete(request_id, user_id=user_id)
                 log.info(f"Rolled back support request {request_id} due to unexpected error")
             except Exception as rollback_error:
                 log.error(f"Error during rollback for request {request_id}: {rollback_error!s}")
@@ -260,7 +240,7 @@ async def create_support_request_with_attachments(
         attachment_count=len(attachments),
     )
     request_id = None
-    attachment_urls = []
+    attachment_urls: list[str] = []
     ticket_id = None
 
     try:
@@ -271,7 +251,7 @@ async def create_support_request_with_attachments(
         current_time = datetime.now(UTC)
 
         # Process attachments
-        processed_attachments = []
+        processed_attachments: list[SupportAttachment] = []
 
         if attachments:
             # Validate file constraints
@@ -321,43 +301,33 @@ async def create_support_request_with_attachments(
                     log.info(
                         f"Cleaning up {len(attachment_urls)} partially uploaded files for ticket {ticket_id}"
                     )
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
 
                 # Re-raise the original exception (could be HTTPException from validation or upload error)
                 raise
 
         # Create support request document
-        support_request_doc = {
-            "_id": request_id,
-            "ticket_id": ticket_id,
-            "user_id": user_id,
-            "user_email": user_email,
-            "user_name": user_name,
-            "type": request_data.type.value,
-            "title": request_data.title,
-            "description": request_data.description,
-            "status": SupportRequestStatus.OPEN.value,
-            "priority": SupportRequestPriority.MEDIUM.value,
-            "created_at": current_time,
-            "updated_at": current_time,
-            "resolved_at": None,
-            "tags": [],
-            "attachments": processed_attachments,
-            "metadata": {
+        support_request = SupportRequestDocument(
+            id=request_id,
+            ticket_id=ticket_id,
+            user_id=user_id,
+            user_email=user_email,
+            user_name=user_name,
+            type=request_data.type,
+            title=request_data.title,
+            description=request_data.description,
+            priority=SupportRequestPriority.MEDIUM,
+            created_at=current_time,
+            attachments=processed_attachments,
+            metadata={
                 "source": "web_form_with_images",
                 "user_agent": None,
                 "image_count": len(processed_attachments),
             },
-        }
+        )
 
         # Store in database first
-        result = await support_collection.insert_one(support_request_doc)
-
-        if not result.inserted_id:
-            # Clean up uploaded files if database insertion fails
-            if attachment_urls:
-                await _delete_uploaded_files(attachment_urls, ticket_id)
-            raise HTTPException(status_code=500, detail="Failed to create support request")
+        created = await support_request_repository.create(support_request)
 
         log.info(f"Support request with attachments created in database: {ticket_id}")
 
@@ -372,7 +342,7 @@ async def create_support_request_with_attachments(
                 description=request_data.description,
                 created_at=current_time,
                 support_emails=SUPPORT_EMAILS,
-                attachments=[SupportAttachment(**att) for att in processed_attachments],
+                attachments=processed_attachments,
             )
 
             await _send_support_email_notifications(notification_data)
@@ -384,7 +354,7 @@ async def create_support_request_with_attachments(
             # Rollback: Delete uploaded files
             if attachment_urls:
                 try:
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
                     log.info(
                         f"Successfully cleaned up {len(attachment_urls)} uploaded files for ticket {ticket_id}"
                     )
@@ -395,8 +365,7 @@ async def create_support_request_with_attachments(
 
             # Rollback: Delete the support request from database
             try:
-                delete_result = await support_collection.delete_one({"_id": request_id})
-                if delete_result.deleted_count > 0:
+                if await support_request_repository.delete(request_id, user_id=user_id):
                     log.info(f"Successfully rolled back support request {ticket_id} from database")
                 else:
                     log.error(f"Failed to rollback support request {ticket_id} from database")
@@ -412,26 +381,7 @@ async def create_support_request_with_attachments(
             )
 
         # Create response object
-        support_request_response = SupportRequestResponse(
-            id=request_id,
-            ticket_id=ticket_id,
-            user_id=user_id,
-            user_email=user_email,
-            user_name=user_name,
-            type=request_data.type,
-            title=request_data.title,
-            description=request_data.description,
-            status=SupportRequestStatus.OPEN,
-            priority=SupportRequestPriority.MEDIUM,
-            created_at=current_time,
-            updated_at=current_time,
-            resolved_at=None,
-            tags=[],
-            attachments=[SupportAttachment(**att) for att in processed_attachments],
-            metadata=support_request_doc["metadata"]
-            if isinstance(support_request_doc["metadata"], dict)
-            else {},
-        )
+        support_request_response = SupportRequestResponse.model_validate(created.model_dump())
 
         log.info(
             f"Support request with {len(processed_attachments)} images created successfully: {ticket_id} for user {user_id}"
@@ -454,7 +404,7 @@ async def create_support_request_with_attachments(
         # Clean up uploaded files
         if attachment_urls and ticket_id:
             try:
-                await _delete_uploaded_files(attachment_urls, ticket_id)
+                await _delete_uploaded_files(attachment_urls)
                 log.info(
                     f"Cleaned up {len(attachment_urls)} uploaded files due to unexpected error"
                 )
@@ -464,7 +414,7 @@ async def create_support_request_with_attachments(
         # Clean up database entry
         if request_id:
             try:
-                await support_collection.delete_one({"_id": request_id})
+                await support_request_repository.delete(request_id, user_id=user_id)
                 log.info(f"Rolled back support request {request_id} due to unexpected error")
             except Exception as rollback_error:
                 log.error(f"Error during rollback for request {request_id}: {rollback_error!s}")
@@ -497,39 +447,29 @@ async def get_user_support_requests(
     page: int = 1,
     per_page: int = 10,
     status_filter: SupportRequestStatus | None = None,
-) -> dict:
+) -> SupportRequestListResponse:
     """Get paginated support requests for a user."""
     try:
-        query = {"user_id": user_id}
-        if status_filter:
-            query["status"] = status_filter.value
-
-        # Count total documents
-        total = await support_collection.count_documents(query)
-
-        # Calculate pagination
         skip = (page - 1) * per_page
 
-        # Fetch documents
-        cursor = support_collection.find(query).sort("created_at", -1).skip(skip).limit(per_page)
-        requests = await cursor.to_list(length=per_page)
+        total = await support_request_repository.count_for_user_status(
+            user_id, status=status_filter
+        )
+        docs = await support_request_repository.page_for_user(
+            user_id, status=status_filter, skip=skip, limit=per_page
+        )
 
-        # Convert to response models
-        support_requests = []
-        for req in requests:
-            req["id"] = str(req["_id"])
-            del req["_id"]
-            support_requests.append(SupportRequestResponse(**req))
+        support_requests = [SupportRequestResponse.model_validate(doc.model_dump()) for doc in docs]
 
-        return {
-            "requests": support_requests,
-            "pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "pages": (total + per_page - 1) // per_page,
-            },
-        }
+        return SupportRequestListResponse(
+            requests=support_requests,
+            pagination=SupportRequestPagination(
+                page=page,
+                per_page=per_page,
+                total=total,
+                pages=(total + per_page - 1) // per_page,
+            ),
+        )
 
     except Exception as e:
         log.error(f"Error fetching user support requests: {e!s}")

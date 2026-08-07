@@ -572,7 +572,7 @@ def markdown_to_notion_blocks(markdown: str) -> list[dict[str, Any]]:
             continue
 
         # Bulleted list
-        if stripped.startswith("- ") or stripped.startswith("* "):
+        if stripped.startswith(("- ", "* ")):
             blocks.append({"block_property": "bulleted_list_item", "content": stripped[2:]})
             i += 1
             continue

@@ -4,18 +4,21 @@ Single service approach - simple and maintainable.
 """
 
 import json
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.models.payment_models import (
     CreateSubscriptionRequest,
+    CreateSubscriptionResponse,
     PaymentVerificationResponse,
     PlanResponse,
     UserSubscriptionStatus,
 )
+from app.models.webhook_models import DodoWebhookAckResponse
 from app.services.payments.payment_service import payment_service
 from app.services.payments.payment_webhook_service import payment_webhook_service
 from shared.py.wide_events import log
@@ -25,7 +28,7 @@ router = APIRouter()
 
 @router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
-async def get_plans_endpoint(request: Request, active_only: bool = True):
+async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
     try:
@@ -40,13 +43,9 @@ async def get_plans_endpoint(request: Request, active_only: bool = True):
 async def create_subscription_endpoint(
     request: Request,
     subscription_data: CreateSubscriptionRequest,
-    current_user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> CreateSubscriptionResponse:
     """Create a new subscription and return payment link."""
-    user_id = current_user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     log.set(
         user={"id": user_id},
         payment={
@@ -69,20 +68,15 @@ async def create_subscription_endpoint(
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(
     request: Request,
-    current_user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> PaymentVerificationResponse:
     """Verify if user's payment has been completed."""
-    user_id = current_user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     log.set(
         user={"id": user_id},
         payment={"operation": "verify_payment"},
     )
     try:
-        result = await payment_service.verify_payment_completion(user_id)
-        return PaymentVerificationResponse(**result)
+        return await payment_service.verify_payment_completion(user_id)
     except Exception as e:
         log.error(f"{LogTag.PAYMENT} Error verifying payment: {e!s}")
         raise HTTPException(status_code=500, detail="Failed to verify payment")
@@ -92,13 +86,9 @@ async def verify_payment_endpoint(
 @limiter.limit("60/minute")
 async def get_subscription_status_endpoint(
     request: Request,
-    current_user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> UserSubscriptionStatus:
     """Get user's current subscription status."""
-    user_id = current_user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
-
     log.set(
         user={"id": user_id},
         payment={"operation": "get_status"},
@@ -116,7 +106,7 @@ async def handle_dodo_webhook(
     webhook_id: str = Header(..., alias="webhook-id"),
     webhook_timestamp: str = Header(..., alias="webhook-timestamp"),
     webhook_signature: str = Header(..., alias="webhook-signature"),
-):
+) -> DodoWebhookAckResponse:
     """Handle incoming webhooks from Dodo Payments with signature verification."""
     try:
         # Get raw body for signature verification
@@ -135,8 +125,10 @@ async def handle_dodo_webhook(
             log.warning(f"{LogTag.PAYMENT} Invalid webhook signature")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-        # Parse webhook data
-        webhook_data = json.loads(payload)
+        # Raw provider payload: process_webhook validates it into DodoWebhookEvent and
+        # deliberately answers 200/"failed" for shapes it can't parse, so Dodo's retry
+        # policy stays driven by the processing result rather than a request rejection.
+        webhook_data: dict[str, Any] = json.loads(payload)
 
         event_type = webhook_data.get("type", "unknown")
         log.set(
@@ -150,12 +142,11 @@ async def handle_dodo_webhook(
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
 
         log.info(f"{LogTag.PAYMENT} Webhook processed: {result.event_type} - {result.status}")
-        return {
-            "status": "success",
-            "event_type": result.event_type,
-            "processing_status": result.status,
-            "message": result.message,
-        }
+        return DodoWebhookAckResponse(
+            event_type=result.event_type,
+            processing_status=result.status,
+            message=result.message,
+        )
 
     except HTTPException:
         raise

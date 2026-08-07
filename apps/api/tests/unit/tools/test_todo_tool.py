@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.models.todo_models import Priority
+from app.models.todo_models import Priority, TodoLabelCount, TodoStats
 
 # ---------------------------------------------------------------------------
 # Module-level patch: ensure tiered_limiter.check_and_increment returns a
@@ -642,8 +642,7 @@ class TestGetTodoStatistics:
         mock_writer_factory: MagicMock,
     ) -> None:
         mock_writer_factory.return_value = _writer_mock()
-        stats_data = {"total": 10, "completed": 5, "pending": 5}
-        mock_service.return_value = stats_data
+        mock_service.return_value = TodoStats(total=10, completed=5, pending=5)
 
         from app.agents.tools.todo_tool import get_todo_statistics
 
@@ -955,7 +954,11 @@ class TestGetAllLabels:
         mock_get_user: MagicMock,
         mock_service: AsyncMock,
     ) -> None:
-        mock_service.return_value = ["work", "personal", "urgent"]
+        mock_service.return_value = [
+            TodoLabelCount(name="work", count=3),
+            TodoLabelCount(name="personal", count=2),
+            TodoLabelCount(name="urgent", count=1),
+        ]
 
         from app.agents.tools.todo_tool import get_all_labels
 

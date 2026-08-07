@@ -1,9 +1,10 @@
 # Quality gate ratchet
 
-The `quality-gate` job in `.github/workflows/code-quality.yml` is the single
-required status check on `develop`. It runs all 15 code-quality lanes but only
-**fails** when an *enforced* lane is red. Every other lane is reported and
-non-blocking, so develop stays green while violations are fixed lane by lane.
+The `quality-gate` job in `.github/workflows/code-quality.yml` is one of the
+two branch-protection gate jobs on `develop` (the other is `main.yml`'s
+`quality-gate`). This one runs all 18 code-quality lanes but only **fails**
+when an *enforced* lane is red. Every other lane is reported and non-blocking,
+so develop stays green while violations are fixed lane by lane.
 
 ## How a lane becomes enforced
 
@@ -34,5 +35,6 @@ lane PRs can be open at once and merge in any order without conflicts.
 ## Lane names
 
 `biome`, `deps`, `circular`, `file-size`, `types-location`, `components-per-file`,
-`duplicates`, `type-coverage`, `package-hygiene`, `type-check`, `python-ruff`,
-`python-mypy`, `python-interrogate`, `python-xenon`, `python-security`.
+`duplicates`, `package-hygiene`, `type-check`, `python-ruff`,
+`python-mypy`, `python-interrogate`, `python-xenon`, `python-security`,
+`dead-code`, `alert-rules`, `suppression-ratchet`, `gitleaks`.

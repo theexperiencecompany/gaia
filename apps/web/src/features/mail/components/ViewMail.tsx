@@ -236,7 +236,7 @@ export default function ViewEmail({
   };
 
   const handleSendReply = async () => {
-    if (!editor || !replyTo || !replyTo.id) return;
+    if (!editor || !replyTo?.id) return;
 
     const content = editor.getHTML();
     if (!content || content === "<p></p>") {

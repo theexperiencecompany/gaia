@@ -13,9 +13,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from prometheus_fastapi_instrumentator import Instrumentator
 
+from app.api.v1.endpoints.dev import router as dev_router
 from app.api.v1.endpoints.health import router as health_router
 from app.api.v1.routes import router as api_router
 from app.config.settings import settings
+from app.constants.log_tags import LogTag
 from app.core.lifespan import lifespan
 from app.core.middleware import configure_middleware
 
@@ -58,7 +60,14 @@ def create_app() -> FastAPI:
     # Expose /metrics for Prometheus scraping.
     # In production, guard with a bearer token so /metrics is not publicly readable.
     # The LoggingMiddleware already skips /metrics so it won't pollute request logs.
-    instrumentator = Instrumentator().instrument(app)
+    # `latency_lowr_buckets` defaults to (0.1, 0.5, 1), and histogram_quantile
+    # cannot return a value above the highest finite bucket — so p95 was capped
+    # at 1.0s and the Grafana latency alerts (>1s warning, >3s critical) could
+    # never fire. These buckets straddle both thresholds so the alerts work and
+    # the latency panels stop flat-lining at 1s.
+    instrumentator = Instrumentator().instrument(
+        app, latency_lowr_buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10)
+    )
     if settings.METRICS_TOKEN:
         _bearer = HTTPBearer(auto_error=True)
 
@@ -131,6 +140,15 @@ def create_app() -> FastAPI:
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(health_router)
+
+    # Dev-only identity + seeding router. Mounted only when the auth bypass is
+    # active in development, so it never exists in production (every route 404s).
+    if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
+        app.include_router(dev_router, prefix="/api/v1")
+        wide_log.warning(
+            f"{LogTag.STARTUP} Dev identity router mounted at /api/v1/dev "
+            "(development only — mint/seed/delete users)"
+        )
 
     app.mount("/static", StaticFiles(directory="app/static"), name="static")
 

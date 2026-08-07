@@ -106,8 +106,12 @@ export const filterEmptyMessagePairs = (
           ...baseFields,
           text: nextMessage.response || "",
           loading: nextMessage.loading,
-          setOpenImage: () => {},
-          setImageData: () => {},
+          setOpenImage: () => {
+            /* filtered messages are read-only; no image sheet wiring */
+          },
+          setImageData: () => {
+            /* filtered messages are read-only; no image sheet wiring */
+          },
           systemPurpose,
           isConvoSystemGenerated,
         };
@@ -136,8 +140,12 @@ export const filterEmptyMessagePairs = (
         ...baseFields,
         text: currentMessage.response || "",
         loading: currentMessage.loading,
-        setOpenImage: () => {},
-        setImageData: () => {},
+        setOpenImage: () => {
+          /* filtered messages are read-only; no image sheet wiring */
+        },
+        setImageData: () => {
+          /* filtered messages are read-only; no image sheet wiring */
+        },
         systemPurpose,
         isConvoSystemGenerated,
       };

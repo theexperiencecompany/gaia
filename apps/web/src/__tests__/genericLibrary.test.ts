@@ -14,7 +14,7 @@ const EXPECTED_COMPONENT_NAMES = [
   "Table",
   "CardHeader",
   "Tag",
-  "GaugeChart",
+  "RadialChart",
   "MapBlock",
   "Timeline",
   "FileTree",

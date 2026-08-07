@@ -1,5 +1,7 @@
 """Workflow generation service for LLM-based step creation."""
 
+import re
+
 from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
@@ -13,12 +15,17 @@ from app.agents.prompts.workflow_prompts import (
 from app.agents.templates.workflow_template import WORKFLOW_GENERATION_TEMPLATE
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.integrations import MANAGED_BY_INTERNAL
 from app.constants.log_tags import LogTag
 from app.models.workflow_models import (
     GeneratedPromptOutput,
+    GeneratedPromptResult,
     GeneratedStep,
     GeneratedWorkflow,
+    PromptTriggerHint,
     SuggestedTrigger,
+    TriggerConfig,
+    WorkflowStep,
 )
 from shared.py.wide_events import log
 
@@ -46,7 +53,26 @@ def _normalize_slugs(slugs: list[str] | None) -> list[str]:
     return out
 
 
-def _build_trigger_hint(trigger_config: dict | None) -> str:
+def _extract_explicit_mentions(prompt: str) -> set[str]:
+    """Return integration IDs that are explicitly named in the workflow prompt.
+
+    Checks each integration's name and id against the prompt text so that
+    a step using that integration is guaranteed to be included even when the
+    integration is not in the user's preferred-integration set.
+    """
+    lower_prompt = prompt.lower()
+    mentioned: set[str] = set()
+    for integration in OAUTH_INTEGRATIONS:
+        # Word-boundary match so short/common names/ids (e.g. "box" in "inbox")
+        # don't get flagged as explicit mentions and force-include integrations.
+        for token in (integration.name.lower(), integration.id.lower()):
+            if re.search(rf"\b{re.escape(token)}\b", lower_prompt):
+                mentioned.add(integration.id)
+                break
+    return mentioned
+
+
+def _build_trigger_hint(trigger_config: PromptTriggerHint | None) -> str:
     """Build a minimal, human-readable trigger hint for the LLM.
 
     We intentionally omit raw cron/timezone/next_run so the LLM cannot
@@ -58,10 +84,10 @@ def _build_trigger_hint(trigger_config: dict | None) -> str:
             "type based on the user's intent."
         )
 
-    trigger_type = trigger_config.get("type", "manual")
+    trigger_type = trigger_config.type
 
     if trigger_type == "schedule":
-        cron = trigger_config.get("cron_expression", "")
+        cron = trigger_config.cron_expression
         hint = "User has selected a scheduled trigger"
         if cron:
             hint += f" (current cron: {cron})"
@@ -73,7 +99,7 @@ def _build_trigger_hint(trigger_config: dict | None) -> str:
             "the instructions clearly imply a recurring schedule."
         )
     # Integration triggers
-    trigger_name = trigger_config.get("trigger_name", "")
+    trigger_name = trigger_config.trigger_name
     if trigger_name:
         return f"User has selected an integration trigger ({trigger_name})."
     return f"User has selected trigger type: {trigger_type}."
@@ -105,15 +131,15 @@ def _build_available_triggers(
     return "Available integration triggers (use the slug for trigger_name):\n" + "\n".join(lines)
 
 
-def enrich_steps(generated_steps: list[GeneratedStep]) -> list[dict]:
+def enrich_steps(generated_steps: list[GeneratedStep]) -> list[WorkflowStep]:
     """Convert minimal generated steps to the full step schema with ids."""
     return [
-        {
-            "id": f"step_{i}",
-            "title": step.title,
-            "category": step.category,
-            "description": step.description,
-        }
+        WorkflowStep(
+            id=f"step_{i}",
+            title=step.title,
+            category=step.category,
+            description=step.description,
+        )
         for i, step in enumerate(generated_steps)
     ]
 
@@ -125,11 +151,11 @@ class WorkflowGenerationService:
     async def generate_steps_with_llm(
         prompt: str,
         title: str,
-        trigger_config=None,
+        trigger_config: TriggerConfig | None = None,
         description: str | None = None,
-        selected_integrations: list[str] | None = None,
+        integration_ids: list[str] | None = None,
         user_id: str | None = None,
-    ) -> list:
+    ) -> list[WorkflowStep]:
         """Generate workflow steps using the LLM's native structured output.
 
         Raises:
@@ -140,10 +166,12 @@ class WorkflowGenerationService:
         log.info(f"{LogTag.WORKFLOW} Getting tool registry...")
         tool_registry = await get_tool_registry()
 
-        normalized_slugs = _normalize_slugs(selected_integrations)
-        slug_set = set(normalized_slugs)
-        # An empty selection means "no filter" — show the whole registry.
-        filter_active = bool(slug_set)
+        normalized_slugs = _normalize_slugs(integration_ids)
+        prefer_set = set(normalized_slugs)
+        explicit_set = _extract_explicit_mentions(prompt)
+        # Union of preferred integrations and those explicitly named in the prompt.
+        # Preferred integrations are soft hints; explicit mentions are hard requirements.
+        active_set = prefer_set | explicit_set
 
         tools_with_categories = []
         category_names = []
@@ -152,20 +180,28 @@ class WorkflowGenerationService:
         # human name here (OAUTH_INTEGRATIONS doesn't know them).
         selected_display_names: dict[str, str] = {}
         categories = tool_registry.get_all_category_objects()
-        for category in categories.keys():
-            if filter_active and category.lower() not in slug_set:
-                continue
+        for category, cat_obj in categories.items():
+            if cat_obj.require_integration:
+                # Provider category: include only when in the active set.
+                integration_key = (cat_obj.integration_name or category).lower()
+                if integration_key not in active_set:
+                    continue
+            # Core category (require_integration=False): always include.
             category_names.append(category)
-            category_tools = categories[category].get_tool_objects()
+            category_tools = cat_obj.get_tool_objects()
             tool_names = [
                 tool.name if hasattr(tool, "name") else str(tool) for tool in category_tools
             ]
             tools_with_categories.append(f"{category}: {', '.join(tool_names)}")
 
-        # Add subagent capabilities
+        # Add subagent capabilities. Internal subagents (todos/reminders/skills)
+        # are always-available core capabilities — include them unconditionally,
+        # mirroring the always-on core categories above. Provider subagents are
+        # gated by the active set, so unconnected/unnamed ones stay out.
         for integration in OAUTH_INTEGRATIONS:
             if integration.subagent_config and integration.subagent_config.has_subagent:
-                if filter_active and integration.id.lower() not in slug_set:
+                is_internal = integration.managed_by == MANAGED_BY_INTERNAL
+                if not is_internal and integration.id.lower() not in active_set:
                     continue
                 cfg = integration.subagent_config
                 category_names.append(integration.id)
@@ -197,7 +233,7 @@ class WorkflowGenerationService:
                 for integ in my_integrations.integrations:
                     if integ.source != "custom":
                         continue
-                    if filter_active and integ.id.lower() not in slug_set:
+                    if integ.id.lower() not in active_set:
                         continue
                     category_names.append(integ.id)
                     selected_display_names[integ.id.lower()] = integ.name
@@ -214,7 +250,7 @@ class WorkflowGenerationService:
 
         log.info(
             f"{LogTag.WORKFLOW} Categories: {len(category_names)} "
-            f"(filtered={filter_active}, slugs={normalized_slugs})"
+            f"(prefer={sorted(prefer_set)}, explicit={sorted(explicit_set)})"
         )
 
         trigger_context = generate_trigger_context(trigger_config)
@@ -225,23 +261,31 @@ class WorkflowGenerationService:
             prompt_context = (
                 f"{prompt}\n\nShort display summary for additional context: {description}"
             )
-        if normalized_slugs:
 
-            def _hint_label(slug: str) -> str:
-                name = selected_display_names.get(slug) or _slug_to_friendly_name(slug)
-                # Pass both the human name and the category id: the name tells the
-                # LLM what the user meant, the id is what each step's `category`
-                # must be set to for that integration's tools to resolve.
-                return f"{name} (category: {slug})" if name != slug else slug
+        # Resolve a slug to a human label plus its category id. The name tells
+        # the LLM what the user meant; the id is what each step's `category`
+        # must be set to for that integration's tools to resolve. Custom
+        # integrations are keyed by an opaque uuid, so selected_display_names
+        # supplies the human name OAUTH_INTEGRATIONS can't.
+        def _hint_label(slug: str) -> str:
+            name = selected_display_names.get(slug) or _slug_to_friendly_name(slug)
+            return f"{name} (category: {slug})" if name != slug else slug
 
-            friendly = [_hint_label(s) for s in normalized_slugs]
-            integration_hint = (
-                "User has selected these integrations as preferred tools for this workflow: "
-                + ", ".join(friendly)
-                + ". Prioritise steps that use these integrations where appropriate, "
-                "setting each such step's category to the given id."
+        hint_parts: list[str] = []
+        if prefer_set:
+            friendly_prefer = [_hint_label(s) for s in sorted(prefer_set)]
+            hint_parts.append(
+                "Preferred integrations (use where the workflow makes sense): "
+                + ", ".join(friendly_prefer)
             )
-            prompt_context = f"{prompt_context}\n\n{integration_hint}"
+        if explicit_set:
+            friendly_explicit = [_hint_label(s) for s in sorted(explicit_set)]
+            hint_parts.append(
+                "Integrations the user explicitly named — MUST appear in the steps: "
+                + ", ".join(friendly_explicit)
+            )
+        if hint_parts:
+            prompt_context = prompt_context + "\n\n" + "\n".join(hint_parts)
 
         formatted_prompt = WORKFLOW_GENERATION_TEMPLATE.format(
             description=prompt_context,
@@ -300,24 +344,22 @@ class WorkflowGenerationService:
     async def generate_workflow_prompt(
         title: str | None = None,
         description: str | None = None,
-        trigger_config: dict | None = None,
+        trigger_config: PromptTriggerHint | None = None,
         existing_prompt: str | None = None,
         connected_integration_ids: set[str] | None = None,
-        selected_integrations: list[str] | None = None,
-    ) -> dict:
+        integration_ids: list[str] | None = None,
+    ) -> GeneratedPromptResult:
         """Generate or improve workflow instructions using LLM.
-
-        Returns a dict with keys: prompt, suggested_trigger (optional).
 
         If `connected_integration_ids` is provided, the available-triggers
         list shown to the LLM is restricted to those integrations.
-        If `selected_integrations` is provided, the LLM is hinted to prefer
+        If `integration_ids` is provided, the LLM is hinted to prefer
         those integrations when naming triggers/actions.
         """
         trigger_hint = _build_trigger_hint(trigger_config)
         available_triggers = _build_available_triggers(connected_integration_ids)
 
-        normalized_slugs = _normalize_slugs(selected_integrations)
+        normalized_slugs = _normalize_slugs(integration_ids)
         if normalized_slugs:
             friendly = [_slug_to_friendly_name(s) for s in normalized_slugs]
             integrations_hint = (

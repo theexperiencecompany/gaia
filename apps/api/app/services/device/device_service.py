@@ -31,9 +31,9 @@ from app.constants.device_bridge import (
     USER_CODE_LENGTH,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import integrations_collection
 from app.db.postgresql import get_db_session
 from app.db.redis import get_and_delete_cache, get_cache, redis_cache, set_cache
+from app.db.repositories.integrations import integration_repository
 from app.helpers.mcp_helpers import get_frontend_url
 from app.models.device import (
     Device,
@@ -43,6 +43,7 @@ from app.models.device import (
 )
 from app.models.integration_models import Integration
 from app.models.mcp_config import MCPConfig
+from app.schemas.device.responses import PollPairingResponse, StartPairingResponse
 from app.services.device.bridge import request_revoke
 from app.services.device.device_auth import (
     generate_refresh_token,
@@ -81,7 +82,7 @@ def _generate_user_code() -> str:
 
 async def start_pairing(
     name: str, platform: str | None, daemon_version: str | None
-) -> dict[str, str | int]:
+) -> StartPairingResponse:
     """Create a pending pairing and return the codes for the daemon."""
     device_code = secrets.token_urlsafe(DEVICE_CODE_BYTES)
     user_code = _generate_user_code()
@@ -108,15 +109,15 @@ async def start_pairing(
     # this pending pairing.
     log.set(device={"operation": "start_pairing"})
     base = get_frontend_url().rstrip("/")
-    return {
-        "device_code": device_code,
-        "user_code": user_code,
+    return StartPairingResponse(
+        device_code=device_code,
+        user_code=user_code,
         # Prefill the code so an approver just confirms; they must still be signed
         # in and click Approve (the code alone grants nothing).
-        "verification_url": f"{base}{PAIRING_VERIFICATION_PATH}?code={quote(user_code)}",
-        "expires_in": PAIRING_TTL_SECONDS,
-        "interval": PAIRING_POLL_INTERVAL_SECONDS,
-    }
+        verification_url=f"{base}{PAIRING_VERIFICATION_PATH}?code={quote(user_code)}",
+        expires_in=PAIRING_TTL_SECONDS,
+        interval=PAIRING_POLL_INTERVAL_SECONDS,
+    )
 
 
 async def lookup_pending_by_user_code(user_code: str) -> dict | None:
@@ -179,25 +180,23 @@ async def approve_pairing(user_id: str, user_code: str) -> tuple[str, str]:
     return device_id, name
 
 
-async def poll_pairing(device_code: str) -> dict[str, str | None]:
+async def poll_pairing(device_code: str) -> PollPairingResponse:
     """Daemon poll. On ``approved`` the pairing is consumed and won't poll again."""
     record = await get_cache(_pairing_key(device_code))
     if not isinstance(record, dict):
-        # "refresh_token" is a response field name, not a hardcoded secret (B105 FP).
-        return {"status": "expired", "device_id": None, "refresh_token": None}  # nosec B105
+        return PollPairingResponse(status="expired")
 
     status = record.get("status")
     if status != "approved":
-        # "refresh_token" is a response field name, not a hardcoded secret (B105 FP).
-        return {"status": "pending", "device_id": None, "refresh_token": None}  # nosec B105
+        return PollPairingResponse(status="pending")
 
     # Consume the pairing so the refresh token is handed out exactly once.
     await redis_cache.delete(_pairing_key(device_code))
-    return {
-        "status": "approved",
-        "device_id": record.get("device_id"),
-        "refresh_token": record.get("refresh_token"),
-    }
+    return PollPairingResponse(
+        status="approved",
+        device_id=record.get("device_id"),
+        refresh_token=record.get("refresh_token"),
+    )
 
 
 async def rotate_refresh_token(refresh_token: str) -> tuple[str, str, str]:
@@ -364,14 +363,14 @@ async def _create_server_integration(
         published_at=None,
         clone_count=0,
     )
-    await integrations_collection.insert_one(integration.model_dump())
+    await integration_repository.create(integration)
     await add_user_integration(user_id, integration_id, initial_status="connected")
     await invalidate_user_integration_caches(user_id)
 
 
 async def _ensure_server_integration(user_id: str, server: DeviceMCPServer) -> None:
     """Recreate the integration doc if it was deleted out from under a known server."""
-    doc = await integrations_collection.find_one({"integration_id": server.integration_id})
+    doc = await integration_repository.get(server.integration_id)
     if doc is None:
         await _create_server_integration(
             user_id,
@@ -422,7 +421,7 @@ async def _teardown_revoked_device(
     """Post-revocation cleanup: drop the device's server integrations and fan out a
     revoke so whichever pod owns the live socket closes it immediately."""
     for integration_id in integration_ids:
-        await integrations_collection.delete_one({"integration_id": integration_id})
+        await integration_repository.delete(integration_id)
         await remove_user_integration(user_id, integration_id)
     await request_revoke(device_id)
 

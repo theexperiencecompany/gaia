@@ -1,0 +1,34 @@
+# gaia-redis-evictions — fires when Redis has evicted keys in the last 10m.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-redis-evictions fires when keys were evicted
+    interval: 1m
+    input_series:
+      - series: 'redis_evicted_keys_total{instance="redis:6379"}'
+        values: '1+1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-evictions
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: redis
+              instance: redis:6379
+            exp_annotations:
+              description: >-
+                Data loss is happening now, not merely threatened. Enqueued ARQ jobs can vanish so reminders and workflows silently never run, in-flight SSE buffers can be evicted mid-response so chat replies truncate, and rate-limit counters reset. This is the companion to the Redis memory warning — that one predicts, this one confirms.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-redis-evictions
+              __dashboardUid__: gaia-databases
+              __panelId__: '12'
+
+  - name: gaia-redis-evictions stays quiet when nothing was evicted
+    interval: 1m
+    input_series:
+      - series: 'redis_evicted_keys_total{instance="redis:6379"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-redis-evictions
+        exp_alerts: []

@@ -14,10 +14,10 @@ research helpers.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 
 from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_default_llm
 from app.constants.integrations import (
@@ -86,7 +86,7 @@ async def infer_integration_category(
 
     # ``.text`` flattens the message's content blocks to a string; ``.content``
     # may be a list (Gemini), whose repr would never match a category.
-    category = response.text.strip().lower()
+    category = cast(BaseMessage, response).text.strip().lower()
     if category not in INTEGRATION_CATEGORIES:
         log.warning(
             f"{LogTag.INTEGRATION} LLM returned invalid category '{category}' for integration "

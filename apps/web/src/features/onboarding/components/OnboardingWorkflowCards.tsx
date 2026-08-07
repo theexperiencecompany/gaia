@@ -31,6 +31,7 @@ interface OnboardingWorkflow {
     cron_expression?: string;
     timezone?: string;
   };
+  missing_integrations?: Array<{ id: string; name: string }>;
 }
 
 interface OnboardingWorkflowCardsProps {
@@ -113,6 +114,7 @@ function OnboardingWorkflowCardsImpl({
                 showExecutions={false}
                 showActivationStatus={false}
                 onCardClick={() => handleCardClick(workflow.id)}
+                missingIntegrations={workflow.missing_integrations}
               />
             </m.div>
           );
