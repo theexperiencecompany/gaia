@@ -1,5 +1,6 @@
 import { Button } from "@heroui/button";
 import { Spinner } from "@heroui/spinner";
+import { Tooltip } from "@heroui/tooltip";
 import { Cancel01Icon } from "@icons";
 import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
@@ -105,11 +106,21 @@ const FilePreview: React.FC<FilePreviewProps> = ({ files, onRemove }) => {
                   />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <p className="truncate text-sm font-medium text-white">
-                    {file.name.length > 18
-                      ? `${file.name.substring(0, 15)}...`
-                      : file.name}
-                  </p>
+                  {file.name.length > 18 ? (
+                    <Tooltip
+                      content={file.name}
+                      placement="top-start"
+                      showArrow
+                    >
+                      <p className="truncate text-sm font-medium text-white">
+                        {file.name.substring(0, 15)}...
+                      </p>
+                    </Tooltip>
+                  ) : (
+                    <p className="truncate text-sm font-medium text-white">
+                      {file.name}
+                    </p>
+                  )}
                   <div className="flex items-center">
                     <span className="text-xs text-zinc-400">
                       {file.size !== undefined
