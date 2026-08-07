@@ -109,9 +109,23 @@ class BotAuthMiddleware(BaseHTTPMiddleware):
     def _verify_api_key(self, api_key: str) -> bool:
         bot_api_key = getattr(settings, "GAIA_BOT_API_KEY", None)
         if not bot_api_key:
+            # The API has no bot key configured at all — every bot request is
+            # silently rejected today. That is exactly the "Authentication
+            # required" dead-end the harness hits when the API was booted
+            # before GAIA_BOT_API_KEY was set. Fail loud instead.
+            log.warning(
+                f"{LogTag.API} Bot API key rejected: GAIA_BOT_API_KEY is not configured",
+                bot_auth_reason="server_key_unset",
+            )
             return False
         # Timing-safe comparison to avoid leaking the key via response-time diffs.
-        return secrets.compare_digest(api_key.encode(), bot_api_key.encode())
+        if not secrets.compare_digest(api_key.encode(), bot_api_key.encode()):
+            log.warning(
+                f"{LogTag.API} Bot API key rejected: X-Bot-API-Key does not match",
+                bot_auth_reason="key_mismatch",
+            )
+            return False
+        return True
 
     async def _authenticate_platform(
         self, platform: str, platform_user_id: str
