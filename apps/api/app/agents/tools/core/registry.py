@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import ItemsView, Iterator, KeysView, Mapping
+from collections.abc import ItemsView, Iterator, KeysView, Mapping, Sequence, ValuesView
+from typing import cast
 
 from langchain_core.tools import BaseTool
 
@@ -8,7 +9,7 @@ from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.oauth_models import OAuthIntegration
 from app.services.composio.composio_service import get_composio_service
-from app.services.mcp.mcp_tools_service import store_mcp_tools_batch
+from app.services.mcp.mcp_tools_service import RawToolMetadata, store_mcp_tools_batch
 from shared.py.wide_events import log
 
 # Desktop-executed tools (screenshot, clipboard, ...) — discovery and binding
@@ -62,7 +63,7 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         """Add extra tools (like handoff) that aren't in the registry."""
         self._extra_tools.update(other)
 
-    def values(self):
+    def values(self) -> ValuesView[BaseTool]:
         """Return all tool values for ToolNode initialization."""
         all_tools = dict(self._registry._get_tool_dict_internal())
         all_tools.update(self._extra_tools)
@@ -149,16 +150,16 @@ class ToolCategory:
         is_core: bool = False,
         name: str | None = None,
         destructive: bool | None = None,
-    ):
+    ) -> None:
         """Add a tool to this category."""
         self.tools.append(Tool(tool=tool, name=name, is_core=is_core, destructive=destructive))
 
     def add_tools(
         self,
-        tools: list[BaseTool],
+        tools: Sequence[BaseTool],
         is_core: bool = False,
         destructive_tools: set[str] | None = None,
-    ):
+    ) -> None:
         """Add multiple tools to this category.
 
         ``destructive_tools`` is a curated set of tool names: when provided,
@@ -201,21 +202,21 @@ class ToolRegistry:
         # scanning every category.
         self._tools_by_name: dict[str, tuple[str, Tool]] = {}
 
-    async def setup(self):
+    def setup(self) -> None:
         self._initialize_categories()
 
     def _add_category(
         self,
         name: str,
-        tools: list[BaseTool] | None = None,
-        core_tools: list[BaseTool] | None = None,
+        tools: Sequence[BaseTool] | None = None,
+        core_tools: Sequence[BaseTool] | None = None,
         space: str = "general",
         require_integration: bool = False,
         integration_name: str | None = None,
         is_delegated: bool = False,
         internal: bool = False,
         destructive_tools: set[str] | None = None,
-    ):
+    ) -> None:
         """Helper to create and register a category.
 
         ``destructive_tools`` is the curated HIL risk set for this category
@@ -262,7 +263,7 @@ class ToolRegistry:
             f"{len(category.tools)} replacing={replacing} (was {prior_tools_count})"
         )
 
-    def _initialize_categories(self):
+    def _initialize_categories(self) -> None:
         """Initialize core tool categories. Provider tools are loaded lazily.
 
         HIL INVARIANT: every internal category passes an explicit
@@ -412,7 +413,7 @@ class ToolRegistry:
         space_name: str,
         specific_tools: list[str] | None = None,
         exclude_tools: list[str] | None = None,
-    ):
+    ) -> ToolCategory:
         """
         Register provider tools on-demand when subagent is created.
         Tools are loaded from Composio and indexed in ChromaDB.
@@ -485,7 +486,7 @@ class ToolRegistry:
             )
         ]
 
-        mongo_batch: list[tuple[str, list[dict]]] = []
+        mongo_batch: list[tuple[str, list[RawToolMetadata]]] = []
         total = 0
 
         async def load_metadata(integration: OAuthIntegration) -> None:
@@ -553,7 +554,7 @@ class ToolRegistry:
         )
         return total
 
-    async def _index_category_tools(self, category_name: str):
+    async def _index_category_tools(self, category_name: str) -> None:
         """Index tools from a category into ChromaDB store.
 
         Delegates all caching and diff logic to index_tools_to_store(),
@@ -614,9 +615,10 @@ class ToolRegistry:
         return None
 
     def get_all_category_objects(
-        self, ignore_categories: list[str] = []
+        self, ignore_categories: list[str] | None = None
     ) -> dict[str, ToolCategory]:
         """Get all categories as ToolCategory objects."""
+        ignore_categories = ignore_categories or []
         return {
             name: category
             for name, category in self._categories.items()
@@ -739,7 +741,9 @@ async def get_tool_registry() -> ToolRegistry:
     if tool_registry is None:
         raise RuntimeError("ToolRegistry is not available")
 
-    return tool_registry
+    # providers.aget declares -> Any | None; init_tool_registry (below) always
+    # registers a real ToolRegistry instance under this provider name.
+    return cast(ToolRegistry, tool_registry)
 
 
 @lazy_provider(
@@ -748,7 +752,7 @@ async def get_tool_registry() -> ToolRegistry:
     strategy=MissingKeyStrategy.ERROR,
     auto_initialize=True,
 )
-async def init_tool_registry():
+async def init_tool_registry() -> ToolRegistry:
     tool_registry = ToolRegistry()
-    await tool_registry.setup()
+    tool_registry.setup()
     return tool_registry

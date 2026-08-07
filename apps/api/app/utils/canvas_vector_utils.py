@@ -6,12 +6,23 @@ tracked todos. Follows the same pattern as todo_vector_utils.py.
 """
 
 from datetime import UTC, datetime
+from typing import Any, TypedDict
 
 from app.constants.log_tags import LogTag
 from app.db.chroma.chromadb import ChromaClient
 from shared.py.wide_events import log
 
 COLLECTION_NAME = "gaia_canvas"
+
+
+class CanvasSearchMatch(TypedDict):
+    """One canvas hit from `search_canvas_context`, rendered as a line by the tool."""
+
+    todo_id: str
+    title: str
+    score: float
+    snippet: str
+    completed: bool
 
 
 async def store_canvas_embedding(
@@ -125,18 +136,15 @@ async def search_canvas_context(
     user_id: str,
     top_k: int = 10,
     include_completed: bool = True,
-) -> list[dict]:
-    """Semantic search across all canvas content for a user.
-
-    Returns list of {todo_id, title, score, snippet, completed} dicts.
-    """
+) -> list[CanvasSearchMatch]:
+    """Semantic search across all canvas content for a user."""
     try:
         chroma_collection = await ChromaClient.get_langchain_client(
             collection_name=COLLECTION_NAME, create_if_not_exists=True
         )
 
         if include_completed:
-            where_filter: dict = {"user_id": str(user_id)}
+            where_filter: dict[str, Any] = {"user_id": str(user_id)}
         else:
             where_filter = {
                 "$and": [
@@ -151,7 +159,7 @@ async def search_canvas_context(
             filter=where_filter,
         )
 
-        matches = []
+        matches: list[CanvasSearchMatch] = []
         for doc, score in results:
             meta = doc.metadata if hasattr(doc, "metadata") else {}
             matches.append(

@@ -81,8 +81,8 @@ class TestGetConfigOptions:
             )
 
         assert len(result) == 1
-        assert result[0]["value"] == "db1"
-        assert result[0]["label"] == "My Database"
+        assert result[0].value == "db1"
+        assert result[0].label == "My Database"
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.get_composio_service")
@@ -109,7 +109,7 @@ class TestGetConfigOptions:
                 "notion_page_updated", "page_id", "u1", "notion"
             )
 
-        assert result[0]["value"] == "pg1"
+        assert result[0].value == "pg1"
 
     @pytest.mark.asyncio
     @patch("app.services.triggers.handlers.notion.get_composio_service")
@@ -206,7 +206,7 @@ class TestGetConfigOptions:
             )
 
         assert len(result) == 1
-        assert result[0]["label"] == "Untitled"
+        assert result[0].label == "Untitled"
 
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ from mcp.types import (
 from pydantic import AnyHttpUrl
 
 from app.constants.log_tags import LogTag
+from app.models.mcp_config import McpAuthChallenge, OAuthErrorResponse
 from shared.py.wide_events import log
 
 # Sent in the MCP-Protocol-Version header on OAuth discovery/token requests for
@@ -85,13 +86,9 @@ def oauth_token_expiry(expires_in: int | None) -> datetime | None:
 class OAuthSecurityError(Exception):
     """Raised when OAuth security requirements are not met."""
 
-    pass
-
 
 class OAuthDiscoveryError(Exception):
     """Raised when OAuth discovery fails."""
-
-    pass
 
 
 def validate_https_url(url: str, allow_localhost: bool = True) -> None:
@@ -181,7 +178,7 @@ def parse_rejected_scopes(error_description: str | None) -> set[str]:
     return {match.group(1)} if match else set()
 
 
-async def extract_auth_challenge(server_url: str) -> dict:
+async def extract_auth_challenge(server_url: str) -> McpAuthChallenge:
     """
     Probe MCP server and parse full WWW-Authenticate challenge per MCP spec.
 
@@ -217,7 +214,7 @@ async def extract_auth_challenge(server_url: str) -> dict:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
             if response.status_code == 401:
-                result: dict[str, str] = {"raw": response.headers.get("WWW-Authenticate", "")}
+                result: McpAuthChallenge = {"raw": response.headers.get("WWW-Authenticate", "")}
 
                 rm_value = extract_resource_metadata_from_www_auth(response)
                 if rm_value:
@@ -457,11 +454,13 @@ async def introspect_token(
     client_id: str | None = None,
     client_secret: str | None = None,
     timeout: int = 10,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Introspect an OAuth token per RFC 7662.
 
     Returns the introspection response dict (with an ``active`` field), or None
-    if introspection failed.
+    if introspection failed. Stays ``dict[str, Any]``: RFC 7662 fixes only
+    ``active`` and lets the authorization server add any claims it likes, so the
+    body is an unmodelled provider payload (Type Safety item 8).
     """
     log.set(
         operation="introspect_token",
@@ -501,7 +500,7 @@ async def introspect_token(
             )
 
             if response.status_code == 200:
-                result = response.json()
+                result: dict[str, Any] = response.json()
                 log.debug(f"{LogTag.MCP} Token introspection result: active={result.get('active')}")
                 return result
 
@@ -518,9 +517,9 @@ async def introspect_token(
         return None
 
 
-def parse_oauth_error_response(response: Any) -> dict:
+def parse_oauth_error_response(response: httpx.Response) -> OAuthErrorResponse:
     """Parse an OAuth error response per RFC 6749 Section 5.2."""
-    result = {
+    result: OAuthErrorResponse = {
         "error": "unknown_error",
         "error_description": None,
         "error_uri": None,

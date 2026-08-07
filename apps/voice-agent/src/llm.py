@@ -220,10 +220,13 @@ class CustomLLM(LLM):
 
     # The base class declares chat() -> LLMStream, but the LiveKit pipeline calls it as
     # `async with llm.chat(...) as stream: async for chunk in stream:`, which is exactly
-    # what @asynccontextmanager + yield gen() provides
+    # what @asynccontextmanager + yield gen() provides.
+    # The pipeline also passes tools/tool_choice/conn_options (voice/agent.py), which
+    # this override does not use — the catch-all has to stay or those calls TypeError.
+    # `object`, not Any: nothing here ever reads them.
     @asynccontextmanager
     async def chat(  # type: ignore[override]
-        self, *, chat_ctx: ChatContext, **kwargs: Any
+        self, *, chat_ctx: ChatContext, **_kwargs: object
     ) -> AsyncGenerator[AsyncGenerator[ChatChunk, None], None]:
         """Stream SSE from the backend and yield ChatChunks for TTS."""
 

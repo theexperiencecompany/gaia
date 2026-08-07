@@ -4,6 +4,7 @@ import datetime
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 
 from app.constants.log_tags import LogTag
 from app.models.common_models import GatherContextInput
@@ -17,13 +18,14 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GOOGLEMEET")
     def CUSTOM_GATHER_CONTEXT(
         request: GatherContextInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Get Google Meet context snapshot: upcoming meetings with Meet links.
 
         Zero required parameters. Returns user profile and scheduled Meet calls.
         """
+        del request, execute_request  # unused: framework-mandated custom-tool signature
         user_id = auth_credentials.get("user_id")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")

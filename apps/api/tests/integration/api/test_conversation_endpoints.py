@@ -9,6 +9,12 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.models.conversation_models import (
+    ConversationDocument,
+    ConversationListResponse,
+    CreateConversationResponse,
+)
+
 
 @pytest.mark.integration
 class TestConversationEndpoints:
@@ -24,13 +30,13 @@ class TestConversationEndpoints:
     )
     async def test_get_conversations_returns_200(self, mock_get_convos, test_client):
         """GET /api/v1/conversations should return 200 with mocked service."""
-        mock_get_convos.return_value = {
-            "conversations": [],
-            "total": 0,
-            "page": 1,
-            "limit": 10,
-            "total_pages": 1,
-        }
+        mock_get_convos.return_value = ConversationListResponse(
+            conversations=[],
+            total=0,
+            page=1,
+            limit=10,
+            total_pages=1,
+        )
         response = await test_client.get("/api/v1/conversations")
         assert response.status_code == 200
         data = response.json()
@@ -59,12 +65,12 @@ class TestConversationEndpoints:
     )
     async def test_create_conversation_returns_200(self, mock_create, test_client):
         """POST /api/v1/conversations should return 200 on success."""
-        mock_create.return_value = {
-            "conversation_id": "conv-123",
-            "user_id": "integration-test-user-1",
-            "createdAt": "2024-01-01T00:00:00+00:00",
-            "detail": "Conversation created successfully",
-        }
+        mock_create.return_value = CreateConversationResponse(
+            conversation_id="conv-123",
+            user_id="integration-test-user-1",
+            createdAt="2024-01-01T00:00:00+00:00",
+            detail="Conversation created successfully",
+        )
         response = await test_client.post(
             "/api/v1/conversations",
             json={
@@ -100,11 +106,12 @@ class TestConversationEndpoints:
     )
     async def test_get_single_conversation_returns_200(self, mock_get_convo, test_client):
         """GET /api/v1/conversations/{id} should return 200."""
-        mock_get_convo.return_value = {
-            "conversation_id": "conv-456",
-            "description": "A conversation",
-            "messages": [],
-        }
+        mock_get_convo.return_value = ConversationDocument(
+            conversation_id="conv-456",
+            user_id="integration-test-user-1",
+            description="A conversation",
+            messages=[],
+        )
         response = await test_client.get("/api/v1/conversations/conv-456")
         assert response.status_code == 200
         data = response.json()

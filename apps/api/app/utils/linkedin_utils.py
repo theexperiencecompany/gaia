@@ -11,7 +11,11 @@ upload endpoint with the authenticated headers.
 from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.services.composio.proxy_client import proxy_request_sync
+from app.models.composio_schemas.linkedin import (
+    LinkedInInitializeUploadResponse,
+    LinkedInUserInfo,
+)
+from app.services.composio.proxy_client import ProxyMethod, proxy_request_sync
 from shared.py.wide_events import log
 
 LINKEDIN_API_BASE = "https://api.linkedin.com/v2"
@@ -32,17 +36,22 @@ def _proxy(
     user_id: str,
     *,
     endpoint: str,
-    method: str,
+    method: ProxyMethod,
     body: dict[str, Any] | None = None,
     query: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
     binary_body: dict[str, str] | None = None,
-) -> Any:
+) -> object:
+    """Send one LinkedIn request through the Composio proxy.
+
+    Returns ``object``: each endpoint answers a different JSON shape, so callers
+    validate it into a real model instead of reading fields off it directly.
+    """
     return proxy_request_sync(
         user_id=user_id,
         toolkit=LINKEDIN_TOOLKIT,
         endpoint=endpoint,
-        method=method,  # type: ignore[arg-type]
+        method=method,
         body=body,
         query=query,
         headers=headers,
@@ -59,10 +68,11 @@ def get_author_urn(user_id: str, organization_id: str | None = None) -> str:
         return f"urn:li:organization:{organization_id}"
 
     try:
-        data = _proxy(user_id, endpoint=f"{LINKEDIN_API_BASE}/userinfo", method="GET")
-        sub = (data or {}).get("sub")
-        if sub:
-            return f"urn:li:person:{sub}"
+        info = LinkedInUserInfo.model_validate(
+            _proxy(user_id, endpoint=f"{LINKEDIN_API_BASE}/userinfo", method="GET") or {}
+        )
+        if info.sub:
+            return f"urn:li:person:{info.sub}"
     except Exception as e:
         log.error(f"{LogTag.INTEGRATION} Error getting user info: {e}")
 
@@ -81,16 +91,19 @@ def upload_image_from_url(
     log.set(operation="upload_image", image_url=image_url, author_urn=author_urn)
 
     try:
-        init_result = _proxy(
-            user_id,
-            endpoint=f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
-            method="POST",
-            body={"initializeUploadRequest": {"owner": author_urn}},
-            headers=_restli_headers(),
+        init_result = LinkedInInitializeUploadResponse.model_validate(
+            _proxy(
+                user_id,
+                endpoint=f"{LINKEDIN_REST_BASE}/images?action=initializeUpload",
+                method="POST",
+                body={"initializeUploadRequest": {"owner": author_urn}},
+                headers=_restli_headers(),
+            )
+            or {}
         )
 
-        upload_url = (init_result or {}).get("value", {}).get("uploadUrl")
-        image_urn = (init_result or {}).get("value", {}).get("image")
+        upload_url = init_result.value.upload_url if init_result.value else None
+        image_urn = init_result.value.image if init_result.value else None
 
         if not upload_url or not image_urn:
             log.error(f"{LogTag.INTEGRATION} Failed to get upload URL from LinkedIn")
@@ -121,16 +134,19 @@ def upload_document_from_url(
     log.set(operation="upload_document", document_url=document_url, author_urn=author_urn)
 
     try:
-        init_result = _proxy(
-            user_id,
-            endpoint=f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
-            method="POST",
-            body={"initializeUploadRequest": {"owner": author_urn}},
-            headers=_restli_headers(),
+        init_result = LinkedInInitializeUploadResponse.model_validate(
+            _proxy(
+                user_id,
+                endpoint=f"{LINKEDIN_REST_BASE}/documents?action=initializeUpload",
+                method="POST",
+                body={"initializeUploadRequest": {"owner": author_urn}},
+                headers=_restli_headers(),
+            )
+            or {}
         )
 
-        upload_url = (init_result or {}).get("value", {}).get("uploadUrl")
-        document_urn = (init_result or {}).get("value", {}).get("document")
+        upload_url = init_result.value.upload_url if init_result.value else None
+        document_urn = init_result.value.document if init_result.value else None
 
         if not upload_url or not document_urn:
             log.error(f"{LogTag.INTEGRATION} Failed to get upload URL from LinkedIn")

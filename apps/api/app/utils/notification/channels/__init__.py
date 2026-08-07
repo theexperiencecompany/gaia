@@ -1,4 +1,4 @@
-from app.utils.notification.channels.base import ChannelAdapter
+from app.utils.notification.channels.base import ChannelAdapter, TContent
 from app.utils.notification.channels.discord import DiscordChannelAdapter
 from app.utils.notification.channels.email import EmailChannelAdapter
 from app.utils.notification.channels.external import ExternalPlatformAdapter
@@ -14,6 +14,7 @@ __all__ = [
     "ExternalPlatformAdapter",
     "InAppChannelAdapter",
     "SlackChannelAdapter",
+    "TContent",
     "TelegramChannelAdapter",
     "WhatsAppChannelAdapter",
 ]

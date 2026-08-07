@@ -5,7 +5,7 @@ Handles Notion-specific trigger logic.
 """
 
 import asyncio
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -16,6 +16,7 @@ from app.models.composio_schemas import (
     NotionPageAddedPayload,
     NotionPageUpdatedPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     NotionAllPageEventsConfig,
     NotionNewPageInDbConfig,
@@ -31,19 +32,19 @@ from shared.py.wide_events import log
 class NotionTriggerHandler(TriggerHandler):
     """Handler for Notion triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "notion_new_page_in_db",
         "notion_page_updated",
         "notion_all_page_events",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "NOTION_PAGE_ADDED_TO_DATABASE",
         "NOTION_PAGE_UPDATED_TRIGGER",
         "NOTION_ALL_PAGE_EVENTS_TRIGGER",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "notion_new_page_in_db": "NOTION_PAGE_ADDED_TO_DATABASE",
         "notion_page_updated": "NOTION_PAGE_UPDATED_TRIGGER",
         "notion_all_page_events": "NOTION_ALL_PAGE_EVENTS_TRIGGER",
@@ -64,8 +65,8 @@ class NotionTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
+        **kwargs: str,
+    ) -> list[TriggerOption]:
         """Get dynamic options for Notion trigger config fields."""
         try:
             composio_service = get_composio_service()
@@ -111,7 +112,7 @@ class NotionTriggerHandler(TriggerHandler):
                     continue
 
                 label = item.title or "Untitled"
-                options.append({"value": item.id, "label": label})
+                options.append(TriggerOption(value=item.id, label=label))
 
             log.info(f"{LogTag.TRIGGER} Returning {len(options)} Notion {field_name} options")
             return options
@@ -123,7 +124,7 @@ class NotionTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

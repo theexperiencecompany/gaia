@@ -1,17 +1,45 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from app.constants.log_tags import LogTag
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
+    ActionStyle,
+    ActionType,
     ChannelDeliveryStatus,
     NotificationRequest,
+    NotificationType,
 )
 from app.utils.notification.channels.base import ChannelAdapter
 from shared.py.wide_events import log
 
 
-class InAppChannelAdapter(ChannelAdapter):
+class InAppActionPayload(TypedDict):
+    """One action button as it appears inside an ``InAppPayload``."""
+
+    id: str
+    type: ActionType
+    label: str
+    style: ActionStyle
+    requires_confirmation: bool
+    confirmation_message: str | None
+    config: dict[str, Any] | None
+
+
+class InAppPayload(TypedDict):
+    """The ``notification.new`` WebSocket frame body."""
+
+    id: str
+    title: str
+    body: str
+    type: NotificationType
+    priority: int
+    actions: list[InAppActionPayload]
+    metadata: dict[str, Any]
+    created_at: str
+
+
+class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
     """In-app notification channel adapter.
 
     Pushes the notification payload to the connected client in real time via
@@ -38,7 +66,7 @@ class InAppChannelAdapter(ChannelAdapter):
         # (the list is empty in that mode).
         return True
 
-    async def transform(self, notification: NotificationRequest) -> dict[str, Any]:
+    async def transform(self, notification: NotificationRequest) -> InAppPayload:
         """Build the WebSocket payload for the in-app ``notification.new`` event."""
         return {
             "id": notification.id,
@@ -62,12 +90,12 @@ class InAppChannelAdapter(ChannelAdapter):
             "created_at": notification.created_at.isoformat(),
         }
 
-    async def deliver(self, content: dict[str, Any], user_id: str) -> ChannelDeliveryStatus:
+    async def deliver(self, content: InAppPayload, user_id: str) -> ChannelDeliveryStatus:
         """Push the in-app payload to the user's live WebSocket connection."""
         log.set(
             operation="inapp_deliver",
             user_id=user_id,
-            notification_id=content.get("id"),
+            notification_id=content["id"],
             channel_type=CHANNEL_TYPE_INAPP,
         )
         try:
@@ -79,7 +107,7 @@ class InAppChannelAdapter(ChannelAdapter):
                 },
             )
             log.info(
-                f"{LogTag.NOTIFICATION} In-app notification delivered to user {user_id}: {content.get('title')}"
+                f"{LogTag.NOTIFICATION} In-app notification delivered to user {user_id}: {content['title']}"
             )
             return self._success()
         except Exception as e:

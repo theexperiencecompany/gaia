@@ -4,7 +4,6 @@ export type {
   PaginationMeta,
   Project,
   ProjectCreate,
-  ProjectUpdate,
   SubTask,
   Todo,
   TodoAssignee,

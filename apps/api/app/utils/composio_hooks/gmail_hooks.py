@@ -6,7 +6,8 @@ response processing for raw Gmail API data, and schema modifiers
 for customizing tool descriptions and defaults.
 """
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, TypeVar
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -18,6 +19,15 @@ from app.agents.templates.mail_templates import (
     process_list_drafts_response,
 )
 from app.constants.log_tags import LogTag
+from app.models.composio_schemas.google_people import (
+    ContactCard,
+    ContactSummary,
+    GoogleContactsResponseData,
+    GooglePeopleSearchResponseData,
+    GooglePerson,
+    GooglePersonName,
+    GooglePersonValue,
+)
 from app.utils.markdown_utils import normalize_email_body_to_html
 from shared.py.wide_events import log
 
@@ -35,6 +45,62 @@ _GMAIL_COMPOSE_TOOLS = (
 )
 # Gmail's ``body`` field is named differently across compose tools.
 _GMAIL_BODY_KEYS = ("body", "message_body", "message")
+
+_PersonField = TypeVar("_PersonField", GooglePersonName, GooglePersonValue)
+
+
+def _primary(entries: Sequence[_PersonField]) -> _PersonField | None:
+    """The entry People flagged as primary, else the first one, else None."""
+    if not entries:
+        return None
+    return next(
+        (entry for entry in entries if entry.metadata is not None and entry.metadata.primary),
+        entries[0],
+    )
+
+
+def _display_name(name: GooglePersonName | None) -> str | None:
+    """``displayName`` off the primary name, or "Unknown" when People omitted it."""
+    if name is None or "display_name" not in name.model_fields_set:
+        return "Unknown"
+    return name.display_name
+
+
+def _entry_value(entry: GooglePersonValue | None) -> str | None:
+    """``value`` off an email/phone entry, or "" when People omitted it."""
+    if entry is None or "value" not in entry.model_fields_set:
+        return ""
+    return entry.value
+
+
+def _contact_card(person: GooglePerson) -> ContactCard:
+    """Flatten a People API person to the primary name/email/phone the UI shows.
+
+    Every fallback keys off ``model_fields_set``, not on the value being None,
+    because that is what the original ``.get(key, default)`` did: the default
+    fires only when People omitted the key, while a key sent as an explicit
+    ``null`` stays ``None``. The web client and the LLM have always received that
+    ``None``, so normalizing it here would change a live payload.
+    """
+    return {
+        "name": _display_name(_primary(person.names)),
+        "email": _entry_value(_primary(person.email_addresses)),
+        "phone": _entry_value(_primary(person.phone_numbers)),
+        "resource_name": (
+            person.resource_name if "resource_name" in person.model_fields_set else ""
+        ),
+    }
+
+
+def _contact_summary(card: ContactCard) -> ContactSummary:
+    """Trim a contact card for the LLM: name always, email/phone only when known."""
+    summary: ContactSummary = {"name": card["name"]}
+    if card["email"]:
+        summary["email"] = card["email"]
+    if card["phone"]:
+        summary["phone"] = card["phone"]
+    return summary
+
 
 # ====================== SCHEMA MODIFIERS ======================
 # These modifiers customize tool schemas before they are seen by agents
@@ -68,7 +134,10 @@ def gmail_compose_hide_is_html_schema_modifier(tool: str, toolkit: str, schema: 
     writes Markdown, Gmail renders ``**bold**`` as literal asterisks). The
     agent writes Markdown — everything else is our problem.
     """
-    input_params = schema.input_parameters
+    # `input_parameters` is typed as a Dict by Composio's SDK, but callers in practice
+    # (including this codebase's own test doubles) don't always hand us a real,
+    # validated `Tool`, so this stays defensive against a non-dict value.
+    input_params: object = schema.input_parameters
     if not isinstance(input_params, dict):
         return schema
     props = input_params.get("properties")
@@ -109,7 +178,7 @@ def gmail_compose_require_subject_schema_modifier(tool: str, toolkit: str, schem
 @register_schema_modifier(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_fetch_message_schema_modifier(tool: str, toolkit: str, schema: Tool) -> Tool:
     """Default GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID to format='full' for detailed content."""
-    input_params = schema.input_parameters
+    input_params: object = schema.input_parameters
     if not isinstance(input_params, dict):
         return schema
 
@@ -128,7 +197,7 @@ def gmail_hide_user_id_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
     always be ``"me"``. Exposing it baits the agent into passing the literal
     address, which returns zero results; removing it forces Composio's default.
     """
-    input_params = schema.input_parameters
+    input_params: object = schema.input_parameters
     if not isinstance(input_params, dict):
         return schema
     props = input_params.get("properties")
@@ -260,7 +329,7 @@ def gmail_compose_before_hook(
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID"])
 def gmail_message_detail_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+) -> dict[str, Any]:
     """Process single message response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -276,7 +345,9 @@ def gmail_message_detail_after_hook(
 
 
 @register_after_hook(tools=["GMAIL_FETCH_MESSAGE_BY_THREAD_ID"])
-def gmail_thread_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_thread_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process thread response and send data to frontend."""
     try:
         writer = get_stream_writer()
@@ -322,7 +393,9 @@ def gmail_thread_after_hook(tool: str, toolkit: str, response: ToolExecutionResp
 
 
 @register_after_hook(tools=["GMAIL_LIST_DRAFTS"])
-def gmail_drafts_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_drafts_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process drafts list response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -338,7 +411,9 @@ def gmail_drafts_after_hook(tool: str, toolkit: str, response: ToolExecutionResp
 
 
 @register_after_hook(tools=["GMAIL_GET_DRAFT"])
-def gmail_draft_detail_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_draft_detail_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process single draft response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -354,21 +429,26 @@ def gmail_draft_detail_after_hook(tool: str, toolkit: str, response: ToolExecuti
 
 
 @register_after_hook(tools=["GMAIL_FETCH_ATTACHMENT"])
-def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> object:
     """Process attachment response to extract metadata only."""
     try:
+        # Composio's envelope types `data` as a plain Dict, but this endpoint has been
+        # observed returning a non-dict `data` (e.g. a bare string) on some error paths,
+        # so both branches below pass the raw value through unprocessed.
+        data: object = response["data"]
+
         if not response["successful"]:
-            return response["data"]
+            return data
 
         # Extract only metadata, not the base64 content
-        if not isinstance(response["data"], dict):
-            return response["data"]
+        if not isinstance(data, dict):
+            return data
 
         processed_response = {
-            "attachmentId": response["data"].get("attachmentId", ""),
-            "filename": response["data"].get("filename", ""),
-            "mimeType": response["data"].get("mimeType", ""),
-            "size": response["data"].get("size", 0),
+            "attachmentId": data.get("attachmentId", ""),
+            "filename": data.get("filename", ""),
+            "mimeType": data.get("mimeType", ""),
+            "size": data.get("size", 0),
             "message": "Attachment content available but not displayed to preserve context",
         }
 
@@ -383,15 +463,15 @@ def gmail_attachment_after_hook(tool: str, toolkit: str, response: ToolExecution
 
 
 @register_before_hook(tools=["GMAIL_SEND_DRAFT"])
-def gmail_send_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_send_draft_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle draft sending progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
-            return params
-
-        payload = {"progress": "Sending draft..."}
-        writer(payload)
+        if writer is not None:
+            payload = {"progress": "Sending draft..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_send_draft_before_hook: {e}")
@@ -400,17 +480,17 @@ def gmail_send_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
 
 
 @register_before_hook(tools=["GMAIL_TRASH_MESSAGE", "GMAIL_UNTRASH_MESSAGE"])
-def gmail_trash_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_trash_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle message trash/untrash progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
-            return params
+        if writer is not None:
+            action = "Moving to trash" if tool == "GMAIL_TRASH_MESSAGE" else "Restoring from trash"
 
-        action = "Moving to trash" if tool == "GMAIL_TRASH_MESSAGE" else "Restoring from trash"
-
-        payload = {"progress": f"{action}..."}
-        writer(payload)
+            payload = {"progress": f"{action}..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_trash_before_hook for {tool}: {e}")
@@ -419,11 +499,13 @@ def gmail_trash_before_hook(tool: str, toolkit: str, params: Any) -> Any:
 
 
 @register_before_hook(tools=["GMAIL_CREATE_LABEL", "GMAIL_UPDATE_LABEL", "GMAIL_DELETE_LABEL"])
-def gmail_label_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_label_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle label management progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
+        if writer is None:
             return params
 
         arguments = params.get("arguments", {})
@@ -447,11 +529,13 @@ def gmail_label_before_hook(tool: str, toolkit: str, params: Any) -> Any:
 
 
 @register_before_hook(tools=["GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL_REMOVE_LABEL"])
-def gmail_modify_labels_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_modify_labels_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle message label modification progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
+        if writer is None:
             return params
 
         arguments = params.get("arguments", {})
@@ -475,16 +559,16 @@ def gmail_modify_labels_before_hook(tool: str, toolkit: str, params: Any) -> Any
 
 
 @register_before_hook(tools=["GMAIL_UPDATE_DRAFT", "GMAIL_DELETE_DRAFT"])
-def gmail_draft_management_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_draft_management_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle draft management progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
-            return params
-
-        action = "Updating" if tool == "GMAIL_UPDATE_DRAFT" else "Deleting"
-        payload = {"progress": f"{action} draft..."}
-        writer(payload)
+        if writer is not None:
+            action = "Updating" if tool == "GMAIL_UPDATE_DRAFT" else "Deleting"
+            payload = {"progress": f"{action} draft..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_draft_management_before_hook for {tool}: {e}")
@@ -493,11 +577,13 @@ def gmail_draft_management_before_hook(tool: str, toolkit: str, params: Any) -> 
 
 
 @register_before_hook(tools=["GMAIL_LIST_DRAFTS"])
-def gmail_list_drafts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_list_drafts_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle drafts listing progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
+        if writer is None:
             return params
 
         arguments = params.get("arguments", {})
@@ -513,15 +599,15 @@ def gmail_list_drafts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
 
 
 @register_before_hook(tools=["GMAIL_GET_DRAFT"])
-def gmail_get_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_get_draft_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle single draft fetching progress."""
     try:
         writer = get_stream_writer()
-        if not writer:  # type: ignore[truthy-function]
-            return params
-
-        payload = {"progress": "Fetching draft details..."}
-        writer(payload)
+        if writer is not None:
+            payload = {"progress": "Fetching draft details..."}
+            writer(payload)
 
     except Exception as e:
         log.error(f"{LogTag.COMPOSIO} Error in gmail_get_draft_before_hook: {e}")
@@ -530,7 +616,9 @@ def gmail_get_draft_before_hook(tool: str, toolkit: str, params: Any) -> Any:
 
 
 @register_before_hook(tools=["GMAIL_GET_CONTACTS"])
-def gmail_get_contacts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_get_contacts_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle contacts fetching with default page size."""
     try:
         arguments = params.get("arguments", {})
@@ -553,7 +641,9 @@ def gmail_get_contacts_before_hook(tool: str, toolkit: str, params: Any) -> Any:
 
 
 @register_before_hook(tools=["GMAIL_SEARCH_PEOPLE"])
-def gmail_search_people_before_hook(tool: str, toolkit: str, params: Any) -> Any:
+def gmail_search_people_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
     """Handle people search progress."""
     try:
         writer = get_stream_writer()
@@ -573,7 +663,9 @@ def gmail_search_people_before_hook(tool: str, toolkit: str, params: Any) -> Any
 
 
 @register_after_hook(tools=["GMAIL_FETCH_EMAIL_BY_ID"])
-def gmail_fetch_by_id_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_fetch_by_id_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process single email fetch response to minimize raw data."""
     try:
         if not response or "error" in response["data"]:
@@ -589,7 +681,9 @@ def gmail_fetch_by_id_after_hook(tool: str, toolkit: str, response: ToolExecutio
 
 
 @register_after_hook(tools=["GMAIL_SEND_DRAFT"])
-def gmail_send_draft_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_send_draft_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process draft sending response."""
     try:
         writer = get_stream_writer()
@@ -626,7 +720,9 @@ def gmail_send_draft_after_hook(tool: str, toolkit: str, response: ToolExecution
 
 
 @register_after_hook(tools=["GMAIL_GET_CONTACTS"])
-def gmail_get_contacts_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_get_contacts_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process contacts list response to minimize raw data."""
     try:
         writer = get_stream_writer()
@@ -634,55 +730,14 @@ def gmail_get_contacts_after_hook(tool: str, toolkit: str, response: ToolExecuti
         if not response or "error" in response["data"]:
             return response["data"]
 
-        response_data = response["data"].get("response_data", {})
-        connections = response_data.get("connections", [])
+        response_data = GoogleContactsResponseData.model_validate(
+            response["data"].get("response_data") or {}
+        )
 
-        # Process contacts for frontend display
-        contact_list = []
-        # Process contacts for LLM (minimal data)
-        llm_contacts = []
-
-        for contact in connections:
-            names = contact.get("names", [])
-            email_addresses = contact.get("emailAddresses", [])
-            phone_numbers = contact.get("phoneNumbers", [])
-
-            primary_name = next(
-                (n for n in names if n.get("metadata", {}).get("primary")),
-                names[0] if names else {},
-            )
-            display_name = primary_name.get("displayName", "Unknown")
-
-            primary_email = next(
-                (e for e in email_addresses if e.get("metadata", {}).get("primary")),
-                email_addresses[0] if email_addresses else {},
-            )
-            email = primary_email.get("value", "")
-
-            phone = ""
-            if phone_numbers:
-                primary_phone = next(
-                    (p for p in phone_numbers if p.get("metadata", {}).get("primary")),
-                    phone_numbers[0],
-                )
-                phone = primary_phone.get("value", "")
-
-            contact_data = {
-                "name": display_name,
-                "email": email,
-                "phone": phone,
-                "resource_name": contact.get("resourceName", ""),
-            }
-
-            contact_list.append(contact_data)
-
-            # Minimal data for LLM
-            llm_contact = {"name": display_name}
-            if email:
-                llm_contact["email"] = email
-            if phone:
-                llm_contact["phone"] = phone
-            llm_contacts.append(llm_contact)
+        contact_list: list[ContactCard] = [
+            _contact_card(person) for person in response_data.connections
+        ]
+        llm_contacts: list[ContactSummary] = [_contact_summary(card) for card in contact_list]
 
         # Send to frontend
         if writer is not None and contact_list:
@@ -706,7 +761,9 @@ def gmail_get_contacts_after_hook(tool: str, toolkit: str, response: ToolExecuti
 
 
 @register_after_hook(tools=["GMAIL_SEARCH_PEOPLE"])
-def gmail_search_people_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def gmail_search_people_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process people search response to minimize raw data."""
     try:
         writer = get_stream_writer()
@@ -714,56 +771,14 @@ def gmail_search_people_after_hook(tool: str, toolkit: str, response: ToolExecut
         if not response or "error" in response["data"]:
             return response["data"]
 
-        response_data = response["data"].get("response_data", {})
-        results = response_data.get("results", [])
+        response_data = GooglePeopleSearchResponseData.model_validate(
+            response["data"].get("response_data") or {}
+        )
 
-        # Process search results for frontend display
-        people_list = []
-        # Process for LLM (minimal data)
-        llm_people = []
-
-        for result in results:
-            person = result.get("person", {})
-            names = person.get("names", [])
-            email_addresses = person.get("emailAddresses", [])
-            phone_numbers = person.get("phoneNumbers", [])
-
-            primary_name = next(
-                (n for n in names if n.get("metadata", {}).get("primary")),
-                names[0] if names else {},
-            )
-            display_name = primary_name.get("displayName", "Unknown")
-
-            primary_email = next(
-                (e for e in email_addresses if e.get("metadata", {}).get("primary")),
-                email_addresses[0] if email_addresses else {},
-            )
-            email = primary_email.get("value", "")
-
-            phone = ""
-            if phone_numbers:
-                primary_phone = next(
-                    (p for p in phone_numbers if p.get("metadata", {}).get("primary")),
-                    phone_numbers[0],
-                )
-                phone = primary_phone.get("value", "")
-
-            person_data = {
-                "name": display_name,
-                "email": email,
-                "phone": phone,
-                "resource_name": person.get("resourceName", ""),
-            }
-
-            people_list.append(person_data)
-
-            # Minimal data for LLM
-            llm_person = {"name": display_name}
-            if email:
-                llm_person["email"] = email
-            if phone:
-                llm_person["phone"] = phone
-            llm_people.append(llm_person)
+        people_list: list[ContactCard] = [
+            _contact_card(result.person) for result in response_data.results
+        ]
+        llm_people: list[ContactSummary] = [_contact_summary(card) for card in people_list]
 
         # Send to frontend
         if writer is not None and people_list:

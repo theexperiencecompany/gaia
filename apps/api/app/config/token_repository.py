@@ -33,7 +33,7 @@ class TokenRepository:
     It does NOT handle WorkOS authentication tokens, which are managed by WorkOSAuthMiddleware.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the token repository."""
 
         self.oauth = OAuth()
@@ -45,7 +45,7 @@ class TokenRepository:
             f"{LogTag.STARTUP} Token repository initialized for managing API tokens (Google, etc.)"
         )
 
-    def _init_oauth_clients(self):
+    def _init_oauth_clients(self) -> None:
         """Initialize OAuth clients for all supported providers."""
         # Google OAuth client
         if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
@@ -65,7 +65,7 @@ class TokenRepository:
                 f"{LogTag.STARTUP} Google OAuth credentials not found, client not registered"
             )
 
-    def _get_token_expiration(self, token_data: dict) -> datetime:
+    def _get_token_expiration(self, token_data: dict[str, Any]) -> datetime:
         """Get token expiration time with fallback logic."""
 
         # Try expires_at first (epoch seconds are UTC).
@@ -402,59 +402,6 @@ class TokenRepository:
                 log.error(f"{LogTag.STARTUP} Error revoking token: {e!s}")
                 await session.rollback()
                 return False
-
-    async def get_token_by_auth_token(
-        self, access_token: str, renew_if_expired: bool = False
-    ) -> OAuth2Token | None:
-        """
-        Retrieve a token using the access token.
-
-        Args:
-            access_token: The access token to search for
-
-        Returns:
-            OAuth2Token if found, None otherwise
-        """
-        async with get_db_session() as session:
-            stmt = select(OAuthToken).where(OAuthToken.access_token == access_token)
-            result = await session.execute(stmt)
-            token_record = result.scalar_one_or_none()
-
-            if not token_record:
-                return None
-
-            # Create OAuth2Token from the record
-            oauth_token = OAuth2Token(
-                params={
-                    "access_token": token_record.access_token,
-                    "refresh_token": token_record.refresh_token,
-                    "token_type": "Bearer",  # nosec B105 - OAuth2 token type, not a password
-                    "expires_at": int(token_record.expires_at.timestamp())
-                    if token_record.expires_at
-                    else None,
-                    "scope": token_record.scopes,
-                }
-            )
-
-            # Log token status for debugging
-            log.debug(
-                f"{LogTag.STARTUP} Token expiry status - is_expired: {oauth_token.is_expired()}, will_renew: {renew_if_expired}"
-            )
-
-            # Check if token is expired
-            if renew_if_expired and oauth_token.is_expired():
-                # Token is expired, attempt to refresh it
-                refreshed_token = await self.refresh_token(
-                    token_record.user_id, token_record.provider
-                )
-                if not refreshed_token:
-                    raise HTTPException(
-                        status_code=401,
-                        detail=f"Failed to refresh {token_record.provider} token",
-                    )
-                return refreshed_token
-
-            return oauth_token
 
 
 # Singleton instance

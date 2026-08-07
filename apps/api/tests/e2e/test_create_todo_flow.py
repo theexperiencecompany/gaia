@@ -21,7 +21,7 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 """
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 import pytest
 
 from app.agents.tools.todo_tools import (
@@ -31,6 +31,13 @@ from app.agents.tools.todo_tools import (
 )
 from tests.e2e.conftest import build_gaia_test_graph
 from tests.helpers import BindableToolsFakeModel
+
+
+def _find_tool_message(messages: list, tool_call_id: str) -> ToolMessage:
+    for msg in messages:
+        if isinstance(msg, ToolMessage) and msg.tool_call_id == tool_call_id:
+            return msg
+    raise AssertionError(f"No ToolMessage for tool_call_id {tool_call_id!r} in {messages}")
 
 
 @pytest.mark.e2e
@@ -297,6 +304,273 @@ class TestCreateTodoFlow:
         )
         assert completed[0]["status"] == "completed", (
             f"update_tasks must update status to 'completed', got '{completed[0]['status']}'"
+        )
+
+    async def test_update_tasks_surfaces_error_for_unknown_task_id(
+        self, thread_config, in_memory_store, memory_saver
+    ):
+        """update_tasks must fail loud when asked to update a task_id that doesn't exist.
+
+        The failure mode being guarded: the agent marks a task done using a stale or
+        hallucinated id, nothing changes, and the tool still reports success — so the
+        model believes the work is tracked when it isn't.
+        """
+        todo_tools = create_todo_tools(source="test")
+        tool_registry = {t.name: t for t in todo_tools}
+
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_plan_unknown",
+                            "name": "plan_tasks",
+                            "args": {"tasks": [{"content": "Real task"}]},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Task planned."),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_update_unknown",
+                            "name": "update_tasks",
+                            "args": {"updates": [{"task_id": "deadbeef", "status": "completed"}]},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Acknowledged."),
+            ]
+        )
+
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry=tool_registry,
+            checkpointer=memory_saver,
+            store=in_memory_store,
+        )
+
+        result_turn1 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Plan a task")]},
+            config=thread_config,
+        )
+        real_id = result_turn1["todos"][0]["id"]
+        assert real_id != "deadbeef"
+
+        result_turn2 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Mark deadbeef done")]},
+            config=thread_config,
+        )
+
+        tool_msg = _find_tool_message(result_turn2["messages"], "call_update_unknown")
+        assert tool_msg.status == "error", (
+            "update_tasks must report an unknown task_id as a tool error, not success. "
+            f"Got status={tool_msg.status!r} content={tool_msg.content!r}"
+        )
+        assert "deadbeef" in tool_msg.content, (
+            f"The error must name the rejected task_id so the model can correct itself. "
+            f"Got: {tool_msg.content!r}"
+        )
+
+        todos = result_turn2["todos"]
+        assert len(todos) == 1
+        assert todos[0]["status"] == "in_progress", (
+            "A rejected update must leave existing todo state untouched"
+        )
+
+    async def test_update_tasks_rejects_whole_batch_when_one_entry_is_invalid(
+        self, thread_config, in_memory_store, memory_saver
+    ):
+        """A batch containing an invalid entry must apply nothing at all.
+
+        Partial application would make the model's retry non-idempotent: the valid
+        `content` addition would land twice once the model fixes the bad task_id and
+        resends the batch.
+        """
+        todo_tools = create_todo_tools(source="test")
+        tool_registry = {t.name: t for t in todo_tools}
+
+        SENTINEL_ID = "SENTINEL"
+
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_plan_batch",
+                            "name": "plan_tasks",
+                            "args": {"tasks": [{"content": "First task"}]},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Task planned."),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_update_batch",
+                            "name": "update_tasks",
+                            "args": {
+                                "updates": [
+                                    {"task_id": SENTINEL_ID, "status": "completed"},
+                                    {"content": "Discovered task"},
+                                    {"task_id": "nosuchid", "status": "in_progress"},
+                                ]
+                            },
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Acknowledged."),
+            ]
+        )
+
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry=tool_registry,
+            checkpointer=memory_saver,
+            store=in_memory_store,
+        )
+
+        result_turn1 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Plan a task")]},
+            config=thread_config,
+        )
+        real_id = result_turn1["todos"][0]["id"]
+        fake_llm.responses[2].tool_calls[0]["args"]["updates"][0]["task_id"] = real_id
+
+        result_turn2 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Update the batch")]},
+            config=thread_config,
+        )
+
+        tool_msg = _find_tool_message(result_turn2["messages"], "call_update_batch")
+        assert tool_msg.status == "error", (
+            f"A batch with an invalid entry must be reported as an error. "
+            f"Got status={tool_msg.status!r} content={tool_msg.content!r}"
+        )
+
+        todos = result_turn2["todos"]
+        contents = [t["content"] for t in todos]
+        assert "Discovered task" not in contents, (
+            "The valid addition must not be applied when a sibling entry is invalid — "
+            f"got todos {contents}"
+        )
+        assert len(todos) == 1
+        assert todos[0]["status"] == "in_progress", (
+            "The valid status change must not be applied when a sibling entry is invalid"
+        )
+
+    async def test_update_tasks_rejects_task_id_without_status(
+        self, thread_config, in_memory_store, memory_saver
+    ):
+        """A task_id with no status is not an update — it must not pass silently."""
+        todo_tools = create_todo_tools(source="test")
+        tool_registry = {t.name: t for t in todo_tools}
+
+        SENTINEL_ID = "SENTINEL"
+
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_plan_nostatus",
+                            "name": "plan_tasks",
+                            "args": {"tasks": [{"content": "Only task"}]},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Task planned."),
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_update_nostatus",
+                            "name": "update_tasks",
+                            "args": {"updates": [{"task_id": SENTINEL_ID}]},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Acknowledged."),
+            ]
+        )
+
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry=tool_registry,
+            checkpointer=memory_saver,
+            store=in_memory_store,
+        )
+
+        result_turn1 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Plan a task")]},
+            config=thread_config,
+        )
+        real_id = result_turn1["todos"][0]["id"]
+        fake_llm.responses[2].tool_calls[0]["args"]["updates"][0]["task_id"] = real_id
+
+        result_turn2 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Touch the task")]},
+            config=thread_config,
+        )
+
+        tool_msg = _find_tool_message(result_turn2["messages"], "call_update_nostatus")
+        assert tool_msg.status == "error", (
+            f"task_id without a status must be rejected. "
+            f"Got status={tool_msg.status!r} content={tool_msg.content!r}"
+        )
+        assert result_turn2["todos"][0]["status"] == "in_progress"
+
+    async def test_update_tasks_rejects_empty_updates_list(
+        self, thread_config, in_memory_store, memory_saver
+    ):
+        """An empty batch changes nothing, so it must not be reported as an update."""
+        todo_tools = create_todo_tools(source="test")
+        tool_registry = {t.name: t for t in todo_tools}
+
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(
+                    content="",
+                    tool_calls=[
+                        {
+                            "id": "call_update_empty",
+                            "name": "update_tasks",
+                            "args": {"updates": []},
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+                AIMessage(content="Acknowledged."),
+            ]
+        )
+
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
+            tool_registry=tool_registry,
+            checkpointer=memory_saver,
+            store=in_memory_store,
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Update nothing")]},
+            config=thread_config,
+        )
+
+        tool_msg = _find_tool_message(result["messages"], "call_update_empty")
+        assert tool_msg.status == "error", (
+            f"An empty updates list must be rejected rather than reported as a change. "
+            f"Got status={tool_msg.status!r} content={tool_msg.content!r}"
         )
 
     async def test_todo_tool_names_match_registry_constants(self):

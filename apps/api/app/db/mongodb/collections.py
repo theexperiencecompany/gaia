@@ -23,14 +23,15 @@ from typing import Any
 from motor.motor_asyncio import AsyncIOMotorCollection
 
 from app.constants.log_tags import LogTag
+from app.db.mongodb.mongodb import MongoDB
 from shared.py.wide_events import log
 
 # Cache for async (Motor) collections
-_collections_cache: dict[str, Any] = {}
-_mongodb_instance = None
+_collections_cache: dict[str, AsyncIOMotorCollection[dict[str, Any]]] = {}
+_mongodb_instance: MongoDB | None = None
 
 
-def _get_mongodb_instance():
+def _get_mongodb_instance() -> MongoDB:
     """Get or create async MongoDB instance (Motor)."""
     global _mongodb_instance
     if _mongodb_instance is None:
@@ -42,7 +43,7 @@ def _get_mongodb_instance():
     return _mongodb_instance
 
 
-def _get_collection(collection_name: str):
+def _get_collection(collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
     """Get async collection with lazy loading and caching."""
     if collection_name not in _collections_cache:
         log.info(f"{LogTag.MONGO} Creating async collection '{collection_name}' (lazy loading)")

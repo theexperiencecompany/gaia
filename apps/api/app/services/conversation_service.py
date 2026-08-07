@@ -16,28 +16,24 @@ from app.models.chat_models import (
     SystemPurpose,
     UpdateMessagesRequest,
 )
-from app.models.conversation_models import ConversationDocument
+from app.models.conversation_models import (
+    BatchSyncResponse,
+    ConversationActionResponse,
+    ConversationDocument,
+    ConversationListResponse,
+    ConversationSyncRow,
+    CreateConversationResponse,
+    DeleteAllConversationsResponse,
+    PinMessageResponse,
+    PinnedMessagesResponse,
+    StarConversationResponse,
+    SystemConversationCreated,
+    UpdateDescriptionResponse,
+    UpdateMessagesResponse,
+)
+from app.models.user_models import AuthenticatedUser
 from app.services.storage import JuiceFSUnavailable, delete_session_dir
 from shared.py.wide_events import log
-
-# The projected fields a batch-sync row returns (matches the pre-repository
-# aggregation): the conversation summary plus its full message history, minus the
-# internal user_id/_id/metadata.
-_SYNC_FIELDS = {
-    "conversation_id",
-    "description",
-    "starred",
-    "is_system_generated",
-    "is_onboarding_conversation",
-    "system_purpose",
-    "is_unread",
-    "createdAt",
-    "updatedAt",
-    "messages",
-    # The conversation-level artifact registry the web sync hydrates its
-    # artifact cards from (see services/chat/artifacts_registry.py).
-    "artifacts",
-}
 
 
 def _like_escape(value: str) -> str:
@@ -87,7 +83,9 @@ async def _cleanup_checkpoint_threads(conversation_id: str) -> None:
         )
 
 
-async def create_conversation_service(conversation: ConversationModel, user: dict) -> dict:
+async def create_conversation_service(
+    conversation: ConversationModel, user: AuthenticatedUser
+) -> CreateConversationResponse:
     """Create a new conversation."""
     user_id = user.get("user_id", "")
     if not user_id:
@@ -114,15 +112,17 @@ async def create_conversation_service(conversation: ConversationModel, user: dic
             detail=f"Failed to create conversation: {e!s}",
         )
 
-    return {
-        "conversation_id": conversation.conversation_id,
-        "user_id": user_id,
-        "createdAt": created_at,
-        "detail": "Conversation created successfully",
-    }
+    return CreateConversationResponse(
+        conversation_id=conversation.conversation_id,
+        user_id=user_id,
+        createdAt=created_at,
+        detail="Conversation created successfully",
+    )
 
 
-async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
+async def get_conversations(
+    user: AuthenticatedUser, page: int = 1, limit: int = 10
+) -> ConversationListResponse:
     """Fetch paginated conversations for the authenticated user, starred first.
 
     Bot-originated conversations are excluded from the web list (reachable by
@@ -137,20 +137,18 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         conversation_repository.count_active(user_id),
     )
 
-    combined = [summary.model_dump(mode="json") for summary in (*starred, *non_starred)]
-    total = len(starred) + non_starred_count
     total_pages = ((non_starred_count + limit - 1) // limit) if non_starred_count > 0 else 1
 
-    return {
-        "conversations": combined,
-        "total": total,
-        "page": page,
-        "limit": limit,
-        "total_pages": total_pages,
-    }
+    return ConversationListResponse(
+        conversations=[*starred, *non_starred],
+        total=len(starred) + non_starred_count,
+        page=page,
+        limit=limit,
+        total_pages=total_pages,
+    )
 
 
-async def get_conversation(conversation_id: str, user: dict) -> dict:
+async def get_conversation(conversation_id: str, user: AuthenticatedUser) -> ConversationDocument:
     """Fetch a specific conversation by ID (messages already normalized on read)."""
     user_id = user.get("user_id", "")
     document = await conversation_repository.get(conversation_id, user_id=user_id)
@@ -159,10 +157,12 @@ async def get_conversation(conversation_id: str, user: dict) -> dict:
             status_code=404,
             detail="Conversation not found or does not belong to the user",
         )
-    return document.model_dump(mode="json", exclude={"id"})
+    return document
 
 
-async def star_conversation(conversation_id: str, starred: bool, user: dict) -> dict:
+async def star_conversation(
+    conversation_id: str, starred: bool, user: AuthenticatedUser
+) -> StarConversationResponse:
     """Star or unstar a conversation."""
     user_id = user.get("user_id", "")
     updated = await conversation_repository.set_starred(
@@ -170,10 +170,10 @@ async def star_conversation(conversation_id: str, starred: bool, user: dict) -> 
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Conversation not found or update failed")
-    return {"message": "Conversation updated successfully", "starred": starred}
+    return StarConversationResponse(message="Conversation updated successfully", starred=starred)
 
 
-async def delete_all_conversations(user: dict) -> dict:
+async def delete_all_conversations(user: AuthenticatedUser) -> DeleteAllConversationsResponse:
     """Delete all conversations for the authenticated user."""
     user_id = user.get("user_id", "")
     # The repository returns the deleted ids so their (non-user-scoped) checkpoint
@@ -186,10 +186,12 @@ async def delete_all_conversations(user: dict) -> dict:
     for conversation_id in conversation_ids:
         await _cleanup_checkpoint_threads(conversation_id)
 
-    return {"message": "All conversations deleted successfully"}
+    return DeleteAllConversationsResponse(message="All conversations deleted successfully")
 
 
-async def delete_conversation(conversation_id: str, user: dict) -> dict:
+async def delete_conversation(
+    conversation_id: str, user: AuthenticatedUser
+) -> ConversationActionResponse:
     """Delete a specific conversation by ID."""
     user_id = user.get("user_id", "")
     deleted = await conversation_repository.delete(conversation_id, user_id=user_id)
@@ -212,15 +214,15 @@ async def delete_conversation(conversation_id: str, user: dict) -> dict:
 
     await _cleanup_checkpoint_threads(conversation_id)
 
-    return {
-        "message": "Conversation deleted successfully",
-        "conversation_id": conversation_id,
-    }
+    return ConversationActionResponse(
+        message="Conversation deleted successfully",
+        conversation_id=conversation_id,
+    )
 
 
 async def update_messages(
-    request: UpdateMessagesRequest, user: dict, max_messages: int | None = None
-) -> dict:
+    request: UpdateMessagesRequest, user: AuthenticatedUser, max_messages: int | None = None
+) -> UpdateMessagesResponse:
     """Append messages to a conversation.
 
     ``max_messages`` caps stored history to the most recent N (via ``$slice``) so
@@ -240,15 +242,17 @@ async def update_messages(
             detail="Conversation not found or does not belong to the user",
         )
 
-    return {
-        "conversation_id": request.conversation_id,
-        "message": "Messages updated",
-        "modified_count": 1,
-        "message_ids": message_ids,
-    }
+    return UpdateMessagesResponse(
+        conversation_id=request.conversation_id,
+        message="Messages updated",
+        modified_count=1,
+        message_ids=message_ids,
+    )
 
 
-async def pin_message(conversation_id: str, message_id: str, pinned: bool, user: dict) -> dict:
+async def pin_message(
+    conversation_id: str, message_id: str, pinned: bool, user: AuthenticatedUser
+) -> PinMessageResponse:
     """Pin or unpin a message within a conversation."""
     user_id = user.get("user_id", "")
     document = await conversation_repository.get(conversation_id, user_id=user_id)
@@ -269,19 +273,20 @@ async def pin_message(conversation_id: str, message_id: str, pinned: bool, user:
         if pinned
         else f"Message with ID {message_id} unpinned successfully"
     )
-    return {"message": response_message, "pinned": pinned}
+    return PinMessageResponse(message=response_message, pinned=pinned)
 
 
-async def get_starred_messages(user: dict) -> dict:
+async def get_starred_messages(user: AuthenticatedUser) -> PinnedMessagesResponse:
     """Fetch all pinned messages across all conversations for the authenticated user."""
     user_id = user.get("user_id", "")
-    hits = await conversation_repository.list_pinned_messages(user_id)
-    return {"results": [hit.model_dump(mode="json") for hit in hits]}
+    return PinnedMessagesResponse(
+        results=await conversation_repository.list_pinned_messages(user_id)
+    )
 
 
 async def create_system_conversation(
     user_id: str, description: str, system_purpose: SystemPurpose
-) -> dict:
+) -> SystemConversationCreated:
     """Create a system-generated conversation with proper flags."""
     conversation_id = str(uuid4())
     created_at = datetime.now(UTC).isoformat()
@@ -304,20 +309,20 @@ async def create_system_conversation(
             detail=f"Failed to create system conversation: {e!s}",
         )
 
-    return {
-        "conversation_id": conversation_id,
-        "user_id": user_id,
-        "description": description,
-        "is_system_generated": True,
-        "system_purpose": system_purpose,
-        "createdAt": created_at,
-        "detail": "System conversation created successfully",
-    }
+    return SystemConversationCreated(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        description=description,
+        is_system_generated=True,
+        system_purpose=system_purpose,
+        createdAt=created_at,
+        detail="System conversation created successfully",
+    )
 
 
 async def update_conversation_description(
-    conversation_id: str, description: str, user: dict
-) -> dict:
+    conversation_id: str, description: str, user: AuthenticatedUser
+) -> UpdateDescriptionResponse:
     """Update the description of a specific conversation."""
     user_id = user.get("user_id", "")
     updated = await conversation_repository.set_description(
@@ -329,26 +334,30 @@ async def update_conversation_description(
             detail="Conversation not found or description not updated",
         )
 
-    return {
-        "message": "Conversation description updated successfully",
-        "conversation_id": conversation_id,
-        "description": description,
-    }
+    return UpdateDescriptionResponse(
+        message="Conversation description updated successfully",
+        conversation_id=conversation_id,
+        description=description,
+    )
 
 
-async def mark_conversation_as_read(conversation_id: str, user: dict) -> dict:
+async def mark_conversation_as_read(
+    conversation_id: str, user: AuthenticatedUser
+) -> ConversationActionResponse:
     """Mark a conversation as read (set is_unread to False)."""
     user_id = user.get("user_id", "")
     if not user_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
     await conversation_repository.set_unread(conversation_id, user_id=user_id, unread=False)
-    return {
-        "message": "Conversation marked as read",
-        "conversation_id": conversation_id,
-    }
+    return ConversationActionResponse(
+        message="Conversation marked as read",
+        conversation_id=conversation_id,
+    )
 
 
-async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
+async def mark_conversation_as_unread(
+    conversation_id: str, user: AuthenticatedUser
+) -> ConversationActionResponse:
     """Mark a conversation as unread."""
     user_id = user.get("user_id", "")
     if not user_id:
@@ -363,13 +372,15 @@ async def mark_conversation_as_unread(conversation_id: str, user: dict) -> dict:
             detail="Conversation not found or update failed",
         )
 
-    return {
-        "message": "Conversation marked as unread",
-        "conversation_id": conversation_id,
-    }
+    return ConversationActionResponse(
+        message="Conversation marked as unread",
+        conversation_id=conversation_id,
+    )
 
 
-async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dict:
+async def batch_sync_conversations(
+    request: BatchSyncRequest, user: AuthenticatedUser
+) -> BatchSyncResponse:
     """Return only conversations updated since the client's last-seen timestamp,
     including their messages and the stream id of an in-flight turn
     (``active_stream_id``) so a reloaded client can re-attach without a separate
@@ -380,16 +391,29 @@ async def batch_sync_conversations(request: BatchSyncRequest, user: dict) -> dic
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authenticated")
 
     if not request.conversations:
-        return {"conversations": []}
+        return BatchSyncResponse()
 
     documents = await conversation_repository.find_updated_since(user_id, request.conversations)
 
-    conversations = []
+    rows: list[ConversationSyncRow] = []
     for document in documents:
-        row = document.model_dump(mode="json", include=_SYNC_FIELDS)
-        row["active_stream_id"] = await stream_manager.get_resumable_stream_id(
-            user_id, document.conversation_id
+        rows.append(
+            ConversationSyncRow(
+                conversation_id=document.conversation_id,
+                description=document.description,
+                starred=document.starred,
+                is_system_generated=document.is_system_generated,
+                is_onboarding_conversation=document.is_onboarding_conversation,
+                system_purpose=document.system_purpose,
+                is_unread=document.is_unread,
+                createdAt=document.createdAt,
+                updatedAt=document.updatedAt,
+                messages=document.messages,
+                artifacts=document.artifacts,
+                active_stream_id=await stream_manager.get_resumable_stream_id(
+                    user_id, document.conversation_id
+                ),
+            )
         )
-        conversations.append(row)
 
-    return {"conversations": conversations}
+    return BatchSyncResponse(conversations=rows)

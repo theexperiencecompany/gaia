@@ -13,8 +13,10 @@ from collections.abc import Awaitable, Callable
 from typing import (
     Annotated,
     Any,
+    TypeAlias,
     TypedDict,
     Union,
+    cast,
 )
 
 from langchain_core.runnables import RunnableConfig
@@ -26,6 +28,7 @@ from app.agents.core.subagents.registry import all_subagents, get_subagent_by_id
 from app.agents.tools.core.registry import (
     DESKTOP_TOOL_CATEGORY,
     DESKTOP_TOOL_SPACE,
+    ToolRegistry,
     get_tool_registry,
 )
 from app.agents.tools.research_tool import deep_research
@@ -33,6 +36,7 @@ from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.log_tags import LogTag
 from app.db.chroma.public_integrations_store import search_public_integrations
+from app.models.agent_models import agent_configurable
 from app.models.chat_models import ConversationSource
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
@@ -210,6 +214,24 @@ class RetrieveToolsResult(TypedDict):
     response: list[str]
 
 
+class ScoredToolHit(TypedDict):
+    """One ranked discovery hit, threaded from a search result to the final list.
+
+    ``id`` is either a tool name or a ``subagent:<id> (Name)`` key; ``score`` is
+    the backing store's relevance, absent on stores that don't rank.
+    """
+
+    id: str
+    score: float | None
+
+
+# What one entry of the gathered search fan-out yields: Chroma's typed
+# ``SearchItem``s from the tool namespaces, or the public-integration store's
+# raw dicts. Kept as a union because the two backends genuinely differ; the
+# consumer discriminates on the first element and narrows with ``cast``.
+SearchTaskResult: TypeAlias = Union[list[SearchItem], list[dict[str, Any]]]
+
+
 async def _resolve_connected_subagents(user_id: str) -> dict[str, str | None]:
     """Map connected integration id -> display name. Platform/internal names come
     from the in-memory registry; custom MCP names from the cached user-integration
@@ -297,7 +319,7 @@ def _build_search_tasks(
     include_subagents: bool,
     limit: int,
     include_desktop: bool = False,
-) -> list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]]:
+) -> list[Awaitable[SearchTaskResult]]:
     """Build list of search tasks to execute.
 
     The `tool_space in user_namespaces` gate is the security boundary that
@@ -307,7 +329,7 @@ def _build_search_tasks(
     to search it (always for platform integrations, only when the user
     has the integration connected for custom MCPs).
     """
-    search_tasks: list[Awaitable[Union[list[SearchItem], list[dict[str, Any]]]]] = []
+    search_tasks: list[Awaitable[SearchTaskResult]] = []
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
@@ -346,9 +368,9 @@ def _build_search_tasks(
 
 def _process_public_integration_result(
     result: list[dict[str, Any]],
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process public integration search results."""
-    processed = []
+    processed: list[ScoredToolHit] = []
 
     for item in result:
         integration_id = item.get("integration_id")
@@ -358,12 +380,7 @@ def _process_public_integration_result(
             subagent_key = (
                 f"subagent:{integration_id} ({name})" if name else f"subagent:{integration_id}"
             )
-            processed.append(
-                {
-                    "id": subagent_key,
-                    "score": item.get("relevance_score", 0),
-                }
-            )
+            processed.append(ScoredToolHit(id=subagent_key, score=item.get("relevance_score", 0)))
 
     return processed
 
@@ -371,12 +388,12 @@ def _process_public_integration_result(
 def _process_chroma_search_result(
     result: list[SearchItem],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process Chroma store search results."""
-    processed: list[dict[str, str | float | None]] = []
+    processed: list[ScoredToolHit] = []
 
     for item in result:
         tool_key = str(item.key)
@@ -397,14 +414,14 @@ def _process_chroma_search_result(
             else:
                 subagent_key = f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
 
-            processed.append({"id": subagent_key, "score": item.score})
+            processed.append(ScoredToolHit(id=subagent_key, score=item.score))
             continue
 
         # Handle keys with subagent: prefix — skip if subagents not included
         if tool_key.startswith("subagent:"):
             if not include_subagents:
                 continue
-            processed.append({"id": tool_key, "score": item.score})
+            processed.append(ScoredToolHit(id=tool_key, score=item.score))
             continue
 
         # Filter general namespace results for subagents - only allow webpage tools
@@ -427,20 +444,20 @@ def _process_chroma_search_result(
 
         # Add regular tools
         if tool_key in available_tool_names:
-            processed.append({"id": tool_key, "score": item.score})
+            processed.append(ScoredToolHit(id=tool_key, score=item.score))
 
     return processed
 
 
 async def _process_search_results(
-    results: list[Any],
+    results: list[SearchTaskResult | BaseException],
     available_tool_names: set[str],
-    tool_registry,
+    tool_registry: ToolRegistry,
     include_subagents: bool,
     tool_space: str = "general",
-) -> list[dict[str, str | float | None]]:
+) -> list[ScoredToolHit]:
     """Process all search results and return unified list."""
-    all_results = []
+    all_results: list[ScoredToolHit] = []
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
@@ -454,8 +471,9 @@ async def _process_search_results(
         is_public_search = isinstance(result[0], dict)
 
         if is_public_search:
-            processed = _process_public_integration_result(result)
+            processed = _process_public_integration_result(cast(list[dict[str, Any]], result))
         else:
+            items = cast(list[SearchItem], result)
             try:
                 preview = [
                     {
@@ -463,7 +481,7 @@ async def _process_search_results(
                         "namespace": item.namespace if hasattr(item, "namespace") else None,
                         "score": item.score,
                     }
-                    for item in result[:20]
+                    for item in items[:20]
                 ]
                 log.debug(
                     f"{LogTag.TOOL} Chroma search raw hits (task={idx}, tool_space={tool_space}): "
@@ -472,7 +490,7 @@ async def _process_search_results(
             except Exception as e:
                 log.debug(f"{LogTag.TOOL} Chroma search raw hits log failed (task={idx}): {e}")
             processed = _process_chroma_search_result(
-                result,
+                items,
                 available_tool_names,
                 tool_registry,
                 include_subagents,
@@ -485,12 +503,12 @@ async def _process_search_results(
 
 
 def _deduplicate_and_sort(
-    results: list[dict[str, str | float | None]],
+    results: list[ScoredToolHit],
     limit: int,
 ) -> list[str]:
     """Remove duplicates, sort by score, and return top results."""
-    seen = set()
-    unique_results = []
+    seen: set[str] = set()
+    unique_results: list[ScoredToolHit] = []
 
     for r in results:
         if r["id"] not in seen:
@@ -574,6 +592,12 @@ def get_retrieve_tools_function(
 ) -> Callable[..., Awaitable[RetrieveToolsResult]]:
     """Get a retrieve_tools function configured for specific context.
 
+    The ``...`` in the return type is deliberate (Type Safety items 11/14): the
+    result is handed to ``create_agent(retrieve_tools_coroutine=...)``, which
+    wraps it in a ``StructuredTool``. LangGraph then calls it by keyword with
+    ``store``/``config`` injected and the rest supplied by the model, so pinning
+    a parameter list here would describe a call shape that never happens.
+
     This unified function handles both tool discovery (semantic search) and tool binding.
     - When `query` is provided: Returns tool names for discovery (not bound)
     - When `exact_tool_names` is provided: Binds and returns validated tool names
@@ -609,7 +633,7 @@ def get_retrieve_tools_function(
             exact_tool_names=exact_tool_names,
             tool_space=tool_space,
             include_subagents=include_subagents,
-            user_id=config.get("configurable", {}).get("user_id")
+            user_id=agent_configurable(config).get("user_id")
             or config.get("metadata", {}).get("user_id"),
         )
         if not query and not exact_tool_names:
@@ -638,14 +662,14 @@ def get_retrieve_tools_function(
         # Desktop tools only surface for desktop-app conversations, and only
         # in the main agent context (subagents keep their own tool space).
         conversation_source = ConversationSource.coerce(
-            config.get("configurable", {}).get("conversation_source")
+            agent_configurable(config).get("conversation_source")
         )
         desktop_enabled = (
             conversation_source is ConversationSource.DESKTOP and tool_space == "general"
         )
 
         # Get user_id from config (try configurable first, then metadata as fallback)
-        user_id = config.get("configurable", {}).get("user_id")
+        user_id = agent_configurable(config).get("user_id")
         if not user_id:
             # Fallback to metadata
             user_id = config.get("metadata", {}).get("user_id")

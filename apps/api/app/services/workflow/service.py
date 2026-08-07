@@ -25,7 +25,6 @@ from app.models.workflow_models import (
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowStatusResponse,
-    WorkflowStep,
     WorkflowUpdate,
     WorkflowWithIntegrations,
 )
@@ -43,7 +42,6 @@ from app.utils.creator import (
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.trigger_utils import get_integration_for_trigger
 from app.utils.workflow_utils import (
-    ensure_trigger_config_object,
     filter_existing_integration_ids,
     handle_workflow_error,
 )
@@ -345,7 +343,6 @@ class WorkflowService:
                 if trigger_config.type == "schedule" and trigger_config.next_run:
                     await workflow_scheduler.schedule_workflow_execution(
                         workflow.id,
-                        user_id,
                         trigger_config.next_run,
                         repeat=trigger_config.cron_expression,  # Enable recurring if cron exists
                     )
@@ -406,7 +403,7 @@ class WorkflowService:
             raise
 
     @staticmethod
-    async def get_workflow(workflow_id: str, user_id: str) -> Workflow | None:
+    async def get_workflow(workflow_id: str, user_id: str) -> WorkflowWithIntegrations | None:
         """Get a workflow by ID."""
         try:
             doc = await workflow_repository.get_for_user(workflow_id, user_id)
@@ -503,9 +500,12 @@ class WorkflowService:
         Uses Saga pattern for trigger updates: if new trigger registration fails,
         attempts to restore the old triggers (compensation).
         """
-        # Track state for potential rollback
+        # Track state for potential rollback. registered_trigger_ids is declared
+        # out here because the compensation block in the `except` below reads it on
+        # every failure path, including an update that never touched triggers.
         old_trigger_ids: list[str] = []
         old_trigger_name: str = ""
+        registered_trigger_ids: list[str] | None = None
 
         try:
             # Get current workflow to check for trigger changes
@@ -513,16 +513,26 @@ class WorkflowService:
             if not current_workflow:
                 return None
 
-            update_fields = request.model_dump(exclude_unset=True)
+            # `model_fields_set` is what the client actually sent — the same
+            # distinction `model_dump(exclude_unset=True)` encoded, kept on the
+            # request so every value below is read as a typed attribute.
+            provided = request.model_fields_set
+            update = WorkflowUpdate(**request.model_dump(exclude_unset=True))
 
             # enabled mirrors activated (the single liveness field). Resolve the
             # effective activated value for this update and never trust a client-sent
             # `enabled` that disagrees with it.
-            effective_activated = update_fields.get("activated", current_workflow.activated)
+            effective_activated = (
+                current_workflow.activated if request.activated is None else request.activated
+            )
 
             # Handle trigger config changes
-            if "trigger_config" in update_fields:
-                new_trigger_config = ensure_trigger_config_object(update_fields["trigger_config"])
+            if "trigger_config" in provided:
+                if request.trigger_config is None:
+                    raise ValueError("trigger_config cannot be null in a workflow update")
+                # Copy so the update's timezone/next_run/enabled normalization can't
+                # write back into the caller's request object.
+                new_trigger_config = request.trigger_config.model_copy(deep=True)
                 new_trigger_config.enabled = effective_activated
 
                 # Automatically populate timezone field if it's a scheduled workflow.
@@ -574,7 +584,6 @@ class WorkflowService:
                 # Always delete and recreate triggers since Composio triggers can't be updated
                 new_trigger_type = new_trigger_config.type
                 is_integration_trigger = new_trigger_type == TriggerType.INTEGRATION
-                registered_trigger_ids = None
 
                 if is_integration_trigger and current_workflow.activated:
                     old_trigger_name = old_config.trigger_name or ""
@@ -596,34 +605,42 @@ class WorkflowService:
                             user_id, old_trigger_name, old_trigger_ids, workflow_id
                         )
 
-                # Python mode keeps trigger_config.next_run a native datetime (BSON
-                # date), consistent with the create and re-arm paths — json mode here
-                # would flip it back to a string.
-                update_fields["trigger_config"] = new_trigger_config.model_dump()
-
                 # Add new trigger IDs if triggers were registered
                 if registered_trigger_ids is not None:
-                    update_fields["trigger_config"]["composio_trigger_ids"] = registered_trigger_ids
+                    new_trigger_config.composio_trigger_ids = registered_trigger_ids
+
+                # The repository dumps the update in python mode, so
+                # trigger_config.next_run stays a native datetime (BSON date),
+                # consistent with the create and re-arm paths.
+                #
+                # Rebuilt rather than assigned directly: model_copy carries the
+                # request's __pydantic_fields_set__, and the repository's
+                # model_dump(exclude_unset=True) propagates into the nested model
+                # — so assigning it writes only the keys the client happened to
+                # send, leaving the stored sub-document a different shape from
+                # one written by the create path. Same values either way.
+                update.trigger_config = TriggerConfig(**new_trigger_config.model_dump())
 
             # activated changed without a trigger_config rewrite: mirror the nested
             # `enabled` flag by rewriting the sub-document from the current config
             # (the typed update can't express a dotted `trigger_config.enabled` set;
             # the trigger_config branch above already syncs enabled in Case A).
-            if "trigger_config" not in update_fields and "activated" in update_fields:
+            if "trigger_config" not in provided and "activated" in provided:
                 synced = current_workflow.trigger_config
                 synced.enabled = effective_activated
-                update_fields["trigger_config"] = synced.model_dump()
+                # Rebuilt for the same reason as the branch above: a config read
+                # back from a partially-written document carries only that
+                # document's keys in its fields_set.
+                update.trigger_config = TriggerConfig(**synced.model_dump())
 
             # An empty request (nothing set) is a bare touch, matching the prior
             # always-stamp-updated_at behavior — the typed update rejects an empty set.
-            if not update_fields:
+            if not provided:
                 await workflow_repository.touch(workflow_id, user_id)
                 return await WorkflowService.get_workflow(workflow_id, user_id)
 
             try:
-                updated = await workflow_repository.update_for_user(
-                    workflow_id, user_id, WorkflowUpdate(**update_fields)
-                )
+                updated = await workflow_repository.update_for_user(workflow_id, user_id, update)
             except Exception as db_err:
                 # Compensate: unregister newly created triggers so they don't become orphaned
                 if registered_trigger_ids is not None:
@@ -862,7 +879,6 @@ class WorkflowService:
             ):
                 await workflow_scheduler.schedule_workflow_execution(
                     workflow_id,
-                    user_id,
                     updated_workflow.trigger_config.next_run,
                     repeat=updated_workflow.trigger_config.cron_expression,
                     max_occurrences=getattr(updated_workflow, "max_occurrences", None),
@@ -950,7 +966,7 @@ class WorkflowService:
                 integration_ids if integration_ids is not None else workflow.integration_ids
             )
 
-            steps_data = await WorkflowGenerationService.generate_steps_with_llm(
+            steps = await WorkflowGenerationService.generate_steps_with_llm(
                 workflow.effective_prompt,
                 workflow.title,
                 workflow.trigger_config,
@@ -962,8 +978,7 @@ class WorkflowService:
             # Same gating as _generate_workflow_steps: if the regenerated steps
             # need an integration the user hasn't connected, force the workflow
             # inactive so an enabled-but-unrunnable workflow can't keep firing.
-            steps_as_models = [WorkflowStep(**s) for s in steps_data]
-            required = compute_required_integrations(steps_as_models)
+            required = compute_required_integrations(steps)
             missing = await compute_missing_integrations(required, user_id)
 
             # Persist only integration_ids the user still has connected — a stale
@@ -983,7 +998,7 @@ class WorkflowService:
             result = await workflow_repository.set_steps(
                 workflow_id,
                 user_id,
-                steps_as_models,
+                steps,
                 deactivate=bool(missing),
                 integration_ids=filtered_integration_ids,
             )
@@ -1127,7 +1142,7 @@ class WorkflowService:
 
             # Generate steps using structured LLM output.
             # Raises RuntimeError on failure (no silent empty-list return).
-            steps_data = await WorkflowGenerationService.generate_steps_with_llm(
+            steps = await WorkflowGenerationService.generate_steps_with_llm(
                 workflow.effective_prompt,
                 workflow.title,
                 workflow.trigger_config,
@@ -1136,8 +1151,7 @@ class WorkflowService:
                 user_id=user_id,
             )
 
-            steps_as_models = [WorkflowStep(**s) for s in steps_data]
-            required = compute_required_integrations(steps_as_models)
+            required = compute_required_integrations(steps)
             missing = await compute_missing_integrations(required, user_id)
 
             if missing:
@@ -1148,7 +1162,7 @@ class WorkflowService:
                 )
 
             await workflow_repository.set_steps(
-                workflow_id, user_id, steps_as_models, deactivate=bool(missing)
+                workflow_id, user_id, steps, deactivate=bool(missing)
             )
 
         except Exception as e:

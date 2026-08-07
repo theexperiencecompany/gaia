@@ -136,10 +136,24 @@ jobs:
       - name: Run Python tests
         working-directory: apps/api
         # No ::group:: — failure tracebacks must be visible without un-collapsing.
+        # Coverage is measured in this same run (not a separate job) so the
+        # full suite isn't paid for twice per PR; --cov-fail-under makes the
+        # coverage floor a real gate, not an informational number.
         run: |
           uv run --frozen pytest -n auto -m 'not composio' \
-            --tb=short -q --override-ini=addopts=--strict-markers
+            --tb=short -q --override-ini=addopts=--strict-markers \
+            --cov=app --cov-report=term-missing --cov-fail-under=80
           echo "Python tests: OK (full suite vs live services)"
+      - name: Run gaia-shared tests
+        working-directory: apps/api
+        # Separate step, not folded into the run above: these live outside
+        # apps/api and would otherwise be measured against --cov=app. Nothing ran
+        # them at all until now, which is how 24 red slugify tests sat unnoticed
+        # while the bug they caught shipped in public workflow slugs.
+        run: |
+          uv run --frozen pytest ../../libs/shared/py/tests \
+            --tb=short -q --override-ini=addopts=--strict-markers
+          echo "gaia-shared tests: OK"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:
@@ -235,6 +249,12 @@ jobs:
           exit 1
 
   # --- Trivy scan (non-blocking) ------------------------------------------
+  # Kept advisory: a scan of a clean checkout (matching what this job actually
+  # sees) currently reports 12 known HIGH-severity vulnerabilities in
+  # pnpm-lock.yaml (axios, brace-expansion, fast-uri, next x4 CVEs, postcss,
+  # sharp — 0 CRITICAL). Flipping this to blocking today would red every PR
+  # for pre-existing findings, not new ones the PR caused. Upgrade the
+  # flagged packages, re-scan, then remove continue-on-error.
   trivy-scan:
     needs: [detect]
     runs-on: ubuntu-latest
@@ -251,26 +271,6 @@ jobs:
           format: "table"
           scan-ref: "."
 
-  # --- Coverage (master only, non-blocking) -------------------------------
-  coverage:
-    needs: [detect]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master' && needs.detect.outputs.has_python == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
-      - uses: ./.github/actions/setup-python-test-env
-      - name: Run coverage
-        working-directory: apps/api
-        run: >-
-          uv run --frozen pytest -n auto -m 'not composio' --tb=short -q
-          --cov=app --cov-report=term-missing --cov-fail-under=80
-          --override-ini=addopts=--strict-markers
-
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     if: always()
@@ -282,8 +282,9 @@ jobs:
       - test-harness-tools
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
-      # trivy-scan deliberately excluded (non-blocking)
-      # coverage deliberately excluded (master-only, non-blocking)
+      # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
+      # coverage is measured inside test-python itself (--cov-fail-under=80),
+      # not a separate job -- a second job would re-run the whole suite
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

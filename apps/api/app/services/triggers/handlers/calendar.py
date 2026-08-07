@@ -7,7 +7,7 @@ Handles all calendar-specific trigger logic including:
 - Event-to-workflow matching
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -29,19 +29,19 @@ class CalendarTriggerHandler(TriggerHandler):
     """Handler for Google Calendar triggers."""
 
     # Trigger names this handler supports
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "calendar_event_created",
         "calendar_event_starting_soon",
     ]
 
     # Composio event types this handler processes
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
         "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
     }
 
     # Mapping from trigger_name to Composio slug
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "calendar_event_created": "GOOGLECALENDAR_GOOGLE_CALENDAR_EVENT_CREATED_TRIGGER",
         "calendar_event_starting_soon": "GOOGLECALENDAR_EVENT_STARTING_SOON_TRIGGER",
     }
@@ -57,7 +57,7 @@ class CalendarTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -188,10 +188,13 @@ class CalendarTriggerHandler(TriggerHandler):
             # Import here to avoid circular imports
             from app.services import calendar_service
 
-            calendars = await calendar_service.list_calendars(user_id)
+            calendar_list = await calendar_service.list_calendars(user_id)
 
-            if isinstance(calendars, dict) and "items" in calendars:
-                return [cal.get("id", "primary") for cal in calendars["items"] if cal.get("id")]
+            # An `items`-less payload means Google told us nothing about the user's
+            # calendars, which is not the same as "the user has zero calendars" —
+            # only the former falls back to primary.
+            if "items" in calendar_list.model_fields_set:
+                return [cal.id for cal in calendar_list.items]
             return ["primary"]
 
         except Exception as e:

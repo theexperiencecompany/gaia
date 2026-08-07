@@ -3,11 +3,14 @@ Router module for image generation and image-to-text endpoints.
 """
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators import tiered_rate_limit
+from app.models.chat_models import ImageData
+from app.models.image_models import ImageToTextResponse
 from app.models.message_models import MessageRequest
+from app.models.user_models import AuthenticatedUser
 from app.services.image_service import (
     api_generate_image,
     generate_image_stream,
@@ -20,12 +23,14 @@ router = APIRouter()
 
 @router.post("/image/generate")
 @tiered_rate_limit("generate_image")
-async def image(request: MessageRequest, _user: dict = Depends(get_current_user)):
+async def image(
+    request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)
+) -> ImageData:
     """Generate an image based on the text prompt."""
     log.set(operation="generate", prompt_length=len(request.message))
     response = await api_generate_image(request.message)
     log.set(outcome="success")
-    return JSONResponse(content=response)
+    return response
 
 
 @router.post("/image/text")
@@ -33,8 +38,8 @@ async def image(request: MessageRequest, _user: dict = Depends(get_current_user)
 async def image_to_text(
     message: str = Form(...),
     file: UploadFile = File(...),
-    _user: dict = Depends(get_current_user),
-):
+    _user: AuthenticatedUser = Depends(get_current_user),
+) -> ImageToTextResponse:
     """Extract text from an image using OCR."""
     log.set(
         operation="image_to_text",
@@ -44,12 +49,14 @@ async def image_to_text(
     )
     response = await image_to_text_endpoint(message, file)
     log.set(outcome="success")
-    return JSONResponse(content=response)
+    return response
 
 
 @router.post("/image/generate/stream")
 @tiered_rate_limit("generate_image")
-async def image_stream(request: MessageRequest, _user: dict = Depends(get_current_user)):
+async def image_stream(
+    request: MessageRequest, _user: AuthenticatedUser = Depends(get_current_user)
+) -> StreamingResponse:
     """Generate an image with streaming response."""
     log.set(
         operation="generate_stream",

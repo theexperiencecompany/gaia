@@ -16,7 +16,7 @@ from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
     strategy=MissingKeyStrategy.WARN,
     warning_message="Cloudinary configuration is missing or incomplete. Cloudinary features will be disabled.",
 )
-def init_cloudinary():
+def init_cloudinary() -> None:
     """
     Initialize and configure the Cloudinary service.
 

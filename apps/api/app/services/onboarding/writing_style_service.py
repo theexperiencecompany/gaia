@@ -2,12 +2,14 @@
 
 from collections.abc import Awaitable, Callable
 import time
+from typing import Any
 
 from app.agents.llm.client import ainvoke_structured
 from app.agents.prompts.onboarding_prompts import (
     WRITING_STYLE_EXAMPLE_PROMPT,
     WRITING_STYLE_PROMPT,
 )
+from app.constants.email import SENT_EMAIL_QUERY
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
 from app.models.onboarding_models import (
@@ -36,11 +38,11 @@ async def learn_writing_style(
             await on_status("Reading your sent folder")
         result = await search_messages(
             user_id=user_id,
-            query="in:sent",
+            query=SENT_EMAIL_QUERY,
             max_results=50,
         )
 
-        sent_emails = result.get("messages", [])
+        sent_emails: list[dict[str, Any]] = result.messages
         sent_count = len(sent_emails)
 
         if on_status is not None:
@@ -163,7 +165,5 @@ async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
-    await user_repository.set_writing_style_and_triage(
-        user_id, writing_style_example=example.model_dump()
-    )
+    await user_repository.set_writing_style_and_triage(user_id, writing_style_example=example)
     log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")

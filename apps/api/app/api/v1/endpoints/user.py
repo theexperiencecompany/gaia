@@ -3,7 +3,6 @@ from datetime import UTC, datetime
 from bson import ObjectId
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -14,12 +13,21 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from workos import WorkOSClient
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.config.settings import settings
 from app.constants.auth import WOS_SESSION_COOKIE
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, UserUpdateResponse
+from app.models.user_models import (
+    AuthenticatedUser,
+    AuthenticatedUserResponse,
+    HoloCardOnboardingFields,
+    PublicHoloCardResponse,
+    UpdateHoloCardColorsResponse,
+    UpdateTimezoneResponse,
+    UserUpdate,
+    UserUpdateResponse,
+)
 from app.services.analytics_service import track_logout
 from app.services.onboarding.onboarding_service import get_user_onboarding_status
 from app.services.user_service import update_user_profile
@@ -31,11 +39,13 @@ router = APIRouter()
 workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID)
 
 
-@router.get("/me", response_model=dict)
+# exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
+# and the optional profile fields are only meaningful when set — the response has
+# always omitted them rather than sending nulls, and clients rely on that.
+@router.get("/me", response_model_exclude_none=True)
 async def get_me(
-    background_tasks: BackgroundTasks,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUserResponse:
     """
     Returns the current authenticated user's details.
     Uses the dependency injection to fetch user data.
@@ -44,39 +54,31 @@ async def get_me(
     onboarding_status = await get_user_onboarding_status(user["user_id"])
 
     log.set(
-        user={
-            "id": user["user_id"],
-            "email": user.get("email"),
-            "plan": user.get("plan") or user.get("subscription_plan"),
-        },
+        user={"id": user["user_id"], "email": user.get("email")},
         operation="get_me",
     )
 
+    response = AuthenticatedUserResponse.model_validate(
+        {**user, "message": "User retrieved successfully", "onboarding": onboarding_status}
+    )
+
     log.set(outcome="success")
-    return {
-        "message": "User retrieved successfully",
-        **user,
-        "onboarding": onboarding_status,
-    }
+    return response
 
 
 @router.patch("/me", response_model=UserUpdateResponse)
 async def update_me(
     name: str | None = Form(None),
     picture: UploadFile | None = File(None),
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> UserUpdateResponse:
     """
     Update the current user's profile information.
     Supports updating name and profile picture.
     """
     user_id = user.get("user_id")
     log.set(
-        user={
-            "id": user_id,
-            "email": user.get("email"),
-            "plan": user.get("plan") or user.get("subscription_plan"),
-        },
+        user={"id": user_id, "email": user.get("email")},
         operation="update_me",
         has_picture_upload=bool(picture and picture.size and picture.size > 0),
     )
@@ -107,14 +109,14 @@ async def update_me(
     updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
     log.set(outcome="success")
-    return UserUpdateResponse(**updated_user)
+    return updated_user
 
 
 @router.patch("/name", response_model=UserUpdateResponse)
 async def update_user_name(
     name: str = Form(...),
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> UserUpdateResponse:
     """
     Update the user's name. This is the consolidated endpoint for name updates.
     """
@@ -127,7 +129,7 @@ async def update_user_name(
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
         log.set(outcome="success")
-        return UserUpdateResponse(**updated_user)
+        return updated_user
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -135,22 +137,22 @@ async def update_user_name(
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
-@router.patch("/timezone", response_model=dict)
+@router.patch("/timezone", response_model=UpdateTimezoneResponse)
 async def update_user_timezone(
     user_timezone: str = Form(
         ...,
         description="User's timezone (e.g., 'America/New_York', 'Asia/Kolkata')",
         alias="timezone",
     ),
-    user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> UpdateTimezoneResponse:
     """
     Update user's timezone setting.
     This updates the root-level timezone field for the user.
     """
     try:
         log.set(
-            user={"id": user["user_id"]},
+            user={"id": user_id},
             operation="update_user_timezone",
             timezone=user_timezone.strip(),
         )
@@ -160,19 +162,17 @@ async def update_user_timezone(
                 detail=f"Invalid timezone: {user_timezone}. Use standard timezone identifiers like 'America/New_York', 'UTC', 'Asia/Kolkata'",
             )
 
-        updated = await user_repository.update(
-            user["user_id"], UserUpdate(timezone=user_timezone.strip())
-        )
+        updated = await user_repository.update(user_id, UserUpdate(timezone=user_timezone.strip()))
 
         if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
 
         log.set(outcome="success")
-        return {
-            "success": True,
-            "message": "Timezone updated successfully",
-            "timezone": user_timezone.strip(),
-        }
+        return UpdateTimezoneResponse(
+            success=True,
+            message="Timezone updated successfully",
+            timezone=user_timezone.strip(),
+        )
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -181,7 +181,7 @@ async def update_user_timezone(
 
 
 @router.get("/holo-card/{card_id}")
-async def get_public_holo_card(card_id: str):
+async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     """
     Get public holo card data by card ID (user ID).
     This endpoint is public and doesn't require authentication.
@@ -198,15 +198,15 @@ async def get_public_holo_card(card_id: str):
         if not user_doc:
             raise HTTPException(status_code=404, detail="Card not found")
 
-        onboarding = user_doc.onboarding or {}
+        onboarding = HoloCardOnboardingFields.model_validate(user_doc.onboarding or {})
 
         # Check if user has completed onboarding
-        if not onboarding.get("house"):
+        if not onboarding.house:
             raise HTTPException(status_code=404, detail="Card not found")
 
         # Get stored metadata or calculate if not stored (for older users)
-        account_number = onboarding.get("account_number")
-        member_since = onboarding.get("member_since")
+        account_number = onboarding.account_number
+        member_since = onboarding.member_since
 
         if not account_number or not member_since:
             created_at = user_doc.created_at
@@ -222,16 +222,16 @@ async def get_public_holo_card(card_id: str):
             )
 
         log.set(outcome="success")
-        return {
-            "house": onboarding.get("house"),
-            "personality_phrase": onboarding.get("personality_phrase"),
-            "user_bio": onboarding.get("user_bio"),
-            "account_number": account_number,
-            "member_since": member_since,
-            "name": user_doc.name,
-            "overlay_color": onboarding.get("overlay_color", "rgba(0,0,0,0)"),
-            "overlay_opacity": onboarding.get("overlay_opacity", 40),
-        }
+        return PublicHoloCardResponse(
+            house=onboarding.house,
+            personality_phrase=onboarding.personality_phrase,
+            user_bio=onboarding.user_bio,
+            account_number=account_number,
+            member_since=member_since,
+            name=user_doc.name,
+            overlay_color=onboarding.overlay_color,
+            overlay_opacity=onboarding.overlay_opacity,
+        )
 
     except HTTPException:
         raise
@@ -244,21 +244,18 @@ async def get_public_holo_card(card_id: str):
 async def update_holo_card_colors(
     overlay_color: str = Form(..., description="Overlay color or gradient"),
     overlay_opacity: int = Form(..., description="Overlay opacity (0-100)"),
-    user: dict = Depends(get_current_user),
-):
+    user_id: str = Depends(get_user_id),
+) -> UpdateHoloCardColorsResponse:
     """
     Update holo card overlay color and opacity.
     """
     try:
-        user_id = user.get("user_id")
         log.set(
             user={"id": user_id},
             operation="update_holo_card_colors",
             overlay_color=overlay_color,
             overlay_opacity=overlay_opacity,
         )
-        if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
 
         # Validate opacity range
         if not 0 <= overlay_opacity <= 100:
@@ -273,12 +270,12 @@ async def update_holo_card_colors(
             raise HTTPException(status_code=404, detail="User not found")
 
         log.set(outcome="success")
-        return {
-            "success": True,
-            "message": "Holo card colors updated successfully",
-            "overlay_color": overlay_color,
-            "overlay_opacity": overlay_opacity,
-        }
+        return UpdateHoloCardColorsResponse(
+            success=True,
+            message="Holo card colors updated successfully",
+            overlay_color=overlay_color,
+            overlay_opacity=overlay_opacity,
+        )
 
     except HTTPException:
         raise
@@ -290,8 +287,8 @@ async def update_holo_card_colors(
 @router.post("/logout")
 async def logout(
     request: Request,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> JSONResponse:
     """
     Logout user and return logout URL for frontend redirection.
     """

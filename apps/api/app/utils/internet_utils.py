@@ -3,7 +3,7 @@ import ipaddress
 import socket
 from urllib.parse import urljoin, urlparse
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString, Tag
 from fastapi import HTTPException, status
 import httpx
 
@@ -166,106 +166,90 @@ async def fetch_url_metadata(url: str) -> URLResponse:
         return URLResponse(**stored.model_dump())
 
     metadata = await scrape_url_metadata(url)
-    await search_url_repository.create(SearchUrlDocument(**metadata))
-    await set_cache(cache_key, metadata, 864000)
+    await search_url_repository.create(SearchUrlDocument(**metadata.model_dump()))
+    await set_cache(cache_key, metadata.model_dump(), 864000)
 
-    return URLResponse(**metadata)
+    return metadata
 
 
-async def scrape_url_metadata(url: str) -> dict:
+def _attr_value(tag: Tag | NavigableString | None, attr_name: str) -> str | None:
+    """Safely get attribute value from a BeautifulSoup tag."""
+    if not tag or not hasattr(tag, "attrs"):
+        return None
+    if attr_name not in tag.attrs:
+        return None
+    attr_value = tag.attrs[attr_name]
+    if isinstance(attr_value, str):
+        return attr_value.strip()
+    if isinstance(attr_value, list) and attr_value:
+        return str(attr_value[0]).strip()
+    return None
+
+
+def _absolute_url(base_url: str, relative_url: str | None) -> str | None:
+    if not relative_url:
+        return None
+    if urlparse(relative_url).scheme in ["http", "https"]:
+        return relative_url
+    return urljoin(base_url, relative_url)
+
+
+async def _fetch_following_redirects(url: str) -> httpx.Response | None:
+    """Fetch ``url``, following redirects by hand so every hop re-passes the SSRF
+    guard. Returns None once the redirect budget is exhausted."""
+    current_url = url
+    async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, follow_redirects=False) as client:
+        for _ in range(_MAX_REDIRECTS + 1):
+            response = await client.get(current_url)
+            if not response.is_redirect:
+                return response
+            next_location = response.headers.get("location")
+            if not next_location:
+                return response
+            current_url = str(httpx.URL(current_url).join(next_location))
+            await _validate_url_for_fetch(current_url)
+
+    log.debug("redirect_limit_exceeded", url=url)
+    return None
+
+
+def _parse_url_metadata(url: str, content: bytes) -> URLResponse:
+    soup = BeautifulSoup(content, "html.parser")
+
+    description_tag = soup.find("meta", attrs={"name": "description"}) or soup.find(
+        "meta", attrs={"property": "og:description"}
+    )
+    website_name_tag = soup.find("meta", property="og:site_name") or soup.find(
+        "meta", attrs={"name": "application-name"}
+    )
+    favicon_tag = (
+        soup.find("link", rel="icon")
+        or soup.find("link", rel="shortcut icon")
+        or soup.find("link", rel="apple-touch-icon")
+    )
+    logo_tag = soup.find("meta", property="og:logo") or soup.find("link", rel="logo")
+
+    og_image = _absolute_url(url, _attr_value(soup.find("meta", property="og:image"), "content"))
+    logo_url = _attr_value(logo_tag, "content") or _attr_value(logo_tag, "href")
+
+    return URLResponse(
+        title=soup.title.string.strip() if soup.title and soup.title.string else None,
+        description=_attr_value(description_tag, "content"),
+        favicon=_absolute_url(url, _attr_value(favicon_tag, "href")) or og_image,
+        website_name=_attr_value(website_name_tag, "content"),
+        website_image=_absolute_url(url, logo_url) or og_image,
+        url=url,
+    )
+
+
+async def scrape_url_metadata(url: str) -> URLResponse:
     try:
-        current_url = url
-        response: httpx.Response | None = None
-        # Manual redirect following so each hop re-passes the SSRF guard
-        async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT, follow_redirects=False) as client:
-            for _ in range(_MAX_REDIRECTS + 1):
-                response = await client.get(current_url)
-                if response.is_redirect:
-                    next_location = response.headers.get("location")
-                    if not next_location:
-                        break
-                    current_url = str(httpx.URL(current_url).join(next_location))
-                    await _validate_url_for_fetch(current_url)
-                    continue
-                break
-            else:
-                log.debug("redirect_limit_exceeded", url=url)
-                return _empty_metadata(url)
-
+        response = await _fetch_following_redirects(url)
         if response is None:
             return _empty_metadata(url)
 
         response.raise_for_status()
-
-        content = response.content[:_MAX_RESPONSE_BYTES]
-        soup = BeautifulSoup(content, "html.parser")
-
-        def to_absolute(relative_url: str) -> str | None:
-            if not relative_url:
-                return None
-            parsed = urlparse(relative_url)
-            if parsed.scheme in ["http", "https"]:
-                return relative_url
-            return urljoin(url, relative_url)
-
-        def get_attr_value(tag, attr_name: str) -> str | None:
-            """Safely get attribute value from a BeautifulSoup tag."""
-            if not tag or not hasattr(tag, "attrs"):
-                return None
-            if attr_name not in tag.attrs:
-                return None
-            attr_value = tag.attrs[attr_name]
-            if isinstance(attr_value, str):
-                return attr_value.strip()
-            if isinstance(attr_value, list) and attr_value:
-                return str(attr_value[0]).strip()
-            return None
-
-        title = soup.title.string.strip() if soup.title and soup.title.string else None
-
-        description_tag = soup.find("meta", attrs={"name": "description"}) or soup.find(
-            "meta", attrs={"property": "og:description"}
-        )
-        description = get_attr_value(description_tag, "content")
-
-        website_name_tag = soup.find("meta", property="og:site_name") or soup.find(
-            "meta", attrs={"name": "application-name"}
-        )
-        website_name = get_attr_value(website_name_tag, "content")
-
-        # Find favicon with a more specific search
-        favicon_tag = (
-            soup.find("link", rel="icon")
-            or soup.find("link", rel="shortcut icon")
-            or soup.find("link", rel="apple-touch-icon")
-        )
-        favicon_href = get_attr_value(favicon_tag, "href")
-        favicon = to_absolute(favicon_href) if favicon_href else None
-
-        og_image_tag = soup.find("meta", property="og:image")
-        og_image_content = get_attr_value(og_image_tag, "content")
-        og_image = to_absolute(og_image_content) if og_image_content else None
-
-        logo_tag = soup.find("meta", property="og:logo") or soup.find("link", rel="logo")
-        website_image = None
-        if logo_tag:
-            logo_content = get_attr_value(logo_tag, "content")
-            logo_href = get_attr_value(logo_tag, "href")
-            logo_url = logo_content or logo_href
-            if logo_url:
-                website_image = to_absolute(logo_url)
-
-        if not website_image:
-            website_image = og_image
-
-        return {
-            "title": title,
-            "description": description,
-            "favicon": favicon or og_image,
-            "website_name": website_name,
-            "website_image": website_image,
-            "url": url,
-        }
+        return _parse_url_metadata(url, response.content[:_MAX_RESPONSE_BYTES])
 
     except (httpx.RequestError, httpx.HTTPStatusError) as exc:
         log.debug(f"Error fetching URL metadata: {exc}")
@@ -278,12 +262,5 @@ async def scrape_url_metadata(url: str) -> dict:
     return _empty_metadata(url)
 
 
-def _empty_metadata(url: str) -> dict:
-    return {
-        "title": None,
-        "description": None,
-        "favicon": None,
-        "website_name": None,
-        "website_image": None,
-        "url": url,
-    }
+def _empty_metadata(url: str) -> URLResponse:
+    return URLResponse(url=url)

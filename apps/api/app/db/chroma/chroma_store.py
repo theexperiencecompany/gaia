@@ -8,11 +8,11 @@ import asyncio
 from collections.abc import Iterable
 from datetime import UTC, datetime
 import pickle  # nosec B403 - Used for internal trusted data serialization only
-from typing import Any
+from typing import Any, cast
 
 from chromadb.api import AsyncClientAPI
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import EmbeddingFunction
+from chromadb.api.types import EmbeddingFunction, Embeddings as ChromaEmbeddings
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -51,11 +51,20 @@ class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
     def __init__(self) -> None:
         pass
 
-    def __call__(self, input: list[str]) -> Any:
-        return [[0.0] * 384 for _ in input]
+    def __call__(self, input: list[str]) -> ChromaEmbeddings:
+        # chromadb's own EmbeddingFunction.__call__ contract declares
+        # list[numpy.ndarray], but ChromaDB accepts plain float lists at
+        # runtime just fine — do NOT convert this to numpy arrays; that broke
+        # collection initialization previously. cast() only changes what the
+        # type checker sees, not the actual returned values.
+        return cast(ChromaEmbeddings, [[0.0] * 384 for _ in input])
 
 
 _NOOP_EF = _NoOpEmbeddingFunction()
+
+# A filter value (or the item value it's compared against) is an arbitrary
+# JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
+FilterValue = str | int | float | bool | None | dict[str, Any] | list[Any]
 
 
 class ChromaStore(BaseStore):
@@ -167,13 +176,15 @@ class ChromaStore(BaseStore):
 
     def batch(self, ops: Iterable[Op]) -> list[Result]:
         """Execute a batch of operations (sync wrapper)."""
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If we're already in an async context, create a new task
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass
+        else:
             raise RuntimeError(
                 "ChromaStore.batch() cannot be called from async context. Use abatch() instead."
             )
-        return loop.run_until_complete(self.abatch(ops))
+        return asyncio.run(self.abatch(ops))
 
     async def abatch(self, ops: Iterable[Op]) -> list[Result]:
         """Execute a batch of operations (async version)."""
@@ -366,16 +377,24 @@ class ChromaStore(BaseStore):
                     return False
         return True
 
-    def _apply_operator(self, value: Any, operator: str, op_value: Any) -> bool:
+    def _apply_operator(self, value: FilterValue, operator: str, op_value: FilterValue) -> bool:
         """Apply comparison operator."""
         if operator == "$eq":
-            return value == op_value
+            return bool(value == op_value)
         if operator == "$ne":
-            return value != op_value
+            return bool(value != op_value)
         if operator in ("$gt", "$gte", "$lt", "$lte"):
             try:
-                val_num = float(value) if not isinstance(value, dict) else 0
-                op_val_num = float(op_value)
+                # dict is excluded above (comparison undefined); list/None reach
+                # float() and raise TypeError, caught below — same behavior as
+                # before FilterValue existed. cast() only narrows for the type
+                # checker, it doesn't change what's passed at runtime.
+                val_num = (
+                    float(cast("str | float | int | bool", value))
+                    if not isinstance(value, dict)
+                    else 0
+                )
+                op_val_num = float(cast("str | float | int | bool", op_value))
                 if operator == "$gt":
                     return val_num > op_val_num
                 if operator == "$gte":

@@ -8,7 +8,7 @@
  */
 
 // Base types and interfaces
-export type { TriggerFieldSchema, TriggerSchema } from "./base";
+export type { TriggerSchema } from "./base";
 
 // =============================================================================
 // FLEXIBLE TRIGGER CONFIG TYPE

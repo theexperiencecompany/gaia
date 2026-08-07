@@ -2,7 +2,7 @@
 Asana trigger handler.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
@@ -16,11 +16,11 @@ from shared.py.wide_events import log
 class AsanaTriggerHandler(TriggerHandler):
     """Handler for Asana triggers."""
 
-    SUPPORTED_TRIGGERS = ["asana_task_trigger"]
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = ["asana_task_trigger"]
 
-    SUPPORTED_EVENTS = {"ASANA_TASK_TRIGGER"}
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {"ASANA_TASK_TRIGGER"}
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "asana_task_trigger": "ASANA_TASK_TRIGGER",
     }
 
@@ -35,7 +35,7 @@ class AsanaTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:
@@ -77,7 +77,7 @@ class AsanaTriggerHandler(TriggerHandler):
         )
 
     async def find_workflows(
-        self, event_type: str, trigger_id: str, data: dict[str, Any]
+        self, event_type: str, trigger_id: str, _data: dict[str, Any]
     ) -> list[Workflow]:
         """Find workflows matching an Asana trigger event."""
         log.set_ns("trigger", integration_id="asana", trigger_type=event_type)

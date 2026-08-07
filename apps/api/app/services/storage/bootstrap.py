@@ -436,6 +436,53 @@ def _bootstrap_loop() -> None:
     )
 
 
+async def _bootstrap_needed(mount_path: Path) -> bool:
+    """Whether the background mount thread should be (re)started."""
+    if shutil.which("juicefs") is None:
+        log.warning(f"{LogTag.STORAGE} CLI not found on PATH — skipping bootstrap")
+        return False
+
+    missing = _missing_settings()
+    if missing:
+        log.info(f"{LogTag.STORAGE} skipping bootstrap; missing settings: " + ", ".join(missing))
+        return False
+
+    # Probe off the event loop with a timeout — a wedged FUSE mount blocks forever
+    # and running this inline previously froze the worker before it consumed jobs.
+    try:
+        already_mounted = await asyncio.wait_for(
+            asyncio.to_thread(_is_mounted, mount_path),
+            timeout=_MOUNT_PROBE_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        log.warning(
+            f"{LogTag.STORAGE} mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
+            "mount likely unresponsive; (re)starting bootstrap"
+        )
+        return True
+
+    if already_mounted:
+        log.info(f"{LogTag.STORAGE} mount already healthy")
+        return False
+
+    return True
+
+
+def _start_bootstrap_thread() -> None:
+    """Start the daemon mount thread unless one is already running."""
+    global _bootstrap_thread
+
+    with _bootstrap_lock:
+        if _bootstrap_thread is not None and _bootstrap_thread.is_alive():
+            return
+        _bootstrap_thread = threading.Thread(
+            target=_bootstrap_loop,
+            name="juicefs-bootstrap",
+            daemon=True,
+        )
+        _bootstrap_thread.start()
+
+
 @lazy_provider(
     name="juicefs_mount",
     strategy=MissingKeyStrategy.SILENT,
@@ -448,46 +495,13 @@ async def init_juicefs_mount() -> str:
     storage helpers raise `JuiceFSUnavailable` until `/mnt/jfs` converges,
     which every caller already treats as a soft-fail.
     """
-    global _bootstrap_thread
+    # settings is Any (app.config.settings.get_settings() is untyped upstream);
+    # JUICEFS_HOST_MOUNT_PATH is genuinely str on both Settings subclasses.
+    mount_path_str: str = settings.JUICEFS_HOST_MOUNT_PATH
 
-    if shutil.which("juicefs") is None:
-        log.warning(f"{LogTag.STORAGE} CLI not found on PATH — skipping bootstrap")
-        return settings.JUICEFS_HOST_MOUNT_PATH
+    if await _bootstrap_needed(Path(mount_path_str)):
+        _start_bootstrap_thread()
+        # Yield control so the provider returns promptly without blocking startup.
+        await asyncio.sleep(0)
 
-    missing = _missing_settings()
-    if missing:
-        log.info(f"{LogTag.STORAGE} skipping bootstrap; missing settings: " + ", ".join(missing))
-        return settings.JUICEFS_HOST_MOUNT_PATH
-
-    # Probe off the event loop with a timeout — a wedged FUSE mount blocks forever
-    # and running this inline previously froze the worker before it consumed jobs.
-    mount_path = Path(settings.JUICEFS_HOST_MOUNT_PATH)
-    try:
-        already_mounted = await asyncio.wait_for(
-            asyncio.to_thread(_is_mounted, mount_path),
-            timeout=_MOUNT_PROBE_TIMEOUT_SECONDS,
-        )
-    except TimeoutError:
-        log.warning(
-            f"{LogTag.STORAGE} mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
-            "mount likely unresponsive; (re)starting bootstrap"
-        )
-        already_mounted = False
-
-    if already_mounted:
-        log.info(f"{LogTag.STORAGE} mount already healthy")
-        return settings.JUICEFS_HOST_MOUNT_PATH
-
-    with _bootstrap_lock:
-        if _bootstrap_thread is not None and _bootstrap_thread.is_alive():
-            return settings.JUICEFS_HOST_MOUNT_PATH
-        _bootstrap_thread = threading.Thread(
-            target=_bootstrap_loop,
-            name="juicefs-bootstrap",
-            daemon=True,
-        )
-        _bootstrap_thread.start()
-
-    # Yield control so the provider returns promptly without blocking startup.
-    await asyncio.sleep(0)
-    return settings.JUICEFS_HOST_MOUNT_PATH
+    return mount_path_str

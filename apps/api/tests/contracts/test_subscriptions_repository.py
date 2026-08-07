@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from app.db.repositories.subscriptions import SubscriptionsRepository
-from app.models.payment_models import SubscriptionDocument
+from app.models.payment_models import SubscriptionDocument, SubscriptionUpdate
 
 
 def _sub(**overrides: object) -> SubscriptionDocument:
@@ -65,13 +65,17 @@ class TestSubscriptionsRepository:
 
     async def test_apply_update_by_dodo_id_sets_status_and_stamps_updated_at(self, repo):
         created = await repo.create(_sub(dodo_subscription_id="s", status="active"))
-        matched = await repo.apply_update_by_dodo_id("s", status="cancelled")
+        matched = await repo.apply_update_by_dodo_id("s", SubscriptionUpdate(status="cancelled"))
         assert matched is True
         got = await repo.get_by_dodo_id("s")
         assert got is not None and got.status == "cancelled"
         assert got.updated_at is not None and got.updated_at >= created.updated_at
-        assert await repo.apply_update_by_dodo_id("missing", status="x") is False
-        assert await repo.apply_update_by_dodo_id("s") is False  # empty patch → no-op
+        assert (
+            await repo.apply_update_by_dodo_id("missing", SubscriptionUpdate(status="x")) is False
+        )
+        assert (
+            await repo.apply_update_by_dodo_id("s", SubscriptionUpdate()) is False
+        )  # empty patch → no-op
 
     async def test_extra_billing_fields_preserved(self, repo):
         await repo.create(

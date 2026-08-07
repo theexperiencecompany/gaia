@@ -95,6 +95,43 @@ class SupportRequestSubmissionResponse(BaseModel):
     )
 
 
+class SupportRequestPagination(BaseModel):
+    """Pagination envelope for a page of support requests."""
+
+    page: int = Field(..., description="Current page number (1-based)")
+    per_page: int = Field(..., description="Items per page")
+    total: int = Field(..., description="Total number of matching requests")
+    pages: int = Field(..., description="Total number of pages")
+
+
+class SupportRequestListResponse(BaseModel):
+    """Response model for a paginated list of a user's support requests."""
+
+    requests: list[SupportRequestResponse] = Field(..., description="Requests on this page")
+    pagination: SupportRequestPagination = Field(..., description="Pagination info")
+
+
+class SupportRateLimitWindow(BaseModel):
+    """One configured rate-limit window for support request submission."""
+
+    limit: int = Field(..., description="Maximum submissions allowed in the window")
+    window: str = Field(..., description="Human-readable window length")
+
+
+class SupportRateLimits(BaseModel):
+    """The rate-limit windows enforced on support request submission."""
+
+    hourly: SupportRateLimitWindow
+    daily: SupportRateLimitWindow
+
+
+class SupportRateLimitStatusResponse(BaseModel):
+    """Response model for the support rate-limit status endpoint."""
+
+    limits: SupportRateLimits = Field(..., description="Configured limits")
+    note: str = Field(..., description="How the limits are applied")
+
+
 class SupportEmailNotification(BaseModel):
     """Model for email notification data."""
 

@@ -1,1 +1,1 @@
-export { type ParsedContent, parseThinkingFromText } from "@shared/utils";
+export { parseThinkingFromText } from "@shared/utils";

@@ -30,7 +30,7 @@ def _get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config metadata."""
     metadata = config.get("metadata", {}) if config else {}
     user_id = metadata.get("user_id")
-    if not user_id:
+    if not isinstance(user_id, str) or not user_id:
         raise ValueError("User ID not found in configuration")
     return user_id
 

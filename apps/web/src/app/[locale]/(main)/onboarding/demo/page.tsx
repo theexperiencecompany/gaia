@@ -127,8 +127,12 @@ const DUMMY_CHAT: UseOnboardingChatReturn = {
   chatInputValue: "",
   isChatSending: false,
   isTodoExecutionDone: true,
-  setChatInputValue: () => {},
-  sendChatMessage: async () => {},
+  setChatInputValue: () => {
+    /* demo stub: chat is not wired on this showcase page */
+  },
+  sendChatMessage: async () => {
+    /* demo stub: chat is not wired on this showcase page */
+  },
 };
 
 const DUMMY_PERSONALIZATION: PersonalizationData = {
@@ -517,17 +521,32 @@ function CTAComposerDemo() {
     <DemoSection label="ComposerCTA + OnboardingCTAButton">
       <div className="rounded-2xl border border-dashed border-zinc-800 bg-primary-bg/40">
         <ComposerCTA>
-          <OnboardingCTAButton onClick={() => {}}>
+          <OnboardingCTAButton
+            onClick={() => {
+              /* demo stub: not wired on this showcase page */
+            }}
+          >
             Looks good
           </OnboardingCTAButton>
         </ComposerCTA>
       </div>
       <div className="flex flex-wrap gap-2">
-        <OnboardingCTAButton onClick={() => {}}>Understood</OnboardingCTAButton>
+        <OnboardingCTAButton
+          onClick={() => {
+            /* demo stub: not wired on this showcase page */
+          }}
+        >
+          Understood
+        </OnboardingCTAButton>
         <OnboardingCTAButton href="/onboarding/demo">
           Continue to GAIA
         </OnboardingCTAButton>
-        <OnboardingCTAButton onClick={() => {}} hideEndIcon>
+        <OnboardingCTAButton
+          onClick={() => {
+            /* demo stub: not wired on this showcase page */
+          }}
+          hideEndIcon
+        >
           No icon
         </OnboardingCTAButton>
       </div>
@@ -578,7 +597,9 @@ function OnboardingInputDemo() {
           setQaProfession(key != null ? String(key) : null)
         }
         onProfessionInputChange={(value) => setQaProfession(value || null)}
-        onGmailSkip={() => {}}
+        onGmailSkip={() => {
+          /* demo stub: not wired on this showcase page */
+        }}
       />
 
       <p className="mt-4 text-[10px] uppercase tracking-widest text-zinc-600">
@@ -702,7 +723,9 @@ function CompletedStagesTimelineDemo() {
       </div>
       <CompletedStagesTimeline
         state={state}
-        dispatch={() => {}}
+        dispatch={() => {
+          /* demo stub: not wired on this showcase page */
+        }}
         chat={DUMMY_CHAT}
       />
     </DemoSection>
@@ -735,7 +758,12 @@ function RevealWritingStyleStageDemo() {
       </div>
       <RevealWritingStyle state={state} />
       <div className="rounded-2xl border border-dashed border-zinc-800 bg-primary-bg/40">
-        <RevealWritingStyleComposer state={state} dispatch={() => {}} />
+        <RevealWritingStyleComposer
+          state={state}
+          dispatch={() => {
+            /* demo stub: not wired on this showcase page */
+          }}
+        />
       </div>
     </DemoSection>
   );
@@ -749,7 +777,12 @@ function WorkflowsStageDemo() {
   };
   return (
     <DemoSection label="Workflows stage (intro bubble + cards)">
-      <Workflows state={state} dispatch={() => {}} />
+      <Workflows
+        state={state}
+        dispatch={() => {
+          /* demo stub: not wired on this showcase page */
+        }}
+      />
     </DemoSection>
   );
 }
@@ -762,7 +795,12 @@ function PlatformsStageDemo() {
   };
   return (
     <DemoSection label="Platforms stage (preview + connect)">
-      <Platforms state={state} dispatch={() => {}} />
+      <Platforms
+        state={state}
+        dispatch={() => {
+          /* demo stub: not wired on this showcase page */
+        }}
+      />
     </DemoSection>
   );
 }

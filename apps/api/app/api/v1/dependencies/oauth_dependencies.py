@@ -1,6 +1,6 @@
 import asyncio
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
 
@@ -9,7 +9,7 @@ from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
 from app.db.repositories.users import user_repository
-from app.models.user_models import UserUpdate, user_to_legacy_dict
+from app.models.user_models import AuthenticatedUser, UserUpdate, user_to_legacy_dict
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -34,7 +34,11 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
         log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
 
 
-async def get_current_user(request: Request):
+# NOSONAR justification: FastAPI dispatches a `def` dependency to a threadpool and
+# an `async def` one on the event loop. This reads request.state and nothing else,
+# so `async def` is deliberately the cheaper of the two — and it runs on every
+# authenticated request. Dropping `async` would add a threadpool hop per request.
+async def get_current_user(request: Request) -> AuthenticatedUser:  # NOSONAR python:S7503
     """
     Retrieves the current user from request state.
     Authentication is handled by the WorkOSAuthMiddleware.
@@ -67,7 +71,9 @@ async def get_current_user(request: Request):
             },
         )
 
-    user = request.state.user
+    # request.state is Starlette's untyped bag (Any); WorkOSAuthMiddleware always
+    # sets .user to the dict built by build_user_context() when authenticated=True.
+    user = cast(dict[str, Any], request.state.user)
     log.set(
         auth={
             "user_id": user.get("user_id"),
@@ -76,10 +82,16 @@ async def get_current_user(request: Request):
             "is_agent_token": bool(user.get("is_agent_token", False)),
         }
     )
-    return user
+    # request.state is untyped by Starlette; the middleware only ever puts an
+    # AuthenticatedUser there (see WorkOSAuthMiddleware).
+    return cast(AuthenticatedUser, user)
 
 
-async def get_user_id(user: dict = Depends(get_current_user)) -> str:
+# NOSONAR justification: same as get_current_user above — a FastAPI dependency that
+# only unwraps one field stays on the event loop rather than paying a threadpool hop.
+async def get_user_id(  # NOSONAR python:S7503
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> str:
     """Extract user_id from authenticated user or raise 400."""
     user_id = user.get("user_id")
     if not user_id:
@@ -87,7 +99,7 @@ async def get_user_id(user: dict = Depends(get_current_user)) -> str:
     return str(user_id)
 
 
-async def get_current_user_ws(websocket: WebSocket):
+async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     """
     Authenticate a user from a WebSocket connection using cookies.
     This is a special version of get_current_user for WebSocket connections.
@@ -148,7 +160,7 @@ async def get_current_user_ws(websocket: WebSocket):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
-    return user_info
+    return cast(AuthenticatedUser, user_info)
 
 
 GET_USER_TZ_TYPE = tuple[str, datetime]
@@ -171,7 +183,7 @@ def get_user_timezone(
 
 
 async def get_user_timezone_from_preferences(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     x_timezone: str = Header(
         default="", alias="x-timezone", description="Browser timezone fallback"
     ),

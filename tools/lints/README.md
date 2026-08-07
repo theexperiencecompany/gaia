@@ -117,3 +117,90 @@ not allowlisted. Check 4's allowlist is the legitimate NON-entity caches
 (aggregate rollups, tokens, external-data / derived-display caches) — the ban is
 only on hand-caching a repository-managed *entity* behind the repo's back. Check 3
 has no allowlist (the layer is new — it starts clean).
+
+---
+
+## ignore-ratchet
+
+Not an AST rule — a config ratchet, so it runs as its own script/hook rather than
+through `run.py`:
+
+```bash
+python3 tools/lints/check_ignore_ratchet.py           # check
+python3 tools/lints/check_ignore_ratchet.py --update  # record a deliberate change
+```
+
+**Rule:** the escape hatches in the root `pyproject.toml` may only ever *shrink*.
+Three kinds are tracked:
+
+| source | an escape hatch is |
+| --- | --- |
+| `[tool.ruff.lint] ignore` | a rule switched off everywhere |
+| `[tool.ruff.lint.per-file-ignores]` | a rule switched off for a path glob |
+| `[[tool.mypy.overrides]]` | a per-module setting that *weakens* checking |
+
+The check fails if a rule is added to either ruff list, a new file entry appears,
+or a mypy override starts weakening a check for a module it did not before.
+
+Only mypy *loosenings* count. The strict-island block that sets the same keys to
+`true` is a tightening and is deliberately untracked — this guards holes, not
+strictness. The edit it is really there to catch is widening an existing block's
+`module` list: dropping `"app.services.*"` in beside `"tests.*"` turns off type
+checking for every service and reads as a one-word diff.
+
+**Why:** both lists are the residue of a cleanup campaign. They are the only two
+places a ruff rule can be switched off wholesale, and editing them is invisible
+in review in a way a failing check is not — a single line quietly re-opens
+exactly the hole the campaign closed. Comparing against the checked-in baseline
+turns "loosen the linter" from an unnoticed config edit into a conscious,
+reviewable decision.
+
+**Baseline:** `tools/lints/ignore_ratchet_baseline.txt`, one line per escape
+hatch, sorted, checked in. Compared as a **set**, not a count — a count check
+passes when someone removes one entry and adds another. Line shapes:
+
+```
+ignore<TAB><rule>
+per-file-ignores<TAB><glob><TAB><rule>
+mypy-override<TAB><module><TAB><setting>
+```
+
+**Fix:** delete the offending rule from the list and fix the code it silences.
+If the exemption is genuinely warranted (a framework contract, a generated file),
+justify it in review and run `--update`; the baseline diff then shows the new
+escape hatch on its own line for a reviewer to accept or reject.
+
+**Removals always pass** — that is the ratchet turning. The check prints what was
+removed and suggests `--update` to lock the win in; until someone does, the
+baseline stays at the old high-water mark, so a removed entry can be re-added
+without failing. Running `--update` as part of the cleanup closes that window.
+
+---
+
+## no-silent-fallback
+
+**Rule:** a broad `except` (`Exception` / `BaseException` / bare) may not both stay
+silent *and* hand back a falsy stand-in — `None`, `False`, `0`, `""`, `[]`, `{}`,
+or falling out of the handler.
+
+**Why:** it makes a total failure indistinguishable from a real empty result at
+every call site. This has shipped here more than once: notification search
+returned an empty list when the backend was down and rendered as an empty inbox,
+and a swallowed `AttributeError` did the same thing one layer below it. The
+caller has no way to tell "nothing matched" from "the query never ran".
+
+**Scope** is deliberately narrower than ruff's `BLE001` (1001 findings, mostly
+benign top-level safety nets). Three things must all be true to be reported: the
+except is broad, nothing in the handler logs or re-raises, and it substitutes a
+falsy value. A handler that logs is fine. A handler that re-raises is fine. A
+handler that returns a real value is fine.
+
+**Fix:** log why it failed before returning the fallback, or let the exception
+propagate. If the empty value genuinely *is* the right answer, catch the specific
+exception that means that — `except ValueError` is a decision; `except Exception`
+is a blanket.
+
+**Allowlist:** keyed `<path>::<enclosing function>`, so an unrelated edit above a
+handler does not shift it and fire a false alarm. It grandfathers ten probe/parse
+sites that predate the rule. Like the `no-service-classes` allowlist it is a
+ratchet — remove an entry when the site is fixed, never add one.

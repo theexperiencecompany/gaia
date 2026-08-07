@@ -10,6 +10,8 @@ Each override is HEAD-validated to be a live image before use, so a server never
 loses its working icon to a broken or missing one.
 """
 
+import contextlib
+from typing import Literal, TypedDict, cast
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup
@@ -20,6 +22,17 @@ from app.constants.cache import FAVICON_CACHE_TTL
 from app.constants.log_tags import LogTag
 from app.db.redis import get_cache, set_cache
 from shared.py.wide_events import log
+
+IconFormat = Literal["png", "svg", "ico", "other"]
+
+
+class IconCandidate(TypedDict):
+    """One ``<link rel="icon">`` entry, ranked by format then declared size."""
+
+    href: str
+    size: int
+    format: IconFormat
+
 
 # HTTP client settings
 HTTP_TIMEOUT = 3.0
@@ -123,17 +136,15 @@ def _parse_favicon_size(sizes_attr: str) -> int:
         if "x" in size.lower():
             parts = size.lower().split("x")
             if len(parts) == 2:
-                try:
+                with contextlib.suppress(ValueError):
                     max_size = max(max_size, int(parts[0]), int(parts[1]))
-                except ValueError:
-                    pass
     return max_size
 
 
-def _parse_icons_from_html(html: str, base_url: str) -> list[dict]:
+def _parse_icons_from_html(html: str, base_url: str) -> list[IconCandidate]:
     """Parse HTML to extract all link[rel=icon] entries using BeautifulSoup."""
     soup = BeautifulSoup(html, "lxml")
-    icons = []
+    icons: list[IconCandidate] = []
 
     # Find all link tags with rel containing "icon"
     for link in soup.find_all("link", rel=lambda x: x and "icon" in x.lower()):
@@ -149,6 +160,7 @@ def _parse_icons_from_html(html: str, base_url: str) -> list[dict]:
         size = _parse_favicon_size(sizes)
 
         href_lower = href.lower()
+        fmt: IconFormat
         if ".png" in href_lower:
             fmt = "png"
         elif ".svg" in href_lower:
@@ -163,12 +175,12 @@ def _parse_icons_from_html(html: str, base_url: str) -> list[dict]:
     return icons
 
 
-def _select_best_icon(icons: list[dict]) -> str | None:
+def _select_best_icon(icons: list[IconCandidate]) -> str | None:
     """Select best favicon: PNG > ICO > other > SVG, then by size."""
     if not icons:
         return None
 
-    format_priority = {"png": 0, "ico": 1, "other": 2, "svg": 3}
+    format_priority: dict[IconFormat, int] = {"png": 0, "ico": 1, "other": 2, "svg": 3}
     icons.sort(key=lambda x: (format_priority.get(x["format"], 2), -x["size"]))
     return icons[0]["href"]
 
@@ -250,7 +262,7 @@ async def fetch_favicon_from_url(server_url: str) -> str | None:
         # Check Redis cache first
         cached = await get_cache(cache_key)
         if cached:
-            return cached
+            return cast(str, cached)
 
         # Cache miss - fetch from external sources
         result = await _fetch_favicon_impl(server_url)

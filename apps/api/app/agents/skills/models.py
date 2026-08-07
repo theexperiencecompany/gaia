@@ -252,6 +252,14 @@ class SkillListResponse(BaseModel):
     total: int = Field(default=0)
 
 
+class SkillToggleResponse(BaseModel):
+    """Response for enabling or disabling a skill."""
+
+    success: bool
+    skill_id: str
+    enabled: bool
+
+
 class SkillTarget(BaseModel):
     """A place a skill can run: the executor, or a connected integration subagent.
 
@@ -270,6 +278,27 @@ class SkillTargetsResponse(BaseModel):
     """Available skill targets for the current user."""
 
     targets: list[SkillTarget] = Field(default_factory=list)
+
+
+class DiscoveredSkillInfo(BaseModel):
+    """A skill found in a remote GitHub repository but not yet installed."""
+
+    name: str = Field(..., description="Skill identifier from SKILL.md frontmatter")
+    description: str = Field(..., description="What the skill does")
+    path: str = Field(..., description="Folder containing SKILL.md within the repository")
+    repo_url: str = Field(..., description="Canonical GitHub URL of the source repository")
+    subagent_id: str = Field(..., description="Target agent declared in the skill's frontmatter")
+
+
+class DiscoverSkillsResponse(BaseModel):
+    """Response for previewing the skills available in a GitHub repository."""
+
+    repo: str = Field(..., description="Repository as requested (owner/repo or full URL)")
+    branch: str = Field(..., description="Branch that was searched")
+    skills: list[DiscoveredSkillInfo] = Field(default_factory=list)
+    # `count`, not the `total` the other list responses use: the web client's
+    # DiscoverSkillsResponse type already reads `count` off this endpoint.
+    count: int = Field(default=0)
 
 
 class BuiltinSkillInfo(BaseModel):

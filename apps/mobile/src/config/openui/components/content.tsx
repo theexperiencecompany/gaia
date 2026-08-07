@@ -352,7 +352,7 @@ export function ImageGalleryView(props: z.infer<typeof imageGallerySchema>) {
         style={{ flexDirection: "row", flexWrap: "wrap", marginHorizontal: -4 }}
       >
         {images.map((img, i) => (
-          <View key={`${img.src}-${i}`} style={{ width: "50%", padding: 4 }}>
+          <View key={img.src} style={{ width: "50%", padding: 4 }}>
             <GalleryThumb img={img} onPress={() => setSelected(i)} />
           </View>
         ))}
@@ -980,7 +980,7 @@ export function CarouselView(props: z.infer<typeof carouselSchema>) {
         >
           {props.items.map((item, i) => (
             <View
-              key={`${item.title}-${i}`}
+              key={item.title}
               style={{
                 width: 6,
                 height: 6,

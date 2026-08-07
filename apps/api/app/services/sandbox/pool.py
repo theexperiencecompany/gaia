@@ -15,11 +15,13 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Any
+
+from e2b import AsyncSandbox
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
+from app.services.sandbox.artifact_watcher import ArtifactWatcher
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage.metrics import set_sandbox_pool_size
 from shared.py.wide_events import log
@@ -29,15 +31,14 @@ from shared.py.wide_events import log
 class PooledSandbox:
     """Reference to a live AsyncSandbox plus per-user concurrency primitives."""
 
-    sandbox: Any  # e2b.AsyncSandbox — typed as Any to avoid import at module load
+    sandbox: AsyncSandbox
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     refcount: int = 0
     pause_task: asyncio.Task[None] | None = None
     last_canary_ts: str | None = None
     # monotonic timestamp of the last sandbox kill-timer refresh (set_timeout)
     timeout_refreshed_at: float = 0.0
-    # ArtifactWatcher | None — Any to avoid importing it at module load.
-    watcher: Any = None
+    watcher: ArtifactWatcher | None = None
 
 
 class SandboxPool:

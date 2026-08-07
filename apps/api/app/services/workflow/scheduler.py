@@ -61,7 +61,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """Get the ARQ job name for workflow processing."""
         return "execute_workflow_by_id"
 
-    def _build_job_args(self, task_id: str) -> tuple:
+    def _build_job_args(self, task_id: str) -> tuple[str, dict[str, str]]:
         """Mark scheduler-originated fires so the executor re-arms the next
         occurrence; manual "run now" executions pass their own context and so are
         never tagged as scheduled."""
@@ -190,7 +190,6 @@ class WorkflowScheduler(BaseSchedulerService):
     async def schedule_workflow_execution(
         self,
         workflow_id: str,
-        user_id: str,
         scheduled_at: datetime,
         repeat: str | None = None,
         max_occurrences: int | None = None,
@@ -229,7 +228,7 @@ class WorkflowScheduler(BaseSchedulerService):
         """Reschedule an existing workflow."""
         try:
             # Update the workflow's scheduling fields in database
-            update_data = {
+            update_data: dict[str, Any] = {
                 "scheduled_at": new_scheduled_at,
                 "status": ScheduledTaskStatus.SCHEDULED.value,
             }

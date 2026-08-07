@@ -9,13 +9,20 @@ from app.db.repositories.base import MongoDocument
 from app.models.message_models import FileData
 from app.services.platform_link_service import Platform
 
+# Shared field docs — the same platform identity fields recur across the
+# request/response models below, so their descriptions live in one place.
+_PLATFORM_DESC = "Platform name (discord, telegram, etc.)"
+_PLATFORM_USER_ID_DESC = "User's ID on the platform"
+_USERNAME_DESC = "Username on the platform"
+_DISPLAY_NAME_DESC = "Display name on the platform"
+
 
 class BotChatRequest(BaseModel):
     """Request model for bot chat messages."""
 
     message: str = Field(..., description="User's message text", min_length=1, max_length=32768)
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
-    platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
+    platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
     file_ids: list[str] | None = Field(
         None,
@@ -58,10 +65,10 @@ class LinkedUsersResponse(BaseModel):
 class CreateLinkTokenRequest(BaseModel):
     """Request model for creating a secure platform link token."""
 
-    platform: str = Field(..., description="Platform name (discord, telegram, etc.)")
-    platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
-    username: str | None = Field(None, description="Username on the platform")
-    display_name: str | None = Field(None, description="Display name on the platform")
+    platform: str = Field(..., description=_PLATFORM_DESC)
+    platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
+    username: str | None = Field(None, description=_USERNAME_DESC)
+    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
 
     @field_validator("platform")
     @classmethod
@@ -83,7 +90,7 @@ class ResetSessionRequest(BaseModel):
     """Request model for resetting a bot session (starting a new conversation)."""
 
     platform: str = Field(..., description="Platform name (discord, slack, etc.)")
-    platform_user_id: str = Field(..., description="User's ID on the platform", min_length=1)
+    platform_user_id: str = Field(..., description=_PLATFORM_USER_ID_DESC, min_length=1)
     channel_id: str | None = Field(None, description="Channel/group ID (None for DM)")
 
     @field_validator("platform")
@@ -93,6 +100,55 @@ class ResetSessionRequest(BaseModel):
         if not Platform.is_valid(v):
             raise ValueError(f"Invalid platform '{v}'")
         return v
+
+
+class ResetSessionResponse(BaseModel):
+    """Response model for a bot session reset."""
+
+    success: bool = Field(..., description="Whether the session reset succeeded")
+    conversation_id: str = Field(..., description="The new conversation ID")
+
+
+class LinkTokenRecord(BaseModel):
+    """The display fields read from the Redis hash ``create_link_token`` writes
+    for a pending platform link (the hash also carries ``platform_user_id``,
+    which this read path never surfaces).
+
+    Validated immediately after ``HGETALL`` returns the raw hash (see the API
+    CLAUDE.md Type Safety rules on external boundaries).
+    """
+
+    platform: str = Field(..., description=_PLATFORM_DESC)
+    username: str | None = Field(None, description=_USERNAME_DESC)
+    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+
+    @field_validator("platform")
+    @classmethod
+    def validate_platform(cls, v: str) -> str:
+        """Reject values that are not registered platform names."""
+        if not Platform.is_valid(v):
+            raise ValueError(f"Invalid platform '{v}'")
+        return v
+
+
+class LinkTokenInfoResponse(BaseModel):
+    """Response model for the link-token confirmation page's display metadata."""
+
+    platform: str = Field(..., description="Platform name")
+    username: str | None = Field(None, description=_USERNAME_DESC)
+    display_name: str | None = Field(None, description=_DISPLAY_NAME_DESC)
+
+
+class UnlinkAccountResponse(BaseModel):
+    """Response model for unlinking a platform account."""
+
+    success: bool = Field(..., description="Whether the account was unlinked")
+
+
+class TranscribeAudioResponse(BaseModel):
+    """Response model for a transcribed bot audio clip."""
+
+    text: str = Field(..., description="Transcript of the audio clip")
 
 
 class IntegrationInfo(BaseModel):

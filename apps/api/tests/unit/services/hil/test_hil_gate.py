@@ -16,10 +16,18 @@ from langgraph.errors import GraphInterrupt
 import pytest
 
 from app.constants.hil import HIL_STATUS_KWARG
+from app.models.hil_models import HILApprovalStatus
 from app.services.hil.bridge import ApprovalOutcome
-from app.services.hil.gate import _outcome_from_resume, gate_tool_call, read_gate_context
+from app.services.hil.gate import _outcome_from_record, read_gate_context
 
-from .conftest import CONVERSATION_ID, STREAM_ID, USER_ID, make_request
+from .conftest import (
+    CONVERSATION_ID,
+    STREAM_ID,
+    USER_ID,
+    make_record,
+    make_request,
+    run_through_gate,
+)
 
 MODULE = "app.services.hil.gate"
 
@@ -51,41 +59,55 @@ class _Handler:
         return ToolMessage(content="the tool really ran", tool_call_id="call-1")
 
 
-class TestResumePayload:
-    """``interrupt()`` hands back whatever resumed the thread. An approval must never be
-    inferred from a payload the gate does not fully recognise."""
+class TestTheDecisionComesFromTheRecord:
+    """The record is the decision. The resume payload is a wake-up and nothing more.
 
-    @pytest.mark.parametrize(
-        "payload",
-        [
-            None,
-            "approved",  # a bare string, not the dict the gate expects
-            {},  # no status at all
-            {"status": "pending"},  # not a terminal decision
-            {"status": "auto_approved"},  # a record status, not a resumable one
-            {"status": "abandoned"},  # resolution.py maps this to denied before sending
-            {"status": "APPROVED"},  # case must not be coerced
-            {"status": True},
-            {"approved": True},  # attacker-shaped payload
-        ],
-    )
-    def test_anything_unrecognised_is_a_denial(self, payload: Any) -> None:
-        assert _outcome_from_resume(payload).status == "denied"
+    The gate used to read ``Command(resume=...)`` and had to defend against every
+    malformed shape one could arrive in; it no longer looks at it at all. What matters
+    now is that a stored status maps to the right fate, including the two that do not
+    map to themselves.
+    """
 
-    def test_a_real_approval_is_honoured(self) -> None:
+    def test_an_approval_is_honoured(self) -> None:
         # The positive control: if this fails, nothing can ever be approved.
-        outcome = _outcome_from_resume({"status": "approved", "feedback": None, "scope": "once"})
-        assert outcome.status == "approved"
+        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.APPROVED))
+        assert outcome.status is HILApprovalStatus.APPROVED
 
-    def test_scope_defaults_to_once_when_absent(self) -> None:
-        # A missing scope must not become "always_tool" — that would permanently ungate
-        # the tool off the back of a single click.
-        assert _outcome_from_resume({"status": "approved"}).scope == "once"
+    def test_auto_approved_reads_as_approved_so_the_call_still_runs(self) -> None:
+        # It means "the user was not asked", NOT "the action already happened". Reading it
+        # as anything else strands every auto-approved call unexecuted.
+        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.AUTO_APPROVED))
+        assert outcome.status is HILApprovalStatus.APPROVED
 
-    def test_denial_feedback_is_carried_back_to_the_model(self) -> None:
-        outcome = _outcome_from_resume({"status": "denied", "feedback": "wrong recipient"})
-        assert outcome.status == "denied"
+    def test_abandoned_reads_as_denied(self) -> None:
+        # The user moved on. Treating it as anything but a refusal would act on a request
+        # they walked away from.
+        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.ABANDONED))
+        assert outcome.status is HILApprovalStatus.DENIED
+
+    def test_a_timeout_stays_a_timeout(self) -> None:
+        # Not a denial: the user was away, not opposed, and the model is told so.
+        outcome = _outcome_from_record(make_record(status=HILApprovalStatus.TIMEOUT))
+        assert outcome.status is HILApprovalStatus.TIMEOUT
+
+    def test_scope_and_feedback_ride_along(self) -> None:
+        outcome = _outcome_from_record(
+            make_record(
+                status=HILApprovalStatus.DENIED, scope="always_tool", feedback="wrong recipient"
+            )
+        )
         assert outcome.feedback == "wrong recipient"
+        assert outcome.scope == "always_tool"
+
+    def test_only_pending_is_unsettled(self) -> None:
+        # ``settled`` is what decides whether the gate reads a decision or asks for one,
+        # so a status wrongly counted as settled would run an unapproved call.
+        assert not HILApprovalStatus.PENDING.settled
+        assert all(
+            status.settled
+            for status in HILApprovalStatus
+            if status is not HILApprovalStatus.PENDING
+        )
 
 
 class TestGateContext:
@@ -182,7 +204,7 @@ class TestGateFailsClosed:
         # Attack: Redis/Mongo/registry falls over mid-run. The tool MUST NOT run.
         handler = _Handler()
         with patch(f"{MODULE}.resolve_policy", side_effect=ConnectionError("mongo down")):
-            result = await gate_tool_call(make_request(), handler)
+            result = await run_through_gate(make_request(), handler)
 
         assert handler.ran is False
         assert isinstance(result, ToolMessage)
@@ -197,7 +219,7 @@ class TestGateFailsClosed:
             patch(f"{MODULE}._integration_name_for", new=AsyncMock(return_value=None)),
             patch(f"{MODULE}.publish_approval_request", side_effect=RuntimeError("redis down")),
         ):
-            result = await gate_tool_call(make_request(), handler)
+            result = await run_through_gate(make_request(), handler)
 
         assert handler.ran is False
         assert isinstance(result, ToolMessage)
@@ -214,7 +236,7 @@ class TestGateFailsClosed:
             patch(f"{MODULE}.publish_approval_request", side_effect=GraphInterrupt(())),
             pytest.raises(GraphInterrupt),
         ):
-            await gate_tool_call(make_request(), handler)
+            await run_through_gate(make_request(), handler)
 
         assert handler.ran is False
 
@@ -227,14 +249,14 @@ class TestGateFailsClosed:
 
         with patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="allow")):
             with pytest.raises(ValueError, match="the API rejected the request"):
-                await gate_tool_call(make_request(), exploding_handler)
+                await run_through_gate(make_request(), exploding_handler)
 
 
 class TestGateBypasses:
     async def test_an_exempt_tool_runs_without_any_gate_check(self) -> None:
         handler = _Handler()
         with patch(f"{MODULE}.resolve_policy", new=AsyncMock()) as policy:
-            result = await gate_tool_call(make_request(name="call_executor"), handler)
+            result = await run_through_gate(make_request(name="call_executor"), handler)
 
         assert handler.ran is True
         assert result.content == "the tool really ran"
@@ -244,7 +266,7 @@ class TestGateBypasses:
         # A background/queued run has nobody to ask. It runs — by design.
         handler = _Handler()
         with patch(f"{MODULE}.resolve_policy", new=AsyncMock()) as policy:
-            await gate_tool_call(make_request(configurable={}), handler)
+            await run_through_gate(make_request(configurable={}), handler)
 
         assert handler.ran is True
         assert policy.await_count == 0
@@ -252,7 +274,7 @@ class TestGateBypasses:
     async def test_an_allowed_policy_runs_the_tool(self) -> None:
         handler = _Handler()
         with patch(f"{MODULE}.resolve_policy", new=AsyncMock(return_value="allow")):
-            await gate_tool_call(make_request(), handler)
+            await run_through_gate(make_request(), handler)
         assert handler.ran is True
 
 
@@ -267,7 +289,7 @@ class TestDeclineMemory:
             patch(f"{MODULE}.recall_declined_call", new=AsyncMock(return_value=declined)),
             patch(f"{MODULE}.publish_approval_request", new=AsyncMock()) as publish,
         ):
-            result = await gate_tool_call(make_request(), handler)
+            result = await run_through_gate(make_request(), handler)
 
         assert handler.ran is False
         assert publish.await_count == 0  # the user is NOT asked a second time

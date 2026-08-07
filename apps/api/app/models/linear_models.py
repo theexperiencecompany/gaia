@@ -335,5 +335,3 @@ class GetNotificationsInput(BaseModel):
 
 class GetWorkspaceContextInput(BaseModel):
     """Input for getting full workspace context (no parameters needed)."""
-
-    pass

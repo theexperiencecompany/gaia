@@ -89,7 +89,7 @@ def format_writing_style_for_prompt(
     return "\n".join(lines)
 
 
-def _example_blocks_to_text(raw: Any) -> str:
+def _example_blocks_to_text(raw: object) -> str:
     """Render example blocks dict ({greeting, body[], signoff, name}) or legacy string as text."""
     if isinstance(raw, str):
         return raw

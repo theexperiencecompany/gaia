@@ -13,7 +13,7 @@ Three concerns the base ``mcp_use`` adapter doesn't cover:
 """
 
 import asyncio
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from langchain_core.tools import BaseTool
 
@@ -124,6 +124,12 @@ class SanitizingLangChainAdapter(LangChainAdapter):
     def fix_schema(self, schema: Any) -> Any:
         """Fix JSON schema for Pydantic compatibility.
 
+        Signature kept as ``Any`` on purpose: this overrides mcp_use's
+        ``LangChainAdapter.fix_schema``, which the base adapter calls with
+        arbitrary JSON-schema nodes (dict, list, or scalar) and whose own
+        annotation is ``Any``. Narrowing it here would break that contract
+        (Type Safety item 14).
+
         Extends the base fix_schema to also:
         - Strip leading underscores from property names
         - Update 'required' array to match renamed properties
@@ -204,7 +210,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             def _run(self, **kwargs: Any) -> NoReturn:
                 raise NotImplementedError("MCP tools only support async operations")
 
-            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]]:
+            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:
                 try:
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.name, kwargs
@@ -212,10 +218,14 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                     try:
                         return await _tool_result_to_content(tool_result)
                     except Exception as e:
-                        return format_error(e, tool=self.name)
+                        # mcp_use ships no py.typed marker, so mypy treats
+                        # format_error's real `-> dict` annotation as Any.
+                        return cast(dict[str, Any], format_error(e, tool=self.name))
                 except Exception as e:
                     if self.handle_tool_error:
-                        return format_error(e, tool=self.name)
+                        # mcp_use ships no py.typed marker, so mypy treats
+                        # format_error's real `-> dict` annotation as Any.
+                        return cast(dict[str, Any], format_error(e, tool=self.name))
                     raise
 
         tool = McpToLangChainAdapter()

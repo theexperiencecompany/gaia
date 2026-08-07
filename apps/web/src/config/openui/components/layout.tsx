@@ -171,7 +171,9 @@ export function CopyableContentView(
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
         timeoutRef.current = setTimeout(() => setCopied(false), 1800);
       })
-      .catch(() => {});
+      .catch(() => {
+        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
+      });
   }, [props.content]);
 
   if (inline) {

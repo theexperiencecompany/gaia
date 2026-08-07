@@ -13,13 +13,19 @@ async def search_by_similarity(
     user_id: str,
     collection_name: str,
     top_k: int = 5,
-    additional_filters: dict | None = None,
+    additional_filters: dict[str, Any] | None = None,
     fetch_mongo_details: bool | None = False,
-):
+) -> list[dict[str, Any]]:
     """Search a ChromaDB collection for items similar to ``input_text``.
 
     Scoped to ``user_id``; optionally enriches results with MongoDB details.
-    Returns a list of items with content and metadata.
+    Returns items keyed ``id``/``similarity_score``/``user_id``/``content``,
+    plus ``created_at``/``updated_at`` on the enriched notes path.
+
+    Items stay ``dict[str, Any]`` rather than becoming a ``TypedDict``: the
+    enrichment step writes its timestamp keys through a loop variable, which a
+    ``TypedDict`` forbids, and rewriting that loop to satisfy the checker would
+    be changing code to suit a type (Type Safety items 13/14).
     """
     log.set(
         collection_name=collection_name,
@@ -102,7 +108,7 @@ async def search_by_similarity(
         return []
 
 
-async def search_notes_by_similarity(input_text: str, user_id: str):
+async def search_notes_by_similarity(input_text: str, user_id: str) -> list[dict[str, Any]]:
     return await search_by_similarity(
         input_text=input_text,
         user_id=user_id,

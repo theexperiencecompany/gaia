@@ -52,7 +52,7 @@ class BaseScheduledTask(BaseModel):
 
     @field_validator("scheduled_at", "stop_after", "created_at", "updated_at")
     @classmethod
-    def ensure_timezone_aware(cls, v):
+    def ensure_timezone_aware(cls, v: datetime | None) -> datetime | None:
         """Ensure datetime fields are timezone-aware (UTC if no timezone)."""
         if v is not None and v.tzinfo is None:
             v = v.replace(tzinfo=UTC)
@@ -88,14 +88,14 @@ class ScheduleConfig(BaseModel):
 
     @field_validator("max_occurrences")
     @classmethod
-    def check_max_occurrences(cls, v):
+    def check_max_occurrences(cls, v: int | None) -> int | None:
         if v is not None and v <= 0:
             raise ValueError("max_occurrences must be greater than 0")
         return v
 
     @field_validator("scheduled_at", "stop_after")
     @classmethod
-    def ensure_timezone_aware(cls, v):
+    def ensure_timezone_aware(cls, v: datetime | None) -> datetime | None:
         """Ensure datetime fields are timezone-aware (UTC if no timezone)."""
         if v is not None and v.tzinfo is None:
             v = v.replace(tzinfo=UTC)
@@ -103,7 +103,7 @@ class ScheduleConfig(BaseModel):
 
     @field_validator("repeat")
     @classmethod
-    def check_repeat_cron(cls, v):
+    def check_repeat_cron(cls, v: str | None) -> str | None:
         if v is not None:
             from app.utils.cron_utils import validate_cron_expression
 

@@ -552,7 +552,7 @@ async def test_create_agent_filters_subagent_from_direct_binding():
 @pytest.mark.asyncio
 async def test_tool_registry_core_contains_vfs_read():
     registry = ToolRegistry()
-    await registry.setup()
+    registry.setup()
     names = registry.get_tool_names()
     # VFS tools were replaced by E2B sandbox coding tools (read, bash, write, edit).
     assert "read" in names

@@ -4,7 +4,12 @@ from typing import Any
 
 from app.constants.log_tags import LogTag
 from app.db.repositories.mail import mail_repository
-from app.models.mail_models import MailDocument
+from app.models.mail_models import (
+    BulkEmailImportanceSummariesResponse,
+    EmailImportanceSummariesResponse,
+    EmailImportanceSummaryResponse,
+    MailDocument,
+)
 from shared.py.wide_events import MailContext, log
 
 
@@ -15,7 +20,7 @@ def _mail_dict(summary: MailDocument) -> dict[str, Any]:
 
 async def get_email_importance_summaries(
     user_id: str, limit: int = 50, important_only: bool = False
-) -> dict[str, Any]:
+) -> EmailImportanceSummariesResponse:
     """Get email importance summaries for a user."""
     log.set(user={"id": user_id}, mail=MailContext(operation="summarize"))
     try:
@@ -25,12 +30,12 @@ async def get_email_importance_summaries(
         emails = [_mail_dict(summary) for summary in summaries]
 
         log.set_ns("mail", result_count=len(emails), success=True)
-        return {
-            "status": "success",
-            "emails": emails,
-            "count": len(emails),
-            "filtered_by_importance": important_only,
-        }
+        return EmailImportanceSummariesResponse(
+            status="success",
+            emails=emails,
+            count=len(emails),
+            filtered_by_importance=important_only,
+        )
     except Exception as e:
         log.error(f"{LogTag.MAIL} Error retrieving email summaries for user {user_id}: {e}")
         raise
@@ -38,7 +43,7 @@ async def get_email_importance_summaries(
 
 async def get_single_email_importance_summary(
     user_id: str, message_id: str
-) -> dict[str, Any] | None:
+) -> EmailImportanceSummaryResponse | None:
     """Get the importance summary for a specific email."""
     log.set(user={"id": user_id}, mail=MailContext(operation="summarize"))
     try:
@@ -48,7 +53,7 @@ async def get_single_email_importance_summary(
             return None
 
         log.set_ns("mail", result_count=1, success=True)
-        return {"status": "success", "email": _mail_dict(summary)}
+        return EmailImportanceSummaryResponse(status="success", email=_mail_dict(summary))
     except Exception as e:
         log.error(
             f"{LogTag.MAIL} Error retrieving email summary for user {user_id}, message {message_id}: {e}"
@@ -58,7 +63,7 @@ async def get_single_email_importance_summary(
 
 async def get_bulk_email_importance_summaries(
     user_id: str, message_ids: list[str]
-) -> dict[str, Any]:
+) -> BulkEmailImportanceSummariesResponse:
     """Get importance summaries for multiple emails in bulk, indexed by message_id."""
     log.set(
         user={"id": user_id},
@@ -72,14 +77,14 @@ async def get_bulk_email_importance_summaries(
         missing_message_ids = set(message_ids) - found_message_ids
 
         log.set_ns("mail", result_count=len(found_message_ids), success=True)
-        return {
-            "status": "success",
-            "emails": email_summaries,
-            "found_count": len(found_message_ids),
-            "missing_count": len(missing_message_ids),
-            "found_message_ids": list(found_message_ids),
-            "missing_message_ids": list(missing_message_ids),
-        }
+        return BulkEmailImportanceSummariesResponse(
+            status="success",
+            emails=email_summaries,
+            found_count=len(found_message_ids),
+            missing_count=len(missing_message_ids),
+            found_message_ids=list(found_message_ids),
+            missing_message_ids=list(missing_message_ids),
+        )
     except Exception as e:
         log.error(f"{LogTag.MAIL} Error retrieving bulk email summaries for user {user_id}: {e}")
         raise

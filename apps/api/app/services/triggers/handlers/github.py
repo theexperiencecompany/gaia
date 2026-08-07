@@ -3,7 +3,7 @@ GitHub trigger handler.
 """
 
 import asyncio
-from typing import Any
+from typing import Any, ClassVar
 
 from composio.types import ToolExecutionResponse
 
@@ -17,6 +17,7 @@ from app.models.composio_schemas import (
     GitHubPullRequestEventPayload,
     GitHubStarAddedEventPayload,
 )
+from app.models.trigger_config import TriggerOption
 from app.models.trigger_configs import (
     GitHubCommitEventConfig,
     GitHubIssueAddedConfig,
@@ -33,21 +34,21 @@ from shared.py.wide_events import log
 class GitHubTriggerHandler(TriggerHandler):
     """Handler for GitHub triggers."""
 
-    SUPPORTED_TRIGGERS = [
+    SUPPORTED_TRIGGERS: ClassVar[list[str]] = [
         "github_commit_event",
         "github_pr_event",
         "github_star_added",
         "github_issue_added",
     ]
 
-    SUPPORTED_EVENTS = {
+    SUPPORTED_EVENTS: ClassVar[set[str]] = {
         "GITHUB_COMMIT_EVENT",
         "GITHUB_PULL_REQUEST_EVENT",
         "GITHUB_STAR_ADDED_EVENT",
         "GITHUB_ISSUE_ADDED_EVENT",
     }
 
-    TRIGGER_TO_COMPOSIO = {
+    TRIGGER_TO_COMPOSIO: ClassVar[dict[str, str]] = {
         "github_commit_event": "GITHUB_COMMIT_EVENT",
         "github_pr_event": "GITHUB_PULL_REQUEST_EVENT",
         "github_star_added": "GITHUB_STAR_ADDED_EVENT",
@@ -69,8 +70,8 @@ class GitHubTriggerHandler(TriggerHandler):
         user_id: str,
         integration_id: str,
         parent_ids: list[str] | None = None,
-        **kwargs: Any,
-    ) -> list[dict[str, Any]]:
+        **kwargs: str,
+    ) -> list[TriggerOption]:
         """Get dynamic options for GitHub trigger config fields."""
         composio_service = get_composio_service()
 
@@ -120,7 +121,7 @@ class GitHubTriggerHandler(TriggerHandler):
         options = []
         for repo in repos:
             if repo.full_name:
-                options.append({"value": repo.full_name, "label": repo.full_name})
+                options.append(TriggerOption(value=repo.full_name, label=repo.full_name))
 
         log.info(f"{LogTag.TRIGGER} Returning {len(options)} GitHub repository options")
         return options
@@ -128,7 +129,7 @@ class GitHubTriggerHandler(TriggerHandler):
     async def register(
         self,
         user_id: str,
-        workflow_id: str,
+        _workflow_id: str,
         trigger_name: str,
         trigger_config: TriggerConfig,
     ) -> list[str]:

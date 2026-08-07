@@ -8,7 +8,7 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { NotificationIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
+import { SidebarHeaderButton } from "@/components/layout/headers/SidebarHeaderButton";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import {

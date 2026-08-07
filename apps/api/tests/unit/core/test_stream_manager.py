@@ -595,7 +595,10 @@ class TestUpdateProgress:
         self.mock_set = AsyncMock()
         patcher = patch(
             "app.core.stream_manager.redis_cache",
-            new=MagicMock(get=self.mock_get, set=self.mock_set),
+            # ``redis`` must be async: update_progress also refreshes the resume
+            # index through it (see _refresh_active_index). TTL behaviour itself
+            # is covered against a real client in tests/unit/core/test_stream_resume.py.
+            new=MagicMock(get=self.mock_get, set=self.mock_set, redis=AsyncMock()),
         )
         patcher.start()
         yield

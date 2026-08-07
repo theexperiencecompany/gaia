@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.constants.todos import ASSIGNEE_USER
 from app.db.repositories.base import UserScopedDocument
+from app.models.workflow_models import WorkflowWithIntegrations
 
 # Who owns a todo. Replaces the legacy ``gaia-tracked`` label as the
 # discriminator for GAIA-owned todos.
@@ -287,8 +288,6 @@ class ProjectBase(BaseModel):
 class ProjectCreate(ProjectBase):
     """Model for creating projects"""
 
-    pass
-
 
 class UpdateProjectRequest(BaseModel):
     """Model for updating projects - all fields optional"""
@@ -341,6 +340,13 @@ class PaginationMeta(BaseModel):
     has_prev: bool = Field(..., description="Whether there's a previous page")
 
 
+class TodoLabelCount(BaseModel):
+    """One label with the number of (incomplete) todos carrying it."""
+
+    name: str
+    count: int
+
+
 class TodoStats(BaseModel):
     total: int = Field(default=0)
     completed: int = Field(default=0)
@@ -349,13 +355,19 @@ class TodoStats(BaseModel):
     by_priority: dict[str, int] = Field(default_factory=dict)
     by_project: dict[str, int] = Field(default_factory=dict)
     completion_rate: float = Field(default=0.0)
-    labels: list[dict[str, object]] | None = None
+    labels: list[TodoLabelCount] | None = None
 
 
 class TodoListResponse(BaseModel):
     data: list[TodoResponse]
     meta: PaginationMeta
     stats: TodoStats | None = None
+
+
+class TodoCanvasResponse(BaseModel):
+    """A tracked todo's canvas markdown. Empty string when the todo has no canvas."""
+
+    content: str
 
 
 # Search
@@ -422,6 +434,42 @@ class TodoClassificationOutput(BaseModel):
         default=None,
         description="Supporting material to prep into the work log. Required when disposition == 'prep'.",
     )
+
+
+# Workflow generation for a todo — the todo-side view of a linked workflow.
+
+
+class TodoWorkflowGenerationStatus(str, Enum):
+    GENERATING = "generating"
+    EXISTS = "exists"
+
+
+class TodoWorkflowStatus(str, Enum):
+    NOT_STARTED = "not_started"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class TodoWorkflowGenerationResponse(BaseModel):
+    """Result of asking for a todo's workflow to be generated."""
+
+    status: TodoWorkflowGenerationStatus
+    message: str
+    todo_id: str | None = Field(default=None, description="Set when generation was queued")
+    workflow: WorkflowWithIntegrations | None = Field(
+        default=None, description="Set when a generated workflow already existed"
+    )
+
+
+class TodoWorkflowStatusResponse(BaseModel):
+    """Generation progress and the linked workflow, if any, for one todo."""
+
+    todo_id: str
+    has_workflow: bool
+    is_generating: bool
+    workflow_status: TodoWorkflowStatus
+    workflow: WorkflowWithIntegrations | None = None
 
 
 # Repository layer — persisted documents, typed updates, and aggregation results.
@@ -567,13 +615,6 @@ class TodoCounts(BaseModel):
     upcoming: int = 0
     completed: int = 0
     overdue: int = 0
-
-
-class TodoLabelCount(BaseModel):
-    """One label with the number of (incomplete) todos carrying it."""
-
-    name: str
-    count: int
 
 
 class TodoPage(BaseModel):

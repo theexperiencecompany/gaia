@@ -61,7 +61,6 @@ def build_search_matcher(query: str | None) -> Callable[[str], bool]:
 def generate_integration_slug(
     name: str,
     category: str,
-    integration_id: str,
     max_length: int = 80,
 ) -> str:
     """Generate canonical slug: {name}-mcp-{category}.
@@ -138,7 +137,6 @@ def format_public_integration_response(integration: IntegrationWithCreator) -> d
     slug = integration.slug or generate_integration_slug(
         name=integration.name,
         category=integration.category,
-        integration_id=integration.integration_id,
     )
 
     return {

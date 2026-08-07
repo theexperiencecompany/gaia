@@ -13,6 +13,7 @@ from app.models.workflow_execution_models import (
     WorkflowExecution,
     WorkflowExecutionDocument,
     WorkflowExecutionsResponse,
+    WorkflowExecutionStatus,
 )
 from shared.py.wide_events import log
 
@@ -63,7 +64,7 @@ async def create_execution(
 
 async def complete_execution(
     execution_id: str,
-    status: str,
+    status: WorkflowExecutionStatus,
     summary: str | None = None,
     error_message: str | None = None,
     conversation_id: str | None = None,

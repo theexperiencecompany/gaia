@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.platform_models import PlatformLinkResult
+
 BASE = "/api/v1/platform-links"
 
 
@@ -106,12 +108,15 @@ class TestLinkPlatform:
         )
         mock_redis.delete = AsyncMock()
 
-        link_result = {
-            "status": "linked",
-            "platform": "discord",
-            "platform_user_id": "DISC123",
-            "connected_at": "2024-01-01T00:00:00Z",
-        }
+        # is_new_link=False keeps this on the re-link path, so the assertions stay
+        # about the response and not about the "connected" greeting side effect.
+        link_result = PlatformLinkResult(
+            status="linked",
+            platform="discord",
+            platform_user_id="DISC123",
+            connected_at="2024-01-01T00:00:00Z",
+            is_new_link=False,
+        )
 
         with (
             patch("app.api.v1.endpoints.platform_links.redis_cache") as mock_cache,

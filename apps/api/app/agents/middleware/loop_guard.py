@@ -46,6 +46,7 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_SAME_TOOL,
 )
 from app.constants.log_tags import LogTag
+from app.models.agent_models import runtime_configurable
 from shared.py.wide_events import log
 
 _UNKNOWN_RUN = "unknown"
@@ -193,7 +194,9 @@ class LoopGuardMiddleware(AgentMiddleware):
         (content-block) form is handled defensively so the guard never drops a
         model's error text.
         """
-        content = result.content
+        # Typed as `str | list[...]`, but kept as Any so the non-string, non-list
+        # fallback below stays reachable rather than being narrowed away.
+        content: Any = result.content
         if isinstance(content, str):
             result.content = content + note
         elif isinstance(content, list):
@@ -219,13 +222,10 @@ class LoopGuardMiddleware(AgentMiddleware):
 
     @staticmethod
     def _thread_id(request: ToolCallRequest) -> str:
-        runtime = getattr(request, "runtime", None)
-        config = getattr(runtime, "config", {}) or {}
-        configurable = config.get("configurable", {}) if isinstance(config, dict) else {}
-        return configurable.get("thread_id") or _UNKNOWN_RUN
+        return runtime_configurable(request).get("thread_id") or _UNKNOWN_RUN
 
     @staticmethod
-    def _args_key(args: Any) -> str:
+    def _args_key(args: object) -> str:
         try:
             serialized = json.dumps(args, sort_keys=True, default=str)
         except (TypeError, ValueError):

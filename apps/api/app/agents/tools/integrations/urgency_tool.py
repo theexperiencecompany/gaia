@@ -7,6 +7,7 @@ into a single prioritized list of items needing attention.
 from typing import Any
 
 from composio import Composio
+from composio.types import ExecuteRequestFn
 from pydantic import BaseModel, Field
 
 
@@ -28,7 +29,7 @@ def register_urgency_custom_tools(composio: Composio) -> list[str]:
     @composio.tools.custom_tool(toolkit="GAIA")
     def CUSTOM_URGENCY_AGGREGATOR(
         request: UrgencyAggregatorInput,
-        execute_request: Any,
+        execute_request: ExecuteRequestFn,
         auth_credentials: dict[str, Any],
     ) -> dict[str, Any]:
         """Aggregate urgency signals from multiple integration context snapshots.
@@ -42,6 +43,7 @@ def register_urgency_custom_tools(composio: Composio) -> list[str]:
         Returns:
             Dict with urgent_items list (sorted by priority) and summary counts
         """
+        del execute_request, auth_credentials  # unused: framework-mandated custom-tool signature
         urgent_items: list[dict[str, Any]] = []
 
         for integration, snapshot in request.snapshots.items():

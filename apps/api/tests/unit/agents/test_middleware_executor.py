@@ -54,8 +54,6 @@ def _make_config(**overrides: Any) -> RunnableConfig:
 class _NoOpMiddleware(AgentMiddleware):
     """Middleware with no overrides — all methods raise NotImplementedError."""
 
-    pass
-
 
 class _BeforeModelMiddleware(AgentMiddleware):
     """Middleware that overrides before_model."""

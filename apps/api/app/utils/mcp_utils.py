@@ -8,7 +8,6 @@ PKCE generation, tool wrapping, and schema handling.
 from collections.abc import Awaitable, Callable, Iterable
 from functools import wraps
 import inspect
-from typing import Any
 
 from langchain_core.tools import BaseTool
 
@@ -52,7 +51,7 @@ _CONNECTION_ERROR_PATTERNS = (
 def wrap_tool_with_null_filter(
     tool: BaseTool,
     on_connection_error: Callable[[], None] | None = None,
-    reconnect_and_retry: Callable[[str, dict], Awaitable[Any]] | None = None,
+    reconnect_and_retry: Callable[[str, dict[str, object]], Awaitable[object]] | None = None,
 ) -> BaseTool:
     """Wrap a LangChain MCP tool with null-arg filtering and transparent reconnect.
 
@@ -80,7 +79,7 @@ def wrap_tool_with_null_filter(
     original_arun = tool._arun
 
     @wraps(original_arun)
-    async def filtered_arun(**kwargs: Any) -> Any:
+    async def filtered_arun(**kwargs: object) -> object:
         filtered_kwargs = {k: v for k, v in kwargs.items() if v is not None}
         log.set(operation="mcp_tool_call", tool_name=tool.name)
         log.debug(
@@ -152,8 +151,8 @@ def wrap_tool_with_null_filter(
 
 def wrap_tools_with_null_filter(
     tools: list[BaseTool],
-    on_connection_error: Any = None,
-    reconnect_and_retry: Callable[[str, dict], Awaitable[Any]] | None = None,
+    on_connection_error: Callable[[], None] | None = None,
+    reconnect_and_retry: Callable[[str, dict[str, object]], Awaitable[object]] | None = None,
 ) -> list[BaseTool]:
     """Wrap all tools with null filtering + optional transparent reconnect."""
     return [

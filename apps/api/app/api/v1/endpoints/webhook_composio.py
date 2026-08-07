@@ -16,8 +16,9 @@ from fastapi import APIRouter, Request
 
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
-from app.models.webhook_models import ComposioWebhookEvent
+from app.models.webhook_models import ComposioWebhookAckResponse, ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
+from app.services.triggers.base import TriggerHandler
 from app.utils.webhook_utils import verify_composio_webhook_signature
 from shared.py.wide_events import log
 
@@ -30,7 +31,7 @@ _webhook_tasks: set[asyncio.Task[Any]] = set()
 _WEBHOOK_TASK_TIMEOUT: float = 120.0
 
 
-async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent) -> None:
+async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWebhookEvent) -> None:
     """Background task: find matching workflows and queue them."""
     try:
         await asyncio.wait_for(
@@ -59,7 +60,7 @@ async def _process_webhook_event(handler: Any, event_data: ComposioWebhookEvent)
 
 
 @router.post("/webhook/composio")
-async def webhook_composio(request: Request) -> dict[str, str]:
+async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     """Handle incoming Composio webhooks.
 
     Routes events to the appropriate handler based on event type.
@@ -75,7 +76,7 @@ async def webhook_composio(request: Request) -> dict[str, str]:
         )
         if already_processed:
             log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored: {webhook_id}")
-            return {"status": "success", "message": "Duplicate webhook ignored"}
+            return ComposioWebhookAckResponse(message="Duplicate webhook ignored")
 
     body = await request.json()
     data = body.get("data")
@@ -99,7 +100,7 @@ async def webhook_composio(request: Request) -> dict[str, str]:
     handler = get_handler_by_event(event_data.type)
     if not handler:
         log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type: {event_data.type}")
-        return {"status": "success", "message": "Webhook received"}
+        return ComposioWebhookAckResponse(message="Webhook received")
 
     # Fire-and-forget: return 200 immediately, process in background
     task = asyncio.create_task(_process_webhook_event(handler, event_data))
@@ -107,4 +108,4 @@ async def webhook_composio(request: Request) -> dict[str, str]:
     task.add_done_callback(_webhook_tasks.discard)
 
     log.set(operation="webhook_accepted", outcome="success")
-    return {"status": "success", "message": "Webhook accepted"}
+    return ComposioWebhookAckResponse(message="Webhook accepted")

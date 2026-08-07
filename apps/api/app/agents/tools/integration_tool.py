@@ -4,7 +4,7 @@ Integration Management Tools
 Tools for listing, connecting, and managing user integrations.
 """
 
-from typing import Annotated
+from typing import Annotated, cast
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -21,6 +21,7 @@ from app.db.repositories.integrations import integration_repository
 from app.db.repositories.user_integrations import user_integration_repository
 from app.decorators import with_doc
 from app.helpers.integration_helpers import build_search_patterns, generate_integration_slug
+from app.models.agent_models import agent_configurable
 from app.models.integration_models import (
     IntegrationInfo,
     ListIntegrationsResult,
@@ -59,7 +60,7 @@ async def list_integrations(
     """
     try:
         log.set(tool={"name": "list_integrations", "action": "list"})
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."
@@ -156,7 +157,6 @@ async def list_integrations(
                             "slug": generate_integration_slug(
                                 name=doc.name,
                                 category=doc.category,
-                                integration_id=iid,
                             ),
                         }
                     )
@@ -220,7 +220,12 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    return await list_integrations.ainvoke({"search_public_query": query}, config=config)
+    # list_integrations itself declares this exact return type; .ainvoke() is the
+    # BaseTool framework boundary and always types its result `Any`.
+    return cast(
+        "ListIntegrationsResult | str",
+        await list_integrations.ainvoke({"search_public_query": query}, config=config),
+    )
 
 
 @tool
@@ -234,13 +239,16 @@ async def connect_integration(
 ) -> str:
     try:
         log.set(tool={"name": "connect_integration", "action": "connect"})
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."
 
-        if isinstance(integration_ids, str):
-            integration_ids = [integration_ids]
+        # The Pydantic args_schema declares list[str], but a direct/programmatic
+        # invocation can still hand this a bare string — widen before narrowing.
+        raw_integration_ids = cast("list[str] | str", integration_ids)
+        if isinstance(raw_integration_ids, str):
+            integration_ids = [raw_integration_ids]
         integration_ids = list(
             dict.fromkeys(iid.lower().strip() for iid in integration_ids if iid.strip())
         )
@@ -306,7 +314,7 @@ async def check_integrations_status(
 ) -> str:
     try:
         log.set(tool={"name": "check_integrations_status", "action": "check"})
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
         user_id = configurable.get("user_id") if configurable else None
         if not user_id:
             return "Error: User ID not found in configuration."

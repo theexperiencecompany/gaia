@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import sys
 
 # Directory/segment names that never contain enforceable app code.
 _SKIP_SEGMENTS = ("__pycache__", "/tests/", "/migrations/", "/alembic/", "/.venv/")
@@ -49,3 +50,17 @@ def display(path: Path) -> str:
         return os.path.relpath(path, Path.cwd())
     except ValueError:
         return str(path)
+
+
+def report_rule(rule: str, why: str, doc: str, violations: list[Violation]) -> None:
+    """Print one rule's failures in the shared teaching format, to stderr.
+
+    Used by the AST-rule runner and by the standalone config checks alike, so
+    every custom lint fails looking the same way.
+    """
+    print(f"\n✗ {rule} — {len(violations)} violation(s)", file=sys.stderr)
+    print(f"  why:  {why}", file=sys.stderr)
+    print(f"  docs: {doc}", file=sys.stderr)
+    for v in violations:
+        print(f"  {display(v.path)}:{v.line}  {v.detail}", file=sys.stderr)
+        print(f"      fix: {v.fix}", file=sys.stderr)

@@ -21,6 +21,7 @@ from app.agents.core.background.subagent_runner import run_subagent_background
 from app.agents.core.subagents.subagent_runner import SubagentOutcome
 from app.agents.tools.wait_for_subagents_tool import _resolve_parked_batch
 from app.constants.hil import HIL_BATCH_INTERRUPT_TYPE
+from app.models.hil_models import HILApprovalStatus
 
 BARRIER = "app.agents.tools.wait_for_subagents_tool"
 RUNNER = "app.agents.core.background.subagent_runner"
@@ -39,7 +40,7 @@ class FakePause(Exception):
 
 def make_record(
     approval_id: str,
-    status: str = "pending",
+    status: HILApprovalStatus = HILApprovalStatus.PENDING,
     thread_id: str = "gmail_executor_conv-1",
     agent: str = "gmail",
 ) -> MagicMock:
@@ -88,8 +89,8 @@ class TestBatchPause:
         assert resume.await_count == 0
 
     async def test_decided_subagents_are_collected_before_any_pause(self) -> None:
-        decided = make_record("a1", status="approved")
-        pending = make_record("a2", status="pending", agent="slack")
+        decided = make_record("a1", status=HILApprovalStatus.APPROVED)
+        pending = make_record("a2", status=HILApprovalStatus.PENDING, agent="slack")
         # First query: one decided, one pending. Second: only the pending left.
         listing = AsyncMock(side_effect=[[decided, pending], [pending]])
         payloads: list[dict[str, Any]] = []
@@ -115,7 +116,7 @@ class TestBatchPause:
     async def test_collection_is_stamped_before_the_resume_runs(self) -> None:
         # Crash-safety ordering: if the process dies mid-resume, a re-run must
         # find the record already collected — re-driving the thread re-sends.
-        record = make_record("a1", status="approved")
+        record = make_record("a1", status=HILApprovalStatus.APPROVED)
         order: list[str] = []
 
         async def _stamp(*_: Any) -> None:
@@ -140,7 +141,10 @@ class TestBatchPause:
 
     async def test_a_replayed_batch_with_all_decided_pauses_nothing(self) -> None:
         # The resume replay: every approval decided → collect all, return, no pause.
-        records = [make_record("a1", status="approved"), make_record("a2", status="denied")]
+        records = [
+            make_record("a1", status=HILApprovalStatus.APPROVED),
+            make_record("a2", status=HILApprovalStatus.DENIED),
+        ]
         listing = AsyncMock(side_effect=[records, []])
         with (
             patch(f"{BARRIER}.list_parked_subagents_for_conversation", listing),
@@ -160,7 +164,7 @@ class TestBatchPause:
         assert intr.call_count == 0
 
     async def test_a_resumed_subagent_that_parks_again_enters_the_next_round(self) -> None:
-        record = make_record("a1", status="approved")
+        record = make_record("a1", status=HILApprovalStatus.APPROVED)
         reparked = SubagentOutcome(text="", interrupt={"approval_id": "a1-next"})
         listing = AsyncMock(side_effect=[[record], []])
         with (
@@ -182,8 +186,8 @@ class TestBatchPause:
         assert append.await_count == 0  # no result yet — it parked again
 
     async def test_one_failing_resume_does_not_strand_the_rest(self) -> None:
-        bad = make_record("a1", status="approved")
-        good = make_record("a2", status="approved", agent="slack")
+        bad = make_record("a1", status=HILApprovalStatus.APPROVED)
+        good = make_record("a2", status=HILApprovalStatus.APPROVED, agent="slack")
         listing = AsyncMock(side_effect=[[bad, good], []])
         outcomes = AsyncMock(side_effect=[RuntimeError("boom"), SubagentOutcome(text="posted")])
         with (

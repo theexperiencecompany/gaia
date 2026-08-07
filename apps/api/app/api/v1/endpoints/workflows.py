@@ -3,31 +3,38 @@ Clean workflow API router for GAIA workflow system.
 Provides CRUD operations, execution, and status endpoints.
 """
 
+from typing import cast
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pymongo.errors import DuplicateKeyError
 
 from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
+    get_user_id,
     get_user_timezone_from_preferences,
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.constants.log_tags import LogTag
 from app.db.repositories.workflows import workflow_repository
 from app.decorators import tiered_rate_limit
+from app.models.user_models import AuthenticatedUser
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.models.workflow_models import (
+    CreateWorkflowFromTodoRequest,
     CreateWorkflowRequest,
     GenerateWorkflowPromptRequest,
     GenerateWorkflowPromptResponse,
     PublicWorkflowsResponse,
     PublishWorkflowResponse,
     RegenerateStepsRequest,
+    ResetWorkflowResponse,
     TriggerConfig,
     TriggerType,
     UpdateWorkflowRequest,
     WorkflowExecutionRequest,
     WorkflowExecutionResponse,
     WorkflowListResponse,
+    WorkflowMessageResponse,
     WorkflowResponse,
     WorkflowStatusResponse,
 )
@@ -53,9 +60,9 @@ router = APIRouter()
 @tiered_rate_limit("workflow_operations")
 async def create_workflow(
     request: CreateWorkflowRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-):
+) -> WorkflowResponse:
     """Create a new workflow with automatic timezone detection."""
     log.set(
         user={"id": user["user_id"]},
@@ -116,7 +123,9 @@ async def create_workflow(
 @router.get("/workflows", response_model=WorkflowListResponse)
 @limiter.limit("100/minute")
 @limiter.limit("1000/hour")
-async def list_workflows(request: Request, user: dict = Depends(get_current_user)):
+async def list_workflows(
+    request: Request, user: AuthenticatedUser = Depends(get_current_user)
+) -> WorkflowListResponse:
     """List all workflows for the current user."""
     log.set(
         user={"id": user["user_id"]},
@@ -144,8 +153,8 @@ async def list_workflows(request: Request, user: dict = Depends(get_current_user
 async def execute_workflow(
     workflow_id: str,
     request: WorkflowExecutionRequest,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> WorkflowExecutionResponse:
     """Execute a workflow (run now)."""
     log.set(
         user={"id": user["user_id"]},
@@ -181,8 +190,8 @@ async def get_workflow_executions(
     workflow_id: str,
     limit: int = 10,
     offset: int = 0,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> WorkflowExecutionsResponse:
     """Get execution history for a workflow."""
     log.set(
         user={"id": user["user_id"]},
@@ -216,7 +225,9 @@ async def get_workflow_executions(
 
 
 @router.get("/workflows/{workflow_id}/status", response_model=WorkflowStatusResponse)
-async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current_user)):
+async def get_workflow_status(
+    workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
+) -> WorkflowStatusResponse:
     """Get the current status of a workflow (for polling)."""
     log.set(
         user={"id": user["user_id"]},
@@ -248,9 +259,9 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
 @router.post("/workflows/{workflow_id}/activate", response_model=WorkflowResponse)
 async def activate_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-):
+) -> WorkflowResponse:
     """Activate a workflow (enable its trigger)."""
     log.set(
         user={"id": user["user_id"]},
@@ -295,9 +306,9 @@ async def activate_workflow(
 @router.post("/workflows/{workflow_id}/deactivate", response_model=WorkflowResponse)
 async def deactivate_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-):
+) -> WorkflowResponse:
     """Deactivate a workflow (disable its trigger)."""
     log.set(
         user={"id": user["user_id"]},
@@ -331,8 +342,8 @@ async def deactivate_workflow(
 async def regenerate_workflow_steps(
     workflow_id: str,
     request: RegenerateStepsRequest,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> WorkflowResponse:
     """Regenerate steps for an existing workflow with optional parameters."""
     log.set(
         user={"id": user["user_id"]},
@@ -369,10 +380,10 @@ async def regenerate_workflow_steps(
 @router.post("/workflows/from-todo", response_model=WorkflowResponse)
 @tiered_rate_limit("workflow_operations")
 async def create_workflow_from_todo(
-    request: dict,  # {todo_id: str, todo_title: str, todo_description?: str}
-    user: dict = Depends(get_current_user),
+    request: CreateWorkflowFromTodoRequest,
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-):
+) -> WorkflowResponse:
     """Create a workflow from a todo item with automatic timezone detection."""
     log.set(
         user={"id": user["user_id"]},
@@ -380,11 +391,10 @@ async def create_workflow_from_todo(
     )
 
     try:
-        todo_id = request.get("todo_id")
-        todo_title = request.get("todo_title")
-        todo_description = request.get("todo_description", "")
+        todo_title = request.todo_title
+        todo_description = request.todo_description
 
-        if not todo_id or not todo_title:
+        if not request.todo_id or not todo_title:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="todo_id and todo_title are required",
@@ -428,8 +438,8 @@ async def create_workflow_from_todo(
 @router.post("/workflows/{workflow_id}/publish", response_model=PublishWorkflowResponse)
 async def publish_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PublishWorkflowResponse:
     """Publish a workflow to the community marketplace."""
     log.set(
         user={"id": user["user_id"]},
@@ -491,8 +501,8 @@ async def publish_workflow(
 @router.post("/workflows/{workflow_id}/unpublish")
 async def unpublish_workflow(
     workflow_id: str,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> WorkflowMessageResponse:
     """Remove a workflow from the community marketplace."""
     log.set(
         user={"id": user["user_id"]},
@@ -514,7 +524,7 @@ async def unpublish_workflow(
         log.set(outcome="success")
         log.info(f"{LogTag.WORKFLOW} Unpublished workflow {workflow_id} by user {user['user_id']}")
 
-        return {"message": "Workflow unpublished successfully"}
+        return WorkflowMessageResponse(message="Workflow unpublished successfully")
 
     except HTTPException:
         raise
@@ -533,10 +543,13 @@ async def get_explore_workflows(
     request: Request,
     limit: int = 25,
     offset: int = 0,
-):
+) -> PublicWorkflowsResponse:
     """Get explore/featured workflows for the discover section."""
     try:
-        return await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
+        result = await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
+        # Cacheable erases the wrapped function's return type; get_explore_workflows
+        # is declared -> PublicWorkflowsResponse, so this is correct by construction.
+        return cast(PublicWorkflowsResponse, result)
     except Exception as e:
         log.error(f"{LogTag.WORKFLOW} Error fetching explore workflows: {e!s}")
         raise HTTPException(
@@ -552,12 +565,15 @@ async def get_public_workflows(
     request: Request,
     limit: int = 20,
     offset: int = 0,
-):
+) -> PublicWorkflowsResponse:
     """Get public workflows from the community marketplace."""
     try:
-        return await WorkflowService.get_community_workflows(
+        result = await WorkflowService.get_community_workflows(
             limit=limit, offset=offset, user_id=None
         )
+        # Cacheable erases the wrapped function's return type; get_community_workflows
+        # is declared -> PublicWorkflowsResponse, so this is correct by construction.
+        return cast(PublicWorkflowsResponse, result)
     except Exception as e:
         log.error(f"{LogTag.WORKFLOW} Error fetching public workflows: {e!s}")
         raise HTTPException(
@@ -569,7 +585,7 @@ async def get_public_workflows(
 @router.get("/workflows/public/{workflow_ref}", response_model=WorkflowResponse)
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
-async def get_public_workflow(request: Request, workflow_ref: str):
+async def get_public_workflow(request: Request, workflow_ref: str) -> WorkflowResponse:
     """Get a public workflow by ID (wf_xxx) or slug."""
     lookup_mode = "id" if workflow_ref.startswith("wf_") else "slug"
     log.set(
@@ -619,10 +635,11 @@ async def get_public_workflow(request: Request, workflow_ref: str):
 @router.post("/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse)
 async def generate_workflow_prompt_endpoint(
     request: GenerateWorkflowPromptRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> GenerateWorkflowPromptResponse:
     """Generate or improve workflow instructions using AI."""
     log.set(
+        user={"id": user["user_id"]},
         workflow=WorkflowContext(operation="generate_prompt"),
     )
 
@@ -647,7 +664,9 @@ async def generate_workflow_prompt_endpoint(
 @router.get("/workflows/{workflow_id}", response_model=WorkflowResponse)
 @limiter.limit("500/minute")
 @limiter.limit("5000/hour")
-async def get_workflow(request: Request, workflow_id: str, user: dict = Depends(get_current_user)):
+async def get_workflow(
+    request: Request, workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
+) -> WorkflowResponse:
     """Get a specific workflow by ID."""
     log.set(
         user={"id": user["user_id"]},
@@ -687,9 +706,9 @@ async def get_workflow(request: Request, workflow_id: str, user: dict = Depends(
 async def update_workflow(
     workflow_id: str,
     request: UpdateWorkflowRequest,
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     user_timezone: str = Depends(get_user_timezone_from_preferences),
-):
+) -> WorkflowResponse:
     """Update an existing workflow with automatic timezone detection."""
     log.set(
         user={"id": user["user_id"]},
@@ -726,7 +745,9 @@ async def update_workflow(
 
 
 @router.post("/workflows/{workflow_id}/reset-to-default")
-async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_current_user)):
+async def reset_workflow_to_default(
+    workflow_id: str, user_id: str = Depends(get_user_id)
+) -> ResetWorkflowResponse:
     """Reset a GAIA system workflow to its original definition.
 
     Restores the workflow's title, description, steps, and trigger config to
@@ -736,14 +757,14 @@ async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_c
     Only works on workflows where is_system_workflow=True.
     """
     log.set(
-        user={"id": user["user_id"]},
+        user={"id": user_id},
         workflow=WorkflowContext(id=workflow_id),
     )
 
     try:
         success = await reset_system_workflow_to_default(
             workflow_id=workflow_id,
-            user_id=user["user_id"],
+            user_id=user_id,
         )
         if not success:
             raise HTTPException(
@@ -751,7 +772,7 @@ async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_c
                 detail="Workflow not found or is not a resettable system workflow.",
             )
         log.set(outcome="success")
-        return {"success": True, "message": "Workflow reset to default."}
+        return ResetWorkflowResponse(success=True, message="Workflow reset to default.")
 
     except HTTPException:
         raise
@@ -764,7 +785,9 @@ async def reset_workflow_to_default(workflow_id: str, user: dict = Depends(get_c
 
 
 @router.delete("/workflows/{workflow_id}")
-async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_user)):
+async def delete_workflow(
+    workflow_id: str, user: AuthenticatedUser = Depends(get_current_user)
+) -> WorkflowMessageResponse:
     """Delete a workflow."""
     log.set(
         user={"id": user["user_id"]},
@@ -780,7 +803,7 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
             )
 
         log.set(outcome="success")
-        return {"message": "Workflow deleted successfully"}
+        return WorkflowMessageResponse(message="Workflow deleted successfully")
 
     except HTTPException:
         raise

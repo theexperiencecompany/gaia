@@ -13,6 +13,7 @@ The subagent has access to:
 """
 
 import json
+from typing import Any, cast
 
 from langchain_core.messages import (
     AIMessageChunk,
@@ -22,6 +23,8 @@ from langchain_core.messages import (
 )
 from langchain_core.runnables import RunnableConfig
 from langgraph.errors import GraphRecursionError
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import StreamWriter
 
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.subagent_helpers import create_agent_context_message
@@ -31,6 +34,7 @@ from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.constants.llm import WORKFLOW_SUBAGENT_RECURSION_LIMIT
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.models.agent_models import AgentUserContext, agent_configurable
 from app.services.workflow.knowledge import build_connected_integrations_hint
 from app.services.workflow.subagent_output import parse_subagent_response
 from app.utils.workflow_utils import unknown_integration_ids
@@ -70,10 +74,10 @@ FALLBACK_CLARIFY_JSON = (
 )
 
 # Singleton for the workflow subagent graph
-_workflow_subagent_graph = None
+_workflow_subagent_graph: CompiledStateGraph | None = None
 
 
-async def get_workflow_subagent():
+async def get_workflow_subagent() -> CompiledStateGraph:
     """
     Get or create the workflow subagent graph (singleton).
 
@@ -136,7 +140,7 @@ class WorkflowSubagentRunner:
         thread_id: str,
         user_name: str | None = None,
         user_timezone: str | None = None,
-        stream_writer=None,
+        stream_writer: StreamWriter | None = None,
     ) -> str:
         """Execute the workflow subagent with streaming, returning the complete response text."""
         subagent_graph = await get_workflow_subagent()
@@ -144,21 +148,21 @@ class WorkflowSubagentRunner:
         # Build config
         subagent_thread_id = f"workflow_{thread_id}"
 
-        user = {
+        user: AgentUserContext = {
             "user_id": user_id,
             "email": None,
             "name": user_name,
             "timezone": user_timezone,
         }
 
-        config: RunnableConfig = build_agent_config(  # type: ignore[assignment]
+        config = build_agent_config(
             conversation_id=thread_id,
             user=user,
             thread_id=subagent_thread_id,
             agent_name="workflow_agent",
             subagent_id="workflow_agent",
         )
-        configurable = config.get("configurable", {})
+        configurable = agent_configurable(config)
 
         # Authoring only needs a few discovery calls before it emits JSON. Cap the
         # loop below a full agent's budget so a wandering model can't burn ~20 tool
@@ -190,7 +194,7 @@ class WorkflowSubagentRunner:
             additional_kwargs={"visible_to": {"workflow_agent"}},
         )
 
-        initial_state = {
+        initial_state: dict[str, Any] = {
             "messages": [system_message, context_message, human_message],
             "intent": task,
             "integration_usernames": {},
@@ -202,7 +206,7 @@ class WorkflowSubagentRunner:
         # structure or integration_ids that name a non-existent integration), hand the
         # error back and let it re-emit, up to MAX_DRAFT_CORRECTIONS times.
         emitted_tool_calls: set[str] = set()
-        state: dict = initial_state
+        state: dict[str, Any] = initial_state
         complete_message = ""
         for attempt in range(MAX_DRAFT_CORRECTIONS + 1):
             complete_message, hit_limit = await WorkflowSubagentRunner._stream_turn(
@@ -241,9 +245,9 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _forced_finalize(
-        subagent_graph,
+        subagent_graph: CompiledStateGraph,
         config: RunnableConfig,
-        stream_writer,
+        stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],
     ) -> str:
         """Force a wandering subagent to emit terminal JSON.
@@ -274,10 +278,10 @@ class WorkflowSubagentRunner:
 
     @staticmethod
     async def _stream_turn(
-        subagent_graph,
-        state: dict,
+        subagent_graph: CompiledStateGraph,
+        state: dict[str, Any],
         config: RunnableConfig,
-        stream_writer,
+        stream_writer: StreamWriter | None,
         emitted_tool_calls: set[str],
     ) -> tuple[str, bool]:
         """Run one turn of the subagent graph, streaming tool/custom events.
@@ -295,7 +299,9 @@ class WorkflowSubagentRunner:
             ):
                 if len(event) != 2:
                     continue
-                stream_mode, payload = event
+                # A list `stream_mode` makes astream yield (mode, payload) tuples,
+                # which langgraph's own overload return type does not express.
+                stream_mode, payload = cast(tuple[str, Any], event)
 
                 if stream_mode == "updates":
                     for _node_name, state_update in payload.items():

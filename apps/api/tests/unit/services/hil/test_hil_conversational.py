@@ -135,6 +135,65 @@ class TestSingleApproval:
         assert "yes" in text
 
 
+class TestAnApprovalCannotCarryAnEdit:
+    """An approval runs the tool with its ORIGINAL arguments — there is no arg-editing.
+
+    So "yes but cc finance" is the dangerous reply: read as approve, the email goes out
+    WITHOUT the cc and the user believes they asked for it. That is a wrong action taken
+    under an apparent yes, which is worse than either refusing or asking again. It must
+    become a decline carrying the change, so the agent re-proposes.
+    """
+
+    async def test_an_approval_with_a_requested_change_becomes_a_decline(
+        self, resolver: dict
+    ) -> None:
+        resolver["llm"].return_value = DecisionResult(action="approve", feedback="cc finance")
+        with pending("Send email — to: bob@example.com"):
+            action = await resolve_pending_from_message(
+                CONVERSATION_ID, USER_ID, "yes but cc finance"
+            )
+
+        assert action == "deny"
+        call = resolver["resolve"].await_args
+        assert call.kwargs["kind"] == "deny", "the un-edited action must NOT run"
+        assert call.kwargs["feedback"] == "cc finance", (
+            "the change has to reach the agent, or it re-proposes the same wrong action"
+        )
+
+    @pytest.mark.parametrize("feedback", [None, "", "   "])
+    async def test_a_clean_yes_is_still_an_approval(
+        self, resolver: dict, feedback: str | None
+    ) -> None:
+        # The guard must key on a SUBSTANTIVE change. If any non-None feedback flipped an
+        # approval, a classifier that echoes "" or a stray space would make "yes" undeniably
+        # unapprovable and the feature would never run anything.
+        resolver["llm"].return_value = DecisionResult(action="approve", feedback=feedback)
+        with pending("Send email — to: bob@example.com"):
+            action = await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes")
+
+        assert action == "approve"
+        assert resolver["resolve"].await_args.kwargs["kind"] == "approve"
+
+    async def test_one_edited_item_in_a_batch_is_declined_while_the_clean_one_runs(
+        self, resolver: dict
+    ) -> None:
+        # The batch path applies the same rule per item, and must not let an edited item
+        # ride along on the blanket approval of its neighbour.
+        resolver["llm"].return_value = BatchDecisionResult(
+            unrelated=False,
+            decisions=[
+                BatchItemDecision(index=1, action="approve"),
+                BatchItemDecision(index=2, action="approve", feedback="make it tomorrow"),
+            ],
+        )
+        with pending("Send email — to: bob@example.com", "Create event — title: standup"):
+            await resolve_pending_from_message(CONVERSATION_ID, USER_ID, "yes, but move the 2nd")
+
+        assert resolved_ids(resolver["resolve"]) == ["appr-1", "appr-2"]
+        assert resolved_kinds(resolver["resolve"]) == ["approve", "deny"]
+        assert resolver["resolve"].await_args_list[1].kwargs["feedback"] == "make it tomorrow"
+
+
 class TestBatch:
     """Several approvals pending at once — the concurrent-subagent burst. A blanket answer
     applies to all of them; a selective one must apply to nothing it did not name."""

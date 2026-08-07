@@ -13,7 +13,7 @@ from app.constants.log_tags import LogTag
 from app.db.repositories.processed_webhooks import processed_webhook_repository
 from app.db.repositories.subscriptions import subscription_repository
 from app.db.repositories.users import user_repository
-from app.models.payment_models import SubscriptionDocument
+from app.models.payment_models import SubscriptionDocument, SubscriptionUpdate
 from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
@@ -32,7 +32,7 @@ from shared.py.wide_events import log
 class PaymentWebhookService:
     """Clean service for handling Dodo payment webhooks."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.webhook_secret = settings.DODO_WEBHOOK_PAYMENTS_SECRET
         # Initialize Standard Webhooks verifier
         if self.webhook_secret:
@@ -385,12 +385,18 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        # Update subscription billing dates
+        # Set each billing date only when the event carries one. Passing it
+        # marks the field in model_fields_set even when None, and the repository
+        # applies model_dump(exclude_unset=True) as $set — so an event that omits
+        # a date would otherwise write null over the stored value.
+        update = SubscriptionUpdate(status="active")
+        if sub_data.next_billing_date is not None:
+            update.next_billing_date = sub_data.next_billing_date
+        if sub_data.previous_billing_date is not None:
+            update.previous_billing_date = sub_data.previous_billing_date
+
         matched = await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id,
-            status="active",
-            next_billing_date=sub_data.next_billing_date,
-            previous_billing_date=sub_data.previous_billing_date,
+            sub_data.subscription_id, update
         )
 
         if not matched:
@@ -423,11 +429,13 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
-        fields: dict[str, object] = {"status": "cancelled"}
+        # cancelled_at is only set when Dodo supplied one — leaving it unset keeps
+        # it out of the $set rather than writing null over a stored value.
+        update = SubscriptionUpdate(status="cancelled")
         if sub_data.cancelled_at:
-            fields["cancelled_at"] = sub_data.cancelled_at
+            update.cancelled_at = sub_data.cancelled_at
 
-        await subscription_repository.apply_update_by_dodo_id(sub_data.subscription_id, **fields)
+        await subscription_repository.apply_update_by_dodo_id(sub_data.subscription_id, update)
 
         # Track subscription cancellation in PostHog
         user_email = sub_data.customer.email if sub_data.customer else None
@@ -454,7 +462,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id, status="expired"
+            sub_data.subscription_id, SubscriptionUpdate(status="expired")
         )
 
         # Track subscription expiration in PostHog
@@ -482,7 +490,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id, status="failed"
+            sub_data.subscription_id, SubscriptionUpdate(status="failed")
         )
 
         return DodoWebhookProcessingResult(
@@ -501,7 +509,7 @@ class PaymentWebhookService:
             raise ValueError("Invalid subscription data")
 
         await subscription_repository.apply_update_by_dodo_id(
-            sub_data.subscription_id, status="on_hold"
+            sub_data.subscription_id, SubscriptionUpdate(status="on_hold")
         )
 
         return DodoWebhookProcessingResult(
@@ -521,9 +529,11 @@ class PaymentWebhookService:
 
         await subscription_repository.apply_update_by_dodo_id(
             sub_data.subscription_id,
-            product_id=sub_data.product_id,
-            quantity=sub_data.quantity,
-            recurring_pre_tax_amount=sub_data.recurring_pre_tax_amount,
+            SubscriptionUpdate(
+                product_id=sub_data.product_id,
+                quantity=sub_data.quantity,
+                recurring_pre_tax_amount=sub_data.recurring_pre_tax_amount,
+            ),
         )
 
         return DodoWebhookProcessingResult(

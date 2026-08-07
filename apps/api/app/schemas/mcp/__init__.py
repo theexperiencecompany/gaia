@@ -8,6 +8,7 @@ from app.schemas.mcp.requests import (
     MCPProxyToolCallRequest,
 )
 from app.schemas.mcp.responses import (
+    MCPConnectionTestResponse,
     MCPProxyPromptsListResponse,
     MCPProxyResourceReadResponse,
     MCPProxyResourcesListResponse,
@@ -16,6 +17,7 @@ from app.schemas.mcp.responses import (
 )
 
 __all__ = [
+    "MCPConnectionTestResponse",
     "MCPProxyToolCallRequest",
     "MCPProxyResourcesListRequest",
     "MCPProxyResourceTemplatesListRequest",
