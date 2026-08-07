@@ -563,7 +563,14 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         ``lower_tiers``' complement — so downgrades are silent and re-crossing a
         boundary can never re-fire. The filtered update is also the idempotency
         lock: a retried job matches zero documents the second time.
+
+        A ``user_id`` that is not a valid ObjectId (synthetic/dev identities in
+        the rollups) is skipped with a warning rather than failing the sweep —
+        id-encoding concerns stay inside the repository layer.
         """
+        if not ObjectId.is_valid(user_id):
+            log.warning(f"[repository] tier promotion skipped non-ObjectId user_id {user_id!r}")
+            return None
         return await self._apply_raw_update(
             {
                 "_id": self._id_value(user_id),

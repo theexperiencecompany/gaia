@@ -10,8 +10,6 @@ from datetime import UTC, datetime, timedelta
 import json
 from typing import Any, NamedTuple, cast
 
-from bson import ObjectId
-from bson.errors import InvalidId
 from pymongo.errors import PyMongoError
 
 from app.config.rate_limits import FEATURE_LIMITS
@@ -224,13 +222,9 @@ async def _record_tier(user_id: str, tier: str) -> UserDocument | None:
     The guard is monotonic — a stored tier is only ever replaced by a stronger
     one — so downgrades are silent and re-crossing a boundary can never re-fire.
     The filtered update is also the idempotency lock: a retried job matches zero
-    documents the second time.
+    documents the second time. Non-ObjectId user_ids are skipped inside the
+    repository (id encoding is its concern).
     """
-    try:
-        ObjectId(user_id)
-    except (InvalidId, TypeError):
-        log.warning(f"{LogTag.MONGO} tier sync skipped non-ObjectId user_id {user_id!r}")
-        return None
     lower_tiers = list(TIER_KEYS[: TIER_KEYS.index(tier)])
     return await user_repository.record_activity_tier_promotion(user_id, tier, lower_tiers)
 
