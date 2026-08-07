@@ -5,7 +5,7 @@ All predicates are async so SKIP_PREDICATES stays a uniform awaitable map,
 even for the few that only read the already-fetched user document.
 """
 
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 
 from app.constants.integrations import GMAIL_INTEGRATION_ID, GOOGLE_CALENDAR_INTEGRATION_ID
 from app.db.repositories.conversations import conversation_repository
@@ -54,7 +54,7 @@ async def linked_platform(user: UserDocument) -> bool:  # NOSONAR python:S7503
     return any(isinstance(link, dict) and link.get("id") for link in links.values())
 
 
-SKIP_PREDICATES: dict[str, Callable[[UserDocument], Awaitable[bool]]] = {
+SKIP_PREDICATES: Mapping[str, Callable[[UserDocument], Awaitable[bool]]] = {
     "onboarding_completed": onboarding_completed,
     "used_chat": used_chat,
     "google_suite_connected": google_suite_connected,

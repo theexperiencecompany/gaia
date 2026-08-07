@@ -108,8 +108,17 @@ class ConversationRepository(UserScopedRepository[ConversationDocument, Conversa
         return await self._count(self._active_filter(user_id))
 
     async def count_non_onboarding(self, user_id: str) -> int:
-        """Real (non-onboarding) conversations for a user — the chat-usage signal."""
-        return await self._count({"user_id": user_id, "is_onboarding_conversation": {"$ne": True}})
+        """Real (non-onboarding) conversations for a user — the chat-usage signal.
+
+        Excludes both the onboarding walkthrough conversation and onboarding
+        demo conversations (either marker true = not real usage)."""
+        return await self._count(
+            {
+                "user_id": user_id,
+                "is_onboarding_conversation": {"$ne": True},
+                "is_onboarding_demo": {"$ne": True},
+            }
+        )
 
     async def exists(self, conversation_id: str, *, user_id: str) -> bool:
         """Whether the user owns a conversation with this id."""
