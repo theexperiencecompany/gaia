@@ -223,13 +223,14 @@ PRO_PER_REQUEST_TOKEN_CEILING = 5_000_000  # TUNE
 # cumulative cost reaches it, ALL chat is blocked until reset. Pro: an
 # abuse-level burst guard only — a legitimate power user must never hit it.
 #
-# The free budget covers the user's WHOLE cost footprint, not just their chat
-# turns: auxiliary spend (memory extraction/reconcile/consolidation, follow-up
-# suggestions, onboarding) is metered through the same windows via
-# ``ainvoke_structured``. It is set at 0.05 of chat allowance + 0.02 of measured
-# background COGS for a typical free user, so metering that background spend
-# did not silently shrink how much a free user can actually chat.
-FREE_DAILY_COST_BUDGET_USD = 0.07  # TUNE
+# The budget covers what the user actively asks for: chat turns and the agent
+# work they trigger. Auxiliary background spend (memory extraction/reconcile/
+# consolidation, follow-up suggestions, onboarding, workflow generation) is
+# metered for per-user COGS observability via ``ainvoke_structured`` but
+# deliberately NOT charged to these windows — a memory save or an onboarding
+# question must never consume the user's chat allowance. Memory volume is
+# bounded by its own count cap (``FREE_MEMORY_FACT_LIMIT``), not by cost.
+FREE_DAILY_COST_BUDGET_USD = 0.05  # TUNE
 PRO_DAILY_COST_BUDGET_USD = 5.00  # TUNE — abuse guard, not a usage limit
 
 # Rolling monthly USD cost budget for pro: the ECONOMIC guard. Set ~1x the

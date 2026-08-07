@@ -6,11 +6,12 @@ readers:
 - ``LLMAccountingMiddleware.aafter_model`` increments both windows after every
   model call (the single seam every execution path passes through — chat,
   workflows, bots, voice, subagents).
-- ``ainvoke_structured`` increments them for auxiliary one-shot calls (memory
-  extraction/reconcile/consolidation, follow-ups, onboarding, …), which run
-  outside the agent graph and so never reach the middleware. Both routes go
-  through ``app.services.llm_metering.record_llm_call`` so spend is priced and
-  recorded identically.
+- ``ainvoke_structured`` prices its auxiliary one-shot calls (memory
+  extraction/reconcile/consolidation, follow-ups, onboarding, …) through the
+  same ``app.services.llm_metering.record_llm_call`` — but with
+  ``charge_to_budget=False``: that spend is booked durably for COGS
+  observability and never touches these windows, because background work must
+  not consume the user's allowance.
 - The chat endpoint checks the daily window BEFORE running the agent (429 wall).
 - ``LLMAccountingMiddleware.awrap_model_call`` checks the daily window and the
   per-request token ceiling as the unbypassable backstop; the monthly window
@@ -88,15 +89,22 @@ async def record_model_call_usage(
     cost_usd: float,
     root_request_id: str | None,
     tokens: int,
+    *,
+    charge_to_budget: bool,
 ) -> None:
     """Record one model call's spend and tokens in a single Redis round trip.
 
-    The single metering seam ``LLMAccountingMiddleware.aafter_model`` calls after
-    every model call on every execution path (chat, workflows, bots, voice,
-    subagents). Batches the day + month USD cost increments and the request
-    tree's aggregate token counter — each with its TTL — into one
-    non-transactional pipeline, and runs the durable Mongo cost rollup
-    concurrently. Fail-open: a Redis hiccup must never fail the model call.
+    Called by both metering routes via ``record_llm_call``. Batches the day +
+    month USD cost increments and the request tree's aggregate token counter —
+    each with its TTL — into one non-transactional pipeline, and runs the
+    durable Mongo cost rollup concurrently. Fail-open: a Redis hiccup must
+    never fail the model call.
+
+    ``charge_to_budget`` decides whether the spend counts against the user's
+    allowance: the agent middleware charges (chat/workflow/bot work the user
+    asked for), auxiliary one-shot calls do not — their spend lands only in the
+    durable rollup (under ``aux_cost``) so COGS stays measurable per user
+    without a memory save or onboarding question eating chat allowance.
     """
     record_spend = user_id is not None and cost_usd > 0
     record_tokens = root_request_id is not None and tokens > 0
@@ -110,14 +118,16 @@ async def record_model_call_usage(
     # only cost history the usage charts can plot. Runs concurrently with the
     # Redis pipeline below.
     if record_spend and user_id is not None:
-        labeled.append(("mongo_cost_rollup", record_cost(user_id, cost_usd)))
+        labeled.append(
+            ("mongo_cost_rollup", record_cost(user_id, cost_usd, charged=charge_to_budget))
+        )
 
     client = redis_cache.redis
     if client is None:
         log.warning(f"{LogTag.STORAGE} Redis unavailable — model call usage not recorded.")
     else:
         pipe = client.pipeline(transaction=False)
-        if record_spend and user_id is not None:
+        if charge_to_budget and record_spend and user_id is not None:
             for period, ttl in _PERIOD_TTL_SECONDS.items():
                 key = _budget_key(user_id, period)
                 pipe.incrbyfloat(key, cost_usd)
@@ -126,7 +136,8 @@ async def record_model_call_usage(
             key = _REQUEST_TOKENS_KEY.format(root_request_id=root_request_id)
             pipe.incrby(key, tokens)
             pipe.expire(key, REQUEST_TOKEN_COUNTER_TTL_SECONDS)
-        labeled.append(("redis_usage_pipeline", pipe.execute()))
+        if pipe.command_stack:
+            labeled.append(("redis_usage_pipeline", pipe.execute()))
 
     # Fail-open per op: a Redis or Mongo write failure here must never fail the
     # already-completed model call. ``return_exceptions`` keeps both writes

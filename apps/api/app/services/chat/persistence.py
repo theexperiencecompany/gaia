@@ -19,17 +19,12 @@ import json
 import re
 from typing import Any
 
-from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.model_pricing import calculate_token_cost
-from app.config.settings import settings
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
-from app.services.payments.payment_service import payment_service
-from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
 from app.utils.artifact_utils import artifact_url_base
 from app.utils.chat_utils import create_conversation
 

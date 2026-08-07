@@ -501,8 +501,9 @@ SILENT_LLM_CONFIG: RunnableConfig = {
 
 def metered_config(user_id: str) -> RunnableConfig:
     """The minimal run config for an auxiliary :func:`ainvoke_structured` call:
-    who its spend is billed to. Call sites that already forward a graph config
-    (which carries ``configurable.user_id`` already) don't need this."""
+    who its spend is attributed to (COGS observability — never charged to the
+    user's budget). Call sites that already forward a graph config (which
+    carries ``configurable.user_id`` already) don't need this."""
     return cast(RunnableConfig, {"configurable": {"user_id": user_id}})
 
 
@@ -528,19 +529,22 @@ def _with_usage_handler(
 async def _record_auxiliary_usage(
     handler: UsageMetadataCallbackHandler, label: str, user_id: str | None
 ) -> None:
-    """Meter one auxiliary (non-agent) model call into the user's cost budget.
+    """Meter one auxiliary (non-agent) model call for COGS observability.
 
     ``ainvoke_structured`` runs outside the agent graph, so
     ``LLMAccountingMiddleware`` never sees it — without this, memory
     extraction/reconcile/consolidation and every other one-shot helper would
-    spend real money that no budget wall and no usage chart ever counted.
+    spend real money that nothing ever measured.
 
-    Tokens are deliberately NOT charged to the per-request token ceiling: that
-    counter bounds a single agent tree against runaway loops, and this work is
-    background/one-shot (memory ingestion outlives the turn that spawned it).
-    The spend itself lands in the same day/month windows the wall reads, and the
-    ``llm_call`` event carries ``background=True`` so analytics can split
-    auxiliary COGS from in-turn agent spend.
+    This spend is deliberately NOT charged to the user's allowance
+    (``charge_to_budget=False``): a memory save or an onboarding question is
+    background work GAIA does on the user's behalf, not usage they asked for,
+    so it must never eat into their chat budget (memory volume is bounded by
+    its own count cap). Tokens likewise never touch the per-request token
+    ceiling — that counter bounds a single agent tree against runaway loops.
+    The cost is booked durably per user (``usage_daily.aux_cost``) and the
+    ``llm_call`` event carries ``background=True``, so auxiliary COGS stays
+    fully measurable and splittable from in-turn agent spend.
     """
     for model_name, usage in handler.usage_metadata.items():
         input_tokens = int(usage.get("input_tokens", 0) or 0)
@@ -563,6 +567,7 @@ async def _record_auxiliary_usage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_tokens=cached_tokens,
+            charge_to_budget=False,
         )
         log.info(
             "llm_call",

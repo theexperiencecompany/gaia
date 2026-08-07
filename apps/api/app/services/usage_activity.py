@@ -79,19 +79,25 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
         log.warning(f"{LogTag.MONGO} record_activity failed for {user_id}: {e}")
 
 
-async def record_cost(user_id: str, cost_usd: float) -> None:
+async def record_cost(user_id: str, cost_usd: float, *, charged: bool = True) -> None:
     """Add real LLM spend to today's durable rollup. Never raises.
 
     Redis cost windows expire in ~26h, so this is the ONLY per-day cost
     history — it's what lets usage charts show cost-based (nearest-wall)
     percentages for past days instead of message counts alone.
+
+    ``charged=False`` books the spend under ``aux_cost`` instead of ``cost``:
+    auxiliary background work (memory pipeline, onboarding, workflow
+    generation, …) is tracked for per-user COGS but never counts against the
+    user's allowance, so ``cost`` stays an exact durable mirror of the Redis
+    windows the budget wall enforces.
     """
     if not user_id or cost_usd <= 0:
         return
     try:
         await usage_daily_collection.update_one(
             {"user_id": user_id, "date": _day(datetime.now(UTC))},
-            {"$inc": {"cost": cost_usd}},
+            {"$inc": {"cost" if charged else "aux_cost": cost_usd}},
             upsert=True,
         )
     except PyMongoError as e:

@@ -257,8 +257,10 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         # is billed at the discounted rate rather than free) and record it into
         # the day/month budget windows plus the request tree's aggregate token
         # counter. This hook runs for every model call on every agent execution
-        # path (chat, workflows, bots, voice, subagents); auxiliary one-shot
-        # calls reach the same helper via ``ainvoke_structured``.
+        # path (chat, workflows, bots, voice, subagents) — all work the user
+        # actively asked for, so it charges the budget. Auxiliary one-shot calls
+        # reach the same helper via ``ainvoke_structured`` with
+        # ``charge_to_budget=False`` (COGS observability only).
         root_request_id = configurable.get("root_request_id")
         total_cost = await record_llm_call(
             user_id=str(user_id) if user_id else None,
@@ -267,6 +269,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             output_tokens=output_tokens,
             cached_tokens=cached_tokens,
             root_request_id=str(root_request_id) if root_request_id else None,
+            charge_to_budget=True,
         )
 
         step_index = self._next_step(thread_id)
