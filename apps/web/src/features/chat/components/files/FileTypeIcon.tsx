@@ -1,5 +1,6 @@
 "use client";
 
+import * as m from "motion/react-m";
 import { useId } from "react";
 import { FILE_TYPE_STYLES } from "@/features/chat/components/files/fileTypeConfig";
 
@@ -27,16 +28,33 @@ export function FileTypeIcon({ extension, size = 44 }: FileTypeIconProps) {
   const outlineGradientId = `filetype-outline-${uid}`;
 
   return (
-    <div
+    <m.div
       className="group/filetype relative shrink-0"
       style={{ width: size, height: size }}
       role="img"
       aria-label={`${extension.toUpperCase()} file`}
+      initial="idle"
+      whileHover="hover"
     >
-      <div
-        className="pointer-events-none absolute inset-0 scale-[0.92] -rotate-[10deg] -translate-x-[17%] translate-y-[3%] transition-transform duration-200 ease-out group-hover/filetype:-rotate-[15deg] group-hover/filetype:-translate-x-[24%] group-hover/filetype:translate-y-[7%]"
+      <m.div
+        className="pointer-events-none absolute inset-0"
         style={{ opacity: 0.5 }}
         aria-hidden="true"
+        variants={{
+          idle: {
+            scale: 0.92,
+            rotate: -10,
+            x: "-17%",
+            y: "3%",
+          },
+          hover: {
+            scale: 0.92,
+            rotate: -15,
+            x: "-24%",
+            y: "7%",
+          },
+        }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
       >
         <svg className="h-full w-full" viewBox="-3 0 32 32" aria-hidden="true">
           <path
@@ -46,8 +64,15 @@ export function FileTypeIcon({ extension, size = 44 }: FileTypeIconProps) {
             transform="translate(-156 -101)"
           />
         </svg>
-      </div>
-      <div className="absolute inset-0 rotate-[9deg] transition-transform duration-200 ease-out group-hover/filetype:rotate-[14deg]">
+      </m.div>
+      <m.div
+        className="absolute inset-0"
+        variants={{
+          idle: { rotate: 9 },
+          hover: { rotate: 14 },
+        }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+      >
         <svg className="absolute inset-0 h-full w-full" viewBox="-3 0 32 32">
           <title>{`${extension.toUpperCase()} file`}</title>
           <defs>
@@ -102,7 +127,7 @@ export function FileTypeIcon({ extension, size = 44 }: FileTypeIconProps) {
             {extension.toUpperCase()}
           </div>
         </div>
-      </div>
-    </div>
+      </m.div>
+    </m.div>
   );
 }

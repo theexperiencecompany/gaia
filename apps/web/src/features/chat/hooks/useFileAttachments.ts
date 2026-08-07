@@ -95,9 +95,9 @@ export const useFileAttachments = (conversationId?: string) => {
                 message,
                 isUploading: false,
               };
-              replaceUploadedFile(tempId, uploaded);
               const { uploadedFiles } = useComposerStore.getState();
               if (uploadedFiles.some((f) => f.id === tempId)) {
+                replaceUploadedFile(tempId, uploaded);
                 addUploadedFileData({
                   fileId: response.fileId,
                   url: response.url || "",
