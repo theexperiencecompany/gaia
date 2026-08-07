@@ -42,10 +42,10 @@ from typing import Any
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-# Import app modules after path setup  # noqa: E402
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.db.redis import delete_cache_by_pattern  # noqa: E402
-from app.models.models_models import ModelProvider, PlanType  # noqa: E402
+# Import app modules after path setup
+from app.db.mongodb.collections import get_async_collection
+from app.db.redis import delete_cache_by_pattern
+from app.models.models_models import ModelProvider, PlanType
 
 ai_models_collection = get_async_collection("ai_models")
 

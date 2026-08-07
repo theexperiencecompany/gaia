@@ -6,6 +6,7 @@ import { Share08Icon } from "@icons";
 import type { UsageActivity } from "@shared/types";
 import { formatCompactNumber, formatDateUTC } from "@shared/utils";
 import confetti from "canvas-confetti";
+import Image from "next/image";
 import {
   type MouseEvent,
   useCallback,
@@ -107,12 +108,16 @@ function Medal({
 }) {
   const t = TIERS[tier];
   return (
-    // biome-ignore lint/performance/noImgElement: static local asset, next/image adds no value here
-    <img
+    <Image
       src={t.src}
       alt=""
       aria-hidden
       draggable={false}
+      width={96}
+      height={96}
+      // Small static local asset re-tinted via CSS filter — optimization would
+      // only re-encode the tint's source pixels.
+      unoptimized
       className={cn("object-contain", className)}
       style={t.filter ? { filter: t.filter } : undefined}
     />

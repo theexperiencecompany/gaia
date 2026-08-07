@@ -29,17 +29,17 @@ _BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_BACKEND_ROOT))
 load_dotenv(_BACKEND_ROOT / ".env")
 
-from app.config.secrets import inject_infisical_secrets  # noqa: E402
+from app.config.secrets import inject_infisical_secrets
 
 inject_infisical_secrets()
 
-from app.config.settings import settings  # noqa: E402
-from app.services.sandbox.lifecycle import (  # noqa: E402
+from app.config.settings import settings
+from app.services.sandbox.lifecycle import (
     _mount_env,
     _release_juicefs_sessions,
     _run_mount_script,
 )
-from app.services.sandbox.shard_router import shard_for  # noqa: E402
+from app.services.sandbox.shard_router import shard_for
 
 TEST_USER = f"verify-{uuid.uuid4().hex[:8]}"
 CONV = f"conv-{uuid.uuid4().hex[:8]}"

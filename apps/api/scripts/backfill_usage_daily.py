@@ -31,10 +31,10 @@ import sys
 # Ensure app is on path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from pymongo import UpdateOne  # noqa: E402
+from pymongo import UpdateOne
 
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.services.usage_activity import sync_activity_tiers  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.services.usage_activity import sync_activity_tiers
 
 conversations_collection = get_async_collection("conversations")
 usage_daily_collection = get_async_collection("usage_daily")
