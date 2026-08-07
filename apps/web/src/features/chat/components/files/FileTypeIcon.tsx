@@ -17,9 +17,16 @@ const DOC_WIDTH = 81.25;
 interface FileTypeIconProps {
   readonly extension: string;
   readonly size?: number;
+  /** Drives the hover animation from a parent (e.g. the whole file chip
+   *  being hovered) instead of the icon's own hover. */
+  readonly isHovered?: boolean;
 }
 
-export function FileTypeIcon({ extension, size = 44 }: FileTypeIconProps) {
+export function FileTypeIcon({
+  extension,
+  size = 44,
+  isHovered,
+}: FileTypeIconProps) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const { from, to, Glyph } =
     FILE_TYPE_STYLES[extension.toLowerCase()] ?? FILE_TYPE_STYLES.file;
@@ -34,6 +41,7 @@ export function FileTypeIcon({ extension, size = 44 }: FileTypeIconProps) {
       role="img"
       aria-label={`${extension.toUpperCase()} file`}
       initial="idle"
+      animate={isHovered ? "hover" : "idle"}
       whileHover="hover"
     >
       <m.div
