@@ -63,6 +63,12 @@ def _strip_ws(text: str) -> str:
     return re.sub(r"\s+", "", text)
 
 
+def _slow_block(seconds: float = 0.2) -> None:
+    """Block in a thread (async tests call this via ``asyncio.to_thread``), so a
+    patched parser can exceed ``asyncio.wait_for`` and trigger a timeout."""
+    time.sleep(seconds)
+
+
 # ---------------------------------------------------------------------------
 # DocumentProcessor.__init__ is patched in all tests to avoid real
 # LlamaParse / LLM initialization.
@@ -326,7 +332,7 @@ class TestProcessDoc:
             patch("app.utils.file_utils.LOCAL_EXTRACTION_TIMEOUT_SECONDS", 0.01),
             patch(
                 "app.utils.file_utils.local_document_parser.classify_pdf",
-                side_effect=lambda _data: time.sleep(0.2),
+                side_effect=lambda _data: _slow_block(),
             ),
         ):
             with pytest.raises(TimeoutError):
@@ -429,7 +435,7 @@ class TestProcessOfficeDocument:
             patch("app.utils.file_utils.LOCAL_EXTRACTION_TIMEOUT_SECONDS", 0.01),
             patch(
                 "app.utils.file_utils.local_document_parser.extract_office_document",
-                side_effect=lambda _data, _suffix: time.sleep(0.2),
+                side_effect=lambda _data, _suffix: _slow_block(),
             ),
         ):
             with pytest.raises(TimeoutError):
