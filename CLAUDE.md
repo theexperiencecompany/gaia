@@ -77,6 +77,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 mise tasks          # List all available tasks with descriptions
 mise run <task>     # Run a task (e.g. mise run lint, mise run dev)
 mise //apps/api:lint  # Run a task in a sub-project from the root
+mise infisical <task>  # Team members: run any task with Infisical secrets injected (e.g. mise infisical dev:full)
 ```
 
 Pre-commit hooks are managed via **prek** (installed by mise). Install once with `mise run pre-commit:install`. Hooks run automatically on `git commit` — to run manually: `mise run pre-commit`.

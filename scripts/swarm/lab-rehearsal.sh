@@ -21,7 +21,6 @@
 # or leave unset to use placeholders (infra services will start; app services
 # will fail Infisical auth — that's expected with fake creds).
 #
-#   INFISICAL_TOKEN=...
 #   INFISICAL_MACHINE_IDENTITY_CLIENT_ID=...
 #   INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=...
 #   INFISICAL_PROJECT_ID=...
@@ -218,7 +217,6 @@ else
   # Read from env vars — fall back to placeholder values if not set.
   # With placeholders, infra services start fine; app services will fail
   # Infisical auth (expected — use real creds for a full integration test).
-  INFISICAL_TOKEN="${INFISICAL_TOKEN:-lab-placeholder-token}"
   INFISICAL_MACHINE_IDENTITY_CLIENT_ID="${INFISICAL_MACHINE_IDENTITY_CLIENT_ID:-lab-placeholder-client-id}"
   INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET="${INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET:-lab-placeholder-client-secret}"
   INFISICAL_PROJECT_ID="${INFISICAL_PROJECT_ID:-lab-placeholder-project-id}"
@@ -234,7 +232,7 @@ else
     fi
   }
 
-  create_secret gaia_infisical_token                          "$INFISICAL_TOKEN"
+  # Shared machine identity (see docker-compose.prod.yml secrets block)
   create_secret gaia_infisical_machine_identity_client_id     "$INFISICAL_MACHINE_IDENTITY_CLIENT_ID"
   create_secret gaia_infisical_machine_identity_client_secret "$INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET"
   create_secret gaia_infisical_project_id                     "$INFISICAL_PROJECT_ID"
@@ -384,7 +382,9 @@ cat << EOF
     orbctl delete $VM_NAME
 
   Note: app services (gaia-backend, bots) will be in a restart loop with placeholder
-  Infisical creds — that is expected.  Pass real env vars to test full auth:
-    INFISICAL_TOKEN=... bash scripts/swarm/lab-rehearsal.sh --skip-launch --skip-secrets
+  Infisical creds — that is expected.  To test full auth, remove the placeholder
+  secrets first (secret creation skips existing ones), then re-run with real creds:
+    INFISICAL_MACHINE_IDENTITY_CLIENT_ID=... INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=... \\
+    INFISICAL_PROJECT_ID=... bash scripts/swarm/lab-rehearsal.sh --skip-launch
 
 EOF
