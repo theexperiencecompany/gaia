@@ -38,7 +38,9 @@ print(f"user: {EMAIL}  user_id={uid}  plan={PLAN}")
 
 # --- 2. a year of daily activity (deterministic, realistic) ----------------
 # Per-action LLM cost: free rides the cheap model; pro runs heavier agent loops.
-COST_PER_ACTION = 0.004 if PLAN == "free" else 0.010
+# Free stays under FREE_DAILY_COST_BUDGET_USD (0.05) at the seeded ~7-14
+# actions/day, so the demo shows a realistic partially-used gauge, not the wall.
+COST_PER_ACTION = 0.003 if PLAN == "free" else 0.010
 db["usage_daily"].delete_many({"user_id": uid})
 today = now.replace(hour=0, minute=0, second=0, microsecond=0)
 rows = []
@@ -125,6 +127,9 @@ db["subscriptions"].delete_many({"user_id": uid})
 if PLAN == "pro":
     db["subscriptions"].insert_one(
         {
+            # Synthetic but schema-valid: SubscriptionDocument requires
+            # dodo_subscription_id (webhooks key on it).
+            "dodo_subscription_id": f"sub_demo_{uid}",
             "user_id": uid,
             "status": "active",
             "product_id": "pro",
