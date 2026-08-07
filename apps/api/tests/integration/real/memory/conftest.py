@@ -13,6 +13,9 @@ tests.
 
 import asyncio
 from collections.abc import AsyncGenerator, Callable
+import fcntl
+from pathlib import Path
+import tempfile
 import uuid
 
 import chromadb
@@ -47,9 +50,23 @@ _chroma_collections_ready = False
 
 @pytest.fixture(scope="session", autouse=True)
 def warm_embedding_models() -> None:
-    """Load fastembed models once per worker so latency tests measure warm paths."""
-    _embed_sync(["warmup"])
-    _rerank_sync("warmup", ["warmup document"])
+    """Load fastembed models once per worker so latency tests measure warm paths.
+
+    Serialized across xdist workers by a file lock, for the same reason
+    ``pg_engine`` takes an advisory lock around ``create_all``: every worker
+    shares one fastembed cache directory, and a concurrent first load has them
+    all downloading the same HuggingFace snapshot at once. The loser observes
+    the snapshot directory its sibling just created, decides the model is
+    present, and hands onnxruntime a ``model.onnx`` that has not finished
+    downloading — ``NO_SUCHFILE``, which took out 24 memory tests and then the
+    live-server suite that reuses the same cache. The winner downloads; the
+    rest block here and read a complete cache.
+    """
+    lock_path = Path(tempfile.gettempdir()) / "gaia-fastembed-warmup.lock"
+    with lock_path.open("w") as lock_file:
+        fcntl.flock(lock_file, fcntl.LOCK_EX)
+        _embed_sync(["warmup"])
+        _rerank_sync("warmup", ["warmup document"])
 
 
 @pytest.fixture

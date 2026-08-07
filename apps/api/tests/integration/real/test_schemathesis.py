@@ -124,8 +124,14 @@ def _server_env() -> dict[str, str]:
     return env
 
 
-def _tail(log_path: Path, limit: int = 4000) -> str:
-    """The end of the server's log, for a failure message."""
+def _tail(log_path: Path, limit: int = 20000) -> str:
+    """The end of the server's log, for a failure message.
+
+    Generous limit on purpose: startup logs one line per provider, so a 4 KiB
+    tail showed only the shutdown sequence and the re-raised aggregate error
+    ("Failed to initialize required services: [...]") while the line naming the
+    provider that actually failed scrolled past.
+    """
     try:
         return log_path.read_text(errors="replace")[-limit:] or "<server produced no output>"
     except OSError as exc:

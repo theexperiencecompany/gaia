@@ -746,7 +746,13 @@ jobs:
       - name: semgrep scan (p/python over apps/api/app)
         # docker form: returntocorp/semgrep-action is deprecated upstream; the
         # image has no ENTRYPOINT, so the command must spell `semgrep`.
-        uses: docker://semgrep/semgrep:latest
+        #
+        # Digest-pinned, not `:latest` (Sonar githubactions security rule, and
+        # the reason this lane cannot simply be flipped to enforced): a floating
+        # tag lets an upstream release change what every unrelated PR is
+        # scanned with. Note this pins the scanner, not the rules — `p/python`
+        # is still fetched from the registry per run.
+        uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
         with:
           args: semgrep scan --config p/python apps/api/app --error --metrics=off
 
