@@ -42,6 +42,13 @@ If no Infisical variables are configured:
 - In development, the loader logs a message and continues with your local `.env`
 - In production, the app refuses to start
 
+<Warning>
+  **`ENV` defaults to `production` when unset**, in both the Python and
+  TypeScript loaders. An app that forgets to set it refuses to boot rather than
+  starting silently without secrets. Every `.env.example` ships
+  `ENV=development`, so copy one rather than writing `.env` from scratch.
+</Warning>
+
 ## Team Development Workflow (Recommended)
 
 Team members authenticate as **themselves** with the Infisical CLI — no machine identity credentials on laptops. You get personal permissions, audit-logged access, personal secret overrides, and instant revocation on offboarding.
@@ -107,9 +114,9 @@ ENV=development
 ```
 
 <Warning>
-  These three variables bootstrap the Infisical connection, so they must live in
-  the local environment — they cannot be stored in Infisical itself. Setting all
-  three enables the fetch; setting only some of them logs a warning in
+  The three `INFISICAL_*` variables bootstrap the connection, so they must live
+  in the local environment — they cannot be stored in Infisical itself. Setting
+  all three enables the fetch; setting only some of them logs a warning in
   development and fails the boot in production.
 </Warning>
 
@@ -168,7 +175,8 @@ wrangler secret put BLOG_BEARER_TOKEN
 
 <AccordionGroup>
   <Accordion title="InfisicalConfigError: Infisical is required in production">
-    **Solution**: The app is running with `ENV=production` but no Infisical
+    **Solution**: The app resolved `ENV` to `production` — either explicitly, or
+    because `ENV` is unset and that is the default — but has no Infisical
     credentials. Provide the machine identity credentials (in production these
     arrive as Docker Swarm secrets), or set `ENV=development` for local work.
   </Accordion>
