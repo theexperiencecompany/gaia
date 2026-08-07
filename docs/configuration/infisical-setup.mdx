@@ -73,7 +73,7 @@ Team members authenticate as **themselves** with the Infisical CLI — no machin
   </Step>
 </Steps>
 
-The repo's `.infisical.json` tells the CLI which project to use — it contains only the project ID and default environment, no secrets, so it is safe to commit. It ships with a `REPLACE_WITH_INFISICAL_PROJECT_ID` placeholder; a maintainer sets the real project ID once (or re-runs `infisical init`) and commits it. Until then, pass `--projectId=<id>` explicitly.
+The repo's `.infisical.json` tells the CLI which project to use — it contains only the project ID and default environment, no secrets, so it is committed and needs no setup on your part. The project ID is an identifier, not a credential: fetching secrets still requires `infisical login` with an account that has access to the project.
 
 **Local tweaks**: use [personal overrides](https://infisical.com/docs/documentation/platform/secret-overrides) in the Infisical dashboard instead of editing `.env` — `infisical run` applies your personal value while teammates keep the shared one.
 
