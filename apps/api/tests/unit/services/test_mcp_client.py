@@ -1079,7 +1079,13 @@ class TestMCPTokenStoreStoreOAuthTokens:
                 refresh_token="refresh_456",
                 expires_at=datetime.now(UTC) + timedelta(hours=1),
             )
-        mock_session.add.assert_called_once()
+        added = mock_session.add.call_args[0][0]
+        assert added.user_id == USER_ID
+        assert added.integration_id == INTEGRATION_ID
+        assert added.auth_type == MCPAuthType.OAUTH
+        assert added.access_token == "enc_access_123"
+        assert added.refresh_token == "enc_refresh_456"
+        assert added.status == MCPCredentialStatus.CONNECTED
         mock_session.commit.assert_awaited_once()
 
     async def test_updates_existing_credential(self):
@@ -1104,7 +1110,12 @@ class TestMCPTokenStoreStoreBearerToken:
         store._encrypt = MagicMock(return_value="encrypted")
         with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
             await store.store_bearer_token(INTEGRATION_ID, "my_token")
-        mock_session.add.assert_called_once()
+        added = mock_session.add.call_args[0][0]
+        assert added.user_id == USER_ID
+        assert added.integration_id == INTEGRATION_ID
+        assert added.auth_type == MCPAuthType.BEARER
+        assert added.access_token == "encrypted"
+        assert added.status == MCPCredentialStatus.CONNECTED
         mock_session.commit.assert_awaited_once()
 
     async def test_updates_existing_bearer(self):
@@ -1243,7 +1254,9 @@ class TestMCPTokenStoreDCRClient:
         ctx_fn, mock_session = _fake_db_session(None)
         with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
             await store.store_dcr_client(INTEGRATION_ID, {"client_id": "c1"})
-        mock_session.add.assert_called_once()
+        added = mock_session.add.call_args[0][0]
+        assert json.loads(added.client_registration) == {"client_id": "c1"}
+        assert added.status == MCPCredentialStatus.PENDING
         mock_session.commit.assert_awaited_once()
 
     async def test_store_dcr_client_update(self):
@@ -1382,7 +1395,11 @@ class TestMCPTokenStoreStoreUnauthenticated:
         ctx_fn, mock_session = _fake_db_session(None)
         with patch("app.services.mcp.mcp_token_store.get_db_session", ctx_fn):
             await store.store_unauthenticated(INTEGRATION_ID)
-        mock_session.add.assert_called_once()
+        added = mock_session.add.call_args[0][0]
+        assert added.user_id == USER_ID
+        assert added.integration_id == INTEGRATION_ID
+        assert added.auth_type == MCPAuthType.NONE
+        assert added.status == MCPCredentialStatus.CONNECTED
         mock_session.commit.assert_awaited_once()
 
     async def test_skips_if_already_exists(self):
@@ -2352,7 +2369,8 @@ class TestMCPClientListResourcesOnServer:
         mock_session.list_resources = AsyncMock(return_value=ListResourcesResult(resources=[]))
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
-        await client.list_resources_on_server(SERVER_URL, cursor="next_page")
+        result = await client.list_resources_on_server(SERVER_URL, cursor="next_page")
+        assert result.resources == []
         mock_session.list_resources.assert_awaited_once_with(cursor="next_page")
 
 
@@ -2736,7 +2754,8 @@ class TestMCPClientListResourceTemplatesOnServer:
         )
         client._get_session_for_server = AsyncMock(return_value=mock_session)
 
-        await client.list_resource_templates_on_server(SERVER_URL, cursor="page2")
+        result = await client.list_resource_templates_on_server(SERVER_URL, cursor="page2")
+        assert result.resourceTemplates == []
         mock_session.list_resource_templates.assert_awaited_once_with(cursor="page2")
 
     # test_list_templates_without_model_dump was deleted: _get_session_for_server

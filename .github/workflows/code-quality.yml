@@ -640,6 +640,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
+
+  # --- Python semgrep (SSRF / path traversal / injection) ------------------
+  # Dataflow SAST that bandit cannot do: follows user-controlled input into
+  # URL fetches / file paths / subprocesses. Informational (ratchet) until
+  # findings are burned down — see quality-gate below.
+  semgrep:
+    name: Python security patterns (semgrep)
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep scan (p/python over apps/api/app)
+        # docker form: returntocorp/semgrep-action is deprecated upstream; the
+        # image has no ENTRYPOINT, so the command must spell `semgrep`.
+        uses: docker://semgrep/semgrep:latest
+        with:
+          args: semgrep scan --config p/python apps/api/app --error --metrics=off
+
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
     name: Quality gate (required)
@@ -663,6 +683,7 @@ jobs:
       - dead-code
       - suppression-ratchet
       - gitleaks
+      - semgrep
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -688,6 +709,7 @@ jobs:
           DEAD_CODE: ${{ needs.dead-code.result }}
           SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
+          SEMGREP: ${{ needs.semgrep.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
           if [[ "$CHANGES" != "success" ]]; then
@@ -713,11 +735,12 @@ jobs:
             [dead-code]="$DEAD_CODE"
             [suppression-ratchet]="$SUPPRESSION_RATCHET"
             [gitleaks]="$GITLEAKS"
+            [semgrep]="$SEMGREP"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
-                 dead-code suppression-ratchet gitleaks)
+                 dead-code suppression-ratchet gitleaks semgrep)
 
           # ---------------------------------------------------------------
           # RATCHET: a lane is ENFORCED (can fail this gate) if the marker

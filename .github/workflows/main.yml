@@ -131,6 +131,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       # Also exports the suite's service env (URLs, ENV, USE_REAL_SERVICES).
       - uses: ./.github/actions/setup-python-test-env
       - name: Run Python tests
@@ -140,10 +141,28 @@ jobs:
         # full suite isn't paid for twice per PR; --cov-fail-under makes the
         # coverage floor a real gate, not an informational number.
         run: |
-          uv run --frozen pytest -n auto -m 'not composio' \
+          uv run --frozen pytest -n auto -m 'not composio and not model_onboarding' \
             --tb=short -q --override-ini=addopts=--strict-markers \
-            --cov=app --cov-report=term-missing --cov-fail-under=80
+            --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
+            --junitxml=test-results/pytest.xml --durations=50
           echo "Python tests: OK (full suite vs live services)"
+      - name: Summary of failed tests
+        if: always()
+        working-directory: apps/api
+        run: python3 ../../scripts/ci/junit_failures.py test-results/pytest.xml || true
+      - name: Upload pytest artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: apps/api/test-results/
+          retention-days: 7
+      - name: Diff coverage gate (changed lines must be covered)
+        if: github.event_name == 'pull_request'
+        working-directory: apps/api
+        run: |
+          uv tool run diff-cover coverage.xml --compare-branch=origin/develop --fail-under=90
+          echo "diff-cover: OK"
       - name: Run gaia-shared tests
         working-directory: apps/api
         # Separate step, not folded into the run above: these live outside
@@ -271,6 +290,25 @@ jobs:
           format: "table"
           scan-ref: "."
 
+  # --- Regression-proof: changed tests must FAIL on base -------------------
+  # FastAPI's lesson: diff the PR's changed test files onto origin/develop and
+  # run them there. If any PASS on base, the fix may no longer be needed —
+  # red-first enforced mechanically, per PR. Fails loud, never suppressed.
+  regression-proof:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: ./.github/actions/setup-python-test-env
+      - name: Changed test files must fail on base
+        working-directory: apps/api
+        run: bash ../../scripts/ci/regression-proof.sh origin/develop
+
   # --- Quality gate (branch protection target) ----------------------------
   quality-gate:
     if: always()
@@ -280,6 +318,7 @@ jobs:
       - test-python
       - test-typescript
       - test-harness-tools
+      - regression-proof
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
@@ -296,13 +335,15 @@ jobs:
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
+          echo "  regression-proof:   ${{ needs.regression-proof.result }}"
 
           for r in \
             "${{ needs.detect.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.test-harness-tools.result }}"; do
+            "${{ needs.test-harness-tools.result }}" \
+            "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1
