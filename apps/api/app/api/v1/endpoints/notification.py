@@ -1,4 +1,5 @@
 import asyncio
+from html import escape
 from typing import Annotated
 
 from fastapi import (
@@ -56,10 +57,11 @@ async def unsubscribe_confirmation(token: Annotated[str, Query()]) -> HTMLRespon
         return HTMLResponse(content=_UNSUBSCRIBE_INVALID_HTML, status_code=400)
 
     log.set(operation="unsubscribe_email_confirmation")
+    escaped_token = escape(token)
     form = (
         "<!doctype html><html><body style='font-family: sans-serif; padding: 40px; "
         "text-align: center;'><p>Want to stop receiving GAIA emails?</p>"
-        f"<form method='post' action='/api/v1/notifications/unsubscribe?token={token}'>"
+        f"<form method='post' action='/api/v1/notifications/unsubscribe?token={escaped_token}'>"
         "<button style='background-color: #00bbff; color: #ffffff; padding: 8px 16px; "
         "border: none; border-radius: 4px; cursor: pointer;'>Unsubscribe</button>"
         "</form></body></html>"
