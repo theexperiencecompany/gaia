@@ -110,10 +110,13 @@ def mock_redis_pool():
     """Patch RedisPoolManager.get_pool used by WorkflowQueueService."""
     with (
         patch("app.services.workflow.queue_service.RedisPoolManager.get_pool") as mock_get_pool,
-        patch("app.services.workflow.queue_service.enqueue_worker_job", new=AsyncMock()) as mock_enqueue,
+        patch(
+            "app.services.workflow.queue_service.enqueue_worker_job", new=AsyncMock()
+        ) as mock_enqueue,
     ):
         mock_pool = AsyncMock()
         mock_get_pool.return_value = mock_pool
+
         # The service enqueues via the wide-event wrapper (enqueue_worker_job),
         # which forwards to pool.enqueue_job with the same args the direct call
         # used (the pool itself is the wrapper's first arg, dropped on forward).
@@ -121,6 +124,7 @@ def mock_redis_pool():
         # mocks and assertions stay authoritative.
         async def _forward(pool, *args, **kwargs):
             return await pool.enqueue_job(*args, **kwargs)
+
         mock_enqueue.side_effect = _forward
         yield mock_pool
 

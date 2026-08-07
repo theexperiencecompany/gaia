@@ -146,6 +146,7 @@ class TestExecuteTodoWithRetryEarlyExits:
             # it through the pool mock so assertions stay authoritative.
             async def _forward(p, *args, **kwargs):
                 return await p.enqueue_job(*args, **kwargs)
+
             mock_enqueue.side_effect = _forward
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, run_execution

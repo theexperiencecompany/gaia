@@ -87,11 +87,13 @@ def mock_redis_pool_manager():
         patch("app.services.oauth.oauth_service.enqueue_worker_job") as mock_enqueue,
     ):
         mock_rpm.get_pool = AsyncMock(return_value=mock_pool)
+
         # The service enqueues via the wide-event wrapper (enqueue_worker_job),
         # which forwards to pool.enqueue_job. Route through the pool's mock so
         # the tests' existing assertions on enqueue_job stay authoritative.
         async def _forward(pool, *args, **kwargs):
             return await pool.enqueue_job(*args, **kwargs)
+
         mock_enqueue.side_effect = _forward
         yield mock_pool
 
