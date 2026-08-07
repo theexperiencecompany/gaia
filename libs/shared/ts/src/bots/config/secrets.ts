@@ -2,7 +2,7 @@
  * Infisical secrets management for GAIA bots.
  *
  * Resolution:
- * - If all 4 Infisical env vars are set → fetch remote secrets
+ * - If all Infisical env vars are set → fetch remote secrets
  * - If partially set → warn about incomplete config
  * - If none set in dev → skip (using local .env only)
  * - If none set in prod → throw (Infisical is required in production)
@@ -23,15 +23,25 @@ class InfisicalConfigError extends Error {
 }
 
 const INFISICAL_VARS = [
-  "INFISICAL_TOKEN",
   "INFISICAL_PROJECT_ID",
   "INFISICAL_MACHINE_IDENTITY_CLIENT_ID",
   "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
 ] as const;
 
 export async function injectInfisicalSecrets(): Promise<void> {
+  // ENV doubles as the Infisical environment slug (development/staging/
+  // production). Unlike the Python loader — which defaults an absent ENV to
+  // production — a bare bot checkout resolves to development, because
+  // apps/bots/.env.example has never required ENV and defaulting to production
+  // would break every existing local setup on the next pull.
+  //
+  // Deployment never relies on that fallback: apps/bots/Dockerfile bakes
+  // ENV=production into the image and docker-compose.prod.yml sets it again per
+  // service, so a container can only ever resolve production. NODE_ENV is kept
+  // as a third layer for images built outside this Dockerfile.
   const env =
-    process.env.NODE_ENV === "production" ? "production" : "development";
+    process.env.ENV ??
+    (process.env.NODE_ENV === "production" ? "production" : "development");
   const isProduction = env === "production";
 
   const present = INFISICAL_VARS.filter((k) => !!process.env[k]);
