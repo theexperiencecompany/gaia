@@ -47,6 +47,28 @@ def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
 run_call_executor = tool_function(call_executor)
 run_cancel_executor = tool_function(cancel_executor)
 
+
+async def call_executor_with(
+    config: RunnableConfig,
+    task: str,
+    acceptance_criteria: list[str] | None = None,
+    **kwargs: Any,
+) -> str:
+    """Call call_executor with the now-required acceptance_criteria provided.
+
+    The tool schema requires acceptance_criteria (never omit); tests that don't
+    care about it pass a generic checklist so they exercise the dispatch path,
+    not the schema default.
+    """
+    if acceptance_criteria is None:
+        acceptance_criteria = []
+    return await run_call_executor(
+        config=config,
+        task=task,
+        acceptance_criteria=acceptance_criteria,
+        **kwargs,
+    )
+
 CONVERSATION_ID = "conv-1"
 LOCK_KEY = f"{EXECUTOR_BUSY_PREFIX}{CONVERSATION_ID}"
 QUEUE_KEY = f"{EXECUTOR_QUEUE_PREFIX}{CONVERSATION_ID}"
@@ -140,7 +162,7 @@ class TestCallExecutorDispatch:
     async def test_spawns_executor_and_reports_its_task_id(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        response = await run_call_executor(config=config_for(), task="check my calendar")
+        response = await call_executor_with(config=config_for(), task="check my calendar")
         await drain_background_tasks()
 
         assert len(spawned_runs) == 1
@@ -157,7 +179,7 @@ class TestCallExecutorDispatch:
     async def test_holds_the_busy_lock_with_its_own_value_and_a_ttl(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        response = await run_call_executor(config=config_for(), task="x")
+        response = await call_executor_with(config=config_for(), task="x")
 
         assert await fake_redis.get(LOCK_KEY) == f"stream-1:{task_id_from(response)}"
         # No TTL would wedge the conversation forever if the worker died mid-run.
@@ -166,7 +188,7 @@ class TestCallExecutorDispatch:
     async def test_background_task_is_kept_alive_then_released(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        await run_call_executor(config=config_for(), task="x")
+        await call_executor_with(config=config_for(), task="x")
         assert len(executor_tool._executor_tasks) == 1  # GC protection while in flight
 
         await drain_background_tasks()
@@ -176,7 +198,7 @@ class TestCallExecutorDispatch:
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
         config = config_for()
-        await run_call_executor(config=config, task="continue todo", active_todo_id="todo-9")
+        await call_executor_with(config=config, task="continue todo", active_todo_id="todo-9")
         await drain_background_tasks()
 
         assert spawned_runs[0]["configurable"]["active_todo_id"] == "todo-9"
@@ -185,7 +207,7 @@ class TestCallExecutorDispatch:
     async def test_without_active_todo_no_binding_is_injected(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        await run_call_executor(config=config_for(), task="generic")
+        await call_executor_with(config=config_for(), task="generic")
         await drain_background_tasks()
 
         assert "active_todo_id" not in spawned_runs[0]["configurable"]
@@ -193,7 +215,7 @@ class TestCallExecutorDispatch:
     async def test_missing_thread_id_refuses_instead_of_running_unanchored(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        response = await run_call_executor(config=RunnableConfig(configurable={}), task="x")
+        response = await call_executor_with(config=RunnableConfig(configurable={}), task="x")
 
         assert response == "Internal error: conversation context unavailable. Please try again."
         assert spawned_runs == []
@@ -202,10 +224,10 @@ class TestCallExecutorDispatch:
     async def test_each_conversation_has_its_own_lock(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
-        await run_call_executor(config=config_for(), task="a")
+        await call_executor_with(config=config_for(), task="a")
         other: RunnableConfig = {"configurable": {"thread_id": "conv-2", "stream_id": "stream-2"}}
 
-        response = await run_call_executor(config=other, task="b")
+        response = await call_executor_with(config=other, task="b")
 
         assert response.startswith("Task accepted")
         await drain_background_tasks()
@@ -221,10 +243,10 @@ class TestCallExecutorLockContention:
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
         """Queuing a same-turn duplicate ran deep research twice for one message."""
-        first = await run_call_executor(config=config_for(), task="research")
+        first = await call_executor_with(config=config_for(), task="research")
         lock_before = await fake_redis.get(LOCK_KEY)
 
-        second = await run_call_executor(config=config_for(), task="research")
+        second = await call_executor_with(config=config_for(), task="research")
         await drain_background_tasks()
 
         assert second == (
@@ -242,9 +264,9 @@ class TestCallExecutorLockContention:
         spawned_runs: list[dict[str, Any]],
         fast_redirect: None,
     ) -> None:
-        await run_call_executor(config=config_for("stream-1"), task="first")
+        await call_executor_with(config=config_for("stream-1"), task="first")
 
-        response = await run_call_executor(
+        response = await call_executor_with(
             config=config_for("stream-2"), task="second", active_todo_id="todo-3"
         )
         await drain_background_tasks()
@@ -273,7 +295,7 @@ class TestCallExecutorLockContention:
         await fake_redis.set(LOCK_KEY, ":held-task", ex=EXECUTOR_BUSY_TTL)
 
         started = time.monotonic()
-        response = await run_call_executor(config=config_for("stream-2"), task="b")
+        response = await call_executor_with(config=config_for("stream-2"), task="b")
 
         assert response.startswith("I'm already working on a task")
         assert time.monotonic() - started < 0.1
@@ -298,7 +320,7 @@ class TestRedirectAcquire:
             await fake_redis.delete(LOCK_KEY)
 
         releaser = asyncio.create_task(release_after_detect_window())
-        response = await run_call_executor(config=config_for("new-stream"), task="do Y")
+        response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await releaser
         await drain_background_tasks()
 
@@ -322,7 +344,7 @@ class TestRedirectAcquire:
             await fake_redis.delete(LOCK_KEY)
 
         releaser = asyncio.create_task(release_inside_detect_window())
-        response = await run_call_executor(config=config_for("new-stream"), task="do Y")
+        response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         await releaser
         await drain_background_tasks()
 
@@ -339,7 +361,7 @@ class TestRedirectAcquire:
         await fake_redis.set(LOCK_KEY, "old-stream:old-task", ex=EXECUTOR_BUSY_TTL)
 
         started = time.monotonic()
-        response = await run_call_executor(config=config_for("new-stream"), task="do Y")
+        response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         elapsed = time.monotonic() - started
 
         assert response.startswith("I'm already working on a task")
@@ -356,7 +378,7 @@ class TestRedirectAcquire:
         await StreamManager.cancel_stream("old-stream")
 
         started = time.monotonic()
-        response = await run_call_executor(config=config_for("new-stream"), task="do Y")
+        response = await call_executor_with(config=config_for("new-stream"), task="do Y")
         elapsed = time.monotonic() - started
 
         assert response.startswith("I'm already working on a task")
@@ -376,7 +398,7 @@ class TestRedirectAcquire:
 
         cancel_response, call_response = await asyncio.gather(
             run_cancel_executor(config=config, task_ids=[]),
-            run_call_executor(config=config, task="do Y instead"),
+            call_executor_with(config=config, task="do Y instead"),
         )
         await drain_background_tasks()
 
@@ -401,7 +423,7 @@ class TestCallExecutorFailures:
 
         monkeypatch.setattr(executor_tool, "mark_executor_spawned", explode)
 
-        response = await run_call_executor(config=config_for(), task="x")
+        response = await call_executor_with(config=config_for(), task="x")
 
         assert response == "Error starting task: session registry down"
         assert await fake_redis.get(LOCK_KEY) is None
@@ -422,7 +444,7 @@ class TestCallExecutorFailures:
 
         monkeypatch.setattr(executor_tool, "enqueue_task", explode)
 
-        response = await run_call_executor(config=config_for("stream-2"), task="b")
+        response = await call_executor_with(config=config_for("stream-2"), task="b")
 
         assert response == "Error starting task: redis write failed"
         assert await fake_redis.get(LOCK_KEY) == "stream-1:live-task"

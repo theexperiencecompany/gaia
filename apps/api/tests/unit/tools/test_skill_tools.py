@@ -397,3 +397,140 @@ class TestManageSkill:
             config=_cfg(), skill_name="pdf-processing", action="enable"
         )
         assert "already enabled" in result
+
+
+# ---------------------------------------------------------------------------
+# Tests: save_learned_skill
+# ---------------------------------------------------------------------------
+
+
+def _learned_spec(**overrides: Any) -> dict[str, Any]:
+    spec = {
+        "name": "triage-inbox",
+        "description": "Triage the inbox: archive promos/newsletters, flag action-needed mail",
+        "target": "executor",
+        "when_to_use": "User asks to clean up, triage, or organize their inbox.",
+        "integrations": ["gmail"],
+        "steps": [
+            {
+                "goal": "Find the unread mail",
+                "tool": "gmail_search",
+                "args": {"query": "is:unread"},
+                "notes": "List ids, not full bodies.",
+            },
+            {
+                "goal": "Archive promos",
+                "tool": "gmail_archive",
+                "args": {"email_id": "<id from step 1>"},
+            },
+        ],
+    }
+    spec.update(overrides)
+    return spec
+
+
+@pytest.mark.unit
+class TestComposeLearnedSkillMd:
+    def test_composes_comprehensive_body(self) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, _compose_learned_skill_md
+
+        body = _compose_learned_skill_md(LearnedSkillSpec(**_learned_spec()))
+        assert "## When to Activate" in body
+        assert "triage, or organize their inbox" in body
+        assert "## Prerequisites" in body
+        assert "`gmail`" in body
+        assert "## Steps" in body
+        assert "### Step 1: Find the unread mail" in body
+        assert "Call `gmail_search` with:" in body
+        assert '"query": "is:unread"' in body
+        assert "### Step 2: Archive promos" in body
+        assert '"email_id": "<id from step 1>"' in body
+        assert "List ids, not full bodies." in body
+
+    def test_omits_optional_sections(self) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, _compose_learned_skill_md
+
+        spec = _learned_spec(when_to_use="", integrations=[])
+        body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
+        assert "## When to Activate" not in body
+        assert "## Prerequisites" not in body
+        assert "## Steps" in body
+
+    def test_step_without_args_says_none(self) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, _compose_learned_skill_md
+
+        spec = _learned_spec()
+        spec["steps"] = [{"goal": "Do the thing", "tool": "finish_task"}]
+        body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
+        assert "Call `finish_task` with:" in body
+        assert "- no arguments" in body
+
+
+@pytest.mark.unit
+class TestSaveLearnedSkill:
+    @patch(f"{MODULE}.install_from_inline", new_callable=AsyncMock)
+    async def test_happy_path(self, mock_install: AsyncMock) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, save_learned_skill
+
+        mock_install.return_value = _installed_skill(name="triage-inbox")
+
+        result = await save_learned_skill.coroutine(  # type: ignore[attr-defined]
+            config=_cfg(),
+            spec=LearnedSkillSpec(**_learned_spec()),
+        )
+        assert "Saved skill 'triage-inbox'" in result
+        assert "Steps: 2" in result
+        assert "gmail" in result
+        assert "executor" in result
+
+        call_kwargs = mock_install.call_args[1]
+        assert call_kwargs["user_id"] == FAKE_USER_ID
+        assert call_kwargs["name"] == "triage-inbox"
+        assert call_kwargs["target"] == "executor"
+        assert call_kwargs["extra_metadata"] == {"source": "learned", "learned_from_run": "1"}
+        assert "## Steps" in call_kwargs["instructions"]
+
+    @patch(
+        f"{MODULE}.install_from_inline",
+        new_callable=AsyncMock,
+        side_effect=ValueError("Bad name"),
+    )
+    async def test_validation_error(self, mock_install: AsyncMock) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, save_learned_skill
+
+        result = await save_learned_skill.coroutine(  # type: ignore[attr-defined]
+            config=_cfg(),
+            spec=LearnedSkillSpec(**_learned_spec()),
+        )
+        assert "Failed to save skill" in result
+
+    @patch(
+        f"{MODULE}.install_from_inline",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("Disk"),
+    )
+    async def test_general_error(self, mock_install: AsyncMock) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, save_learned_skill
+
+        result = await save_learned_skill.coroutine(  # type: ignore[attr-defined]
+            config=_cfg(),
+            spec=LearnedSkillSpec(**_learned_spec()),
+        )
+        assert "Error saving skill" in result
+
+    async def test_no_user_id(self) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, save_learned_skill
+
+        with pytest.raises(ValueError, match="User ID not found"):
+            await save_learned_skill.coroutine(  # type: ignore[attr-defined]
+                config=_cfg_no_user(),
+                spec=LearnedSkillSpec(**_learned_spec()),
+            )
+
+    async def test_subagent_target(self) -> None:
+        from app.agents.tools.skill_tools import LearnedSkillSpec, _compose_learned_skill_md
+
+        spec = _learned_spec(target="github_agent", name="pr-summary", integrations=["github"])
+        body = _compose_learned_skill_md(LearnedSkillSpec(**spec))
+        assert "## Prerequisites" in body
+        assert "`github`" in body

@@ -115,6 +115,7 @@ async def build_executor_graph(
             "complete_tracked_todo",
             "search_todo_context",
             "list_tracked_todos",
+            "save_learned_skill",
         ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
