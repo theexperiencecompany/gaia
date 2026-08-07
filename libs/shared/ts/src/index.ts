@@ -65,9 +65,7 @@ export type {
 // `posthog-node` which imports Node-only modules (`path`, `fs`) that
 // Metro/React Native cannot resolve. Bot consumers should import it
 // via the subpath: `import { Analytics } from "@gaia/shared/analytics"`.
-export type {
-  ,
-} from "./api";
+export type {} from "./api";
 
 export {
   ApiError,

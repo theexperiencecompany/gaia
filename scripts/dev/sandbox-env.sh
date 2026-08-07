@@ -45,7 +45,7 @@ export CHROMADB_PORT=8080
 
 # Required by settings validation; all fake. WORKOS_COOKIE_PASSWORD and the
 # secrets have minimum-length constraints, hence the padding.
-export WORKOS_API_KEY=sk_test_fake
+export WORKOS_API_KEY=sandbox-placeholder-workos-key               # pragma: allowlist secret
 export WORKOS_CLIENT_ID=client_fake
 export WORKOS_COOKIE_PASSWORD=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 export MCP_ENCRYPTION_KEY="dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw=="  # pragma: allowlist secret

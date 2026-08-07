@@ -542,4 +542,3 @@ async def validate_cron_endpoint(
             error=str(e),
         )
         return CronValidationResponse(expression=expression, valid=False, error=str(e))
-

@@ -1,0 +1,9 @@
+{
+  "name": "gaia-ci-scripts",
+  "private": true,
+  "version": "0.0.0",
+  "description": "CI tooling that needs the TypeScript compiler API (tsgo/TS7 ships no JS API)",
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

@@ -36,10 +36,13 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-
-// Real TypeScript AST via the workspace's own compiler — no extra deps.
-const require = createRequire(import.meta.url);
-const ts = require("typescript");
+import {
+  analyzeBody,
+  forEachChild,
+  indexFunctions,
+  parseSource,
+  reachableFacts,
+} from "./lib/bots-facts.mjs";
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -202,9 +205,6 @@ const HIGH_TERMS = new Map([
   ["checkout", "money"],
 ]);
 const GENERIC_ERRORS = new Set(["Error", "TypeError", "RangeError"]);
-const LOGGING_CALL_NAMES = new Set(["error", "warn", "warning"]);
-/** `wideLog` methods that put the caught error on the wide event. */
-const WIDE_EVENT_RECORDERS = new Set(["set", "setNs", "audit"]);
 
 // ---------------------------------------------------------------------------
 // File utilities
@@ -227,12 +227,23 @@ function listTsFiles(dir) {
 
 function parseFile(absPath) {
   const text = readFileSync(absPath, "utf8");
-  const sf = ts.createSourceFile(absPath, text, ts.ScriptTarget.Latest, true);
-  return { sf, text };
+  let program;
+  try {
+    program = parseSource(text);
+  } catch {
+    // Babel throws on syntax it cannot recover from; the ts compiler used to
+    // return the file plus diagnostics. Same contract for the caller: the file
+    // is unparsable, and the scan records it rather than failing the run.
+    program = null;
+  }
+  return { sf: { program, sourceText: text }, text };
 }
 
 function lineOf(sf, node) {
-  return sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+  if (node.loc) return node.loc.start.line;
+  // Babel gives us `loc` when the source has one; errorRecovery nodes may not.
+  const upTo = (sf.sourceText ?? "").slice(0, node.start ?? 0);
+  return upTo.split("\n").length;
 }
 
 // ---------------------------------------------------------------------------
@@ -280,298 +291,22 @@ function findSuppression(suppressions, checkId, anchorLines) {
 }
 
 // ---------------------------------------------------------------------------
-// AST facts
-// ---------------------------------------------------------------------------
-
-/** Index of same-file function-like declarations, keyed by name. */
-function indexFunctions(sf) {
-  const index = new Map();
-  const visit = (node) => {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
-      index.set(node.name.text, node);
-    }
-    if (ts.isClassDeclaration(node)) {
-      for (const member of node.members) {
-        if (
-          ts.isMethodDeclaration(member) &&
-          member.body &&
-          ts.isIdentifier(member.name)
-        ) {
-          index.set(member.name.text, member);
-        }
-        if (
-          ts.isPropertyDeclaration(member) &&
-          member.initializer &&
-          (ts.isArrowFunction(member.initializer) ||
-            ts.isFunctionExpression(member.initializer)) &&
-          ts.isIdentifier(member.name)
-        ) {
-          index.set(member.name.text, member.initializer);
-        }
-      }
-    }
-    if (ts.isVariableStatement(node)) {
-      for (const decl of node.declarationList.declarations) {
-        if (
-          decl.initializer &&
-          (ts.isArrowFunction(decl.initializer) ||
-            ts.isFunctionExpression(decl.initializer)) &&
-          ts.isIdentifier(decl.name)
-        ) {
-          index.set(decl.name.text, decl.initializer);
-        }
-      }
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(sf);
-  return index;
-}
-
-function objectLiteralKeys(node) {
-  const keys = [];
-  if (node && ts.isObjectLiteralExpression(node)) {
-    for (const prop of node.properties) {
-      if (
-        (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) &&
-        ts.isIdentifier(prop.name)
-      ) {
-        keys.push(prop.name.text);
-      }
-      if (ts.isPropertyAssignment(prop) && ts.isStringLiteral(prop.name)) {
-        keys.push(prop.name.text);
-      }
-    }
-  }
-  return keys;
-}
-
-/** The caught binding of `catch (err)`, or null for `catch {}` / a pattern. */
-function catchBinding(clause) {
-  const decl = clause.variableDeclaration;
-  if (decl && ts.isIdentifier(decl.name)) return decl.name.text;
-  return null;
-}
-
-/**
- * Whether `throw <expr>` keeps the caught error alive.
- *
- * The JS analogue of tools/evlog_map's `_preserves_caught_error`. Python's
- * `raise X from e` sets `__cause__`; JS's equivalent is the `cause` option —
- * `throw new X(msg, { cause: err })` — which is what the log sink follows to
- * report what actually failed. `throw err` is the rethrow shape (JS has no
- * bare `throw`, so nothing maps to Python's bare `raise`). A `new X("...")`
- * that drops the caught error destroys its type and message before anything
- * reads them, exactly like `raise X(...)` with no `from`.
- */
-function throwPreservesCause(expr, binding) {
-  if (binding === null) return false;
-  if (ts.isIdentifier(expr)) return expr.text === binding;
-  if (!ts.isNewExpression(expr)) return false;
-  // Scan every argument rather than assuming Error's 2nd-arg options bag:
-  // custom error classes put their options in other positions.
-  for (const arg of expr.arguments ?? []) {
-    if (!ts.isObjectLiteralExpression(arg)) continue;
-    for (const prop of arg.properties) {
-      if (
-        ts.isShorthandPropertyAssignment(prop) &&
-        prop.name.text === "cause" &&
-        binding === "cause"
-      ) {
-        return true;
-      }
-      if (
-        ts.isPropertyAssignment(prop) &&
-        ts.isIdentifier(prop.name) &&
-        prop.name.text === "cause" &&
-        ts.isIdentifier(prop.initializer) &&
-        prop.initializer.text === binding
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * Whether a `catch` clause's body keeps the error it caught — it records it,
- * or re-throws it with the cause intact. A `return` records nothing, so on its
- * own it is a swallow: the handler reports failure with zero telemetry about
- * what failed. Mirrors `_scope_contains_error_handling` in tools/evlog_map.
- */
-function catchClauseHandled(clause, sf) {
-  const binding = catchBinding(clause);
-  let handled = false;
-  const visit = (child) => {
-    if (handled) return;
-    if (ts.isThrowStatement(child) && child.expression) {
-      if (throwPreservesCause(child.expression, binding)) {
-        handled = true;
-        return;
-      }
-    }
-    if (ts.isCallExpression(child) && ts.isPropertyAccessExpression(child.expression)) {
-      const method = child.expression.name.text;
-      const receiver = child.expression.expression.getText(sf);
-      if (
-        LOGGING_CALL_NAMES.has(method) ||
-        (receiver === "wideLog" && WIDE_EVENT_RECORDERS.has(method))
-      ) {
-        handled = true;
-        return;
-      }
-    }
-    ts.forEachChild(child, visit);
-  };
-  visit(clause.block);
-  return handled;
-}
-
-/** Facts about ONE function body (nested inline functions included). */
-function analyzeBody(node, sf) {
-  const facts = {
-    calls: new Set(),
-    // Method names of calls on a non-`this` receiver (`adapter.shutdown()`).
-    // Kept apart from `calls` because `calls` also drives same-file traversal,
-    // where a bare method name would resolve against unrelated functions.
-    methodCalls: new Set(),
-    hasBoundary: false,
-    fieldKeys: new Set(),
-    callsAudit: false,
-    catches: [],
-    throws: [],
-    words: new Set(),
-  };
-  const addWords = (raw) => {
-    for (const word of raw
-      .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
-      .split(/[^A-Za-z]+/)) {
-      if (word) facts.words.add(word.toLowerCase());
-    }
-  };
-  const visit = (child) => {
-    if (ts.isIdentifier(child)) addWords(child.text);
-    if (ts.isStringLiteral(child)) addWords(child.text);
-    if (ts.isCallExpression(child)) {
-      const callee = child.expression;
-      if (ts.isIdentifier(callee)) {
-        facts.calls.add(callee.text);
-        if (callee.text === "withWideEvent") {
-          facts.hasBoundary = true;
-          for (const key of objectLiteralKeys(child.arguments[1])) {
-            // platform/component are the boundary's structural envelope, not
-            // business context — counting them would make `context` vacuous.
-            if (key === "platform" || key === "component") continue;
-            facts.fieldKeys.add(key);
-          }
-        }
-      }
-      if (ts.isPropertyAccessExpression(callee)) {
-        const method = callee.name.text;
-        const receiver = callee.expression.getText(sf);
-        if (receiver === "this") facts.calls.add(method);
-        else facts.methodCalls.add(method);
-        if (receiver === "wideLog") {
-          if (method === "set") {
-            for (const key of objectLiteralKeys(child.arguments[0])) {
-              facts.fieldKeys.add(key);
-            }
-          }
-          if (method === "setNs") {
-            const ns = child.arguments[0];
-            if (ns && ts.isStringLiteral(ns)) facts.fieldKeys.add(ns.text);
-          }
-          if (method === "audit") facts.callsAudit = true;
-        }
-      }
-    }
-    if (ts.isCatchClause(child)) {
-      facts.catches.push({
-        line: lineOf(sf, child),
-        isEmpty: child.block.statements.length === 0,
-        handled: catchClauseHandled(child, sf),
-      });
-    }
-    if (ts.isThrowStatement(child) && child.expression) {
-      if (ts.isNewExpression(child.expression)) {
-        const ctor = child.expression.expression;
-        const firstArg = child.expression.arguments?.[0];
-        facts.throws.push({
-          line: lineOf(sf, child),
-          callee: ts.isIdentifier(ctor) ? ctor.text : null,
-          messageIsEmpty:
-            firstArg === undefined ||
-            (ts.isStringLiteral(firstArg) && firstArg.text.trim() === ""),
-          isRethrow: false,
-        });
-      } else {
-        facts.throws.push({
-          line: lineOf(sf, child),
-          callee: null,
-          messageIsEmpty: false,
-          isRethrow: true,
-        });
-      }
-    }
-    ts.forEachChild(child, visit);
-  };
-  visit(node);
-  return facts;
-}
-
-/**
- * Facts for an entry point plus every same-file function it (transitively)
- * calls. The handler unit for the wide-event/context/audit checks — adapter
- * callbacks routinely delegate to same-file private methods, and stopping at
- * the callback body would score the delegation, not the handler.
- */
-function reachableFacts(entryNode, fileIndex, sf) {
-  const merged = {
-    calls: new Set(),
-    methodCalls: new Set(),
-    hasBoundary: false,
-    fieldKeys: new Set(),
-    callsAudit: false,
-  };
-  const seen = new Set();
-  const queue = [entryNode];
-  while (queue.length > 0) {
-    const node = queue.pop();
-    const facts = analyzeBody(node, sf);
-    merged.hasBoundary ||= facts.hasBoundary;
-    merged.callsAudit ||= facts.callsAudit;
-    for (const call of facts.calls) merged.calls.add(call);
-    for (const call of facts.methodCalls) merged.methodCalls.add(call);
-    for (const key of facts.fieldKeys) merged.fieldKeys.add(key);
-    for (const call of facts.calls) {
-      if (seen.has(call)) continue;
-      seen.add(call);
-      const target = fileIndex.get(call);
-      if (target) queue.push(target);
-    }
-  }
-  return merged;
-}
-
-// ---------------------------------------------------------------------------
 // Entry-point discovery
 // ---------------------------------------------------------------------------
 
 function registrationLabel(arg, sf) {
   if (!arg) return "<none>";
-  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) {
-    return arg.text;
+  if (arg.type === "StringLiteral") return arg.value;
+  if (arg.type === "MemberExpression" && arg.property.type === "Identifier") {
+    return arg.property.name;
   }
-  if (ts.isPropertyAccessExpression(arg)) return arg.name.text;
   // A registration driven by a variable (`for (const signal of …) process.on(signal, …)`,
   // `bot.command(commandName, …)`) still has to be reported by something more
   // useful than "<dynamic>", or a loop is how an entry point stops being named.
-  if (ts.isIdentifier(arg)) return arg.text;
-  if (ts.isArrayLiteralExpression(arg)) {
+  if (arg.type === "Identifier") return arg.name;
+  if (arg.type === "ArrayExpression") {
     const first = arg.elements[0];
-    const head =
-      first && ts.isStringLiteral(first) ? first.text : "<dynamic>";
+    const head = first && first.type === "StringLiteral" ? first.value : "<dynamic>";
     return arg.elements.length > 1
       ? `${head}+${arg.elements.length - 1}`
       : head;
@@ -582,7 +317,12 @@ function registrationLabel(arg, sf) {
 function handlerArgument(call) {
   for (let i = call.arguments.length - 1; i >= 0; i--) {
     const arg = call.arguments[i];
-    if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) return arg;
+    if (
+      arg &&
+      (arg.type === "ArrowFunctionExpression" || arg.type === "FunctionExpression")
+    ) {
+      return arg;
+    }
   }
   return null;
 }
@@ -592,13 +332,14 @@ function discoverRegistrations(sf) {
   const entries = [];
   const visit = (node) => {
     if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression)
+      node.type === "CallExpression" &&
+      node.callee.type === "MemberExpression"
     ) {
-      const method = node.expression.name.text;
-      const receiver = node.expression.expression
-        .getText(sf)
-        .replace(/^this\./, "");
+      const method = node.callee.property.type === "Identifier"
+        ? node.callee.property.name
+        : null;
+      if (method === null) return;
+      const receiver = sourceTextOf(sf, node.callee.object).replace(/^this\./, "");
       const label = registrationLabel(node.arguments[0], sf);
       // Everything registered on `process` is a process-level handler, never a
       // platform "event". The map names the two classes apart; a registration
@@ -623,10 +364,15 @@ function discoverRegistrations(sf) {
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  visit(sf);
+  visit(sf.program);
   return entries;
+}
+
+function sourceTextOf(sf, node) {
+  if (node.type === "Identifier") return node.name;
+  return (sf.sourceText ?? "").slice(node.start ?? 0, node.end ?? 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -864,16 +610,30 @@ function canonicalFieldNames() {
   const { sf } = parseFile(path.join(REPO_ROOT, SCHEMA_FILE));
   let fields = null;
   const visit = (node) => {
-    if (ts.isInterfaceDeclaration(node) && node.name.text === SCHEMA_INTERFACE) {
+    if (
+      node.type === "TSInterfaceDeclaration" &&
+      node.id.type === "Identifier" &&
+      node.id.name === SCHEMA_INTERFACE
+    ) {
       fields = new Set(
-        node.members
-          .filter((member) => ts.isPropertySignature(member) && member.name)
-          .map((member) => member.name.getText(sf)),
+        node.body.body
+          .filter(
+            (member) =>
+              member.type === "TSPropertySignature" && member.key,
+          )
+          .map((member) =>
+            member.key.type === "Identifier"
+              ? member.key.name
+              : (sf.sourceText ?? "").slice(
+                  member.key.start ?? 0,
+                  member.key.end ?? 0,
+                ),
+          ),
       );
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  visit(sf);
+  visit(sf.program);
   if (!fields || fields.size === 0) {
     throw new Error(`${SCHEMA_INTERFACE} not found in ${SCHEMA_FILE}`);
   }
@@ -885,25 +645,26 @@ function findSharedEntryNode(sf, name) {
   const visit = (node) => {
     if (found) return;
     if (
-      ts.isFunctionDeclaration(node) &&
-      node.name?.text === name &&
+      node.type === "FunctionDeclaration" &&
+      node.id?.type === "Identifier" &&
+      node.id.name === name &&
       node.body
     ) {
       found = node;
       return;
     }
     if (
-      ts.isMethodDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.name.text === name &&
+      node.type === "ClassMethod" &&
+      node.key.type === "Identifier" &&
+      node.key.name === name &&
       node.body
     ) {
       found = node;
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  visit(sf);
+  visit(sf.program);
   return found;
 }
 
@@ -945,7 +706,7 @@ function scan(fileFilter) {
     if (fileFilter && !fileFilter.has(relFile)) return;
     const absPath = path.join(REPO_ROOT, relFile);
     const { sf, text } = parseFile(absPath);
-    if (sf.parseDiagnostics?.length > 0) {
+    if (sf.program == null) {
       unparsable.push(relFile);
       return;
     }

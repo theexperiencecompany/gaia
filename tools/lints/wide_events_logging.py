@@ -134,9 +134,7 @@ def _reserved_key_calls(tree: ast.Module) -> list[tuple[int, str]]:
         # candidate (and only when it is a literal that can be compared).
         if func.attr == "set_ns":
             namespace = (
-                node.args[0].value
-                if node.args and isinstance(node.args[0], ast.Constant)
-                else None
+                node.args[0].value if node.args and isinstance(node.args[0], ast.Constant) else None
             )
             reserved = [str(namespace)] if namespace in _RESERVED_EVENT_KEYS else []
         else:

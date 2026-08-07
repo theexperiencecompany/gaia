@@ -262,9 +262,7 @@ async def update_onboarding_phase(
             )
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        log.info(
-            f"{LogTag.ONBOARDING} Updating phase", user_id=user_id, phase=request.phase.value
-        )
+        log.info(f"{LogTag.ONBOARDING} Updating phase", user_id=user_id, phase=request.phase.value)
 
         matched = await user_repository.set_onboarding_phase(user_id, request.phase)
 
@@ -513,6 +511,7 @@ async def get_onboarding_personalization(
     except Exception as e:
         log.error(f"{LogTag.ONBOARDING} Error fetching personalization: {e!s}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
+
 
 class WritingStyleEditRequest(BaseModel):
     edited_summary: str

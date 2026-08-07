@@ -60,6 +60,7 @@ def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
 def _is_cron_expression(recurrence: str) -> bool:
     return recurrence not in _RECURRENCE_SHORTCUTS
 
+
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
     try:

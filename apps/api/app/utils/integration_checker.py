@@ -58,4 +58,3 @@ def build_integration_connection_message(
         f"Include this URL verbatim in your result so the comms agent can relay it to the user, "
         f"and tell them it is valid for 1 hour: {connect_url}"
     )
-

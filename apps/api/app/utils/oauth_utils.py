@@ -110,4 +110,3 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
             exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Image upload failed")
-

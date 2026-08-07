@@ -108,9 +108,7 @@ def _strip_artifacts_prefix(abs_path: str, conv_id: str) -> str:
     return abs_path.rsplit("/", 1)[-1]
 
 
-async def _record_watch_exit(
-    user_id: str, mode: DetectionMode, exc: Exception | None
-) -> None:
+async def _record_watch_exit(user_id: str, mode: DetectionMode, exc: Exception | None) -> None:
     """One wide event per dead watch stream, with the reason when there is one."""
     async with log_context(
         "sandbox_artifact_watch_exit",

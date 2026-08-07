@@ -238,13 +238,13 @@ async def extract_social_profiles_from_emails(
     for entry in capped:
         sent_label = "SENT" if entry.is_sent else "recv"
         log.info(
-        log.info(
-            f"{LogTag.ONBOARDING} social profile candidate: / freq",
-            entry_platform=entry.platform,
-            entry_handle=entry.handle,
-            entry_frequency=entry.frequency,
-            sent_label=sent_label,
-        )
+            log.info(
+                f"{LogTag.ONBOARDING} social profile candidate: / freq",
+                entry_platform=entry.platform,
+                entry_handle=entry.handle,
+                entry_frequency=entry.frequency,
+                sent_label=sent_label,
+            )
         )
 
     candidates_lines: list[str] = []
