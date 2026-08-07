@@ -33,6 +33,7 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
+# evlog-map-disable-next-line audit -- read-only usage lookup, no state change to audit
 async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummaryResponse:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")

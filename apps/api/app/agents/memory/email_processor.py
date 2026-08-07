@@ -681,14 +681,14 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
                 f"{LogTag.MEMORY} Discovered profile tasks gather finished",
                 duration_s=round(time.monotonic() - t0_discovery, 1),
             )
-            for result in discovery_results:
-                if isinstance(result, int):  # Discovery task returns count of profiles stored
-                    discovered_count += result
-                elif isinstance(result, Exception):
+            for discovery_result in discovery_results:
+                if isinstance(discovery_result, int):  # Discovery task returns count of profiles stored
+                    discovered_count += discovery_result
+                elif isinstance(discovery_result, Exception):
                     log.error(
                         f"{LogTag.MEMORY} Discovery task failed",
-                        error_type=type(result).__name__,
-                        error=str(result),
+                        error_type=type(discovery_result).__name__,
+                        error=str(discovery_result),
                         user_id=user_id,
                     )
 

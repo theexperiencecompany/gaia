@@ -110,8 +110,7 @@ from app.utils.profile_card import (
 )
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.seeding_utils import seed_onboarding_conversation
-from app.workers.queue import enqueue_worker_job
-from shared.py.wide_events import log, spawn_logged_task
+from shared.py.wide_events import log
 
 
 class OnboardingStage(str, Enum):
@@ -146,17 +145,11 @@ async def _emit_stage(
         )
         status_text = payload.status_text if isinstance(payload, StatusTextPayload) else None
         if status_text:
-            log.info(f"{LogTag.ONBOARDING} stage", stage=stage.value, status_text=status_text)
+            log.info(f"{LogTag.ONBOARDING} stage {stage.value} — {status_text}")
         else:
-            log.info(f"{LogTag.ONBOARDING} stage", stage=stage.value)
+            log.info(f"{LogTag.ONBOARDING} stage {stage.value}")
     except Exception as e:
-        log.warning(
-            f"{LogTag.ONBOARDING} Failed to emit stage",
-            stage=stage.value,
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
+        log.warning(f"{LogTag.ONBOARDING} Failed to emit stage {stage.value}: {e}")
 
 
 T = TypeVar("T")
@@ -166,15 +159,12 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
     try:
         return await coro
     except Exception as e:
-        log.error(
-            f"{LogTag.ONBOARDING} Node failed",
-            name=name,
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
-        )
+        log.error(f"{LogTag.ONBOARDING} Node '{name}' failed: {e}", exc_info=True)
         return default
 
+
+# Module-level set prevents GC of fire-and-forget tasks
+_background_tasks: set[asyncio.Task] = set()
 
 # Fallback cadence whenever a workflow has no usable suggested trigger.
 _DEFAULT_WORKFLOW_CRON = "0 9 * * *"
@@ -259,7 +249,7 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
     await _run_inbox_scanning(user_id, ctx)
     try:
         pool = await RedisPoolManager.get_pool()
-        await enqueue_worker_job(pool, "process_gmail_emails_to_memory", user_id)
+        await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
         log.info(
             f"{LogTag.ONBOARDING} queued gmail->memory ingestion",
             user_id=user_id,
@@ -273,34 +263,36 @@ async def _scan_then_enqueue_memory(user_id: str, ctx: InboxScanContext) -> None
         )
 
 
-def _start_gmail_branch(user_id: str) -> InboxScanContext:
+def _start_gmail_branch(
+    user_id: str,
+) -> tuple[InboxScanContext, asyncio.Task[None]]:
     """Kick off the Gmail-only inbox scan + memory ingestion task and the system
-    workflow provisioning task. Returns the shared inbox context.
-
-    Both tasks outlive the pipeline's worker boundary, so each gets its own
-    ``spawn_logged_task`` boundary — which carries the worker's trace_id and
-    retains the task until it completes."""
+    workflow provisioning task. Returns the shared inbox context and the
+    provision future."""
     inbox_ctx = InboxScanContext()
-    spawn_logged_task(
-        "onboarding_inbox_scan",
-        _scan_then_enqueue_memory(user_id, inbox_ctx),
-        user={"id": user_id},
-    )
-    spawn_logged_task(
-        "onboarding_gmail_provision",
-        _run_provision_gmail(user_id),
-        user={"id": user_id},
-    )
-    return inbox_ctx
+    scan_task = asyncio.create_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
+    _background_tasks.add(scan_task)
+    scan_task.add_done_callback(_background_tasks.discard)
+    provision_future = asyncio.create_task(_run_provision_gmail(user_id))
+    return inbox_ctx, provision_future
 
 
-async def _persist_completion(user_id: str, conversation_id: str | None) -> None:
-    """Write the unconditional end-of-pipeline phase transition."""
+async def _persist_completion(
+    user_id: str,
+    conversation_id: str | None,
+    provision_future: asyncio.Task[None] | None,
+) -> None:
+    """Write the unconditional end-of-pipeline phase transition and keep any
+    still-running provision task alive past pipeline return."""
     await user_repository.set_pipeline_completion(
         user_id,
         phase=OnboardingPhase.PERSONALIZATION_COMPLETE,
         conversation_id=conversation_id or None,
     )
+
+    if provision_future is not None and not provision_future.done():
+        _background_tasks.add(provision_future)
+        provision_future.add_done_callback(_background_tasks.discard)
 
 
 async def _finalize_onboarding(
@@ -315,6 +307,7 @@ async def _finalize_onboarding(
     has_gmail: bool,
     focus: str,
     clarify_answers: list[ClarifyAnswerRecord],
+    provision_future: asyncio.Task[None] | None,
     concurrent_tasks: Sequence[Awaitable[Any]] = (),
 ) -> str | None:
     """Shared pipeline tail for both onboarding shapes: generate the first
@@ -358,7 +351,7 @@ async def _finalize_onboarding(
 
     # Unconditional end-of-pipeline transition: guarantees the user advances even
     # if the holo leg (which also writes this) failed.
-    await _persist_completion(user_id, conversation_id)
+    await _persist_completion(user_id, conversation_id, provision_future)
     await _emit_stage(
         user_id,
         OnboardingStage.COMPLETE,
@@ -367,11 +360,18 @@ async def _finalize_onboarding(
     return conversation_id
 
 
-async def _finish_early_phase(user_id: str) -> None:
-    """Mark the early half done so the workflows-phase job can proceed.
+async def _finish_early_phase(
+    user_id: str,
+    provision_future: asyncio.Task[None] | None,
+) -> None:
+    """Mark the early half done so the workflows-phase job can proceed, and
+    keep any still-running provision task alive past pipeline return.
     `updated_at` is refreshed so the stuck-personalization cron's cutoff
     doesn't treat a user who is merely picking integrations as stale."""
     await user_repository.mark_early_intelligence_done(user_id)
+    if provision_future is not None and not provision_future.done():
+        _background_tasks.add(provision_future)
+        provision_future.add_done_callback(_background_tasks.discard)
 
 
 async def _social_then_holo(
@@ -480,9 +480,10 @@ async def process_onboarding_intelligence(user_id: str) -> None:
     )
 
     inbox_ctx: InboxScanContext | None = None
+    provision_future: asyncio.Task[None] | None = None
 
     if has_gmail:
-        inbox_ctx = _start_gmail_branch(user_id)
+        inbox_ctx, provision_future = _start_gmail_branch(user_id)
 
     writing_style_future: asyncio.Task[WritingStyleProfile | None] = asyncio.create_task(
         _run_writing_style(user_id, has_gmail, profession)
@@ -552,7 +553,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 has_gmail=has_gmail,
             ),
         )
-        await _finish_early_phase(user_id)
+        await _finish_early_phase(user_id, provision_future)
         log.info(
             f"{LogTag.ONBOARDING} early pipeline done — awaiting integration selection",
             user_id=user_id,
@@ -577,6 +578,7 @@ async def process_onboarding_intelligence(user_id: str) -> None:
         has_gmail=has_gmail,
         focus=focus,
         clarify_answers=clarify_answers,
+        provision_future=provision_future,
         concurrent_tasks=(
             _persist_profiles(user_id, writing_style, triage),
             _social_then_holo(
@@ -1195,13 +1197,7 @@ async def _persist_social_profiles(user_id: str, social_profiles: list[SocialPro
     try:
         await user_repository.set_social_profiles_if_unset(user_id, social_profiles)
     except Exception as e:
-        log.error(
-            f"{LogTag.ONBOARDING} persist social_profiles failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-            exc_info=True,
-        )
+        log.error(f"{LogTag.ONBOARDING} persist social_profiles failed: {e}", exc_info=True)
 
 
 async def _persist_profiles(
@@ -1231,13 +1227,7 @@ async def _persist_profiles(
                 triage_summary=triage_summary,
             )
         except Exception as e:
-            log.error(
-                f"{LogTag.ONBOARDING} persist update_fields failed",
-                error=str(e),
-                error_type=type(e).__name__,
-                user_id=user_id,
-                exc_info=True,
-            )
+            log.error(f"{LogTag.ONBOARDING} persist update_fields failed: {e}", exc_info=True)
 
     log.info(
         f"{LogTag.ONBOARDING} persist_profiles done",
@@ -1264,12 +1254,7 @@ def _triage_from_doc(raw: object) -> InboxTriage | None:
             ],
         )
     except (TypeError, ValueError) as e:
-        log.error(
-            f"{LogTag.ONBOARDING} triage reconstruction failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
-        )
+        log.error(f"{LogTag.ONBOARDING} triage reconstruction failed: {e}", exc_info=True)
         return None
 
 
@@ -1288,12 +1273,7 @@ def _writing_style_from_doc(raw: object) -> WritingStyleProfile | None:
             user_edited_summary=raw.get("user_edited_summary"),
         )
     except ValidationError as e:
-        log.error(
-            f"{LogTag.ONBOARDING} writing_style reconstruction failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            exc_info=True,
-        )
+        log.error(f"{LogTag.ONBOARDING} writing_style reconstruction failed: {e}", exc_info=True)
         return None
 
 
@@ -1364,8 +1344,8 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     if prior_workflow_ids:
         deleted = await workflow_repository.delete_many_for_user(prior_workflow_ids, user_id)
         log.info(
-            f"{LogTag.ONBOARDING} workflows phase retry — purged stale suggested workflows before regenerating",
-            deleted=deleted,
+            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted} "
+            f"stale suggested workflows before regenerating",
             user_id=user_id,
         )
 
@@ -1393,6 +1373,7 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
         has_gmail=has_gmail,
         focus=focus,
         clarify_answers=clarify_answers,
+        provision_future=None,
     )
 
     log.info(
@@ -1537,17 +1518,12 @@ async def _create_todos_from_triage(
                     )
                 elif spec.source_sender or spec.source_subject:
                     log.warning(
-                        f"{LogTag.ONBOARDING} Dropped hallucinated source_email",
-                        sender=spec.source_sender,
-                        subject=spec.source_subject,
+                        f"{LogTag.ONBOARDING} Dropped hallucinated source_email "
+                        f"sender={spec.source_sender!r} subject={spec.source_subject!r}"
                     )
                 return created
             except Exception as e:
-                log.warning(
-                    f"{LogTag.ONBOARDING} Failed to create todo",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
+                log.warning(f"{LogTag.ONBOARDING} Failed to create todo: {e}")
                 return None
 
         t_create = time.monotonic()
@@ -1922,10 +1898,5 @@ async def _create_fallback_workflow(
             )
         ]
     except Exception as e:
-        log.warning(
-            f"{LogTag.ONBOARDING} Fallback workflow creation failed",
-            error=str(e),
-            error_type=type(e).__name__,
-            user_id=user_id,
-        )
+        log.warning(f"{LogTag.ONBOARDING} Fallback workflow creation failed: {e}")
         return []

@@ -158,20 +158,6 @@ async def link_platform(
         )
         raise HTTPException(status_code=409, detail=str(e)) from e
 
-    # Audited immediately after the link lands, before the notification — a
-    # failing notification must not erase the record of the state change.
-    log.audit(
-        "platform account linked",
-        actor=user_id,
-        resource=platform_user_id,
-        provider=platform,
-        is_new_link=bool(result.get("is_new_link")),
-    )
-    if result.get("is_new_link"):
-        await notify_account_linked(platform, user_id)
-    log.set(outcome="success")
-    return LinkPlatformResponse(**result)
-
 
 @router.delete("/{platform}")
 async def disconnect_platform(
