@@ -224,6 +224,11 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Imported by scripts/ci/lib/bots-facts.mjs (the bots evlog-map AST
+        // scanner). Declared in apps/mobile + apps/web; resolved here via
+        // pnpm workspace hoisting, so knip reads them as unlisted at the root.
+        "@babel/parser",
+        "@babel/traverse",
         // Invoked dynamically as `pnpm exec jscpd` inside
         // scripts/ci/check-duplication.mjs, so knip can't see the usage.
         "jscpd",

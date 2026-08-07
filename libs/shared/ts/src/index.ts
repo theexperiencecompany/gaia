@@ -4,6 +4,10 @@
  * Shared utilities for GAIA TypeScript/JavaScript applications.
  */
 
+// `./analytics` is intentionally NOT re-exported here. It pulls in
+// `posthog-node` which imports Node-only modules (`path`, `fs`) that
+// Metro/React Native cannot resolve. Bot consumers should import it
+// via the subpath: `import { Analytics } from "@gaia/shared/analytics"`.
 export type {
   AddPublicIntegrationParams,
   AddToWorkspaceParams,
@@ -61,11 +65,6 @@ export type {
   WorkflowTriggerOptionsParams,
   WorkflowUpdateParams,
 } from "./api";
-// `./analytics` is intentionally NOT re-exported here. It pulls in
-// `posthog-node` which imports Node-only modules (`path`, `fs`) that
-// Metro/React Native cannot resolve. Bot consumers should import it
-// via the subpath: `import { Analytics } from "@gaia/shared/analytics"`.
-export type {} from "./api";
 
 export {
   ApiError,
@@ -144,7 +143,6 @@ export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
   emitBotLogLine,
-
   escapeHtml,
   escapeHtmlAttr,
   extensionForMime,
@@ -192,7 +190,6 @@ export {
   renderForPlatform,
   richMessageToMarkdown,
   runBotProcess,
-
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   settingsCommand,
@@ -205,7 +202,6 @@ export {
   WIDE_EVENT_MESSAGE,
   wideLog,
   withWideEvent,
-
   workflowCommand,
 } from "./bots";
 export type {
