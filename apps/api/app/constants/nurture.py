@@ -98,7 +98,7 @@ NURTURE_STEPS: tuple[NurtureStep, ...] = (
         key="founder_checkin",
         day_offset=21,
         template="nurture_checkin.html",
-        subject="quick question",
+        subject="How is GAIA actually working for you?",
         requires_onboarding=False,
     ),
 )
