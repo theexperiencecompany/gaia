@@ -1,0 +1,140 @@
+import { useCallback, useRef } from "react";
+
+import { chatApi } from "@/features/chat/api/chatApi";
+import type { UploadedFilePreview } from "@/features/chat/components/files/FilePreview";
+import {
+  ALLOWED_FILE_TYPES,
+  MAX_FILE_SIZE_BYTES,
+  MAX_FILES,
+} from "@/features/chat/constants/files";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
+import { useComposerStore } from "@/stores/composerStore";
+import { useStreamStore } from "@/stores/streamStore";
+
+const validateFile = (file: File): string | null => {
+  if (!ALLOWED_FILE_TYPES.includes(file.type)) {
+    return `${file.name}: file type not supported`;
+  }
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return `${file.name}: exceeds the ${MAX_FILE_SIZE_BYTES / (1024 * 1024)}MB size limit`;
+  }
+  return null;
+};
+
+/**
+ * Uploads files straight into the composer: each file appears as an
+ * uploading chip immediately and resolves in place, no modal step.
+ * Send stays blocked while any chip is uploading (useComposerIsUploading).
+ */
+export const useFileAttachments = (conversationId?: string) => {
+  const setAuxLoading = useStreamStore((state) => state.setAuxLoading);
+  // Ref-count concurrent attachFiles invocations so a slow batch doesn't clear
+  // the global loading state while a later batch is still uploading.
+  const activeUploads = useRef(0);
+
+  const attachFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+
+      const {
+        uploadedFiles,
+        addUploadedFile,
+        replaceUploadedFile,
+        removeUploadedFile,
+        addUploadedFileData,
+      } = useComposerStore.getState();
+
+      if (uploadedFiles.length + files.length > MAX_FILES) {
+        toast.error(`You can attach a maximum of ${MAX_FILES} files`);
+        return;
+      }
+
+      const validFiles = files.filter((file) => {
+        const error = validateFile(file);
+        if (error) toast.error(error);
+        return !error;
+      });
+      if (validFiles.length === 0) return;
+
+      const pending = validFiles.map((file) => ({
+        file,
+        tempId: crypto.randomUUID(),
+        previewUrl: file.type.startsWith("image/")
+          ? URL.createObjectURL(file)
+          : "",
+      }));
+
+      for (const { file, tempId, previewUrl } of pending) {
+        addUploadedFile({
+          id: tempId,
+          url: previewUrl,
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          isUploading: true,
+        });
+      }
+
+      activeUploads.current += 1;
+      setAuxLoading(true, "Uploading files...");
+      try {
+        const results = await Promise.allSettled(
+          pending.map(async ({ file, tempId, previewUrl }) => {
+            try {
+              const response = await chatApi.uploadFile(file);
+              const description = response.description || `File: ${file.name}`;
+              const message = response.message || "File uploaded successfully";
+              const uploaded: UploadedFilePreview = {
+                id: response.fileId,
+                url: response.url || "",
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                description,
+                message,
+                isUploading: false,
+              };
+              const { uploadedFiles } = useComposerStore.getState();
+              if (uploadedFiles.some((f) => f.id === tempId)) {
+                replaceUploadedFile(tempId, uploaded);
+                addUploadedFileData({
+                  fileId: response.fileId,
+                  url: response.url || "",
+                  filename: file.name,
+                  description,
+                  message,
+                  type: file.type,
+                  size: file.size,
+                });
+              }
+              return uploaded;
+            } catch (error) {
+              // apiService already surfaced the backend detail (413/415…)
+              // as a toast — just drop the failed chip.
+              removeUploadedFile(tempId);
+              throw error;
+            } finally {
+              if (previewUrl) URL.revokeObjectURL(previewUrl);
+            }
+          }),
+        );
+
+        const uploaded = results.filter((r) => r.status === "fulfilled");
+        if (uploaded.length > 0) {
+          trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOADED, {
+            file_count: uploaded.length,
+            file_types: uploaded.map((r) => r.value.type),
+            conversation_id: conversationId,
+          });
+        }
+      } finally {
+        activeUploads.current -= 1;
+        if (activeUploads.current === 0) setAuxLoading(false);
+      }
+    },
+    [conversationId, setAuxLoading],
+  );
+
+  return { attachFiles };
+};

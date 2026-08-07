@@ -1,4 +1,4 @@
-"""Chat persistence constants."""
+"""Chat constants."""
 
 import re
 
@@ -7,6 +7,13 @@ import re
 # large multi-page summaries truncate, with the complete text always available in
 # the `<file>.summary.md` sidecar.
 UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS = 4000
+
+# Upper bound for a single incoming chat message. History growth is handled by
+# the summarization middleware, but one gigantic message would blow the model
+# call itself — reject it at the request boundary instead. Generous on purpose:
+# the web composer converts pastes over ~10k chars into .txt attachments, so
+# normal traffic never gets near this.
+MAX_MESSAGE_LENGTH = 50_000
 
 # Matches bot-emitted artifact references in three shapes — ``./artifacts/x``,
 # ``/artifacts/x``, and plain ``artifacts/x`` — so each can be rewritten to an

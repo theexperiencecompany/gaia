@@ -39,6 +39,7 @@ jobs:
     outputs:
       has_python: ${{ steps.detect.outputs.has_python }}
       has_typescript: ${{ steps.detect.outputs.has_typescript }}
+      has_alert_rules: ${{ steps.detect.outputs.has_alert_rules }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -54,9 +55,22 @@ jobs:
           ts_files=$(scripts/ci/changed-files.sh ts tsx js jsx mjs cjs json jsonc css yaml)
           py=${py_files%%$'\n'*}
           ts=${ts_files%%$'\n'*}
+          # The alert-rules lane is path-scoped, not language-scoped: the rules,
+          # the extractor, the test fixtures, and the pint config.
+          alert_files=$(scripts/ci/changed-files.sh yaml hcl py sh)
+          if [ "$alert_files" = "__FULL__" ]; then
+            alerts=true
+          else
+            # Here-string, not a pipe: `grep -q` exits on the first match and
+            # SIGPIPEs `printf`, which pipefail turns into exit 141 -> a false
+            # `alerts=false` that silently skips the lane (the bug at line 53).
+            alerts=$(grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)' <<< "$alert_files" \
+              && echo true || echo false)
+          fi
           echo "has_python=$([[ -n "$py" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
           echo "has_typescript=$([[ -n "$ts" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "python: ${py:-none} | typescript: ${ts:-none}"
+          echo "has_alert_rules=$alerts" >> "$GITHUB_OUTPUT"
+          echo "python: ${py:-none} | typescript: ${ts:-none} | alert-rules: $alerts"
 
   # --- Biome lint + format -------------------------------------------------
   biome:
@@ -581,6 +595,82 @@ jobs:
           echo "::endgroup::"
           echo "Dead code: OK (no unused TS or Python code)"
 
+  # --- Grafana alert rules (pint + promtool) ------------------------------
+  # Grafana's alert rules are managed objects, not Prometheus rule files, so they
+  # cannot be fed to promtool directly. The extractor derives a Prometheus-native
+  # rule file from the single source of truth (no second copy to maintain) and
+  # the lane proves three things:
+  #
+  #   1. every rule matches the documented A/B/C shape AND has a promtool test
+  #      file — the extractor aborts on either violation (--test-dir),
+  #   2. the PromQL is valid and sane — pint `--offline` (promql/syntax,
+  #      promql/impossible, promql/fragile, alerts/comparison, alerts/for, …),
+  #   3. every rule actually fires under its trigger fixture and stays quiet
+  #      under its quiet fixture — promtool test rules, which also honours each
+  #      rule's real `for` duration.
+  #
+  # The two things CI structurally cannot prove are that the metric exists with
+  # matching labels (promql/series) and that the threshold is reachable
+  # (alerts/count) — both need a live server and are a documented local
+  # Prometheus pass — see infra/docker/observability/CLAUDE.md.
+  alert-rules:
+    name: Grafana alert rules (pint + promtool)
+    needs: [changes]
+    if: needs.changes.outputs.has_alert_rules == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Install pint + promtool (pinned release binaries, same versions prod runs)
+        run: |
+          echo "::group::install"
+          # Pinned GitHub release tarballs, not `go install`: Prometheus v3's
+          # go.mod declares `module github.com/prometheus/prometheus` (no `/v3`
+          # suffix), which the Go tool rejects at major version 3, and a
+          # lock-file-free `go install` is unpinned for transitive deps anyway.
+          # --proto '=https' keeps redirects from ever downgrading to http.
+          curl -sSL --proto '=https' -o /tmp/pint.tar.gz \
+            https://github.com/cloudflare/pint/releases/download/v0.87.0/pint-0.87.0-linux-amd64.tar.gz
+          tar -xzf /tmp/pint.tar.gz -C /tmp
+          cp /tmp/pint-linux-amd64 /usr/local/bin/pint
+          curl -sSL --proto '=https' -o /tmp/prometheus.tar.gz \
+            https://github.com/prometheus/prometheus/releases/download/v3.1.0/prometheus-3.1.0.linux-amd64.tar.gz
+          tar -xzf /tmp/prometheus.tar.gz -C /tmp
+          cp /tmp/prometheus-3.1.0.linux-amd64/promtool /usr/local/bin/promtool
+          echo "::endgroup::"
+          echo "pint v0.87.0 + promtool v3.1.0 installed"
+      - name: Extract rules and enforce test coverage (no silent skips)
+        run: |
+          echo "::group::extract"
+          # --no-build forbids building sdist deps from source; the pinned
+          # pyyaml wheel is all this script needs.
+          uv run --no-build tools/alert-rules/extract_promql.py -o tools/alert-rules/gaia-rules.yaml \
+            --test-dir tools/alert-rules/tests
+          echo "::endgroup::"
+          echo "Extraction: OK (every rule matched the A/B/C shape and has a test)"
+      - name: pint lint (PromQL validity, impossible queries, fragile alerts)
+        run: |
+          echo "::group::pint lint --offline"
+          pint --no-color --offline --config config/pint.hcl lint tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          echo "pint: OK (offline checks pass — promql/series still needs a run against a local Prometheus)"
+      - name: promtool check rules (independent rule-file validation)
+        run: |
+          echo "::group::promtool check rules"
+          promtool check rules tools/alert-rules/gaia-rules.yaml
+          echo "::endgroup::"
+          echo "promtool: OK (rule file is valid)"
+      - name: promtool test rules (every rule fires and stays quiet)
+        run: |
+          echo "::group::promtool test rules"
+          promtool test rules tools/alert-rules/tests/*.yaml
+          echo "::endgroup::"
+          echo "promtool: OK (all per-rule firing + quiet tests pass)"
+
   # --- Suppression ratchet (no NEW inline lint-suppression comments) ------
   # Diff-based, not a repo-wide sweep: suppressions already on the base
   # branch are grandfathered (removed/renamed files never re-trip this) —
@@ -661,6 +751,7 @@ jobs:
       - python-xenon
       - python-security
       - dead-code
+      - alert-rules
       - suppression-ratchet
       - gitleaks
     runs-on: ubuntu-latest
@@ -686,6 +777,7 @@ jobs:
           PYTHON_XENON: ${{ needs.python-xenon.result }}
           PYTHON_SECURITY: ${{ needs.python-security.result }}
           DEAD_CODE: ${{ needs.dead-code.result }}
+          ALERT_RULES: ${{ needs.alert-rules.result }}
           SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
         run: |
@@ -711,20 +803,21 @@ jobs:
             [python-xenon]="$PYTHON_XENON"
             [python-security]="$PYTHON_SECURITY"
             [dead-code]="$DEAD_CODE"
+            [alert-rules]="$ALERT_RULES"
             [suppression-ratchet]="$SUPPRESSION_RATCHET"
             [gitleaks]="$GITLEAKS"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
-                 dead-code suppression-ratchet gitleaks)
+                 dead-code alert-rules suppression-ratchet gitleaks)
 
           # ---------------------------------------------------------------
           # RATCHET: a lane is ENFORCED (can fail this gate) if the marker
           # file .github/quality-gate/enforced/<lane> exists. Every other
           # lane is reported but never blocks merge. Each resolution PR adds
           # its own marker file — separate paths never merge-conflict the way
-          # editing one shared list does. When all 15 markers exist, the full
+          # editing one shared list does. When all 18 markers exist, the full
           # strict rule set is enforced.
           # ---------------------------------------------------------------
           ENFORCED=()

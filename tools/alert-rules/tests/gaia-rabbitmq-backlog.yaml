@@ -1,0 +1,36 @@
+# gaia-rabbitmq-backlog — fires when messages ready for delivery exceed 1000.
+#
+# promtool test rules resolves `rule_files` relative to this file's directory.
+# `verify.sh` regenerates `../gaia-rules.yaml` before running the tests.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-rabbitmq-backlog fires when the ready queue exceeds 1000
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="outbound.slack",vhost="/"}'
+        values: '1500x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-rabbitmq-backlog
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: rabbitmq
+            exp_annotations:
+              description: >-
+                RabbitMQ carries outbound bot delivery on the durable outbound.discord/slack/telegram/whatsapp queues. Assistant replies have been generated but are not reaching users on those platforms. This total is aggregated across queues — open the "Queue Depth by Queue" panel to see which platform is stuck, then check whether that bot's consumer is still connected.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-rabbitmq-backlog
+              __dashboardUid__: gaia-rabbitmq
+              __panelId__: '4'
+
+  - name: gaia-rabbitmq-backlog stays quiet under the threshold
+    interval: 1m
+    input_series:
+      - series: 'rabbitmq_queue_messages_ready{queue="outbound.slack",vhost="/"}'
+        values: '500x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-rabbitmq-backlog
+        exp_alerts: []

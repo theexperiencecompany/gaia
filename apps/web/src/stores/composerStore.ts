@@ -21,10 +21,8 @@ interface ComposerState {
   selectedToolCategory: string | null;
 
   // File management
-  fileUploadModal: boolean;
   uploadedFiles: UploadedFilePreview[];
   uploadedFileData: FileData[];
-  pendingDroppedFiles: File[];
 
   // UI state
   isSlashCommandDropdownOpen: boolean;
@@ -51,14 +49,13 @@ interface ComposerActions {
   clearToolSelection: () => void;
 
   // File management actions
-  setFileUploadModal: (open: boolean) => void;
   setUploadedFiles: (files: UploadedFilePreview[]) => void;
   addUploadedFile: (file: UploadedFilePreview) => void;
+  replaceUploadedFile: (tempId: string, file: UploadedFilePreview) => void;
   removeUploadedFile: (fileId: string) => void;
   setUploadedFileData: (data: FileData[]) => void;
   addUploadedFileData: (data: FileData) => void;
   removeUploadedFileData: (fileId: string) => void;
-  setPendingDroppedFiles: (files: File[]) => void;
   clearAllFiles: () => void;
 
   // UI actions
@@ -86,10 +83,8 @@ const initialState: ComposerState = {
   selectedToolCategory: null,
 
   // File management
-  fileUploadModal: false,
   uploadedFiles: [],
   uploadedFileData: [],
-  pendingDroppedFiles: [],
 
   // UI state
   isSlashCommandDropdownOpen: false,
@@ -165,9 +160,6 @@ export const useComposerStore = create<ComposerStore>()(
           ),
 
         // File management actions
-        setFileUploadModal: (fileUploadModal) =>
-          set({ fileUploadModal }, false, "setFileUploadModal"),
-
         setUploadedFiles: (uploadedFiles) =>
           set({ uploadedFiles }, false, "setUploadedFiles"),
 
@@ -176,6 +168,17 @@ export const useComposerStore = create<ComposerStore>()(
             (state) => ({ uploadedFiles: [...state.uploadedFiles, file] }),
             false,
             "addUploadedFile",
+          ),
+
+        replaceUploadedFile: (tempId, file) =>
+          set(
+            (state) => ({
+              uploadedFiles: state.uploadedFiles.map((f) =>
+                f.id === tempId ? file : f,
+              ),
+            }),
+            false,
+            "replaceUploadedFile",
           ),
 
         removeUploadedFile: (fileId) =>
@@ -213,16 +216,11 @@ export const useComposerStore = create<ComposerStore>()(
             "removeUploadedFileData",
           ),
 
-        setPendingDroppedFiles: (pendingDroppedFiles) =>
-          set({ pendingDroppedFiles }, false, "setPendingDroppedFiles"),
-
         clearAllFiles: () =>
           set(
             {
               uploadedFiles: [],
               uploadedFileData: [],
-              pendingDroppedFiles: [],
-              fileUploadModal: false,
             },
             false,
             "clearAllFiles",
@@ -300,16 +298,13 @@ export const useComposerFiles = () =>
     useShallow((state) => ({
       uploadedFiles: state.uploadedFiles,
       uploadedFileData: state.uploadedFileData,
-      pendingDroppedFiles: state.pendingDroppedFiles,
-      fileUploadModal: state.fileUploadModal,
-      setFileUploadModal: state.setFileUploadModal,
       setUploadedFiles: state.setUploadedFiles,
       addUploadedFile: state.addUploadedFile,
+      replaceUploadedFile: state.replaceUploadedFile,
       removeUploadedFile: state.removeUploadedFile,
       setUploadedFileData: state.setUploadedFileData,
       addUploadedFileData: state.addUploadedFileData,
       removeUploadedFileData: state.removeUploadedFileData,
-      setPendingDroppedFiles: state.setPendingDroppedFiles,
       clearAllFiles: state.clearAllFiles,
     })),
   );
