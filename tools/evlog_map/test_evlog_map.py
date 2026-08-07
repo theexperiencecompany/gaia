@@ -181,6 +181,40 @@ def test_every_except_shape_is_judged_by_whether_the_caught_error_survives(
 
 
 # --------------------------------------------------------------------------- #
+# nested boundaries — a log_context() inside a nested helper is a real boundary
+#
+# _iter_own_scope stops at nested scopes for the route-contract facts, but a
+# boundary inside an inline coroutine / generator (an SSE stream body, a
+# fire-and-forget helper) is a real wide-event boundary. Without _iter_nested
+# a worker whose boundary lives inside a nested def-in-block reads as dark.
+# --------------------------------------------------------------------------- #
+
+_NESTED_BOUNDARY_SOURCE = '''\
+from shared.py.wide_events import log, log_context
+
+async def run():
+    """Worker entry with the boundary inside a nested coroutine."""
+    try:
+        async def _relay():
+            async with log_context("nested_relay"):
+                await work()
+        await _relay()
+    except Exception:
+        raise
+'''
+
+
+def test_a_boundary_inside_a_nested_helper_is_credited(tmp_path: Path) -> None:
+    path = _write(tmp_path, "workers/tasks/nested_boundary.py", _NESTED_BOUNDARY_SOURCE)
+    # Worker entries are only scored when registered (worker.py wires them);
+    # pass a registry containing the task so discovery actually sees it.
+    result = scan([path], FIELDS, frozenset({"run"}), {}, {})
+    entry = _by_name(result)["run"]
+    assert _status(entry, "wide-event") == "pass"
+    assert entry.checks["wide-event"].message == ""
+
+
+# --------------------------------------------------------------------------- #
 # route paths — resolved through the whole include_router chain
 #
 # A decorator's path is the last third of what the server serves. When the

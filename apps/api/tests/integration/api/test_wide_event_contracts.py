@@ -222,12 +222,20 @@ def test_raised_http_exception_lands_in_errors_with_its_cause(emitted):
 
 
 def test_production_middleware_order_keeps_logging_outermost():
-    """The boundary must stay the outermost app middleware, timeout inside it."""
+    """The wide-event boundaries must stay the outermost app middleware, timeout inside them.
+
+    Two boundaries, one per scope: ``WebSocketWideEventMiddleware`` (pure ASGI,
+    wraps websocket scope) must be outermost because ``LoggingMiddleware`` is a
+    ``BaseHTTPMiddleware`` that drops websocket scope; ``LoggingMiddleware``
+    (HTTP) sits just inside it. Both must stay outside the request timeout so a
+    timed-out request still gets a canonical event.
+    """
     app = FastAPI()
     configure_middleware(app)
     names = [m.cls.__name__ for m in app.user_middleware]
     # Starlette applies user_middleware[0] as the OUTERMOST layer.
-    assert names[0] == "LoggingMiddleware"
+    assert names[0] == "WebSocketWideEventMiddleware"
+    assert names[1] == "LoggingMiddleware"
     assert names.index("LoggingMiddleware") < names.index("RequestTimeoutMiddleware")
 
 

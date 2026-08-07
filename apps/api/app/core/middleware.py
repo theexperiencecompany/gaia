@@ -18,6 +18,7 @@ from app.api.v1.middleware import (
 )
 from app.api.v1.middleware.rate_limiter import limiter
 from app.api.v1.middleware.timeout import RequestTimeoutMiddleware
+from app.api.v1.middleware.websocket_wide_event import WebSocketWideEventMiddleware
 from app.config.settings import settings
 from app.core.bot_auth_middleware import BotAuthMiddleware
 from shared.py.wide_events import log as wide_log
@@ -102,6 +103,13 @@ def configure_middleware(app: FastAPI) -> None:
 
     # Wide-event boundary — outermost (see block comment above).
     app.add_middleware(LoggingMiddleware)
+
+    # WebSocket wide-event boundary — outermost, after Logging. This is a pure
+    # ASGI middleware (not BaseHTTPMiddleware, which drops websocket scope), so
+    # add_middleware still works and the app keeps its FastAPI type. It wraps
+    # every websocket connection in a log_context() boundary so a handler just
+    # calls log.set() like an HTTP handler — see the middleware's docstring.
+    app.add_middleware(WebSocketWideEventMiddleware)
 
 
 def get_allowed_origins() -> list[str]:

@@ -38,7 +38,7 @@ from app.services.device.bridge import (
 from app.services.device.connection_manager import device_connection_manager
 from app.services.device.device_auth import verify_device_token
 from app.services.device.device_service import get_active_device
-from shared.py.wide_events import log, log_context
+from shared.py.wide_events import log
 
 router = APIRouter(prefix="/ws", tags=["Device Bridge"])
 
@@ -57,74 +57,72 @@ def _extract_token(websocket: WebSocket) -> str | None:
 async def device_ws(websocket: WebSocket) -> None:
     """Device tunnel socket: authenticate the daemon, then relay MCP frames both ways.
 
-    LoggingMiddleware never dispatches websocket scope, so this boundary emits
-    the connection's wide event — one ``device_ws_connection`` line per
-    connection lifetime, covering auth rejections too. A normal disconnect is
-    caught inside the boundary, so it exits with outcome=success.
+    WebSocketWideEventMiddleware emits the connection's wide event — one
+    ``ws_connection`` line per connection lifetime, covering auth rejections
+    too — so this handler just calls ``log.set()`` like an HTTP handler.
     """
-    async with log_context("device_ws_connection"):
-        token = _extract_token(websocket)
-        info = verify_device_token(token) if token else None
-        if not info:
-            log.set(disconnect_reason="auth_failure")
-            await websocket.close(code=1008)
-            return
+    token = _extract_token(websocket)
+    info = verify_device_token(token) if token else None
+    if not info:
+        log.set(disconnect_reason="auth_failure")
+        await websocket.close(code=1008)
+        return
 
-        device_id = info["device_id"]
-        user_id = info["user_id"]
-        log.set(device={"id": device_id}, user={"id": user_id})
+    device_id = info["device_id"]
+    user_id = info["user_id"]
+    log.set(device={"id": device_id}, user={"id": user_id})
 
-        # A revoked/deleted device must not be able to reconnect on a still-valid JWT.
-        if await get_active_device(device_id) is None:
-            log.set(disconnect_reason="device_revoked")
-            await websocket.close(code=1008)
-            return
+    # A revoked/deleted device must not be able to reconnect on a still-valid JWT.
+    if await get_active_device(device_id) is None:
+        log.set(disconnect_reason="device_revoked")
+        await websocket.close(code=1008)
+        return
 
-        uses_subprotocol = websocket.headers.get("sec-websocket-protocol", "").startswith(
-            "Bearer, "
+    uses_subprotocol = websocket.headers.get("sec-websocket-protocol", "").startswith(
+        "Bearer, "
+    )
+    await websocket.accept(subprotocol="Bearer" if uses_subprotocol else None)
+
+    device_connection_manager.add(device_id, websocket)
+    # last_seen_at was just written by the token exchange (rotate_refresh_token)
+    # that immediately precedes every dial; presence lives in Redis, so no
+    # second Postgres write here.
+    await mark_online(device_id)
+
+    state = {"last_recv": time.monotonic()}
+    tasks = [
+        asyncio.create_task(_down_relay(websocket, device_id)),
+        asyncio.create_task(_heartbeat(websocket, device_id, state)),
+    ]
+    try:
+        await _receive_loop(websocket, device_id, state)
+    # evlog-map-disable-next-line error-handling -- normal websocket disconnect; info-level is correct
+    except WebSocketDisconnect:
+        log.set(disconnect_reason="client_close")
+        log.info(f"{LogTag.API} Device disconnected", device_id=device_id)
+    except Exception as e:
+        log.set(disconnect_reason="server_error")
+        log.warning(
+            f"{LogTag.API} Device socket error",
+            device_id=device_id,
+            error_type=type(e).__name__,
+            error=str(e),
         )
-        await websocket.accept(subprotocol="Bearer" if uses_subprotocol else None)
-
-        device_connection_manager.add(device_id, websocket)
-        # last_seen_at was just written by the token exchange (rotate_refresh_token)
-        # that immediately precedes every dial; presence lives in Redis, so no
-        # second Postgres write here.
-        await mark_online(device_id)
-
-        state = {"last_recv": time.monotonic()}
-        tasks = [
-            asyncio.create_task(_down_relay(websocket, device_id)),
-            asyncio.create_task(_heartbeat(websocket, device_id, state)),
-        ]
-        try:
-            await _receive_loop(websocket, device_id, state)
-        # evlog-map-disable-next-line error-handling -- normal websocket disconnect; info-level is correct
-        except WebSocketDisconnect:
-            log.set(disconnect_reason="client_close")
-            log.info(f"{LogTag.API} Device disconnected", device_id=device_id)
-        except Exception as e:
-            log.set(disconnect_reason="server_error")
-            log.warning(
-                f"{LogTag.API} Device socket error",
-                device_id=device_id,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
-        finally:
-            for task in tasks:
-                task.cancel()
-            with contextlib.suppress(Exception):
-                await asyncio.gather(*tasks, return_exceptions=True)
-            device_connection_manager.remove(device_id, websocket)
-            # Only clear presence if this pod no longer holds any socket for the
-            # device. Without this, an old socket's teardown would wipe the presence
-            # key a newer same-pod socket just re-claimed (the compare-and-delete in
-            # mark_offline keys only on POD_ID and can't tell them apart), flipping a
-            # live device offline until its next heartbeat.
-            if not device_connection_manager.owns(device_id):
-                await mark_offline(device_id)
-            with contextlib.suppress(Exception):
-                await websocket.close()
+    finally:
+        for task in tasks:
+            task.cancel()
+        with contextlib.suppress(Exception):
+            await asyncio.gather(*tasks, return_exceptions=True)
+        device_connection_manager.remove(device_id, websocket)
+        # Only clear presence if this pod no longer holds any socket for the
+        # device. Without this, an old socket's teardown would wipe the presence
+        # key a newer same-pod socket just re-claimed (the compare-and-delete in
+        # mark_offline keys only on POD_ID and can't tell them apart), flipping a
+        # live device offline until its next heartbeat.
+        if not device_connection_manager.owns(device_id):
+            await mark_offline(device_id)
+        with contextlib.suppress(Exception):
+            await websocket.close()
 
 
 async def _receive_loop(websocket: WebSocket, device_id: str, state: dict[str, float]) -> None:

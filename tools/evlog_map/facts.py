@@ -102,6 +102,26 @@ def _iter_own_scope(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AS
     return out
 
 
+def _iter_nested(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.AST]:
+    """Every node in the handler, nested function bodies included.
+
+    ``_iter_own_scope`` stops at nested scopes because the route-contract checks
+    score the handler's own body. Boundary detection is different: a boundary
+    inside a nested helper (an SSE generator, a ``asyncio.create_task`` coroutine
+    defined inline, a websocket relay) is a real wide-event boundary — the JS
+    scanner credits nested inline functions the same way (evlog-map-bots.mjs
+    ``analyzeBody`` recurses via ``ts.forEachChild``). Converging the two keeps a
+    boundary that lives in a nested scope from being invisible here.
+    """
+    out: list[ast.AST] = []
+    stack: list[ast.AST] = list(func.body)
+    while stack:
+        node = stack.pop()
+        out.append(node)
+        stack.extend(ast.iter_child_nodes(node))
+    return out
+
+
 def _route_decorators(func: ast.FunctionDef | ast.AsyncFunctionDef) -> list[tuple[str, str]]:
     """Every ``(method, path)`` the function is registered under.
 
@@ -321,6 +341,20 @@ def _collect_handler_facts(
     for clause in except_clauses:
         is_empty, handled = _scope_contains_error_handling(clause.body, log_aliases, clause.name)
         facts.excepts.append(ExceptFact(line=clause.lineno, is_empty=is_empty, handled=handled))
+
+    # Boundary detection recurses into nested functions (unlike the route-contract
+    # facts above, which score the handler's own body). A `log_context()` inside a
+    # nested helper is a real boundary; without this scan a websocket handler whose
+    # boundary lives in an inline coroutine would read as having no boundary.
+    if not facts.has_boundary:
+        for node in _iter_nested(func):
+            if isinstance(node, ast.withitem) and isinstance(node.context_expr, ast.Call):
+                if _call_name(node.context_expr) in BOUNDARY_CALLS:
+                    facts.has_boundary = True
+                    break
+            if isinstance(node, ast.Call) and _call_name(node) in BOUNDARY_CALLS:
+                facts.has_boundary = True
+                break
     return facts
 
 
