@@ -16,17 +16,22 @@ export const InFlightRow: React.FC<InFlightRowProps> = ({ item }) => {
   const router = useRouter();
   const startedAt = formatClockTime(item.started_at);
 
+  const openItem = () =>
+    router.push(
+      item.conversation_id
+        ? `/c/${item.conversation_id}`
+        : `/todos?todoId=${item.todo_id}`,
+    );
+
   return (
-    <div
-      className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900"
-      onClick={() =>
-        router.push(
-          item.conversation_id
-            ? `/c/${item.conversation_id}`
-            : `/todos?todoId=${item.todo_id}`,
-        )
-      }
-    >
+    <div className="relative flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900">
+      {/* Stretched-button overlay: semantic, keyboard-native row click target. */}
+      <button
+        type="button"
+        aria-label={`Open ${item.title}`}
+        className="absolute inset-0 cursor-pointer rounded-xl"
+        onClick={openItem}
+      />
       {item.execution_status === "queued" ? (
         <StatusGlyph kind="queued" className="shrink-0" />
       ) : (

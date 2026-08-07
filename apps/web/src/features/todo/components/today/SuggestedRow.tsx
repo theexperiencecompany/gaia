@@ -20,12 +20,18 @@ export const SuggestedRow: React.FC<SuggestedRowProps> = ({ item }) => {
   const queryClient = useQueryClient();
   const handoffTodo = useHandoffTodo();
 
+  const openItem = () => router.push(`/todos?todoId=${item.todo_id}`);
+
   return (
     // Row click opens the todo (offer details + handoff) in the sidebar.
-    <div
-      className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900"
-      onClick={() => router.push(`/todos?todoId=${item.todo_id}`)}
-    >
+    <div className="group relative flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900">
+      {/* Stretched-button overlay: semantic, keyboard-native row click target. */}
+      <button
+        type="button"
+        aria-label={`Open ${item.title}`}
+        className="absolute inset-0 cursor-pointer rounded-xl"
+        onClick={openItem}
+      />
       <StatusGlyph kind="suggested" className="shrink-0" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium text-zinc-200">
@@ -33,7 +39,11 @@ export const SuggestedRow: React.FC<SuggestedRowProps> = ({ item }) => {
         </p>
         <p className="truncate text-xs text-zinc-500">{item.gaia_offer}</p>
       </div>
-      <div onClick={(e) => e.stopPropagation()}>
+      <div
+        className="relative"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         <Button
           size="sm"
           color="success"

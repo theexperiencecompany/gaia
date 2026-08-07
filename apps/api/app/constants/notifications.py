@@ -65,6 +65,17 @@ NOTIFICATION_KIND_BRIEFING_WEEKLY = "briefing_weekly"
 
 # Todo-lifecycle notification kinds (plain template; used for filtering/analytics).
 NOTIFICATION_KIND_TODO_NEEDS_YOU = "todo_needs_you"
+# A genuinely time-critical signal alert (see the daily-briefing-run spec's
+# urgent-signal requirement): gated by urgency, not by count.
+NOTIFICATION_KIND_URGENT_SIGNAL = "urgent_signal"
+
+# An urgent alert unread this long is treated as ignored: the maintenance sweep
+# writes a rejection-strike memory signal for its signal_kind so the model
+# learns the user's urgency bar.
+URGENT_ALERT_IGNORE_HOURS = 48
+
+# Per-sweep cap on ignore-strike processing (cheap Mongo scan, bounded anyway).
+URGENT_STRIKE_SWEEP_LIMIT = 200
 NOTIFICATION_KIND_TODO_DONE = "todo_done"
 
 # Workflow-completion notification copy. GAIA texts like a friend (first person,

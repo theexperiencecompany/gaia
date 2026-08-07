@@ -10,8 +10,20 @@ from uuid import uuid4
 from arq.connections import ArqRedis
 
 from app.agents.core.agent import call_agent_silent
-from app.constants.todos import FACET_NOTES, NEEDS_FOLLOW_UP_LABEL
+from app.constants.memory import MemorySourceType
+from app.constants.notifications import (
+    NOTIFICATION_KIND_URGENT_SIGNAL,
+    URGENT_ALERT_IGNORE_HOURS,
+    URGENT_STRIKE_SWEEP_LIMIT,
+)
+from app.constants.todos import (
+    FACET_NOTES,
+    NEEDS_FOLLOW_UP_LABEL,
+    PROPOSAL_REJECTED_MEMORY_CATEGORY,
+)
+from app.db.repositories.notifications import notification_repository
 from app.db.repositories.todos import todo_repository
+from app.memory.engine import memory_engine
 from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.notification.notification_models import (
     ActionConfig,
@@ -94,10 +106,12 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
         if needs_attention_todos:
             await _send_dormant_digest(needs_attention_todos)
 
+        urgent_strikes = await _strike_ignored_urgent_alerts(now)
+
         summary = (
             f"archived:{archived} notified_expired:{notified_expired} "
             f"notified_overdue:{notified_overdue} requeued:{requeued} "
-            f"digest_items:{len(needs_attention_todos)}"
+            f"digest_items:{len(needs_attention_todos)} urgent_strikes:{urgent_strikes}"
         )
         log.info(
             "maintenance_sweep.done",
@@ -108,6 +122,39 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
             digest_items=len(needs_attention_todos),
         )
         return summary
+
+
+async def _strike_ignored_urgent_alerts(now: datetime) -> int:
+    """Write a rejection-strike memory signal for each urgent alert unread past
+    the ignore window, so the model learns which signal kinds the user does not
+    consider urgent (daily-briefing-run spec: leniency drift is measurable AND
+    corrected). Each notification is struck at most once."""
+    stale = await notification_repository.list_stale_unread_by_kind(
+        kind=NOTIFICATION_KIND_URGENT_SIGNAL,
+        older_than=now - timedelta(hours=URGENT_ALERT_IGNORE_HOURS),
+        limit=URGENT_STRIKE_SWEEP_LIMIT,
+    )
+    struck = 0
+    for record in stale:
+        signal_kind = (record.original_request.metadata or {}).get("signal_kind") or "unknown"
+        try:
+            await memory_engine.retain_single(
+                record.user_id,
+                f"urgent_alert_ignored | signal_kind: {signal_kind} "
+                f"| title: {record.original_request.content.title}",
+                category_path=PROPOSAL_REJECTED_MEMORY_CATEGORY,
+                source_type=MemorySourceType.MANUAL,
+            )
+        except Exception as e:
+            log.warning(
+                "maintenance_sweep.urgent_strike_memory_failed",
+                notification_id=record.id,
+                error=str(e),
+            )
+            continue
+        await notification_repository.mark_strike_recorded(record.id)
+        struck += 1
+    return struck
 
 
 async def _classify_tracked_todos(

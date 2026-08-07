@@ -13,22 +13,18 @@ rebuilds the core documents from the corrected folders.
 import argparse
 import asyncio
 from datetime import UTC, datetime
-from pathlib import Path
-import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from sqlalchemy import update
 
-from sqlalchemy import update  # noqa: E402
-
-from app.agents.llm.client import register_llm_providers  # noqa: E402
-from app.db.chroma.chromadb import init_chroma  # noqa: E402
-from app.db.postgresql import init_postgresql_engine  # noqa: E402
-from app.db.repositories.users import user_repository  # noqa: E402
-from app.memory import pg_store  # noqa: E402
-from app.memory.engine import memory_engine  # noqa: E402
-from app.memory.extraction import categorize_fact  # noqa: E402
-from app.memory.pg_store._session import memory_session  # noqa: E402
-from app.models.memory_db_models import MemoryRecord  # noqa: E402
+from app.agents.llm.client import register_llm_providers
+from app.db.chroma.chromadb import init_chroma
+from app.db.postgresql import init_postgresql_engine
+from app.db.repositories.users import user_repository
+from app.memory import pg_store
+from app.memory.engine import memory_engine
+from app.memory.extraction import categorize_fact
+from app.memory.pg_store._session import memory_session
+from app.models.memory_db_models import MemoryRecord
 
 # Re-file against the canonical taxonomy, not the user's existing folders, so a
 # fact wrongly sitting in (say) work/gaia is judged afresh.

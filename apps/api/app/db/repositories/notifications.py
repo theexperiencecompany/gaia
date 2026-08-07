@@ -5,6 +5,8 @@ on it. Updates are free-form field patches (an action result may set arbitrary
 fields), so they go through ``update_fields`` rather than a rigid update model.
 """
 
+from datetime import datetime
+
 from app.constants.cache import REPO_GLOBAL_SCOPE
 from app.db.repositories.base import MongoRepository
 from app.models.notification.notification_models import (
@@ -31,6 +33,29 @@ class NotificationRepository(MongoRepository[NotificationRecord, NotificationUpd
         if user_id is not None:
             filter_["user_id"] = user_id
         return await self._find_one(filter_)
+
+    async def list_stale_unread_by_kind(
+        self, *, kind: str, older_than: datetime, limit: int
+    ) -> list[NotificationRecord]:
+        """Unread notifications of ``kind`` created before ``older_than`` that have
+        not yet had an ignore-strike recorded — all users (the maintenance sweep's
+        scan set for ignored urgent alerts)."""
+        return await self._find(
+            {
+                "original_request.metadata.kind": kind,
+                "original_request.metadata.strike_recorded": {"$ne": True},
+                "status": {"$ne": NotificationStatus.READ.value},
+                "created_at": {"$lt": older_than},
+            },
+            limit=limit,
+        )
+
+    async def mark_strike_recorded(self, notification_id: str) -> None:
+        """Stamp that the ignore-strike for this notification was written, so a
+        sweep never double-counts it."""
+        await self.update_fields(
+            notification_id, **{"original_request.metadata.strike_recorded": True}
+        )
 
     async def update_fields(self, notification_id: str, **fields: object) -> None:
         """Apply a free-form field patch. ``updated_at`` is auto-stamped by the base."""

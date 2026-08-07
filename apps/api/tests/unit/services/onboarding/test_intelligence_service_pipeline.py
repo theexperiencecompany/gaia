@@ -23,7 +23,7 @@ from app.models.onboarding_models import (
     WritingStyleExampleBlocks,
     WritingStyleProfile,
 )
-from app.models.user_models import OnboardingPhase
+from app.models.user_models import OnboardingPhase, UserDocument
 from app.services.onboarding.first_message_service import default_first_message
 from app.services.onboarding.intelligence_service import (
     InboxScanContext,
@@ -253,7 +253,15 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], True
+                USER,
+                "Ann",
+                "ann@x.com",
+                user=UserDocument(id=USER),
+                focus="focus",
+                triage=None,
+                writing_style=None,
+                clarify_answers=[],
+                has_gmail=True,
             )
 
         assert social.await_args.args == (USER, "Ann", "ann@x.com")
@@ -266,7 +274,15 @@ class TestSocialThenHolo:
             patch(f"{MODULE}._run_holo_card", AsyncMock()) as holo,
         ):
             await _social_then_holo(
-                USER, "Ann", "ann@x.com", {"_id": USER}, "focus", None, None, [], False
+                USER,
+                "Ann",
+                "ann@x.com",
+                user=UserDocument(id=USER),
+                focus="focus",
+                triage=None,
+                writing_style=None,
+                clarify_answers=[],
+                has_gmail=False,
             )
 
         assert social.await_count == 0
@@ -532,7 +548,7 @@ class TestProcessOnboardingIntelligence:
 
         assert pipeline_stack["style"].await_args.args == (USER, False, "lawyer")
         assert pipeline_stack["triage"].await_args.args[2:] == ("lawyer", "close Q3")
-        assert pipeline_stack["workflows"].await_args.args[8] == ["slack"]
+        assert pipeline_stack["workflows"].await_args.kwargs["selected_integrations"] == ["slack"]
 
     async def test_a_nameless_user_gets_a_friendly_default(self, pipeline_stack: Any) -> None:
         user = _user(name=None)

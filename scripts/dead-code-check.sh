@@ -199,6 +199,10 @@ run_knip() {
 
   local raw_output
   raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
+  # Node runtime noise (deprecation warnings etc.) is not a finding — without
+  # this filter a warning-emitting Node version fails the gate at 0 findings.
+  raw_output=$(printf '%s\n' "$raw_output" | grep -v -E '^\s*\(node:[0-9]+\)|--trace-deprecation' || true)
+  raw_output=$(printf '%s\n' "$raw_output" | sed '/^[[:space:]]*$/d')
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"

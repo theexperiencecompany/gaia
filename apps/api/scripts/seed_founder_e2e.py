@@ -10,29 +10,29 @@ Memories are REPLAYED through the local memory engine (retain_single), so
 embeddings and graph state are regenerated locally — no cross-environment
 vector copying. Todos are inserted with the target user_id.
 
-Run: uv run python scripts/seed_founder_e2e.py <target_user_id> <dump.json>
+Run: uv run python -m scripts.seed_founder_e2e <target_user_id> <dump.json>
 """
 
 import asyncio
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from bson import json_util
 
-from bson import json_util  # noqa: E402
-
-from app.constants.memory import MemorySourceType  # noqa: E402
-from app.core.provider_registration import unified_startup  # noqa: E402
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.memory.engine import memory_engine  # noqa: E402
+from app.constants.memory import MemorySourceType
+from app.core.provider_registration import unified_startup
+from app.db.mongodb.collections import get_async_collection
+from app.memory.engine import memory_engine
 
 todos_collection = get_async_collection("todos")
 
 
 async def seed(user_id: str, dump_path: str) -> None:
     await unified_startup("arq_worker")
-    # One-shot seed script: blocking dump read at startup is harmless.
-    data = json_util.loads(Path(dump_path).read_text())  # noqa: ASYNC240
+    dump_file = await asyncio.to_thread(Path(dump_path).resolve)
+    if dump_file.suffix != ".json" or not await asyncio.to_thread(dump_file.is_file):
+        raise SystemExit(f"dump must be an existing .json file, got: {dump_file}")
+    data = json_util.loads(await asyncio.to_thread(dump_file.read_text))
     memories: list[str] = data.get("memories", [])
     todos: list[dict] = data.get("todos", [])
 

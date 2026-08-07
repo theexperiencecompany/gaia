@@ -36,6 +36,7 @@ export const TodoAnswerCard: React.FC<TodoAnswerCardProps> = ({
     <div
       className={cn("rounded-2xl bg-zinc-800 p-4", className)}
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     >
       <p className="text-xs font-medium text-amber-400">
         GAIA is waiting on your answer to continue

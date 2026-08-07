@@ -12,7 +12,7 @@ import {
 } from "@/features/notification/constants";
 import { toast } from "@/lib/toast";
 
-export const BRIEFING_PREFERENCES_QUERY_KEY = ["briefing-preferences"];
+const BRIEFING_PREFERENCES_QUERY_KEY = ["briefing-preferences"];
 
 /**
  * Coerce a server-provided order into a full, de-duplicated permutation of the

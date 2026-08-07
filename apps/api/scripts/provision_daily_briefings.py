@@ -8,17 +8,14 @@ goal arrives or the grace window elapses. The user-facing announcement is sent
 manually by email, not from here. Safe to re-run — provisioning is idempotent by
 ``system_workflow_key`` and the path taken is logged.
 
-Run: uv run python scripts/provision_daily_briefings.py [--dry-run]
+Run: uv run python -m scripts.provision_daily_briefings [--dry-run]
 """
 
 import asyncio
-from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from app.db.repositories.users import user_repository  # noqa: E402
-from app.services.briefing.rollout import provision_existing_user  # noqa: E402
+from app.db.repositories.users import user_repository
+from app.services.briefing.rollout import provision_existing_user
 
 
 async def rollout(dry_run: bool) -> None:

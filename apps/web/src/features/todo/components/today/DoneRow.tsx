@@ -16,17 +16,24 @@ interface DoneRowProps {
 export const DoneRow: React.FC<DoneRowProps> = ({ item }) => {
   const router = useRouter();
 
+  const openItem = () =>
+    router.push(
+      item.assignee === "gaia" && item.conversation_id
+        ? `/c/${item.conversation_id}`
+        : `/todos?todoId=${item.todo_id}`,
+    );
+
   return (
-    <div
-      className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900"
-      onClick={() =>
-        router.push(
-          item.assignee === "gaia" && item.conversation_id
-            ? `/c/${item.conversation_id}`
-            : `/todos?todoId=${item.todo_id}`,
-        )
-      }
-    >
+    <div className="relative flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900">
+      {/* Stretched-button overlay: the semantic, keyboard-native click target
+          for the whole row; interactive children stack above it via
+          position:relative. */}
+      <button
+        type="button"
+        aria-label={`Open ${item.title}`}
+        className="absolute inset-0 cursor-pointer rounded-xl"
+        onClick={openItem}
+      />
       <StatusGlyph kind="done" className="shrink-0" />
       <p className="min-w-0 flex-1 truncate text-sm text-zinc-400">
         {item.title}

@@ -43,7 +43,7 @@ export interface StarterPrompt {
   zeroSetup: boolean;
 }
 
-export const STARTER_PROMPT_COUNT = 3;
+const STARTER_PROMPT_COUNT = 3;
 
 const STARTER_PROMPTS: StarterPrompt[] = [
   // Universal — zero setup
@@ -211,7 +211,9 @@ const STARTER_PROMPTS: StarterPrompt[] = [
 const shuffleArray = <T>(array: T[]): T[] => {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    // False positive: cosmetic shuffle of starter-prompt suggestions — no
+    // security property depends on this randomness.
+    const j = Math.floor(Math.random() * (i + 1)); // NOSONAR typescript:S2245
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return shuffled;

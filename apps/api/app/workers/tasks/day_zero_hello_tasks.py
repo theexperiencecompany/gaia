@@ -14,6 +14,7 @@ import re
 from typing import cast
 from uuid import uuid4
 
+from app.agents.core.agent import call_agent_silent
 from app.agents.prompts.briefing_prompts import build_day_zero_hello_prompt
 from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationSource
@@ -61,11 +62,8 @@ def _parse_bubbles(raw: str) -> list[str]:
 async def _run_silent(user: dict, prompt: str) -> str:
     """One silent agent turn on a fresh thread; returns the final text.
 
-    Mirrors the briefing service's silent-run plumbing, including the inline
-    import that breaks the agent<->workflow import cycle.
+    Mirrors the briefing service's silent-run plumbing.
     """
-    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415
-
     request = MessageRequestWithHistory(
         message=prompt,
         messages=[MessageDict(role="user", content=prompt)],

@@ -20,6 +20,14 @@ An `awards` collection SHALL store earned badges `{user_id, key, earned_at}`. v1
 - **WHEN** a user's 100th GAIA-completed todo lands and later a 101st completes
 - **THEN** `gaia_100_todos` is awarded and notified exactly once
 
+### Requirement: The edition template library is the founder's explorer set
+
+The template source of truth is the vendored Edition Explorer library (recovered session 547b140a: ~20 parametric families, 500+ skin combos), rendered byte-identical through the same headless-Chromium pipeline as every edition email — new families are one vendored module + registry pickup. **Both daily and weekly editions rotate over the eligible family set** under the shuffled-cycle law below, with independent per-kind rotation state ("daily fun docs"). Permitted deviations from byte-identical vendoring: null-safety guards only (real payload items carry no time field; the demo fixture always did). A family whose content is not fully derived from the real payload (currently the explorer's own "weekly" family — hardcoded demo aggregates) SHALL be excluded from rotation until a real data adapter exists: fabricated content in a briefing is never acceptable.
+
+#### Scenario: Every family's content is real
+- **WHEN** any edition renders for a user
+- **THEN** every fact shown derives from that user's stored payload, and a family that cannot satisfy this is not in the rotation pool
+
 ### Requirement: Weekly editions are beautiful rotating documents
 
 A `weekly_digest` system workflow (Sunday 5pm user-local) SHALL emit a `kind: weekly` BriefingPayload summarizing the week: completed work split by assignee, an hours-saved estimate, streak length, and what's ahead (open todos, scheduled follow-ups). It SHALL render as a designed editorial email document from a **template family** chosen by a shuffled-cycle rotation engine: each cycle is a random permutation of every available family, consumed in order, so no family repeats until the whole set has been used; the next cycle reshuffles (never producing the same family twice in a row across the cycle boundary). The rotation state is per-user and persisted, so the sequence survives restarts and template additions join the next cycle. v1 ships 2–3 template families from the edition-template system, expanding later.

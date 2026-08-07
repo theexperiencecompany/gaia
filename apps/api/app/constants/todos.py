@@ -70,10 +70,10 @@ PROPOSAL_REJECTED_MEMORY_CATEGORY: Final[str] = "gaia/proposals/rejected"
 # registry share one source of truth.
 GAIA_TODO_EXECUTIONS_FEATURE: Final[str] = "gaia_todo_executions"
 
-# The user's waking window (user-local hours, [start, end)). Governs every
-# discretionary proactive ping: completion nudges are dropped outside it, and
-# blocker/failure pushes degrade to in-app-only (the morning brief carries
-# them) unless a same-day deadline makes the interruption worth it.
+# The user's waking window (user-local hours, [start, end)). Gates only the
+# completion-report nudge — a completion outside it still delivers, just
+# without the suggestion line. Blocker and failure pushes are deliberately
+# NOT gated (product decision 2026-08-07: no quiet hours).
 WAKING_HOUR_START: Final[int] = 9
 WAKING_HOUR_END: Final[int] = 22
 

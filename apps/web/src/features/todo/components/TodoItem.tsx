@@ -149,27 +149,40 @@ export default memo(function TodoItem({
   return (
     <div
       className={cn(
-        "pointer-events-auto w-full cursor-pointer rounded-xl p-2 pl-3 mb-0 transition-all group",
+        "pointer-events-auto relative w-full rounded-xl p-2 pl-3 mb-0 transition-all group",
         isSelected ? "bg-zinc-800/50" : "hover:bg-zinc-800/50",
         todo.completed && "opacity-30",
         className,
       )}
       style={{ contentVisibility: "auto", containIntrinsicSize: "0 80px" }}
-      onClick={() => onClick?.(todo)}
       onMouseEnter={() => onPrefetchWorkflow?.(todo.id)}
     >
+      {/* Stretched-button overlay: the semantic, keyboard-native click target
+          for the whole row; the checkbox/status/chevron stack above it via
+          position:relative. */}
+      <button
+        type="button"
+        aria-label={`Open ${todo.title}`}
+        className="absolute inset-0 cursor-pointer rounded-xl"
+        onClick={() => onClick?.(todo)}
+      />
       <div className="flex h-full items-start gap-2">
         {/* Active GAIA work leads with its status mark instead of a checkbox:
             one circle, and completion stays with the execution lifecycle. */}
         {hasActiveExecution ? (
           <div
-            className="mt-1 flex size-6 shrink-0 items-center justify-center"
+            className="relative mt-1 flex size-6 shrink-0 items-center justify-center"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <ExecutionStatusGlyph status={todo.execution_status} size={20} />
           </div>
         ) : (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <Checkbox
               isSelected={todo.completed}
               onChange={handleToggleComplete}
@@ -408,7 +421,8 @@ export default memo(function TodoItem({
 
         <div
           onClick={(e) => e.stopPropagation()}
-          className="flex h-full min-h-full justify-center items-center self-center group-hover:opacity-100 opacity-0 transition"
+          onKeyDown={(e) => e.stopPropagation()}
+          className="relative flex h-full min-h-full justify-center items-center self-center group-hover:opacity-100 opacity-0 transition"
         >
           <ChevronRight width={20} height={20} className="text-zinc-400" />
         </div>

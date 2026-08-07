@@ -333,7 +333,7 @@ async def _safe_completion_nudge(
             completed_todo_id=active_todo_id,
             user_timezone=user_timezone,
         )
-    except Exception as e:  # noqa: BLE001 — non-critical enhancement
+    except Exception as e:  # nudge is best-effort
         log.error(f"{LogTag.AGENT} deliver_result: completion nudge failed", error=str(e))
         return notification_text
     return f"{notification_text}\n\n{nudge}" if nudge else notification_text

@@ -61,7 +61,10 @@ a user-growth goal). Same truth rule applies.
 Item ``kind`` is one of: ``gaia`` (GAIA is doing it), ``you`` (needs the user),
 ``proposal`` (awaiting the user's approval), ``lookback`` (yesterday's result), or
 ``note`` (a plain highlight). Set ``todo_id`` only for items bound to a real
-todo you can see or just created. Never emit HTML or Markdown styling inside any
+todo you can see or just created. When an item is anchored to a real clock time
+(a calendar event, a deadline today), START its text with that user-local time
+in "H:MM AM — " form (e.g. "1:30 PM — Design review with Dhruv"); never invent
+a time for untimed work. Never emit HTML or Markdown styling inside any
 string; the renderer owns all styling.
 """.strip()
 

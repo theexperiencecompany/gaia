@@ -1,25 +1,25 @@
-"""Shuffled-cycle rotation for weekly edition template families.
+"""Shuffled-cycle rotation for edition template families, per briefing kind.
 
 The retention-loop spec's rotation law: each cycle is a random permutation of
 every available family, consumed in order, so no family repeats until the whole
 set has been used; the next cycle reshuffles and never opens with the family
-the previous cycle closed on. State is per-user and persisted on the user doc,
-so the sequence survives restarts, and families added later simply join the
-next cycle.
+the previous cycle closed on. State is per-user and per-kind (daily/weekly),
+persisted on the user doc, so sequences survive restarts and families added
+later simply join the next cycle.
 """
 
 import random
 
 from app.db.repositories.users import user_repository
-from app.models.user_models import WeeklyEditionRotation
+from app.models.user_models import EditionRotation
 from shared.py.wide_events import log
 
 
 def advance_rotation(
-    state: WeeklyEditionRotation | None,
+    state: EditionRotation | None,
     families: list[str],
     rng: random.Random,
-) -> tuple[str, WeeklyEditionRotation]:
+) -> tuple[str, EditionRotation]:
     """Pick the next family and return the state to persist.
 
     Pure given ``rng`` — the sequencing law is unit-tested by seeding it. A
@@ -28,7 +28,7 @@ def advance_rotation(
     skipped forever.
     """
     if not families:
-        raise ValueError("weekly edition rotation requires at least one family")
+        raise ValueError("edition rotation requires at least one family")
 
     cycle_valid = (
         state is not None
@@ -38,20 +38,18 @@ def advance_rotation(
     if state is None or not cycle_valid:
         previous_last = state.cycle[-1] if state is not None and state.cycle else None
         cycle = _reshuffle(families, rng, avoid_first=previous_last)
-        state = WeeklyEditionRotation(cycle=cycle, index=0)
+        state = EditionRotation(cycle=cycle, index=0)
 
     assert state is not None
     family = state.cycle[state.index]
 
     next_index = state.index + 1
     if next_index < len(state.cycle):
-        return family, WeeklyEditionRotation(cycle=state.cycle, index=next_index)
+        return family, EditionRotation(cycle=state.cycle, index=next_index)
 
     # Cycle exhausted: reshuffle for next time, never opening on today's family
     # (the no-same-family-across-the-boundary clause).
-    return family, WeeklyEditionRotation(
-        cycle=_reshuffle(families, rng, avoid_first=family), index=0
-    )
+    return family, EditionRotation(cycle=_reshuffle(families, rng, avoid_first=family), index=0)
 
 
 def _reshuffle(families: list[str], rng: random.Random, *, avoid_first: str | None) -> list[str]:
@@ -63,14 +61,15 @@ def _reshuffle(families: list[str], rng: random.Random, *, avoid_first: str | No
     return cycle
 
 
-async def choose_weekly_family(user_id: str, families: list[str]) -> str:
-    """Advance the user's persisted rotation and return this week's family."""
-    state = await user_repository.get_weekly_edition_rotation(user_id)
+async def choose_edition_family(user_id: str, *, kind: str, families: list[str]) -> str:
+    """Advance the user's persisted rotation for ``kind`` and return the family."""
+    state = await user_repository.get_edition_rotation(user_id, kind)
     family, next_state = advance_rotation(state, families, random.Random())
-    await user_repository.set_weekly_edition_rotation(user_id, next_state)
+    await user_repository.set_edition_rotation(user_id, kind, next_state)
     log.info(
-        "briefing.weekly_family_chosen",
+        "briefing.edition_family_chosen",
         user_id=user_id,
+        kind=kind,
         family=family,
         cycle_index=next_state.index,
     )

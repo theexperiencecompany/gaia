@@ -15,22 +15,19 @@ lifecycle. This backfill:
 4. Sets ``assignee: "user"`` explicitly on remaining todos that lack the field
    so queries never depend on missing-field semantics.
 
-Run: uv run python scripts/migrate_todo_assignee.py [--dry-run]
+Run: uv run python -m scripts.migrate_todo_assignee [--dry-run]
 """
 
 import asyncio
-from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from app.constants.todos import (  # noqa: E402
+from app.constants.todos import (
     ASSIGNEE_GAIA,
     ASSIGNEE_USER,
     GAIA_TRACKED_LABEL,
 )
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
-from app.models.todo_models import ExecutionStatus  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
+from app.models.todo_models import ExecutionStatus
 
 todos_collection = get_async_collection("todos")
 

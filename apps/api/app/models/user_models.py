@@ -252,6 +252,19 @@ def _dedupe_slugs(v: list[str] | None) -> list[str] | None:
     return out
 
 
+class EditionRotation(BaseModel):
+    """Persisted shuffled-cycle state for one edition kind's template families.
+
+    ``cycle`` is a permutation of every eligible family; ``index`` points at the
+    family the NEXT edition will use. A cycle whose family set no longer matches
+    the registry is discarded and reshuffled (see edition_rotation). Stored
+    per kind (``daily``/``weekly``) on the user doc.
+    """
+
+    cycle: list[str] = Field(default_factory=list)
+    index: int = 0
+
+
 class AuthenticatedUser(TypedDict, total=False):
     """``request.state.user`` — what every ``Depends(get_current_user)`` yields.
 
@@ -312,6 +325,7 @@ class AuthenticatedUser(TypedDict, total=False):
     briefing_dormancy: dict[str, Any] | None
     briefing_channel_priority: list[str] | None
     day_zero_hello: dict[str, Any] | None
+    edition_rotations: dict[str, EditionRotation] | None
     # Nurture email sequence state (workers) — completed_steps + send history.
     nurture: dict[str, Any] | None
 
@@ -330,18 +344,6 @@ class PlatformLinkRecord(TypedDict, total=False):
     id: str
     username: str
     display_name: str
-
-
-class WeeklyEditionRotation(BaseModel):
-    """Persisted shuffled-cycle state for weekly edition templates.
-
-    ``cycle`` is a permutation of every template family; ``index`` points at the
-    family the NEXT weekly digest will use. A cycle whose family set no longer
-    matches the registry is discarded and reshuffled (see edition_rotation).
-    """
-
-    cycle: list[str] = Field(default_factory=list)
-    index: int = 0
 
 
 class UserDocument(MongoDocument):
@@ -400,8 +402,9 @@ class UserDocument(MongoDocument):
     briefing_dormancy: dict[str, Any] | None = None
     briefing_channel_priority: list[str] | None = None
     day_zero_hello: dict[str, Any] | None = None
-    # Weekly edition template rotation (shuffled full cycle; see edition_rotation).
-    weekly_edition_rotation: WeeklyEditionRotation | None = None
+    # Edition template rotation per briefing kind (shuffled full cycle; see
+    # edition_rotation). Keys: "daily" | "weekly".
+    edition_rotations: dict[str, EditionRotation] | None = None
     # Nurture email sequence state (workers): completed_steps + send history.
     nurture: dict[str, Any] | None = None
 

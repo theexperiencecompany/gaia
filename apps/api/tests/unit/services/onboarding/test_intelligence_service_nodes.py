@@ -898,21 +898,19 @@ class TestRunWorkflows:
                 "Europe/London",
                 triage,
                 style,
-                [{"kind": "scope", "value": "a"}],
-                ["slack"],
+                clarify_answers=[{"kind": "scope", "value": "a"}],
+                selected_integrations=["slack"],
             )
 
-        assert create.await_args.args == (
-            USER,
-            "dev",
-            True,
-            "ship v2",
-            "Europe/London",
-            triage,
-            style,
-            [{"kind": "scope", "value": "a"}],
-            ["slack"],
-        )
+        assert create.await_args.args == (USER, "dev", True)
+        assert create.await_args.kwargs == {
+            "focus": "ship v2",
+            "user_timezone": "Europe/London",
+            "triage": triage,
+            "writing_style": style,
+            "clarify_answers": [{"kind": "scope", "value": "a"}],
+            "selected_integrations": ["slack"],
+        }
 
     @pytest.mark.parametrize(
         ("count", "expected"),

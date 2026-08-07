@@ -27,6 +27,12 @@ os.environ["ENV"] = "development"
 # prod-guard off, and because the key is now present, load_dotenv(override=False)
 # — called at settings import — will not re-inject a value from the developer's .env.
 os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
+# Same hermeticity rule for the dev-LLM lane (#891): a developer's DEV_DEFAULT_MODEL
+# reroutes apply_dev_model_override and silently changes agent-config assertions.
+os.environ["DEV_DEFAULT_MODEL"] = ""
+os.environ["DEV_LLM_BASE_URL"] = ""
+os.environ["DEV_LLM_API_KEY"] = ""
+os.environ["DEV_LLM_MODEL"] = ""
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",

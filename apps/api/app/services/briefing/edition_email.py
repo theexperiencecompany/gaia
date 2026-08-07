@@ -77,7 +77,9 @@ def _action_items(payload: dict) -> list[dict]:
 def _resolve_link(link: str | None) -> str | None:
     if not link:
         return None
-    if link.startswith(("http://", "https://")):
+    # False positive: this is a scheme-prefix check classifying already-absolute
+    # URLs, not an insecure outbound request.
+    if link.startswith(("http://", "https://")):  # NOSONAR python:S5332
         return link
     base = _public_app_url()
     return f"{base}/{link.lstrip('/')}"

@@ -58,12 +58,19 @@ export const NeedsYouRow: React.FC<NeedsYouRowProps> = ({ item }) => {
     ? item.blocker_question || "GAIA needs your input to continue."
     : item.serves;
 
+  const openItem = () => router.push(`/todos?todoId=${item.todo_id}`);
+
   return (
     // Row click opens the todo's full decision card in the sidebar.
-    <div
-      className="group cursor-pointer rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900"
-      onClick={() => router.push(`/todos?todoId=${item.todo_id}`)}
-    >
+    <div className="group relative rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900">
+      {/* Stretched-button overlay: semantic, keyboard-native row click target;
+          the action buttons/input stack above it via position:relative. */}
+      <button
+        type="button"
+        aria-label={`Open ${item.title}`}
+        className="absolute inset-0 cursor-pointer rounded-xl"
+        onClick={openItem}
+      />
       <div className="flex items-center gap-3">
         <StatusGlyph
           kind={isBlocked ? "blocked" : "proposed"}
@@ -79,8 +86,9 @@ export const NeedsYouRow: React.FC<NeedsYouRowProps> = ({ item }) => {
         </div>
         {!isBlocked && (
           <div
-            className="flex shrink-0 items-center gap-1.5"
+            className="relative flex shrink-0 items-center gap-1.5"
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           >
             <Button
               size="sm"
@@ -116,7 +124,11 @@ export const NeedsYouRow: React.FC<NeedsYouRowProps> = ({ item }) => {
           </div>
         )}
         {isBlocked && !answerOpen && (
-          <div onClick={(e) => e.stopPropagation()}>
+          <div
+            className="relative"
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             <Button
               size="sm"
               color="primary"
@@ -132,8 +144,9 @@ export const NeedsYouRow: React.FC<NeedsYouRowProps> = ({ item }) => {
       </div>
       {isBlocked && answerOpen && (
         <div
-          className="mt-2 flex items-center gap-2 pl-[34px]"
+          className="relative mt-2 flex items-center gap-2 pl-[34px]"
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         >
           <Input
             size="sm"

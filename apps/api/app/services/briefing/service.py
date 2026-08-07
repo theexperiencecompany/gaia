@@ -15,6 +15,7 @@ import re
 from typing import cast
 from uuid import uuid4
 
+from app.agents.core.agent import call_agent_silent
 from app.agents.prompts.briefing_prompts import (
     build_briefing_voice_prompt,
     build_overnight_work_prompt,
@@ -54,8 +55,8 @@ from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
-from app.services.briefing.edition_rotation import choose_weekly_family
-from app.services.briefing.editions import weekly_families
+from app.services.briefing.edition_rotation import choose_edition_family
+from app.services.briefing.editions import rotation_families
 from app.services.notification_service import notification_service
 from app.services.short_link_service import get_or_create_short_link
 from app.services.todos import activity
@@ -103,10 +104,6 @@ def _parse_payload(raw: str) -> BriefingPayload:
 
 async def _run_silent(user: dict, clock: UserClock, prompt: str, conversation_key: str) -> str:
     """One silent agent turn on a fresh per-day thread; returns the final text."""
-    # Inline import breaks the agent<->workflow import cycle (same pattern the
-    # worker uses for call_agent_silent).
-    from app.agents.core.agent import call_agent_silent  # noqa: PLC0415
-
     # construct_langchain_messages reads the human turn from `messages`
     # (`message` alone is not consulted when no workflow/tool is selected).
     request = MessageRequestWithHistory(
@@ -672,6 +669,13 @@ async def run_daily_briefing(user_id: str) -> None:
         }
     )
 
+    # Daily editions rotate the template library too ("daily fun docs") —
+    # independent per-kind state, assigned only after generation succeeds and
+    # persisted forever with the payload.
+    payload.template_family = await choose_edition_family(
+        user_id, kind=BRIEFING_KIND_DAILY, families=rotation_families()
+    )
+
     briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_DAILY, payload
     )
@@ -735,7 +739,9 @@ async def run_weekly_digest(user_id: str) -> None:
     payload.hue = hue_for_day(clock.day_of_year)
     # Rotation advances only after generation succeeds, so a failed run does
     # not burn this week's slot in the shuffled cycle.
-    payload.template_family = await choose_weekly_family(user_id, weekly_families())
+    payload.template_family = await choose_edition_family(
+        user_id, kind=BRIEFING_KIND_WEEKLY, families=rotation_families()
+    )
 
     briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload

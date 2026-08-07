@@ -577,7 +577,9 @@ class TestCreateOnboardingWorkflows:
                 f"{MODULE}._create_fallback_workflow", AsyncMock(return_value=_fallback_cards())
             ) as fallback,
         ):
-            result = await _create_onboarding_workflows(USER, "dev", False, "ship v2", "UTC")
+            result = await _create_onboarding_workflows(
+                USER, "dev", False, focus="ship v2", user_timezone="UTC"
+            )
 
         assert result == _fallback_cards()
         assert fallback.await_args.args[:3] == (USER, "ship v2", "UTC")
@@ -662,10 +664,9 @@ class TestRunHoloCard:
         _, save, emit = holo_stack
         await _run_holo_card(USER, UserDocument(id=USER), "focus", None, None)
 
-        args = save.await_args.args
-        assert args[0] == USER
-        assert args[1] == "mistgrove"
-        assert args[2] == "a phrase"
+        assert save.await_args.args[0] == USER
+        assert save.await_args.kwargs["house"] == "mistgrove"
+        assert save.await_args.kwargs["personality_phrase"] == "a phrase"
         assert emit.await_args.args[1] is OnboardingStage.HOLO_READY
 
     async def test_context_summary_gathers_every_available_signal(self, holo_stack: Any) -> None:

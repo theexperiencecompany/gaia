@@ -42,12 +42,12 @@ from app.models.onboarding_models import (
 )
 from app.models.user_models import (
     BioStatus,
+    EditionRotation,
     OnboardingPhase,
     OnboardingPreferences,
     PlatformLinkRecord,
     UserDocument,
     UserUpdate,
-    WeeklyEditionRotation,
 )
 from shared.py.wide_events import log
 
@@ -735,16 +735,16 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
-    async def get_weekly_edition_rotation(self, user_id: str) -> WeeklyEditionRotation | None:
-        """The user's persisted weekly-edition rotation state, if any."""
+    async def get_edition_rotation(self, user_id: str, kind: str) -> EditionRotation | None:
+        """The user's persisted edition rotation state for ``kind``, if any."""
         user = await self.get(user_id)
-        return user.weekly_edition_rotation if user else None
+        return (user.edition_rotations or {}).get(kind) if user else None
 
-    async def set_weekly_edition_rotation(self, user_id: str, state: WeeklyEditionRotation) -> None:
-        """Persist the advanced rotation state (see edition_rotation)."""
+    async def set_edition_rotation(self, user_id: str, kind: str, state: EditionRotation) -> None:
+        """Persist the advanced rotation state for ``kind`` (see edition_rotation)."""
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
-            {"$set": {"weekly_edition_rotation": state.model_dump()}},
+            {"$set": {f"edition_rotations.{kind}": state.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

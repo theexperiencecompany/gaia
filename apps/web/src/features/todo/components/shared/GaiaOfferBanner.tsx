@@ -30,7 +30,11 @@ export const GaiaOfferBanner: React.FC<GaiaOfferBannerProps> = ({
   // Stacked, not one row: text and buttons each get a full line, so the CTA
   // never clips or drifts regardless of container width (list row or sidebar).
   return (
-    <div className="mt-2 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="mt-2 space-y-1.5"
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
       <p className="flex items-start gap-2 text-xs text-zinc-400">
         <SparklesIcon className="mt-0.5 size-3.5 shrink-0 text-violet-400" />
         <span className="line-clamp-2 min-w-0">{offer}</span>

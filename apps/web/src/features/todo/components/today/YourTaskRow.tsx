@@ -31,13 +31,24 @@ export const YourTaskRow: React.FC<YourTaskRowProps> = ({ item }) => {
     refresh();
   };
 
+  const openItem = () => router.push(`/todos?todoId=${item.todo_id}`);
+
   return (
     // Row click opens the todo in the sidebar; checkbox and CTA stay local.
-    <div
-      className="group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900"
-      onClick={() => router.push(`/todos?todoId=${item.todo_id}`)}
-    >
-      <div onClick={(e) => e.stopPropagation()}>
+    <div className="group relative flex items-center gap-3 rounded-xl px-3 py-2 transition-colors hover:bg-zinc-900">
+      {/* Stretched-button overlay: semantic, keyboard-native row click target;
+          checkbox and CTA stack above it via position:relative. */}
+      <button
+        type="button"
+        aria-label={`Open ${item.title}`}
+        className="absolute inset-0 cursor-pointer rounded-xl"
+        onClick={openItem}
+      />
+      <div
+        className="relative"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
         <Checkbox
           size="sm"
           radius="full"
@@ -55,7 +66,11 @@ export const YourTaskRow: React.FC<YourTaskRowProps> = ({ item }) => {
         )}
       </div>
       {item.gaia_offer && (
-        <div onClick={(e) => e.stopPropagation()}>
+        <div
+          className="relative"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <Button
             size="sm"
             variant="light"

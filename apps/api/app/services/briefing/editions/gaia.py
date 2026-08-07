@@ -13,10 +13,9 @@ headless-browser raster. ``render_edition`` is the only entry point; everything
 else is a private section builder.
 """
 
-import base64
-from datetime import date
 from html import escape
-from pathlib import Path
+
+from app.services.briefing.editions._shared import CANVAS_PX, font_face, format_date
 
 # --- Palette (layered neutrals, one cyan accent — never red) --------------------
 _ACCENT = "#00bbff"
@@ -35,7 +34,7 @@ _INTER = 'Inter, system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif'
 _DISPLAY = '"PP Editorial New", "Playfair Display", Georgia, serif'
 
 # Canvas geometry — the raster viewport is 1180px; the page is that exact width.
-_CANVAS_PX = 1180
+_CANVAS_PX = CANVAS_PX
 
 # --- Item furniture: kind -> (marker, tone) -------------------------------------
 # ``BriefingItemKind`` ("gaia"/"you"/"proposal"/"lookback"/"note") and the
@@ -57,21 +56,8 @@ _MARKERS: dict[str, tuple[str, str]] = {
 _ARTIFACT_HINT = "&middot;&#8201;Open"
 _DATELINE_SEP = " &middot; "
 
-_FONTS_DIR = Path(__file__).parent / "fonts"
-
-
-def _font_face(family: str, filename: str, weight: int) -> str:
-    """Build one ``@font-face`` rule with the woff2 embedded as a data URI."""
-    encoded = base64.b64encode((_FONTS_DIR / filename).read_bytes()).decode("ascii")
-    return (
-        f"@font-face{{font-family:'{family}';font-style:normal;"
-        f"font-weight:{weight};font-display:block;"
-        f"src:url(data:font/woff2;base64,{encoded}) format('woff2');}}"
-    )
-
-
 # Embedded once at import: the two Editorial weights the edition actually uses.
-_FONT_FACES = _font_face("PP Editorial New", "PPEditorialNew-Ultralight.woff2", 200) + _font_face(
+_FONT_FACES = font_face("PP Editorial New", "PPEditorialNew-Ultralight.woff2", 200) + font_face(
     "PP Editorial New", "PPEditorialNew-Regular.woff2", 400
 )
 
@@ -98,7 +84,7 @@ def render_edition(
     headline = escape(str(payload.get("headline", "")))
     lede = escape(str(payload.get("lede", "")))
     caption = escape(str(payload.get("caption", "")))
-    date_human = _format_date(str(payload.get("date", "")))
+    date_human = format_date(str(payload.get("date", "")))
 
     generated = escape(generated_local)
     if tz_label:
@@ -157,19 +143,6 @@ def render_edition(
 </main>
 </body>
 </html>"""
-
-
-def _format_date(iso: str) -> str:
-    """Format an ISO ``YYYY-MM-DD`` date as ``July 5, 2026``.
-
-    An unparseable value is escaped and returned verbatim so the dateline is
-    never silently dropped.
-    """
-    try:
-        parsed = date.fromisoformat(iso)
-    except ValueError:
-        return escape(iso)
-    return f"{parsed:%B} {parsed.day}, {parsed.year}"
 
 
 def _render_stats(stats: list[dict]) -> str:

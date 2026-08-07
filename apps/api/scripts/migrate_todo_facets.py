@@ -13,16 +13,13 @@ of a deploy. The deliverable facet is intentionally NOT backfilled — legacy
 proposals fall back to the old canvas for their deliverable via the same bridge,
 and new deliverables are authored going forward.
 
-Run: uv run python scripts/migrate_todo_facets.py [--dry-run]
+Run: uv run python -m scripts.migrate_todo_facets [--dry-run]
 """
 
 import asyncio
-from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from app.db.mongodb.collections import get_async_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection
 
 todos_collection = get_async_collection("todos")
 

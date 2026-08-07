@@ -13,28 +13,23 @@ no longer define them):
 
 Idempotent: facts whose exact content already exists for the user are skipped.
 
-Run from repo root:
-    cd apps/api && uv run python scripts/migrate_mem0_memories.py [--user-id ID] [--dry-run]
+Run: uv run python -m scripts.migrate_mem0_memories [--user-id ID] [--dry-run]
 """
 
 import argparse
 import asyncio
 import os
-from pathlib import Path
 import sys
 
-# Ensure app is on path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+import httpx
 
-import httpx  # noqa: E402
-
-from app.agents.llm.client import register_llm_providers  # noqa: E402
-from app.constants.memory import MemorySourceType  # noqa: E402
-from app.db.chroma.chromadb import init_chroma  # noqa: E402
-from app.db.postgresql import init_postgresql_engine  # noqa: E402
-from app.db.repositories.users import user_repository  # noqa: E402
-from app.memory import pg_store  # noqa: E402
-from app.memory.engine import memory_engine  # noqa: E402
+from app.agents.llm.client import register_llm_providers
+from app.constants.memory import MemorySourceType
+from app.db.chroma.chromadb import init_chroma
+from app.db.postgresql import init_postgresql_engine
+from app.db.repositories.users import user_repository
+from app.memory import pg_store
+from app.memory.engine import memory_engine
 
 MEM0_API_BASE = "https://api.mem0.ai"
 MEM0_PAGE_SIZE = 100

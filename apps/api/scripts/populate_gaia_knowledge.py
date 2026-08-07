@@ -207,13 +207,11 @@ async def populate_knowledge(content_path: str | None = None, clear_first: bool 
 
     # Read content file
     content_file = Path(content_path)
-    # One-shot manual script: blocking Path IO before any concurrency starts is
-    # harmless — an async-fs migration here is noise, not a fix.
-    if not content_file.exists():  # noqa: ASYNC240
+    if not await asyncio.to_thread(content_file.exists):
         print(f"❌ Error: {content_path} not found!")
         return
 
-    content = content_file.read_text(encoding="utf-8")  # noqa: ASYNC240
+    content = await asyncio.to_thread(content_file.read_text, encoding="utf-8")
     print(f"✅ Loaded content: {len(content)} characters")
 
     # Clear existing knowledge if requested
