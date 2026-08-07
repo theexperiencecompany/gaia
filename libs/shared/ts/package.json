@@ -63,7 +63,7 @@
     "@types/amqplib": "^0.10.8",
     "@types/node": "^24.13.3",
     "@types/string-similarity": "^4.0.2",
-    "typescript": "^5.9.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10",
     "zustand": "^5.0.14"
   },
