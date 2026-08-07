@@ -11,6 +11,7 @@ from typing import Annotated, cast
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.memory import (
     MEMORY_EPISODES_DEFAULT_DAYS,
     MEMORY_EPISODES_MAX_RANGE_DAYS,
@@ -55,7 +56,7 @@ def _require_user_id(user: AuthenticatedUser) -> str:
 @router.get("")
 async def list_memories(
     user: Annotated[AuthenticatedUser, Depends(get_current_user)],
-    page: int = Query(default=1, ge=1, description="1-based page number"),
+    page: int = Query(default=1, ge=1, le=MAX_PAGE_NUMBER, description="1-based page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Memories per page"),
     category: str | None = Query(
         default=None, description="Exact folder to list (e.g. 'work/gaia')"

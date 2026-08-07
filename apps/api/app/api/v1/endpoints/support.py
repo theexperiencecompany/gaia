@@ -13,6 +13,7 @@ from fastapi import (
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
 from app.api.v1.middleware.rate_limiter import limiter
+from app.constants.general import MAX_PAGE_NUMBER
 from app.models.support_models import (
     SupportRateLimits,
     SupportRateLimitStatusResponse,
@@ -174,7 +175,7 @@ async def submit_support_request_with_attachments(
 @limiter.limit("30/minute")  # Rate limit: 30 requests per minute for fetching support requests
 async def get_my_support_requests(
     request: Request,
-    page: int = Query(1, ge=1, description="Page number"),
+    page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER, description="Page number"),
     per_page: int = Query(10, ge=1, le=50, description="Items per page"),
     status: SupportRequestStatus | None = Query(None, description="Filter by status"),
     user_id: str = Depends(get_user_id),

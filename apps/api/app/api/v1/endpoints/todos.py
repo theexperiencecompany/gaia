@@ -10,6 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_id,
     get_user_timezone_from_preferences,
 )
+from app.constants.general import MAX_PAGE_NUMBER
 from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.projects import project_repository
@@ -108,7 +109,7 @@ async def list_todos(
     due_today: bool = Query(False, description="Only todos due today"),
     due_this_week: bool = Query(False, description="Only todos due this week"),
     # Pagination
-    page: int = Query(1, ge=1),
+    page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER),
     per_page: int = Query(50, ge=1, le=100),
     # Options
     include_stats: bool = Query(False, description="Include statistics in response"),

@@ -2,6 +2,7 @@ from typing import cast
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from app.constants.general import MAX_PAGE_NUMBER
 from app.decorators.caching import Cacheable
 from app.models.blog_models import BlogCountResponse, BlogPost
 from app.services.blog_service import BlogService
@@ -15,7 +16,7 @@ _DEPRECATED_DETAIL = "Endpoint not used anymore. Blog posts are managed out-of-b
 @router.get("/blogs", response_model=list[BlogPost])
 @Cacheable(smart_hash=True, ttl=21600, model=list[BlogPost])  # 6 hours
 async def get_blogs(
-    page: int = Query(1, ge=1, description="Page number (starting from 1)"),
+    page: int = Query(1, ge=1, le=MAX_PAGE_NUMBER, description="Page number (starting from 1)"),
     limit: int = Query(20, ge=1, le=100, description="Number of blogs per page (1-100)"),
     search: str | None = Query(None, description="Search query for title, content, or tags"),
     include_content: bool = Query(

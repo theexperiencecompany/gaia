@@ -105,6 +105,21 @@ class TestListConversations:
         resp = await client.get("/api/v1/conversations?page=0")
         assert resp.status_code == 422
 
+    async def test_list_rejects_page_that_would_overflow_the_mongo_skip(
+        self, client: AsyncClient
+    ) -> None:
+        """A page too large to page with is a 422, not a 500.
+
+        `page` was bounded below (ge=1) but not above, and the service turns it
+        into `skip = (page - 1) * limit`. These exact values came from the
+        schemathesis contract gate, which drove GET /api/v1/conversations to a
+        500: the product is 10534517480782774985, past int64 max, so BSON cannot
+        encode the skip and the driver error escapes as a server error.
+        """
+        resp = await client.get("/api/v1/conversations?limit=55&page=191536681468777728")
+
+        assert resp.status_code == 422
+
 
 class TestGetConversation:
     """GET /api/v1/conversations/{id}"""
