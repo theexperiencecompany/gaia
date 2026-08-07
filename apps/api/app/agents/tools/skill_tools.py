@@ -11,7 +11,7 @@ from typing import Annotated, Any
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.agents.skills.installer import (
     install_from_github,
@@ -268,6 +268,13 @@ class LearnedSkillStep(BaseModel):
         "how to adapt the args.",
     )
 
+    @field_validator("goal", "tool")
+    @classmethod
+    def _reject_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must not be blank")
+        return value
+
 
 class LearnedSkillSpec(BaseModel):
     """Structured recipe for a reusable skill learned from a successful run."""
@@ -291,8 +298,9 @@ class LearnedSkillSpec(BaseModel):
         "['github'], [] for none). These surface as prerequisites in the skill.",
     )
     steps: list[LearnedSkillStep] = Field(
+        min_length=1,
         description="ORDERED steps that make up the skill. List them in the exact order they "
-        "must run; each step names the tool to call and its arguments."
+        "must run; each step names the tool to call and its arguments.",
     )
 
 
@@ -376,10 +384,13 @@ async def save_learned_skill(
             "of re-deriving them."
         )
     except ValueError as e:
-        return f"Failed to save skill: {e}"
+        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "invalid_spec"})
+        log.error(f"{LogTag.TOOL} Learned-skill save rejected", error=str(e), user_id=user_id)
+        return "Failed to save skill: the recipe is invalid (check the name and step fields)."
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Learned-skill save error: {e}")
-        return f"Error saving skill: {e}"
+        log.set(tool={"name": "save_learned_skill", "action": "save", "error": "persist_failed"})
+        log.error(f"{LogTag.TOOL} Learned-skill save error", error=str(e), user_id=user_id)
+        return "Error saving skill: the skill could not be persisted. Try again."
 
 
 # Export tools list for registry

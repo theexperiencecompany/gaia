@@ -21,6 +21,7 @@ import asyncio
 import os
 import pathlib
 import sys
+from typing import Any
 
 os.environ.setdefault("ENV", "development")
 # Dummy settings so importing the app package (which loads settings + the mongo
@@ -142,6 +143,39 @@ def _scripted_weak_model():
     )
 
 
+def _print_trajectory(msgs: list[Any]) -> None:
+    print("--- trajectory ---")
+    for m in msgs:
+        if isinstance(m, HumanMessage):
+            tag = "NUDGE" if m.content == COMPLETION_NUDGE_MESSAGE else "USER"
+            print(f"[{tag}] {m.content[:110]}")
+        elif isinstance(m, AIMessage):
+            if m.tool_calls:
+                print(
+                    f"[MODEL] tool_calls: {[tc['name'] + str(tc['args']) for tc in m.tool_calls]}"
+                )
+            if isinstance(m.content, str) and m.content.strip():
+                print(f"[MODEL] {m.content[:140]}")
+        elif isinstance(m, ToolMessage):
+            print(f"[TOOL:{m.name}] {str(m.content)[:90]}")
+
+
+def _report_outcome(msgs: list[Any]) -> None:
+    nudged = any(
+        isinstance(m, HumanMessage) and m.content == COMPLETION_NUDGE_MESSAGE for m in msgs
+    )
+    tool_calls = [
+        tc["name"] for m in msgs if isinstance(m, AIMessage) for tc in (m.tool_calls or [])
+    ]
+    print("\n--- outcome ---")
+    print(f"harness nudged a premature stop : {nudged}")
+    print(f"tool calls made                : {tool_calls}")
+    print(f"emails archived                : {sorted(ARCHIVED)}")
+    print(f"labels applied                 : {LABELS}")
+    ok = {"e1", "e3", "e5"} == ARCHIVED and LABELS.get("e2") and LABELS.get("e4")
+    print(f"\nTRIAGE CORRECT: {bool(ok)}")
+
+
 async def main() -> None:
     use_real = bool(
         os.environ.get("DEV_LLM_BASE_URL")
@@ -176,35 +210,8 @@ async def main() -> None:
     )
 
     msgs = result["messages"]
-    nudged = any(
-        isinstance(m, HumanMessage) and m.content == COMPLETION_NUDGE_MESSAGE for m in msgs
-    )
-    tool_calls = [
-        tc["name"] for m in msgs if isinstance(m, AIMessage) for tc in (m.tool_calls or [])
-    ]
-
-    print("--- trajectory ---")
-    for m in msgs:
-        if isinstance(m, HumanMessage):
-            tag = "NUDGE" if m.content == COMPLETION_NUDGE_MESSAGE else "USER"
-            print(f"[{tag}] {m.content[:110]}")
-        elif isinstance(m, AIMessage):
-            if m.tool_calls:
-                print(
-                    f"[MODEL] tool_calls: {[tc['name'] + str(tc['args']) for tc in m.tool_calls]}"
-                )
-            if isinstance(m.content, str) and m.content.strip():
-                print(f"[MODEL] {m.content[:140]}")
-        elif isinstance(m, ToolMessage):
-            print(f"[TOOL:{m.name}] {str(m.content)[:90]}")
-
-    print("\n--- outcome ---")
-    print(f"harness nudged a premature stop : {nudged}")
-    print(f"tool calls made                : {tool_calls}")
-    print(f"emails archived                : {sorted(ARCHIVED)}")
-    print(f"labels applied                 : {LABELS}")
-    ok = {"e1", "e3", "e5"} == ARCHIVED and LABELS.get("e2") and LABELS.get("e4")
-    print(f"\nTRIAGE CORRECT: {bool(ok)}")
+    _print_trajectory(msgs)
+    _report_outcome(msgs)
 
 
 if __name__ == "__main__":
