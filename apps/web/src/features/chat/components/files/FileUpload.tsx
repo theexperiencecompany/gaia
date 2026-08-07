@@ -372,9 +372,9 @@ export default function FileUpload({
                     : "Click to upload or drag and drop"}
                 </p>
                 <p className="text-center text-xs text-zinc-500">
-                  Images, PDF, TXT, MD, JSON, CSV, DOC, DOCX, XLSX, PPTX, RTF, EPUB, ODT, ODS, ODP (max{" "}
-                  {MAX_FILE_SIZE / (1024 * 1024)}MB per file, {MAX_FILES} files
-                  max)
+                  Images, PDF, TXT, MD, JSON, CSV, DOC, DOCX, XLSX, PPTX, RTF,
+                  EPUB, ODT, ODS, ODP (max {MAX_FILE_SIZE / (1024 * 1024)}MB per
+                  file, {MAX_FILES} files max)
                 </p>
               </>
             ) : isUploading ? (
