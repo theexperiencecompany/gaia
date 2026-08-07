@@ -127,7 +127,7 @@
           }
         },
         "useIterableCallbackReturn": "off",
-        "noEmptyBlockStatements": "warn",
+        "noEmptyBlockStatements": "error",
         "noEvolvingTypes": "error",
         "noDebugger": "error",
         "noShadowRestrictedNames": "error",
@@ -140,9 +140,10 @@
       },
       "performance": {
         "noBarrelFile": "off",
-        "noReExportAll": "warn",
+        "noReExportAll": "error",
         "noAccumulatingSpread": "error",
-        "noDelete": "error"
+        "noDelete": "error",
+        "noImgElement": "error"
       },
       "security": {
         "noDangerouslySetInnerHtmlWithChildren": "error",
@@ -178,16 +179,6 @@
     "./config/biome-rules/no-motion-full-import.grit"
   ],
   "overrides": [
-    {
-      "includes": ["apps/mobile/src/components/icons/index.ts"],
-      "linter": {
-        "rules": {
-          "performance": {
-            "noReExportAll": "off"
-          }
-        }
-      }
-    },
     {
       "includes": ["apps/web/**"],
       "linter": {

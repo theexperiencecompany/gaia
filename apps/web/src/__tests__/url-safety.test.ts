@@ -41,13 +41,12 @@ describe("sanitizeRedirectUrl", () => {
     expect(sanitizeRedirectUrl(url)).toBeNull();
   });
 
-  it.each([
-    "//evil.com",
-    "/\\evil.com",
-    "\\\\evil.com",
-  ])("blocks protocol-relative / backslash open-redirect %s", (url) => {
-    expect(sanitizeRedirectUrl(url)).toBeNull();
-  });
+  it.each(["//evil.com", "/\\evil.com", "\\\\evil.com"])(
+    "blocks protocol-relative / backslash open-redirect %s",
+    (url) => {
+      expect(sanitizeRedirectUrl(url)).toBeNull();
+    },
+  );
 
   it("blocks malformed URLs", () => {
     expect(sanitizeRedirectUrl("ht!tp://://")).toBeNull();

@@ -477,7 +477,7 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
           const raw = String(row[props.xKey]);
           const label = rotateLabels ? truncate(raw, 6) : truncate(raw, 9);
           return (
-            <G key={`group-${String(row[props.xKey])}-${i}`}>
+            <G key={`group-${String(row[props.xKey])}`}>
               {keys.map((key, ki) => {
                 const val = toNumber(row[key]);
                 const h = (val / maxVal) * plotH;
@@ -561,7 +561,7 @@ export function BarChartView(props: z.infer<typeof barChartSchema>) {
             padTop + i * groupHeight + (groupHeight - usableGroupH) / 2;
           const groupCenter = padTop + i * groupHeight + groupHeight / 2;
           return (
-            <G key={`group-${String(row[props.xKey])}-${i}`}>
+            <G key={`group-${String(row[props.xKey])}`}>
               {keys.map((key, ki) => {
                 const val = toNumber(row[key]);
                 const w = (val / maxVal) * plotW;
