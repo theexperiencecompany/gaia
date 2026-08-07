@@ -10,6 +10,13 @@ const config: KnipConfig = {
   // ─── Global: suppress exports/types for dynamically-consumed files ───
   // ignoreIssues is root-only (not valid at workspace level).
   ignoreIssues: {
+    // macOS Finder-icon updater: passes the absolute path of the SIP-protected
+    // /usr/bin/osascript to execFile (never via $PATH, so $PATH can't be
+    // repointed at a malicious binary). It's a runtime system command, not an
+    // import — knip flags it as unresolved only on the Linux CI runner where
+    // the macOS binary is absent.
+    "apps/desktop/src/main/app-icon.ts": ["unresolved"],
+
     // OpenUI: components resolved by name via @openuidev/react-lang Renderer
     "apps/web/src/config/openui/components/**": ["exports", "types"],
     "apps/web/src/config/openui/genericLibrary.tsx": ["exports", "types"],

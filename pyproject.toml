@@ -460,6 +460,9 @@ unfixable = [
 # str()-normalizes it before the ISO check — object would force a cast for
 # zero benefit.
 "tools/logcheck/logcheck.py" = ["ANN401"]
+# ARG001: ARQ injects the job context (`ctx`) into every task function; the
+# nurture task doesn't use it.
+"apps/api/app/workers/tasks/nurture_tasks.py" = ["ARG001"]
 # ANN401: recursively processes arbitrary JSON-serializable data (dict, list,
 # str, or scalar) for an MCP-UI iframe payload -- not dict-shaped.
 "apps/api/app/helpers/agent_helpers.py" = ["ANN401"]

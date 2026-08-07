@@ -1,0 +1,18 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+You know those small chores you do every single week? The status update, the
+inbox cleanup, the &ldquo;did anyone reply to that thread&rdquo;
+check?<br /><br />
+In GAIA you can hand those over for good. Just describe the automation in
+plain English and GAIA builds the workflow for you. No drag-and-drop
+builder, no flowcharts.<br /><br />
+&ldquo;Every Friday at 4, draft my weekly update from what I shipped this
+week.&rdquo; &ldquo;When an email from a client comes in, summarize it and
+ping me on Slack.&rdquo; That kind of thing.<br /><br />
+Workflows can trigger on a schedule or react to things happening in Gmail,
+Slack, GitHub, Linear, Notion and more. Set it up once and it just quietly
+runs.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

@@ -23,7 +23,6 @@ from app.agents.tools.tracked_todo_tools import (
     _build_priority_update,
     _build_recurrence_update,
     _build_scheduled_at_update,
-    _fire_and_forget,
     _format_first_fire_note,
     _format_tracked_todo_full,
     _get_user_tz,
@@ -44,6 +43,7 @@ from app.agents.tools.tracked_todo_tools import (
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import Priority, TodoDocument, TodoResponse
+from shared.py.wide_events import spawn_logged_task
 
 pytestmark = pytest.mark.unit
 
@@ -617,7 +617,7 @@ class TestGetUserTz:
 
 
 # ---------------------------------------------------------------------------
-# _fire_and_forget
+# spawn_logged_task (wide-event-aware fire-and-forget)
 # ---------------------------------------------------------------------------
 
 
@@ -628,7 +628,7 @@ class TestFireAndForget:
         async def _mark_done():
             ran["done"] = True
 
-        _fire_and_forget(_mark_done())
+        spawn_logged_task("mark_done_test", _mark_done())
         # The task is scheduled, not awaited inline — give the loop one tick.
         import asyncio
 

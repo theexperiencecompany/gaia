@@ -10,11 +10,14 @@ import {
 } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
 
-import FilePreview, {
-  type UploadedFilePreview,
-} from "@/features/chat/components/files/FilePreview";
-import FileUpload from "@/features/chat/components/files/FileUpload";
+import FilePreview from "@/features/chat/components/files/FilePreview";
+import {
+  ALLOWED_FILE_TYPES,
+  LARGE_PASTE_THRESHOLD_CHARS,
+  PASTED_TEXT_FILENAME,
+} from "@/features/chat/constants/files";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
+import { useFileAttachments } from "@/features/chat/hooks/useFileAttachments";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -29,7 +32,6 @@ import {
 } from "@/stores/composerStore";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 import { useWorkflowSelectionStore } from "@/stores/workflowSelectionStore";
-import type { FileData } from "@/types/shared/fileTypes";
 import type { SearchMode } from "@/types/shared/searchTypes";
 
 import ComposerInput, { type ComposerInputRef } from "./ComposerInput";
@@ -44,12 +46,9 @@ interface MainSearchbarProps {
   scrollToBottom: () => void;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   fileUploadRef?: React.RefObject<{
-    openFileUploadModal: () => void;
-    handleDroppedFiles: (files: File[]) => void;
+    attachFiles: (files: File[]) => Promise<void>;
   } | null>;
   appendToInputRef?: React.RefObject<((text: string) => void) | null>;
-  droppedFiles?: File[];
-  onDroppedFilesProcessed?: () => void;
   hasMessages: boolean;
   conversationId?: string;
   voiceModeActive: () => void;
@@ -62,8 +61,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
   inputRef,
   fileUploadRef,
   appendToInputRef,
-  droppedFiles,
-  onDroppedFilesProcessed,
   hasMessages,
   conversationId,
   voiceModeActive,
@@ -83,18 +80,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedToolCategory,
     clearToolSelection,
   } = useComposerModeSelection();
-  const {
-    fileUploadModal,
-    uploadedFiles,
-    uploadedFileData,
-    pendingDroppedFiles,
-    setFileUploadModal,
-    setUploadedFiles,
-    setUploadedFileData,
-    setPendingDroppedFiles,
-    removeUploadedFile,
-    clearAllFiles,
-  } = useComposerFiles();
+  const { uploadedFiles, uploadedFileData, removeUploadedFile, clearAllFiles } =
+    useComposerFiles();
   const isUploadingFiles = useComposerIsUploading();
   const { isSlashCommandDropdownOpen, setIsSlashCommandDropdownOpen } =
     useComposerUI();
@@ -106,6 +93,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
   const { autoSend } = useWorkflowSelectionStore();
 
   const sendMessage = useSendMessage();
+  const { attachFiles } = useFileAttachments(conversationId);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
@@ -130,40 +119,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
   // to true, which would reset the once-only guard and fire the workflow
   // twice. ChatPage is memoized and never remounts, so it hosts that guard.
 
-  // Expose file upload functions to parent component via ref
-  useImperativeHandle(
-    fileUploadRef,
-    () => ({
-      openFileUploadModal: () => setFileUploadModal(true),
-      handleDroppedFiles: (files: File[]) => {
-        setPendingDroppedFiles(files);
-      },
-    }),
-    [setFileUploadModal, setPendingDroppedFiles],
-  );
-
-  useEffect(() => {
-    if (fileUploadModal && pendingDroppedFiles.length > 0) {
-      // Just clear the pending files here after the modal is opened
-      setPendingDroppedFiles([]);
-      if (onDroppedFilesProcessed) {
-        onDroppedFilesProcessed();
-      }
-    }
-  }, [
-    fileUploadModal,
-    pendingDroppedFiles,
-    onDroppedFilesProcessed,
-    setPendingDroppedFiles,
-  ]);
-
-  // Process any droppedFiles passed from parent when they change
-  useEffect(() => {
-    if (droppedFiles && droppedFiles.length > 0) {
-      setPendingDroppedFiles(droppedFiles);
-      setFileUploadModal(true);
-    }
-  }, [droppedFiles, setPendingDroppedFiles, setFileUploadModal]);
+  // Let the parent (drag-and-drop on the chat page) attach files directly.
+  useImperativeHandle(fileUploadRef, () => ({ attachFiles }), [attachFiles]);
 
   const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
@@ -251,8 +208,15 @@ const Composer: React.FC<MainSearchbarProps> = ({
     }
   };
 
-  const openFileUploadModal = () => {
-    setFileUploadModal(true);
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    // Reset so picking the same file again re-triggers onChange.
+    e.target.value = "";
+    if (files.length > 0) attachFiles(files);
   };
 
   const handleSelectionChange = (mode: SearchMode) => {
@@ -268,7 +232,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     // If the user selects upload_file mode, open the file selector immediately
     if (mode === "upload_file")
       setTimeout(() => {
-        openFileUploadModal();
+        openFilePicker();
       }, 100);
   };
 
@@ -336,62 +300,16 @@ const Composer: React.FC<MainSearchbarProps> = ({
     return () => clearInterval(interval);
   }, [setIsSlashCommandDropdownOpen]);
 
-  const handleFilesUploaded = (files: UploadedFilePreview[]) => {
-    if (files.length === 0) {
-      // If no files, just clear the uploaded files
-      setUploadedFiles([]);
-      setUploadedFileData([]);
-      return;
-    }
-
-    // Check if these are temporary files (with loading state) or final uploaded files
-    const tempFiles = files.some((file) => file.isUploading);
-
-    if (tempFiles) {
-      // These are temporary files with loading state, just set them
-      setUploadedFiles(files);
-      return;
-    }
-
-    trackEvent(ANALYTICS_EVENTS.CHAT_FILE_UPLOADED, {
-      file_count: files.length,
-      file_types: files.map((f) => f.type),
-      conversation_id: conversationId,
-    });
-    // These are the final uploaded files, replace temp files with final versions
-    setUploadedFiles(
-      files.map((file) => {
-        // Find the corresponding final file (if any)
-        const finalFile = files.find((f) => f.tempId === file.id);
-        // If found, return the final file, otherwise keep the previous file
-        return finalFile || file;
-      }),
-    );
-
-    // Now process the complete file data from the response
-    const fileDataArray = files.map((file) => {
-      // For files that have complete response data (not temp files):
-      // Use the data from the API response, including description and message
-      return {
-        fileId: file.id,
-        url: file.url,
-        filename: file.name,
-        description: file.description || `File: ${file.name}`,
-        type: file.type,
-        message: file.message || "File uploaded successfully",
-      } as FileData;
-    });
-
-    // Store the complete file data
-    setUploadedFileData(fileDataArray);
-  };
-
   // Store paste handler in a ref to avoid re-subscribing the event listener
   // whenever dependencies change (advanced-event-handler-refs pattern).
   const handlePasteRef = useRef((_e: ClipboardEvent) => {
     /* placeholder: replaced with the real handler on the next line */
   });
   handlePasteRef.current = (e: ClipboardEvent) => {
+    // Only react to pastes inside the composer input — an image pasted into
+    // any other element while Composer is mounted must not be captured.
+    if (e.target !== inputRef.current) return;
+
     const items = e.clipboardData?.items;
     if (!items) return;
     for (let i = 0; i < items.length; i++) {
@@ -399,12 +317,20 @@ const Composer: React.FC<MainSearchbarProps> = ({
         const file = items[i].getAsFile();
         if (file) {
           e.preventDefault();
-          // Open the file upload modal with the pasted image
-          setFileUploadModal(true);
-          setPendingDroppedFiles([file]); // Store the pasted file
-          break;
+          attachFiles([file]);
+          return;
         }
       }
+    }
+
+    // Large text pasted into the composer becomes a .txt attachment instead of
+    // inline text — keeps the input responsive and rides the file pipeline.
+    const text = e.clipboardData?.getData("text/plain");
+    if (text && text.length > LARGE_PASTE_THRESHOLD_CHARS) {
+      e.preventDefault();
+      attachFiles([
+        new File([text], PASTED_TEXT_FILENAME, { type: "text/plain" }),
+      ]);
     }
   };
 
@@ -492,7 +418,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         />
         <ComposerToolbar
           selectedMode={selectedMode}
-          openFileUploadModal={openFileUploadModal}
+          openFilePicker={openFilePicker}
           handleFormSubmit={handleFormSubmit}
           searchbarText={inputText}
           handleSelectionChange={handleSelectionChange}
@@ -503,15 +429,13 @@ const Composer: React.FC<MainSearchbarProps> = ({
           onVoiceModeHover={onVoiceModeHover}
         />
       </div>
-      <FileUpload
-        open={fileUploadModal}
-        onOpenChange={setFileUploadModal}
-        onFilesUploaded={handleFilesUploaded}
-        initialFiles={pendingDroppedFiles}
-        isPastedFile={pendingDroppedFiles.some((file) =>
-          file.type.includes("image"),
-        )}
-        conversationId={conversationId}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        onChange={handleFileInputChange}
+        accept={ALLOWED_FILE_TYPES.join(",")}
+        multiple
       />
     </div>
   );

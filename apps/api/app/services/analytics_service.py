@@ -24,6 +24,9 @@ class AnalyticsEvents(StrEnum):
     USER_LOGGED_IN = "user:logged_in"
     USER_LOGGED_OUT = "user:logged_out"
 
+    # Lifecycle email
+    NURTURE_EMAIL_SENT = "nurture:email_sent"
+
     # Payments (used by payment webhook processing)
     PAYMENT_SUCCEEDED = "payment:succeeded"
     PAYMENT_FAILED = "payment:failed"

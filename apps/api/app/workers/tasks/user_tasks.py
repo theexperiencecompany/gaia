@@ -5,21 +5,20 @@ User-related ARQ tasks.
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
+from app.constants.notifications import CHANNEL_TYPE_EMAIL
 from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
+from app.utils.notification.channel_preferences import normalize_channel_preferences
+from app.utils.timezone import as_utc
 from shared.py.wide_events import log
-
-
-def _as_utc(dt: datetime | None) -> datetime | None:
-    # MongoDB may return naive datetimes
-    return dt.replace(tzinfo=UTC) if dt and dt.tzinfo is None else dt
 
 
 def _emails_sent_this_episode(user: UserDocument) -> int:
     """Sends in the current inactivity episode; the counter resets when the user returns."""
-    last_active = _as_utc(user.last_active_at)
-    last_email_sent = _as_utc(user.last_inactive_email_sent)
+    last_active = as_utc(user.last_active_at)
+    last_email_sent = as_utc(user.last_inactive_email_sent)
 
     # An email older than last_active_at belongs to a previous inactivity episode.
     if not last_email_sent or (last_active and last_email_sent < last_active):
@@ -31,9 +30,12 @@ def _emails_sent_this_episode(user: UserDocument) -> int:
 
 def _should_send_inactive_email(user: UserDocument) -> bool:
     """Throttle policy: per inactivity episode, first email after 7 days, second 7+ days later, max 2."""
+    if not normalize_channel_preferences(user.notification_channel_prefs)[CHANNEL_TYPE_EMAIL]:
+        return False
+
     now = datetime.now(UTC)
-    last_active = _as_utc(user.last_active_at)
-    last_email_sent = _as_utc(user.last_inactive_email_sent)
+    last_active = as_utc(user.last_active_at)
+    last_email_sent = as_utc(user.last_inactive_email_sent)
 
     # Check if user is inactive long enough (7+ days)
     if not last_active or (now - last_active).days < 7:
@@ -59,6 +61,12 @@ async def check_inactive_users(ctx: dict[str, Any]) -> str:
     """
     from app.services.email import send_inactive_user_email
 
+    if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
+        log.info(f"{LogTag.WORKER} Inactive-email run skipped: email delivery not configured")
+        return "skipped: email not configured"
+
+    log.info(f"{LogTag.WORKER} Checking for inactive users")
+
     now = datetime.now(UTC)
     seven_days_ago = now - timedelta(days=7)
 
@@ -76,20 +84,17 @@ async def check_inactive_users(ctx: dict[str, Any]) -> str:
         if not user.email or not _should_send_inactive_email(user):
             continue
         try:
-            await send_inactive_user_email(user.email, user.name)
+            await send_inactive_user_email(user.email, user.id, user.name)
             await user_repository.record_inactive_email(
                 user.id, _emails_sent_this_episode(user) + 1
             )
             email_count += 1
+            log.info(f"{LogTag.WORKER} Sent inactive email to {user.email}")
         except Exception as e:
             email_failures += 1
-            log.error(
-                f"{LogTag.WORKER} Failed to send inactive email",
-                user_id=user.id,
-                email=user.email,
-                error_type=type(e).__name__,
-                error=str(e),
-            )
+            log.error(f"{LogTag.WORKER} Failed to send email to {user.email}: {e!s}")
 
     log.set(emails_sent=email_count, email_failures=email_failures)
-    return f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
+    message = f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
+    log.info(f"{LogTag.WORKER} {message}")
+    return message

@@ -108,6 +108,22 @@ def _strip_artifacts_prefix(abs_path: str, conv_id: str) -> str:
     return abs_path.rsplit("/", 1)[-1]
 
 
+async def _record_watch_exit(
+    user_id: str, mode: DetectionMode, exc: Exception | None
+) -> None:
+    """One wide event per dead watch stream, with the reason when there is one."""
+    async with log_context(
+        "sandbox_artifact_watch_exit",
+        user={"id": user_id},
+        sandbox={"artifact_mode": mode},
+    ):
+        log.warning(
+            f"{LogTag.ARTIFACT_WATCHER} watch stream exited",
+            error=str(exc) if exc else None,
+            error_type=type(exc).__name__ if exc else None,
+        )
+
+
 class ArtifactWatcher:
     """One instance per pooled sandbox. Owned by `PooledSandbox.watcher`."""
 
@@ -218,25 +234,21 @@ class ArtifactWatcher:
             timeout=0,
         )
 
-    async def _on_watch_exit(self, exc: Exception | None = None) -> None:
+    def _on_watch_exit(self, exc: Exception | None = None) -> None:
         # Stream died (envd restart / pause). Mark dead so the next acquire
         # transparently reopens it. envd only invokes on_exit on a real error,
         # and until now it flipped the flag with no trace at all — a sandbox
         # whose artifacts silently stopped reaching chat looked identical to
-        # one the agent never wrote to. envd awaits an async callback, so this
-        # gets a real boundary rather than a line-only warning.
-        async with log_context(
+        # one the agent never wrote to. The flag flip is synchronous (the envd
+        # callback is sync and must complete before acquire can reopen), and
+        # the wide-event record of the exit is spawned so it still lands even
+        # though the callback itself cannot await.
+        self._stopped = True
+        self._handle = None
+        spawn_logged_task(
             "sandbox_artifact_watch_exit",
-            user={"id": self.user_id},
-            sandbox={"artifact_mode": self._mode},
-        ):
-            self._stopped = True
-            self._handle = None
-            log.warning(
-                f"{LogTag.ARTIFACT_WATCHER} watch stream exited",
-                error=str(exc) if exc else None,
-                error_type=type(exc).__name__ if exc else None,
-            )
+            _record_watch_exit(self.user_id, self._mode, exc),
+        )
 
     async def _on_fs_event(self, ev: FilesystemEvent) -> None:
         async with log_context(

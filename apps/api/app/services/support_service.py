@@ -47,6 +47,9 @@ async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
                 support_index = url_parts.index("support")
                 if support_index + 1 < len(url_parts):
                     filename_with_ext = url_parts[support_index + 1]
+                    # The file is named {ticket_id}_{original_name}; the ticket
+                    # id rides in the URL so a failed delete stays attributable.
+                    ticket_id = filename_with_ext.split("_", 1)[0]
                     # Remove file extension from public_id
                     public_id = f"support/{filename_with_ext.rsplit('.', 1)[0]}"
 
@@ -64,6 +67,7 @@ async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
             log.error(
                 "Error deleting file from Cloudinary",
                 url=url,
+                ticket_id=ticket_id,
                 error=str(e),
                 error_type=type(e).__name__,
             )

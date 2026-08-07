@@ -88,7 +88,7 @@ async def get_available_skills_text(
         user_skills = await get_skills_for_agent(user_id, agent_name)
     except Exception as e:
         log.warning(
-            f"{LogTag.SKILLS} Failed to load user skills",
+            f"{LogTag.SKILLS} Failed to load user skills: {e}",
             agent_name=agent_name,
             error_type=type(e).__name__,
         )

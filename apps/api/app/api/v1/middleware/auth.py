@@ -78,6 +78,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/device/pair/poll",
             "/api/v1/device/token",
             "/api/v1/device/servers",
+            # One-click email unsubscribe — opened from mail clients with no
+            # session; the HMAC-signed token authenticates the user itself.
+            "/api/v1/notifications/unsubscribe",
             # Dev identity router (mounted only in development). Excluded so the
             # mint endpoint is reachable before any user exists — otherwise the
             # bypass would 401 the very request that bootstraps the first user.
