@@ -194,10 +194,13 @@ const config: KnipConfig = {
     "tsc",
     "tsx",
     "diff",
-    // Linux desktop protocol registration: runtime shell commands invoked via
-    // spawnSync in apps/desktop/src/main/protocol.ts (no npm package).
+    // Desktop runtime system commands invoked via spawnSync/execFile (no npm
+    // package): Linux protocol registration in protocol.ts, and the macOS
+    // Finder-icon updater in app-icon.ts (macOS-only binary, absent on the
+    // Linux CI runner).
     "update-desktop-database",
     "xdg-mime",
+    "osascript",
   ],
 
   // ─── Workspace definitions ───────────────────────────────────────────
