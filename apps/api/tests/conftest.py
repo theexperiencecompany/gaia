@@ -345,11 +345,12 @@ def fake_auth_credentials() -> dict:
 # site. Keep this list in sync with `grep -rl "from app.workers.queue import"`.
 _ENQUEUE_CALL_SITES = (
     "app.workers.tasks.tracked_todo_tasks",
-    "app.workers.tasks.workflow_tasks",
     "app.services.workflow.queue_service",
     "app.services.oauth.oauth_service",
     "app.services.tracked_todo_service",
     "app.services.scheduler_service",
+    "app.services.onboarding.intelligence_job",
+    "app.workers.tasks.memory_backfill_tasks",
 )
 
 
