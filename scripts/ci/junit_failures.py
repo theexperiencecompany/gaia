@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["defusedxml==0.7.1"]
+# ///
 """Print a failing-test summary from a pytest JUnit XML file.
 
 Usage:
-    python junit_failures.py [--passed] path/to/pytest.xml
+    uv run scripts/ci/junit_failures.py [--passed] path/to/pytest.xml
 
 Default prints `module::test` lines for failed/error cases plus counts.
 `--passed` prints passed cases instead (used by the regression-proof job to
@@ -12,7 +16,8 @@ name the tests that pass on base).
 from __future__ import annotations
 
 import sys
-from xml.etree import ElementTree
+
+from defusedxml.ElementTree import parse as parse_xml
 
 
 def main() -> int:
@@ -24,7 +29,7 @@ def main() -> int:
         return 2
     path = args[0]
     try:
-        root = ElementTree.parse(path).getroot()
+        root = parse_xml(path).getroot()
     except FileNotFoundError:
         # Quiet when the suite never ran (the calling step uses if: always()).
         return 0

@@ -197,18 +197,11 @@ run_knip() {
     return
   fi
 
-  local raw_output
-  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
+  local raw_output knip_status=0
+  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) \
+    || knip_status=$?
 
-  if [[ -z "$raw_output" ]]; then
-    echo -e "  ${GREEN}No unused code found.${RESET}"
-    echo ""
-    return
-  fi
-
-  FOUND_ISSUES=true
-
-  # Count total knip findings
+  # Count total knip findings from its section headers ("Unused files (12)").
   local knip_total=0
   while IFS= read -r line; do
     if [[ "$line" =~ ^[A-Z][a-z]+.*\(([0-9]+)\)$ ]]; then
@@ -216,6 +209,19 @@ run_knip() {
       knip_total=$((knip_total + count))
     fi
   done <<< "$raw_output"
+
+  # Gate on findings and knip's exit status — never on whether it printed
+  # anything. stderr is merged into $raw_output, so any chatter on it (today: a
+  # Node `module.register()` DeprecationWarning) used to set FOUND_ISSUES and
+  # fail the lane while reporting "0 dead code items found" — a contradiction no
+  # edit to the codebase could clear.
+  if ((knip_total == 0)) && ((knip_status == 0)); then
+    echo -e "  ${GREEN}No unused code found.${RESET}"
+    echo ""
+    return
+  fi
+
+  FOUND_ISSUES=true
   TOTAL_DEAD_CODE=$((TOTAL_DEAD_CODE + knip_total))
 
   if $VERBOSE; then
