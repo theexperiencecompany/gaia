@@ -10,6 +10,13 @@ const config: KnipConfig = {
   // ─── Global: suppress exports/types for dynamically-consumed files ───
   // ignoreIssues is root-only (not valid at workspace level).
   ignoreIssues: {
+    // macOS Finder-icon updater: passes the absolute path of the SIP-protected
+    // /usr/bin/osascript to execFile (never via $PATH, so $PATH can't be
+    // repointed at a malicious binary). It's a runtime system command, not an
+    // import — knip flags it as unresolved only on the Linux CI runner where
+    // the macOS binary is absent.
+    "apps/desktop/src/main/app-icon.ts": ["unresolved"],
+
     // OpenUI: components resolved by name via @openuidev/react-lang Renderer
     "apps/web/src/config/openui/components/**": ["exports", "types"],
     "apps/web/src/config/openui/genericLibrary.tsx": ["exports", "types"],
@@ -194,13 +201,10 @@ const config: KnipConfig = {
     "tsc",
     "tsx",
     "diff",
-    // Desktop runtime system commands invoked via spawnSync/execFile (no npm
-    // package): Linux protocol registration in protocol.ts, and the macOS
-    // Finder-icon updater in app-icon.ts (macOS-only binary, absent on the
-    // Linux CI runner).
+    // Linux desktop protocol registration: runtime shell commands invoked via
+    // spawnSync in apps/desktop/src/main/protocol.ts (no npm package).
     "update-desktop-database",
     "xdg-mime",
-    "osascript",
   ],
 
   // ─── Workspace definitions ───────────────────────────────────────────

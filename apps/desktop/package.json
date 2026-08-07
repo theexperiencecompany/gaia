@@ -26,9 +26,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.7",
-    "@gaia/shared": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^3.0.0",
+    "@gaia/shared": "workspace:*",
     "@types/node": "^24.13.3",
     "electron": "^39.8.10",
     "electron-builder": "^25.1.8",
