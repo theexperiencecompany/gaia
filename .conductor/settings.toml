@@ -1,4 +1,5 @@
 "$schema" = "https://conductor.build/schemas/settings.repo.schema.json"
 
 [scripts]
-setup = "mise trust -a & mise run setup:deps"
+setup = "mise trust -a && mise run wt:env && mise run setup:deps"
+run = "mise dev"

@@ -259,7 +259,7 @@ export function MCPAppRenderer({ data }: Props) {
       const timeout = setTimeout(() => b.close(), 500);
       b.teardownResource({})
         .catch(() => {
-          /* fire-and-forget: force-close happens regardless in finally */
+          /* best-effort teardown: force-close happens in finally regardless */
         })
         .finally(() => {
           clearTimeout(timeout);

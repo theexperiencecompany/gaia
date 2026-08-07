@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 import re
 import shutil
+import time
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
-from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer
+from app.services.storage.metrics import FsOps, add_fs_bytes, fs_timer, record_fs_op
 from shared.py.wide_events import log
 
 
@@ -146,10 +148,11 @@ async def write_skill_file(
         skills_root = _require_mount() / "skills" / user_id / skill_name
         target = _contained(skills_root, relative_path, root_label="skill root")
         target.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, str):
-            target.write_text(content, encoding="utf-8")
-        else:
-            target.write_bytes(content)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        with target.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         return target
 
     async with fs_timer(FsOps.WRITE_SKILL_FILE):
@@ -158,30 +161,53 @@ async def write_skill_file(
     return path
 
 
+def write_session_file_sync(
+    user_id: str,
+    conversation_id: str,
+    relative_path: str,
+    content: bytes | str,
+) -> tuple[Path, str]:
+    """Write a session-scoped file. Returns ``(host_path, sandbox_path)``.
+
+    Sync core of ``write_session_file`` — call it directly only from code
+    already off the event loop (e.g. Composio custom tools, which run
+    synchronously inside the tool node).
+    """
+    ensure_safe_path_id(conversation_id, label="conversation_id")
+    start = time.monotonic()
+    error: BaseException | None = None
+    try:
+        base = _require_mount() / "users" / user_id / "sessions" / conversation_id
+        target = _contained(base, relative_path, root_label="session root")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        data = content.encode("utf-8") if isinstance(content, str) else content
+        with target.open("wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+    except BaseException as exc:
+        error = exc
+        raise
+    finally:
+        record_fs_op(
+            FsOps.WRITE_SESSION_FILE,
+            duration_ms=(time.monotonic() - start) * 1000.0,
+            error=error,
+        )
+    add_fs_bytes(FsOps.WRITE_SESSION_FILE, _content_size(content))
+    return target, f"{sandbox_session_path(conversation_id)}/{relative_path}"
+
+
 async def write_session_file(
     user_id: str,
     conversation_id: str,
     relative_path: str,
     content: bytes | str,
 ) -> tuple[Path, str]:
-    """Write a session-scoped file. Returns ``(host_path, sandbox_path)``."""
-    ensure_safe_path_id(conversation_id, label="conversation_id")
-
-    def _write() -> tuple[Path, str]:
-        base = _require_mount() / "users" / user_id / "sessions" / conversation_id
-        target = _contained(base, relative_path, root_label="session root")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(content, str):
-            target.write_text(content, encoding="utf-8")
-        else:
-            target.write_bytes(content)
-        sandbox_view = f"/workspace/sessions/{conversation_id}/{relative_path}"
-        return target, sandbox_view
-
-    async with fs_timer(FsOps.WRITE_SESSION_FILE):
-        result = await asyncio.to_thread(_write)
-    add_fs_bytes(FsOps.WRITE_SESSION_FILE, _content_size(content))
-    return result
+    """Async wrapper over ``write_session_file_sync`` for event-loop callers."""
+    return await asyncio.to_thread(
+        write_session_file_sync, user_id, conversation_id, relative_path, content
+    )
 
 
 def page_bounds(offset: int, limit: int) -> tuple[int, int]:
@@ -221,10 +247,7 @@ async def read_user_file(
     start, end = page_bounds(offset, limit)
 
     def _read() -> tuple[list[str], int]:
-        base, rel = _host_base_and_rel(user_id, workspace_rel_path)
-        target = _contained(base, rel, root_label="workspace root")
-        if not target.is_file():
-            raise FileNotFoundError(workspace_rel_path)
+        target = _resolve_user_file_sync(user_id, workspace_rel_path)
         sliced: list[str] = []
         total = 0
         with target.open("r", encoding="utf-8", errors="replace") as handle:
@@ -235,6 +258,25 @@ async def read_user_file(
         return sliced, total
 
     return await asyncio.to_thread(_read)
+
+
+def _resolve_user_file_sync(user_id: str, workspace_rel_path: str) -> Path:
+    base, rel = _host_base_and_rel(user_id, workspace_rel_path)
+    target = _contained(base, rel, root_label="workspace root")
+    if not target.is_file():
+        raise FileNotFoundError(workspace_rel_path)
+    return target
+
+
+async def resolve_user_file(user_id: str, workspace_rel_path: str) -> Path:
+    """Resolve a ``/workspace``-relative path to its contained host ``Path``.
+
+    Same containment as ``read_user_file`` (``..``/symlink-escape proof). Raises
+    ``FileNotFoundError`` if missing/not a regular file and ``JuiceFSUnavailable``
+    if the host mount is absent. Use this when a caller needs the file path itself
+    (e.g. to run ``grep`` over it) rather than paged lines.
+    """
+    return await asyncio.to_thread(_resolve_user_file_sync, user_id, workspace_rel_path)
 
 
 async def read_user_file_bytes(

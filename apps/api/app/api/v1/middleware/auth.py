@@ -1,10 +1,8 @@
 """WorkOS session auth middleware + ``get_current_user`` dependency."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
-from bson import ObjectId
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -16,7 +14,9 @@ from app.config.settings import settings
 from app.constants.auth import DEV_USER_HEADER, DEV_USER_MISSING_HINT
 from app.constants.error_codes import NOT_AUTHENTICATED
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.core.request_context import set_authenticated_user
+from app.db.repositories.users import user_repository
+from app.models.user_models import AuthenticatedUser, user_to_legacy_dict
 from app.utils.auth_utils import (
     authenticate_workos_session,
     build_user_context,
@@ -27,7 +27,7 @@ from shared.py.wide_events import log
 
 def get_current_user(request: Request) -> dict[str, Any] | None:
     """Return the authenticated user dict on ``request.state``, or ``None``."""
-    return getattr(request.state, "user", None)
+    return cast("dict[str, Any] | None", getattr(request.state, "user", None))
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
@@ -43,7 +43,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         app: ASGIApp,
         workos_client: AsyncWorkOSClient | None = None,
         exclude_paths: list[str] | None = None,
-    ):
+    ) -> None:
         super().__init__(app)
         self.workos = workos_client or AsyncWorkOSClient(
             api_key=settings.WORKOS_API_KEY,
@@ -78,6 +78,9 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/api/v1/device/pair/poll",
             "/api/v1/device/token",
             "/api/v1/device/servers",
+            # One-click email unsubscribe — opened from mail clients with no
+            # session; the HMAC-signed token authenticates the user itself.
+            "/api/v1/notifications/unsubscribe",
             # Dev identity router (mounted only in development). Excluded so the
             # mint endpoint is reachable before any user exists — otherwise the
             # bypass would 401 the very request that bootstraps the first user.
@@ -103,6 +106,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     ) -> Response:
         """Authenticate, then invoke the next handler. Refresh cookies on the way out."""
         if any(request.url.path.startswith(path) for path in self.exclude_paths):
+            self._publish_user(request)
             return await call_next(request)
 
         if self.dev_bypass_email:
@@ -156,28 +160,23 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 token = auth_header.split(" ", 1)[1]
                 agent_info = verify_agent_token(token)
             if agent_info:
-                user_id = agent_info["user_id"]
-                if not isinstance(user_id, ObjectId):
-                    try:
-                        user_id = ObjectId(user_id)
-                    except Exception as e:
-                        log.error(f"{LogTag.API} Invalid user_id format: {user_id} - {e}")
-                        user_data = None
-                    else:
-                        user_data = await users_collection.find_one({"_id": user_id})
-                else:
-                    user_data = await users_collection.find_one({"_id": user_id})
-                if user_data:
+                try:
+                    user_data = await user_repository.get(str(agent_info["user_id"]))
+                except Exception as e:
+                    log.error(f"{LogTag.API} Invalid user_id in agent token: {e}")
+                    user_data = None
+                if user_data is not None:
                     # Same shape as the WorkOS session path — the shared builder
                     # spreads the full doc so the agent token carries timezone +
                     # onboarding (custom instructions, preferences, writing style).
                     # Hand-picking fields here dropped them, so voice mode lost the
                     # user's system instructions.
                     request.state.user = build_user_context(
-                        user_data, auth_provider="workos", impersonated=True
+                        user_to_legacy_dict(user_data), auth_provider="workos", impersonated=True
                     )
                     request.state.authenticated = True
 
+        self._publish_user(request)
         response = await call_next(request)
 
         if hasattr(request.state, "new_session") and request.state.new_session:
@@ -213,7 +212,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         request.state.new_session = None
 
         target_email, user_data = await resolve_dev_bypass_user(request.headers, request.cookies)
-        if not user_data:
+        if user_data is None:
             log.error(
                 f"{LogTag.API} Dev bypass target {target_email!r} has no Mongo user",
                 dev_impersonated=bool(request.headers.get(DEV_USER_HEADER)),
@@ -230,13 +229,27 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 },
             )
 
-        request.state.user = build_user_context(user_data, auth_provider="workos", dev_bypass=True)
+        request.state.user = build_user_context(
+            user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
+        )
         request.state.authenticated = True
+        self._publish_user(request)
         return await call_next(request)
+
+    @staticmethod
+    def _publish_user(request: Request) -> None:
+        """Mirror ``request.state.user`` into the request ContextVar.
+
+        Read back from ``request.state`` rather than taking the value as an
+        argument, so this can never drift from what the handler sees. Must run
+        before ``call_next`` — that is where the downstream task is created, and
+        the task inherits the context as it stands at that moment.
+        """
+        set_authenticated_user(getattr(request.state, "user", None))
 
     async def _authenticate_session(
         self, wos_session: str
-    ) -> tuple[dict[str, Any] | None, str | None]:
+    ) -> tuple[AuthenticatedUser | None, str | None]:
         """Authenticate a WorkOS sealed session and bump ``last_active_at``.
 
         Returns ``(user_info, new_session)`` where ``new_session`` is the
@@ -248,12 +261,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         )
         if not user_info:
             return None, new_session
-        try:
-            await users_collection.update_one(
-                {"email": user_info["email"]},
-                {"$set": {"last_active_at": datetime.now(UTC)}},
-            )
-            return user_info, new_session
-        except Exception as e:
-            log.error(f"{LogTag.API} Error in middleware additional processing: {e}")
-            return None, new_session
+        # Fire-and-forget: touch_last_active is debounced and never raises, so a
+        # failed last-active write can no longer turn a valid session into a
+        # failed authentication (the previous try/except returned None here).
+        await user_repository.touch_last_active(user_info["email"])
+        return user_info, new_session

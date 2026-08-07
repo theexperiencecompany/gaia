@@ -161,7 +161,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       .writeText(full)
       .then(flashCopied)
       .catch(() => {
-        /* fire-and-forget: clipboard write is best-effort */
+        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
       });
   }, [fields, editor]);
 
@@ -175,7 +175,7 @@ export function TextDocumentView(props: z.infer<typeof textDocumentSchema>) {
       .writeText(full)
       .then(flashCopied)
       .catch(() => {
-        /* fire-and-forget: clipboard write is best-effort */
+        /* best-effort copy: clipboard failures (permissions, insecure context) are non-actionable */
       });
   }, [fields, editor]);
 

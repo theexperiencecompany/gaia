@@ -10,37 +10,41 @@ real hand-off does. Mounted only in development behind the auth bypass — see
 scripted LLM stub, so directive-bearing tasks run deterministically.
 """
 
+from typing import cast
 from uuid import uuid4
 
 from app.agents.core.subagents.handoff_tools import prepare_subagent_execution
 from app.agents.core.subagents.registry import all_subagents
 from app.agents.core.subagents.subagent_runner import (
+    SubagentOutcome,
     execute_subagent_stream,
     prepare_executor_execution,
 )
 from app.constants.log_tags import LogTag
 from app.helpers.agent_helpers import build_agent_config
+from app.models.agent_models import AgentConfigurable, AgentUserContext
+from app.schemas.dev_schemas import DevAgentRunResponse, DevSubagentInfo
 from app.services.dev_service import require_dev_user
 from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
-def list_dev_subagents() -> list[dict]:
+def list_dev_subagents() -> list[DevSubagentInfo]:
     """Every registered subagent, with the ids accepted by the direct-run endpoint."""
     return [
-        {
-            "id": sa.id,
-            "name": sa.name,
-            "short_name": sa.short_name,
-            "agent_name": sa.config.agent_name,
-        }
+        DevSubagentInfo(
+            id=sa.id,
+            name=sa.name,
+            short_name=sa.short_name,
+            agent_name=sa.config.agent_name,
+        )
         for sa in all_subagents()
     ]
 
 
 async def _dev_base_configurable(
     email: str, conversation_id: str | None, agent_name: str
-) -> tuple[dict, str, str]:
+) -> tuple[AgentConfigurable, str, str]:
     """Resolve the dev user and build the parent configurable a direct run needs.
 
     Returns (configurable, user_id, conversation_id). The conversation_id is
@@ -48,18 +52,36 @@ async def _dev_base_configurable(
     agent thread, so multi-turn behavior is testable.
     """
     user_doc = await require_dev_user(email)
-    user_id = str(user_doc["_id"])
+    user_id = user_doc.id
     cid = conversation_id or str(uuid4())
-    user = {
+    user: AgentUserContext = {
         "user_id": user_id,
-        "email": user_doc["email"],
-        "name": user_doc.get("name"),
+        "email": user_doc.email,
+        "name": user_doc.name,
     }
     config = build_agent_config(conversation_id=cid, user=user, agent_name=agent_name)
-    return config["configurable"], user_id, cid
+    return cast(AgentConfigurable, config["configurable"]), user_id, cid
 
 
-async def run_executor_direct(email: str, task: str, conversation_id: str | None = None) -> dict:
+def _reject_pause(outcome: SubagentOutcome, agent_name: str) -> None:
+    """Fail loud when a direct run parks on a HIL approval.
+
+    A direct run has no stream and therefore no approval channel to answer the
+    interrupt on, so ``outcome.text`` is meaningless — returning it would hand
+    back an empty message as if it were the agent's answer.
+    """
+    if outcome.paused:
+        raise create_error(
+            message=f"{agent_name} paused for approval",
+            why="A direct run has no approval channel to resume the HIL interrupt on",
+            fix="Drive the run through the chat endpoint, or use a task that gates no tools",
+            status_code=409,
+        )
+
+
+async def run_executor_direct(
+    email: str, task: str, conversation_id: str | None = None
+) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, returning its final message."""
     configurable, user_id, cid = await _dev_base_configurable(
         email, conversation_id, "executor_agent"
@@ -71,26 +93,27 @@ async def run_executor_direct(email: str, task: str, conversation_id: str | None
             why=error or "prepare_executor_execution returned no context",
             status_code=503,
         )
-    message = await execute_subagent_stream(ctx)
+    outcome = await execute_subagent_stream(ctx)
+    _reject_pause(outcome, ctx.agent_name)
     log.info(
         f"{LogTag.DEV} ran executor directly",
         email=email,
         user_id=user_id,
         conversation_id=cid,
-        response_length=len(message),
+        response_length=len(outcome.text),
     )
-    return {
-        "user_id": user_id,
-        "conversation_id": cid,
-        "thread_id": ctx.configurable.get("thread_id", ""),
-        "agent": ctx.agent_name,
-        "message": message,
-    }
+    return DevAgentRunResponse(
+        user_id=user_id,
+        conversation_id=cid,
+        thread_id=ctx.configurable.get("thread_id", ""),
+        agent=ctx.agent_name,
+        message=outcome.text,
+    )
 
 
 async def run_subagent_direct(
     email: str, subagent_id: str, task: str, conversation_id: str | None = None
-) -> dict:
+) -> DevAgentRunResponse:
     """Run one subagent directly with a task, returning its final message."""
     configurable, user_id, cid = await _dev_base_configurable(email, conversation_id, "dev_direct")
     ctx, integration_metadata, error = await prepare_subagent_execution(
@@ -105,19 +128,20 @@ async def run_subagent_direct(
             fix="GET /api/v1/dev/subagents lists the runnable ids",
             status_code=400,
         )
-    message = await execute_subagent_stream(ctx, integration_metadata=integration_metadata)
+    outcome = await execute_subagent_stream(ctx, integration_metadata=integration_metadata)
+    _reject_pause(outcome, ctx.agent_name)
     log.info(
         f"{LogTag.DEV} ran subagent directly",
         email=email,
         user_id=user_id,
         subagent=ctx.agent_name,
         conversation_id=cid,
-        response_length=len(message),
+        response_length=len(outcome.text),
     )
-    return {
-        "user_id": user_id,
-        "conversation_id": cid,
-        "thread_id": ctx.configurable.get("thread_id", ""),
-        "agent": ctx.agent_name,
-        "message": message,
-    }
+    return DevAgentRunResponse(
+        user_id=user_id,
+        conversation_id=cid,
+        thread_id=ctx.configurable.get("thread_id", ""),
+        agent=ctx.agent_name,
+        message=outcome.text,
+    )

@@ -107,10 +107,10 @@ export const filterEmptyMessagePairs = (
           text: nextMessage.response || "",
           loading: nextMessage.loading,
           setOpenImage: () => {
-            /* no-op: image handlers unused in this emptiness check */
+            /* filtered messages are read-only; no image sheet wiring */
           },
           setImageData: () => {
-            /* no-op: image handlers unused in this emptiness check */
+            /* filtered messages are read-only; no image sheet wiring */
           },
           systemPurpose,
           isConvoSystemGenerated,
@@ -141,10 +141,10 @@ export const filterEmptyMessagePairs = (
         text: currentMessage.response || "",
         loading: currentMessage.loading,
         setOpenImage: () => {
-          /* no-op: image handlers unused in this emptiness check */
+          /* filtered messages are read-only; no image sheet wiring */
         },
         setImageData: () => {
-          /* no-op: image handlers unused in this emptiness check */
+          /* filtered messages are read-only; no image sheet wiring */
         },
         systemPurpose,
         isConvoSystemGenerated,

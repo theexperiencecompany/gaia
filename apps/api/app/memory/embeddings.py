@@ -24,7 +24,7 @@ from collections.abc import Awaitable
 import os
 import threading
 import time
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 from fastembed import TextEmbedding
 from fastembed.rerank.cross_encoder import TextCrossEncoder
@@ -130,7 +130,7 @@ def _embed_query_sync(text: str) -> list[float]:
     for queries measurably degrades ANN recall on paraphrased questions.
     """
     model = _get_embedding_model()
-    return next(iter(model.query_embed([text]))).tolist()
+    return cast(list[float], next(iter(model.query_embed([text]))).tolist())
 
 
 def _rerank_sync(query: str, documents: list[str]) -> list[float]:
@@ -145,11 +145,11 @@ def _sidecar_url() -> str | None:
     return url.rstrip("/") or None
 
 
-async def _sidecar_post(path: str, payload: dict) -> dict:
+async def _sidecar_post(path: str, payload: dict) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=EMBEDDING_SIDECAR_TIMEOUT_SECONDS) as client:
         response = await client.post(f"{_sidecar_url()}{path}", json=payload)
         response.raise_for_status()
-        return response.json()
+        return cast(dict[str, Any], response.json())
 
 
 async def embed_query(text: str) -> list[float]:
@@ -158,7 +158,7 @@ async def embed_query(text: str) -> list[float]:
         result = await _observed(
             "embed_query", "sidecar", 1, _sidecar_post("/embed_query", {"text": text})
         )
-        return result["vector"]
+        return cast(list[float], result["vector"])
     return await _observed("embed_query", "local", 1, asyncio.to_thread(_embed_query_sync, text))
 
 
@@ -170,7 +170,7 @@ async def embed_batch(texts: list[str]) -> list[list[float]]:
         result = await _observed(
             "embed", "sidecar", len(texts), _sidecar_post("/embed", {"texts": texts})
         )
-        return result["vectors"]
+        return cast(list[list[float]], result["vectors"])
     return await _observed("embed", "local", len(texts), asyncio.to_thread(_embed_sync, texts))
 
 
@@ -185,7 +185,7 @@ async def rerank(query: str, documents: list[str]) -> list[float]:
             len(documents),
             _sidecar_post("/rerank", {"query": query, "documents": documents}),
         )
-        return result["scores"]
+        return cast(list[float], result["scores"])
     return await _observed(
         "rerank", "local", len(documents), asyncio.to_thread(_rerank_sync, query, documents)
     )

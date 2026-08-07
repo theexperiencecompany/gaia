@@ -1,4 +1,4 @@
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, NotRequired, TypeAlias, TypedDict
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -15,6 +15,7 @@ from app.models.notification.notification_models import (
     NotificationSourceEnum,
     NotificationStatus,
     NotificationType,
+    NotificationView,
 )
 from app.services.notification_service import notification_service
 from app.templates.docstrings.notification_tool_docs import (
@@ -29,6 +30,72 @@ from app.utils.chat_utils import get_user_id_from_config
 from app.utils.notification.channel_preferences import fetch_channel_preferences
 from shared.py.wide_events import log
 
+# A NotificationView serialized with ``model_dump(mode="json")`` — the stream/tool
+# payload must stay JSON-shaped (see ToolData.data), so views are dumped, not
+# passed on as models. json mode matters: the default python mode leaves enum
+# *members* in the dict, which LangChain then stringifies into the ToolMessage as
+# ``<NotificationStatus.DELIVERED: 'delivered'>`` instead of ``'delivered'``.
+SerializedNotification: TypeAlias = dict[str, Any]
+
+
+# ---------------------------------------------------------------------------
+# Tool return shapes. Plain TypedDicts, not models: LangChain stringifies the
+# returned object into the ToolMessage the LLM reads, so the runtime value must
+# stay the exact dict it is today. ``error`` is ``NotRequired`` because the
+# success paths omit it entirely.
+# ---------------------------------------------------------------------------
+
+
+class NotificationListResult(TypedDict):
+    """``get_notifications`` / ``search_notifications``."""
+
+    notifications: list[SerializedNotification]
+    error: NotRequired[str]
+
+
+class NotificationCountResult(TypedDict):
+    """``get_notification_count``."""
+
+    count: int
+    error: NotRequired[str]
+
+
+class MarkReadResult(TypedDict):
+    """``mark_notifications_read``."""
+
+    success: bool
+    error: NotRequired[str]
+
+
+class SentNotificationResult(TypedDict):
+    """``send_notification`` on success — also the ``send_notification_data``
+    stream payload that renders the "notification sent" chat card."""
+
+    success: Literal[True]
+    notification_id: str
+    title: str
+    message: str
+    notification_type: str
+    status: str
+    delivered_channels: list[str]
+
+
+class SendNotificationFailure(TypedDict):
+    """``send_notification`` when validation or delivery setup failed."""
+
+    error: str
+    success: Literal[False]
+
+
+class NotificationPreferencesResult(TypedDict):
+    """``get_notification_preferences``. The channel lists are absent on the
+    error path, which returns only ``error`` and an empty ``preferences``."""
+
+    preferences: dict[str, bool]
+    available_channels: NotRequired[list[str]]
+    enabled_channels: NotRequired[list[str]]
+    error: NotRequired[str]
+
 
 @tool
 @with_rate_limiting("notification_operations")
@@ -42,7 +109,7 @@ async def get_notifications(
     source: Annotated[NotificationSourceEnum | None, "Filter by notification source"] = None,
     limit: Annotated[int, "Maximum number of notifications to return"] = 50,
     offset: Annotated[int, "Number of notifications to skip for pagination"] = 0,
-) -> dict[str, Any]:
+) -> NotificationListResult:
     """Get user notifications with filtering options."""
     try:
         log.set(tool={"name": "get_notifications", "action": "get"})
@@ -60,11 +127,15 @@ async def get_notifications(
             offset=offset,
         )
 
+        # The stream/tool payload must stay JSON-shaped (see ToolData.data), so the
+        # views are dumped back to dicts here rather than handed over as models.
+        serialized = [n.model_dump(mode="json") for n in notifications]
+
         # Stream to frontend with notification list UI
         writer = get_stream_writer()
-        writer({"notification_data": {"notifications": notifications}})
+        writer({"notification_data": {"notifications": serialized}})
 
-        return {"notifications": notifications}
+        return {"notifications": serialized}
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error getting notifications: {e!s}")
@@ -79,7 +150,7 @@ async def search_notifications(
     query: Annotated[str, "Search query to match against notification titles and content"],
     status: Annotated[NotificationStatus | None, "Filter by notification status"] = None,
     limit: Annotated[int, "Maximum number of results to return"] = 20,
-) -> dict[str, Any]:
+) -> NotificationListResult:
     """Search notifications by content."""
     try:
         log.set(tool={"name": "search_notifications", "action": "search"})
@@ -100,24 +171,21 @@ async def search_notifications(
 
         # Simple text search
         query_lower = query.lower()
-        matching_notifications = []
+        matching_notifications: list[NotificationView] = []
 
         for notification in notifications:
-            content = notification.get("content", {})
-            title = content.get("title", "")
-            body = content.get("body", "")
-
-            if query_lower in title.lower() or query_lower in body.lower():
+            content = notification.content
+            if query_lower in content.title.lower() or query_lower in content.body.lower():
                 matching_notifications.append(notification)
 
         # Apply limit
-        matching_notifications = matching_notifications[:limit]
+        serialized = [n.model_dump(mode="json") for n in matching_notifications[:limit]]
 
         # Stream to frontend with notification list UI
         writer = get_stream_writer()
-        writer({"notification_data": {"notifications": matching_notifications}})
+        writer({"notification_data": {"notifications": serialized}})
 
-        return {"notifications": matching_notifications}
+        return {"notifications": serialized}
 
     except Exception as e:
         log.error(f"{LogTag.TOOL} Error searching notifications: {e!s}")
@@ -130,7 +198,7 @@ async def search_notifications(
 async def get_notification_count(
     config: RunnableConfig,
     status: Annotated[NotificationStatus | None, "Filter by notification status"] = None,
-) -> dict[str, Any]:
+) -> NotificationCountResult:
     """Get count of notifications."""
     try:
         log.set(tool={"name": "get_notification_count", "action": "count"})
@@ -155,7 +223,7 @@ async def get_notification_count(
 async def mark_notifications_read(
     config: RunnableConfig,
     notification_ids: Annotated[list[str], "List of notification IDs to mark as read"],
-) -> dict[str, Any]:
+) -> MarkReadResult:
     """Mark one or more notifications as read."""
     try:
         log.set(tool={"name": "mark_notifications_read", "action": "mark_read"})
@@ -208,7 +276,7 @@ async def send_notification(
         NotificationType | None,
         "Notification type: 'info', 'success', 'warning', or 'error'",
     ] = NotificationType.INFO,
-) -> dict[str, Any]:
+) -> SentNotificationResult | SendNotificationFailure:
     """Send a notification to the user on their connected channels."""
     try:
         log.set(tool={"name": "send_notification", "action": "send"})
@@ -280,7 +348,7 @@ async def send_notification(
             }
         )
 
-        result = {
+        result: SentNotificationResult = {
             "success": True,
             "notification_id": record.id,
             "title": resolved_title,
@@ -306,7 +374,7 @@ async def send_notification(
 @with_doc(GET_NOTIFICATION_PREFERENCES)
 async def get_notification_preferences(
     config: RunnableConfig,
-) -> dict[str, Any]:
+) -> NotificationPreferencesResult:
     """Get the user's notification channel preferences."""
     try:
         log.set(tool={"name": "get_notification_preferences", "action": "get"})

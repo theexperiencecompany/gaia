@@ -5,6 +5,16 @@
       "args": ["-s", "mcp"],
       "env": {}
     },
+    "infisical": {
+      "command": "npx",
+      "args": ["-y", "@infisical/mcp"],
+      "env": {
+        "INFISICAL_AUTH_METHOD": "universal-auth",
+        "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID": "${INFISICAL_MCP_CLIENT_ID:-}",
+        "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET": "${INFISICAL_MCP_CLIENT_SECRET:-}",
+        "INFISICAL_HOST_URL": "https://app.infisical.com"
+      }
+    },
     "code-review-graph": {
       "command": "uvx",
       "args": ["code-review-graph", "serve"],

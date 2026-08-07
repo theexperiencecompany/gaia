@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 import pytest
 
+from app.models.payment_models import PlanType
+
 SUMMARY_URL = "/api/v1/usage/summary"
 HISTORY_URL = "/api/v1/usage/history"
 
@@ -31,8 +33,7 @@ _MOCK_BUDGET = {
 
 def _mock_subscription(plan_type: str = "free") -> MagicMock:
     sub = MagicMock()
-    sub.plan_type = MagicMock()
-    sub.plan_type.value = plan_type
+    sub.plan_type = PlanType(plan_type)
     return sub
 
 

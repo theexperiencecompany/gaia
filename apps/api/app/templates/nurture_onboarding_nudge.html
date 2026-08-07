@@ -1,0 +1,14 @@
+{% extends "_base_email.html" %}
+{% block content %}
+Hey{% if user_name %} {{ user_name }}{% endif %}, <br />
+Aryan here.<br /><br />
+Noticed you signed up but didn't get a chance to finish setting things
+up.<br /><br />
+It takes about two minutes, and it's how GAIA learns what you're actually
+working on, so it can start helping with real things instead of guessing.
+Well worth it.<br /><br />
+If something got in the way or felt confusing, just reply and tell me. That
+kind of feedback is gold for us right now.<br /><br />
+Best,<br />
+Aryan
+{% endblock %}

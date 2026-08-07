@@ -206,18 +206,23 @@ function useMessageLongPress(
   }, [onLongPress, onReply, message]);
 }
 
+interface MessagePart {
+  part: string;
+  index: number;
+}
+
 function useMessageParts(text: string | undefined): {
   parsedContent: ReturnType<typeof parseThinkingFromText>;
-  messageParts: string[];
+  messageParts: MessagePart[];
 } {
   // Strip <thinking> tags from raw text so they are never rendered in the bubble.
   const parsedContent = useMemo(
     () => parseThinkingFromText(text ?? ""),
     [text],
   );
-  const messageParts = splitByBreaksPreservingFences(
-    parsedContent.cleanText,
-  ).filter(Boolean);
+  const messageParts = splitByBreaksPreservingFences(parsedContent.cleanText)
+    .filter(Boolean)
+    .map((part, index) => ({ part, index }));
   return { parsedContent, messageParts };
 }
 
@@ -260,7 +265,7 @@ function UserChatMessage({
   message,
   handleLongPress,
   messageParts,
-}: ChatMessageLayoutProps & { messageParts: string[] }) {
+}: ChatMessageLayoutProps & { messageParts: MessagePart[] }) {
   const { spacing } = useResponsive();
 
   return (
@@ -286,7 +291,7 @@ function UserChatMessage({
               isUserMessage={true}
             />
           )}
-          {messageParts.map((part, index) => (
+          {messageParts.map(({ part, index }) => (
             <SentMessagePart
               key={`${message.id}-${index}`}
               part={part}
@@ -307,7 +312,7 @@ function AITextParts({
   isLoading,
   isLastMessage,
 }: {
-  parts: string[];
+  parts: MessagePart[];
   messageId: string;
   isLoading: boolean;
   isLastMessage: boolean;
@@ -316,7 +321,7 @@ function AITextParts({
 
   return (
     <>
-      {parts.map((part, partIndex) => {
+      {parts.map(({ part, index: partIndex }) => {
         const segments = parseOpenUISegments(part, isLoading);
         const grouped = bubbleGrouping(partIndex, parts.length);
 
@@ -357,7 +362,7 @@ function AITextParts({
 
 interface AIMainContentProps {
   message: Message;
-  messageParts: string[];
+  messageParts: MessagePart[];
   isGeneratingImage: boolean;
   showToolProgress: boolean;
   showThinkingCard: boolean;
@@ -393,7 +398,11 @@ function AIMainContent({
         <ImageBubble
           imageData={message.imageData ?? { url: "", prompt: "" }}
           isGenerating={isGeneratingImage}
-          caption={messageParts.length > 0 ? messageParts.join(" ") : undefined}
+          caption={
+            messageParts.length > 0
+              ? messageParts.map(({ part }) => part).join(" ")
+              : undefined
+          }
         />
       </View>
     );
@@ -444,7 +453,7 @@ function AIChatMessage({
   onFollowUpAction,
 }: ChatMessageLayoutProps & {
   parsedContent: ReturnType<typeof parseThinkingFromText>;
-  messageParts: string[];
+  messageParts: MessagePart[];
   isLoading: boolean;
   isLastMessage: boolean;
   loadingMessage: string;

@@ -20,6 +20,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from composio import Composio
+
 # Add the app directory to the path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -46,7 +48,7 @@ def load_integrations() -> list[dict[str, Any]]:
     return integrations
 
 
-def fetch_triggers_for_app(composio: Any, app_name: str) -> list[dict[str, Any]]:
+def fetch_triggers_for_app(composio: Composio, app_name: str) -> list[dict[str, Any]]:
     """Fetch available triggers for a specific app/toolkit."""
     try:
         # Use triggers.list() with toolkit_slugs parameter (correct method)
@@ -73,7 +75,7 @@ def fetch_triggers_for_app(composio: Any, app_name: str) -> list[dict[str, Any]]
         return []
 
 
-def extract_trigger_info(trigger: Any) -> dict[str, Any]:
+def extract_trigger_info(trigger: object) -> dict[str, Any]:
     """Extract relevant information from a trigger object."""
     info = {
         "slug": getattr(trigger, "slug", getattr(trigger, "name", "unknown")),
@@ -98,7 +100,7 @@ def extract_trigger_info(trigger: Any) -> dict[str, Any]:
     return info
 
 
-def format_config_schema(config: Any) -> str:
+def format_config_schema(config: object) -> str:
     """Format config schema for display."""
     if not config:
         return "  (No configuration required)"
@@ -145,8 +147,6 @@ def main():
         if not settings.COMPOSIO_KEY:
             print("ERROR: COMPOSIO_API_KEY not set. Please set the environment variable.")
             sys.exit(1)
-
-        from composio import Composio
 
         composio = Composio(api_key=settings.COMPOSIO_KEY)
         print("✓ Composio client initialized")

@@ -76,7 +76,7 @@ export function usePrefetchConnectionDetails(conversationId?: string) {
         staleTime: CONNECTION_DETAILS_STALE_TIME_MS,
       })
       .catch(() => {
-        /* fire-and-forget: prefetch is best-effort */
+        /* prefetch is best-effort: failures surface via the real useQuery at session start */
       });
   }, [queryClient, conversationId]);
 }

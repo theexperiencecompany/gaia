@@ -11,6 +11,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.api.v1.middleware.auth import WorkOSAuthMiddleware, get_current_user
+from app.models.user_models import UserDocument
 
 
 @pytest.fixture(autouse=True)
@@ -196,12 +197,13 @@ class TestWorkOSAuthMiddlewareAgentAuth:
 
     def test_agent_token_authenticates_on_agent_path(self) -> None:
         app = _build_test_app()
-        user_data = {
-            "_id": "507f1f77bcf86cd799439011",
-            "email": "agent@test.com",
-            "name": "Agent User",
-            "picture": None,
-        }
+        user_doc = UserDocument.model_validate(
+            {
+                "id": "507f1f77bcf86cd799439011",
+                "email": "agent@test.com",
+                "name": "Agent User",
+            }
+        )
         with (
             patch(
                 "app.api.v1.middleware.auth.verify_agent_token",
@@ -211,9 +213,9 @@ class TestWorkOSAuthMiddlewareAgentAuth:
                 },
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.find_one",
+                "app.api.v1.middleware.auth.user_repository.get",
                 new_callable=AsyncMock,
-                return_value=user_data,
+                return_value=user_doc,
             ),
         ):
             client = TestClient(app)
@@ -251,7 +253,7 @@ class TestWorkOSAuthMiddlewareAgentAuth:
                 },
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.find_one",
+                "app.api.v1.middleware.auth.user_repository.get",
                 new_callable=AsyncMock,
                 return_value=None,
             ),
@@ -294,14 +296,14 @@ class TestAuthenticateSession:
                 return_value=(user_info, "new_sess"),
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.update_one",
+                "app.api.v1.middleware.auth.user_repository.touch_last_active",
                 new_callable=AsyncMock,
-            ) as mock_update,
+            ) as mock_touch,
         ):
             result_user, result_sess = await middleware._authenticate_session("tok")
         assert result_user == user_info
         assert result_sess == "new_sess"
-        mock_update.assert_called_once()
+        mock_touch.assert_awaited_once_with("a@b.com")
 
     async def test_failed_authentication(self) -> None:
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
@@ -314,8 +316,10 @@ class TestAuthenticateSession:
         assert result_user is None
         assert result_sess is None
 
-    async def test_update_one_error_returns_none_user(self) -> None:
-        """If updating last_active_at fails, user_info becomes None."""
+    async def test_auth_outcome_is_independent_of_last_active_touch(self) -> None:
+        """The last-active touch is fire-and-forget: a valid WorkOS session
+        authenticates regardless of the touch (the previous swallow that turned a
+        touch failure into a failed auth is gone; touch_last_active never raises)."""
         user_info = {"user_id": "u1", "email": "a@b.com", "name": "Test"}
         middleware = WorkOSAuthMiddleware(app=MagicMock(), workos_client=MagicMock())
         with (
@@ -325,11 +329,10 @@ class TestAuthenticateSession:
                 return_value=(user_info, None),
             ),
             patch(
-                "app.api.v1.middleware.auth.users_collection.update_one",
+                "app.api.v1.middleware.auth.user_repository.touch_last_active",
                 new_callable=AsyncMock,
-                side_effect=RuntimeError("db err"),
-            ),
+            ) as mock_touch,
         ):
-            result_user, result_sess = await middleware._authenticate_session("tok")
-        # The middleware catches the exception and returns None for user
-        assert result_user is None
+            result_user, _ = await middleware._authenticate_session("tok")
+        assert result_user == user_info
+        mock_touch.assert_awaited_once_with("a@b.com")

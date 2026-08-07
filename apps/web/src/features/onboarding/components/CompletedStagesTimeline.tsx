@@ -98,7 +98,7 @@ export function CompletedStagesTimeline({
             <OnboardingTodoCards
               todos={cardTodos}
               onExecuteTodo={() => {
-                /* no-op: read-only embedded timeline */
+                /* read-only timeline: todos can't be executed from here */
               }}
               isExecuting={false}
               executingTodoId={null}
@@ -139,7 +139,7 @@ export function CompletedStagesTimeline({
             onConnect={connect}
             onSkip={skip}
             onHoverPlatform={() => {
-              /* no-op: read-only embedded timeline */
+              /* embedded timeline: hover preview is inert */
             }}
             hideSkip
             embedded

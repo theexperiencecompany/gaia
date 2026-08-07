@@ -16,7 +16,7 @@ from shared.py.wide_events import log
 from .registry import register_after_hook, register_before_hook
 
 
-def process_reddit_post(post_data: dict) -> dict:
+def process_reddit_post(post_data: dict[str, Any]) -> dict[str, Any]:
     """
     Extract only critical information from a Reddit post.
 
@@ -54,7 +54,7 @@ def process_reddit_post(post_data: dict) -> dict:
         return {}
 
 
-def process_reddit_search_results(response_data: dict) -> dict:
+def process_reddit_search_results(response_data: dict[str, Any]) -> dict[str, Any]:
     """
     Process Reddit search results to minimize data.
 
@@ -88,7 +88,7 @@ def process_reddit_search_results(response_data: dict) -> dict:
         return response_data
 
 
-def process_reddit_comment(comment_data: dict) -> dict:
+def process_reddit_comment(comment_data: dict[str, Any]) -> dict[str, Any]:
     """
     Extract only critical information from a Reddit comment.
 
@@ -200,7 +200,9 @@ def reddit_retrieve_before_hook(
 
 
 @register_after_hook(tools=["REDDIT_SEARCH_ACROSS_SUBREDDITS"])
-def reddit_search_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def reddit_search_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process Reddit search response to minimize raw data."""
     log.set(reddit_tool=tool, toolkit=toolkit)
     try:
@@ -250,7 +252,9 @@ def reddit_search_after_hook(tool: str, toolkit: str, response: ToolExecutionRes
 
 
 @register_after_hook(tools=["REDDIT_RETRIEVE_REDDIT_POST"])
-def reddit_post_detail_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def reddit_post_detail_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process single Reddit post response and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -299,7 +303,9 @@ def reddit_post_detail_after_hook(tool: str, toolkit: str, response: ToolExecuti
 
 
 @register_after_hook(tools=["REDDIT_RETRIEVE_POST_COMMENTS"])
-def reddit_comments_after_hook(tool: str, toolkit: str, response: ToolExecutionResponse) -> Any:
+def reddit_comments_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> dict[str, Any]:
     """Process Reddit comments response and stream to frontend."""
     try:
         writer = get_stream_writer()
@@ -307,14 +313,20 @@ def reddit_comments_after_hook(tool: str, toolkit: str, response: ToolExecutionR
         if not response or "error" in response.get("data", {}):
             return response.get("data", {})
 
-        # Extract comments from Reddit API response
-        response_data = response.get("data", {})
+        # Extract comments from Reddit API response. Composio's envelope types `data`
+        # as a plain Dict, but Reddit's raw listing API for this endpoint returns a
+        # top-level JSON array `[post_listing, comments_listing]` — genuinely either
+        # shape can arrive here.
+        response_data: dict[str, Any] | list[Any] = response.get("data", {})
 
         # Reddit returns an array with [post_data, comments_data]
-        if isinstance(response_data, list) and len(response_data) > 1:
-            comments_listing = response_data[1]
-            if isinstance(comments_listing, dict):
-                comments_data = comments_listing.get("data", {}).get("children", [])
+        if isinstance(response_data, list):
+            if len(response_data) > 1:
+                comments_listing = response_data[1]
+                if isinstance(comments_listing, dict):
+                    comments_data = comments_listing.get("data", {}).get("children", [])
+                else:
+                    comments_data = []
             else:
                 comments_data = []
         else:
@@ -367,7 +379,7 @@ def reddit_comments_after_hook(tool: str, toolkit: str, response: ToolExecutionR
 @register_after_hook(tools=["REDDIT_CREATE_REDDIT_POST", "REDDIT_POST_REDDIT_COMMENT"])
 def reddit_content_created_after_hook(
     tool: str, toolkit: str, response: ToolExecutionResponse
-) -> Any:
+) -> dict[str, Any]:
     """Process Reddit content creation response and stream to frontend."""
     try:
         writer = get_stream_writer()

@@ -200,7 +200,7 @@ export function useVoiceSpectrum({
       remoteFftRef.current = null;
       if (remoteCtxRef.current && remoteCtxRef.current.state !== "closed") {
         remoteCtxRef.current.close().catch(() => {
-          /* fire-and-forget: AudioContext close is best-effort */
+          /* best-effort teardown: the AudioContext is dropped either way */
         });
       }
       remoteCtxRef.current = null;
@@ -239,7 +239,7 @@ export function useVoiceSpectrum({
     streamRef.current = null;
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
       audioCtxRef.current.close().catch(() => {
-        /* fire-and-forget: AudioContext close is best-effort */
+        /* best-effort teardown: the AudioContext is dropped either way */
       });
     }
     audioCtxRef.current = null;
@@ -253,7 +253,7 @@ export function useVoiceSpectrum({
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
         await audioCtxRef.current.close().catch(() => {
-          /* fire-and-forget: AudioContext close is best-effort */
+          /* best-effort teardown: the AudioContext is dropped either way */
         });
       }
 

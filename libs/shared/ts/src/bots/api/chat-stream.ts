@@ -10,8 +10,14 @@
  */
 import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
+import type { ApprovalRequestData } from "../../chat";
 import type { BotUserContext, ChatRequest } from "../types";
 import { createBotLogger, getHttpStatus } from "../utils/logger";
+
+/** Fired when a HIL approval frame arrives (bots render it out-of-band). */
+export type ApprovalUpdateHandler = (
+  data: ApprovalRequestData,
+) => void | Promise<void>;
 
 const logger = createBotLogger("shared", "chat-stream");
 
@@ -53,6 +59,7 @@ export async function streamChat(
   onDone: (fullText: string, conversationId: string) => void | Promise<void>,
   onError: (error: Error) => void | Promise<void>,
   endpoint: string,
+  onApprovalUpdate?: ApprovalUpdateHandler,
   maxRetries = 2,
 ): Promise<string> {
   let lastError: Error | null = null;
@@ -68,6 +75,7 @@ export async function streamChat(
         onError,
         attempt > 0,
         endpoint,
+        onApprovalUpdate,
       );
     } catch (error: unknown) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -110,6 +118,7 @@ interface SseFrame {
   keepalive?: boolean;
   error?: string;
   session_token?: string;
+  approval?: ApprovalRequestData;
   text?: string;
   done?: boolean;
   conversation_id?: string;
@@ -138,6 +147,7 @@ async function streamChatOnce(
   onError: (error: Error) => void | Promise<void>,
   retried: boolean,
   endpoint: string,
+  onApprovalUpdate?: ApprovalUpdateHandler,
 ): Promise<string> {
   let fullText = "";
   let conversationId = "";
@@ -229,6 +239,10 @@ async function streamChatOnce(
         }
         if (frame.session_token) {
           deps.storeSessionToken(ctx, frame.session_token);
+        }
+        if (frame.approval) {
+          await onApprovalUpdate?.(frame.approval);
+          return false;
         }
         if (frame.text) {
           fullText += frame.text;
@@ -357,6 +371,7 @@ async function streamChatOnce(
         onError,
         true,
         endpoint,
+        onApprovalUpdate,
       );
     }
 

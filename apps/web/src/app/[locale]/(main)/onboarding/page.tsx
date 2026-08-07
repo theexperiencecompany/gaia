@@ -77,7 +77,7 @@ function clearIntroSeen(userId: string): void {
   try {
     window.localStorage.removeItem(key);
   } catch {
-    /* no-op: localStorage may be unavailable (private mode/quota) */
+    // localStorage unavailable (private mode, etc.) — silently skip.
   }
 }
 

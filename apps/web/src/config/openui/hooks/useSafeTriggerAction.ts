@@ -1,7 +1,7 @@
 import { useTriggerAction } from "@openuidev/react-lang";
 
 const NOOP = () => {
-  /* no-op: fallback when no <Renderer /> context is mounted */
+  /* fallback action handler used when no <Renderer /> context is mounted */
 };
 
 /**

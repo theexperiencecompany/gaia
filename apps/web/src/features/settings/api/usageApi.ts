@@ -1,14 +1,6 @@
 import type { FeatureUsage, UsageActivity, UsageSummary } from "@shared/types";
 import { apiauth } from "@/lib/api/client";
 
-export type {
-  ActivityDay,
-  FeatureUsage,
-  UsageActivity,
-  UsagePeriod,
-  UsageSummary,
-} from "@shared/types";
-
 export interface UsageHistoryEntry {
   date: string;
   plan_type: string;

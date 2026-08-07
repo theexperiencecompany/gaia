@@ -36,16 +36,16 @@ from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 import sys
 
-from app.db.mongodb.collections import (
-    e2b_sandboxes_collection,
-    users_collection,
-    vfs_nodes_collection,
-)
+from app.db.mongodb.collections import get_async_collection
 from app.services.storage import (
     JuiceFSUnavailable,
     ensure_user_workspace,
 )
 from shared.py.wide_events import log
+
+e2b_sandboxes_collection = get_async_collection("e2b_sandboxes")
+users_collection = get_async_collection("users")
+vfs_nodes_collection = get_async_collection("vfs_nodes")
 
 
 async def _list_user_files(user_id: str) -> list[dict]:

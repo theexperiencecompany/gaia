@@ -8,7 +8,7 @@ Connection/disconnection is handled by the unified /integrations endpoints.
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.constants.log_tags import LogTag
@@ -16,6 +16,8 @@ from app.helpers.mcp_helpers import (
     get_api_base_url,
     get_frontend_url,
 )
+from app.models.user_models import AuthenticatedUser
+from app.schemas.mcp import MCPConnectionTestResponse
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import invalidate_user_integration_caches
 from app.services.mcp.mcp_client import get_mcp_client
@@ -24,11 +26,11 @@ from shared.py.wide_events import McpContext, log
 router = APIRouter()
 
 
-@router.post("/test/{integration_id}")
+@router.post("/test/{integration_id}", response_model_exclude_none=True)
 async def test_mcp_connection(
     integration_id: str,
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> MCPConnectionTestResponse:
     """
     Test connection to an MCP server.
 
@@ -62,15 +64,11 @@ async def test_mcp_connection(
         )
     )
 
-    if probe_result.get("error"):
+    probe_error = probe_result.get("error")
+    if probe_error:
         log.set(outcome="failed")
         log.set_ns("mcp", success=False)
-        return JSONResponse(
-            content={
-                "status": "failed",
-                "error": probe_result["error"],
-            }
-        )
+        return MCPConnectionTestResponse(status="failed", error=probe_error)
 
     if not probe_result.get("requires_auth"):
         # Try to connect
@@ -85,11 +83,8 @@ async def test_mcp_connection(
                 success=True,
                 tools_count=len(tools) if tools else 0,
             )
-            return JSONResponse(
-                content={
-                    "status": "connected",
-                    "tools_count": len(tools) if tools else 0,
-                }
+            return MCPConnectionTestResponse(
+                status="connected", tools_count=len(tools) if tools else 0
             )
         except Exception as e:
             log.set(outcome="failed")
@@ -99,12 +94,7 @@ async def test_mcp_connection(
                 success=False,
                 error_type=type(e).__name__,
             )
-            return JSONResponse(
-                content={
-                    "status": "failed",
-                    "error": str(e),
-                }
-            )
+            return MCPConnectionTestResponse(status="failed", error=str(e))
 
     # OAuth required - update MongoDB with discovered auth requirements
     auth_type = probe_result.get("auth_type", "oauth")
@@ -119,20 +109,10 @@ async def test_mcp_connection(
             redirect_path="/integrations",
         )
         log.set(outcome="requires_oauth")
-        return JSONResponse(
-            content={
-                "status": "requires_oauth",
-                "oauth_url": auth_url,
-            }
-        )
+        return MCPConnectionTestResponse(status="requires_oauth", oauth_url=auth_url)
     except Exception as e:
         log.error(f"{LogTag.MCP} OAuth URL build failed for {integration_id}: {e}")
-        return JSONResponse(
-            content={
-                "status": "failed",
-                "error": str(e),
-            }
-        )
+        return MCPConnectionTestResponse(status="failed", error=str(e))
 
 
 @router.get("/oauth/callback")
@@ -141,8 +121,8 @@ async def mcp_oauth_callback(
     code: str | None = Query(None),  # Optional - may be missing if error
     error: str | None = Query(None),  # OAuth error code
     error_description: str | None = Query(None),  # OAuth error description
-    user: dict = Depends(get_current_user),
-):
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> RedirectResponse:
     """Handle OAuth callback from MCP server.
 
     Handles both success (with code) and error responses from OAuth server.

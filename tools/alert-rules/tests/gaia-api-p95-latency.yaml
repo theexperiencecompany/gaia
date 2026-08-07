@@ -1,0 +1,67 @@
+# gaia-api-p95-latency — fires when p95 response time exceeds 1s for 10m.
+#
+# The bucket layout mirrors apps/api/app/core/app_factory.py
+# (latency_lowr_buckets=(0.1, 0.25, 0.5, 1, 2.5, 5, 10)): the le=1 bucket carries
+# zero count so the 95th percentile falls between le=1 and le=2.5, i.e. above 1s.
+# If the buckets are ever narrowed so the highest bucket sits below 1s this test
+# fails — the p95-can-never-fire regression this fixture exists to catch.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-api-p95-latency fires when p95 exceeds 1s
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.25"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.5"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="2.5"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="5"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="10"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="+Inf"}'
+        values: '10+10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-p95-latency
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: api
+            exp_annotations:
+              description: >-
+                One request in twenty is taking over a second, so chat feels stalled and the first SSE token arrives late. Use the "Slowest Endpoints (p95)" and "P95 Latency by Endpoint" panels to find which handler is responsible before looking at database or LLM latency.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-api-p95-latency
+              __dashboardUid__: gaia-api-prometheus
+              __panelId__: '6'
+
+  - name: gaia-api-p95-latency stays quiet when p95 is under 1s
+    interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.1"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.25"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="0.5"}'
+        values: '0x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="1"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="2.5"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="5"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="10"}'
+        values: '10+10x30'
+      - series: 'http_request_duration_seconds_bucket{job="gaia-api",handler="/api/chat",le="+Inf"}'
+        values: '10+10x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-api-p95-latency
+        exp_alerts: []

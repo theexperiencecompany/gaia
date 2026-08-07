@@ -727,7 +727,7 @@ export function OnboardingScreen() {
           {item === "enable_notifications" && (
             <EnableNotificationsStep
               onPermissionGranted={() => {
-                // no-op: advancing is user-driven via horizontal scroll
+                /* notifications step manages its own UI state; nothing to auto-advance */
               }}
             />
           )}

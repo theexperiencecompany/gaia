@@ -1,10 +1,30 @@
+import type { HilMode } from "@gaia/shared/chat";
 import { Button, Card, Chip, Spinner, TextField } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { OnboardingPreferences } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { useHilPreferences } from "@/features/settings/hooks/use-hil-preferences";
 import { useResponsive } from "@/lib/responsive";
+
+const HIL_MODES: { value: HilMode; label: string; description: string }[] = [
+  {
+    value: "always_allow",
+    label: "Allow always",
+    description: "Never ask — run every action.",
+  },
+  {
+    value: "always_ask",
+    label: "Always ask",
+    description: "Approve before GAIA sends, deletes, or posts.",
+  },
+  {
+    value: "auto",
+    label: "Auto",
+    description: "Run what you asked for; ask when it's unclear.",
+  },
+];
 
 const PROFESSIONS = [
   "Software Engineer",
@@ -47,6 +67,18 @@ export function PreferencesSection() {
   const [timezone, setTimezone] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const { prefs: hilPrefs, setMode: setHilMode } = useHilPreferences();
+  const [hilSaving, setHilSaving] = useState(false);
+
+  const handleHilMode = useCallback(
+    async (mode: HilMode) => {
+      setHilSaving(true);
+      const ok = await setHilMode(mode);
+      if (!ok) Alert.alert("Error", "Failed to update approval mode.");
+      setHilSaving(false);
+    },
+    [setHilMode],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -118,6 +150,34 @@ export function PreferencesSection() {
         paddingBottom: 40,
       }}
     >
+      {/* Approvals */}
+      <Card variant="secondary" className="rounded-2xl bg-surface">
+        <Card.Body className="gap-3 px-4 py-4">
+          <SectionHeader>Approvals</SectionHeader>
+          <View
+            style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}
+          >
+            {HIL_MODES.map(({ value, label }) => {
+              const isActive = hilPrefs.mode === value;
+              return (
+                <Chip
+                  key={value}
+                  onPress={() => !hilSaving && handleHilMode(value)}
+                  variant={isActive ? "primary" : "secondary"}
+                  color={isActive ? "accent" : "default"}
+                  className={isActive ? "" : "bg-white/10"}
+                >
+                  {label}
+                </Chip>
+              );
+            })}
+          </View>
+          <Text className="text-zinc-500" style={{ fontSize: fontSize.xs }}>
+            {HIL_MODES.find((m) => m.value === hilPrefs.mode)?.description}
+          </Text>
+        </Card.Body>
+      </Card>
+
       {/* Profession */}
       <Card variant="secondary" className="rounded-2xl bg-surface">
         <Card.Body className="gap-5 px-4 py-4">

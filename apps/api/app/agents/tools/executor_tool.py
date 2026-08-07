@@ -28,7 +28,6 @@ from app.agents.core.background.session import (
     RunKind,
     mark_executor_spawned,
 )
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.constants.cache import (
     EXECUTOR_BUSY_PREFIX,
     EXECUTOR_QUEUE_PREFIX,
@@ -41,6 +40,8 @@ from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
 from app.decorators.rate_limiting import LangChainRateLimitException
+from app.models.agent_models import AgentConfigurable, agent_configurable
+from app.services.hil.resolution import cancel_conversation_approvals
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
@@ -119,11 +120,11 @@ async def call_executor(
     The executor runs in the background and posts its result to the
     conversation as a new bot message when it completes.
     """
-    base_configurable = config.get("configurable", {})
+    base_configurable = agent_configurable(config)
     # Shallow-copy so the executor's overrides (todo binding) never mutate the
     # comms agent's live RunnableConfig. The model is inherited from the comms
     # configurable (set by per-plan routing).
-    configurable = {**base_configurable}
+    configurable: AgentConfigurable = {**base_configurable}
     if active_todo_id:
         configurable["active_todo_id"] = active_todo_id
     conversation_id = configurable.get("thread_id", "")
@@ -141,8 +142,6 @@ async def call_executor(
             configurable=configurable,
             conversation_id=conversation_id,
         )
-    except (LangChainRateLimitException, RateLimitExceededException) as e:
-        return _rate_limit_message(e)
     except Exception as e:  # noqa: BLE001
         log.error(f"{LogTag.TOOL} Error dispatching executor", error=str(e))
         # Release only if THIS dispatch's acquire is what holds the lock. An
@@ -153,26 +152,11 @@ async def call_executor(
         return f"Error starting task: {e!s}"
 
 
-def _rate_limit_message(e: LangChainRateLimitException | RateLimitExceededException) -> str:
-    """Build the comms-facing message for an executor rate-limit hit."""
-    if isinstance(e, LangChainRateLimitException):
-        feature = e.feature
-    else:
-        detail: dict[str, str] = e.detail if isinstance(e.detail, dict) else {}
-        feature = detail.get("feature", "")
-    log.warning(f"{LogTag.TOOL} Rate limit exceeded for executor task", feature=feature)
-    return (
-        f"Rate limit exceeded for {feature or 'this feature'}. "
-        "The user has already been notified of this limit; "
-        "acknowledge briefly without repeating the limit details."
-    )
-
-
 async def _dispatch_executor(
     *,
     task: str,
     task_id: str,
-    configurable: dict,
+    configurable: AgentConfigurable,
     conversation_id: str,
 ) -> str:
     """Core dispatch logic — acquire lock, queue if busy, or spawn."""
@@ -197,7 +181,7 @@ async def _dispatch_executor(
         #     Reject it — the first dispatch already covers this turn.
         #   - DIFFERENT stream_id → a genuinely new request arrived while the
         #     executor is busy; queue it to run next.
-        held_value = await redis_cache.client.get(lock_key) if redis_cache.client else None
+        held_value = await redis_cache.client.get(lock_key)
         held_stream_id = parse_lock_value(decode_raw_item(held_value))[0] if held_value else ""
         if stream_id and held_stream_id == stream_id:
             log.warning(
@@ -302,7 +286,7 @@ async def cancel_executor(
     question, or saying "nevermind" about a NEW request. Only the USER
     decides to cancel.
     """
-    configurable = config.get("configurable", {})
+    configurable = agent_configurable(config)
     conversation_id = configurable.get("thread_id", "")
 
     if not conversation_id:
@@ -314,9 +298,9 @@ async def cancel_executor(
 
     # Use raw client.get() — lock value is a plain string ("stream_id:task_id"),
     # not JSON. redis_cache.get() would fail to deserialize it.
-    raw_lock = await redis_cache.client.get(lock_key) if redis_cache.client else None
-    lock_value: str | None = str(raw_lock) if raw_lock is not None else None
-    has_queue = redis_cache.client and await redis_cache.client.llen(queue_key) > 0
+    raw_lock = await redis_cache.client.get(lock_key)
+    lock_value: str | None = decode_raw_item(raw_lock) if raw_lock is not None else None
+    has_queue = await redis_cache.client.llen(queue_key) > 0
 
     if not lock_value and not has_queue:
         return "No executor tasks are running or queued for this conversation."
@@ -331,6 +315,10 @@ async def cancel_executor(
         )
         # Running task was present but not targeted for cancellation
         skipped_running = bool(lock_value) and not cancelled
+        if cancelled:
+            # Only once the RUNNING task is actually gone: a cancel that spared it
+            # (queued-only) must leave its approvals alone — it is still waiting on them.
+            await cancel_conversation_approvals(conversation_id, configurable.get("user_id", ""))
         cancelled += await _cancel_queued_tasks(
             queue_key,
             task_ids,
@@ -356,8 +344,12 @@ async def cancel_executor(
         return result
 
     except Exception as e:  # noqa: BLE001
+        # Deliberately no lock cleanup here: this handler used to delete the busy
+        # key unconditionally, which freed the lock of a run it had NOT managed to
+        # cancel (no cancel_stream reached it), so the old executor kept going
+        # while a new call_executor could acquire the lock — two concurrent
+        # executors on one conversation. The lock's TTL is the safe recovery.
         log.error(f"{LogTag.TOOL} cancel_executor failed", error=str(e))
-        await redis_cache.delete(lock_key)
         return f"Cancellation attempted but hit an error: {e}"
 
 
@@ -421,9 +413,6 @@ async def _cancel_queued_tasks(
     conversation_id: str,
 ) -> list[str]:
     """Cancel queued tasks — all or selectively by task_id."""
-    if not redis_cache.client:
-        return []
-
     queue_len = await redis_cache.client.llen(queue_key)
     if queue_len == 0:
         return []
@@ -450,9 +439,6 @@ async def _remove_queued_by_ids(
     conversation_id: str,
 ) -> list[str]:
     """Selectively remove specific task_ids from the queue."""
-    if redis_cache.client is None:
-        raise RuntimeError("redis_cache.client is not initialized")
-
     all_items = await redis_cache.client.lrange(queue_key, 0, -1)
     keep: list[str] = []
     cancelled: list[str] = []
@@ -461,11 +447,14 @@ async def _remove_queued_by_ids(
     for raw_item in all_items:
         try:
             item = json.loads(raw_item)
-            if item.get("task_id") in target_ids:
-                cancelled.append(item.get("task_id", "queued"))
-            else:
-                keep.append(decode_raw_item(raw_item))
         except ValueError:
+            item = None
+        # Anything that isn't a JSON object is unreadable to us — keep it rather
+        # than letting it abort the whole cancellation. A bare `item.get(...)`
+        # raised AttributeError on a JSON scalar, which escaped this handler.
+        if isinstance(item, dict) and item.get("task_id") in target_ids:
+            cancelled.append(item["task_id"])
+        else:
             keep.append(decode_raw_item(raw_item))
 
     if cancelled:

@@ -40,8 +40,8 @@ export function useClarifyQuestions(
         if (!res?.questions?.length) return;
         dispatch({ type: "clarifyLoaded", questions: res.questions });
       })
-      .catch(() => {
-        /* fire-and-forget: clarify questions are optional */
+      .catch((error) => {
+        console.warn("[onboarding:clarify] questions fetch failed:", error);
       })
       .finally(() => {
         inFlightRef.current = false;

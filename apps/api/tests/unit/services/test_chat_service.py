@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.models.chat_models import ConversationModel
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat.chunks import (
     extract_response_text as _extract_response_text,
@@ -32,10 +33,15 @@ from app.services.chat.persistence import (
 from app.services.chat.stream import run_chat_stream_background
 
 
-# Each chat sub-module does `from app.core.stream_manager import stream_manager`,
-# so the patch target is each sub-module's binding. This helper rebinds all
-# four at once so a single mock intercepts calls from stream.py, chunks.py,
-# state.py, and workspace.py.
+def _created_conversation(conversation_id: str, description: str) -> ConversationModel:
+    """The real `create_conversation` return value — mock it with nothing looser."""
+    return ConversationModel(conversation_id=conversation_id, description=description)
+
+
+# Each module does `from app.core.stream_manager import stream_manager`,
+# so the patch target is each module's binding. This helper rebinds all
+# five at once so a single mock intercepts calls from stream.py, chunks.py,
+# state.py, artifact_forwarder.py, and stream_publishers.py.
 @contextlib.contextmanager
 def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
     with contextlib.ExitStack() as stack:
@@ -43,7 +49,7 @@ def _patch_stream_manager(sm: MagicMock) -> Iterator[MagicMock]:
             "app.services.chat.stream.stream_manager",
             "app.services.chat.chunks.stream_manager",
             "app.services.chat.state.stream_manager",
-            "app.services.chat.workspace.stream_manager",
+            "app.services.chat.artifact_forwarder.stream_manager",
             "app.utils.stream_publishers.stream_manager",
         ):
             stack.enter_context(patch(path, sm))
@@ -224,10 +230,7 @@ class TestExtractResponseText:
 @pytest.mark.unit
 class TestInitializeNewConversation:
     async def test_returns_sse_formatted_init_chunk(self, test_user, basic_body):
-        mock_conv = {
-            "conversation_id": "conv_new_xyz",
-            "description": "New Chat",
-        }
+        mock_conv = _created_conversation("conv_new_xyz", "New Chat")
         with patch(
             "app.services.chat.persistence.create_conversation",
             new=AsyncMock(return_value=mock_conv),
@@ -251,10 +254,7 @@ class TestInitializeNewConversation:
 
     async def test_passes_generate_description_false(self, test_user, basic_body):
         """The new-conversation path must pass generate_description=False."""
-        mock_conv = {
-            "conversation_id": "conv_new_xyz",
-            "description": "New Chat",
-        }
+        mock_conv = _created_conversation("conv_new_xyz", "New Chat")
         with patch(
             "app.services.chat.persistence.create_conversation",
             new=AsyncMock(return_value=mock_conv),
@@ -271,10 +271,7 @@ class TestInitializeNewConversation:
         assert call_kwargs.get("generate_description") is False
 
     async def test_uses_provided_conversation_id(self, test_user, basic_body):
-        mock_conv = {
-            "conversation_id": "forced_id",
-            "description": "New Chat",
-        }
+        mock_conv = _created_conversation("forced_id", "New Chat")
         with patch(
             "app.services.chat.persistence.create_conversation",
             new=AsyncMock(return_value=mock_conv),
@@ -291,10 +288,7 @@ class TestInitializeNewConversation:
         assert call_kwargs.get("conversation_id") == "forced_id"
 
     async def test_description_included_in_init_chunk(self, test_user, basic_body):
-        mock_conv = {
-            "conversation_id": "conv_id",
-            "description": "Chat about the weather",
-        }
+        mock_conv = _created_conversation("conv_id", "Chat about the weather")
         with patch(
             "app.services.chat.persistence.create_conversation",
             new=AsyncMock(return_value=mock_conv),
@@ -495,6 +489,21 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
 
 @pytest.mark.unit
 class TestRunChatStreamBackground:
+    @pytest.fixture(autouse=True)
+    def _no_pending_approval(self) -> Iterator[None]:
+        """Stub conversational HIL resolution to "nothing pending".
+
+        ``run_chat_stream_background`` now checks Mongo for a pending approval at
+        the top of each turn. These tests exercise the normal turn and don't stub
+        Redis, so without this the real ``redis_cache`` singleton is reached and
+        raises "Event loop is closed" under xdist's per-test event loops.
+        """
+        with patch(
+            "app.services.chat.stream.resolve_pending_from_message",
+            new=AsyncMock(return_value=None),
+        ):
+            yield
+
     async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 
@@ -503,12 +512,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.persistence.create_conversation",
-                new=AsyncMock(
-                    return_value={
-                        "conversation_id": "new_conv_id",
-                        "description": "Test conv",
-                    }
-                ),
+                new=AsyncMock(return_value=_created_conversation("new_conv_id", "Test conv")),
             ),
             patch(
                 "app.services.chat.stream.generate_and_update_description",
@@ -1030,12 +1034,7 @@ class TestRunChatStreamBackground:
             _patch_stream_manager(sm),
             patch(
                 "app.services.chat.persistence.create_conversation",
-                new=AsyncMock(
-                    return_value={
-                        "conversation_id": "new_id",
-                        "description": "New Chat",
-                    }
-                ),
+                new=AsyncMock(return_value=_created_conversation("new_id", "New Chat")),
             ),
             patch(
                 "app.services.chat.stream.generate_and_update_description",

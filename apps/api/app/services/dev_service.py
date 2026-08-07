@@ -8,19 +8,26 @@ development behind the auth bypass — see ``create_app``.
 """
 
 import asyncio
-from datetime import UTC, datetime
 
 from app.constants.auth import DEV_USER_MISSING_HINT
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    conversations_collection,
-    projects_collection,
-    todos_collection,
-    users_collection,
-)
+from app.db.repositories.conversations import conversation_repository
+from app.db.repositories.projects import project_repository
+from app.db.repositories.todos import todo_repository
+from app.db.repositories.users import user_repository
 from app.models.chat_models import ConversationModel, ConversationSource
 from app.models.todo_models import TodoModel
-from app.models.user_models import BioStatus, OnboardingPhase, OnboardingPreferences
+from app.models.user_models import (
+    BioStatus,
+    OnboardingPhase,
+    OnboardingPreferences,
+    UserDocument,
+)
+from app.schemas.dev_schemas import (
+    DeleteDevUserResponse,
+    DevDeletedCounts,
+    SeedDevDataResponse,
+)
 from app.services.conversation_service import create_conversation_service
 from app.services.oauth.oauth_service import store_user_info
 from app.services.platform_link_service import Platform, PlatformLinkService
@@ -29,10 +36,10 @@ from app.utils.errors import create_error
 from shared.py.wide_events import log
 
 
-async def require_dev_user(email: str) -> dict:
+async def require_dev_user(email: str) -> UserDocument:
     """Load a user by email or raise a 404 that points at the mint endpoint."""
-    user = await users_collection.find_one({"email": email})
-    if not user:
+    user = await user_repository.get_by_email(email)
+    if user is None:
         raise create_error(
             message=f"No dev user exists for {email!r}",
             why="the user has not been minted yet",
@@ -42,7 +49,7 @@ async def require_dev_user(email: str) -> dict:
     return user
 
 
-async def mint_dev_user(email: str, name: str | None = None) -> dict:
+async def mint_dev_user(email: str, name: str | None = None) -> UserDocument:
     """Idempotently find-or-create a dev user via the real signup path."""
     resolved_name = name or email.split("@", 1)[0]
     user_id, is_new = await store_user_info(
@@ -54,20 +61,14 @@ async def mint_dev_user(email: str, name: str | None = None) -> dict:
         external_side_effects=False,
     )
     log.info(f"{LogTag.DEV} minted dev user", email=email, user_id=str(user_id), is_new=is_new)
-    user_doc = await users_collection.find_one({"_id": user_id})
-    if not user_doc:
+    user_doc = await user_repository.get(str(user_id))
+    if user_doc is None:
         raise create_error(
             message="Dev user creation did not persist",
             why="store_user_info returned an id with no matching document",
             status_code=500,
         )
-    # Stable JSON-safe contract only — the raw doc carries datetimes/ObjectIds
-    # that JSONResponse cannot serialize and internals no consumer should see.
-    return {
-        "id": str(user_doc["_id"]),
-        "email": user_doc["email"],
-        "name": user_doc.get("name"),
-    }
+    return user_doc
 
 
 async def seed_dev_data(
@@ -75,7 +76,7 @@ async def seed_dev_data(
     todos: int,
     conversations: int,
     platform_links: list[str],
-) -> dict:
+) -> SeedDevDataResponse:
     """Create deterministic sample data for an existing dev user via real services."""
     for platform in platform_links:
         if not Platform.is_valid(platform):
@@ -87,29 +88,22 @@ async def seed_dev_data(
             )
 
     user = await require_dev_user(email)
-    user_id = str(user["_id"])
+    user_id = user.id
 
     # A seeded account must be ready to use: mark onboarding complete the same
     # way complete_onboarding() does (same atomic $exists gate, terminal phase,
     # NO_GMAIL bio placeholder), minus its background personalization jobs —
     # seeding must not depend on Redis workers. Never clobbers real onboarding.
-    await users_collection.update_one(
-        {"_id": user["_id"], "onboarding": {"$exists": False}},
-        {
-            "$set": {
-                "onboarding.completed": True,
-                "onboarding.completed_at": datetime.now(UTC),
-                "onboarding.phase": OnboardingPhase.COMPLETED,
-                "onboarding.bio_status": BioStatus.NO_GMAIL,
-                "onboarding.preferences": OnboardingPreferences(
-                    profession="Developer",
-                    response_style="casual",
-                    custom_instructions=None,
-                ).model_dump(),
-                "onboarding.pipeline_mode": "full",
-                "updated_at": datetime.now(UTC),
-            }
-        },
+    await user_repository.complete_onboarding(
+        user_id,
+        phase=OnboardingPhase.COMPLETED,
+        bio_status=BioStatus.NO_GMAIL,
+        pipeline_mode="full",
+        preferences=OnboardingPreferences(
+            profession="Developer",
+            response_style="casual",
+            custom_instructions=None,
+        ),
     )
 
     # The seeded platform_user_id is part of the seed CONTRACT (harness clients
@@ -137,7 +131,7 @@ async def seed_dev_data(
                 platform_user_id=platform_user_id,
                 profile={
                     "username": f"dev_{platform}",
-                    "display_name": user.get("name") or email,
+                    "display_name": user.name or email,
                 },
             )
             for platform, platform_user_id in platform_user_ids.items()
@@ -152,27 +146,25 @@ async def seed_dev_data(
         conversations=conversations,
         platforms=platform_links,
     )
-    return {
-        "email": email,
-        "user_id": user_id,
-        "todos_created": todos,
-        "conversations_created": conversations,
-        "platforms_linked": platform_links,
-        "platform_user_ids": platform_user_ids,
-    }
+    return SeedDevDataResponse(
+        email=email,
+        user_id=user_id,
+        todos_created=todos,
+        conversations_created=conversations,
+        platforms_linked=platform_links,
+        platform_user_ids=platform_user_ids,
+    )
 
 
-async def delete_dev_user(email: str) -> dict:
+async def delete_dev_user(email: str) -> DeleteDevUserResponse:
     """Remove a dev user and the todos/conversations/projects it owns."""
     user = await require_dev_user(email)
-    user_id = str(user["_id"])
+    user_id = user.id
 
-    todos_deleted = (await todos_collection.delete_many({"user_id": user_id})).deleted_count
-    conversations_deleted = (
-        await conversations_collection.delete_many({"user_id": user_id})
-    ).deleted_count
-    projects_deleted = (await projects_collection.delete_many({"user_id": user_id})).deleted_count
-    user_deleted = (await users_collection.delete_one({"_id": user["_id"]})).deleted_count
+    todos_deleted = await todo_repository.delete_all_for_user(user_id)
+    conversations_deleted = len(await conversation_repository.delete_all_for_user(user_id))
+    projects_deleted = await project_repository.delete_all_for_user(user_id)
+    user_deleted = int(await user_repository.delete(user_id))
 
     log.info(
         f"{LogTag.DEV} deleted dev user",
@@ -182,13 +174,13 @@ async def delete_dev_user(email: str) -> dict:
         conversations=conversations_deleted,
         projects=projects_deleted,
     )
-    return {
-        "email": email,
-        "user_id": user_id,
-        "deleted": {
-            "todos": todos_deleted,
-            "conversations": conversations_deleted,
-            "projects": projects_deleted,
-            "user": user_deleted,
-        },
-    }
+    return DeleteDevUserResponse(
+        email=email,
+        user_id=user_id,
+        deleted=DevDeletedCounts(
+            todos=todos_deleted,
+            conversations=conversations_deleted,
+            projects=projects_deleted,
+            user=user_deleted,
+        ),
+    )

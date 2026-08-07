@@ -36,13 +36,15 @@ import uuid
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from app.db.mongodb.collections import workflows_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.models.workflow_models import (  # noqa: E402
     TriggerConfig,
     TriggerType,
     WorkflowStep,
 )
 from shared.py.utils.slugify import slugify  # noqa: E402
+
+workflows_collection = get_async_collection("workflows")
 
 
 def generate_run_count() -> tuple[int, int]:
@@ -1359,8 +1361,13 @@ async def create_backup() -> str:
             workflow["_id"] = str(workflow["_id"])
             existing.append(workflow)
 
-        with open(backup_file, "w") as f:
-            json.dump(existing, f, indent=2, default=str)
+        # to_thread: this is an async def, so a bare open() would block the loop
+        # while the backup is serialised (ASYNC230).
+        await asyncio.to_thread(
+            Path(backup_file).write_text,
+            json.dumps(existing, indent=2, default=str),
+            encoding="utf-8",
+        )
 
         print(f"✅ Backup created: {backup_file}")
         return backup_file

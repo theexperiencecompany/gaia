@@ -18,6 +18,7 @@ Requires:
 """
 
 import asyncio
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 import json
@@ -395,7 +396,7 @@ async def send_chat_message(
     )
 
 
-async def get_tracked_todos(client: httpx.AsyncClient, token: str) -> list[dict]:
+async def get_tracked_todos() -> list[dict]:
     """Fetch all tracked todos (gaia-tracked label) directly from MongoDB.
 
     Note: agent tokens only work for /api/v1/chat-stream, so we go to MongoDB directly.
@@ -429,22 +430,22 @@ async def get_tracked_todos(client: httpx.AsyncClient, token: str) -> list[dict]
 
 async def delete_todos_by_ids(todo_ids: list[str]) -> None:
     """Clean up test todos via MongoDB (agent token doesn't support DELETE endpoint)."""
-    try:
-        from bson import ObjectId
-        from motor.motor_asyncio import AsyncIOMotorClient
+    from bson import ObjectId
+    from motor.motor_asyncio import AsyncIOMotorClient
 
+    # Best-effort: a leftover test todo is noise in the next run, not a failure
+    # of the run that just produced the results the caller is about to report.
+    with suppress(Exception):
         mongo = AsyncIOMotorClient("mongodb://localhost:27017")
         db = mongo["GAIA"]
         for tid in todo_ids:
             await db.todos.delete_one({"_id": ObjectId(tid)})
-    except Exception:
-        pass  # Best-effort cleanup
 
 
 # ── Tester ────────────────────────────────────────────────────────────────────
 
 
-async def check_connected_integrations(client: httpx.AsyncClient, token: str) -> set[str]:
+async def check_connected_integrations() -> set[str]:
     """Return set of connected integration IDs for the current user (via MongoDB)."""
     from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -556,7 +557,7 @@ async def run_scenario(
 
     async with httpx.AsyncClient(timeout=STREAM_TIMEOUT) as client:
         # Capture todos before
-        todos_before = await get_tracked_todos(client, token)
+        todos_before = await get_tracked_todos()
         before_ids = {t["id"] for t in todos_before}
 
         conversation_id = str(uuid.uuid4())
@@ -590,7 +591,7 @@ async def run_scenario(
         await asyncio.sleep(3)
 
         # Capture todos after
-        todos_after = await get_tracked_todos(client, token)
+        todos_after = await get_tracked_todos()
         new_todos = [t for t in todos_after if t["id"] not in before_ids]
 
         # Evaluate
@@ -957,7 +958,7 @@ async def main() -> None:
 
     # Detect connected integrations
     async with httpx.AsyncClient(timeout=15) as client:
-        connected = await check_connected_integrations(client, token)
+        connected = await check_connected_integrations()
     print(f"Connected integrations: {connected or '(none)'}")
 
     start = time.monotonic()

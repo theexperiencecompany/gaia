@@ -1,0 +1,52 @@
+# gaia-target-down — fires when any user-facing scrape target stops reporting.
+#
+# Multi-dimensional: one alert per downed job/instance. The negative case here is
+# not quiet (all up) but "only the downed target alerts" — gaia-api is 0 while
+# the other four scrape targets stay 1, and the expected set contains exactly the
+# gaia-api alert. The noData path (no up series at all) is Grafana-only via
+# noDataState: Alerting and is not modelled by promtool.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-target-down fires only for the job that reports 0
+    interval: 1m
+    input_series:
+      - series: 'up{job="gaia-api",instance="gaia-backend:80"}'
+        values: '0x30'
+      - series: 'up{job="arq_worker",instance="gaia-arq-worker:9100"}'
+        values: '1x30'
+      - series: 'up{job="postgres",instance="postgres_exporter:9187"}'
+        values: '1x30'
+      - series: 'up{job="redis",instance="redis_exporter:9121"}'
+        values: '1x30'
+      - series: 'up{job="rabbitmq",instance="rabbitmq:15692"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-target-down
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: availability
+              incident: availability
+              job: gaia-api
+              instance: gaia-backend:80
+            exp_annotations:
+              description: >-
+                The container is gone or its metrics endpoint is unreachable. What this means depends on the job — gaia-api means the API container is down or /metrics is rejecting the bearer token; arq_worker means background jobs have stopped; rabbitmq is the broker itself. Note that postgres and redis scrape their exporter sidecars, not the databases, so those two mean the exporter died and say nothing about whether the database is healthy.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-target-down
+              __dashboardUid__: gaia-overview
+              __panelId__: '5'
+
+  - name: gaia-target-down stays quiet when every target is up
+    interval: 1m
+    input_series:
+      - series: 'up{job="gaia-api",instance="gaia-backend:80"}'
+        values: '1x30'
+      - series: 'up{job="arq_worker",instance="gaia-arq-worker:9100"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-target-down
+        exp_alerts: []

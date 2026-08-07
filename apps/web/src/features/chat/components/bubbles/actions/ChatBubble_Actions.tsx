@@ -107,7 +107,7 @@ export default function ChatBubble_Actions({
     // already recorded the event so we never want to make the user feel
     // their thumbs didn't register.
     chatApi.submitMessageFeedback(message_id, isPositive).catch(() => {
-      /* fire-and-forget: feedback errors are intentionally silent */
+      /* silent by design: PostHog already recorded the event locally (see above) */
     });
     if (isPositive) {
       toast.success("Thanks for your feedback!");

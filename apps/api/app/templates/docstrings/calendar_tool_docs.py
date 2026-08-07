@@ -19,10 +19,12 @@ Args:
 
 Returns (when confirm_immediately=True):
     {
+        "created": true,
         "created_events": [{"index": 0, "summary": "...", "event_id": "abc123", ...}],
-        "total_created": N
+        "errors": [{"index": 1, "summary": "...", "error": "..."}]
     }
     Use event_id with ADD_RECURRENCE to make events recurring.
+    A non-empty "errors" means only some events were created — tell the user which failed.
 """
 
 CUSTOM_GET_DAY_SUMMARY = """
@@ -111,8 +113,9 @@ Args:
 Returns:
     {
         "events": [{"event_id": "...", "calendar_id": "...", "event": {...}}],
-        "total_retrieved": N
+        "errors": [{"event_id": "...", "calendar_id": "...", "error": "..."}]
     }
+    A non-empty "errors" means only some events were retrieved — tell the user which failed.
 """
 
 CUSTOM_DELETE_EVENT = """
@@ -129,8 +132,9 @@ Args:
 Returns:
     {
         "deleted": [{"event_id": "...", "calendar_id": "..."}],
-        "total_deleted": N
+        "errors": [{"event_id": "...", "calendar_id": "...", "error": "..."}]
     }
+    A non-empty "errors" means only some events were deleted — tell the user which failed.
 """
 
 CUSTOM_PATCH_EVENT = """

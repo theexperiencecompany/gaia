@@ -16,6 +16,7 @@ CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 CHANNEL_TYPE_WHATSAPP = "whatsapp"
 CHANNEL_TYPE_SLACK = "slack"
+CHANNEL_TYPE_EMAIL = "email"
 
 # External channel types that are auto-injected based on platform links
 EXTERNAL_NOTIFICATION_CHANNELS = (
@@ -41,6 +42,7 @@ DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_DISCORD: True,
     CHANNEL_TYPE_WHATSAPP: True,
     CHANNEL_TYPE_SLACK: True,
+    CHANNEL_TYPE_EMAIL: True,
 }
 
 # Workflow-completion notification copy. GAIA texts like a friend (first person,

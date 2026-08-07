@@ -128,10 +128,10 @@ const DUMMY_CHAT: UseOnboardingChatReturn = {
   isChatSending: false,
   isTodoExecutionDone: true,
   setChatInputValue: () => {
-    /* no-op: demo stub */
+    /* demo stub: chat is not wired on this showcase page */
   },
   sendChatMessage: async () => {
-    /* no-op: demo stub */
+    /* demo stub: chat is not wired on this showcase page */
   },
 };
 
@@ -523,7 +523,7 @@ function CTAComposerDemo() {
         <ComposerCTA>
           <OnboardingCTAButton
             onClick={() => {
-              /* no-op: demo stub */
+              /* demo stub: not wired on this showcase page */
             }}
           >
             Looks good
@@ -533,7 +533,7 @@ function CTAComposerDemo() {
       <div className="flex flex-wrap gap-2">
         <OnboardingCTAButton
           onClick={() => {
-            /* no-op: demo stub */
+            /* demo stub: not wired on this showcase page */
           }}
         >
           Understood
@@ -543,7 +543,7 @@ function CTAComposerDemo() {
         </OnboardingCTAButton>
         <OnboardingCTAButton
           onClick={() => {
-            /* no-op: demo stub */
+            /* demo stub: not wired on this showcase page */
           }}
           hideEndIcon
         >
@@ -598,7 +598,7 @@ function OnboardingInputDemo() {
         }
         onProfessionInputChange={(value) => setQaProfession(value || null)}
         onGmailSkip={() => {
-          /* no-op: demo stub */
+          /* demo stub: not wired on this showcase page */
         }}
       />
 
@@ -724,7 +724,7 @@ function CompletedStagesTimelineDemo() {
       <CompletedStagesTimeline
         state={state}
         dispatch={() => {
-          /* no-op: demo stub */
+          /* demo stub: not wired on this showcase page */
         }}
         chat={DUMMY_CHAT}
       />
@@ -761,7 +761,7 @@ function RevealWritingStyleStageDemo() {
         <RevealWritingStyleComposer
           state={state}
           dispatch={() => {
-            /* no-op: demo stub */
+            /* demo stub: not wired on this showcase page */
           }}
         />
       </div>
@@ -780,7 +780,7 @@ function WorkflowsStageDemo() {
       <Workflows
         state={state}
         dispatch={() => {
-          /* no-op: demo stub */
+          /* demo stub: not wired on this showcase page */
         }}
       />
     </DemoSection>
@@ -798,7 +798,7 @@ function PlatformsStageDemo() {
       <Platforms
         state={state}
         dispatch={() => {
-          /* no-op: demo stub */
+          /* demo stub: not wired on this showcase page */
         }}
       />
     </DemoSection>

@@ -14,20 +14,28 @@ event at the middleware level — no per-file boilerplate required.
 """
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from functools import wraps
 from http import HTTPStatus
 import time
+from typing import ParamSpec, TypeVar, cast
 
 from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
 
 from app.config.loggers import request_logger
 from shared.py.wide_events import env_context, log as wide_log
 
 _LEVEL_ORDER = {"DEBUG": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "CRITICAL": 4}
 
+P = ParamSpec("P")
+R = TypeVar("R")
 
-def log_function_call(func):
+
+def log_function_call(
+    func: Callable[P, Awaitable[R]] | Callable[P, R],
+) -> Callable[P, Awaitable[R]] | Callable[P, R]:
     """
     Decorator that logs function calls with execution time tracking.
 
@@ -40,12 +48,13 @@ def log_function_call(func):
     func_name = func.__qualname__
 
     if asyncio.iscoroutinefunction(func):
+        async_func = cast(Callable[P, Awaitable[R]], func)
 
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             start_time = time.time()
             try:
-                result = await func(*args, **kwargs)
+                result = await async_func(*args, **kwargs)
                 execution_time = time.time() - start_time
                 if execution_time > 1.0:
                     wide_log.warning(
@@ -67,11 +76,13 @@ def log_function_call(func):
 
         return async_wrapper
 
+    sync_func = cast(Callable[P, R], func)
+
     @wraps(func)
-    def sync_wrapper(*args, **kwargs):
+    def sync_wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         start_time = time.time()
         try:
-            result = func(*args, **kwargs)
+            result = sync_func(*args, **kwargs)
             execution_time = time.time() - start_time
             if execution_time > 1.0:
                 wide_log.warning(
@@ -119,7 +130,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 
     _SKIP_PATHS = frozenset(["/health", "/metrics", "/favicon.ico"])
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if request.url.path in self._SKIP_PATHS:
             return await call_next(request)
 

@@ -5,7 +5,7 @@ Cache utilities for key generation and hashing.
 import hashlib
 
 
-def create_cache_key_hash(func_name: str, *args, **kwargs) -> str:
+def create_cache_key_hash(func_name: str, *args: object, **kwargs: object) -> str:
     """
     Simple hash of all function data - no complexity, just works.
     Uses full hash for collision safety.

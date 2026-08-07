@@ -537,11 +537,11 @@ export abstract class BaseBotAdapter {
     refreshMs: number,
   ): () => void {
     void sendTyping().catch(() => {
-      /* no-op: transient typing-indicator send failures are non-fatal */
+      /* transient typing-indicator send failures are intentionally swallowed */
     });
     const interval = setInterval(() => {
       void sendTyping().catch(() => {
-        /* no-op: transient typing-indicator send failures are non-fatal */
+        /* transient typing-indicator send failures are intentionally swallowed */
       });
     }, refreshMs);
     return () => clearInterval(interval);

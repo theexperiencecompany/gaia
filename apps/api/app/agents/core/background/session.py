@@ -23,6 +23,8 @@ from enum import StrEnum
 from typing import Any
 
 from app.constants.log_tags import LogTag
+from app.models.agent_models import AgentConfigurable
+from app.models.user_models import AuthenticatedUser
 from shared.py.wide_events import log
 
 
@@ -50,10 +52,30 @@ class StreamSession:
     done_event: asyncio.Event = field(default_factory=asyncio.Event)
     tool_events: list[dict[str, Any]] = field(default_factory=list)
     pending_subagents: int = 0
-    subagent_results: list[dict[str, str]] = field(default_factory=list)
+    # Integrations with a background handoff in flight this run. Guards against a
+    # second concurrent handoff to the same integration, whose subagent would share
+    # the deterministic checkpoint thread id and corrupt it. (Results live in Redis —
+    # see ``bg_results`` — because they must survive the executor's approval pause.)
+    bg_integrations: set[str] = field(default_factory=set)
     # Voice-mode streams: the executor's finalize step publishes a TTS-only
     # ``voice_tts`` frame with its narrated answer for the voice agent to speak.
     voice_mode: bool = False
+    # tool_call_ids whose result has already been streamed on this stream. A
+    # subagent handed off to from an executor tool is a *nested* run, and
+    # langgraph's "messages" mode replays its chunks into the outer run's stream
+    # carrying the inner run's metadata — same node, same checkpoint namespace —
+    # so neither the payload nor its metadata says which run it belongs to. Both
+    # drivers would emit a tool_output for it, and only the subagent's copy
+    # carries a subagent_id, so the client renders the second one outside the
+    # subagent's row. A tool_call_id is unique per call, so a second sighting is
+    # always the echo — but arrival order does not say which sighting is the
+    # subagent's, so the owner below decides rather than whoever looks first.
+    streamed_tool_outputs: set[str] = field(default_factory=set)
+    # tool_call_id -> the subagent_id of the run that ANNOUNCED it (None for the
+    # executor's own calls). "updates" mode does not carry nested runs, so only
+    # the owning driver ever announces a call, and it does so before any result
+    # exists. That makes this the one fact that survives the echo.
+    tool_output_owners: dict[str, str | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -62,7 +84,7 @@ class ExecutorRun:
 
     stream_id: str
     conversation_id: str
-    user: dict
+    user: AuthenticatedUser
     kind: RunKind
     task_id: str | None
     user_message_id: str | None
@@ -73,7 +95,7 @@ class ExecutorRun:
     @classmethod
     def from_configurable(
         cls,
-        configurable: dict[str, Any],
+        configurable: AgentConfigurable,
         *,
         stream_id: str,
         conversation_id: str,
@@ -209,22 +231,69 @@ def decrement_pending_subagents(stream_id: str) -> int:
     return session.pending_subagents
 
 
+def note_tool_output_owner(stream_id: str, tool_call_id: str, subagent_id: str | None) -> None:
+    """Record which run announced this call, so only it may stream the result."""
+    session = _sessions.get(stream_id)
+    if session is None or not tool_call_id:
+        return
+    session.tool_output_owners.setdefault(tool_call_id, subagent_id)
+
+
+def claim_tool_output(stream_id: str, tool_call_id: str, subagent_id: str | None = None) -> bool:
+    """Claim the right to stream this tool result, once per stream.
+
+    Returns True for the owning caller and False for every echo. Fails open when
+    the stream has no session (a bare driver run, or any caller outside the
+    background machinery): with nowhere to record the claim there is nothing to
+    echo it either, so suppressing would only drop the sole copy.
+
+    A run that did not announce the call is always the echo, however early it
+    looks. Deciding on arrival order instead let the outer driver — which sees
+    the nested run's ToolMessage but has no ``subagent_id`` — win on a slow
+    machine and publish the result untagged, stranding the card outside the
+    subagent's row. An unannounced call still fails open, so a HIL resume (whose
+    announcement happened in the run before the pause) keeps streaming.
+    """
+    session = _sessions.get(stream_id)
+    if session is None or not tool_call_id:
+        return True
+    owner = session.tool_output_owners.get(tool_call_id, subagent_id)
+    if owner != subagent_id:
+        return False
+    if tool_call_id in session.streamed_tool_outputs:
+        return False
+    session.streamed_tool_outputs.add(tool_call_id)
+    return True
+
+
 def get_pending_subagents(stream_id: str) -> int:
     """Return number of pending background subagents for a stream."""
     session = _sessions.get(stream_id)
     return session.pending_subagents if session else 0
 
 
-def append_bg_subagent_result(stream_id: str, agent: str, result: str) -> None:
-    """Append a background subagent's final result for this stream."""
-    get_or_create_session(stream_id).subagent_results.append({"agent": agent, "message": result})
+def claim_bg_integration(stream_id: str, integration_id: str) -> bool:
+    """Claim the one background-handoff slot for an integration this run.
+
+    ``False`` means one is already in flight — the caller must fall back to a
+    blocking handoff, because a second detached subagent for the same integration
+    would share its deterministic checkpoint thread id.
+    """
+    session = get_or_create_session(stream_id)
+    if integration_id in session.bg_integrations:
+        return False
+    session.bg_integrations.add(integration_id)
+    return True
 
 
-def drain_bg_subagent_results(stream_id: str) -> list[dict[str, str]]:
-    """Return and clear all collected background subagent results for this stream."""
+def release_bg_integration(stream_id: str, integration_id: str) -> None:
+    """Release an integration's background-handoff slot (task finished or parked)."""
     session = _sessions.get(stream_id)
-    if session is None:
-        return []
-    results = list(session.subagent_results)
-    session.subagent_results.clear()
-    return results
+    if session is not None:
+        session.bg_integrations.discard(integration_id)
+
+
+def has_bg_integration(stream_id: str, integration_id: str) -> bool:
+    """Whether a background handoff for this integration is in flight this run."""
+    session = _sessions.get(stream_id)
+    return bool(session and integration_id in session.bg_integrations)

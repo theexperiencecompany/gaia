@@ -6,15 +6,12 @@ when OAuth integrations are connected. This metadata is used to enhance agent
 system prompts with user context.
 """
 
-from datetime import UTC, datetime
 import json
 from typing import Any
 
-from bson import ObjectId
-
 from app.config.oauth_config import get_integration_by_id
 from app.constants.cache import PROVIDER_METADATA_CACHE_TTL
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
 from shared.py.wide_events import log
@@ -71,13 +68,16 @@ async def fetch_tool_response(
             return data
         if isinstance(data, str):
             try:
-                return json.loads(data)
+                parsed = json.loads(data)
             except json.JSONDecodeError:
                 log.warning(f"Could not parse tool response as JSON: {data[:100]}")
                 return None
-        else:
-            log.warning(f"Unexpected response type from {tool_name}: {type(data)}")
+            if isinstance(parsed, dict):
+                return parsed
+            log.warning(f"Tool response JSON was not an object: {type(parsed)}")
             return None
+        log.warning(f"Unexpected response type from {tool_name}: {type(data)}")
+        return None
 
     except Exception as e:
         log.error(f"Error fetching {tool_name} for {integration_id}: {e}")
@@ -129,17 +129,9 @@ async def store_provider_metadata(user_id: str, provider: str, metadata: dict[st
         provider_metadata_keys=list(metadata.keys()),
     )
     try:
-        result = await users_collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {
-                "$set": {
-                    f"provider_metadata.{provider}": metadata,
-                    "updated_at": datetime.now(UTC),
-                }
-            },
-        )
+        stored = await user_repository.set_provider_metadata(user_id, provider, metadata)
 
-        if result.modified_count > 0:
+        if stored:
             log.info(f"Stored {provider} metadata for user {user_id}: {metadata}")
             return True
         log.warning(f"No document updated for user {user_id}")
@@ -157,13 +149,13 @@ async def store_provider_metadata(user_id: str, provider: str, metadata: dict[st
 async def get_provider_metadata(user_id: str, provider: str) -> dict[str, str] | None:
     """Retrieve provider metadata for a user, or None if not found."""
     try:
-        user = await users_collection.find_one({"_id": ObjectId(user_id)}, {"provider_metadata": 1})
+        user = await user_repository.get(user_id)
 
         if not user:
             return None
 
-        provider_metadata = user.get("provider_metadata", {})
-        return provider_metadata.get(provider)
+        metadata = (user.provider_metadata or {}).get(provider)
+        return metadata if isinstance(metadata, dict) else None
 
     except Exception as e:
         log.error(f"Error getting {provider} metadata for user {user_id}: {e}")
@@ -194,4 +186,5 @@ async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -
 
     # Store metadata in database
     # Use provider name for storage (matches handoff tool lookup)
-    return await store_provider_metadata(user_id, integration.provider, metadata)
+    stored: bool = await store_provider_metadata(user_id, integration.provider, metadata)
+    return stored

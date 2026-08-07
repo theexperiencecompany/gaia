@@ -1,13 +1,15 @@
 class FetchError(Exception):
     """Exception raised for errors during web fetching operations."""
 
-    def __init__(self, message, status_code=None, url=None):
+    def __init__(
+        self, message: str, status_code: int | None = None, url: str | None = None
+    ) -> None:
         self.message = message
         self.status_code = status_code
         self.url = url
         super().__init__(self.message)
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Enhanced string representation with additional context if available."""
         base_message = self.message
         if self.status_code:
@@ -15,14 +17,6 @@ class FetchError(Exception):
         if self.url:
             base_message += f" - URL: {self.url}"
         return base_message
-
-
-class InfisicalConfigError(Exception):
-    """Exception raised for errors related to Infisical configuration."""
-
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
 
 
 class ConfigurationError(Exception):
@@ -33,7 +27,7 @@ class ConfigurationError(Exception):
     clear error messages when required API keys or other configuration values are missing.
     """
 
-    def __init__(self, message):
+    def __init__(self, message: str) -> None:
         self.message = message
         super().__init__(self.message)
 

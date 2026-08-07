@@ -41,12 +41,14 @@ export {
   workflowCommand,
 } from "./commands";
 export { injectInfisicalSecrets, loadConfig } from "./config";
+export type {
+  OutboundAttachment,
+  OutboundMessageEnvelope,
+} from "./consumer/envelope";
 // Outbound envelope types/schema (zod-only — RN-safe). The full consumer
 // (`./consumer/outbound-consumer`) is NOT re-exported here: it imports amqplib
 // (Node-only), which Metro/React Native cannot resolve.
 export {
-  type OutboundAttachment,
-  type OutboundMessageEnvelope,
   outboundAttachmentSchema,
   outboundMessageEnvelopeSchema,
 } from "./consumer/envelope";
@@ -80,10 +82,18 @@ export type {
   SettingsResponse,
   UnauthenticatedSettingsResponse,
 } from "./types";
+export type {
+  BotLogFields,
+  BotLogger,
+  IncomingMedia,
+  MediaKind,
+  MediaOutcome,
+  MessageEditor,
+  NewMessageSender,
+  StreamingOptions,
+} from "./utils";
 export {
   BOT_MEDIA_LIMITS,
-  type BotLogFields,
-  type BotLogger,
   buildAuthLinkMessage,
   COMMAND_HELP,
   chunkResponse,
@@ -121,14 +131,9 @@ export {
   handleWorkflowList,
   hashLogIdentifier,
   htmlToPlainText,
-  type IncomingMedia,
   isTableRow,
   isTableSeparator,
-  type MediaKind,
-  type MediaOutcome,
-  type MessageEditor,
   mediaKindFromMime,
-  type NewMessageSender,
   OUTBOUND_FILE_LIMITS,
   PLATFORM_LIMITS,
   PLATFORM_MARKDOWN,
@@ -136,7 +141,6 @@ export {
   processBotMedia,
   renderForPlatform,
   STREAMING_DEFAULTS,
-  type StreamingOptions,
   sanitizeErrorForLog,
   truncateResponse,
   unsupportedMediaMessage,

@@ -5,11 +5,11 @@ export {
   INTEGRATION_LOGO_FILES,
   MOBILE_INTEGRATION_LOGO_CDN,
 } from "./integration-logos";
+export type { ToolIconConfig } from "./tool-icon-config";
 export {
   getCategoryInitial,
   getToolIconConfig,
   iconAliases,
   normalizeCategoryName,
-  type ToolIconConfig,
   toolIconConfigs,
 } from "./tool-icon-config";

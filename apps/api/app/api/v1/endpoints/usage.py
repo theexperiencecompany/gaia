@@ -4,11 +4,11 @@ Usage tracking API endpoints.
 
 import asyncio
 from datetime import UTC, datetime
-from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.api.v1.dependencies.oauth_dependencies import get_current_user
+from app.api.v1.dependencies.oauth_dependencies import get_user_id
+from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
 from app.config.rate_limits import (
     FEATURE_LIMITS,
     PRIMARY_METERED_FEATURE,
@@ -17,8 +17,12 @@ from app.config.rate_limits import (
     get_limits_for_plan,
     get_reset_time,
 )
-from app.decorators.rate_limiting import tiered_limiter
 from app.models.payment_models import PlanType
+from app.models.usage_models import (
+    HistoryFeatureUsage,
+    HistoryUsagePeriod,
+    UsageHistoryEntry,
+)
 from app.schemas.usage import (
     FeaturePeriodUsage,
     FeatureUpgrade,
@@ -36,12 +40,9 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
-async def get_usage_summary(user: dict = Depends(get_current_user)) -> UsageSummary:
+async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
 
     try:
         # Get user subscription
@@ -75,13 +76,10 @@ async def get_usage_summary(user: dict = Depends(get_current_user)) -> UsageSumm
 async def get_usage_history(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to retrieve"),
     feature_key: str | None = Query(default=None, description="Specific feature to filter by"),
-    user: dict = Depends(get_current_user),
-) -> list[dict[str, Any]]:
+    user_id: str = Depends(get_user_id),
+) -> list[UsageHistoryEntry]:
     """Get usage history for the current user."""
     log.set(operation="get_usage_history", period=f"{days}d")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
 
     # Validate feature_key if provided
     if feature_key and feature_key not in FEATURE_LIMITS:
@@ -90,32 +88,27 @@ async def get_usage_history(
     try:
         history = await usage_service.get_usage_history(user_id, feature_key, days)
 
-        formatted_history = []
+        formatted_history: list[UsageHistoryEntry] = []
         for snapshot in history:
-            features_formatted: dict[str, dict[str, Any]] = {}
+            features_formatted: dict[str, HistoryFeatureUsage] = {}
             for feature in snapshot.features:
                 key = feature.feature_key
                 if key not in features_formatted:
                     feature_info = get_feature_info(key)
-                    features_formatted[key] = {
-                        "title": feature_info["title"],
-                        "periods": {},
-                    }
+                    features_formatted[key] = HistoryFeatureUsage(title=feature_info.title)
 
-                features_formatted[key]["periods"][feature.period] = {
-                    "used": feature.used,
-                    "limit": feature.limit,
-                    "percentage": (
-                        (feature.used / feature.limit * 100) if feature.limit > 0 else 0
-                    ),
-                }
+                features_formatted[key].periods[feature.period] = HistoryUsagePeriod(
+                    used=feature.used,
+                    limit=feature.limit,
+                    percentage=(feature.used / feature.limit * 100) if feature.limit > 0 else 0,
+                )
 
             formatted_history.append(
-                {
-                    "date": snapshot.created_at.isoformat(),
-                    "plan_type": snapshot.plan_type,
-                    "features": features_formatted,
-                }
+                UsageHistoryEntry(
+                    date=snapshot.created_at.isoformat(),
+                    plan_type=snapshot.plan_type,
+                    features=features_formatted,
+                )
             )
 
         log.set(result_count=len(formatted_history))
@@ -129,13 +122,10 @@ async def get_usage_history(
 @router.get("/activity")
 async def get_usage_activity(
     days: int = Query(default=365, ge=1, le=366, description="Trailing window in days"),
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(get_user_id),
 ) -> dict[str, Any]:
     """Daily activity for the heatmap: per-day action counts, streak, and standing."""
     log.set(operation="get_usage_activity", period=f"{days}d")
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="User ID not found")
     try:
         result = await get_activity(user_id, days)
         log.set(outcome="success")
@@ -176,8 +166,8 @@ async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, Fe
                 )
 
         features_formatted[feature_key] = FeatureUsageSummary(
-            title=feature_info["title"],
-            description=feature_info["description"],
+            title=feature_info.title,
+            description=feature_info.description,
             # Pro tier's limits, so a free user's UI can show the upgrade delta.
             upgrade=FeatureUpgrade(day=pro_limits.day, month=pro_limits.month),
             periods=periods,

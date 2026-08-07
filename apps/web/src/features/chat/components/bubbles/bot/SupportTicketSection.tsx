@@ -7,7 +7,7 @@ export default function SupportTicketSection({
   support_ticket_data: SupportTicketData[];
 }) {
   const handleTicketSubmitted = () => {
-    /* no-op: onSubmitted is required by SupportTicketCard but unused here */
+    /* card manages its own submitted state; nothing to act on from the bubble */
   };
 
   return (

@@ -411,7 +411,7 @@ export function VoiceControlBarContainer({
       // activation window — so without this the browser silently blocks
       // playback and the StartAudio fallback pill has to appear.
       room.startAudio().catch(() => {
-        /* fire-and-forget: playback unlock is best-effort */
+        /* best-effort unlock: block is handled by the StartAudio fallback pill */
       });
       Promise.all([
         room.localParticipant.setMicrophoneEnabled(true, undefined, {

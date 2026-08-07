@@ -1,15 +1,19 @@
 """
-Custom LangChain adapter with schema sanitization for MCP tools.
+Custom LangChain adapter for MCP tools.
 
-This adapter fixes field name issues that cause Pydantic validation failures
-when MCP servers return tool schemas with leading underscores (e.g., _postman_id).
-It also replaces mcp_use's tool-result parsing, which stringifies the MCP
-content list (leaking ``TextContent(...)`` pydantic reprs to the model and
-destroying image content entirely).
+Three concerns the base ``mcp_use`` adapter doesn't cover:
+- schema sanitization — some MCP servers (e.g. Postman) return property names
+  with leading underscores (e.g. ``_postman_id``) that Pydantic rejects;
+- annotation preservation — the base adapter drops MCP tool ``annotations``,
+  but the HIL gate reads ``destructiveHint`` to auto-gate a server-declared
+  destructive tool without an LLM classification;
+- tool-result parsing — the base adapter stringifies the MCP content list,
+  leaking ``TextContent(...)`` pydantic reprs to the model and destroying
+  image content entirely.
 """
 
 import asyncio
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from langchain_core.tools import BaseTool
 
@@ -38,6 +42,10 @@ from mcp.types import (
     TextResourceContents,
     Tool as MCPTool,
 )
+
+# Key under a LangChain tool's ``metadata`` where we stash the MCP tool's
+# ``annotations`` dict. Written here, read by ``app/services/hil/classification``.
+MCP_ANNOTATIONS_METADATA_KEY = "mcp_annotations"
 
 
 async def _tool_result_to_content(result: CallToolResult) -> str | list[dict[str, Any]]:
@@ -102,18 +110,25 @@ async def _image_block(item: ImageContent) -> dict[str, Any]:
 
 
 class SanitizingLangChainAdapter(LangChainAdapter):
-    """LangChain adapter that sanitizes field names in schemas.
+    """LangChain adapter that sanitizes MCP schemas and preserves annotations.
 
-    Some MCP servers (e.g., Postman) return tool schemas with field names
-    that start with underscores (e.g., `_postman_id`). Pydantic rejects these
-    because underscore-prefixed names are reserved for internal use.
+    Some MCP servers (e.g. Postman) return tool schemas with field names that
+    start with underscores (e.g. ``_postman_id``); Pydantic rejects those
+    because underscore-prefixed names are reserved. ``fix_schema`` strips them.
 
-    This adapter overrides `fix_schema` to strip leading underscores from
-    property names while preserving the original behavior.
+    The base adapter also discards MCP ``annotations``; ``_convert_tool``
+    re-attaches them to the tool's ``metadata`` so the HIL gate can honor
+    ``destructiveHint``.
     """
 
     def fix_schema(self, schema: Any) -> Any:
         """Fix JSON schema for Pydantic compatibility.
+
+        Signature kept as ``Any`` on purpose: this overrides mcp_use's
+        ``LangChainAdapter.fix_schema``, which the base adapter calls with
+        arbitrary JSON-schema nodes (dict, list, or scalar) and whose own
+        annotation is ``Any``. Narrowing it here would break that contract
+        (Type Safety item 14).
 
         Extends the base fix_schema to also:
         - Strip leading underscores from property names
@@ -169,10 +184,11 @@ class SanitizingLangChainAdapter(LangChainAdapter):
     def _convert_tool(self, mcp_tool: MCPTool, connector: BaseConnector) -> BaseTool | None:
         """Convert an MCP tool to LangChain format.
 
-        Mirrors mcp_use's implementation except for result parsing: upstream
-        returns ``str(tool_result.content)``, which leaks pydantic reprs and
-        destroys media blocks — this version parses content items properly
-        (see ``_tool_result_to_content``).
+        Mirrors mcp_use's implementation except for two things upstream gets
+        wrong for us: result parsing (upstream returns ``str(tool_result.content)``,
+        which leaks pydantic reprs and destroys media blocks, see
+        ``_tool_result_to_content``), and the MCP ``annotations``, which upstream
+        drops but the HIL gate reads for ``destructiveHint``.
         """
         if mcp_tool.name in self.disallowed_tools:
             return None
@@ -194,7 +210,7 @@ class SanitizingLangChainAdapter(LangChainAdapter):
             def _run(self, **kwargs: Any) -> NoReturn:
                 raise NotImplementedError("MCP tools only support async operations")
 
-            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]]:
+            async def _arun(self, **kwargs: Any) -> str | list[dict[str, Any]] | dict[str, Any]:
                 try:
                     tool_result: CallToolResult = await self.tool_connector.call_tool(
                         self.name, kwargs
@@ -202,10 +218,20 @@ class SanitizingLangChainAdapter(LangChainAdapter):
                     try:
                         return await _tool_result_to_content(tool_result)
                     except Exception as e:
-                        return format_error(e, tool=self.name)
+                        # mcp_use ships no py.typed marker, so mypy treats
+                        # format_error's real `-> dict` annotation as Any.
+                        return cast(dict[str, Any], format_error(e, tool=self.name))
                 except Exception as e:
                     if self.handle_tool_error:
-                        return format_error(e, tool=self.name)
+                        # mcp_use ships no py.typed marker, so mypy treats
+                        # format_error's real `-> dict` annotation as Any.
+                        return cast(dict[str, Any], format_error(e, tool=self.name))
                     raise
 
-        return McpToLangChainAdapter()
+        tool = McpToLangChainAdapter()
+        if mcp_tool.annotations is not None:
+            tool.metadata = {
+                **(tool.metadata or {}),
+                MCP_ANNOTATIONS_METADATA_KEY: mcp_tool.annotations.model_dump(),
+            }
+        return tool

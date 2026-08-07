@@ -222,7 +222,7 @@ async def retain(
         batch.agenda_updates = []
 
     result = RetainResult(facts_extracted=len(batch.facts))
-    if not batch.facts and not batch.episode_entries:
+    if not batch.facts and not batch.episode_entries and not batch.agenda_updates:
         log.set(
             memory=MemoryContext(
                 operation="retain",
@@ -344,6 +344,9 @@ async def retain_single(
 
     embeddings = await embed_batch([fact.content])
     reconciled = await reconcile(user_id, [fact], embeddings)
+    if not reconciled:
+        # reconcile() drops facts the batched LLM returned no verdict for.
+        raise ValueError("Memory could not be reconciled against existing memories")
 
     is_growth = reconciled[0].outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
     if is_growth:
@@ -613,7 +616,7 @@ async def _store_conversation_chunks(
 
     for message in messages:
         content = message.get("content", "")
-        if not content:
+        if not content.strip():
             continue
         line = f"{message.get('role', 'user')}: {content}"
         if len(line) > TRANSCRIPT_CHUNK_MAX_CHARS:
@@ -705,7 +708,7 @@ def _clamp_category_path(path: str | None) -> str:
     """Normalize an LLM-chosen folder path to the maximum tree depth."""
     if not path:
         return _FALLBACK_CATEGORY_PATH
-    segments = [segment for segment in path.split("/") if segment]
+    segments = [stripped for segment in path.split("/") if (stripped := segment.strip())]
     return "/".join(segments[:CATEGORY_PATH_MAX_DEPTH]) or _FALLBACK_CATEGORY_PATH
 
 

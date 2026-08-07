@@ -1,4 +1,5 @@
 import type {
+  ApprovalRequestData,
   RateLimitData as SharedRateLimitData,
   SubagentGroupData as SharedSubagentGroupData,
   ToolCallEntry as SharedToolCallEntry,
@@ -186,6 +187,7 @@ export const TOOL_REGISTRY = {
   artifact_data: null as unknown as ArtifactData[],
   screenshot_data: null as unknown as ScreenshotData,
   memory_data: null as unknown as MemoryData,
+  approval_request: null as unknown as ApprovalRequestData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -218,6 +220,7 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array
 export const GROUPED_TOOLS = new Set<ToolName>([
+  "approval_request",
   "search_results",
   "reddit_data",
   "integration_connection_required",

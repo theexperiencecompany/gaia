@@ -17,7 +17,14 @@ has it. Run it via the mise shim (`wt ...`) or `mise exec -- wt ...`.
 
 ```bash
 wt config shell install   # enables `wt switch` to cd for you; restart the shell after
+wt config state default-branch set develop   # GAIA merges everything into `develop` — see below
 ```
+
+**GAIA's base branch is `develop`, never `master`/`main`.** The remote's `origin/HEAD`
+points at `master`, so a fresh clone makes worktrunk mis-detect `develop` and every
+`wt switch -c` would branch from `master`. Always run the `default-branch` one-liner
+above on a new clone. New feature branches are cut from `develop` — fetch it fresh
+before branching, and merge `develop` back in to keep the PR mergeable.
 
 ## Create a worktree and start working
 
@@ -52,7 +59,7 @@ today's defaults. Delete `.env.worktree` to fall back to defaults.
 | Web (Next.js) | `WEB_PORT` | `3000 + offset` | 3000 |
 | Web → API URL | `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:$API_PORT/api/v1/` | …8000/api/v1/ |
 | Bots/`gaia-sim` → API URL | `GAIA_API_URL` | `http://localhost:$API_PORT` | …:8000 |
-| Scripted LLM stub (`dev:sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |
+| Scripted LLM stub (`dev --sim`) | `LLM_STUB_PORT` | `9797 + offset` | 9797 |
 | Discord bot | `BOT_DISCORD_PORT` | `3200 + offset` | 3200 |
 | Slack bot | `BOT_SLACK_PORT` | `3201 + offset` | 3201 |
 | Telegram bot | `BOT_TELEGRAM_PORT` | `3202 + offset` | 3202 |
@@ -93,16 +100,20 @@ The web e2e suite is the sharp edge: its `global-setup` resets → mints → see
 at once wipe each other's data mid-run.
 
 Rule: run e2e in **one worktree at a time**, or give a worktree its own identity
-by setting `DEV_USER` (the e2e seed target) **and** the matching
-`DEV_AUTH_BYPASS_EMAIL` on its API to the same address — browser page loads carry
-no `X-Dev-User` header, so the seeded user must equal the server's bypass email.
-Full per-worktree DB isolation is deferred; until then this is the constraint.
+by setting `DEV_USER=<email>` — the `--agent` / `--sim` flags on `mise dev` /
+`dev:vm` derive the API's `DEV_AUTH_BYPASS_EMAIL` from `DEV_USER`, so a single
+value sets both the e2e seed target and the server's bypass identity. They must
+match because browser page loads carry no `X-Dev-User` header, so the seeded user
+has to equal the server's bypass email. Full per-worktree DB isolation is
+deferred; until then this is the constraint.
 
 ## Merge back
 
 Repo git rules apply (see root `CLAUDE.md`):
 
 - `develop` is the base branch — branch from and merge into `develop`, not `master`.
+  If `wt switch -c` ever creates branches from `master`, the default-branch state is
+  wrong on this clone: run `wt config state default-branch set develop` (see One-time setup).
 - Plain merge only. Never `git rebase` / `git pull --rebase` against `origin/develop`.
 - Never merge PRs (`gh pr merge` and `wt merge` are both off-limits) — the team merges.
 
@@ -119,7 +130,7 @@ wt remove         # remove the current worktree; deletes the branch if merged
 
 ## Troubleshooting
 
-- **`port NNNN is already in use by PID …` on `mise dev` / `dev:sim`** — the
+- **`port NNNN is already in use by PID …` on `mise dev` (incl. `--sim`)** — the
   preflight (`scripts/dev/check-ports.sh`) refused to start because another
   worktree or a stale server holds the port; the message names the process. Kill
   it, or confirm `.env.worktree` exists here (`cat .env.worktree`) and re-run
@@ -130,6 +141,11 @@ wt remove         # remove the current worktree; deletes the branch if merged
   matches this worktree's `API_PORT`; restart `nx dev web` so Next re-reads the env.
 - **`.env.worktree` missing** — run `mise run wt:env`. A brand-new worktree gets it
   from the pre-start hook; running the task again is safe and idempotent.
+- **`no task //:wt:env found` during `wt switch -c`** — the branch predates the worktree
+  infra (added Jul 2026 in `7f3cd4115`), so its `mise.toml` lacks the `wt:env` task,
+  the `_.file = ".env.worktree"` auto-load, and the `--port=${WEB_PORT:-3000}` dev script.
+  Run the port script manually (or `git merge origin/develop` to bring the infra in),
+  then export the port when running the dev server: `pnpm nx run web:next:dev --port=3040`.
 - **New worktree has no secrets** — the `copy-ignored` hook only copies files that
   are both gitignored and in `.worktreeinclude`. If you added a new secret file,
   add its path to `.worktreeinclude` and re-run `wt step copy-ignored`.

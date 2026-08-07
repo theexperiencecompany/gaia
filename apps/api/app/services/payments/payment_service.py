@@ -3,9 +3,8 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
-from typing import Any
+from typing import Any, Literal
 
-from bson import ObjectId
 from dodopayments import DodoPayments
 from fastapi import HTTPException
 
@@ -15,14 +14,13 @@ from app.constants.cache import (
     SUBSCRIPTION_PLAN_CACHE_TTL,
 )
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import (
-    plans_collection,
-    subscriptions_collection,
-    users_collection,
-)
 from app.db.redis import redis_cache
-from app.db.utils import serialize_document
+from app.db.repositories.plans import plan_repository
+from app.db.repositories.subscriptions import subscription_repository
+from app.db.repositories.users import user_repository
 from app.models.payment_models import (
+    CreateSubscriptionResponse,
+    PaymentVerificationResponse,
     PlanResponse,
     PlanType,
     SubscriptionStatus,
@@ -35,9 +33,11 @@ from shared.py.wide_events import log
 class DodoPaymentService:
     """Streamlined Dodo Payments service."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         try:
-            environment = "live_mode" if settings.ENV == "production" else "test_mode"
+            environment: Literal["live_mode", "test_mode"] = (
+                "live_mode" if settings.ENV == "production" else "test_mode"
+            )
 
             self.client = DodoPayments(
                 bearer_token=settings.DODO_PAYMENTS_API_KEY,
@@ -67,23 +67,22 @@ class DodoPaymentService:
                 await redis_cache.delete(cache_key)
 
         # Fetch from database
-        query = {"is_active": True} if active_only else {}
-        plans = await plans_collection.find(query).sort("amount", 1).to_list(None)
+        plans = await plan_repository.list_plans(active_only=active_only)
 
         plan_responses = [
             PlanResponse(
-                id=str(plan["_id"]),
-                dodo_product_id=plan.get("dodo_product_id", ""),
-                name=plan["name"],
-                description=plan.get("description"),
-                amount=plan["amount"],
-                currency=plan["currency"],
-                duration=plan["duration"],
-                max_users=plan.get("max_users"),
-                features=plan.get("features", []),
-                is_active=plan["is_active"],
-                created_at=plan["created_at"],
-                updated_at=plan["updated_at"],
+                id=plan.id,
+                dodo_product_id=plan.dodo_product_id or "",
+                name=plan.name,
+                description=plan.description,
+                amount=plan.amount,
+                currency=plan.currency,
+                duration=plan.duration,
+                max_users=plan.max_users,
+                features=plan.features,
+                is_active=plan.is_active,
+                created_at=plan.created_at,
+                updated_at=plan.updated_at,
             )
             for plan in plans
         ]
@@ -98,17 +97,17 @@ class DodoPaymentService:
         product_id: str,
         quantity: int = 1,
         discount_code: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> CreateSubscriptionResponse:
         """Create subscription via Checkout Sessions; show promo code field and get hosted checkout url."""
         log.set(payment={"event_type": "create_subscription", "status": "initiated"})
 
         # Get user
-        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        user = await user_repository.get(user_id)
         if not user:
             raise HTTPException(404, "User not found")
 
         # Check for existing active subscription
-        existing = await subscriptions_collection.find_one({"user_id": user_id, "status": "active"})
+        existing = await subscription_repository.get_active_for_user(user_id)
         if existing:
             raise HTTPException(409, "Active subscription exists")
 
@@ -122,8 +121,8 @@ class DodoPaymentService:
                     }
                 ],
                 "customer": {
-                    "email": user.get("email"),
-                    "name": user.get("first_name") or user.get("name", "User"),
+                    "email": user.email,
+                    "name": user.first_name or user.name or "User",
                 },
                 "feature_flags": {
                     # This renders the promo/discount code input on the hosted page
@@ -165,46 +164,42 @@ class DodoPaymentService:
             }
         )
 
-        return {
-            "subscription_id": checkout_session.session_id,
-            "payment_link": checkout_session.checkout_url,
-            "status": "payment_link_created",
-        }
-
-    async def verify_payment_completion(self, user_id: str) -> dict[str, Any]:
-        """Check payment completion status from webhook data."""
-        subscription = await subscriptions_collection.find_one(
-            {"user_id": user_id, "status": "active"}, sort=[("created_at", -1)]
+        return CreateSubscriptionResponse(
+            subscription_id=checkout_session.session_id,
+            payment_link=checkout_session.checkout_url,
+            status="payment_link_created",
         )
 
+    async def verify_payment_completion(self, user_id: str) -> PaymentVerificationResponse:
+        """Check payment completion status from webhook data."""
+        subscription = await subscription_repository.get_latest_active_for_user(user_id)
+
         if not subscription:
-            return {
-                "payment_completed": False,
-                "message": "No active subscription found",
-            }
+            return PaymentVerificationResponse(
+                payment_completed=False,
+                message="No active subscription found",
+            )
 
         # Send welcome email (don't fail if email fails)
         try:
-            user = await users_collection.find_one({"_id": ObjectId(user_id)})
-            if user and user.get("email"):
+            user = await user_repository.get(user_id)
+            if user and user.email:
                 await send_pro_subscription_email(
-                    user_name=user.get("first_name", "User"),
-                    user_email=user["email"],
+                    user_name=user.first_name or "User",
+                    user_email=user.email,
                 )
         except Exception as e:
             log.debug(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
 
-        return {
-            "payment_completed": True,
-            "subscription_id": subscription["dodo_subscription_id"],
-            "message": "Payment completed",
-        }
+        return PaymentVerificationResponse(
+            payment_completed=True,
+            subscription_id=subscription.dodo_subscription_id,
+            message="Payment completed",
+        )
 
     async def get_user_subscription_status(self, user_id: str) -> UserSubscriptionStatus:
         """Get user subscription status."""
-        subscription = await subscriptions_collection.find_one(
-            {"user_id": user_id, "status": "active"}
-        )
+        subscription = await subscription_repository.get_active_for_user(user_id)
 
         if not subscription:
             return UserSubscriptionStatus(
@@ -224,7 +219,7 @@ class DodoPaymentService:
         try:
             plans = await self.get_plans(active_only=False)
             plan = next(
-                (p for p in plans if p.dodo_product_id == subscription.get("product_id")),
+                (p for p in plans if p.dodo_product_id == subscription.product_id),
                 None,
             )
         except Exception:
@@ -233,14 +228,14 @@ class DodoPaymentService:
         return UserSubscriptionStatus(
             user_id=user_id,
             current_plan=plan.model_dump() if plan else None,
-            subscription=serialize_document(subscription),
+            subscription=subscription.model_dump(mode="json"),
             is_subscribed=True,
             days_remaining=None,
             can_upgrade=True,
             can_downgrade=True,
             has_subscription=True,
             plan_type=PlanType.PRO,
-            status=SubscriptionStatus(subscription["status"]),
+            status=SubscriptionStatus(subscription.status),
         )
 
     async def get_cached_plan_type(self, user_id: str) -> PlanType:
@@ -260,11 +255,9 @@ class DodoPaymentService:
         """Drop the cached plan tier after a subscription change (applies immediately)."""
         if not dodo_subscription_id:
             return
-        sub = await subscriptions_collection.find_one(
-            {"dodo_subscription_id": dodo_subscription_id}, {"user_id": 1}
-        )
-        if sub and sub.get("user_id"):
-            await redis_cache.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{sub['user_id']}")
+        user_id = await subscription_repository.get_user_id_by_dodo_id(dodo_subscription_id)
+        if user_id:
+            await redis_cache.delete(f"{SUBSCRIPTION_PLAN_CACHE_PREFIX}{user_id}")
 
 
 payment_service = DodoPaymentService()

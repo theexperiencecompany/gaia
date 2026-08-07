@@ -37,6 +37,10 @@ import { useNestedMenu } from "@/features/settings/hooks/useNestedMenu";
 
 const ic = "h-[18px] w-[18px]";
 
+const noopAction = () => {
+  /* demo menu items are non-functional on the landing page */
+};
+
 interface DemoSettingsDropdownProps {
   children: React.ReactNode;
   onOpenChange?: (open: boolean) => void;
@@ -55,34 +59,16 @@ export default function DemoSettingsDropdown({
       key: "documentation",
       label: "Documentation",
       icon: BookBookmark02Icon,
-      action: () => {
-        /* no-op: demo menu item */
-      },
+      action: noopAction,
     },
     {
       key: "changelog",
       label: "Changelog",
       icon: Layers01Icon,
-      action: () => {
-        /* no-op: demo menu item */
-      },
+      action: noopAction,
     },
-    {
-      key: "blog",
-      label: "Blog",
-      icon: QuillWrite01Icon,
-      action: () => {
-        /* no-op: demo menu item */
-      },
-    },
-    {
-      key: "roadmap",
-      label: "Roadmap",
-      icon: MapsIcon,
-      action: () => {
-        /* no-op: demo menu item */
-      },
-    },
+    { key: "blog", label: "Blog", icon: QuillWrite01Icon, action: noopAction },
+    { key: "roadmap", label: "Roadmap", icon: MapsIcon, action: noopAction },
   ];
 
   const supportMenuItems = [
@@ -90,42 +76,20 @@ export default function DemoSettingsDropdown({
       key: "contact_support",
       label: "Contact Support",
       icon: BubbleChatQuestionIcon,
-      action: () => {
-        /* no-op: demo menu item */
-      },
+      action: noopAction,
     },
     {
       key: "feature_request",
       label: "Request a Feature",
       icon: GitPullRequestIcon,
-      action: () => {
-        /* no-op: demo menu item */
-      },
+      action: noopAction,
     },
   ];
 
   const downloadMenuItems = [
-    {
-      key: "macos",
-      label: "macOS",
-      action: () => {
-        /* no-op: demo menu item */
-      },
-    },
-    {
-      key: "windows",
-      label: "Windows",
-      action: () => {
-        /* no-op: demo menu item */
-      },
-    },
-    {
-      key: "linux",
-      label: "Linux",
-      action: () => {
-        /* no-op: demo menu item */
-      },
-    },
+    { key: "macos", label: "macOS", action: noopAction },
+    { key: "windows", label: "Windows", action: noopAction },
+    { key: "linux", label: "Linux", action: noopAction },
   ];
 
   return (

@@ -10,7 +10,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     TieredRateLimiter,
 )
-from app.config.rate_limits import RateLimitPeriod
+from app.config.rate_limits import FeatureInfo, RateLimitPeriod
 from app.decorators import tiered_rate_limit
 from app.models.payment_models import PlanType
 from app.models.usage_models import FeatureUsage, UsagePeriod
@@ -390,7 +390,7 @@ class TestCollectFeatureUsage:
 
     @patch(
         "app.api.v1.middleware.tiered_rate_limiter.get_feature_info",
-        return_value={"title": "Chat"},
+        return_value=FeatureInfo(title="Chat", description="Chat messages"),
     )
     @patch("app.api.v1.middleware.tiered_rate_limiter.get_reset_time")
     @patch(

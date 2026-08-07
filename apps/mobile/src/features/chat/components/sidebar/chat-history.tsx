@@ -103,7 +103,7 @@ function RenameModal({
             maxWidth: 360,
           }}
           onPress={() => {
-            /* no-op: swallow taps so they don't dismiss the modal backdrop */
+            /* swallow taps inside the dialog so the outer overlay does not close it */
           }}
         >
           <Text

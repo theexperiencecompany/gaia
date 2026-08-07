@@ -96,8 +96,8 @@ export function useOnboardingSubmission(
           onSuccess?.(response.user);
         }
       })
-      .catch(() => {
-        /* fire-and-forget: submission errors are surfaced elsewhere */
+      .catch((error) => {
+        console.error("[onboarding:submit] completion request failed:", error);
       })
       .finally(() => {
         inFlightRef.current = false;

@@ -10,15 +10,6 @@ class CreateDevUserRequest(BaseModel):
     name: str | None = Field(default=None, max_length=200, description="Display name")
 
 
-class DevUserResponse(BaseModel):
-    """Stable identity of the minted user (never the raw Mongo doc — internal
-    fields like datetimes are not part of this contract)."""
-
-    id: str
-    email: str
-    name: str | None = None
-
-
 class SeedDevDataRequest(BaseModel):
     """Seed deterministic sample data for an existing dev user."""
 
@@ -44,12 +35,21 @@ class SeedDevDataResponse(BaseModel):
     platform_user_ids: dict[str, str]
 
 
+class DevDeletedCounts(BaseModel):
+    """How many rows teardown removed, per collection."""
+
+    todos: int
+    conversations: int
+    projects: int
+    user: int
+
+
 class DeleteDevUserResponse(BaseModel):
     """Summary of the user + owned data removed during teardown."""
 
     email: str
     user_id: str
-    deleted: dict[str, int]
+    deleted: DevDeletedCounts
 
 
 class RunDevAgentRequest(BaseModel):

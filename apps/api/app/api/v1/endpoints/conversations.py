@@ -10,6 +10,19 @@ from app.models.chat_models import (
     UpdateDescriptionRequest,
     UpdateMessagesRequest,
 )
+from app.models.conversation_models import (
+    BatchSyncResponse,
+    ConversationActionResponse,
+    ConversationListResponse,
+    CreateConversationResponse,
+    DeleteAllConversationsResponse,
+    PinMessageResponse,
+    PinnedMessagesResponse,
+    StarConversationResponse,
+    UpdateDescriptionResponse,
+    UpdateMessagesResponse,
+)
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import (
     batch_sync_conversations,
     create_conversation_service,
@@ -32,8 +45,8 @@ router = APIRouter()
 
 @router.post("/conversations")
 async def create_conversation_endpoint(
-    conversation: ConversationModel, user: dict = Depends(get_current_user)
-) -> JSONResponse:
+    conversation: ConversationModel, user: AuthenticatedUser = Depends(get_current_user)
+) -> CreateConversationResponse:
     """
     Create a new conversation.
     """
@@ -46,15 +59,15 @@ async def create_conversation_endpoint(
         conversation={
             "operation": "create",
             "is_new": True,
-            "id": response.get("conversation_id"),
+            "id": response.conversation_id,
         }
     )
-    return JSONResponse(content=response)
+    return response
 
 
 @router.get("/conversations")
 async def get_conversations_endpoint(
-    user: dict = Depends(get_current_user),
+    user: AuthenticatedUser = Depends(get_current_user),
     page: int = Query(1, alias="page", ge=1, description="Page number (starting from 1)"),
     limit: int = Query(
         10,
@@ -63,7 +76,7 @@ async def get_conversations_endpoint(
         le=100,
         description="Number of conversations per page (1-100)",
     ),
-) -> JSONResponse:
+) -> ConversationListResponse:
     """
     Retrieve paginated conversations for the authenticated user.
     """
@@ -77,17 +90,17 @@ async def get_conversations_endpoint(
             "operation": "list",
             "page": page,
             "limit": limit,
-            "total_returned": len(response.get("conversations", [])),
+            "total_returned": len(response.conversations),
         }
     )
 
-    return JSONResponse(content=response)
+    return response
 
 
 @router.post("/conversations/batch-sync")
 async def batch_sync_conversations_endpoint(
-    request: BatchSyncRequest, user: dict = Depends(get_current_user)
-) -> JSONResponse:
+    request: BatchSyncRequest, user: AuthenticatedUser = Depends(get_current_user)
+) -> BatchSyncResponse:
     """
     Batch sync conversations - returns only stale conversations with messages.
     """
@@ -95,13 +108,12 @@ async def batch_sync_conversations_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "batch_sync"},
     )
-    response = await batch_sync_conversations(request, user)
-    return JSONResponse(content=response)
+    return await batch_sync_conversations(request, user)
 
 
 @router.get("/conversations/{conversation_id}")
 async def get_conversation_endpoint(
-    conversation_id: str, user: dict = Depends(get_current_user)
+    conversation_id: str, user: AuthenticatedUser = Depends(get_current_user)
 ) -> JSONResponse:
     """
     Retrieve a specific conversation by its ID.
@@ -110,14 +122,19 @@ async def get_conversation_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "get", "id": conversation_id},
     )
-    response = await get_conversation(conversation_id, user)
-    return JSONResponse(content=response)
+    document = await get_conversation(conversation_id, user)
+    # Dumped rather than returned as a response model on purpose:
+    # ``ConversationDocument`` is ``extra="allow"`` so a full-document read hands
+    # back whatever stray/legacy top-level fields the row carries, and clients
+    # (web/mobile/desktop) receive them verbatim today. Declaring a response model
+    # here would silently filter those out — a product decision, not a typing fix.
+    return JSONResponse(content=document.model_dump(mode="json", exclude={"id"}))
 
 
 @router.put("/conversations/{conversation_id}/messages")
 async def update_messages_endpoint(
-    request: UpdateMessagesRequest, user: dict = Depends(get_current_user)
-) -> JSONResponse:
+    request: UpdateMessagesRequest, user: AuthenticatedUser = Depends(get_current_user)
+) -> UpdateMessagesResponse:
     """
     Update the messages of a conversation.
     """
@@ -125,16 +142,15 @@ async def update_messages_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "update_messages"},
     )
-    response = await update_messages(request, user)
-    return JSONResponse(content=response)
+    return await update_messages(request, user)
 
 
 @router.put("/conversations/{conversation_id}/star")
 async def star_conversation_endpoint(
     conversation_id: str,
     body: StarredUpdate,
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> StarConversationResponse:
     """
     Star or unstar a conversation.
     """
@@ -146,14 +162,13 @@ async def star_conversation_endpoint(
             "is_starred": body.starred,
         },
     )
-    response = await star_conversation(conversation_id, body.starred, user)
-    return JSONResponse(content=response)
+    return await star_conversation(conversation_id, body.starred, user)
 
 
 @router.delete("/conversations")
 async def delete_all_conversations_endpoint(
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> DeleteAllConversationsResponse:
     """
     Delete all conversations for the authenticated user.
     """
@@ -161,14 +176,13 @@ async def delete_all_conversations_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "delete_all"},
     )
-    response = await delete_all_conversations(user)
-    return JSONResponse(content=response)
+    return await delete_all_conversations(user)
 
 
 @router.delete("/conversations/{conversation_id}")
 async def delete_conversation_endpoint(
-    conversation_id: str, user: dict = Depends(get_current_user)
-) -> JSONResponse:
+    conversation_id: str, user: AuthenticatedUser = Depends(get_current_user)
+) -> ConversationActionResponse:
     """
     Delete a specific conversation by its ID.
     """
@@ -176,8 +190,7 @@ async def delete_conversation_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "delete", "id": conversation_id},
     )
-    response = await delete_conversation(conversation_id, user)
-    return JSONResponse(content=response)
+    return await delete_conversation(conversation_id, user)
 
 
 @router.put("/conversations/{conversation_id}/messages/{message_id}/pin")
@@ -185,8 +198,8 @@ async def pin_message_endpoint(
     conversation_id: str,
     message_id: str,
     body: PinnedUpdate,
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PinMessageResponse:
     """
     Pin or unpin a message within a conversation.
     """
@@ -194,14 +207,13 @@ async def pin_message_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "pin_message", "id": conversation_id},
     )
-    response = await pin_message(conversation_id, message_id, body.pinned, user)
-    return JSONResponse(content=response)
+    return await pin_message(conversation_id, message_id, body.pinned, user)
 
 
 @router.get("/messages/pinned")
 async def get_starred_messages_endpoint(
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> PinnedMessagesResponse:
     """
     Retrieve all pinned messages across all conversations.
     """
@@ -209,16 +221,15 @@ async def get_starred_messages_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "get_pinned"},
     )
-    response = await get_starred_messages(user)
-    return JSONResponse(content=response)
+    return await get_starred_messages(user)
 
 
 @router.put("/conversations/{conversation_id}/description")
 async def update_conversation_description_endpoint(
     conversation_id: str,
     body: UpdateDescriptionRequest,
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> UpdateDescriptionResponse:
     """
     Update the description of a specific conversation.
     """
@@ -226,15 +237,14 @@ async def update_conversation_description_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "update_description", "id": conversation_id},
     )
-    response = await update_conversation_description(conversation_id, body.description, user)
-    return JSONResponse(content=response)
+    return await update_conversation_description(conversation_id, body.description, user)
 
 
 @router.patch("/conversations/{conversation_id}/read")
 async def mark_as_read_endpoint(
     conversation_id: str,
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ConversationActionResponse:
     """
     Mark a conversation as read.
     """
@@ -242,15 +252,14 @@ async def mark_as_read_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "mark_read", "id": conversation_id},
     )
-    response = await mark_conversation_as_read(conversation_id, user)
-    return JSONResponse(content=response)
+    return await mark_conversation_as_read(conversation_id, user)
 
 
 @router.patch("/conversations/{conversation_id}/unread")
 async def mark_as_unread_endpoint(
     conversation_id: str,
-    user: dict = Depends(get_current_user),
-) -> JSONResponse:
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ConversationActionResponse:
     """
     Mark a conversation as unread.
     """
@@ -258,5 +267,4 @@ async def mark_as_unread_endpoint(
         user={"id": user["user_id"]},
         conversation={"operation": "mark_unread", "id": conversation_id},
     )
-    response = await mark_conversation_as_unread(conversation_id, user)
-    return JSONResponse(content=response)
+    return await mark_conversation_as_unread(conversation_id, user)

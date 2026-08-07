@@ -1,11 +1,9 @@
 """ARQ worker task for post-onboarding personalization."""
 
-from datetime import UTC, datetime
-
-from bson import ObjectId
+from typing import Any
 
 from app.constants.log_tags import LogTag
-from app.db.mongodb.collections import users_collection
+from app.db.repositories.users import user_repository
 from app.models.user_models import OnboardingPhase
 from app.services.onboarding.intelligence_job import (
     clear_active_intelligence_job,
@@ -14,7 +12,7 @@ from app.services.onboarding.intelligence_job import (
 from shared.py.wide_events import log, wide_task
 
 
-async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
+async def process_onboarding_intelligence_task(ctx: dict[str, Any], user_id: str) -> str:
     """ARQ background task for the full onboarding intelligence pipeline."""
     async with wide_task("process_onboarding_intelligence_task", user_id=user_id):
         log.set(user={"id": user_id})
@@ -33,19 +31,13 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
             try:
                 # Split-mode early job: leave the phase pending — the workflows
                 # phase (or the stuck-personalization cron) completes the flow.
-                doc = await users_collection.find_one(
-                    {"_id": ObjectId(user_id)}, {"onboarding.pipeline_mode": 1}
-                )
-                split_mode = ((doc or {}).get("onboarding") or {}).get("pipeline_mode") == "split"
+                doc = await user_repository.get(user_id)
+                split_mode = ((doc.onboarding if doc else None) or {}).get(
+                    "pipeline_mode"
+                ) == "split"
                 if not split_mode:
-                    await users_collection.update_one(
-                        {"_id": ObjectId(user_id)},
-                        {
-                            "$set": {
-                                "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
-                                "updated_at": datetime.now(UTC),
-                            }
-                        },
+                    await user_repository.set_pipeline_completion(
+                        user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE
                     )
                     log.info(
                         f"{LogTag.WORKER} Set phase to PERSONALIZATION_COMPLETE after failure for user {user_id}"
@@ -70,7 +62,7 @@ async def process_onboarding_intelligence_task(ctx: dict, user_id: str) -> str:
         return message
 
 
-async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
+async def process_onboarding_workflows_task(ctx: dict[str, Any], user_id: str) -> str:
     """ARQ background task for the split-pipeline workflows phase."""
     async with wide_task("process_onboarding_workflows_task", user_id=user_id):
         log.set(user={"id": user_id})
@@ -89,14 +81,8 @@ async def process_onboarding_workflows_task(ctx: dict, user_id: str) -> str:
             # This IS the completing phase — rescue the user out of the pending
             # state exactly like the full pipeline's failure path.
             try:
-                await users_collection.update_one(
-                    {"_id": ObjectId(user_id)},
-                    {
-                        "$set": {
-                            "onboarding.phase": OnboardingPhase.PERSONALIZATION_COMPLETE,
-                            "updated_at": datetime.now(UTC),
-                        }
-                    },
+                await user_repository.set_pipeline_completion(
+                    user_id, phase=OnboardingPhase.PERSONALIZATION_COMPLETE
                 )
             except Exception as db_err:
                 log.error(

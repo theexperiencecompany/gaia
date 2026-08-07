@@ -1,7 +1,6 @@
 """Tests for app.helpers.email_helpers — email processing and storage utilities."""
 
 from collections.abc import Generator
-from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -560,47 +559,30 @@ class TestStoreEmailsToMemory:
 
 
 class TestMarkEmailProcessingComplete:
-    """Tests for mark_email_processing_complete()."""
+    """Tests for mark_email_processing_complete() — delegates to the repository
+    (the persisted fields/timestamp are covered by the UserRepository contract)."""
 
-    @patch("app.helpers.email_helpers.users_collection")
-    async def test_updates_user_document(self, mock_collection: MagicMock) -> None:
-        mock_collection.update_one = AsyncMock()
+    @patch(
+        "app.helpers.email_helpers.user_repository.mark_email_processing_complete",
+        new_callable=AsyncMock,
+    )
+    async def test_delegates_to_repository(self, mock_mark: AsyncMock) -> None:
         await mark_email_processing_complete(
             "507f1f77bcf86cd799439011",  # pragma: allowlist secret
             42,
         )
-        mock_collection.update_one.assert_called_once()
-        call_args = mock_collection.update_one.call_args
-        # First positional arg is the filter
-        filter_doc = call_args[0][0]
-        assert str(filter_doc["_id"]) == "507f1f77bcf86cd799439011"  # pragma: allowlist secret
-        # Second positional arg is the update
-        update_doc = call_args[0][1]
-        assert update_doc["$set"]["email_memory_processed"] is True
-        assert update_doc["$set"]["email_memory_count"] == 42
-        assert "email_memory_processed_at" in update_doc["$set"]
+        mock_mark.assert_awaited_once_with("507f1f77bcf86cd799439011", 42)
 
-    @patch("app.helpers.email_helpers.users_collection")
-    async def test_zero_memory_count(self, mock_collection: MagicMock) -> None:
-        mock_collection.update_one = AsyncMock()
+    @patch(
+        "app.helpers.email_helpers.user_repository.mark_email_processing_complete",
+        new_callable=AsyncMock,
+    )
+    async def test_zero_memory_count(self, mock_mark: AsyncMock) -> None:
         await mark_email_processing_complete(
             "507f1f77bcf86cd799439011",  # pragma: allowlist secret
             0,
         )
-        update_doc = mock_collection.update_one.call_args[0][1]
-        assert update_doc["$set"]["email_memory_count"] == 0
-
-    @patch("app.helpers.email_helpers.users_collection")
-    async def test_timestamp_is_utc(self, mock_collection: MagicMock) -> None:
-        mock_collection.update_one = AsyncMock()
-        await mark_email_processing_complete(
-            "507f1f77bcf86cd799439011",  # pragma: allowlist secret
-            1,
-        )
-        update_doc = mock_collection.update_one.call_args[0][1]
-        ts = update_doc["$set"]["email_memory_processed_at"]
-        assert isinstance(ts, datetime)
-        assert ts.tzinfo == UTC
+        mock_mark.assert_awaited_once_with("507f1f77bcf86cd799439011", 0)
 
 
 # ---------------------------------------------------------------------------

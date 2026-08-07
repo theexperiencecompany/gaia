@@ -7,7 +7,7 @@ export default function EmailComposeSection({
   email_compose_data: EmailComposeData[];
 }) {
   const handleEmailSent = () => {
-    /* no-op: onSent is required by EmailComposeCard but unused here */
+    /* card manages its own sent state; nothing to act on from the bubble */
   };
 
   return (

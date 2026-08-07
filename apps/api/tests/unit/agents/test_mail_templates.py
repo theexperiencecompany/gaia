@@ -12,7 +12,6 @@ from app.agents.templates.mail_templates import (
     minimal_message_template,
     process_get_thread_response,
     process_list_drafts_response,
-    process_list_messages_response,
     thread_template,
 )
 
@@ -580,44 +579,6 @@ class TestDraftTemplate:
 
         result = draft_template(draft_data)
         assert result["id"] == "d_empty"
-
-
-# ---------------------------------------------------------------------------
-# process_list_messages_response
-# ---------------------------------------------------------------------------
-
-
-class TestProcessListMessagesResponse:
-    def test_with_messages(self):
-        raw = _make_raw_email(body_text="msg body")
-        response = {
-            "nextPageToken": "token123",
-            "messages": [
-                _make_gmail_message(raw=raw, msg_id="m1"),
-                _make_gmail_message(raw=raw, msg_id="m2"),
-            ],
-        }
-
-        result = process_list_messages_response(response)
-        assert result["nextPageToken"] == "token123"
-        assert result["resultSize"] == 2
-        assert len(result["messages"]) == 2
-
-    def test_empty_messages(self):
-        response = {"messages": []}
-        result = process_list_messages_response(response)
-        assert result["resultSize"] == 0
-
-    def test_no_messages_key(self):
-        response = {"nextPageToken": None}
-        result = process_list_messages_response(response)
-        assert result["resultSize"] == 0
-        assert "messages" not in result
-
-    def test_with_error(self):
-        response = {"messages": [], "error": "Something went wrong"}
-        result = process_list_messages_response(response)
-        assert result["error"] == "Something went wrong"
 
 
 # ---------------------------------------------------------------------------

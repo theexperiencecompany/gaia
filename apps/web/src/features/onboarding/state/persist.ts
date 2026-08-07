@@ -95,7 +95,7 @@ export function savePersisted(state: OnboardingState): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(pick(state)));
   } catch {
-    /* no-op: localStorage may be unavailable (private mode/quota) */
+    // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
   }
 }
 
@@ -104,6 +104,6 @@ export function clearPersisted(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
-    /* no-op: localStorage may be unavailable (private mode/quota) */
+    // localStorage unavailable (private mode, quota, etc.) — persistence is best-effort.
   }
 }

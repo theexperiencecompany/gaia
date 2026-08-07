@@ -1,9 +1,7 @@
 "use client";
 
-import { Tooltip } from "@heroui/react";
-import { type ReactNode, Suspense, useMemo } from "react";
+import { Suspense, useMemo } from "react";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
-import { Button } from "@/components/ui/button";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePathname } from "@/i18n/navigation";
 
@@ -11,37 +9,6 @@ import CalendarHeader from "./CalendarHeader";
 import ChatHeader from "./ChatHeader";
 import SettingsHeader from "./SettingsHeader";
 import TodosHeader from "./TodosHeader";
-
-// Consistent button component for sidebar header buttons
-export const SidebarHeaderButton = ({
-  children,
-  onClick,
-  tooltip,
-  "aria-label": ariaLabel,
-  ...rest
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  tooltip?: ReactNode;
-  "aria-label": string;
-} & React.HTMLAttributes<HTMLButtonElement>) => {
-  const button = (
-    <Button
-      aria-label={ariaLabel}
-      size="icon"
-      variant="ghost"
-      className={`group/btn group rounded-xl p-1! hover:bg-primary/20 hover:text-primary`}
-      onClick={onClick}
-      {...rest}
-    >
-      {children}
-    </Button>
-  );
-
-  if (!tooltip) return button;
-
-  return <Tooltip content={tooltip}>{button}</Tooltip>;
-};
 
 export default function HeaderManager() {
   const pathname = usePathname();

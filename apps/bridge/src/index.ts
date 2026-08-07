@@ -31,6 +31,7 @@ function parseFlags(
   const positionals: string[] = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
+    if (arg === undefined) continue;
     if (arg.startsWith("--")) {
       const name = arg.slice(2);
       if (booleans.includes(name)) {
@@ -64,11 +65,11 @@ function cmdFs(args: string[]): void {
     key: FILESYSTEM_SERVER_KEY,
     name: "Local Files",
     allow,
-    allowWrite: flags.write === true,
+    allowWrite: flags["write"] === true,
   });
   console.info(
     `Filesystem access configured for:\n  ${allow.join("\n  ")}\n` +
-      `Writes: ${flags.write === true ? "ENABLED" : "disabled (read-only)"}\n` +
+      `Writes: ${flags["write"] === true ? "ENABLED" : "disabled (read-only)"}\n` +
       `Run: gaia bridge up`,
   );
 }
@@ -140,9 +141,11 @@ async function runBridge(args: string[]): Promise<void> {
   switch (command) {
     case "login": {
       const { flags } = parseFlags(rest);
+      const api = flags["api"];
+      const name = flags["name"];
       await runLogin({
-        api: flags.api as string | undefined,
-        name: flags.name as string | undefined,
+        ...(typeof api === "string" ? { api } : {}),
+        ...(typeof name === "string" ? { name } : {}),
       });
       console.info("Next: gaia bridge add");
       break;

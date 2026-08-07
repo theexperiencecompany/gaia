@@ -4,7 +4,7 @@ Tests normalize_schema_refs, _update_refs_recursive, and patch_tool_schema
 covering all branches and edge cases.
 """
 
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -512,7 +512,7 @@ class TestPatchToolSchema:
             """A tool whose constructor raises on reconstruction."""
 
             name = "test_tool"
-            inputSchema: dict[str, Any] = {
+            inputSchema: ClassVar[dict[str, Any]] = {
                 "type": "object",
                 "$defs": {
                     "0": {"type": "string"},

@@ -16,7 +16,7 @@ its caching rules are load-bearing rather than an optimization:
 """
 
 import time
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -136,4 +136,7 @@ async def get_openrouter_catalog() -> OpenRouterModelCatalog:
     catalog = await providers.aget(OPENROUTER_MODEL_CATALOG_PROVIDER)
     if catalog is None:
         raise RuntimeError("OpenRouter model catalog provider is not available")
-    return catalog
+    # aget() is typed Any | None (generic provider registry); this provider is
+    # always registered with init_openrouter_model_catalog(), which returns
+    # OpenRouterModelCatalog.
+    return cast(OpenRouterModelCatalog, catalog)

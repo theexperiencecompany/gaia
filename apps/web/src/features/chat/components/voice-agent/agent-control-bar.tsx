@@ -79,7 +79,7 @@ export function AgentControlBar({
     // Every mic-toggle click is a user gesture — reuse it to (re)unlock
     // audio playback too, so sound and mic both recover from one tap.
     room?.startAudio().catch(() => {
-      /* fire-and-forget: playback unlock is best-effort */
+      /* best-effort unlock: mic toggle still proceeds regardless */
     });
     microphoneToggle.toggle();
   }, [room, microphoneToggle.toggle]);

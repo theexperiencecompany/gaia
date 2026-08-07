@@ -329,7 +329,7 @@ export function DemoFinalCard({ type }: { type: FinalCardType }) {
         <EmailComposeCard
           emailData={FOUNDER_EMAIL}
           onSent={() => {
-            /* no-op: demo card */
+            /* demo card: no real send flow */
           }}
         />
       );

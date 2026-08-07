@@ -1,8 +1,8 @@
 """
 Service tests: call the real update_messages() against real MongoDB.
 
-The conftest patches conversations_collection to a real Motor collection,
-so update_messages() runs its actual code path unmodified.
+The conftest points the repository layer at the real test database, so
+update_messages() runs its actual code path unmodified.
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ class TestUpdateMessagesReal:
 
         result = await update_messages(request, user)
 
-        assert result["modified_count"] == 1
-        assert len(result["message_ids"]) == 2
+        assert result.modified_count == 1
+        assert len(result.message_ids) == 2
 
         doc = await conversations_collection.find_one({"conversation_id": conv_id})
         assert len(doc["messages"]) == 2

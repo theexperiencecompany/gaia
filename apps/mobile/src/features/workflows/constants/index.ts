@@ -1,11 +1,10 @@
 export { WORKFLOW_COLORS } from "./colors";
-export {
-  ACTIVATION_STATUS,
-  type ActivationStatus,
-  EXECUTION_STATUS,
-  type ExecutionStatus,
-  type WorkflowStatusDescriptor,
+export type {
+  ActivationStatus,
+  ExecutionStatus,
+  WorkflowStatusDescriptor,
 } from "./status";
+export { ACTIVATION_STATUS, EXECUTION_STATUS } from "./status";
 export {
   WORKFLOW_COMMUNITY_PAGE_SIZE,
   WORKFLOW_EXECUTIONS_PAGE_SIZE,

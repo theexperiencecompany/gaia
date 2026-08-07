@@ -25,6 +25,12 @@ RABBITMQ_IMAGE="rabbitmq:3.13.7-alpine@sha256:d7af1c87c5f1eda13fcfca06db452bf3ae
 
 READY_TIMEOUT_SECS=90
 
+# Docker Hub pulls flake — the registry times out or rate-limits transiently.
+# One unlucky pull would otherwise surface much later as an opaque `docker run`
+# exit 125, so retry each pull with backoff before giving up.
+PULL_ATTEMPTS=5
+PULL_BACKOFF_SECS=5
+
 start_postgres() {
   docker run -d --name gaia-test-postgres \
     -e POSTGRES_USER=gaia -e POSTGRES_PASSWORD=gaia -e POSTGRES_DB=gaia_test \
@@ -53,11 +59,37 @@ start_rabbitmq() {
     -p 5672:5672 "$RABBITMQ_IMAGE"
 }
 
+# Retry a single image pull with a fixed backoff, failing loud if it never
+# succeeds so a genuinely broken pull is diagnosable instead of masked.
+pull_with_retry() {
+  local image="$1" attempt=1
+  until docker pull --quiet "$image"; do
+    if ((attempt >= PULL_ATTEMPTS)); then
+      echo "::error::Failed to pull ${image} after ${PULL_ATTEMPTS} attempts"
+      return 1
+    fi
+    echo "::warning::Pull of ${image} failed (attempt ${attempt}/${PULL_ATTEMPTS}) — retrying in ${PULL_BACKOFF_SECS}s"
+    sleep "$PULL_BACKOFF_SECS"
+    attempt=$((attempt + 1))
+  done
+}
+
 echo "::group::Pull service images (parallel)"
+pull_pids=()
 for image in "$POSTGRES_IMAGE" "$REDIS_IMAGE" "$MONGO_IMAGE" "$CHROMA_IMAGE" "$RABBITMQ_IMAGE"; do
-  docker pull --quiet "$image" &
+  pull_with_retry "$image" &
+  pull_pids+=("$!")
 done
-wait
+# A bare `wait` swallows background exit codes; wait on each PID so a pull that
+# exhausted its retries fails the step here instead of leaking into `docker run`.
+pull_failed=0
+for pid in "${pull_pids[@]}"; do
+  wait "$pid" || pull_failed=1
+done
+if ((pull_failed)); then
+  echo "::error::One or more service images could not be pulled"
+  exit 1
+fi
 echo "::endgroup::"
 
 echo "::group::Start service containers"

@@ -108,6 +108,99 @@ def test_parse_tool_missing_name_raises():
 
 
 # --------------------------------------------------------------------------- #
+# Parser — nesting and delimiter boundaries
+#
+# A hand-off directive carries the next tier's script inside its JSON args, so
+# the args routinely contain a whole ``[[tool:…]]`` directive — and therefore a
+# literal ``]]``. The closing delimiter is only the ``]]`` that follows the
+# directive's own JSON value; everything inside that value belongs to the value.
+# --------------------------------------------------------------------------- #
+
+
+def _tool_directive(name: str, args: dict) -> str:
+    """Render a directive the way a test author would: JSON-encoded args."""
+    return f"[[tool:{name} {json.dumps(args)}]]"
+
+
+def test_parse_tool_with_empty_json_object_args():
+    assert parse_directives("[[tool:noop {}]]") == [ToolDirective(name="noop", args={})]
+
+
+def test_parse_empty_say_yields_empty_text():
+    assert parse_directives("[[say:]]") == [SayDirective(text="")]
+
+
+def test_parse_json_string_may_contain_literal_close_delimiter():
+    script = _tool_directive("web_search", {"q": "how do wiki links ]] close"})
+    assert parse_directives(script) == [
+        ToolDirective(name="web_search", args={"q": "how do wiki links ]] close"})
+    ]
+
+
+def test_parse_nested_directive_one_level():
+    """comms → executor → subagent: handoff carries the subagent's script."""
+    inner = _tool_directive("fetch_emails", {"max_results": 5})
+    script = _tool_directive("handoff", {"subagent_id": "gmail", "task": inner})
+    assert parse_directives(script) == [
+        ToolDirective(name="handoff", args={"subagent_id": "gmail", "task": inner})
+    ]
+
+
+def test_parse_nested_directive_two_levels():
+    """Scenario 5, fully composed: call_executor wraps handoff wraps a tool."""
+    inner = _tool_directive("fetch_emails", {"max_results": 5})
+    mid = _tool_directive("handoff", {"subagent_id": "gmail", "task": inner})
+    top = _tool_directive("call_executor", {"task": mid})
+
+    assert parse_directives(top) == [ToolDirective(name="call_executor", args={"task": mid})]
+    # Each layer peels off cleanly and is itself a valid script.
+    assert parse_directives(mid) == [
+        ToolDirective(name="handoff", args={"subagent_id": "gmail", "task": inner})
+    ]
+    assert parse_directives(inner) == [ToolDirective(name="fetch_emails", args={"max_results": 5})]
+
+
+def test_parse_directive_following_a_nested_one_is_not_swallowed():
+    inner = _tool_directive("fetch_emails", {"max_results": 5})
+    script = _tool_directive("handoff", {"subagent_id": "gmail", "task": inner}) + " [[say:outer]]"
+    assert parse_directives(script) == [
+        ToolDirective(name="handoff", args={"subagent_id": "gmail", "task": inner}),
+        SayDirective(text="outer"),
+    ]
+
+
+def test_parse_unterminated_tool_directive_raises():
+    """A truncated script must fail loud, not degrade into the canned reply."""
+    with pytest.raises(DirectiveError) as exc:
+        parse_directives('[[tool:handoff {"subagent_id": "gmail"}')
+    assert "handoff" in str(exc.value)
+
+
+def test_parse_unterminated_say_directive_raises():
+    with pytest.raises(DirectiveError) as exc:
+        parse_directives("[[say:never closed")
+    assert "say" in str(exc.value)
+
+
+def test_nested_handoff_script_resolves_through_all_three_tiers():
+    inner = _tool_directive("fetch_emails", {"max_results": 5})
+    script = _tool_directive("handoff", {"subagent_id": "gmail", "task": inner}) + " [[say:done]]"
+
+    # comms: handoff is unbound, call_executor is -> forward the script verbatim.
+    assert resolve_response([_user(script)], COMMS_TOOLS) == ToolCallResponse(
+        name=CALL_EXECUTOR_TOOL, args={"task": script}
+    )
+    # executor: handoff is bound -> emit it, carrying the subagent's script intact.
+    assert resolve_response([_user(script)], frozenset({"handoff"})) == ToolCallResponse(
+        name="handoff", args={"subagent_id": "gmail", "task": inner}
+    )
+    # subagent: that task text is itself a script the stub can drive.
+    assert resolve_response([_user(inner)], frozenset({"fetch_emails"})) == ToolCallResponse(
+        name="fetch_emails", args={"max_results": 5}
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Turn counting — executor mode (directive tools are bound in this request)
 # --------------------------------------------------------------------------- #
 

@@ -531,7 +531,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
   }, [selectedCategory, searchQuery]);
 
   const handleToolClick = (_toolName: string) => {
-    /* no-op: demo dropdown */
+    /* dummy dropdown: clicks are inert on the landing page */
   };
 
   return (

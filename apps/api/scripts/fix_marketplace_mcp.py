@@ -45,7 +45,7 @@ import httpx
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db.mongodb.collections import integrations_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.utils.mcp_oauth_utils import (  # noqa: E402
     _ACCEPT_JSON_SSE,
     _CONTENT_TYPE_JSON,
@@ -53,6 +53,8 @@ from app.utils.mcp_oauth_utils import (  # noqa: E402
     MCP_PROTOCOL_VERSION,
     OAUTH_PROBE_TIMEOUT,
 )
+
+integrations_collection = get_async_collection("integrations")
 
 
 @dataclass(frozen=True)

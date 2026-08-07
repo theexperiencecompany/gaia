@@ -123,37 +123,35 @@ class TestDeliverResultRouting:
 
 @pytest.mark.unit
 class TestGetConversationSource:
-    """The authoritative routing key: the conversation's persisted source."""
+    """The authoritative routing key: the conversation's persisted source.
 
-    async def test_returns_coerced_enum_from_stored_string(self) -> None:
-        with patch.object(rd, "conversations_collection") as col:
-            col.find_one = AsyncMock(return_value={"source": "whatsapp"})
+    Coercion of a stored string into the enum now lives in the repository's
+    ``get_source`` (covered by the repository contract tests); here we assert the
+    delivery wrapper passes it through, scopes by owner, and fails soft.
+    """
+
+    async def test_returns_source_from_repository(self) -> None:
+        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+            get.return_value = ConversationSource.WHATSAPP
             src = await rd._get_conversation_source("conv-1", "user-1")
-        assert src is ConversationSource.WHATSAPP  # coerced to the enum, not a raw str
+        assert src is ConversationSource.WHATSAPP
 
     async def test_query_is_scoped_to_conversation_and_owner(self) -> None:
-        with patch.object(rd, "conversations_collection") as col:
-            col.find_one = AsyncMock(return_value={"source": "web"})
+        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+            get.return_value = ConversationSource.WEB
             await rd._get_conversation_source("conv-1", "user-1")
         # must be scoped by BOTH conversation_id and user_id (no cross-user read)
-        assert col.find_one.await_args.args[0] == {
-            "conversation_id": "conv-1",
-            "user_id": "user-1",
-        }
+        assert get.await_args.args[0] == "conv-1"
+        assert get.await_args.kwargs["user_id"] == "user-1"
 
     async def test_missing_conversation_returns_none(self) -> None:
-        with patch.object(rd, "conversations_collection") as col:
-            col.find_one = AsyncMock(return_value=None)
-            assert await rd._get_conversation_source("conv-1", "user-1") is None
-
-    async def test_unknown_stored_value_coerces_to_none(self) -> None:
-        with patch.object(rd, "conversations_collection") as col:
-            col.find_one = AsyncMock(return_value={"source": "legacy_garbage"})
+        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+            get.return_value = None
             assert await rd._get_conversation_source("conv-1", "user-1") is None
 
     async def test_db_error_returns_none(self) -> None:
-        with patch.object(rd, "conversations_collection") as col:
-            col.find_one = AsyncMock(side_effect=RuntimeError("mongo down"))
+        with patch.object(rd.conversation_repository, "get_source", new_callable=AsyncMock) as get:
+            get.side_effect = RuntimeError("mongo down")
             assert await rd._get_conversation_source("conv-1", "user-1") is None
 
 

@@ -27,16 +27,21 @@ from app.agents.core.background.executor_capture import (
     register_executor_capture,
     teardown_executor_capture,
 )
+from app.constants.artifacts import ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT
 from app.constants.cache import EXECUTOR_WAIT_TIMEOUT, VOICE_EXECUTOR_RESULT_TIMEOUT_S
+from app.constants.hil import HIL_ACK_APPROVED, HIL_ACK_DENIED, HIL_CLASSIFIER_HISTORY_TURNS
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
-from app.db.mongodb.collections import conversations_collection
-from app.models.message_models import MessageRequestWithHistory
+from app.db.repositories.conversations import conversation_repository
+from app.models.message_models import MessageDict, MessageRequestWithHistory
 from app.models.stream_events import (
     ConversationDescriptionFrame,
     ConversationInitializedFrame,
     ErrorFrame,
+    MainResponseCompleteFrame,
 )
+from app.models.user_models import AuthenticatedUser
+from app.services.chat.artifact_forwarder import forward_artifact_events
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.persistence import (
     initialize_new_conversation,
@@ -49,11 +54,12 @@ from app.services.chat.state import (
     merge_tool_outputs,
     recover_stream_state,
 )
-from app.services.chat.workspace import (
-    forward_artifact_events,
-    schedule_last_active_touch,
-)
+from app.services.chat.workspace import schedule_last_active_touch
+from app.services.files import FileService
+from app.services.hil.conversational import resolve_pending_from_message
+from app.services.platform_message_service import is_bot_platform
 from app.services.storage import flush_fs_metrics
+from app.utils.agent_utils import format_sse_data, format_sse_response
 from app.utils.chat_utils import generate_and_update_description
 from app.utils.stream_utils import reconstruct_subagent_groups
 from shared.py.wide_events import ChatContext, log, wide_task
@@ -62,7 +68,7 @@ from shared.py.wide_events import ChatContext, log, wide_task
 async def run_chat_stream_background(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
 ) -> None:
@@ -139,7 +145,7 @@ class _StreamState:
 async def _run_chat_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     source: str | None = None,
 ) -> None:
@@ -168,22 +174,49 @@ async def _run_chat_stream(
             is_new_conversation,
         )
 
+        # A HIL approval waiting on this conversation can be answered from a chat
+        # reply (yes/no/"do X instead") — but ONLY for button-less bot channels
+        # (WhatsApp/Telegram/Slack/Discord). Web/mobile/desktop render real
+        # Approve/Deny buttons, so they never take this LLM-classifier path; see
+        # ``_resolve_pending_approval_turn`` for the full rationale. When a bot
+        # reply resolves the approval, the turn ends here and the paused run
+        # continues on its original stream.
+        if await _resolve_pending_approval_turn(
+            body, user, conversation_id, stream_id, state, source
+        ):
+            return
+
+        forwarder_subscribed = asyncio.Event()
+        if user_id:
+            # Keep the session alive for idle-prune (fire-and-forget) and bridge
+            # the executor's artifact events to this stream. The forwarder starts
+            # BEFORE any upload seeding: pubsub has no replay, so its subscription
+            # must be live when seed_uploads publishes its 'upload' events.
+            schedule_last_active_touch(user_id, conversation_id)
+            artifact_task = asyncio.create_task(
+                forward_artifact_events(
+                    user_id,
+                    conversation_id,
+                    stream_id,
+                    state.bot_message_id,
+                    source,
+                    subscribed=forwarder_subscribed,
+                )
+            )
+
+        # For new conversations, files were uploaded without a conversation_id
+        # so they only landed in Cloudinary — not JuiceFS. Seed them now, before
+        # the agent runs, so they're on disk at the expected user-uploaded/ path.
+        if is_new_conversation and user_id and body.fileData:
+            await _wait_for_artifact_forwarder(forwarder_subscribed, stream_id)
+            await FileService.seed_uploads(body.fileData, user_id, conversation_id)
+
         # Start description generation only after the conversation row exists
         # (created in ``_publish_init_chunk``). Starting it earlier races the
         # row insert: the title LLM can finish first and the ``$set`` description
         # update would silently match zero documents, leaving the title stuck at
         # "New Chat" after a refresh.
         description_task = _start_description_task(is_new_conversation, body, conversation_id, user)
-
-        if user_id:
-            # Keep the session alive for idle-prune (fire-and-forget) and bridge
-            # the executor's artifact events to this stream.
-            schedule_last_active_touch(user_id, conversation_id)
-            artifact_task = asyncio.create_task(
-                forward_artifact_events(
-                    user_id, conversation_id, stream_id, state.bot_message_id, source
-                )
-            )
 
         usage_callback = UsageMetadataCallbackHandler()
         description_task = await _consume_agent_stream(
@@ -220,6 +253,95 @@ async def _run_chat_stream(
         await _finalize_stream(stream_id, body, user, conversation_id, state, artifact_task)
 
 
+def _recent_history(messages: list[MessageDict]) -> list[MessageDict]:
+    """Recent prior turns for the approval classifier's context.
+
+    The client includes the current turn as the trailing entry when its role is
+    ``user`` (see ``user_message_content_from``); drop it so the window is only
+    prior context, then keep the last ``HIL_CLASSIFIER_HISTORY_TURNS``.
+    """
+    prior = messages[:-1] if messages and messages[-1].get("role") == "user" else messages
+    return prior[-HIL_CLASSIFIER_HISTORY_TURNS:]
+
+
+async def _resolve_pending_approval_turn(
+    body: MessageRequestWithHistory,
+    user: AuthenticatedUser,
+    conversation_id: str,
+    stream_id: str,
+    state: _StreamState,
+    source: str | None,
+) -> bool:
+    """Resolve a pending HIL approval from the user's chat reply — BOT CHANNELS ONLY.
+
+    The fast LLM classifier behind this (``resolve_pending_from_message``) reads
+    "yes" / "no" / "do X instead" out of a free-text chat reply and turns it into
+    an approve/deny on the pending approval. It exists SOLELY for button-less
+    messaging platforms — WhatsApp, Telegram, Slack, Discord — where a typed
+    reply is the only approval surface the user has.
+
+    First-party UI clients (web / mobile / desktop) render the approval card with
+    real Approve/Deny buttons, and a click is resolved deterministically through
+    ``POST /approvals/{id}/decision``. On those clients we deliberately DO NOT run
+    the classifier: asking an LLM to *guess* intent when an unambiguous button
+    already exists is pure downside — a misread could approve or decline a
+    destructive action the user never chose. The button is the source of truth on
+    any client that has one; the classifier is a fallback for the clients that
+    don't.
+
+    So this returns early for every non-bot source (``is_bot_platform`` is False
+    for web/mobile/desktop, and for the ``None``/background/workflow sources):
+    the message just runs as a normal turn and the approval stays pending for a
+    button click or the timeout sweep. Only the button-less bot channels reach
+    the classifier.
+
+    Returns ``True`` only when a bot reply approved/declined the pending action
+    (the turn is fully handled here — ack streamed + persisted — and the caller
+    must return without running the agent). Returns ``False`` otherwise: a non-bot
+    source, nothing pending, an unrelated message (already auto-denied), or no
+    user/message.
+    """
+    if not is_bot_platform(source):
+        # UI clients (web/mobile/desktop) and background/workflow runs never
+        # LLM-classify an approval — the UI has deterministic Approve/Deny
+        # buttons, so the pending approval waits for a click or the sweep.
+        return False
+
+    user_id = user.get("user_id")
+    message = user_message_content_from(body)
+    if not user_id or not message:
+        return False
+
+    try:
+        history = _recent_history(body.messages)
+        action = await resolve_pending_from_message(conversation_id, user_id, message, history)
+    except Exception as e:  # noqa: BLE001 — see below: chat must survive this
+        # This lookup sits on the critical path of EVERY chat message, for a feature most
+        # users have switched off. If it fails, the only safe degradation is to run the
+        # message as a normal turn: an approval the user answered stays pending (the sweep
+        # expires it) and the paused run keeps waiting — nothing destructive can run
+        # unasked, because the gate is what executes actions, not this. Breaking the whole
+        # turn instead would take chat down for everyone over an optional feature.
+        log.error(f"{LogTag.HIL} Pending-approval check failed; running a normal turn: {e}")
+        return False
+
+    if action not in ("approve", "deny"):
+        return False
+
+    ack = HIL_ACK_APPROVED if action == "approve" else HIL_ACK_DENIED
+    state.complete_message = ack
+    state.turn_completed_at = datetime.now(UTC)
+    await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
+    await stream_manager.publish_chunk(
+        stream_id,
+        format_sse_data(MainResponseCompleteFrame(main_response_complete=True).model_dump()),
+    )
+    await _persist_turn(stream_id, body, user, conversation_id, state)
+    await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
+    await stream_manager.complete_stream(stream_id)
+    return True
+
+
 def _set_stream_log_context(
     body: MessageRequestWithHistory,
     user_id: str | None,
@@ -251,7 +373,7 @@ def _start_description_task(
     is_new_conversation: bool,
     body: MessageRequestWithHistory,
     conversation_id: str,
-    user: dict,
+    user: AuthenticatedUser,
 ) -> asyncio.Task[str] | None:
     """Create a background task to generate a conversation description if new."""
     if not is_new_conversation:
@@ -287,9 +409,22 @@ async def _publish_description_if_ready(
     return None
 
 
+async def _wait_for_artifact_forwarder(subscribed: asyncio.Event, stream_id: str) -> None:
+    """Block until the artifact forwarder's pub/sub subscription is live (or
+    timeout). Seeded uploads publish artifact events with no replay — publishing
+    before the subscription exists would silently drop them."""
+    try:
+        await asyncio.wait_for(subscribed.wait(), timeout=ARTIFACT_FORWARDER_SUBSCRIBE_TIMEOUT)
+    except TimeoutError:
+        log.warning(
+            f"{LogTag.CHAT} Stream {stream_id} artifact forwarder subscribe timeout, "
+            "seeding uploads anyway"
+        )
+
+
 async def _publish_init_chunk(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     state: _StreamState,
@@ -326,7 +461,7 @@ async def _publish_init_chunk(
 
 async def _consume_agent_stream(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     stream_id: str,
     source: str | None,
@@ -486,7 +621,7 @@ async def _handle_stream_error(
 async def _persist_turn(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -513,6 +648,7 @@ async def _persist_turn(
         bot_message_id=state.bot_message_id,
         bot_timestamp=state.turn_completed_at,
         error=state.error or None,
+        follow_up_actions=state.follow_up_actions or None,
     )
     state.saved = True
 
@@ -520,7 +656,7 @@ async def _persist_turn(
 async def _attach_executor_tool_data(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
 ) -> None:
@@ -548,14 +684,24 @@ async def _attach_executor_tool_data(
     if not executor_td:
         return
     try:
-        await conversations_collection.update_one(
-            {
-                "user_id": user.get("user_id"),
-                "conversation_id": conversation_id,
-                "messages.message_id": state.bot_message_id,
-            },
-            {"$push": {"messages.$.tool_data": {"$each": executor_td}}},
+        matched = await conversation_repository.append_message_tool_data(
+            conversation_id,
+            user_id=user.get("user_id", ""),
+            message_id=state.bot_message_id,
+            entries=executor_td,
         )
+        if not matched:
+            # A False return means the message_id filter matched nothing, so the
+            # write silently did not happen — every executor card the user
+            # watched live is absent from the saved turn. Nothing raises, so
+            # without this the loss is invisible (see the same check in
+            # result_delivery._persist_follow_up_actions).
+            log.error(
+                f"{LogTag.CHAT} Executor tool_data attach matched no message, dropping cards",
+                conversation_id=conversation_id,
+                message_id=state.bot_message_id,
+                entries=len(executor_td),
+            )
     except Exception as e:  # executor tool_data attach is best-effort
         log.error(f"{LogTag.CHAT} Failed to update bot message tool_data: {e}")
 
@@ -563,7 +709,7 @@ async def _attach_executor_tool_data(
 async def _finalize_stream(
     stream_id: str,
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     state: _StreamState,
     artifact_task: asyncio.Task[None] | None,

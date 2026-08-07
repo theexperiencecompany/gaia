@@ -283,6 +283,24 @@ FEATURE_LIMITS: dict[str, TieredRateLimits] = {
             description="Edit files in the persistent coding workspace",
         ),
     ),
+    # Read-only miners over offloaded workspace files (mirror workspace_read's
+    # generous limits — a large-inbox triage fans these out across chunks).
+    "workspace_query_json": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Query",
+            description="Filter/aggregate offloaded JSON/JSONL files in the coding workspace",
+        ),
+    ),
+    "workspace_grep": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="Workspace Grep",
+            description="Search files in the persistent coding workspace",
+        ),
+    ),
     # CREATIVE TOOLS
     "flowchart_creation": TieredRateLimits(
         free=RateLimitConfig(day=1, month=3),  # Keep restrictive
@@ -384,15 +402,14 @@ def get_daily_cost_budget_usd(plan_type: PlanType) -> float:
     return FREE_DAILY_COST_BUDGET_USD if plan_type == PlanType.FREE else PRO_DAILY_COST_BUDGET_USD
 
 
-def get_feature_info(feature_key: str) -> dict[str, str]:
+def get_feature_info(feature_key: str) -> FeatureInfo:
     """Get user-friendly feature information."""
     if feature_key in FEATURE_LIMITS:
-        info = FEATURE_LIMITS[feature_key].info
-        return {"title": info.title, "description": info.description}
-    return {
-        "title": feature_key.replace("_", " ").title(),
-        "description": f"Usage for {feature_key}",
-    }
+        return FEATURE_LIMITS[feature_key].info
+    return FeatureInfo(
+        title=feature_key.replace("_", " ").title(),
+        description=f"Usage for {feature_key}",
+    )
 
 
 def _is_cost_walled(limits: TieredRateLimits) -> bool:

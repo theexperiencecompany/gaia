@@ -5,9 +5,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
+from app.models.search_models import SearchUrlDocument, URLResponse
 from app.utils.internet_utils import (
     fetch_url_metadata,
     scrape_url_metadata,
+)
+
+_SCRAPED = URLResponse(
+    title="Scraped Title",
+    description="Scraped Desc",
+    favicon="https://example.com/scraped-fav.ico",
+    website_name="ScrapedSite",
+    website_image="https://example.com/scraped.png",
+    url="https://example.com",
 )
 
 # ---------------------------------------------------------------------------
@@ -158,13 +168,13 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["title"] == "Test Page"
-        assert result["description"] == "A test description"
-        assert result["favicon"] == "https://example.com/favicon.ico"
-        assert result["website_name"] == "TestSite"
+        assert result.title == "Test Page"
+        assert result.description == "A test description"
+        assert result.favicon == "https://example.com/favicon.ico"
+        assert result.website_name == "TestSite"
         # og:image becomes website_image when no logo tag is present
-        assert result["website_image"] == "https://example.com/og.png"
-        assert result["url"] == "https://example.com"
+        assert result.website_image == "https://example.com/og.png"
+        assert result.url == "https://example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_http_error_returns_empty_metadata(self, mock_client_cls: MagicMock) -> None:
@@ -175,12 +185,12 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com/fail")
 
-        assert result["title"] is None
-        assert result["description"] is None
-        assert result["favicon"] is None
-        assert result["website_name"] is None
-        assert result["website_image"] is None
-        assert result["url"] == "https://example.com/fail"
+        assert result.title is None
+        assert result.description is None
+        assert result.favicon is None
+        assert result.website_name is None
+        assert result.website_image is None
+        assert result.url == "https://example.com/fail"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_timeout_returns_empty_metadata(self, mock_client_cls: MagicMock) -> None:
@@ -191,12 +201,12 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://slow.example.com")
 
-        assert result["title"] is None
-        assert result["description"] is None
-        assert result["favicon"] is None
-        assert result["website_name"] is None
-        assert result["website_image"] is None
-        assert result["url"] == "https://slow.example.com"
+        assert result.title is None
+        assert result.description is None
+        assert result.favicon is None
+        assert result.website_name is None
+        assert result.website_image is None
+        assert result.url == "https://slow.example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_connection_error_returns_empty_metadata(
@@ -209,8 +219,8 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://down.example.com")
 
-        assert result["title"] is None
-        assert result["url"] == "https://down.example.com"
+        assert result.title is None
+        assert result.url == "https://down.example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_missing_title(self, mock_client_cls: MagicMock) -> None:
@@ -221,8 +231,8 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["title"] is None
-        assert result["description"] == "desc"
+        assert result.title is None
+        assert result.description == "desc"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_relative_favicon_converted_to_absolute(self, mock_client_cls: MagicMock) -> None:
@@ -233,7 +243,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com/page")
 
-        assert result["favicon"] == "https://example.com/static/icon.png"
+        assert result.favicon == "https://example.com/static/icon.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_og_image_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
@@ -244,7 +254,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["website_image"] == "https://example.com/og-img.jpg"
+        assert result.website_image == "https://example.com/og-img.jpg"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_logo_tag_takes_precedence_over_og_image(
@@ -257,7 +267,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["website_image"] == "https://example.com/logo.svg"
+        assert result.website_image == "https://example.com/logo.svg"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_og_description_fallback(self, mock_client_cls: MagicMock) -> None:
@@ -268,7 +278,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["description"] == "OG description text"
+        assert result.description == "OG description text"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_application_name_fallback(self, mock_client_cls: MagicMock) -> None:
@@ -279,7 +289,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["website_name"] == "MyApp"
+        assert result.website_name == "MyApp"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_shortcut_icon_fallback(self, mock_client_cls: MagicMock) -> None:
@@ -290,7 +300,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["favicon"] == "https://example.com/shortcut.ico"
+        assert result.favicon == "https://example.com/shortcut.ico"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_apple_touch_icon_fallback(self, mock_client_cls: MagicMock) -> None:
@@ -301,7 +311,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["favicon"] == "https://example.com/apple-touch.png"
+        assert result.favicon == "https://example.com/apple-touch.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_logo_link_tag_used_as_website_image(self, mock_client_cls: MagicMock) -> None:
@@ -312,7 +322,7 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["website_image"] == "https://example.com/link-logo.png"
+        assert result.website_image == "https://example.com/link-logo.png"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_empty_html_returns_all_none(self, mock_client_cls: MagicMock) -> None:
@@ -323,12 +333,12 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["title"] is None
-        assert result["description"] is None
-        assert result["favicon"] is None
-        assert result["website_name"] is None
-        assert result["website_image"] is None
-        assert result["url"] == "https://example.com"
+        assert result.title is None
+        assert result.description is None
+        assert result.favicon is None
+        assert result.website_name is None
+        assert result.website_image is None
+        assert result.url == "https://example.com"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_og_image_used_as_favicon_fallback(self, mock_client_cls: MagicMock) -> None:
@@ -340,7 +350,7 @@ class TestScrapeUrlMetadata:
         result = await scrape_url_metadata("https://example.com")
 
         # favicon = favicon or og_image — since no favicon link tag, og_image is used
-        assert result["favicon"] == "https://example.com/og-img.jpg"
+        assert result.favicon == "https://example.com/og-img.jpg"
 
     @patch("app.utils.internet_utils.httpx.AsyncClient")
     async def test_unexpected_exception_returns_empty_metadata(
@@ -353,8 +363,8 @@ class TestScrapeUrlMetadata:
 
         result = await scrape_url_metadata("https://example.com")
 
-        assert result["title"] is None
-        assert result["url"] == "https://example.com"
+        assert result.title is None
+        assert result.url == "https://example.com"
 
 
 # ---------------------------------------------------------------------------
@@ -378,12 +388,12 @@ class TestFetchUrlMetadata:
         assert "Only http(s) URLs are allowed" in exc_info.value.detail
 
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     async def test_cache_hit_returns_cached_data(
         self,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
     ) -> None:
         """When cache has the URL metadata, it is returned directly without DB or scrape."""
@@ -396,83 +406,83 @@ class TestFetchUrlMetadata:
             "url": "https://example.com",
         }
         mock_get_cache.return_value = cached_data
+        mock_repo.get_by_url = AsyncMock()
 
         result = await fetch_url_metadata("https://example.com")
 
         mock_get_cache.assert_awaited_once_with("url_metadata:https://example.com")
-        # DB should not be queried when cache hits (short-circuit `or`)
-        mock_collection.find_one.assert_not_called()
+        # DB should not be queried when cache hits.
+        mock_repo.get_by_url.assert_not_awaited()
         mock_set_cache.assert_not_awaited()
         assert result.title == "Cached Title"
         # URLResponse.url is a plain str — no trailing-slash normalisation
         assert result.url == "https://example.com"
 
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     async def test_db_hit_returns_db_data(
         self,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
     ) -> None:
-        """When cache misses but DB has the data, it is returned from DB."""
+        """When cache misses but DB has the data, it is returned from the repository."""
         mock_get_cache.return_value = None
 
-        db_data = {
-            "title": "DB Title",
-            "description": "DB Desc",
-            "favicon": "https://example.com/db-fav.ico",
-            "website_name": "DBSite",
-            "website_image": None,
-            "url": "https://example.com",
-        }
-        mock_collection.find_one = AsyncMock(return_value=db_data)
+        stored = SearchUrlDocument(
+            url="https://example.com",
+            title="DB Title",
+            description="DB Desc",
+            favicon="https://example.com/db-fav.ico",
+            website_name="DBSite",
+            website_image=None,
+        )
+        mock_repo.get_by_url = AsyncMock(return_value=stored)
 
         result = await fetch_url_metadata("https://example.com")
 
         mock_get_cache.assert_awaited_once()
-        mock_collection.find_one.assert_awaited_once_with({"url": "https://example.com"})
+        mock_repo.get_by_url.assert_awaited_once_with("https://example.com")
         # Should not re-scrape or re-cache
         mock_set_cache.assert_not_awaited()
         assert result.title == "DB Title"
 
-    @patch("app.utils.internet_utils.serialize_document")
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.scrape_url_metadata", new_callable=AsyncMock)
     async def test_cache_and_db_miss_scrapes_stores_and_caches(
         self,
         mock_scrape: AsyncMock,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
-        mock_serialize: MagicMock,
     ) -> None:
-        """When both cache and DB miss, scrapes the URL, stores in DB, caches, and returns."""
+        """When both cache and DB miss, scrapes the URL, stores it, caches, and returns."""
         mock_get_cache.return_value = None
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
+        mock_repo.get_by_url = AsyncMock(return_value=None)
+        mock_repo.create = AsyncMock()
 
-        scraped = {
-            "title": "Scraped Title",
-            "description": "Scraped Desc",
-            "favicon": "https://example.com/scraped-fav.ico",
-            "website_name": "ScrapedSite",
-            "website_image": "https://example.com/scraped.png",
-            "url": "https://example.com",
-        }
-        mock_scrape.return_value = scraped
-        mock_serialize.return_value = scraped.copy()
+        mock_scrape.return_value = _SCRAPED
 
         result = await fetch_url_metadata("https://example.com")
 
         mock_scrape.assert_awaited_once_with("https://example.com")
-        mock_collection.insert_one.assert_awaited_once_with(scraped)
+        stored = mock_repo.create.await_args.args[0]
+        assert isinstance(stored, SearchUrlDocument)
+        assert stored.url == "https://example.com" and stored.title == "Scraped Title"
+        # The cached value stays the plain dict the frontend contract expects.
         mock_set_cache.assert_awaited_once_with(
             "url_metadata:https://example.com",
-            mock_serialize.return_value,
+            {
+                "title": "Scraped Title",
+                "description": "Scraped Desc",
+                "favicon": "https://example.com/scraped-fav.ico",
+                "website_name": "ScrapedSite",
+                "website_image": "https://example.com/scraped.png",
+                "url": "https://example.com",
+            },
             864000,
         )
         assert result.title == "Scraped Title"
@@ -500,12 +510,12 @@ class TestFetchUrlMetadata:
 
     @patch("app.utils.internet_utils._validate_url_for_fetch", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     async def test_cache_key_format(
         self,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
         mock_validate: AsyncMock,
     ) -> None:
@@ -526,33 +536,22 @@ class TestFetchUrlMetadata:
             "url_metadata:https://specific.example.com/path?q=1"
         )
 
-    @patch("app.utils.internet_utils.serialize_document")
     @patch("app.utils.internet_utils.set_cache", new_callable=AsyncMock)
-    @patch("app.utils.internet_utils.search_urls_collection")
+    @patch("app.utils.internet_utils.search_url_repository")
     @patch("app.utils.internet_utils.get_cache", new_callable=AsyncMock)
     @patch("app.utils.internet_utils.scrape_url_metadata", new_callable=AsyncMock)
     async def test_cache_ttl_is_864000(
         self,
         mock_scrape: AsyncMock,
         mock_get_cache: AsyncMock,
-        mock_collection: MagicMock,
+        mock_repo: MagicMock,
         mock_set_cache: AsyncMock,
-        mock_serialize: MagicMock,
     ) -> None:
         """Cache TTL is set to 864000 seconds (10 days)."""
         mock_get_cache.return_value = None
-        mock_collection.find_one = AsyncMock(return_value=None)
-        mock_collection.insert_one = AsyncMock()
-        scraped = {
-            "title": None,
-            "description": None,
-            "favicon": None,
-            "website_name": None,
-            "website_image": None,
-            "url": "https://example.com",
-        }
-        mock_scrape.return_value = scraped
-        mock_serialize.return_value = scraped.copy()
+        mock_repo.get_by_url = AsyncMock(return_value=None)
+        mock_repo.create = AsyncMock()
+        mock_scrape.return_value = URLResponse(url="https://example.com")
 
         await fetch_url_metadata("https://example.com")
 

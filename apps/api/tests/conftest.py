@@ -17,21 +17,17 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 import pytest
 
-# payment_models is settings-free (pure pydantic/enum), so importing it here does
-# not trip the "no app modules before env setup" invariant below.
-from app.models.payment_models import PlanType
-
 # ---------------------------------------------------------------------------
 # Environment setup — runs at import time, before any app module is loaded.
 # ---------------------------------------------------------------------------
 
 os.environ["ENV"] = "development"
-# Force the dev auth bypass OFF for the suite. A machine set up for agent-driven
+# Force the dev auth bypass OFF for the suite: a machine set up for agent-driven
 # e2e has DEV_AUTH_BYPASS_EMAIL in apps/api/.env, which would short-circuit
 # WorkOSAuthMiddleware — including in the tests that exercise that middleware.
-# It must be set EMPTY rather than popped: `load_dotenv()` (settings.py) does not
-# override keys already in os.environ, but it would happily supply this one from
-# .env if we removed it. Empty is falsy at every consumer, so the bypass is off.
+# Force an empty (falsy) value rather than popping: an empty value keeps the
+# prod-guard off, and because the key is now present, load_dotenv(override=False)
+# — called at settings import — will not re-inject a value from the developer's .env.
 os.environ["DEV_AUTH_BYPASS_EMAIL"] = ""
 os.environ.setdefault(
     "MONGO_DB",
@@ -41,11 +37,38 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("WORKOS_API_KEY", "sk_test_fake")
 os.environ.setdefault("WORKOS_CLIENT_ID", "client_fake")
 os.environ.setdefault("WORKOS_COOKIE_PASSWORD", "a" * 32)
+os.environ.setdefault("RESEND_API_KEY", "re_test_fake")
+os.environ.setdefault("RESEND_AUDIENCE_ID", "aud_fake")
+os.environ.setdefault("EMAIL_UNSUBSCRIBE_SECRET", "test-unsubscribe-secret-" + "x" * 16)
 os.environ.setdefault(
     "MCP_ENCRYPTION_KEY",
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
 )
 os.environ.setdefault("AGENT_SECRET", "test-agent-secret-" + "x" * 32)  # pragma: allowlist secret
+
+# LangChain ships every graph run to LangSmith when these are truthy, and a
+# developer's .env turns them on. That makes the suite depend on an external
+# service it never asserts against: runs get rate-limited (429s), the exporter
+# retries on shutdown, and each agent test pays the latency. Forced off rather
+# than setdefault — the point is to override the .env, not defer to it.
+os.environ["LANGSMITH_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING"] = "false"
+os.environ["LANGCHAIN_TRACING_V2"] = "false"
+
+# Same reasoning for Langfuse, which activates only when all three of these are
+# set (app/config/langfuse.py) — so blanking one disables it. A developer's .env
+# supplies them, and the exporter then blocks on shutdown retrying spans against
+# a host the suite has no business contacting.
+os.environ["LANGFUSE_PUBLIC_KEY"] = ""
+os.environ["LANGFUSE_SECRET_KEY"] = ""
+os.environ["LANGFUSE_HOST"] = ""
+
+# Imported AFTER the env setup above, not with the top-level imports: document
+# models now extend MongoDocument, so importing any of them pulls in
+# app.db.repositories.base -> app.db.redis -> app.config.settings, which
+# instantiates settings at import time. Without ENV set first, that resolves to
+# ProductionSettings and fails validation (CI has no production keys).
+from app.models.payment_models import PlanType  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Infrastructure mock strategy

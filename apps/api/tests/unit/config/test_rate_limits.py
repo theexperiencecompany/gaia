@@ -14,6 +14,7 @@ Tests cover:
 """
 
 from datetime import UTC, datetime
+from typing import ClassVar
 from unittest.mock import patch
 
 import pytest
@@ -147,7 +148,7 @@ class TestFeatureLimits:
     """Tests for the FEATURE_LIMITS configuration dictionary."""
 
     # All feature keys that should be present (keep in sync with FEATURE_LIMITS in rate_limits.py)
-    EXPECTED_FEATURES = [
+    EXPECTED_FEATURES: ClassVar[list[str]] = [
         "chat_messages",
         "voice_mode",
         "file_upload",
@@ -174,6 +175,8 @@ class TestFeatureLimits:
         "workspace_read",
         "workspace_write",
         "workspace_edit",
+        "workspace_query_json",
+        "workspace_grep",
         "flowchart_creation",
         "weather_checks",
         "notification_operations",
@@ -220,7 +223,7 @@ class TestFeatureLimits:
             assert limits.info.description, f"{key} has empty description"
 
     # Features intentionally restricted to paid-only (free limits are 0).
-    PAID_ONLY_FEATURES = {"voice_mode"}
+    PAID_ONLY_FEATURES: ClassVar[set[str]] = {"voice_mode"}
 
     # Cost-walled features: no daily message-count wall on free (free.day == 0)
     # because the rolling daily COST budget is the real wall. The monthly count
@@ -513,41 +516,41 @@ class TestGetFeatureInfo:
 
     def test_known_feature_returns_configured_info(self) -> None:
         result = get_feature_info("chat_messages")
-        assert result["title"] == "Chat Messages"
-        assert result["description"] == "Send messages to AI assistants"
+        assert result.title == "Chat Messages"
+        assert result.description == "Send messages to AI assistants"
 
     def test_known_feature_returns_dict(self) -> None:
         result = get_feature_info("generate_image")
-        assert isinstance(result, dict)
-        assert "title" in result
-        assert "description" in result
+        assert isinstance(result, FeatureInfo)
+        assert result.title
+        assert result.description
 
     def test_unknown_feature_returns_generated_info(self) -> None:
         result = get_feature_info("some_unknown_feature")
-        assert result["title"] == "Some Unknown Feature"
-        assert "some_unknown_feature" in result["description"]
+        assert result.title == "Some Unknown Feature"
+        assert "some_unknown_feature" in result.description
 
     def test_unknown_feature_title_formatting(self) -> None:
         result = get_feature_info("multi_word_feature_name")
-        assert result["title"] == "Multi Word Feature Name"
+        assert result.title == "Multi Word Feature Name"
 
     def test_unknown_feature_description_format(self) -> None:
         result = get_feature_info("xyz_action")
-        assert result["description"] == "Usage for xyz_action"
+        assert result.description == "Usage for xyz_action"
 
     def test_all_configured_features_have_info(self) -> None:
         for key in FEATURE_LIMITS:
             result = get_feature_info(key)
-            assert result["title"], f"{key} has empty title"
-            assert result["description"], f"{key} has empty description"
+            assert result.title, f"{key} has empty title"
+            assert result.description, f"{key} has empty description"
 
     def test_deep_research_info(self) -> None:
         result = get_feature_info("deep_research")
-        assert result["title"] == "Deep Research"
-        assert "research" in result["description"].lower()
+        assert result.title == "Deep Research"
+        assert "research" in result.description.lower()
 
     def test_empty_string_feature_returns_generated_info(self) -> None:
         result = get_feature_info("")
-        assert isinstance(result, dict)
-        assert "title" in result
-        assert "description" in result
+        assert isinstance(result, FeatureInfo)
+        assert result.title == ""
+        assert result.description == "Usage for "

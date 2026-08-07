@@ -6,19 +6,37 @@ Profiling is completely optional and must be explicitly enabled via environment 
 """
 
 import random
+from typing import Protocol
 
 from fastapi.responses import HTMLResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from shared.py.wide_events import log
 
+
+class SupportsProfiling(Protocol):
+    """Just the pyinstrument ``Profiler`` surface this middleware uses.
+
+    A local protocol, rather than the imported class, because pyinstrument is
+    optional at runtime — naming the concrete type here would need an import that
+    the ``except ImportError`` below exists to survive. ``stop`` returns ``object``
+    because the real one returns a ``Session`` this middleware discards.
+    """
+
+    def start(self) -> None: ...
+    def stop(self) -> object: ...
+    def output_html(self) -> str: ...
+    def output_text(self) -> str: ...
+
+
 # Import pyinstrument with fallback
 PYINSTRUMENT_AVAILABLE = False
-Profiler: type | None = None
+Profiler: type[SupportsProfiling] | None = None
 try:
     from pyinstrument import Profiler as _Profiler
 
@@ -48,11 +66,11 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
         Add ?profile=1 to any request URL to get a profiling report (when enabled).
     """
 
-    def __init__(self, app):
+    def __init__(self, app: ASGIApp) -> None:
         super().__init__(app)
         self._log_startup_info()
 
-    def _log_startup_info(self):
+    def _log_startup_info(self) -> None:
         """Log profiling configuration at startup."""
         if not PYINSTRUMENT_AVAILABLE:
             log.warning(
@@ -67,7 +85,7 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
         else:
             log.info(f"{LogTag.API} PyInstrument profiling disabled (ENABLE_PROFILING=false)")
 
-    async def dispatch(self, request: Request, call_next) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # Check if profiling is available and enabled
         if not settings.ENABLE_PROFILING or not PYINSTRUMENT_AVAILABLE or Profiler is None:
             return await call_next(request)

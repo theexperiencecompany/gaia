@@ -175,7 +175,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       return {
         ...config,
         onSelect: () => {
-          /* no-op: fallback item has no action */
+          /* fallback: item without a handler is inert */
         },
       };
     },

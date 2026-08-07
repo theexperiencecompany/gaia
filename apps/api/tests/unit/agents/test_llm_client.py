@@ -486,17 +486,38 @@ class TestAinvokeLlm:
 
 @pytest.mark.unit
 class TestRegisterLlmProviders:
+    @patch("app.agents.llm.client.init_custom_llm")
     @patch("app.agents.llm.client.init_openrouter_llm")
     @patch("app.agents.llm.client.init_gemini_llm")
     def test_calls_all_init_functions(
         self,
         mock_gemini: MagicMock,
         mock_openrouter: MagicMock,
+        mock_custom: MagicMock,
     ) -> None:
         register_llm_providers()
 
         mock_gemini.assert_called_once()
         mock_openrouter.assert_called_once()
+        # conftest sets ENV=development, where the dev-only custom provider registers.
+        mock_custom.assert_called_once()
+
+    @patch("app.agents.llm.client.init_custom_llm")
+    @patch("app.agents.llm.client.init_openrouter_llm")
+    @patch("app.agents.llm.client.init_gemini_llm")
+    def test_custom_not_registered_outside_development(
+        self,
+        mock_gemini: MagicMock,
+        mock_openrouter: MagicMock,
+        mock_custom: MagicMock,
+    ) -> None:
+        with patch("app.agents.llm.client.settings") as mock_settings:
+            mock_settings.ENV = "production"
+            register_llm_providers()
+
+        mock_gemini.assert_called_once()
+        mock_openrouter.assert_called_once()
+        mock_custom.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -507,15 +528,15 @@ class TestRegisterLlmProviders:
 @pytest.mark.unit
 class TestConstants:
     def test_provider_models_keys(self) -> None:
-        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter"}
+        assert set(PROVIDER_MODELS.keys()) == {"gemini", "openrouter", "custom"}
 
     def test_provider_priority_values(self) -> None:
-        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter"}
+        assert set(PROVIDER_PRIORITY.values()) == {"gemini", "openrouter", "custom"}
 
     def test_provider_priority_is_ordered(self) -> None:
         sorted_keys = sorted(PROVIDER_PRIORITY.keys())
         providers_in_order = [PROVIDER_PRIORITY[k] for k in sorted_keys]
-        assert providers_in_order == ["gemini", "openrouter"]
+        assert providers_in_order == ["gemini", "openrouter", "custom"]
 
     def test_retryable_exceptions_contains_expected_types(self) -> None:
         from google.genai.errors import ServerError

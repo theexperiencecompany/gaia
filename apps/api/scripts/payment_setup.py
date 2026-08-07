@@ -75,7 +75,7 @@ from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
 
 from app.config.settings import settings  # noqa: E402
 from app.constants.memory import FREE_MEMORY_FACT_LIMIT  # noqa: E402
-from app.models.payment_models import PlanDB  # noqa: E402
+from app.models.payment_models import PlanDocument  # noqa: E402
 
 
 async def cleanup_old_indexes(collection):
@@ -223,7 +223,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
                     }
                 )
 
-                plan_doc = PlanDB.model_validate(
+                plan_doc = PlanDocument.model_validate(
                     {
                         "dodo_product_id": dodo_product_id,
                         "name": plan_item["name"],

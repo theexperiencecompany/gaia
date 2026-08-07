@@ -452,7 +452,7 @@ class TestCronValidate:
             return_value=True,
         ):
             with patch(
-                "app.utils.cron_utils.calculate_next_occurrences",
+                "app.api.v1.endpoints.reminders.calculate_next_occurrences",
                 return_value=[FUTURE],
             ):
                 resp = await client.get(
@@ -461,8 +461,10 @@ class TestCronValidate:
                 )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["expression"] == "0 9 * * *"
         assert data["valid"] is True
-        assert "next_runs" in data
+        assert data["next_runs"] == [FUTURE.isoformat()]
+        assert data["error"] is None
 
     async def test_invalid_cron_expression(self, client: AsyncClient) -> None:
         with patch(
@@ -475,7 +477,9 @@ class TestCronValidate:
             )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["expression"] == "not-a-cron"
         assert data["valid"] is False
+        assert data["next_runs"] == []
 
     async def test_cron_validate_missing_expression(self, client: AsyncClient) -> None:
         resp = await client.get(f"{API}/cron/validate")

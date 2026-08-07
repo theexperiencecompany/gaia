@@ -13,7 +13,7 @@ from app.services.workflow.scheduler import workflow_scheduler
 from shared.py.wide_events import log
 
 
-async def init_reminder_service():
+async def init_reminder_service() -> None:
     """Initialize reminder scheduler and scan for pending reminders."""
     try:
         await reminder_scheduler.initialize()
@@ -24,7 +24,7 @@ async def init_reminder_service():
         raise
 
 
-async def init_workflow_service():
+async def init_workflow_service() -> None:
     """Initialize workflow service."""
     try:
         await workflow_scheduler.initialize()
@@ -35,7 +35,7 @@ async def init_workflow_service():
         raise
 
 
-async def init_websocket_consumer():
+async def init_websocket_consumer() -> None:
     """Initialize WebSocket event consumer."""
     try:
         await start_websocket_consumer()
@@ -45,7 +45,7 @@ async def init_websocket_consumer():
         raise
 
 
-async def init_mongodb_async():
+async def init_mongodb_async() -> None:
     """Initialize MongoDB and create database indexes."""
     try:
         from app.db.mongodb.mongodb import init_mongodb
@@ -59,7 +59,7 @@ async def init_mongodb_async():
 
 
 # Shutdown methods
-async def close_postgresql_async():
+async def close_postgresql_async() -> None:
     """Close PostgreSQL database connection."""
     try:
         await close_postgresql_db()
@@ -68,7 +68,7 @@ async def close_postgresql_async():
         log.error(f"Error closing PostgreSQL database: {e}")
 
 
-async def close_reminder_scheduler():
+async def close_reminder_scheduler() -> None:
     """Close reminder scheduler."""
     try:
         from app.services.reminder_service import reminder_scheduler
@@ -79,7 +79,7 @@ async def close_reminder_scheduler():
         log.error(f"Error closing reminder scheduler: {e}")
 
 
-async def close_workflow_scheduler():
+async def close_workflow_scheduler() -> None:
     """Close workflow scheduler."""
     try:
         await workflow_scheduler.close()
@@ -88,7 +88,7 @@ async def close_workflow_scheduler():
         log.error(f"Error closing workflow scheduler: {e}")
 
 
-async def close_websocket_async():
+async def close_websocket_async() -> None:
     """Close WebSocket event consumer."""
     try:
         await stop_websocket_consumer()
@@ -97,7 +97,7 @@ async def close_websocket_async():
         log.error(f"Error stopping WebSocket consumer: {e}")
 
 
-async def close_publisher_async():
+async def close_publisher_async() -> None:
     """Close publisher connection."""
     try:
         # Avoid initializing the publisher during shutdown.
@@ -114,7 +114,7 @@ async def close_publisher_async():
         log.error(f"Error closing publisher: {e}")
 
 
-async def close_checkpointer_manager():
+async def close_checkpointer_manager() -> None:
     """Close checkpointer manager and connection pool."""
     try:
         # Avoid initializing the checkpointer during shutdown.
@@ -129,7 +129,7 @@ async def close_checkpointer_manager():
         log.error(f"Error closing checkpointer manager: {e}")
 
 
-async def close_mcp_client_pool():
+async def close_mcp_client_pool() -> None:
     """Close MCP client pool and all active connections."""
     try:
         if providers.is_initialized("mcp_client_pool"):

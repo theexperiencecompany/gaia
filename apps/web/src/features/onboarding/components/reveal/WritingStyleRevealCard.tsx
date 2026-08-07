@@ -56,8 +56,11 @@ export function WritingStyleRevealCard({
         .then((res) => {
           if (res.example) setCurrentExample(res.example);
         })
-        .catch(() => {
-          /* fire-and-forget: apiService already surfaces the error via toast */
+        .catch((error) => {
+          console.error(
+            "[WritingStyleRevealCard] Failed to regenerate example:",
+            error,
+          );
         })
         .finally(() => {
           setIsRegenerating(false);
@@ -88,8 +91,11 @@ export function WritingStyleRevealCard({
       if (res.example) {
         setCurrentExample(res.example);
       }
-    } catch {
-      /* no-op: apiService already surfaces the error via toast */
+    } catch (error) {
+      console.error(
+        "[WritingStyleRevealCard] Failed to save writing style:",
+        error,
+      );
     } finally {
       setIsSaving(false);
       setIsRegenerating(false);

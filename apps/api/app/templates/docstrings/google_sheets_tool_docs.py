@@ -17,7 +17,6 @@ Parameters:
   - send_notification (bool): Whether to send email notification (default: True)
 
 Returns:
-- success: Whether all shares were successful
 - spreadsheet_id: Unique identifier of the shared spreadsheet
 - url: Direct link to the spreadsheet
 - shared: List of successfully shared recipients with permission IDs
@@ -54,7 +53,6 @@ Parameters:
   - name (str, optional): Custom display name
 
 Returns:
-- success: Whether the pivot table was created
 - spreadsheet_id: Spreadsheet identifier
 - url: Direct link to the spreadsheet
 - pivot_sheet: Sheet containing the pivot table
@@ -95,7 +93,6 @@ Parameters:
 - strict (bool): Reject invalid input (default: True)
 
 Returns:
-- success: Whether validation was applied
 - spreadsheet_id: Spreadsheet identifier
 - url: Direct link to the spreadsheet
 - range_applied: Range where validation was set
@@ -136,7 +133,6 @@ Parameters:
 - formula (str): Custom formula for custom_formula type
 
 Returns:
-- success: Whether formatting was applied
 - spreadsheet_id: Spreadsheet identifier
 - url: Direct link to the spreadsheet
 - range_applied: Range where formatting was set
@@ -174,7 +170,6 @@ Parameters:
   "RIGHT_LEGEND", "TOP_LEGEND", "NO_LEGEND"
 
 Returns:
-- success: Whether the chart was created
 - spreadsheet_id: Spreadsheet identifier
 - url: Direct link to the spreadsheet
 - chart_id: ID of the created chart

@@ -34,7 +34,7 @@ class TestComputeToolHash:
             "app.db.chroma.chroma_tools_store.inspect.getsource",
             return_value="  def my_tool(): pass  \n",
         ):
-            result = await _compute_tool_hash(tool)
+            result = _compute_tool_hash(tool)
         expected_content = "A tool::def my_tool(): pass"
         assert result == hashlib.sha256(expected_content.encode()).hexdigest()
 
@@ -44,7 +44,7 @@ class TestComputeToolHash:
             "app.db.chroma.chroma_tools_store.inspect.getsource",
             side_effect=OSError("no source"),
         ):
-            result = await _compute_tool_hash(tool)
+            result = _compute_tool_hash(tool)
         expected = hashlib.sha256(b"broken_tool::desc").hexdigest()
         assert result == expected
 
@@ -54,7 +54,7 @@ class TestComputeToolHash:
             "app.db.chroma.chroma_tools_store.inspect.getsource",
             side_effect=TypeError,
         ):
-            result = await _compute_tool_hash(tool)
+            result = _compute_tool_hash(tool)
         assert result == hashlib.sha256(b"t::d").hexdigest()
 
 
@@ -88,7 +88,7 @@ class TestGetSubagentTools:
             "app.db.chroma.chroma_tools_store.all_subagents",
             return_value=(subagent,),
         ):
-            result = await _get_subagent_tools()
+            result = _get_subagent_tools()
 
         assert "subagents::subagent:gmail" in result
         entry = result["subagents::subagent:gmail"]
@@ -102,7 +102,7 @@ class TestGetSubagentTools:
             "app.db.chroma.chroma_tools_store.all_subagents",
             return_value=(),
         ):
-            result = await _get_subagent_tools()
+            result = _get_subagent_tools()
         assert result == {}
 
 
@@ -124,16 +124,16 @@ class TestGetCurrentToolsWithHashes:
         with (
             patch(
                 "app.db.chroma.chroma_tools_store._compute_tool_hash",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value="abc123",
             ),
             patch(
                 "app.db.chroma.chroma_tools_store._get_subagent_tools",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value={"subagents::subagent:x": {"hash": "h", "namespace": "subagents"}},
             ),
         ):
-            result = await _get_current_tools_with_hashes(registry)
+            result = _get_current_tools_with_hashes(registry)
 
         assert "general::tool_a" in result
         assert "subagents::subagent:x" in result
@@ -148,16 +148,16 @@ class TestGetCurrentToolsWithHashes:
         with (
             patch(
                 "app.db.chroma.chroma_tools_store._compute_tool_hash",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value="h",
             ),
             patch(
                 "app.db.chroma.chroma_tools_store._get_subagent_tools",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value={},
             ),
         ):
-            result = await _get_current_tools_with_hashes(registry)
+            result = _get_current_tools_with_hashes(registry)
 
         assert len(result) == 0
 
@@ -378,7 +378,7 @@ class TestIndexToolsToStore:
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
             patch(
                 "app.db.chroma.chroma_tools_store._compute_tool_hash",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value="samehash",
             ),
         ):
@@ -412,7 +412,7 @@ class TestIndexToolsToStore:
             patch("app.db.chroma.chroma_tools_store.providers") as mock_providers,
             patch(
                 "app.db.chroma.chroma_tools_store._compute_tool_hash",
-                new_callable=AsyncMock,
+                new_callable=MagicMock,
                 return_value="newhash",
             ),
         ):

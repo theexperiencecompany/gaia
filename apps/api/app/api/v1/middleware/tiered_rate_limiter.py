@@ -9,6 +9,7 @@ The ``@tiered_rate_limit`` endpoint decorator that wraps this engine lives in
 
 import asyncio
 from datetime import UTC, datetime
+from typing import ParamSpec, TypeVar
 
 from fastapi import HTTPException
 import redis.asyncio as redis
@@ -37,6 +38,14 @@ from app.services.usage_service import UsageService
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
+# UsageInfo is imported (not defined here) but re-exported for
+# `app.api.v1.middleware.__init__` — explicit re-export required under
+# no_implicit_reexport.
+__all__ = ["UsageInfo"]
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
 
 class RateLimitExceededException(HTTPException):
     """429 carrying the feature, required plan (when gated), and reset time."""
@@ -48,7 +57,7 @@ class RateLimitExceededException(HTTPException):
         reset_time: datetime | None = None,
         message: str | None = None,
         current_plan: str | None = None,
-    ):
+    ) -> None:
         detail = {
             "error": "rate_limit_exceeded",
             "feature": feature,
@@ -98,7 +107,7 @@ class CostBudgetExceededException(RateLimitExceededException):
 class TieredRateLimiter:
     """Redis-backed per-user, per-feature counters across daily/monthly windows."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis = redis_cache
 
     def _get_redis_key(self, user_id: str, feature: str, period: RateLimitPeriod) -> str:
@@ -311,7 +320,7 @@ class TieredRateLimiter:
                     feature_info = get_feature_info(check_feature_key)
                     feature_usage = FeatureUsage(
                         feature_key=check_feature_key,
-                        feature_title=feature_info["title"],
+                        feature_title=feature_info.title,
                         period=UsagePeriod(period.value),
                         used=current_usage,
                         limit=limit,
@@ -324,3 +333,9 @@ class TieredRateLimiter:
 
 # Global rate limiter instance
 tiered_limiter = TieredRateLimiter()
+
+
+# The `tiered_rate_limit` decorator lives in app/decorators/rate_limiting.py.
+# A second copy used to live here and drifted: it resolved the caller by looking
+# for a kwarg named `user`, so endpoints importing this copy silently skipped
+# rate limiting. One canonical implementation, imported from `app.decorators`.

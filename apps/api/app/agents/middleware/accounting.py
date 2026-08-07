@@ -30,12 +30,14 @@ from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
 )
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, AnyMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.runtime import Runtime, get_config
+from langgraph.config import get_config
+from langgraph.runtime import Runtime
 
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
 from app.constants.log_tags import LogTag
+from app.models.agent_models import agent_configurable
 from app.models.payment_models import PlanType
 from app.services.cost_budget import get_budget_stop_reason
 from app.services.llm_metering import record_llm_call
@@ -58,38 +60,37 @@ def _current_config() -> RunnableConfig:
 
 
 def _extract_usage(message: AIMessage) -> dict[str, int]:
-    """Return (input, cached, output) token counts from a message's usage.
+    """Return input/output/cached token counts from a message's usage metadata.
 
-    Handles both ``message.usage_metadata`` (the canonical LangChain shape)
-    and legacy ``response_metadata.usage`` payloads. ``cached_tokens`` comes
-    from ``input_token_details.cache_read`` or — when the underlying provider
-    surfaces it separately — ``cached_content_token_count``. Missing fields
-    default to 0.
+    Reads ``message.usage_metadata`` (the canonical LangChain shape) and falls
+    back to ``response_metadata.usage_metadata`` for the provider SDK versions
+    that only populate that. ``cached_tokens`` comes from
+    ``input_token_details.cache_read`` or — when the provider surfaces it
+    separately — ``cached_content_token_count``. Missing fields default to 0.
     """
     usage = getattr(message, "usage_metadata", None) or {}
-    input_tokens = int(usage.get("input_tokens", 0) or 0)
-    output_tokens = int(usage.get("output_tokens", 0) or 0)
+    resp_meta = getattr(message, "response_metadata", None) or {}
+    resp_usage = resp_meta.get("usage_metadata") or {}
 
-    details = usage.get("input_token_details") or {}
-    cached_tokens = int(details.get("cache_read", 0) or 0)
+    input_tokens = int(usage.get("input_tokens") or 0)
+    output_tokens = int(usage.get("output_tokens") or 0)
+    cached_tokens = int((usage.get("input_token_details") or {}).get("cache_read") or 0)
 
-    # Some provider SDK versions surface cache reads under different keys.
-    if not cached_tokens:
-        resp_meta = getattr(message, "response_metadata", None) or {}
-        provider_usage = resp_meta.get("usage_metadata") or {}
-        cached_tokens = int(provider_usage.get("cached_content_token_count", 0) or 0)
-
+    # Each field falls back independently. Gating the output fallback behind a
+    # missing *input* count (as this once did) silently dropped output tokens —
+    # and their cost — from every message that reported only one of the two.
+    # Both `prompt_token_count`/`candidates_token_count` (provider-native shape)
+    # and the LangChain-normalised keys are accepted.
     if not input_tokens:
-        resp_meta = getattr(message, "response_metadata", None) or {}
-        resp_usage = resp_meta.get("usage_metadata") or {}
-        # Both `prompt_token_count`/`candidates_token_count` (provider-native
-        # shape) and the LangChain-normalised keys are accepted.
         input_tokens = int(
             resp_usage.get("prompt_token_count", resp_usage.get("input_tokens", 0)) or 0
         )
-        output_tokens = output_tokens or int(
+    if not output_tokens:
+        output_tokens = int(
             resp_usage.get("candidates_token_count", resp_usage.get("output_tokens", 0)) or 0
         )
+    if not cached_tokens:
+        cached_tokens = int(resp_usage.get("cached_content_token_count") or 0)
 
     return {
         "input_tokens": input_tokens,
@@ -98,7 +99,7 @@ def _extract_usage(message: AIMessage) -> dict[str, int]:
     }
 
 
-def _latest_ai_message(messages: list[Any]) -> AIMessage | None:
+def _latest_ai_message(messages: list[AnyMessage]) -> AIMessage | None:
     for msg in reversed(messages or []):
         if isinstance(msg, AIMessage):
             return msg
@@ -143,7 +144,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
     # --- helpers ---------------------------------------------------------
 
     def _thread_id(self, config: RunnableConfig) -> str:
-        configurable = config.get("configurable", {}) or {}
+        configurable = agent_configurable(config)
         return str(configurable.get("thread_id") or configurable.get("stream_id") or "unknown")
 
     def _next_step(self, thread_id: str) -> int:
@@ -190,7 +191,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         no tool calls, so the graph ends naturally. Fail-open on infra errors:
         a Redis hiccup must never take down the turn.
         """
-        configurable = _current_config().get("configurable", {}) or {}
+        configurable = agent_configurable(_current_config())
         user_id = configurable.get("user_id")
         root_request_id = configurable.get("root_request_id")
         # plan_type is passed through when the path stamped it (the hot chat path,
@@ -246,7 +247,7 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
         cached_tokens = usage["cached_tokens"]
 
         config = _current_config()
-        configurable = config.get("configurable", {}) or {}
+        configurable = agent_configurable(config)
         thread_id = self._thread_id(config)
         model_name = configurable.get("model_name") or configurable.get("model") or "unknown"
         provider = configurable.get("provider", "unknown")

@@ -17,10 +17,11 @@ function subscribeToQuery(
   query: string,
   callback: (matches: boolean) => void,
 ): () => void {
-  if (typeof window === "undefined")
+  if (typeof window === "undefined") {
     return () => {
-      /* no-op unsubscribe: no matchMedia during SSR */
+      /* SSR: no subscription to tear down */
     };
+  }
 
   let entry = queryCache.get(query);
   if (!entry) {

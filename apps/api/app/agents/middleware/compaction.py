@@ -25,18 +25,31 @@ from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AnyMessage, ToolMessage
 from langgraph.types import Command
 
+from app.agents.workspace.offload import (
+    OffloadInfo,
+    mark_offload,
+    read_offload,
+    sniff_offload_fmt,
+    tools_for_offload,
+)
 from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
 from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.models.agent_models import runtime_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
-from app.utils.multimodal import approx_content_chars, extract_text_content, has_media_blocks
+from app.utils.multimodal import (
+    MessageContent,
+    approx_content_chars,
+    extract_text_content,
+    has_media_blocks,
+)
 from shared.py.wide_events import log
 
 
-def estimate_context_usage(messages: Sequence[Any], context_window: int) -> float:
+def estimate_context_usage(messages: Sequence[AnyMessage], context_window: int) -> float:
     """Estimate the fraction of the context window consumed by ``messages``.
 
     Uses the same 4-chars-per-token heuristic as the rest of the agent stack.
@@ -60,8 +73,13 @@ def should_compact_output(
 ) -> tuple[bool, str]:
     """Decide whether a tool output should be spilled to the workspace.
 
+    ``tool_name`` is intentionally unused here — callers already resolve it into
+    ``always_persist``/``excluded`` before calling in; kept as a parameter for
+    call-site readability (and mirrored by the test suite).
+
     Returns ``(should_compact, reason)``. ``reason`` is empty when not compacting.
     """
+    del tool_name
     if excluded:
         return False, ""
     size = len(content_str)
@@ -97,45 +115,56 @@ def _summarize_output(content: str, tool_name: str) -> str:
 
 async def _spill_to_workspace(
     *,
-    content: Any,
     content_str: str,
     tool_name: str,
     tool_call_id: str,
-    tool_args: dict[str, Any],
     user_id: str,
     conversation_id: str,
     reason: str,
     status: str,
     existing_additional_kwargs: dict[str, Any],
 ) -> ToolMessage:
-    """Write the full output to the workspace and return a compacted ToolMessage."""
+    """Write the RAW output to the workspace and return a compacted, offload-marked ToolMessage.
+
+    The raw content (not a metadata wrapper) is written so query_json/grep can
+    mine it directly, and the sniffed format is marked so the right miner binds.
+    """
+    fmt = sniff_offload_fmt(content_str)
+    ext = {"json": "json", "jsonl": "jsonl", "text": "txt"}[fmt]
     content_hash = hashlib.md5(content_str.encode(), usedforsecurity=False).hexdigest()[:8]  # nosec B324
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.json"
+    relative_path = f"tool_outputs/{tool_name}_{timestamp}_{content_hash}.{ext}"
 
-    output_data: dict[str, Any] = {
-        "tool_name": tool_name,
-        "tool_call_id": tool_call_id,
-        "args": tool_args,
-        "content": content,
-        "stored_at": datetime.now(UTC).isoformat(),
-        "compaction_reason": reason,
-    }
     _, sandbox_path = await write_session_file(
         user_id=user_id,
         conversation_id=conversation_id,
         relative_path=relative_path,
-        content=json.dumps(output_data, indent=2, default=str),
+        content=content_str,
     )
 
     summary = _summarize_output(content_str, tool_name)
     size_kb = len(content_str) / 1024
+    mine = (
+        "prefer `query_json` (structured records) or `grep` (text)"
+        if fmt in ("json", "jsonl")
+        else "use `grep` to pull matching lines"
+    )
     body = (
         f"{summary}\n\n"
         f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) "
         f"stored at: {sandbox_path}]\n"
-        f"[Use the `read` tool to load it, or `bash` to grep/process it]"
+        f"[Do NOT `read` the whole file back into context, that undoes the offload. "
+        f"To pull just what you need, {mine}; `bash` and spawn_subagent also work "
+        f"for {sandbox_path}.]"
     )
+
+    offload: OffloadInfo = {
+        "path": sandbox_path,
+        "bytes": len(content_str.encode("utf-8")),
+        "fmt": fmt,
+        "producer": tool_name,
+        "records": None,
+    }
 
     log.info(
         f"{LogTag.AGENT} Compacted {tool_name} output ({len(content_str)} chars) to {sandbox_path} ({reason})"
@@ -148,22 +177,24 @@ async def _spill_to_workspace(
         # compaction — otherwise downstream `status == "error"` checks (loop
         # guard, error handling) would treat the spilled output as a success.
         status=status,
-        additional_kwargs={
-            **existing_additional_kwargs,
-            "workspace_path": sandbox_path,
-            "original_length": len(content_str),
-            "compacted": True,
-            "compaction_reason": reason,
-        },
+        additional_kwargs=mark_offload(
+            {
+                **existing_additional_kwargs,
+                "workspace_path": sandbox_path,
+                "original_length": len(content_str),
+                "compacted": True,
+                "compaction_reason": reason,
+            },
+            offload,
+        ),
     )
 
 
 async def compact_tool_output(
     *,
-    content: Any,
+    content: MessageContent,
     tool_name: str,
     tool_call_id: str,
-    tool_args: dict[str, Any],
     user_id: str | None,
     conversation_id: str | None,
     context_usage: float,
@@ -208,11 +239,9 @@ async def compact_tool_output(
         if not conversation_id:
             raise ValueError("compaction requires 'vfs_session_id' or 'thread_id' in configurable")
         return await _spill_to_workspace(
-            content=content,
             content_str=content_str,
             tool_name=tool_name,
             tool_call_id=tool_call_id,
-            tool_args=tool_args,
             user_id=user_id,
             conversation_id=conversation_id,
             reason=reason,
@@ -262,25 +291,23 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
         if not isinstance(result, ToolMessage):
             return result
 
-        tool_call = request.tool_call
+        # `ToolCall` is a TypedDict, but tool calls also reach middleware in
+        # attribute form; Any keeps the else-branch from being narrowed away.
+        tool_call: Any = request.tool_call
         if isinstance(tool_call, dict):
             tool_name = tool_call.get("name", "")
             tool_call_id = tool_call.get("id", "")
-            tool_args = tool_call.get("args", {})
         else:
             tool_name = tool_call.name
             tool_call_id = tool_call.id
-            tool_args = tool_call.args
 
-        config = getattr(request.runtime, "config", {}) or {}
-        configurable = config.get("configurable", {})
+        configurable = runtime_configurable(request)
         thread_id = configurable.get("thread_id")
 
         compacted = await compact_tool_output(
             content=result.content if hasattr(result, "content") else str(result),
             tool_name=tool_name,
             tool_call_id=tool_call_id,
-            tool_args=tool_args,
             user_id=configurable.get("user_id"),
             conversation_id=configurable.get("vfs_session_id") or thread_id,
             context_usage=self._get_context_usage(request),
@@ -291,7 +318,32 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             excluded=tool_name in self.excluded_tools,
             existing_additional_kwargs=getattr(result, "additional_kwargs", {}),
         )
-        return compacted if compacted is not None else result
+        result = compacted if compacted is not None else result
+
+        # Whether we just offloaded the output or the tool self-offloaded (gmail,
+        # which is excluded from compaction), surface the file-mining tools the
+        # moment a marker is present. Keyed on the offload itself, so it covers
+        # every producer uniformly.
+        return self._bind_offload_tools(result, request)
+
+    def _bind_offload_tools(
+        self, result: ToolMessage, request: ToolCallRequest
+    ) -> ToolMessage | Command[Any]:
+        """Append query_json/grep to ``selected_tool_ids`` if ``result`` carries an offload marker.
+
+        Binds only the mining tools not already selected — selected_tool_ids is an
+        append-only reducer, so this avoids re-binding the same tool every offload
+        and never touches/overrides any other tool.
+        """
+        info = read_offload(result)
+        if info is None:
+            return result
+        state = getattr(request, "state", None) or {}
+        already = set(state.get("selected_tool_ids", []) or [])
+        to_bind = [name for name in tools_for_offload(info) if name not in already]
+        if not to_bind:
+            return result
+        return Command(update={"messages": [result], "selected_tool_ids": to_bind})
 
     def _get_context_usage(self, request: ToolCallRequest) -> float:
         try:
@@ -299,5 +351,8 @@ class WorkspaceCompactionMiddleware(AgentMiddleware):
             if state is None:
                 return 0.0
             return estimate_context_usage(state.get("messages", []), self.context_window)
-        except Exception:
+        except Exception as exc:
+            # 0.0 reads as "context is empty", which is the one value that stops
+            # compaction from ever triggering — never let that happen quietly.
+            log.warning(f"{LogTag.AGENT} Context-usage estimate failed, treating as 0%: {exc}")
             return 0.0

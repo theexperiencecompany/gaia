@@ -18,9 +18,7 @@ class KnowledgeItem(BaseModel):
     """Schema for a single knowledge item."""
 
     content: str = Field(..., min_length=1, description="Knowledge content to store")
-    metadata: dict[str, Any] | None = Field(
-        default_factory=lambda: {}, description="Optional metadata"
-    )
+    metadata: dict[str, Any] | None = Field(default_factory=dict, description="Optional metadata")
 
     @field_validator("content")
     @classmethod

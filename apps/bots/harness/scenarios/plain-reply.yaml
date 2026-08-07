@@ -1,5 +1,5 @@
 # A single-turn plain reply on Telegram, driven by the scripted LLM stub.
-# Run against the sim stack:  mise dev:sim  →  nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml
+# Run against the sim stack:  mise dev --sim  →  nx run bot-harness:sim -- run apps/bots/harness/scenarios/plain-reply.yaml
 #
 # The `[[say:...]]` directive is parsed by the GAIA_SIM_MODE stub, so the reply
 # is deterministic and no real model is called.

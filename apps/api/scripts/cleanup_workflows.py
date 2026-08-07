@@ -14,8 +14,10 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 
-from app.db.mongodb.collections import workflows_collection  # noqa: E402
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from shared.py.wide_events import log as logger  # noqa: E402
+
+workflows_collection = get_async_collection("workflows")
 
 
 async def cleanup_old_workflow_steps():

@@ -9,10 +9,13 @@ from app.services.email.models import EmailMessage
 
 
 class ResendEmailProvider:
+    """EmailProvider backed by the Resend HTTP API."""
+
     def __init__(self) -> None:
         resend.api_key = settings.RESEND_API_KEY
 
     async def send(self, message: EmailMessage) -> None:
+        """Deliver one message via Resend."""
         params: resend.Emails.SendParams = {
             "from": message.sender,
             "to": message.to,
@@ -21,6 +24,8 @@ class ResendEmailProvider:
         }
         if message.reply_to:
             params["reply_to"] = message.reply_to
+        if message.headers:
+            params["headers"] = message.headers
         # The Resend SDK is synchronous — run it in a thread to keep the event loop free.
         await asyncio.to_thread(resend.Emails.send, params)
 

@@ -19,13 +19,18 @@ import json
 import re
 from typing import Any
 
+from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
+from app.config.model_pricing import calculate_token_cost
 from app.config.settings import settings
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
 from app.models.stream_events import ConversationInitializedFrame
+from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
+from app.services.payments.payment_service import payment_service
 from app.services.storage import JuiceFSUnavailable, ensure_session_dirs
+from app.utils.artifact_utils import artifact_url_base
 from app.utils.chat_utils import create_conversation
 
 
@@ -44,7 +49,7 @@ def user_message_content_from(body: MessageRequestWithHistory) -> str:
 
 async def initialize_new_conversation(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     user_message_id: str,
     bot_message_id: str,
@@ -62,21 +67,13 @@ async def initialize_new_conversation(
         conversation_id=conversation_id,
     )
 
-    # Conversation creation owns the per-conversation session dirs (scratch/,
-    # user-uploaded/, artifacts/) — this is the only event that creates a
-    # conversation, so dir creation no longer runs on every chat turn. Soft-fail
-    # when JuiceFS is unmounted (native dev); file/artifact tools surface the
-    # missing mount clearly if used.
-    user_id = user.get("user_id")
-    if user_id:
-        try:
-            await ensure_session_dirs(user_id, conversation_id)
-        except JuiceFSUnavailable:
-            pass
+    # Per-conversation session dirs (scratch/, user-uploaded/, artifacts/) are
+    # created on demand by the write/bash paths and `.meta.json` by the post-init
+    # last-active touch — so we keep JuiceFS off the first-message critical path.
 
     init_frame = ConversationInitializedFrame(
         conversation_id=conversation_id,
-        conversation_description=conversation.get("description"),
+        conversation_description=conversation.description,
         user_message_id=user_message_id,
         user_message_content=user_message_content_from(body),
         bot_message_id=bot_message_id,
@@ -99,7 +96,7 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
     if not message or not conversation_id:
         return message
 
-    base = f"{settings.HOST}/api/v1/sessions/{conversation_id}/artifacts"
+    base = artifact_url_base(conversation_id)
 
     def _sub(m: re.Match[str]) -> str:
         # Preserve leading whitespace/quote so we don't break adjacent syntax.
@@ -112,7 +109,7 @@ def absolutize_artifact_urls(message: str, conversation_id: str) -> str:
 
 async def save_conversation_async(
     body: MessageRequestWithHistory,
-    user: dict,
+    user: AuthenticatedUser,
     conversation_id: str,
     complete_message: str,
     tool_data: dict[str, Any],
@@ -121,6 +118,7 @@ async def save_conversation_async(
     bot_message_id: str,
     bot_timestamp: datetime | None = None,
     error: str | None = None,
+    follow_up_actions: list[str] | None = None,
 ) -> None:
     """Persist the finished turn to Mongo and bill token usage.
 
@@ -159,6 +157,10 @@ async def save_conversation_async(
         fileIds=body.fileIds,
         metadata=metadata,
         error=error,
+        # Persisted here rather than patched in afterwards: the chips are part
+        # of the turn the user saw, so a reload, a sync, or a second device must
+        # rebuild them from the saved message alone.
+        follow_up_actions=follow_up_actions,
     )
     bot_message.message_id = bot_message_id
 

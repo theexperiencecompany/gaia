@@ -13,7 +13,6 @@
 import type { ExecutionConfig, WorkflowMetadata } from "@shared/types";
 import type {
   TriggerConfig,
-  TriggerFieldSchema,
   TriggerSchema,
 } from "@/features/workflows/triggers/types";
 import type { ContentCreator } from "@/types/shared/contentTypes";
@@ -60,13 +59,7 @@ export interface PublicWorkflowStep {
 
 // Re-export trigger types for convenience
 // Re-export shared types that are identical between web and mobile
-export type {
-  ExecutionConfig,
-  TriggerConfig,
-  TriggerFieldSchema,
-  TriggerSchema,
-  WorkflowMetadata,
-};
+export type { ExecutionConfig, TriggerConfig, TriggerSchema, WorkflowMetadata };
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES

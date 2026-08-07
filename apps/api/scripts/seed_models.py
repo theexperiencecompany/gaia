@@ -43,11 +43,11 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 # Import app modules after path setup  # noqa: E402
-from app.db.mongodb.collections import (  # noqa: E402
-    ai_models_collection,
-)
+from app.db.mongodb.collections import get_async_collection  # noqa: E402
 from app.db.redis import delete_cache_by_pattern  # noqa: E402
 from app.models.models_models import ModelProvider, PlanType  # noqa: E402
+
+ai_models_collection = get_async_collection("ai_models")
 
 # Redis cache key patterns for chat models (from model_service.py)
 CHAT_MODELS_CACHE_PATTERNS = [
@@ -181,8 +181,13 @@ async def create_backup() -> str:
             model["_id"] = str(model["_id"])
             existing_models.append(model)
 
-        with open(backup_file, "w") as f:
-            json.dump(existing_models, f, indent=2, default=str)
+        # to_thread: this is an async def, so a bare open() would block the loop
+        # while the backup is serialised (ASYNC230).
+        await asyncio.to_thread(
+            Path(backup_file).write_text,
+            json.dumps(existing_models, indent=2, default=str),
+            encoding="utf-8",
+        )
 
         print(f"✅ Backup created: {backup_file}")
         return backup_file

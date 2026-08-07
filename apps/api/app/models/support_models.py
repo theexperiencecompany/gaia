@@ -4,7 +4,9 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.db.repositories.base import UserScopedDocument
 
 
 class SupportRequestType(str, Enum):
@@ -93,6 +95,43 @@ class SupportRequestSubmissionResponse(BaseModel):
     )
 
 
+class SupportRequestPagination(BaseModel):
+    """Pagination envelope for a page of support requests."""
+
+    page: int = Field(..., description="Current page number (1-based)")
+    per_page: int = Field(..., description="Items per page")
+    total: int = Field(..., description="Total number of matching requests")
+    pages: int = Field(..., description="Total number of pages")
+
+
+class SupportRequestListResponse(BaseModel):
+    """Response model for a paginated list of a user's support requests."""
+
+    requests: list[SupportRequestResponse] = Field(..., description="Requests on this page")
+    pagination: SupportRequestPagination = Field(..., description="Pagination info")
+
+
+class SupportRateLimitWindow(BaseModel):
+    """One configured rate-limit window for support request submission."""
+
+    limit: int = Field(..., description="Maximum submissions allowed in the window")
+    window: str = Field(..., description="Human-readable window length")
+
+
+class SupportRateLimits(BaseModel):
+    """The rate-limit windows enforced on support request submission."""
+
+    hourly: SupportRateLimitWindow
+    daily: SupportRateLimitWindow
+
+
+class SupportRateLimitStatusResponse(BaseModel):
+    """Response model for the support rate-limit status endpoint."""
+
+    limits: SupportRateLimits = Field(..., description="Configured limits")
+    note: str = Field(..., description="How the limits are applied")
+
+
 class SupportEmailNotification(BaseModel):
     """Model for email notification data."""
 
@@ -105,3 +144,36 @@ class SupportEmailNotification(BaseModel):
     created_at: datetime
     support_emails: list[EmailStr]
     attachments: list[SupportAttachment] = []
+
+
+class SupportRequestDocument(UserScopedDocument):
+    """A support request as stored in the ``support_requests`` collection.
+
+    User-scoped; ``id`` is a caller-minted UUID stored as the Mongo ``_id``
+    (string, not ObjectId). ``updated_at`` is stamped by the base on every write.
+    """
+
+    ticket_id: str
+    user_email: str
+    user_name: str | None = None
+    type: SupportRequestType
+    title: str
+    description: str
+    status: SupportRequestStatus = SupportRequestStatus.OPEN
+    priority: SupportRequestPriority = SupportRequestPriority.MEDIUM
+    created_at: datetime
+    updated_at: datetime | None = None
+    resolved_at: datetime | None = None
+    tags: list[str] = Field(default_factory=list)
+    attachments: list[SupportAttachment] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SupportRequestUpdate(BaseModel):
+    """Mutable fields of a support request (triage/resolution)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: SupportRequestStatus | None = None
+    priority: SupportRequestPriority | None = None
+    resolved_at: datetime | None = None

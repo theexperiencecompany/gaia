@@ -92,5 +92,5 @@ export function apiUrlFromEnvOrCreds(explicit?: string): string {
   if (explicit) return explicit.replace(/\/$/, "");
   const creds = loadCredentials();
   if (creds?.apiUrl) return creds.apiUrl.replace(/\/$/, "");
-  return (process.env.GAIA_API_URL ?? DEFAULT_API_URL).replace(/\/$/, "");
+  return (process.env["GAIA_API_URL"] ?? DEFAULT_API_URL).replace(/\/$/, "");
 }

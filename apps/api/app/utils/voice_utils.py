@@ -1,18 +1,27 @@
 """Pure mappers that normalize ElevenLabs voice payloads into catalog options.
 
-Stateless helpers only — no I/O, DB, settings, or network. They shape raw
-ElevenLabs account/shared-library voice dicts into the catalog-compatible
-``VoiceOption`` schema used by the voice picker.
+Stateless helpers only — no I/O, DB, settings, or network. They shape the
+trimmed account/shared-library voices (``app/models/voice_models.py``) into the
+catalog-compatible ``VoiceOption`` schema used by the voice picker.
 """
 
 from typing import Any
 
 from app.constants.voices import ACCENT_TO_COUNTRY, LANGUAGE_NAMES
+from app.models.voice_models import (
+    ElevenLabsAccountVoice,
+    ElevenLabsSharedVoice,
+    ElevenLabsVoice,
+)
 from app.schemas.voice_schemas import VoiceOption
 
 
 def _verified_language_codes(voice: dict[str, Any]) -> list[str]:
     """Ordered, deduped ISO codes from a voice's verified_languages.
+
+    Reads the RAW provider voice object, before it is trimmed into one of the
+    ``ElevenLabsVoice`` models — this is the untyped boundary, so a plain dict
+    is the honest parameter type here.
 
     ElevenLabs repeats a language once per supporting model — collapse to one
     entry per language, preserving first-seen order.
@@ -56,7 +65,7 @@ def _split_display_name(raw_name: str) -> tuple[str, str]:
 
 
 def _build_voice_option(
-    voice: dict[str, Any],
+    voice: ElevenLabsVoice,
     *,
     accent: str,
     gender: str,
@@ -67,28 +76,28 @@ def _build_voice_option(
     fallback_description: str,
 ) -> VoiceOption:
     """Shape a non-catalog ElevenLabs voice into a catalog-compatible option."""
-    name, blurb = _split_display_name(voice["name"])
+    name, blurb = _split_display_name(voice.name)
     accent_label = _normalize_accent(accent)
     primary = LANGUAGE_NAMES.get(language_code, language_code.upper() or "English")
     descriptive = descriptive.replace("_", " ")
     use_case = use_case.replace("_", " ")
     return VoiceOption(
-        voice_id=voice["voice_id"],
+        voice_id=voice.voice_id,
         name=name,
         language=primary,
         accent=accent_label,
         country_code=ACCENT_TO_COUNTRY.get(accent_label.lower(), ""),
         gender=gender.strip().title() or "Neutral",
         description=blurb or descriptive.title() or use_case.title() or fallback_description,
-        preview_url=voice.get("preview_url"),
+        preview_url=voice.preview_url,
         source=source,
-        languages=_language_names(voice.get("language_codes") or [], primary),
+        languages=_language_names(voice.language_codes, primary),
     )
 
 
-def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
+def _map_account_voice(voice: ElevenLabsAccountVoice) -> VoiceOption:
     """Shape a non-catalog account voice (metadata in ``labels``) into an option."""
-    labels: dict[str, Any] = voice["labels"]
+    labels = voice.labels
     return _build_voice_option(
         voice,
         accent=str(labels.get("accent") or ""),
@@ -101,15 +110,15 @@ def _map_account_voice(voice: dict[str, Any]) -> VoiceOption:
     )
 
 
-def _map_shared_voice(voice: dict[str, Any]) -> VoiceOption:
+def _map_shared_voice(voice: ElevenLabsSharedVoice) -> VoiceOption:
     """Shape a shared-library voice (metadata at the top level) into an option."""
     return _build_voice_option(
         voice,
-        accent=voice["accent"],
-        gender=voice["gender"],
-        descriptive=voice["descriptive"],
-        use_case=voice["use_case"],
-        language_code=voice["language"],
+        accent=voice.accent,
+        gender=voice.gender,
+        descriptive=voice.descriptive,
+        use_case=voice.use_case,
+        language_code=voice.language,
         source="library",
         fallback_description="Community voice",
     )

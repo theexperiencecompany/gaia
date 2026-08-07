@@ -16,7 +16,7 @@ Add env vars
 from functools import lru_cache
 import os
 import time
-from typing import Literal
+from typing import Any, Literal, Self
 
 from dotenv import load_dotenv
 from pydantic import computed_field, field_validator
@@ -49,7 +49,7 @@ class BaseAppSettings(BaseSettings):
 
     # For handling both normal env var loading and dict constructor
     @classmethod
-    def from_env(cls, **kwargs):
+    def from_env(cls, **kwargs: Any) -> Self:
         """Create settings from environment variables."""
         try:
             return cls(**kwargs)
@@ -58,7 +58,7 @@ class BaseAppSettings(BaseSettings):
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
-            defaults = {}
+            defaults: dict[str, Any] = {}
             for field_name, field_info in fields.items():
                 if field_name in kwargs:
                     continue
@@ -81,7 +81,7 @@ class CommonSettings(BaseAppSettings):
     # get_settings() refuses to start in production when either is enabled.
     # ----------------------------------------------
     # Sim mode: every LLM factory resolves to the local scripted stub
-    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev:sim`.
+    # (tools/llm-stub) for deterministic, credential-free runs. `mise dev --sim`.
     GAIA_SIM_MODE: bool = False
     # Where the scripted stub lives when sim mode is on; consumed only by
     # _sim_llm (defaults to SIM_STUB_BASE_URL when unset).
@@ -160,6 +160,21 @@ class CommonSettings(BaseAppSettings):
         return max(CRAWL4AI_MIN_MAX_BROWSERS, parsed)
 
     # ----------------------------------------------
+    # Dev-only LLM overrides (honored only when ENV=development)
+    # ----------------------------------------------
+    # Custom OpenRouter/OpenAI-compatible endpoint for cheap bulk dev/test usage
+    # (e.g. Nous Research's discounted DeepSeek lane). All three must be set; the
+    # "custom" provider is registered exclusively in development (see
+    # register_llm_providers), so these have no effect in production.
+    DEV_LLM_BASE_URL: str | None = None
+    DEV_LLM_API_KEY: str | None = None
+    DEV_LLM_MODEL: str | None = None
+    # Default model for every dev request that doesn't pick one in the chat-header
+    # selector — any DEV_MODEL_OPTIONS key from app/constants/llm.py ("custom" =
+    # the endpoint above). An explicit selector choice still wins.
+    DEV_DEFAULT_MODEL: str | None = None
+
+    # ----------------------------------------------
     # GitHub Integration (for Skill Discovery)
     # ----------------------------------------------
     # Optional: Get a token at https://github.com/settings/tokens
@@ -183,43 +198,43 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
 
     # OAuth Callback URLs
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def WORKOS_REDIRECT_URI(self) -> str:
         """WorkOS OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/workos/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def WORKOS_DESKTOP_REDIRECT_URI(self) -> str:
         """WorkOS OAuth callback URL for desktop app."""
         return f"{self.HOST}/api/v1/oauth/workos/desktop/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def WORKOS_MOBILE_REDIRECT_URI(self) -> str:
         """WorkOS OAuth callback URL for mobile app."""
         return f"{self.HOST}/api/v1/oauth/workos/mobile/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def COMPOSIO_REDIRECT_URI(self) -> str:
         """Composio OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/composio/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def GOOGLE_CALLBACK_URL(self) -> str:
         """Google OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/google/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def DISCORD_OAUTH_REDIRECT_URI(self) -> str:
         """Discord OAuth callback URL."""
         return f"{self.HOST}/api/v1/platform-auth/discord/callback"
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
         """Slack OAuth callback URL."""
@@ -268,6 +283,7 @@ class ProductionSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str
     RESEND_AUDIENCE_ID: str
+    EMAIL_UNSUBSCRIBE_SECRET: str
 
     # Media Storage
     CLOUDINARY_CLOUD_NAME: str
@@ -469,6 +485,7 @@ class DevelopmentSettings(CommonSettings):
     # Email & Communication
     RESEND_API_KEY: str | None = None
     RESEND_AUDIENCE_ID: str | None = None
+    EMAIL_UNSUBSCRIBE_SECRET: str | None = None
 
     # Media Storage
     CLOUDINARY_CLOUD_NAME: str | None = None
@@ -626,7 +643,7 @@ class DevelopmentSettings(CommonSettings):
     BOT_SESSION_TOKEN_SECRET: str | None = None  # Falls back to GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
-    @computed_field  # type: ignore
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def SLACK_OAUTH_REDIRECT_URI(self) -> str:
         """Slack OAuth callback URL using redirectmeto proxy for local development."""
@@ -641,7 +658,7 @@ class DevelopmentSettings(CommonSettings):
 _infisical_secrets_loaded = False
 
 
-def _ensure_infisical_loaded():
+def _ensure_infisical_loaded() -> None:
     """Ensure Infisical secrets are loaded exactly once."""
     global _infisical_secrets_loaded
     if not _infisical_secrets_loaded:
@@ -654,12 +671,22 @@ def _ensure_infisical_loaded():
 
 
 @lru_cache(maxsize=1)
-def get_settings():
+def get_settings() -> Any:
     """
     Get cached settings instance based on environment.
 
     This function uses LRU cache to ensure settings are instantiated only once,
     avoiding expensive Pydantic validation on every import.
+
+    The return stays `Any`. Measured, don't re-litigate: annotating it
+    `-> CommonSettings` produced **129 new mypy errors** — the concrete keys live
+    on ProductionSettings/DevelopmentSettings or arrive via `extra="allow"`, so
+    every `settings.TAVILY_API_KEY` / `R2_*` / `JUICEFS_*` read across the
+    storage, search-provider and sandbox layers becomes `has no attribute`.
+    Narrowing means hoisting those declarations onto the common base, which is a
+    settings-model redesign, not a typing fix (Type Safety item 14). The same run
+    showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
+    per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
     """
     log.set(service={"name": "gaia-api"})
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
@@ -670,6 +697,7 @@ def get_settings():
 
     try:
         # Initialize settings based on environment
+        settings_obj: ProductionSettings | DevelopmentSettings
         if env == "development":
             settings_obj = DevelopmentSettings.from_env()
         else:

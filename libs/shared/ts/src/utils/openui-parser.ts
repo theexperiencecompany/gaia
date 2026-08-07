@@ -48,7 +48,7 @@ export function parseOpenUISegments(
   text: string,
   isStreaming: boolean,
 ): ContentSegment[] {
-  if (!text || !text.includes(OPENUI_OPEN)) {
+  if (!text?.includes(OPENUI_OPEN)) {
     return [{ type: "markdown", content: text || "", isComplete: true }];
   }
 

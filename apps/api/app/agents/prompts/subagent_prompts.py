@@ -143,8 +143,8 @@ button and are not real drafts. Always go through GMAIL_CREATE_EMAIL_DRAFT so th
 proper compose UI appears.
 
 If a draft_id exists in context:
-- update or send that draft
-- never create parallel drafts unless explicitly requested
+- to send it: GMAIL_SEND_DRAFT with that draft_id
+- to change it: drafts cannot be edited in place, so delete it (GMAIL_DELETE_DRAFT with that draft_id) and create a fresh draft. Never leave the old draft behind or create parallel drafts.
 
 — WHAT MAKES A GOOD EMAIL
 - Subject: specific and informative, never vague ("Q2 budget review — your numbers by Thu?" not "Quick question").
@@ -161,7 +161,7 @@ before Gmail tool calls.
 
 Intent -> preferred skill:
 - Contact lookup / recipient discovery -> gmail-find-contacts
-- Search inbox context / gather evidence -> gmail-search-context
+- Search / read / gather context, or summarize / triage / brief the inbox -> gmail-search-context
 - Compose, draft, reply, send -> gmail-draft-send
 - Inbox cleanup / organization -> gmail-clean-inbox
 
@@ -179,7 +179,7 @@ For contact lookup, prioritize:
 1. GMAIL_GET_CONTACT_LIST
 2. GMAIL_SEARCH_PEOPLE
 3. GMAIL_GET_CONTACTS
-4. GMAIL_FETCH_EMAILS (context fallback)
+4. GMAIL_FETCH_MESSAGES (context fallback)
 
 If multiple candidates exist:
 - choose the most contextually relevant
@@ -224,8 +224,22 @@ GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID once per message. That one-by-one pattern turn
 - You already have your Gmail tools bound — don't re-run retrieve_tools for tools
   you've used, and don't shell out (bash/ls) to look for skills.
 
+— INBOX SCANS
+For inbox-wide scans ("today's mail", "this week", "unread from last 7 days"),
+use GMAIL_FETCH_MESSAGES. It accepts a `timeframe` shortcut
+(today | yesterday | 1d | 3d | 7d | 1w | this_week | 1m | …) resolved to
+Gmail's after:/before: in the user's home timezone, server-side paginates
+so a nextPageToken never escapes our process, and applies a body
+normalization that strips signatures / disclaimers / unsubscribe footers
+/ utm tracking (quoted replies are kept). When the aggregate response is
+large it is automatically offloaded to a JSONL file you can mine with
+`query_json` (structured filters) or `grep` (text). e.g. filter by sender with
+query_json(path=..., where=[{"field":"from","op":"contains","value":"github"}],
+fields=["subject"]). Don't re-fetch the same window. Default fields are metadata + snippet;
+add "body" to fields when full content is needed.
+
 — SURFACING RESULTS (don't re-narrate what the card already shows)
-GMAIL_FETCH_EMAILS renders an email-list card in the chat that shows the user the
+GMAIL_FETCH_MESSAGES renders an email-list card in the chat that shows the user the
 FULL list of fetched emails. That card is for the user; finish_task(result=...) is
 the data hand-off to the parent and still follows the COMPLETION STANDARD above:
 when the parent needs the fetched items to act on them, put the actual data in the
@@ -235,6 +249,14 @@ user can already see on the card:
   subject, and the key detail or why it matches, then note the rest are in the list.
 - When it was a general fetch ("show my unread") and the parent only needs to relay,
   a one-line summary (count plus the gist) is enough; the card carries the detail.
+
+— INBOX SUMMARY / TRIAGE (READ THE SKILL FIRST)
+When the user asks you to summarize, triage, or brief their inbox ("summarize my
+emails", "what's in my inbox", "what needs my attention", "catch me up", a morning
+digest, and the like), this is NOT a free-form reply. Read the gmail-search-context
+skill with `read` at its listed Location and follow its "Inbox summary / triage" output
+contract exactly: it defines the fixed four-section report and how to return it
+verbatim. Do not improvise your own format.
 
 — CONTEXT-FIRST RULE
 
