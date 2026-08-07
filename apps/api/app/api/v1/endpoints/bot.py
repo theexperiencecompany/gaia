@@ -212,7 +212,7 @@ async def get_link_token_info(token: str) -> LinkTokenInfoResponse:
     log.audit(
         "platform link token presented",
         actor=AUDIT_ACTOR_UNAUTHENTICATED,
-        resource=data.get("platform_user_id"),
+        resource=record.platform_user_id,
         provider=record.platform,
     )
     log.set(outcome="success")
@@ -310,7 +310,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     task.add_done_callback(task_done_callback)
     _background_tasks.add(task)
 
-    async def stream_from_redis() -> AsyncGenerator[str, None]:
+    async def stream_from_redis():
         """Subscribe to Redis stream and translate chunks for bot clients.
 
         The body runs while the response streams — after the request's

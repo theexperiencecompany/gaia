@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import sys
 
 # The sink reads these at import time, so they must be set before the first
 # `shared.py` import. Fixed values keep the emitted lines byte-comparable
@@ -23,9 +22,7 @@ os.environ["LOG_LEVEL"] = "DEBUG"
 os.environ.setdefault("ENV", "development")
 os.environ.setdefault("GAIA_SERVICE_NAME", "gaia-backend")
 
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[3]))
-
-from shared.py.wide_events import log, wide_task  # noqa: E402
+from shared.py.wide_events import log, wide_task
 
 
 def _emit_realtime_scenarios() -> None:

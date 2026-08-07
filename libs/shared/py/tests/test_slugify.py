@@ -45,6 +45,7 @@ class TestSlugifySpecialChars:
             # "@" is in the separator class so it becomes a hyphen; "." is not, so
             # it is stripped (see test_period_stripped). The old expectation of
             # "helloworld-com" required the exact opposite of both.
+
             ("hello@world.com", "hello-worldcom"),
             ("price: $100", "price-100"),
             ("50% off!", "50-off"),
@@ -137,6 +138,7 @@ class TestSlugifyWhitespace:
             # like the spaces two lines up. These two previously expected them to
             # be deleted, which recorded the run-together bug rather than the
             # documented contract.
+
             ("tabs\there", "tabs-here"),
             ("newlines\nhere", "newlines-here"),
         ],

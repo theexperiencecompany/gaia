@@ -103,10 +103,6 @@ def _drop_completion_fields(update: TodoUpdate) -> TodoUpdate:
     return TodoUpdate(**fields)
 
 
-# Module-level set to hold references to background tasks and prevent GC
-_background_tasks: set[asyncio.Task[bool]] = set()
-
-
 class TodoService:
     """Service class for todo operations. Persistence + caching live in the
     todos/projects repositories; this layer holds orchestration only."""

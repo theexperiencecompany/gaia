@@ -176,9 +176,6 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
         return default
 
 
-# Module-level set prevents GC of fire-and-forget tasks
-_background_tasks: set[asyncio.Task] = set()
-
 # Fallback cadence whenever a workflow has no usable suggested trigger.
 _DEFAULT_WORKFLOW_CRON = "0 9 * * *"
 

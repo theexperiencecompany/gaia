@@ -97,6 +97,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 task_id=task_id,
                 error=str(e),
                 error_type=type(e).__name__,
+                user_id=user_id,
             )
             return None
 
@@ -187,6 +188,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 task_id=task_id,
                 error=str(e),
                 error_type=type(e).__name__,
+                user_id=user_id,
             )
             return False
 

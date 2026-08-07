@@ -520,15 +520,7 @@ async def resume_reminder_endpoint(
 async def validate_cron_endpoint(
     expression: str = Query(..., description="Cron expression to validate"),
 ) -> CronValidationResponse:
-    """
-    Validate a cron expression.
-
-    Args:
-        expression: Cron expression to validate
-
-    Returns:
-        Validation result
-    """
+    """Validate a cron expression and preview its next few run times."""
     log.set(reminder=ReminderContext(operation="validate_cron"))
     try:
         is_valid = validate_cron_expression(expression)
@@ -550,3 +542,4 @@ async def validate_cron_endpoint(
             error=str(e),
         )
         return CronValidationResponse(expression=expression, valid=False, error=str(e))
+

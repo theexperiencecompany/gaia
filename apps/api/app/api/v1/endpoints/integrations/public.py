@@ -1,5 +1,7 @@
 """Public integration routes (no auth required for SEO/sharing)."""
 
+import contextlib
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
@@ -146,17 +148,11 @@ async def add_public_integration(
                 integration_id=integration_id,
             )
         else:
-            try:
+            with contextlib.suppress(ValueError):
                 await add_user_integration(
                     user_id=user_id,
                     integration_id=integration_id,
                     initial_status="created",
-                )
-            except ValueError as e:
-                log.warning(
-                    "adding user integration skipped — continuing with connect",
-                    error_type=type(e).__name__,
-                    integration_id=integration_id,
                 )
 
             await integration_repository.increment_clone_count(integration_id)

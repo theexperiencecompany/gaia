@@ -462,8 +462,8 @@ async def _bootstrap_needed(mount_path: Path) -> bool:
         )
     except TimeoutError:
         log.warning(
-            f"{LogTag.STORAGE} mount probe timed out after {_MOUNT_PROBE_TIMEOUT_SECONDS}s — "
-            "mount likely unresponsive; (re)starting bootstrap"
+            f"{LogTag.STORAGE} mount probe timed out — mount likely unresponsive; (re)starting bootstrap",
+            _mount_probe_timeout_seconds=_MOUNT_PROBE_TIMEOUT_SECONDS,
         )
         return True
 

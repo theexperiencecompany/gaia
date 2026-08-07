@@ -35,7 +35,7 @@ async def latest_desktop_release() -> DesktopReleaseResponse:
     """
     log.set(desktop={"operation": "latest_release"})
     release = await get_latest_desktop_release()
-    log.set_ns("desktop", version=release.tag, asset_count=len(release.assets))
+    log.set(desktop_release={"tag": release.tag, "asset_count": len(release.assets)})
     # Cacheable erases the wrapped function's return type; get_latest_desktop_release
     # is declared -> DesktopReleaseResponse, so this is correct by construction.
     return cast(DesktopReleaseResponse, release)

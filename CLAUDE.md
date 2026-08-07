@@ -22,7 +22,9 @@ This applies to **everything** — coding, debugging, answering questions, decid
 - **State confidence honestly.** If something is unverified, say so and verify it before relying on it. Never present an assumption as a fact. A confident wrong answer is worse than "let me check."
 - **Understand before you change or delete.** Don't modify, refactor, or remove code whose purpose you haven't confirmed (Chesterton's fence) — the weird-looking line is often load-bearing. If you don't know why it's there, find out before touching it.
 - **Don't claim done without proof.** Never say "it works," "tests pass," or "this is fixed" unless you actually ran it and saw the result. Report outcomes faithfully — if a step was skipped or something failed, say so with the output. "Done" means verified, not "should be done."
+- **Name what the test did NOT exercise, as loudly as what it did.** A test of a simulation, translation, or proxy proves only that proxy — a fixture tests the fixture's assumptions, a unit test of extracted output proves the extraction, not the real engine. Before calling something verified, say exactly where the run stops being faithful to reality ("verified against a local webhook sink, not Slack"; "fired with synthetic series, not the real app's metrics"; "passed under `act`, not a real runner"). Then reach the highest-fidelity test that is feasible: run the real component, the real integration, the real delivery — first, not after being asked. Every silent-failure bug in a monitoring/alerting system survives precisely because its test stopped short of the real path.
 - **A green test suite is not proof that the feature works.** Passing tests, lint, and type-check only prove the checks you happened to write did not fail. They do not prove the thing actually works — tests exercise the paths you already thought of, with fakes standing in for the parts most likely to break, in a process that never boots the way production does. Plenty of shipped bugs had a fully green suite. **After the work is done, drive it manually the way a real human user would**: boot the stack, hit the real endpoint, click through the real UI, send the real message, then go look at the real artifact it produced — the response body, the database row, the log file, the queue. Do this *in addition to* the suite, never instead of it, and never treat "all tests pass" as the finish line. If you cannot drive it manually, say so explicitly rather than implying it was verified.
+
 - If after genuine investigation something is still ambiguous, stop and ask — do not paper over the gap with a guess.
 
 ### Maintainability & Tech Debt
@@ -231,6 +233,7 @@ Area-specific rules live in nested `CLAUDE.md` files that load automatically whe
 - **Backend** (Python, FastAPI route contract, services, Pydantic): `apps/api/CLAUDE.md`
 - **Voice agent** (Python, LiveKit worker): `apps/voice-agent/CLAUDE.md`
 - **Bots** (TypeScript): `apps/bots/CLAUDE.md`
+- **Observability** (Prometheus scrape config, Grafana alert rules, Slack/email alerting, runbooks): `infra/docker/observability/CLAUDE.md`
 - **SEO** (marketing pages, metadata, schemas, sitemaps): `apps/web/src/app/[locale]/(landing)/CLAUDE.md`
 - **OpenUI system** (LLM-emitted generic components): `apps/web/src/config/openui/CLAUDE.md`
 - **Chat bubbles & tool cards**: `apps/web/src/features/chat/components/bubbles/bot/CLAUDE.md`

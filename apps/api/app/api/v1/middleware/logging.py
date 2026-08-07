@@ -19,7 +19,6 @@ from functools import wraps
 from http import HTTPStatus
 import time
 from typing import ParamSpec, TypeVar, cast
-import uuid
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -169,15 +168,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         if incoming_trace_id:
             wide_log.set(trace_id=incoming_trace_id)
 
-        # Mint a server-side request id so every request is identifiable even
-        # when the client never sends x-request-id (which is most of them). An
-        # incoming header wins; the minted value is the fallback.
-        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
-
         # Capture request size from Content-Length header (available without reading body)
         try:
             request_size_bytes = int(request.headers.get("content-length", 0))
-        except (TypeError, ValueError):
+        except (ValueError, TypeError):
             request_size_bytes = 0
 
         start = time.time()
@@ -212,13 +206,11 @@ class LoggingMiddleware(BaseHTTPMiddleware):
                 **wide_event_context,
                 "method": request.method,
                 "path": request.url.path,
-                "query_string": request.url.query,
-                "http_version": request.scope.get("http_version"),
                 "status_code": 500,
                 "status_phrase": "Internal Server Error",
                 "duration_ms": duration_ms,
                 "client_ip": client_ip,
-                "request_id": request_id,
+                "request_id": request.headers.get("x-request-id"),
                 "user_agent": request.headers.get("user-agent"),
                 "request_size_bytes": request_size_bytes,
             }
@@ -257,17 +249,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             # --- HTTP request characteristics (always authoritative) ---
             "method": request.method,
             "path": request.url.path,
-            "query_string": request.url.query,
-            "http_version": request.scope.get("http_version"),
             "status_code": status_code,
             "status_phrase": status_phrase,
             "duration_ms": duration_ms,
             "client_ip": client_ip,
-            "request_id": request_id,
+            "request_id": request.headers.get("x-request-id"),
             "user_agent": request.headers.get("user-agent"),
             "request_size_bytes": request_size_bytes,
             "response_size_bytes": int(response.headers.get("content-length", 0) or 0),
-            "response_content_type": response.headers.get("content-type"),
         }
 
         request_logger.bind(**context).log(level, "http_request")

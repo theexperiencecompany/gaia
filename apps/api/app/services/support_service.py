@@ -35,7 +35,7 @@ SUPPORT_EMAILS = [
 ]
 
 
-async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> None:
+async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
     """Delete uploaded files from Cloudinary."""
     for url in attachment_urls:
         try:
@@ -57,7 +57,6 @@ async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> 
                         log.warning(
                             "Failed to delete file from Cloudinary",
                             public_id=public_id,
-                            ticket_id=ticket_id,
                         )
                     else:
                         log.info("Successfully deleted file from Cloudinary", public_id=public_id)
@@ -67,7 +66,6 @@ async def _delete_uploaded_files(attachment_urls: list[str], ticket_id: str) -> 
                 url=url,
                 error=str(e),
                 error_type=type(e).__name__,
-                ticket_id=ticket_id,
             )
 
 
@@ -357,7 +355,7 @@ async def create_support_request_with_attachments(
                         attachment_urls_count=len(attachment_urls),
                         ticket_id=ticket_id,
                     )
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
 
                 # Re-raise the original exception (could be HTTPException from validation or upload error)
                 raise
@@ -416,7 +414,7 @@ async def create_support_request_with_attachments(
             # Rollback: Delete uploaded files
             if attachment_urls:
                 try:
-                    await _delete_uploaded_files(attachment_urls, ticket_id)
+                    await _delete_uploaded_files(attachment_urls)
                     log.info(
                         "Successfully cleaned up uploaded files for ticket",
                         attachment_urls_count=len(attachment_urls),
@@ -493,7 +491,7 @@ async def create_support_request_with_attachments(
         # Clean up uploaded files
         if attachment_urls and ticket_id:
             try:
-                await _delete_uploaded_files(attachment_urls, ticket_id)
+                await _delete_uploaded_files(attachment_urls)
                 log.info(
                     "Cleaned up uploaded files due to unexpected error",
                     attachment_urls_count=len(attachment_urls),

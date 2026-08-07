@@ -387,11 +387,13 @@ async def process_gmail_to_memory(user_id: str) -> GmailProcessingStats:
             )
             fetch_elapsed = time.monotonic() - t0_search
             log.info(
+log.debug(
                 f"{LogTag.MEMORY} Gmail fetch batch completed",
                 batch=batch_count,
                 duration_s=round(fetch_elapsed, 1),
                 fetched_so_far=total_fetched + len(result.messages),
                 user_id=user_id,
+            )
             )
             timer.record(f"Gmail API fetch — batch {batch_count}", fetch_elapsed)
 
@@ -475,10 +477,12 @@ async def process_gmail_to_memory(user_id: str) -> GmailProcessingStats:
                 if isinstance(storage_result, Exception):
                     storage_errors += 1
                     log.warning(
+log.error(
                         f"{LogTag.MEMORY} Email storage task failed",
                         task_index=idx + 1,
                         error_type=type(storage_result).__name__,
                         error=str(storage_result),
+                    )
                     )
 
             successful_batches = len(storage_results) - storage_errors
@@ -677,19 +681,18 @@ async def _extract_profiles_from_parallel_searches(user_id: str) -> ProfileExtra
                 f"{LogTag.MEMORY} Discovered profile tasks gather finished",
                 duration_s=round(time.monotonic() - t0_discovery, 1),
             )
-            for discovery_result in discovery_results:
-                # Discovery task returns count of profiles stored
-                if isinstance(discovery_result, int):
-                    discovered_count += discovery_result
-                elif isinstance(discovery_result, Exception):
+            for result in discovery_results:
+                if isinstance(result, int):  # Discovery task returns count of profiles stored
+                    discovered_count += result
+                elif isinstance(result, Exception):
                     log.error(
                         f"{LogTag.MEMORY} Discovery task failed",
-                        error_type=type(discovery_result).__name__,
-                        error=str(discovery_result),
+                        error_type=type(result).__name__,
+                        error=str(result),
                         user_id=user_id,
                     )
 
-            profiles_stored += discovered_count
+        profiles_stored += discovered_count
 
         elapsed = time.time() - extraction_start
         log.info(

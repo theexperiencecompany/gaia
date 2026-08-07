@@ -46,24 +46,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     # Add the connection to our manager
     connection_manager.add_connection(user_id=user_id, websocket=websocket)
 
-    # Count what the connection actually did — a socket that never received a
-    # message (idle) is a different operational signal than an active one, and
-    # the boundary event would otherwise read identically for both.
-    messages_received = 0
-
     # Remove the connection when the WebSocket is closed
     try:
         while True:
             # Keep the connection open
             await websocket.receive_text()
-            messages_received += 1
     except WebSocketDisconnect:
         # Handle disconnection - WebSocket is already closed, so just clean up
-        log.set(disconnect_reason="client_close", messages_received=messages_received)
+        log.set(disconnect_reason="client_close")
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
     except Exception as e:
         # Handle any other exceptions
-        log.set(disconnect_reason="server_error", messages_received=messages_received)
+        log.set(disconnect_reason="server_error")
         log.error(
             "WebSocket error",
             user_id=user_id,
@@ -71,6 +65,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             error=str(e),
         )
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
+        # Ignore if WebSocket is already closed
         try:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         except Exception as close_error:

@@ -65,7 +65,7 @@ _JSON_TYPE_NAMES = {
 }
 
 
-def json_type(value: Any) -> str:
+def json_type(value: object) -> str:
     """The JSON type name of a decoded value (bool before int, as in JSON)."""
     return _JSON_TYPE_NAMES.get(type(value), "unknown")
 
@@ -95,7 +95,7 @@ def run_emitter(name: str, command: list[str], overlay: dict[str, str]) -> list[
             f"conformance: cannot run the {name} emitter — {command[0]!r} is not on PATH.\n"
             f"  Python emitter needs uv (astral-sh/setup-uv), TypeScript needs pnpm + tsx."
         )
-    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+    result = subprocess.run(
         command,
         cwd=REPO_ROOT,
         env={**os.environ, **overlay},

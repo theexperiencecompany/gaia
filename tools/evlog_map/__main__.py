@@ -20,19 +20,17 @@ import os
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from compare import (  # noqa: E402
+from compare import (
     baseline_file_entries,
     compare_to_baseline,
     head_file_entries,
     load_rename_map,
 )
-from report import render_github_summary, render_terminal, to_json, write_map_json  # noqa: E402
-from routers import collect_router_mounts  # noqa: E402
-from scan import collect_worker_registry, scan, scored_entries  # noqa: E402
-from schema import canonical_fields  # noqa: E402
-from voice import collect_voice_registry  # noqa: E402
+from report import render_github_summary, render_terminal, to_json, write_map_json
+from routers import collect_router_mounts
+from scan import collect_worker_registry, scan, scored_entries
+from schema import canonical_fields
+from voice import collect_voice_registry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SCAN_PATHS = (REPO_ROOT / "apps/api/app", REPO_ROOT / "apps/voice-agent/src")

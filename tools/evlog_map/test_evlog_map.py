@@ -24,18 +24,14 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
-import sys
 from types import ModuleType
 
+from facts import repo_relative
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-from facts import repo_relative  # noqa: E402
-from routers import collect_router_mounts  # noqa: E402
-from scan import MapResult, RouteEntry, collect_worker_registry, scan  # noqa: E402
-from schema import canonical_fields  # noqa: E402
-from voice import collect_voice_registry  # noqa: E402
+from routers import collect_router_mounts
+from scan import MapResult, RouteEntry, collect_worker_registry, scan
+from schema import canonical_fields
+from voice import collect_voice_registry
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # The live schema, exactly as a real run reads it.

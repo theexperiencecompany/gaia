@@ -4,6 +4,63 @@
  * Shared utilities for GAIA TypeScript/JavaScript applications.
  */
 
+export type {
+  AddPublicIntegrationParams,
+  AddToWorkspaceParams,
+  ApiClientConfig,
+  BatchSyncConversationsParams,
+  BulkNotificationAction,
+  BulkNotificationActionParams,
+  ChatStreamFileData,
+  ChatStreamMessage,
+  ChatStreamParams,
+  ChatStreamReplyTo,
+  CommunityIntegrationsParams,
+  ConnectIntegrationParams,
+  ConnectParams,
+  ConversationListParams,
+  ConversationSyncItem,
+  CreateCustomIntegrationParams,
+  DisconnectParams,
+  GenerateImageParams,
+  IntegrationAddPublicResponse,
+  IntegrationConnectResponse,
+  IntegrationListParams,
+  IntegrationPublishResponse,
+  IntegrationStatusEntry,
+  IntegrationStatusResponse,
+  IntegrationUnpublishResponse,
+  IntegrationWorkspaceAddResponse,
+  McpTestConnectionResponse,
+  NotificationListParams,
+  NotificationReadStatusParams,
+  NotificationStatusFilter,
+  PinMessageParams,
+  RenameConversationParams,
+  SearchApi,
+  SearchIntegrationsParams,
+  SearchMode,
+  SnoozeNotificationParams,
+  StarConversationParams,
+  SubtaskCreateParams,
+  SubtaskUpdateParams,
+  TestConnectionParams,
+  TestNotificationParams,
+  TodoBulkActionParams,
+  TodoBulkMoveParams,
+  TodoListParams,
+  TodoSemanticSearchParams,
+  UpdateChannelPreferenceParams,
+  WorkflowCommunityParams,
+  WorkflowCreateParams,
+  WorkflowExecutionsParams,
+  WorkflowFromTodoParams,
+  WorkflowGeneratePromptParams,
+  WorkflowListParams,
+  WorkflowRegenerateParams,
+  WorkflowTriggerOptionsParams,
+  WorkflowUpdateParams,
+} from "./api";
 // `./analytics` is intentionally NOT re-exported here. It pulls in
 // `posthog-node` which imports Node-only modules (`path`, `fs`) that
 // Metro/React Native cannot resolve. Bot consumers should import it
@@ -65,6 +122,7 @@ export type {
   WorkflowTriggerOptionsParams,
   WorkflowUpdateParams,
 } from "./api";
+
 export {
   ApiError,
   buildIntegrationUrl,
@@ -93,11 +151,13 @@ export type {
   BotLogFields,
   BotLogger,
   BotLogLevel,
+
   BotSubcommand,
   BotTodo,
   BotTodoListResponse,
   BotUserContext,
   BotWideEventFields,
+
   BotWorkflow,
   BotWorkflowExecutionRequest,
   BotWorkflowExecutionResponse,
@@ -123,6 +183,7 @@ export type {
   UnauthenticatedSettingsResponse,
   WideEventBoundaryFields,
   WideEventEntry,
+
 } from "./bots";
 export {
   allCommands,
@@ -142,6 +203,7 @@ export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
   emitBotLogLine,
+
   escapeHtml,
   escapeHtmlAttr,
   extensionForMime,
@@ -189,6 +251,7 @@ export {
   renderForPlatform,
   richMessageToMarkdown,
   runBotProcess,
+
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   settingsCommand,
@@ -201,6 +264,7 @@ export {
   WIDE_EVENT_MESSAGE,
   wideLog,
   withWideEvent,
+
   workflowCommand,
 } from "./bots";
 export type {

@@ -141,8 +141,9 @@ async def create_todo(
 ) -> TodoResponse:
     log.set(user={"id": user["user_id"]}, todo={"operation": "create"})
     result = await create_todo_service(payload, user)
-    log.set(todo={"id": result.id})
-    return result
+    log.set_ns("todo", id=result["_id"])  # set_ns: set(todo={...}) would clobber step 1
+    return JSONResponse(content=result)
+
 ```
 
 - The return annotation defines the response schema. Don't also pass `response_model=` — it is redundant and trips SonarQube S8409.

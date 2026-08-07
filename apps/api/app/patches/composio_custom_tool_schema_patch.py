@@ -63,8 +63,6 @@ def apply() -> None:
             f"{LogTag.PATCH} Applied custom_tool schema inline patch", patch="custom_tool_schema"
         )
     except Exception as e:
-        # See composio_langchain_patch: a silently-failed patch is a runtime
-        # behaviour change that has to be visible in structured logs.
         log.error(
             f"{LogTag.PATCH} Failed to apply custom_tool patch",
             patch="custom_tool_schema",

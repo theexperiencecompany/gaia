@@ -157,7 +157,6 @@ async def get_email_by_id(
                 status="Message retrieved successfully",
             )
         error_msg = result.error or "Failed to retrieve message"
-        log.set(outcome="failed")
         if "not found" in error_msg.lower():
             raise HTTPException(status_code=404, detail=error_msg)
         raise HTTPException(status_code=500, detail=error_msg)
@@ -404,7 +403,7 @@ async def send_email_json(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}") from e
+        raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}")
 
 
 @router.post("/gmail/mark-as-read", summary="Mark emails as read")
@@ -799,7 +798,7 @@ async def delete_label_route(
         # Delete label using the new async function
         success = await delete_label(user_id=user_id, label_id=label_id)
         if success:
-            log.set(outcome="success")
+            log.set(operation="delete_label", label=label_id, outcome="success")
             return GmailDeletionResponse(status="success", message="Label deleted successfully")
         # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
         log.error(f"{LogTag.MAIL} Label deletion reported failure", label=label_id)
@@ -1046,7 +1045,7 @@ async def delete_draft_route(
         success = await delete_draft(user_id=user_id, draft_id=draft_id)
 
         if success:
-            log.set(outcome="success")
+            log.set(operation="delete_draft", email_id=draft_id, outcome="success")
             return GmailDeletionResponse(status="success", message="Draft deleted successfully")
         # Reported as a 200 to the client, so log.error is the only trace this failure leaves.
         log.error(f"{LogTag.MAIL} Draft deletion reported failure", email_id=draft_id)

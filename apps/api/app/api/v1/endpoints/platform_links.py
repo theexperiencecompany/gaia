@@ -36,7 +36,7 @@ def _require_user_id(current_user: Mapping[str, object]) -> str:
     return user_id
 
 
-@router.get("")
+@router.get("", response_model=GetPlatformLinksResponse)
 async def get_platform_links(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> GetPlatformLinksResponse:
@@ -136,6 +136,17 @@ async def link_platform(
         result = await PlatformLinkService.link_account(
             user_id, platform, platform_user_id, profile=profile or None
         )
+        if result.is_new_link:
+            await notify_account_linked(platform, user_id)
+        log.set(outcome="success")
+        # is_new_link is an internal signal for the greeting above, not part of
+        # the payload the client reads — build the response field by field.
+        return LinkPlatformResponse(
+            status=result.status,
+            platform=result.platform,
+            platform_user_id=result.platform_user_id,
+            connected_at=result.connected_at,
+        )
     except ValueError as e:
         log.audit(
             "platform account link rejected",
@@ -154,19 +165,12 @@ async def link_platform(
         actor=user_id,
         resource=platform_user_id,
         provider=platform,
-        is_new_link=bool(result.is_new_link),
+        is_new_link=bool(result.get("is_new_link")),
     )
-    if result.is_new_link:
+    if result.get("is_new_link"):
         await notify_account_linked(platform, user_id)
     log.set(outcome="success")
-    # is_new_link is an internal signal for the greeting above, not part of
-    # the payload the client reads — build the response field by field.
-    return LinkPlatformResponse(
-        status=result.status,
-        platform=result.platform,
-        platform_user_id=result.platform_user_id,
-        connected_at=result.connected_at,
-    )
+    return LinkPlatformResponse(**result)
 
 
 @router.delete("/{platform}")

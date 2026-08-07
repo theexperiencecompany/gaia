@@ -152,8 +152,6 @@ async def _execute_todo_with_retry(todo_id: str, pool: ArqRedis) -> str:
             update=TodoUpdate(gaia_retry_count=0, scheduled_at=next_run),
         )
 
-        # Re-enqueue if recurring. Recurrence is always evaluated in the
-        # user's stored timezone (looked up once at the top of this run).
         if next_run:
             await enqueue_worker_job(
                 pool,

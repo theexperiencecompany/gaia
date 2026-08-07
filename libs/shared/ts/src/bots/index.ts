@@ -30,6 +30,7 @@ export {
   richMessageToMarkdown,
   runBotProcess,
 } from "./adapter";
+
 export { GaiaApiError, GaiaClient } from "./api";
 export {
   allCommands,
@@ -53,6 +54,7 @@ export type {
   OutboundAttachment,
   OutboundMessageEnvelope,
 } from "./consumer/envelope";
+
 export {
   outboundAttachmentSchema,
   outboundMessageEnvelopeSchema,
@@ -92,6 +94,7 @@ export type {
   BotLogger,
   BotLogLevel,
   BotWideEventFields,
+
   IncomingMedia,
   MediaKind,
   MediaOutcome,
@@ -100,6 +103,7 @@ export type {
   StreamingOptions,
   WideEventBoundaryFields,
   WideEventEntry,
+
 } from "./utils";
 export {
   BOT_MEDIA_LIMITS,
@@ -114,6 +118,7 @@ export {
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
   emitBotLogLine,
+
   escapeHtml,
   escapeHtmlAttr,
   extensionForMime,
@@ -157,4 +162,5 @@ export {
   WIDE_EVENT_MESSAGE,
   wideLog,
   withWideEvent,
+
 } from "./utils";

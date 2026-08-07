@@ -71,7 +71,7 @@ def _task_name(path: str) -> str:
 
 def _header(scope: dict[str, Any], key: bytes) -> str | None:
     """The value of a header in a raw ASGI scope, if present."""
-    for name, value in scope.get("headers", ()):  # type: ignore[attr-defined]
+    for name, value in scope.get("headers", ()):
         if name == key:
             return str(value.decode("latin-1"))
     return None

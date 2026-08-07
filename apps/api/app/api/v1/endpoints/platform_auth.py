@@ -228,7 +228,6 @@ async def _handle_platform_oauth_callback(
             )
             if link_result.is_new_link:
                 await notify_account_linked(config.platform, user_id)
-                await notify_account_linked(config.platform, user_id)
         except ValueError as e:
             error_msg = str(e)
             if "already linked" in error_msg:

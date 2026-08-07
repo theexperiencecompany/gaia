@@ -59,9 +59,6 @@ def apply() -> None:
 
         log.info(f"{LogTag.PATCH} Applied composio_langchain_patch", patch="composio_langchain")
     except Exception as e:
-        # Not print: a monkey-patch that fails to apply changes runtime behaviour
-        # for every Composio tool call, and on stdout that never reaches Loki —
-        # the symptom would surface later as unexplained tool-validation errors.
         log.error(
             f"{LogTag.PATCH} Failed to apply composio langchain patch",
             patch="composio_langchain",

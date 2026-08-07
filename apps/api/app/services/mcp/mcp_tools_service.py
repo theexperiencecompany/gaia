@@ -5,7 +5,6 @@ The repository owns the Mongo access (typed); this service adds the aggregate ca
 the roll-up cache so a freshly stored tool set is reflected on the next read.
 """
 
-import asyncio
 from collections.abc import Mapping, Sequence
 from typing import Any, cast
 
@@ -21,9 +20,6 @@ from shared.py.wide_events import log, spawn_logged_task
 # model because ``_format_tools`` is the validation boundary (Type Safety item 8):
 # it drops nameless entries and returns real ``IntegrationTool`` models.
 RawToolMetadata = Mapping[str, Any]
-
-# Background refresh tasks are held here so they are not garbage-collected mid-flight.
-_background_tasks: set[asyncio.Task[None]] = set()
 
 
 def _format_tools(tools: Sequence[RawToolMetadata]) -> list[IntegrationTool]:

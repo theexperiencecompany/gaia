@@ -263,12 +263,10 @@ async def update_onboarding_phase(
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
         log.info(
-            f"{LogTag.ONBOARDING} Updating phase",
-            phase=phase,
-            user_id=user_id,
+            f"{LogTag.ONBOARDING} Updating phase", user_id=user_id, phase=request.phase.value
         )
 
-        matched = await user_repository.set_onboarding_phase(user_id, request.phase)
+        matched = await user_repository.set_onboarding_phase(user_id, request.phase.value)
 
         if not matched:
             log.warning(f"{LogTag.ONBOARDING} No document found for user", user_id=user_id)
@@ -460,7 +458,7 @@ async def get_onboarding_personalization(
         )
         if not user_id or not isinstance(user_id, str):
             raise HTTPException(status_code=400, detail="Invalid user_id")
-        log.info(f"{LogTag.ONBOARDING} Fetching personalization", user_id=user_id)
+        log.info(f"{LogTag.ONBOARDING} Fetching personalization for user {user_id}")
         user_doc = await user_repository.get(user_id)
 
         if not user_doc:
@@ -469,10 +467,7 @@ async def get_onboarding_personalization(
         onboarding = user_doc.onboarding or {}
         phase = onboarding.get("phase", "initial")
         log.info(
-            f"{LogTag.ONBOARDING} Loaded user onboarding state",
-            user_id=user_id,
-            phase=phase,
-            bio_status=onboarding.get("bio_status"),
+            f"{LogTag.ONBOARDING} User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
         )
 
         account_number, member_since = await _resolve_account_identity(user_doc, onboarding)
@@ -516,15 +511,8 @@ async def get_onboarding_personalization(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(
-            f"{LogTag.ONBOARDING} Error fetching personalization",
-            user_id=user.get("user_id"),
-            error_type=type(e).__name__,
-            error=str(e),
-            exc_info=True,
-        )
-        raise HTTPException(status_code=500, detail="Failed to fetch personalization data") from e
-
+        log.error(f"{LogTag.ONBOARDING} Error fetching personalization: {e!s}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
 
 class WritingStyleEditRequest(BaseModel):
     edited_summary: str

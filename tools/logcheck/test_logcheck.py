@@ -29,12 +29,9 @@ from pathlib import Path
 import re
 import sys
 
+import logcheck
+from logcheck import MAX_LINE_BYTES, Violation, check_lines
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-import logcheck  # noqa: E402
-from logcheck import MAX_LINE_BYTES, Violation, check_lines  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 REPO_ROOT = Path(__file__).resolve().parents[2]
