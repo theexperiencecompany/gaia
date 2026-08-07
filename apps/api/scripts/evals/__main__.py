@@ -15,7 +15,14 @@ load_opik_env()
 
 from .core import runner  # noqa: E402
 from .core.providers import load_config  # noqa: E402
-from .suites import smoke  # noqa: E402, F401
+
+from importlib import import_module  # noqa: E402
+
+for _suite_module in ("smoke", "memory", "capability", "gaia_bench", "quality"):
+    try:
+        import_module(f".suites.{_suite_module}", __package__)
+    except ImportError:
+        pass
 
 
 def main() -> None:
