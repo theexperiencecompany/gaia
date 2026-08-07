@@ -56,7 +56,6 @@ export type { BotLogFields, BotLogger, BotLogLevel } from "./logger";
 export {
   createBotLogger,
   emitBotLogLine,
-
   getHttpStatus,
   hashLogIdentifier,
   sanitizeErrorForLog,
@@ -92,4 +91,3 @@ export type {
   WideEventEntry,
 } from "./wide-events";
 export { WIDE_EVENT_MESSAGE, wideLog, withWideEvent } from "./wide-events";
-

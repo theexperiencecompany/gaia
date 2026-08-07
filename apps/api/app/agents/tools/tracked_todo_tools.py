@@ -5,10 +5,8 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
-import asyncio
-from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
@@ -62,14 +60,6 @@ def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
 def _is_cron_expression(recurrence: str) -> bool:
     return recurrence not in _RECURRENCE_SHORTCUTS
 
-
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
     """Parse an ISO datetime; require it to be in the future. Returns (parsed, error)."""
     try:

@@ -17,11 +17,8 @@ custom ``REGISTRY`` so the same ``fs_op_*`` metric families show up at
 
 from __future__ import annotations
 
-from collections.abc import Callable, Coroutine
 import contextlib
-import functools
-import time
-from typing import Any, ParamSpec, TypeVar
+from typing import ParamSpec, TypeVar
 
 from prometheus_client import CollectorRegistry, Counter, Histogram, start_http_server
 
@@ -73,30 +70,6 @@ for _collector in (
     # Already registered on this registry (re-import under reload).
     with contextlib.suppress(ValueError):
         REGISTRY.register(_collector)
-
-
-def instrument_task(
-    func: Callable[P, Coroutine[Any, Any, T]],
-) -> Callable[P, Coroutine[Any, Any, T]]:
-    """Wrap an ARQ task coroutine to record duration and outcome metrics."""
-
-    task_name = func.__name__
-
-    @functools.wraps(func)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-        start = time.perf_counter()
-        status = "success"
-        try:
-            return await func(*args, **kwargs)
-        except Exception:
-            status = "error"
-            raise
-        finally:
-            elapsed = time.perf_counter() - start
-            TASK_DURATION_SECONDS.labels(task_name=task_name, status=status).observe(elapsed)
-            TASK_TOTAL.labels(task_name=task_name, status=status).inc()
-
-    return wrapper
 
 
 def start_metrics_server(port: int) -> None:

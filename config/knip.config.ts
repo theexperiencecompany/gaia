@@ -82,6 +82,11 @@ const config: KnipConfig = {
 
   // Exclude non-app files from unused file detection
   ignore: [
+    // Wide-event conformance emitters: run as subprocesses from
+    // scripts/ci/wide-event-conformance/run.py (python3/pnpm exec tsx), never
+    // imported as modules — so knip reads them as unused files.
+    "scripts/ci/wide-event-conformance/emit_typescript.ts",
+
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",

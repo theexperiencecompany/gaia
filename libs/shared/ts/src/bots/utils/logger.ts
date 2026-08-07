@@ -44,7 +44,7 @@ export type BotLogLevel = "debug" | "info" | "warn" | "error" | "audit";
  * promotes `level` to an indexed Loki label, so `{level="WARNING"}` has to
  * match a bot line and an API line alike.
  */
-export const LOG_LEVEL_NAMES: Record<BotLogLevel, string> = {
+const LOG_LEVEL_NAMES: Record<BotLogLevel, string> = {
   debug: "DEBUG",
   info: "INFO",
   warn: "WARNING",

@@ -36,7 +36,7 @@ import path from "node:path";
 import type { PlatformName } from "../types";
 
 /** Matches STRUCTURED_LOG_RETENTION_DAYS in libs/shared/py/logging.py. */
-export const STRUCTURED_LOG_RETENTION_DAYS = 30;
+const STRUCTURED_LOG_RETENTION_DAYS = 30;
 
 const STRUCTURED_LOG_PREFIX = "structured-";
 const STRUCTURED_LOG_SUFFIX = ".json";
