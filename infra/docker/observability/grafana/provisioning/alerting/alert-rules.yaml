@@ -84,6 +84,11 @@ apiVersion: 1
 # `noDataState` is a genuine per-rule judgement and is NOT uniform. NoData on a
 # probe or an `up` series means the target vanished, which is real and should
 # alert; NoData on a counter usually just means no traffic, which should not.
+# The exception is gaia-host-disk and gaia-host-inodes, which are `Alerting`:
+# their metrics are expected unconditionally on any real host, so NoData means
+# the rule's selector matches nothing (an unusual mount layout, or a filesystem
+# that does not report inodes) — a silent dead rule that `up{job="node"}` cannot
+# see. `for` absorbs an exporter restart.
 
 groups:
   - orgId: 1
@@ -417,7 +422,13 @@ groups:
               expression: B
               conditions:
                 - evaluator: { type: gt, params: [85] }
-        noDataState: OK
+        # Alerting, deliberately: unlike the counter rules, this metric is
+        # expected unconditionally whenever node_exporter is healthy. NoData here
+        # means the root mountpoint selector matches nothing (an unusual host
+        # layout) — a silent blind spot `up{job="node"}` cannot see. Firing is
+        # the misconfiguration being surfaced, and the `for` absorbs an exporter
+        # restart.
+        noDataState: Alerting
         execErrState: Error
         for: 5m
         annotations:
@@ -1358,7 +1369,11 @@ groups:
               expression: B
               conditions:
                 - evaluator: { type: gt, params: [85] }
-        noDataState: OK
+        # Alerting, deliberately: same reasoning as gaia-host-disk —
+        # node_filesystem_files is absent on filesystems that do not report
+        # inode counts (btrfs and friends), and a missing metric here would
+        # otherwise be a silent dead rule. Firing surfaces the misconfiguration.
+        noDataState: Alerting
         execErrState: Error
         for: 10m
         annotations:
