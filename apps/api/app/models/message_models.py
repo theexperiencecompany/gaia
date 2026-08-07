@@ -12,8 +12,8 @@ SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
 class MessageDict(TypedDict):
     """One chat turn as {role, content} for LLM history payloads."""
 
-    role: str
-    content: str
+    role: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
+    content: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
 
 
 class FileData(BaseModel):

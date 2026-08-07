@@ -71,6 +71,7 @@ export const useFileAttachments = (conversationId?: string) => {
           url: previewUrl,
           name: file.name,
           type: file.type,
+          size: file.size,
           isUploading: true,
         });
       }
@@ -89,19 +90,24 @@ export const useFileAttachments = (conversationId?: string) => {
                 url: response.url || "",
                 name: file.name,
                 type: file.type,
+                size: file.size,
                 description,
                 message,
                 isUploading: false,
               };
               replaceUploadedFile(tempId, uploaded);
-              addUploadedFileData({
-                fileId: response.fileId,
-                url: response.url || "",
-                filename: file.name,
-                description,
-                message,
-                type: file.type,
-              });
+              const { uploadedFiles } = useComposerStore.getState();
+              if (uploadedFiles.some((f) => f.id === tempId)) {
+                addUploadedFileData({
+                  fileId: response.fileId,
+                  url: response.url || "",
+                  filename: file.name,
+                  description,
+                  message,
+                  type: file.type,
+                  size: file.size,
+                });
+              }
               return uploaded;
             } catch (error) {
               // apiService already surfaced the backend detail (413/415…)
