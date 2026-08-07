@@ -203,7 +203,15 @@ class TestExecuteTodoWithRetrySuccess:
                 f"{MODULE}.get_user_by_id",
                 AsyncMock(return_value={"timezone": tz}),
             ),
+            patch(f"{MODULE}.enqueue_worker_job") as mock_enqueue,
         ):
+            # The retry path enqueues via the wide-event wrapper
+            # (enqueue_worker_job), which forwards to pool.enqueue_job — route
+            # it through the pool mock so assertions stay authoritative.
+            async def _forward(p, *args, **kwargs):
+                return await p.enqueue_job(*args, **kwargs)
+
+            mock_enqueue.side_effect = _forward
             result = await _execute_todo_with_retry("todo-1", pool)
         return result, repo, pool
 
