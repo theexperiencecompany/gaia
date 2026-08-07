@@ -215,7 +215,7 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Resend Email Service",
-                keys=["RESEND_API_KEY", "RESEND_AUDIENCE_ID"],
+                keys=["RESEND_API_KEY", "RESEND_AUDIENCE_ID", "EMAIL_UNSUBSCRIBE_SECRET"],
                 description="Resend email delivery service",
                 affected_features="Email notifications and communication",
                 all_required=True,

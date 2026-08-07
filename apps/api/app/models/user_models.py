@@ -312,6 +312,8 @@ class AuthenticatedUser(TypedDict, total=False):
     briefing_dormancy: dict[str, Any] | None
     briefing_channel_priority: list[str] | None
     day_zero_hello: dict[str, Any] | None
+    # Nurture email sequence state (workers) — completed_steps + send history.
+    nurture: dict[str, Any] | None
 
 
 class PlatformLinkRecord(TypedDict, total=False):
@@ -386,6 +388,8 @@ class UserDocument(MongoDocument):
     briefing_dormancy: dict[str, Any] | None = None
     briefing_channel_priority: list[str] | None = None
     day_zero_hello: dict[str, Any] | None = None
+    # Nurture email sequence state (workers): completed_steps + send history.
+    nurture: dict[str, Any] | None = None
 
 
 class OnboardingStatusResponse(BaseModel):
