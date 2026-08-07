@@ -3,20 +3,19 @@
 // pint reads Prometheus-native rule YAML, so it is always pointed at the output
 // of `tools/alert-rules/extract_promql.py`, never at alert-rules.yaml directly.
 //
-// The `pint-alert-rules` CI lane runs `pint --offline`, which disables every
-// check that needs to query a live Prometheus. pint's own list of online checks
+// The `alert-rules` CI lane runs `pint --offline`, which disables every check
+// that needs to query a live Prometheus. pint's own list of online checks
 // decides that, so nothing here has to be kept in sync by hand.
 //
-// The `prometheus` block below is only used by a manual run against prod. That
-// run is what catches a rule built on a metric nothing exports (promql/series)
-// and a rule that has never once crossed its threshold (alerts/count) — the two
-// failures CI structurally cannot see. See
+// The `prometheus` block below is used by a manual online run against a LOCAL
+// Prometheus (no prod access needed): boot one that scrapes the pinned
+// exporters — or feed it representative series — and lint against
+// localhost:9090. That run is what catches a rule built on a metric nothing
+// exports (promql/series) and a rule that has never once crossed its threshold
+// (alerts/count) — the two failures CI structurally cannot see. See
 // infra/docker/observability/CLAUDE.md → "Linting rules with pint".
 
-prometheus "prod" {
-  // Prod Prometheus has no published port — it lives on the gaia-prod-shared
-  // overlay network — so an online run tunnels it to localhost first. See
-  // infra/docker/observability/CLAUDE.md → "Linting rules with pint".
+prometheus "local" {
   uri      = "http://localhost:9090"
   timeout  = "2m"
   required = true

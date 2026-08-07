@@ -35,8 +35,11 @@ test format — no custom schema. Each file has:
 
 The fixtures encode the exporter reality the rule depends on — e.g. the latency
 fixtures use the exact `le` buckets from `apps/api/app/core/app_factory.py`. If
-those buckets ever cap below the rule's threshold (the p95-can-never-fire
-regression), the trigger test fails.
+the fixture's `le` labels (which mirror `app_factory.py`) ever cap below the
+rule's threshold, the trigger test fails — the p95-can-never-fire regression.
+The fixture is a static snapshot, so a change to `app_factory.py` alone does not
+re-run the lane; keep the fixture's bucket labels in sync when the app's buckets
+change.
 
 **New rules ship with a test.** The extractor's `--test-dir` check enforces it:
 a rule without a matching `<uid>.yaml` aborts the run. Add the fixture in the
@@ -107,14 +110,14 @@ shape deliberately. Do not make it tolerant.
 ## What CI does and does not catch
 
 CI proves a rule is valid PromQL **and** that it fires and stays quiet against
-synthetic data (`promtool test rules`). It cannot prove the metric exists in
-prod with matching labels, or that the threshold is reachable on real traffic —
-those answers only live in Prometheus, so they need the online pint pass against
-prod before merging a new rule:
+synthetic data (`promtool test rules`). It cannot prove the metric exists with
+matching labels, or that the threshold is reachable — those answers only live in
+Prometheus, so they need the online pint pass against a LOCAL Prometheus holding
+the relevant series before merging a new rule (no prod access needed):
 
 ```bash
-# The checks that find a metric nothing exports — needs prod Prometheus on :9090
-# (it is overlay-only; infra/docker/observability/CLAUDE.md has the tunnel):
+# The checks that find a metric nothing exports — needs a local Prometheus on
+# :9090 (scrape the pinned exporters, or feed it the metrics the rule needs):
 pint --config config/pint.hcl lint --min-severity=info tools/alert-rules/gaia-rules.yaml
 ```
 

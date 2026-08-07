@@ -56,13 +56,15 @@ jobs:
           py=${py_files%%$'\n'*}
           ts=${ts_files%%$'\n'*}
           # The alert-rules lane is path-scoped, not language-scoped: the rules,
-          # the extractor that translates them, and the pint config.
-          alert_files=$(scripts/ci/changed-files.sh yaml hcl py)
+          # the extractor, the test fixtures, and the pint config.
+          alert_files=$(scripts/ci/changed-files.sh yaml hcl py sh)
           if [ "$alert_files" = "__FULL__" ]; then
             alerts=true
           else
-            alerts=$(printf '%s\n' "$alert_files" \
-              | grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)' \
+            # Here-string, not a pipe: `grep -q` exits on the first match and
+            # SIGPIPEs `printf`, which pipefail turns into exit 141 -> a false
+            # `alerts=false` that silently skips the lane (the bug at line 53).
+            alerts=$(grep -qE '^(infra/docker/observability/grafana/provisioning/alerting/|tools/alert-rules/|config/pint\.hcl$)' <<< "$alert_files" \
               && echo true || echo false)
           fi
           echo "has_python=$([[ -n "$py" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
@@ -689,7 +691,7 @@ jobs:
           # file .github/quality-gate/enforced/<lane> exists. Every other
           # lane is reported but never blocks merge. Each resolution PR adds
           # its own marker file — separate paths never merge-conflict the way
-          # editing one shared list does. When all 15 markers exist, the full
+          # editing one shared list does. When all 16 markers exist, the full
           # strict rule set is enforced.
           # ---------------------------------------------------------------
           ENFORCED=()

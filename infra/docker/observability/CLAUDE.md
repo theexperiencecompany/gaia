@@ -24,9 +24,10 @@ not bind-mounted — so any change here ships only via a rebuild of
 Before writing anything, prove the metric is emitted **by the exporter version
 pinned in `docker-compose.prod.yml`**. A rule built on a metric nothing exports
 provisions cleanly, never fires, and never complains — it is worse than no rule,
-because it reads as coverage. Query prod Prometheus, or read the exporter's docs
-for that exact version. Then prove it mechanically with pint's `promql/series`
-check before you open the PR — see "Linting rules with pint" below.
+because it reads as coverage. Run that exporter locally and scrape it with a
+local Prometheus (or read the exporter's docs for the exact version), then prove
+the rule's selector matches mechanically with pint's `promql/series` check
+before you open the PR — see "Linting rules with pint" below.
 
 Watch for two specific traps that have already bitten us here:
 
@@ -81,7 +82,7 @@ in Slack, with no error surfaced anywhere.
 
 **Format every number, and guard every `$values` reference.**
 
-```
+```gotemplate
 {{ if $values.B }}{{ printf "%.2f" $values.B.Value }}%{{ else }}...{{ end }}
 ```
 
@@ -206,31 +207,23 @@ regexp matchers with no metacharacters) and that it fires against synthetic
 series (`promtool test rules`). It cannot tell you whether a metric exists,
 because that answer only lives in Prometheus. **`promql/series` is the check
 that catches a rule built on a metric nothing exports, and it needs a live
-server.** So do the online pass before merging a new rule.
+server.** So do the online pass against a LOCAL Prometheus before merging a new
+rule — no prod access needed.
 
-Prod Prometheus has no `ports:` block in `docker-compose.prod.yml` — it is
-reachable only on the `gaia-prod-shared` overlay network — so it has to be
-brought to `localhost:9090` first. One way that leaves the running stack alone,
-on the swarm manager:
-
-```bash
-docker run --rm -d --name pint-proxy --network gaia-prod-shared \
-  -p 127.0.0.1:9090:9090 alpine/socat \
-  TCP-LISTEN:9090,fork,reuseaddr TCP:prometheus:9090
-```
-
-then forward it and lint (any other route to the Prometheus HTTP API works too —
-the URI lives in `config/pint.hcl`):
+Boot a local Prometheus that scrapes the pinned exporters from
+`docker-compose.prod.yml`, or that holds representative series for the metrics
+the new rule needs, on `localhost:9090`, then lint against it:
 
 ```bash
-ssh -N -L 9090:127.0.0.1:9090 <prod-host> &
-curl -s localhost:9090/api/v1/query?query=up | head -c 200   # prove the tunnel first
+# extract the rules, then prove the server is up before trusting promql/series
+uv run tools/alert-rules/extract_promql.py -o /tmp/gaia-rules.yaml
+curl -s localhost:9090/api/v1/query?query=up | head -c 200   # prove the server first
 pint --config config/pint.hcl lint --min-severity=info /tmp/gaia-rules.yaml
 ```
 
 That `curl` is not optional. Pointed at the wrong server — or at nothing —
 `promql/series` reports every rule in the file as missing, which reads like a
-catastrophe and is really a broken tunnel.
+catastrophe and is really a broken server.
 
 The online run adds, on top of the offline set: `promql/series` (metric never
 existed, or existed and disappeared, or has no series matching your label
@@ -260,10 +253,11 @@ Grafana → Prometheus translation.
   existing group.
 - `repeat_interval` — how often a still-firing alert is re-sent.
 
-Grouping is by `grafana_folder` + `alertname`, so **instances of one rule batch,
-but different rules never do** — an incident that trips five rules produces five
-separate Slack threads, each repeating on its own timer. Keep that in mind when
-adding a rule that will fire alongside existing ones.
+Grouping is by `grafana_folder` + `alertname`, so **instances of one rule batch
+together**. Different rules batch **only** when they share the same `incident`
+label (route 2 below); everywhere else an incident that trips five rules
+produces five separate Slack threads, each repeating on its own timer. Keep
+that in mind when adding a rule that will fire alongside existing ones.
 
 Routing and repeat cadence (see `notification-policies.yaml` — the first
 matching route wins):

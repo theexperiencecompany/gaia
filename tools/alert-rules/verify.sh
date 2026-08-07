@@ -19,6 +19,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "error: docker is required for the pint/promtool stages of this script" >&2
+  echo "       (CI installs the same tool versions with 'go install' instead)" >&2
+  exit 1
+fi
+
 PINT_IMAGE="ghcr.io/cloudflare/pint:0.87.0"
 PROMETHEUS_IMAGE="prom/prometheus:v3.1.0"
 

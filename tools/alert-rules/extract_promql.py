@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import sys
 from typing import Any, NoReturn
 
@@ -31,6 +32,9 @@ import yaml
 EXPRESSION_DATASOURCE = "__expr__"
 COMPARISONS = {"gt": ">", "gte": ">=", "lt": "<", "lte": "<="}
 DOC = "infra/docker/observability/CLAUDE.md → Adding an alert rule"
+# Grafana `for` durations. Single-unit to keep it honest: every rule here uses
+# m or h, and promtool check rules rejects garbage downstream anyway.
+FOR_DURATION = re.compile(r"^[0-9]+(ms|s|m|h|d|w|y)$")
 
 
 class RuleShapeError(Exception):
@@ -103,8 +107,6 @@ def _assert_chains_to_query(
 ) -> None:
     ref = nodes[condition]["model"].get("expression")
     for _ in range(len(nodes)):
-        if ref == query:
-            return
         node = nodes.get(ref) if isinstance(ref, str) else None
         if node is None:
             _fail(uid, f"expression chain from {condition!r} references undefined node {ref!r}")
@@ -115,7 +117,15 @@ def _assert_chains_to_query(
                 f"node {ref!r} is {model.get('type')!r}/{model.get('reducer')!r}; only a reduce "
                 "with reducer 'last' leaves the query value the threshold compares unchanged",
             )
+        if ref == query:
+            _fail(
+                uid,
+                "the threshold references the query node directly; the documented A/B/C shape "
+                "requires a reduce step between them",
+            )
         ref = model.get("expression")
+        if ref == query:
+            return
     _fail(uid, f"expression chain from {condition!r} never reaches the query node {query!r}")
 
 
@@ -134,6 +144,8 @@ def _alerting_rule(rule: dict[str, Any]) -> dict[str, Any]:
     duration = rule.get("for")
     if not isinstance(duration, str) or not duration:
         _fail(uid, "has no `for` (Grafana rejects the whole file without it)")
+    if not FOR_DURATION.fullmatch(duration):
+        _fail(uid, f"`for` value {duration!r} is not a valid Grafana duration (e.g. 5m, 24h)")
 
     # The query is wrapped before the comparison is appended: a bare `and`/`or`
     # at the top level binds looser than a comparison, so an unwrapped

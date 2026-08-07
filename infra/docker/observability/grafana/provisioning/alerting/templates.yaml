@@ -29,7 +29,7 @@ templates:
   - orgId: 1
     name: gaia.slack.title
     template: |
-      {{ define "gaia.slack.title" }}[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ if eq .CommonLabels.alertname "DatasourceError" }}Monitoring failure — rules could not be evaluated{{ else if eq .CommonLabels.alertname "DatasourceNoData" }}Monitoring gap — rules returned no data{{ else if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else if .CommonLabels.incident }}{{ .CommonLabels.incident | toUpper }} incident — {{ len .Alerts.Firing }} service(s) affected{{ else }}GAIA alerts{{ end }}{{ end }}
+      {{ define "gaia.slack.title" }}[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ len .Alerts.Firing }}{{ end }}] {{ if eq .CommonLabels.alertname "DatasourceError" }}Monitoring failure — rules could not be evaluated{{ else if eq .CommonLabels.alertname "DatasourceNoData" }}Monitoring gap — rules returned no data{{ else if .CommonLabels.alertname }}{{ .CommonLabels.alertname }}{{ else if .CommonLabels.incident }}{{ .CommonLabels.incident | toUpper }} incident — {{ len .Alerts }} service(s) affected{{ else }}GAIA alerts{{ end }}{{ end }}
 
   - orgId: 1
     name: gaia.slack.message
@@ -53,7 +53,7 @@ templates:
       {{ .Annotations.description }}
       {{- end }}
 
-      {{ .Labels.severity | toUpper }} | {{ .Labels.service }}{{ if .Annotations.runbook_url }} | <{{ .Annotations.runbook_url }}|Runbook>{{ end }}{{ if .PanelURL }} | <{{ .PanelURL }}|View panel>{{ else if .DashboardURL }} | <{{ .DashboardURL }}|View dashboard>{{ end }} | <{{ .SilenceURL }}|Silence>
+      {{ .Labels.severity | toUpper }} | {{ .Labels.service }}{{ if and (ne .Labels.alertname "DatasourceError") (ne .Labels.alertname "DatasourceNoData") }}{{ if .Annotations.runbook_url }} | <{{ .Annotations.runbook_url }}|Runbook>{{ end }}{{ if .PanelURL }} | <{{ .PanelURL }}|View panel>{{ else if .DashboardURL }} | <{{ .DashboardURL }}|View dashboard>{{ end }}{{ end }} | <{{ .SilenceURL }}|Silence>
       {{ end }}
       {{- range .Alerts.Resolved }}
       *Resolved* — {{ if .Annotations.summary }}{{ .Annotations.summary }}{{ else }}{{ .Labels.alertname }}{{ end }}
