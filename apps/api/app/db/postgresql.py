@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base
+from sqlalchemy.schema import DDL
 
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
@@ -45,6 +46,7 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
     Idempotent: columns already ``timestamp with time zone`` (or absent on a
     fresh DB, where create_all already made them correct) are skipped.
     """
+    preparer = connection.dialect.identifier_preparer
     for table, column in _TIMESTAMPTZ_COLUMNS:
         data_type = connection.execute(
             text(
@@ -55,11 +57,17 @@ def _ensure_timestamptz_columns(connection: Connection) -> None:
         ).scalar()
         if data_type is None or data_type == "timestamp with time zone":
             continue
-        # Identifiers come from the _TIMESTAMPTZ_COLUMNS whitelist, not user input.
+        # DDL, not text(): identifiers can never be bind parameters in any
+        # dialect, so this is the construct built for the job. They come from
+        # the _TIMESTAMPTZ_COLUMNS whitelist rather than user input, and the
+        # dialect's preparer quotes them so a reserved word or mixed-case name
+        # stays valid.
+        quoted_table = preparer.quote(table)
+        quoted_column = preparer.quote(column)
         connection.execute(
-            text(  # nosec B608
-                f"ALTER TABLE {table} ALTER COLUMN {column} "
-                f"TYPE timestamptz USING {column} AT TIME ZONE 'UTC'"
+            DDL(
+                f"ALTER TABLE {quoted_table} ALTER COLUMN {quoted_column} "
+                f"TYPE timestamptz USING {quoted_column} AT TIME ZONE 'UTC'"
             )
         )
         log.info(f"{LogTag.STARTUP} Promoted column to timestamptz", table=table, column=column)
