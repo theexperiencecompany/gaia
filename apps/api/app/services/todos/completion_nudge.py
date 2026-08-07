@@ -7,16 +7,12 @@ sourced deterministically — no LLM call — so it never gates or delays
 delivery of the completion itself.
 """
 
-from datetime import datetime
-
 from app.constants.todos import (
     NUDGE_OFFER_CANDIDATE_LIMIT,
-    NUDGE_WAKING_HOUR_END,
-    NUDGE_WAKING_HOUR_START,
+    is_waking_hour,
 )
 from app.db.repositories.todos import todo_repository
 from app.models.todo_models import ExecutionStatus, Priority, TodoDocument, TodoUpdate
-from app.utils.timezone import Timezone
 
 _PRIORITY_RANK: dict[Priority, int] = {
     Priority.HIGH: 3,
@@ -24,13 +20,6 @@ _PRIORITY_RANK: dict[Priority, int] = {
     Priority.LOW: 1,
     Priority.NONE: 0,
 }
-
-
-def is_waking_hour(user_timezone: str | None) -> bool:
-    """Whether it is currently ``[NUDGE_WAKING_HOUR_START, NUDGE_WAKING_HOUR_END)``
-    in the user's home timezone."""
-    local_hour = datetime.now(Timezone.parse(user_timezone).tzinfo).hour
-    return NUDGE_WAKING_HOUR_START <= local_hour < NUDGE_WAKING_HOUR_END
 
 
 def _phrase(doc: TodoDocument) -> str:

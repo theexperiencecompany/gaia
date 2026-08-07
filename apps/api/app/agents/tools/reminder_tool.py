@@ -39,6 +39,7 @@ async def create_reminder_tool(
         StaticReminderPayload,
         "Static reminder data with title and body",
     ],
+    *,
     agent: Annotated[
         AgentType, "The agent type creating the reminder (static only)"
     ] = AgentType.STATIC,

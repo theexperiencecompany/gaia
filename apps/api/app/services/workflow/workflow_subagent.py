@@ -241,7 +241,7 @@ class WorkflowSubagentRunner:
             }
 
         log.info(f"{LogTag.WORKFLOW} Completed. Response: {len(complete_message)} chars")
-        return complete_message if complete_message else "Task completed"
+        return complete_message or "Task completed"
 
     @staticmethod
     async def _forced_finalize(

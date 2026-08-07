@@ -189,6 +189,7 @@ async def build_initial_messages(
     agent_name: str,
     configurable: AgentConfigurable,
     task: str,
+    *,
     user_id: str | None = None,
     subagent_id: str | None = None,
     retrieval_query: str | None = None,

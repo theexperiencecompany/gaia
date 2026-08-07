@@ -114,7 +114,7 @@ async def generate_follow_up_actions(
                 },
             ),
         )
-        return result.actions if result.actions else []
+        return result.actions or []
     except Exception as e:
         log.debug(f"{LogTag.AGENT} Follow-up action generation failed: {e}")
         return []

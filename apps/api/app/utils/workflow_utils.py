@@ -201,7 +201,7 @@ async def create_workflow_directly(
             timezone=user_timezone,
         )
 
-        workflow_description = draft.prompt if draft.prompt else draft.description
+        workflow_description = draft.prompt or draft.description
 
         request = CreateWorkflowRequest(
             title=draft.title,

@@ -9,6 +9,7 @@ from shared.py.wide_events import log
 
 async def save_personalization_data(
     user_id: str,
+    *,
     house: str,
     personality_phrase: str,
     user_bio: str,

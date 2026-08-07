@@ -162,6 +162,7 @@ class TrackedTodoService:
         user_id: str,
         title: str,
         serves: str,
+        *,
         requires_approval: bool,
         kind: str = "task",
         goal_id: str | None = None,

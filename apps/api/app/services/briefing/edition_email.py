@@ -23,7 +23,7 @@ from app.constants.notifications import (
     NOTIFICATION_KIND_BRIEFING_DAILY,
     NOTIFICATION_KIND_BRIEFING_WEEKLY,
 )
-from app.services.briefing.editions.gaia import render_edition
+from app.services.briefing.editions import render_edition, renderer_for
 from app.services.briefing.render import render_html_to_image
 from app.services.upload_service import upload_file_to_cloudinary
 from shared.py.wide_events import log
@@ -150,7 +150,11 @@ async def render_edition_email(
     render/upload failure so the caller can fall back to the plain HTML template.
     """
     edition_no = _edition_no(payload.get("date", ""))
-    edition_html = render_edition(
+    # Weekly editions carry a rotation-assigned template family; the classic
+    # edition (and every daily/legacy payload) renders via render_edition.
+    family_renderer = renderer_for(payload.get("template_family"))
+    render = family_renderer if family_renderer is not None else render_edition
+    edition_html = render(
         payload,
         edition_no=edition_no,
         generated_local=generated_local,

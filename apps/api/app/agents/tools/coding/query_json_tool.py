@@ -72,6 +72,7 @@ def _sort_key(value: JSONValue) -> tuple[int, int | float | bool | str]:
 async def query_json(
     config: RunnableConfig,
     path: Annotated[str, "JSON/JSONL file inside the workspace (relative = session scratch)"],
+    *,
     where: Annotated[
         # An LLM-supplied filter bag, so the condition shape stays an unnamed dict:
         # naming it would publish a per-property JSON schema to the model and change

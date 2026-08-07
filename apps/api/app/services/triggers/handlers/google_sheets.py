@@ -240,7 +240,7 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
         # Build list of trigger configs to register
         configs: list[dict[str, Any]] = []
-        spreadsheets_to_monitor = spreadsheet_ids if spreadsheet_ids else [None]
+        spreadsheets_to_monitor = spreadsheet_ids or [None]
 
         for spreadsheet_id in spreadsheets_to_monitor:
             if trigger_name == "google_sheets_new_row" and sheet_names:

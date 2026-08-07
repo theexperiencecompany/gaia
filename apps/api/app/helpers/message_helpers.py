@@ -383,6 +383,7 @@ async def build_connected_integrations_manifest(
 async def build_dynamic_context_messages(
     user_id: str | None,
     query: str | None,
+    *,
     user_name: str | None = None,
     user_timezone: str | None = None,
     user_preferences: dict[str, Any] | None = None,

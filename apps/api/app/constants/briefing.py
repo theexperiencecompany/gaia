@@ -10,6 +10,12 @@ from typing import Final, Literal
 
 # System-workflow keys. The workflow ARQ path special-cases these to route into
 # the briefing service instead of the generic chat execution.
+# Hard ceiling on the weekly digest's payload-generation agent run. The weekly
+# run is cron-fired and unsupervised; without a bound a stalled agent run hangs
+# the worker slot forever (observed live 2026-08-07). Expiry raises — a missed
+# digest fails loud and retries next week rather than half-delivering.
+WEEKLY_GENERATION_TIMEOUT_SECONDS: Final[int] = 420
+
 DAILY_BRIEFING_WORKFLOW_KEY: Final[str] = "daily_briefing"
 OVERNIGHT_WORK_WORKFLOW_KEY: Final[str] = "overnight_work"
 WEEKLY_DIGEST_WORKFLOW_KEY: Final[str] = "weekly_digest"

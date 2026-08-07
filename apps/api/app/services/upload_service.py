@@ -53,7 +53,7 @@ def upload_file_to_cloudinary(
 
     try:
         # Determine the source for upload
-        upload_source = file_data if file_data else file_path
+        upload_source = file_data or file_path
 
         upload_result = cloudinary.uploader.upload(
             upload_source,

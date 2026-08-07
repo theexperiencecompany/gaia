@@ -384,8 +384,8 @@ def _start_description_task(
             conversation_id,
             last_message,
             user,
-            body.selectedTool if body.selectedTool else None,
-            body.selectedWorkflow if body.selectedWorkflow else None,
+            body.selectedTool or None,
+            body.selectedWorkflow or None,
         )
     )
 

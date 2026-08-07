@@ -321,6 +321,7 @@ async def list_todos(
 async def update_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the todo to update (required)"],
+    *,
     title: Annotated[str | None, "New title for the todo"] = None,
     description: Annotated[str | None, "New description"] = None,
     labels: Annotated[list[str] | None, "New list of labels"] = None,

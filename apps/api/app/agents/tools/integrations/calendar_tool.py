@@ -296,7 +296,7 @@ def register_calendar_custom_tools(composio: Composio) -> list[str]:
         result = _run_sync(
             calendar_service.get_calendar_events(
                 user_id=user_id,
-                selected_calendars=request.calendar_ids if request.calendar_ids else None,
+                selected_calendars=request.calendar_ids or None,
                 time_min=time_min,
                 time_max=request.time_max,
                 max_results=request.max_results,

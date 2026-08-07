@@ -10,10 +10,10 @@ import { ppEditorialNew } from "./pp-editorial-new";
 export {
   aeonik,
   geistMono,
-  ppEditorialNew,
   instrumentSerif,
   inter,
   playfairDisplay,
+  ppEditorialNew,
 };
 
 // Set Inter as the default font

@@ -81,6 +81,7 @@ async def send_email(
     to: str,
     subject: str,
     body: str,
+    *,
     thread_id: str | None = None,
     extra_recipients: list[str] | None = None,
     cc_list: list[str] | None = None,

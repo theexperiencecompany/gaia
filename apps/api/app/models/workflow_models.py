@@ -466,7 +466,7 @@ class UpdateWorkflowRequest(BaseModel):
         if v is None:
             return None
         stripped = v.strip()
-        return stripped if stripped else None
+        return stripped or None
 
 
 class WorkflowResponse(BaseModel):

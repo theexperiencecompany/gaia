@@ -4,7 +4,10 @@ Todo Constants.
 Constants for todo service operations.
 """
 
+from datetime import datetime
 from typing import Any, Final
+
+from app.utils.timezone import Timezone
 
 ONBOARDING_TODO_LIMIT = 3
 
@@ -67,11 +70,19 @@ PROPOSAL_REJECTED_MEMORY_CATEGORY: Final[str] = "gaia/proposals/rejected"
 # registry share one source of truth.
 GAIA_TODO_EXECUTIONS_FEATURE: Final[str] = "gaia_todo_executions"
 
-# Window (user-local hours, [start, end)) in which a completion message may
-# carry a next-step nudge (retention-loop spec). Outside this window a
-# completion still delivers, just without the suggestion line.
-NUDGE_WAKING_HOUR_START: Final[int] = 9
-NUDGE_WAKING_HOUR_END: Final[int] = 22
+# The user's waking window (user-local hours, [start, end)). Governs every
+# discretionary proactive ping: completion nudges are dropped outside it, and
+# blocker/failure pushes degrade to in-app-only (the morning brief carries
+# them) unless a same-day deadline makes the interruption worth it.
+WAKING_HOUR_START: Final[int] = 9
+WAKING_HOUR_END: Final[int] = 22
+
+
+def is_waking_hour(user_timezone: str | None) -> bool:
+    """Whether it is currently within the user's waking window."""
+    local_hour = datetime.now(Timezone.parse(user_timezone).tzinfo).hour
+    return WAKING_HOUR_START <= local_hour < WAKING_HOUR_END
+
 
 # How many open gaia_offer user todos the completion nudge considers when
 # picking the highest-priority one — small on purpose, this is a cheap

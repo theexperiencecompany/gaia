@@ -201,7 +201,7 @@ async def install_from_github(
 
         # Apply target override, then validate the effective target so a repo's
         # frontmatter can't scope a skill to an unconnected/invalid agent.
-        target = target_override if target_override else metadata.target
+        target = target_override or metadata.target
         if allowed_targets is not None and target not in allowed_targets:
             raise ValueError(
                 f"Target '{target}' is not available. "

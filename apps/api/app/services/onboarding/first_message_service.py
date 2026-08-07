@@ -45,6 +45,7 @@ async def generate_first_message(
     created_workflows: list[OnboardingWorkflowSummary],
     writing_style: WritingStyleProfile | None,
     has_gmail: bool,
+    *,
     focus: str = "",
     executed_todos: list[OnboardingTodoSummary] | None = None,
     clarify_answers: list[ClarifyAnswerRecord] | None = None,

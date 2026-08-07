@@ -90,6 +90,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
     def __init__(
         self,
+        *,
         llm: LanguageModelLike | None = None,
         available_tools: list[BaseTool] | None = None,
         tool_registry: Mapping[str, BaseTool] | None = None,
@@ -116,14 +117,10 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self._excluded_tools.add("spawn_subagent")
         self._tool_space = tool_space
         self._store: BaseStore | None = store
-        self._tool_runtime_config = (
-            tool_runtime_config
-            if tool_runtime_config
-            else ToolRuntimeConfig(
-                initial_tool_names=["read", "bash"],
-                enable_retrieve_tools=True,
-                include_subagents_in_retrieve=False,
-            )
+        self._tool_runtime_config = tool_runtime_config or ToolRuntimeConfig(
+            initial_tool_names=["read", "bash"],
+            enable_retrieve_tools=True,
+            include_subagents_in_retrieve=False,
         )
 
         self.tools = [self._create_spawn_subagent_tool()]

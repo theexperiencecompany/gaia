@@ -107,6 +107,7 @@ async def get_todo_labels(
 # Main Todo CRUD Endpoints
 @router.get("/todos", response_model=TodoListResponse)
 async def list_todos(
+    *,
     # Search parameters
     q: str | None = Query(None, description="Search query"),
     mode: SearchMode = Query(

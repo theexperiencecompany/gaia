@@ -332,6 +332,18 @@ class PlatformLinkRecord(TypedDict, total=False):
     display_name: str
 
 
+class WeeklyEditionRotation(BaseModel):
+    """Persisted shuffled-cycle state for weekly edition templates.
+
+    ``cycle`` is a permutation of every template family; ``index`` points at the
+    family the NEXT weekly digest will use. A cycle whose family set no longer
+    matches the registry is discarded and reshuffled (see edition_rotation).
+    """
+
+    cycle: list[str] = Field(default_factory=list)
+    index: int = 0
+
+
 class UserDocument(MongoDocument):
     """A user as stored in MongoDB.
 
@@ -388,6 +400,8 @@ class UserDocument(MongoDocument):
     briefing_dormancy: dict[str, Any] | None = None
     briefing_channel_priority: list[str] | None = None
     day_zero_hello: dict[str, Any] | None = None
+    # Weekly edition template rotation (shuffled full cycle; see edition_rotation).
+    weekly_edition_rotation: WeeklyEditionRotation | None = None
     # Nurture email sequence state (workers): completed_steps + send history.
     nurture: dict[str, Any] | None = None
 

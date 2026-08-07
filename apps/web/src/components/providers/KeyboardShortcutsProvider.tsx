@@ -104,7 +104,6 @@ export default function KeyboardShortcutsProvider({
   // ===========================================
   // NAVIGATION SHORTCUTS: G > X sequences
   // ===========================================
-  useHotkeys("g>d", () => routerRef.current.push("/dashboard"), hotkeyOptions);
   useHotkeys("g>c", () => routerRef.current.push("/calendar"), hotkeyOptions);
   useHotkeys("g>t", () => routerRef.current.push("/todos"), hotkeyOptions);
   useHotkeys("g>w", () => routerRef.current.push("/workflows"), hotkeyOptions);

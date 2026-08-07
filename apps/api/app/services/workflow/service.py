@@ -212,7 +212,7 @@ class WorkflowService:
                 )
 
             # Use provided steps or initialize empty list for generation
-            workflow_steps = request.steps if request.steps else []
+            workflow_steps = request.steps or []
 
             # Step 1: Create workflow in PENDING state (activated=False). Keep
             # trigger_config.enabled in lockstep with activated (the single liveness

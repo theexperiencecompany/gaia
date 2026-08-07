@@ -67,12 +67,12 @@ async def edit(
                 sbx,
                 user_id,
                 abs_path,
-                role,
-                role_conv,
-                old_string,
-                new_string,
-                replace_all,
-                session_id,
+                role=role,
+                role_conv=role_conv,
+                old_string=old_string,
+                new_string=new_string,
+                replace_all=replace_all,
+                session_id=session_id,
             )
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
@@ -107,6 +107,7 @@ async def _do_edit(
     sbx: AsyncSandbox,
     user_id: str,
     abs_path: str,
+    *,
     role: MountRole,
     role_conv: str | None,
     old_string: str,

@@ -40,7 +40,7 @@ def register_clickup_custom_tools(composio: Composio) -> list[str]:
             for t in tasks
             if t.get("due_date")
             and int(t["due_date"]) < today_ms
-            and t.get("status", {}).get("type") not in ("closed",)
+            and t.get("status", {}).get("type") != "closed"
         ]
         return {"tasks": tasks, "overdue_tasks": overdue}
 

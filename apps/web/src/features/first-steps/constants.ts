@@ -22,7 +22,7 @@ export const FIRST_STEPS: FirstStepDefinition[] = [
   {
     key: "visit_dashboard",
     label: "Check your Today view",
-    href: "/dashboard",
+    href: "/todos",
   },
   {
     key: "first_approve",

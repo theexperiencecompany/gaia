@@ -7,6 +7,7 @@ stores nothing). Persistence precedes delivery so the dashboard never misses a
 brief that reached a channel.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 import json
@@ -24,6 +25,7 @@ from app.constants.briefing import (
     BRIEFING_KIND_DAILY,
     BRIEFING_KIND_WEEKLY,
     MINUTES_SAVED_PER_GAIA_TODO,
+    WEEKLY_GENERATION_TIMEOUT_SECONDS,
     hue_for_day,
 )
 from app.constants.notifications import (
@@ -52,6 +54,8 @@ from app.models.user_models import AuthenticatedUser
 from app.services.briefing import chat_sync, context, delivery_channels, dormancy
 from app.services.briefing.badges import check_and_award_badges
 from app.services.briefing.context import UserClock
+from app.services.briefing.edition_rotation import choose_weekly_family
+from app.services.briefing.editions import weekly_families
 from app.services.notification_service import notification_service
 from app.services.short_link_service import get_or_create_short_link
 from app.services.todos import activity
@@ -724,8 +728,14 @@ async def run_weekly_digest(user_id: str) -> None:
         awards_block=_format_awards(badge_labels),
     )
 
-    payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
+    # Bounded: a stalled agent run must fail the cron loudly, not hang the
+    # worker slot (observed live 2026-08-07).
+    async with asyncio.timeout(WEEKLY_GENERATION_TIMEOUT_SECONDS):
+        payload = await _generate_payload(user, clock, prompt, BRIEFING_KIND_WEEKLY)
     payload.hue = hue_for_day(clock.day_of_year)
+    # Rotation advances only after generation succeeds, so a failed run does
+    # not burn this week's slot in the shuffled cycle.
+    payload.template_family = await choose_weekly_family(user_id, weekly_families())
 
     briefing = await briefing_repository.upsert_briefing(
         user_id, clock.date_str, BRIEFING_KIND_WEEKLY, payload

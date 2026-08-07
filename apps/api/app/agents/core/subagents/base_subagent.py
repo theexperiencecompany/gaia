@@ -150,6 +150,7 @@ class SubAgentFactory:
         provider: str,
         name: str,
         llm: LanguageModelLike,
+        *,
         tool_space: str = "general",
         use_direct_tools: bool = False,
         disable_retrieve_tools: bool = False,

@@ -47,6 +47,7 @@ from app.models.user_models import (
     PlatformLinkRecord,
     UserDocument,
     UserUpdate,
+    WeeklyEditionRotation,
 )
 from shared.py.wide_events import log
 
@@ -730,6 +731,20 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         await self._apply_raw_update(
             {"_id": self._id_value(user_id)},
             {"$unset": {"briefing_bootstrap": ""}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def get_weekly_edition_rotation(self, user_id: str) -> WeeklyEditionRotation | None:
+        """The user's persisted weekly-edition rotation state, if any."""
+        user = await self.get(user_id)
+        return user.weekly_edition_rotation if user else None
+
+    async def set_weekly_edition_rotation(self, user_id: str, state: WeeklyEditionRotation) -> None:
+        """Persist the advanced rotation state (see edition_rotation)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"weekly_edition_rotation": state.model_dump()}},
             scope=REPO_GLOBAL_SCOPE,
             return_document=False,
         )

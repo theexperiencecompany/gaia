@@ -67,6 +67,14 @@ class BriefingPayload(BaseModel):
     mood: BriefingMood
     caption: str
     hue: int = Field(default=0, ge=0, le=HUE_MAX)
+    template_family: str | None = Field(
+        default=None,
+        description=(
+            "Weekly editions only: the edition template family this payload was "
+            "assigned by the shuffled-cycle rotation. Persisted so the archive "
+            "re-renders identically forever; None on daily briefs and legacy rows."
+        ),
+    )
     message: str | None = Field(
         default=None,
         description=(

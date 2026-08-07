@@ -115,6 +115,7 @@ async def save_conversation_async(
     metadata: dict[str, Any],
     user_message_id: str,
     bot_message_id: str,
+    *,
     bot_timestamp: datetime | None = None,
     error: str | None = None,
     follow_up_actions: list[str] | None = None,

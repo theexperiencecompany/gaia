@@ -22,7 +22,9 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_limiter,
 )
 from app.constants.memory import MemorySourceType
-from app.constants.notifications import NOTIFICATION_KIND_TODO_NEEDS_YOU
+from app.constants.notifications import (
+    NOTIFICATION_KIND_TODO_NEEDS_YOU,
+)
 from app.constants.todos import (
     ASSIGNEE_GAIA,
     DELIVERABLE_TEMPLATE,
@@ -487,8 +489,19 @@ async def mark_execution_status(
     schedule_gaia_tasks_sync(user_id)
 
 
+def _blocker_line(doc: TodoDocument) -> str:
+    title = doc.title or "a todo"
+    question = (doc.blocker_question or "").strip() or "needs a decision from you to continue."
+    return f"- {title}: {question}"
+
+
 async def _notify_needs_you(todo_id: str, user_id: str, blocker_question: str | None) -> None:
-    """Push a notification when a run pauses on the user (default channel fan-out).
+    """Push a notification when a run pauses on the user.
+
+    "One briefing message per day is law" also bounds needs_you pings: when
+    other needs_you todos are already pending, this send REPLACES the
+    single-blocker text with one message enumerating every pending blocker,
+    instead of adding a second push alongside them.
 
     Best-effort: the transition is already persisted and broadcast over the
     websocket, so a delivery failure only delays the ping — log it, never raise.
@@ -496,6 +509,22 @@ async def _notify_needs_you(todo_id: str, user_id: str, blocker_question: str | 
     doc = await todo_repository.get(todo_id, user_id=user_id)
     title = (doc.title if doc else None) or "your todo"
     body = (blocker_question or "").strip() or "GAIA needs a decision from you to continue."
+
+    # The update that moved this todo to needs_you already landed, so it is
+    # included here — count == 1 is the ordinary single-blocker case.
+    pending = await todo_repository.list_open_gaia_by_status(
+        user_id, statuses=[ExecutionStatus.NEEDS_YOU.value], limit=MAX_GAIA_TODOS_IN_FLIGHT
+    )
+    notification_title = f"GAIA needs you: {title}"
+    notification_body = body
+    action_url = f"/todos?todoId={todo_id}"
+    action_label = "Open todo"
+    if len(pending) > 1:
+        notification_title = f"{len(pending)} things need your call"
+        notification_body = "\n".join(_blocker_line(p) for p in pending)
+        action_url = "/todos"
+        action_label = "Open todos"
+
     try:
         await notification_service.create_notification(
             NotificationRequest(
@@ -503,16 +532,16 @@ async def _notify_needs_you(todo_id: str, user_id: str, blocker_question: str | 
                 source=NotificationSourceEnum.AI_AGENT,
                 type=NotificationType.WARNING,
                 content=NotificationContent(
-                    title=f"GAIA needs you: {title}",
-                    body=body,
+                    title=notification_title,
+                    body=notification_body,
                     actions=[
                         NotificationAction(
                             type=ActionType.REDIRECT,
-                            label="Open todo",
+                            label=action_label,
                             style=ActionStyle.PRIMARY,
                             config=ActionConfig(
                                 redirect=RedirectConfig(
-                                    url=f"/todos?todoId={todo_id}",
+                                    url=action_url,
                                     open_in_new_tab=False,
                                     close_notification=True,
                                 )

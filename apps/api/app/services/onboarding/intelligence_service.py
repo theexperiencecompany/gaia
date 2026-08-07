@@ -378,6 +378,7 @@ async def _social_then_holo(
     user_id: str,
     name: str,
     user_email: str | None,
+    *,
     user: UserDocument,
     focus: str,
     triage: InboxTriage | None,
@@ -516,8 +517,8 @@ async def process_onboarding_intelligence(user_id: str) -> None:
                 user_timezone,
                 triage_res,
                 style_res,
-                clarify_answers,
-                selected_integrations,
+                clarify_answers=clarify_answers,
+                selected_integrations=selected_integrations,
             )
 
         workflows_future = asyncio.create_task(_workflows_when_ready())
@@ -1005,6 +1006,7 @@ async def _run_workflows(
     user_timezone: str,
     triage: InboxTriage | None,
     writing_style: WritingStyleProfile | None,
+    *,
     clarify_answers: list[ClarifyAnswerRecord] | None = None,
     selected_integrations: list[str] | None = None,
 ) -> list[OnboardingWorkflowSummary]:
@@ -1020,12 +1022,12 @@ async def _run_workflows(
             user_id,
             profession,
             has_gmail,
-            focus,
-            user_timezone,
-            triage,
-            writing_style,
-            clarify_answers,
-            selected_integrations,
+            focus=focus,
+            user_timezone=user_timezone,
+            triage=triage,
+            writing_style=writing_style,
+            clarify_answers=clarify_answers,
+            selected_integrations=selected_integrations,
         )
     except Exception as e:
         log.error(
@@ -1124,15 +1126,15 @@ async def _run_holo_card(
         t_save = time.monotonic()
         await save_personalization_data(
             user_id,
-            card_design.house,
-            phrase,
-            user_bio,
-            bio_status,
-            [],
-            metadata.account_number,
-            metadata.member_since,
-            card_design.overlay_color,
-            card_design.overlay_opacity,
+            house=card_design.house,
+            personality_phrase=phrase,
+            user_bio=user_bio,
+            bio_status=bio_status,
+            workflow_ids=[],
+            account_number=metadata.account_number,
+            member_since=metadata.member_since,
+            overlay_color=card_design.overlay_color,
+            overlay_opacity=card_design.overlay_opacity,
         )
         log.info(
             f"{LogTag.ONBOARDING} holo_card done",
@@ -1357,8 +1359,8 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
         user_timezone,
         triage,
         writing_style,
-        clarify_answers,
-        selected_integrations,
+        clarify_answers=clarify_answers,
+        selected_integrations=selected_integrations,
     )
 
     todos = await _fetch_onboarding_todos(user_id)
@@ -1784,6 +1786,7 @@ async def _create_onboarding_workflows(
     user_id: str,
     profession: str,
     has_gmail: bool,
+    *,
     focus: str = "",
     user_timezone: str = "UTC",
     triage: InboxTriage | None = None,

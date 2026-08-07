@@ -457,6 +457,7 @@ async def create_tracked_todo(
         "this todo advances (e.g. 'raising a pre-seed round'). Shown to the user "
         "as 'because: ...'. Creation is rejected when empty.",
     ],
+    *,
     requires_approval: Annotated[
         bool,
         "Approval rule (outward-visibility): True when executing this todo takes "
@@ -465,6 +466,15 @@ async def create_tracked_todo(
         "'proposed' and waits for the user's Approve tap. False when the work is "
         "visible only to the user and GAIA - research, drafts, triage, prep - "
         "which enters 'queued' and executes without permission. "
+        "EXPLICIT-INSTRUCTION EXCEPTION: when the user's own words directly "
+        "instructed this exact outward action with its target ('send Bob the "
+        "invoice reminder tomorrow at 9'), their instruction IS the approval - "
+        "use False so it executes on schedule instead of re-asking. This only "
+        "applies when the user named the action AND the recipient/target "
+        "themselves; a goal ('help me collect invoices') or a vague ask does NOT "
+        "qualify - propose those. The send-time approval gate independently "
+        "verifies the user's words authorized the action, so an over-eager False "
+        "still cannot send anything the user never asked for. "
         "STAGING INVARIANT: a proposal (True) is rejected unless `initial_deliverable` "
         "carries the exact content approving will release. Do the prep first "
         "(internal todo), then create the proposal with the finished content.",
@@ -772,6 +782,7 @@ async def complete_tracked_todo(
 async def update_tracked_todo(
     config: RunnableConfig,
     todo_id: Annotated[str, "ID of the tracked todo to update"],
+    *,
     labels: Annotated[
         list[str] | None,
         "New labels to SET on the todo (replaces all existing labels).",

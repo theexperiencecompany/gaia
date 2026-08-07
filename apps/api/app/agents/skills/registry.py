@@ -42,6 +42,7 @@ async def install_skill(
     target: str,
     vfs_path: str,
     source: SkillSource,
+    *,
     source_url: str | None = None,
     body_content: str | None = None,
     files: list[str] | None = None,

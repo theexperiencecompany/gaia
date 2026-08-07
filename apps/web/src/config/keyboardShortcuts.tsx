@@ -6,7 +6,6 @@ import {
   Calendar03Icon,
   CheckListIcon,
   ConnectIcon,
-  DashboardSquare02Icon,
   MessageMultiple02Icon,
   ZapIcon,
 } from "@icons";
@@ -104,14 +103,6 @@ const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   },
 
   // Navigation shortcuts (G -> X sequences)
-  {
-    id: "goto_dashboard",
-    keys: "g>d",
-    description: "Go to Dashboard",
-    category: "navigation",
-    path: "/dashboard",
-    icon: <DashboardSquare02Icon width={16} height={16} />,
-  },
   {
     id: "goto_calendar",
     keys: "g>c",

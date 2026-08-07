@@ -111,6 +111,7 @@ class Cacheable:
 
     def __init__(
         self,
+        *,
         key_pattern: str | None = None,
         key_generator: Callable | None = None,
         key: str | None = None,

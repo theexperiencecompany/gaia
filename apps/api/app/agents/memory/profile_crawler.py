@@ -82,7 +82,7 @@ async def crawl_profile_url(
         except Exception as e:
             elapsed = time.time() - start_time
             error_type = type(e).__name__
-            error_msg = str(e) if str(e) else "No error message"
+            error_msg = str(e) or "No error message"
 
             if not error_msg or error_msg == "No error message":
                 error_msg = f"{error_type}: {e!r}"

@@ -166,6 +166,7 @@ async def get_email_by_id(
 
 @router.get("/gmail/search", summary="Advanced search for Gmail messages")
 async def search_emails(
+    *,
     query: str | None = None,
     sender: str | None = None,
     recipient: str | None = None,

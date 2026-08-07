@@ -262,7 +262,7 @@ def register_twitter_custom_tools(composio: Composio) -> list[str]:
         for i, tweet_text in enumerate(request.tweets):
             media_ids = None
             if request.media_ids and i < len(request.media_ids):
-                media_ids = request.media_ids[i] if request.media_ids[i] else None
+                media_ids = request.media_ids[i] or None
 
             result = create_tweet(
                 user_id,

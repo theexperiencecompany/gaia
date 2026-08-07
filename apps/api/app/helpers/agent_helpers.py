@@ -256,6 +256,7 @@ def build_agent_config(  # NOSONAR python:S107
     conversation_id: str,
     user: AgentUserContext,
     agent_name: str,
+    *,
     user_model_config: ModelConfig | None = None,
     usage_metadata_callback: UsageMetadataCallbackHandler | None = None,
     thread_id: str | None = None,

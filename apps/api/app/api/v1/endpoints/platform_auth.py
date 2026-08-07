@@ -25,6 +25,7 @@ class PlatformOAuthConfig:
     def __init__(
         self,
         platform: str,
+        *,
         token_url: str,
         get_client_id: Callable[[], str | None],
         get_client_secret: Callable[[], str | None],

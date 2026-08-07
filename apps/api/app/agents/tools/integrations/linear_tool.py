@@ -761,11 +761,11 @@ def register_linear_custom_tools(composio: Composio) -> list[str]:
         if request.priority is not None:
             input_data["priority"] = request.priority
         if request.assignee_id is not None:
-            input_data["assigneeId"] = request.assignee_id if request.assignee_id else None
+            input_data["assigneeId"] = request.assignee_id or None
         if request.cycle_id is not None:
-            input_data["cycleId"] = request.cycle_id if request.cycle_id else None
+            input_data["cycleId"] = request.cycle_id or None
         if request.project_id is not None:
-            input_data["projectId"] = request.project_id if request.project_id else None
+            input_data["projectId"] = request.project_id or None
         if request.labels_to_add:
             input_data["labelIds"] = request.labels_to_add
 

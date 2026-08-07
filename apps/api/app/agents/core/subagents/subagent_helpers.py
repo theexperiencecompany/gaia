@@ -131,6 +131,7 @@ async def _fetch_instructions_block(integration_id: str | None, user_id: str | N
 
 async def create_agent_context_message(
     configurable: AgentConfigurable,
+    *,
     user_id: str | None = None,
     query: str | None = None,
     subagent_id: str | None = None,

@@ -176,6 +176,7 @@ async def connect_mcp_integration(
     integration_name: str,
     requires_auth: bool,
     redirect_path: str,
+    *,
     server_url: str | None = None,
     is_platform: bool = False,
     probe_result: McpProbeResult | None = None,
