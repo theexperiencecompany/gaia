@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from datetime import UTC, datetime
+import os
 
 import pytest
 from sqlalchemy import Connection, create_engine, text
@@ -25,10 +26,15 @@ from app.db import postgresql
 
 pytestmark = [pytest.mark.service, pytest.mark.db]
 
-# Mixed-case on purpose: unquoted, Postgres folds it to `probecreatedat` and
-# the statement resolves against a column that does not exist.
-TABLE = "tz_promotion_probe"
+# Per-worker table: the main CI run collects this file under `-n auto`, and
+# xdist's default `load` distribution can hand two tests from one file to two
+# workers — which would then CREATE/ALTER/DROP the same table concurrently.
+TABLE = f"tz_promotion_probe_{os.environ.get('PYTEST_XDIST_WORKER', 'main')}"
+# Mixed-case on purpose: unquoted, Postgres folds it to lowercase and the
+# statement resolves against a column that does not exist.
 COLUMN = "probeCreatedAt"
+_QUALIFIED = f'"{TABLE}"'
+_QUOTED_COLUMN = f'"{COLUMN}"'
 
 
 @pytest.fixture
@@ -42,12 +48,12 @@ def connection(postgres_url: str) -> Iterator[Connection]:
 @pytest.fixture
 def legacy_table(connection: Connection) -> Iterator[None]:
     """A table holding a naive ``timestamp`` column whose name requires quoting."""
-    connection.execute(DDL('DROP TABLE IF EXISTS "tz_promotion_probe"'))
+    connection.execute(DDL(f"DROP TABLE IF EXISTS {_QUALIFIED}"))
     connection.execute(
-        DDL('CREATE TABLE "tz_promotion_probe" (id serial PRIMARY KEY, "probeCreatedAt" timestamp)')
+        DDL(f"CREATE TABLE {_QUALIFIED} (id serial PRIMARY KEY, {_QUOTED_COLUMN} timestamp)")
     )
     yield
-    connection.execute(DDL('DROP TABLE IF EXISTS "tz_promotion_probe"'))
+    connection.execute(DDL(f"DROP TABLE IF EXISTS {_QUALIFIED}"))
 
 
 @pytest.fixture
@@ -78,13 +84,13 @@ def test_promotes_naive_column_whose_name_requires_quoting(connection: Connectio
 def test_promotion_reinterprets_the_stored_value_as_utc(connection: Connection) -> None:
     """A naive value is UTC wall-clock, so promotion must reinterpret, not shift."""
     connection.execute(
-        text('INSERT INTO "tz_promotion_probe" ("probeCreatedAt") VALUES (:value)'),
+        text(f"INSERT INTO {_QUALIFIED} ({_QUOTED_COLUMN}) VALUES (:value)"),
         {"value": "2026-01-02 03:04:05"},
     )
 
     postgresql._ensure_timestamptz_columns(connection)
 
-    stored = connection.execute(text('SELECT "probeCreatedAt" FROM "tz_promotion_probe"')).scalar()
+    stored = connection.execute(text(f"SELECT {_QUOTED_COLUMN} FROM {_QUALIFIED}")).scalar()
     assert stored is not None
     assert stored.tzinfo is not None, "column should be tz-aware after promotion"
     assert stored.astimezone(UTC).replace(tzinfo=None) == datetime(2026, 1, 2, 3, 4, 5)
