@@ -13,14 +13,12 @@ from shared.py.secrets import InfisicalConfigError, inject_infisical_secrets
 # ---------------------------------------------------------------------------
 
 _ALL_ENV_KEYS = [
-    "INFISICAL_TOKEN",
     "INFISICAL_PROJECT_ID",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_ID",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET",
 ]
 
 _FULL_ENV = {
-    "INFISICAL_TOKEN": "tok-123",
     "INFISICAL_PROJECT_ID": "proj-abc",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_ID": "cid-xyz",
     "INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET": "csec-xyz",
@@ -41,45 +39,23 @@ def _env_without(key: str, env: str = "production") -> dict[str, str]:
 
 
 class TestInjectInfisicalSecretsDev:
-    """In development, missing Infisical config should log a warning and return."""
+    """In development, missing Infisical config should log and return."""
 
     @patch("shared.py.secrets.log")
-    def test_missing_token_in_dev_returns_early(self, mock_log: MagicMock):
-        env = _env_without("INFISICAL_TOKEN", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_log.warning.assert_called_once()
-        assert "INFISICAL_TOKEN" in mock_log.warning.call_args.args[0]
-
-    @patch("shared.py.secrets.log")
-    def test_missing_project_id_in_dev_returns_early(self, mock_log: MagicMock):
-        env = _env_without("INFISICAL_PROJECT_ID", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_log.warning.assert_called_once()
-        assert "INFISICAL_PROJECT_ID" in mock_log.warning.call_args.args[0]
-
-    @patch("shared.py.secrets.log")
-    def test_missing_client_id_in_dev_returns_early(self, mock_log: MagicMock):
-        env = _env_without("INFISICAL_MACHINE_IDENTITY_CLIENT_ID", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_log.warning.assert_called_once()
-
-    @patch("shared.py.secrets.log")
-    def test_missing_client_secret_in_dev_returns_early(self, mock_log: MagicMock):
-        env = _env_without("INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET", env="development")
-        with patch.dict(os.environ, env, clear=True):
-            inject_infisical_secrets()
-        mock_log.warning.assert_called_once()
-
-    @patch("shared.py.secrets.log")
-    def test_all_missing_in_dev_returns_on_first_missing(self, mock_log: MagicMock):
+    def test_no_config_in_dev_skips(self, mock_log: MagicMock):
         with patch.dict(os.environ, {"ENV": "development"}, clear=True):
             inject_infisical_secrets()
-        # Should return on the very first missing key (INFISICAL_TOKEN)
+        mock_log.info.assert_called_once()
+        assert "skipped" in mock_log.info.call_args.args[0]
+
+    @pytest.mark.parametrize("missing_key", _ALL_ENV_KEYS)
+    @patch("shared.py.secrets.log")
+    def test_partial_config_in_dev_warns(self, mock_log: MagicMock, missing_key: str):
+        env = _env_without(missing_key, env="development")
+        with patch.dict(os.environ, env, clear=True):
+            inject_infisical_secrets()
         mock_log.warning.assert_called_once()
-        assert "INFISICAL_TOKEN" in mock_log.warning.call_args.args[0]
+        assert missing_key in mock_log.warning.call_args.args[0]
 
     @patch("shared.py.secrets.log")
     def test_default_env_is_production(self, mock_log: MagicMock):
@@ -97,6 +73,11 @@ class TestInjectInfisicalSecretsDev:
 class TestInjectInfisicalSecretsProd:
     """In production, missing Infisical config should raise InfisicalConfigError."""
 
+    def test_no_config_raises(self):
+        with patch.dict(os.environ, {"ENV": "production"}, clear=True):
+            with pytest.raises(InfisicalConfigError, match="required in production"):
+                inject_infisical_secrets()
+
     @pytest.mark.parametrize("missing_key", _ALL_ENV_KEYS)
     def test_missing_key_raises(self, missing_key: str):
         env = _env_without(missing_key, env="production")
@@ -106,7 +87,7 @@ class TestInjectInfisicalSecretsProd:
             assert missing_key in str(exc_info.value)
 
     def test_empty_string_treated_as_missing(self):
-        env = {**_FULL_ENV, "INFISICAL_TOKEN": ""}
+        env = {**_FULL_ENV, "INFISICAL_PROJECT_ID": ""}
         with patch.dict(os.environ, env, clear=True):
             with pytest.raises(InfisicalConfigError):
                 inject_infisical_secrets()

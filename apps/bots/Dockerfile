@@ -41,7 +41,11 @@ COPY --from=builder /app/apps/bots/${BOT_NAME}/package.json ./
 COPY scripts/docker-entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
+# ENV is the Infisical environment slug the bots loader reads. Pin it here so a
+# deployed container never falls back to the loader's development default;
+# docker-compose.prod.yml sets it again per service, this covers everything else.
 ENV NODE_ENV=production \
+    ENV=production \
     BOT_NAME=${BOT_NAME}
 
 USER node

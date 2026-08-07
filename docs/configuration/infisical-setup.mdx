@@ -6,176 +6,235 @@ icon: "user-secret"
 
 ## Overview
 
-Infisical is a secure secret management platform that GAIA uses to centrally manage environment variables and API keys. Instead of storing sensitive information in `.env` files, Infisical allows you to:
+Infisical is the secret management platform the GAIA team uses to share environment variables and API keys. It gives you:
 
-- **Centrally manage secrets** across multiple environments
-- **Secure access controls** with role-based permissions
-- **Audit logging** for secret access and changes
-- **Automatic secret rotation** capabilities
-- **Team collaboration** with shared secret access
+- **Central management** of secrets across dev/staging/production environments
+- **Access control** with per-user and per-service permissions
+- **Audit logging** for every secret read and change
+- **Instant revocation** when a credential leaks or a teammate leaves
 
 <Note>
-  When Infisical is configured, it will **override any local environment
-  variables** with the same names from your Infisical project.
+  Infisical is **optional**. Self-hosters and open-source contributors should
+  skip this page entirely and use plain `.env` files — every app falls back to
+  local environment variables automatically. Infisical is only required in
+  production (`ENV=production`).
 </Note>
 
 ## How Infisical Works with GAIA
 
-GAIA's backend automatically loads secrets from Infisical during startup using the `inject_infisical_secrets()` function. Here's the process:
+At startup, each app (API, bots, voice agent) calls its Infisical loader (`inject_infisical_secrets()` in Python, `injectInfisicalSecrets()` in TypeScript). The Next.js web app deliberately does not — see [Frontend (Web)](#frontend-web).
 
-1. **Authentication**: Uses machine identity credentials to authenticate with Infisical
-2. **Secret Retrieval**: Fetches all secrets from your Infisical project
-3. **Environment Injection**: Overwrites local environment variables with Infisical secrets
-4. **Application Startup**: GAIA starts with the combined environment configuration
+1. **Authentication**: authenticates with a machine identity (Universal Auth client ID + secret)
+2. **Secret retrieval**: fetches all secrets for the environment matching your `ENV` value (`development`, `staging`, or `production`)
+3. **Environment injection**: injects each secret into the process environment — **only if that variable is not already set**
+4. **Application startup**: the app reads its settings from the combined environment
 
-## Setting Up Infisical
+<Warning>
+  **Local environment variables always win.** The loaders never overwrite a
+  variable that is already set in your shell, `.env` file, or container
+  environment. Infisical only fills the gaps. (The `infisical run` CLI flow
+  below is the one exception — it injects secrets *before* the process starts,
+  so those values are already "local" by the time `.env` files load.)
+</Warning>
 
-### Step 1: Create an Infisical Account
+If no Infisical variables are configured:
 
-1. Visit [app.infisical.com](https://app.infisical.com)
-2. Sign up for a free account
-3. Create a new project for GAIA
+- In development, the loader logs a message and continues with your local `.env`
+- In production, the app refuses to start
 
-### Step 2: Create a Machine Identity
+<Warning>
+  **The default when `ENV` is unset differs by runtime.** The Python apps (API,
+  voice agent) default to `production` and so refuse to boot without Infisical —
+  `apps/api/.env.example` ships `ENV=development`, so copy it rather than writing
+  `.env` from scratch. The bots default to `development`, keeping a bare checkout
+  runnable with no setup; their deployed containers cannot reach that fallback
+  because `apps/bots/Dockerfile` pins `ENV=production`.
+</Warning>
 
-Machine identities allow GAIA to authenticate with Infisical automatically:
+## Team Development Workflow (Recommended)
 
-1. Go to **Project Settings** → **Access Control** → **Machine Identities**
-2. Click **Create Identity**
-3. Configure the identity:
-   - **Name**: `gaia-backend`
-   - **Role**: Admin or Developer (with read access to secrets)
-4. Note down the **Client ID** and **Client Secret**
+Team members authenticate as **themselves** with the Infisical CLI — no machine identity credentials on laptops. You get personal permissions, audit-logged access, personal secret overrides, and instant revocation on offboarding.
 
-### Step 3: Add Secrets to Infisical
+<Steps>
+  <Step title="Install the Infisical CLI">
+    ```bash
+    # macOS
+    brew install infisical/get-cli/infisical
+    ```
+    Other platforms: see the [Infisical CLI docs](https://infisical.com/docs/cli/overview).
+  </Step>
+  <Step title="Log in">
+    ```bash
+    infisical login
+    ```
+    This opens a browser window. Use `infisical login -i` inside containers or WSL2.
+  </Step>
+  <Step title="Run any task through the CLI">
+    Prefix any mise task with `infisical`:
+    ```bash
+    mise infisical dev        # API + web
+    mise infisical dev:full   # + arq worker, voice agent, all bots
+    ```
+    This wraps the task in `infisical run --env=development -- mise run <task>`,
+    injecting every secret from the `development` environment before the
+    processes start. Pass task flags after `--` so mise forwards them instead of
+    reading them itself:
+    ```bash
+    mise infisical -- dev --agent
+    ```
+    Any other command works the same way without mise:
+    ```bash
+    infisical run --env=development -- nx dev api
+    ```
+  </Step>
+</Steps>
 
-Navigate to your project's **Secrets** section and add all your environment variables.
+The repo's `.infisical.json` tells the CLI which project to use — it contains only the project ID and default environment, no secrets, so it is committed and needs no setup on your part. The project ID is an identifier, not a credential: fetching secrets still requires `infisical login` with an account that has access to the project.
 
-### Step 4: Configure GAIA Backend
+**Infra URLs**: the `development` environment stores **localhost** URLs (`mongodb://localhost:27017`, `postgresql://...@localhost:5432/...`), because `mise dev` runs the API and web on the host and reaches dockered infra through published ports. Containers do not use these — `infra/docker/docker-compose.yml` sets the `mongo` / `postgres` service hostnames explicitly, and those take precedence over `env_file`. Putting Docker hostnames in Infisical instead breaks every native run.
 
-Add the Infisical configuration to your backend `.env` file:
+**Local tweaks**: use [personal overrides](https://infisical.com/docs/documentation/platform/secret-overrides) in the Infisical dashboard instead of editing `.env` — `infisical run` applies your personal value while teammates keep the shared one.
+
+**Offline**: the CLI caches previously fetched secrets, so `infisical run` keeps working without a network connection.
+
+## Self-Hosters and Contributors
+
+You do not need Infisical. Copy `.env.example` to `.env` in each app directory and fill in the values. See [Environment Variables](/configuration/environment-variables).
+
+If you run your **own** Infisical project and want GAIA to pull from it in a headless environment, configure a machine identity:
+
+1. Create a project at [app.infisical.com](https://app.infisical.com) and add your secrets
+2. Go to **Organization Access Control → Identities → Create Identity** with Universal Auth
+3. Grant it read access to your project
+4. Add the credentials to your `.env`:
 
 ```bash
-# Infisical Configuration
-INFISICAL_PROJECT_ID=your-project-id-from-infisical
+INFISICAL_PROJECT_ID=your-project-id
 INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-client-id
 INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-client-secret
-
-# Optional: Set environment (defaults to 'production')
 ENV=development
 ```
 
 <Warning>
-  The `INFISICAL_PROJECT_ID`, `INFISICAL_MACHINE_IDENTITY_CLIENT_ID`, and
-  `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET` must be set in your local `.env`
-  file - they cannot be stored in Infisical itself since they're needed to
-  authenticate with Infisical.
+  The three `INFISICAL_*` variables bootstrap the connection, so they must live
+  in the local environment — they cannot be stored in Infisical itself. Setting
+  all three enables the fetch; setting only some of them logs a warning in
+  development and fails the boot in production.
 </Warning>
 
-## Environment Priority
+## Production: Machine Identity
 
-GAIA loads environment variables in this order (later sources override earlier ones):
+Production authenticates with a **single machine identity** shared by every service (see `infra/docker/docker-compose.prod.yml`).
 
-1. **System environment variables**
-2. **Local `.env` file variables**
-3. **Infisical secrets** (highest priority)
-
-This means:
-
-- ✅ Infisical secrets will override local `.env` variables
-- ✅ You can use local `.env` for development and Infisical for production
-- ✅ Critical secrets are managed centrally through Infisical
-
-## Development vs Production
-
-### Development Setup
-
-For local development, you can choose between:
-
-**Option A: Use Infisical** (Recommended for teams)
+1. In Infisical: **Organization Access Control → Identities → Create Identity** (Universal Auth)
+2. Grant it read access to the project, environment `production`
+3. On the Swarm manager, store its credentials:
 
 ```bash
-# apps/api/.env
-ENV=development
-INFISICAL_PROJECT_ID=your-dev-project-id
-INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-client-id
-INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-client-secret
+printf '%s' '<client-id>'     | docker secret create gaia_infisical_machine_identity_client_id -
+printf '%s' '<client-secret>' | docker secret create gaia_infisical_machine_identity_client_secret -
+printf '%s' '<project-id>'    | docker secret create gaia_infisical_project_id -
 ```
 
-**Option B: Use Local Environment Variables**
+Every service attaches these three secrets directly, and `scripts/docker-entrypoint.sh` reads them from `/run/secrets/gaia_infisical_machine_identity_*` before exec.
+
+### Scoping per service later
+
+One identity means any compromised container can read the whole project. To limit that blast radius, create an identity per service, scope each to the paths that service needs, and store its credentials under its own secret names. Then attach them with Compose's long syntax, which maps a per-service secret onto the canonical name the entrypoint reads:
+
+```yaml
+secrets:
+  - source: gaia_api_infisical_client_id
+    target: gaia_infisical_machine_identity_client_id
+  - source: gaia_api_infisical_client_secret
+    target: gaia_infisical_machine_identity_client_secret
+```
+
+Only the compose file changes — the entrypoint and application code are identical either way.
+
+## Frontend (Web)
+
+The Next.js app is **intentionally not wired to Infisical** — it calls no loader. Its environment is six `NEXT_PUBLIC_*` variables plus one server-only secret (`BLOG_BEARER_TOKEN`, used by `src/app/api/blog/route.ts`).
+
+`NEXT_PUBLIC_*` values are compiled into the browser bundle at build time, so they are public by definition — anyone can read them from the shipped JavaScript. Storing them in Infisical adds ceremony without adding secrecy. Keep them in `apps/web/.env.local` locally and in the build environment for CI.
+
+**In development** the app still picks up Infisical values under `mise infisical dev`: the CLI injects them into the process environment before Next starts, and Next ranks `process.env` above `.env.local`.
+
+**In production** web deploys to Cloudflare Workers (OpenNext), not the Swarm, so the server-only secret belongs in Cloudflare's own store:
 
 ```bash
-# apps/api/.env
-ENV=development
-# Add all your environment variables here
-OPENAI_API_KEY=your-local-dev-key
-# ... other variables
+wrangler secret put BLOG_BEARER_TOKEN
 ```
 
-### Production Setup
-
-For production, **always use Infisical**:
-
-```bash
-# apps/api/.env (production)
-ENV=production
-INFISICAL_PROJECT_ID=your-prod-project-id
-INFISICAL_MACHINE_IDENTITY_CLIENT_ID=your-prod-client-id
-INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET=your-prod-client-secret
-```
+<Warning>
+  Do not bootstrap Infisical into the Worker. Fetching secrets at the edge means
+  shipping the machine identity's client ID and secret into the Worker — trading
+  one narrow secret for a credential that unlocks the entire project, plus an
+  auth round-trip on cold start.
+</Warning>
 
 ## Troubleshooting
 
-### Common Issues
-
 <AccordionGroup>
-  <Accordion title="InfisicalConfigError: INFISICAL_PROJECT_ID is missing">
-    **Solution**: Add the `INFISICAL_PROJECT_ID` to your `.env` file. You can find this in your Infisical project settings.
+  <Accordion title="InfisicalConfigError: Infisical is required in production">
+    **Solution**: The app resolved `ENV` to `production` — either explicitly, or
+    because it is unset and the Python loaders default to `production` — but has
+    no Infisical credentials. Provide the machine identity credentials (in
+    production these arrive as Docker Swarm secrets), or set `ENV=development`
+    for local work.
   </Accordion>
 
-{" "}
+  <Accordion title="Incomplete Infisical config: missing ...">
+    **Solution**: Only some of `INFISICAL_PROJECT_ID`,
+    `INFISICAL_MACHINE_IDENTITY_CLIENT_ID`, and
+    `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET` are set. Set all three to enable
+    Infisical, or remove all three to use local `.env` only.
+  </Accordion>
 
-<Accordion title="Authentication failed">
-  **Solution**: - Verify your `INFISICAL_MACHINE_IDENTITY_CLIENT_ID` and
-  `INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET` - Ensure the machine identity has
-  proper permissions - Check that the identity is enabled
-</Accordion>
+  <Accordion title="Authentication failed">
+    **Solution**: Verify the client ID and client secret, ensure the machine
+    identity has read access to the project, and check that the identity is
+    enabled.
+  </Accordion>
 
-{" "}
+  <Accordion title="Secrets not loading">
+    **Solution**: Verify the environment slug matches your `ENV` value
+    (`development`/`staging`/`production`), check that the secrets exist in that
+    environment of the Infisical project, and confirm the identity's role covers
+    the secret path.
+  </Accordion>
 
-<Accordion title="Secrets not loading">
-  **Solution**: - Verify the environment slug matches (development/production) -
-  Check that secrets exist in the correct Infisical project - Ensure the machine
-  identity has read access to secrets
-</Accordion>
-
-  <Accordion title="Local variables not being overridden">
-    **Solution**: This is expected behavior. Infisical secrets have the highest priority and will override local variables with the same name.
+  <Accordion title="An Infisical value is not being applied">
+    **Solution**: A local environment variable with the same name is set —
+    local values always take precedence over Infisical. Unset the local
+    variable (check your shell and `.env` files) to use the Infisical value.
   </Accordion>
 </AccordionGroup>
 
 ### Debug Mode
 
-To debug Infisical integration, check the application logs during startup. The backend will log any Infisical connection issues.
+Check the application logs during startup — the loaders log connection, fetch, and injection timing, and any Infisical errors.
 
 ## Security Best Practices
 
 <CardGroup cols={2}>
-  <Card title="Access Control">
-    Use separate machine identities for different environments, grant minimal
-    required permissions, and regularly audit access logs.
+  <Card title="Humans use personal logins">
+    Team members authenticate with `infisical login`, never with shared machine
+    identity credentials. Offboarding a person revokes their access instantly.
   </Card>
-  <Card title="Secret Management">
-    Use different secrets for dev/staging/production, rotate secrets regularly,
-    and never commit Infisical credentials to version control.
+  <Card title="Scope identities to shrink blast radius">
+    Production currently shares one machine identity across services, so any
+    compromised container can read the whole project. Splitting it per service
+    is a compose-only change — see [Scoping per service
+    later](#scoping-per-service-later).
   </Card>
-  <Card title="Environment Separation">
-    Use separate Infisical projects for each environment, implement proper CI/CD
-    secret injection, and monitor secret access patterns.
+  <Card title="Environment separation">
+    Use the `development`/`staging`/`production` environments within the
+    project, and separate secrets per environment.
   </Card>
-  <Card title="Backup Strategy">
-    Export secrets regularly for backup, document secret recovery procedures,
-    and have fallback authentication methods.
+  <Card title="Rotate and audit">
+    Set client-secret TTLs where possible, rotate leaked credentials
+    immediately, and review the audit log for unexpected access.
   </Card>
 </CardGroup>
 

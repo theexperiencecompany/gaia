@@ -89,13 +89,11 @@ async function collectInfisicalEnv(
 ): Promise<void> {
   store.setStatus("Configuring Infisical...");
   const infisicalConfig = (await store.waitForInput("env_infisical")) as {
-    INFISICAL_TOKEN: string;
     INFISICAL_PROJECT_ID: string;
     INFISICAL_MACHINE_IDENTITY_CLIENT_ID: string;
     INFISICAL_MACHINE_IDENTITY_CLIENT_SECRET: string;
   };
 
-  envValues["INFISICAL_TOKEN"] = infisicalConfig.INFISICAL_TOKEN;
   envValues["INFISICAL_PROJECT_ID"] = infisicalConfig.INFISICAL_PROJECT_ID;
   envValues["INFISICAL_MACHINE_IDENTITY_CLIENT_ID"] =
     infisicalConfig.INFISICAL_MACHINE_IDENTITY_CLIENT_ID;

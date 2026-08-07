@@ -7,7 +7,7 @@ The worker refreshes arq's ``arq:health`` key from its poll loop every
 or the process dies. Checking that key is exactly what ``arq --check`` does
 internally — but ``arq --check`` first imports the whole application, which a
 Docker healthcheck cannot do: it runs outside the entrypoint, so it has no
-``INFISICAL_TOKEN`` and the import dies during settings bootstrap.
+Infisical credentials and the import dies during settings bootstrap.
 
 This probe imports nothing from ``app`` (so no application change can break it)
 and talks only to Redis — the worker's own job substrate.
