@@ -5,11 +5,12 @@ require_finish_to_end and the duplicate-call guard active) over a scripted inbox
 so no connected Gmail account is needed.
 
 Model selection, in priority order:
-  1. OPENROUTER_API_KEY set  -> real gpt-oss-120b:free via OpenRouter (the actual
-     weak target model). This is the "real LLM" path; it needs only the key.
-  2. otherwise               -> a scripted BindableToolsFakeModel that reproduces
-     the exact failure this harness fixes: a weak model that tries to quit after
-     one lookup, then (after the harness nudge) actually finishes the triage.
+  1. DEV_LLM_BASE_URL / DEV_LLM_API_KEY / DEV_LLM_MODEL set -> the env-defined
+     custom dev endpoint (the real weak-model path, e.g. Nous Research DeepSeek).
+     This needs no OpenRouter key and no connected account.
+  2. otherwise -> a scripted BindableToolsFakeModel that reproduces the exact
+     failure this harness fixes: a weak model that tries to quit after one
+     lookup, then (after the harness nudge) actually finishes the triage.
 
 Run:  cd apps/api && uv run python scripts/harness_triage_demo.py
 """
@@ -60,13 +61,28 @@ LABELS: dict[str, list[str]] = {}
 
 @tool
 def gmail_search(query: str) -> str:
-    """Search the inbox. Matches sender or subject; returns id, from, subject."""
+    """Search the inbox. Matches sender or subject; returns id, from, subject.
+
+    Understands the Gmail operators a model is likely to emit (in:, is:unread,
+    category:, label:); a bare query is matched as a substring against sender
+    and subject, and every mailbox mail counts for in:inbox / is:unread.
+    """
     q = query.lower()
-    hits = [
-        f"{eid} | {e['from']} | {e['subject']}"
-        for eid, e in INBOX.items()
-        if eid not in ARCHIVED and (q in e["from"].lower() or q in e["subject"].lower() or q == "")
-    ]
+    # Gmail-style operators: strip them and fall through to keyword matching.
+    for op in ("in:", "is:", "category:", "label:", "from:", "subject:"):
+        q = q.replace(op, " ")
+    terms = [t for t in q.split() if t]
+    hits = []
+    for eid, e in INBOX.items():
+        if eid in ARCHIVED:
+            continue
+        if not terms:
+            # in:inbox / is:unread with no keyword narrows to nothing else.
+            hits.append(f"{eid} | {e['from']} | {e['subject']}")
+            continue
+        haystack = f"{e['from']} {e['subject']}".lower()
+        if any(t in haystack for t in terms):
+            hits.append(f"{eid} | {e['from']} | {e['subject']}")
     return "\n".join(hits) if hits else "no matches"
 
 
@@ -91,13 +107,14 @@ def gmail_label(email_id: str, label: str) -> str:
 TOOLS = {"gmail_search": gmail_search, "gmail_archive": gmail_archive, "gmail_label": gmail_label}
 
 
-def _real_openrouter_model():
+def _real_dev_llm():
     from langchain_openrouter import ChatOpenRouter
 
     return ChatOpenRouter(
-        model="openai/gpt-oss-120b:free",
+        model=os.environ["DEV_LLM_MODEL"],
         temperature=0.1,
-        api_key=os.environ["OPENROUTER_API_KEY"],
+        api_key=os.environ["DEV_LLM_API_KEY"],
+        base_url=os.environ["DEV_LLM_BASE_URL"],
     )
 
 
@@ -126,10 +143,16 @@ def _scripted_weak_model():
 
 
 async def main() -> None:
-    use_real = bool(os.environ.get("OPENROUTER_API_KEY"))
-    model = _real_openrouter_model() if use_real else _scripted_weak_model()
+    use_real = bool(
+        os.environ.get("DEV_LLM_BASE_URL")
+        and os.environ.get("DEV_LLM_API_KEY")
+        and os.environ.get("DEV_LLM_MODEL")
+    )
+    model = _real_dev_llm() if use_real else _scripted_weak_model()
     print(
-        f"MODEL: {'gpt-oss-120b:free (real, via OpenRouter)' if use_real else 'scripted weak model'}\n"
+        f"MODEL: {os.environ.get('DEV_LLM_MODEL', '')} (real, via DEV_LLM lane)"
+        if use_real
+        else "MODEL: scripted weak model\n"
     )
 
     builder = create_agent(
