@@ -198,11 +198,19 @@ def _check_test_coverage(test_dir: Path, rules: dict[str, Any]) -> None:
         if missing:
             detail.append(f"rules without a promtool test ({len(missing)}): {', '.join(missing)}")
         if orphaned:
-            detail.append(f"test files with no matching rule ({len(orphaned)}): {', '.join(orphaned)}")
+            detail.append(
+                f"test files with no matching rule ({len(orphaned)}): {', '.join(orphaned)}"
+            )
         _fail("test coverage", "; ".join(detail))
 
 
 def extract(source: Path) -> dict[str, Any]:
+    """Translate the Grafana rules file into a Prometheus-native rules document.
+
+    Every rule must match the documented A/B/C shape or the run aborts; see the
+    module docstring for the contract. The returned document has the same
+    ``groups`` structure as a Prometheus rule file, ready for pint/promtool.
+    """
     document = yaml.safe_load(source.read_text())
     groups = document.get("groups") if isinstance(document, dict) else None
     if not isinstance(groups, list) or not groups:
@@ -230,6 +238,11 @@ def extract(source: Path) -> dict[str, Any]:
 
 
 def main(argv: list[str]) -> int:
+    """CLI entrypoint: extract rules and optionally check test coverage.
+
+    Returns the process exit code: 0 on success, 1 when any rule is not
+    extractable or (with ``--test-dir``) lacks a promtool test file.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--source",
