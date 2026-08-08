@@ -24,6 +24,7 @@ neither list anticipated.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Any
 
 import httpx
@@ -100,6 +101,28 @@ def classify(exc: BaseException) -> Fault | None:
         if signature in message:
             return Fault(backend, f"{type(exc).__name__}: {exc}")
     return None
+
+
+def confirmed_down(fault: Fault) -> bool:
+    """Whether the backend the fault points at is actually unreachable.
+
+    A transport exception's TYPE cannot say which peer dropped the connection:
+    an httpx.RemoteProtocolError from the remote LLM provider's gateway looks
+    identical to one from our own API. Aborting on type alone killed three
+    LongMemEval runs whose API was healthy the whole time — the provider's
+    CDN hiccuped. So before a run aborts, the accused backend is probed; if it
+    answers, the fault was elsewhere and the case is an ordinary retryable
+    error. Signature-matched faults (a Postgres raise, a Chroma raise) name
+    their backend unambiguously and are not second-guessed.
+    """
+    if fault.backend != "api":
+        return True
+    base = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
+    try:
+        response = httpx.get(f"{base}/health", timeout=5.0)
+    except Exception:
+        return True
+    return response.status_code >= 500
 
 
 def never_conducted(record: dict[str, Any]) -> bool:

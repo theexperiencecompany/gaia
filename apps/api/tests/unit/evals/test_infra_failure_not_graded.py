@@ -286,3 +286,29 @@ async def test_longmemeval_reports_infra_error_when_postgres_is_down(
         await suite.transport(case, _config(), tracker=None, provider=None)
 
     assert "postgres" in str(excinfo.value).lower()
+
+
+def test_a_provider_disconnect_is_not_an_api_outage() -> None:
+    """httpx.RemoteProtocolError's TYPE cannot say which peer dropped: the
+    remote LLM gateway's hiccup looks identical to our API dying. Three
+    LongMemEval runs aborted on a healthy API before the accused backend was
+    probed. A transport fault with a healthy API is a retryable case error."""
+    from unittest.mock import MagicMock, patch
+
+    import httpx
+    from scripts.evals.core import faults
+
+    fault = faults.classify(httpx.RemoteProtocolError("Server disconnected"))
+    assert fault is not None and fault.backend == "api"
+
+    healthy = MagicMock(status_code=200)
+    with patch.object(faults.httpx, "get", return_value=healthy):
+        assert faults.confirmed_down(fault) is False
+
+    with patch.object(faults.httpx, "get", side_effect=httpx.ConnectError("down")):
+        assert faults.confirmed_down(fault) is True
+
+    # Signature-matched faults name their backend unambiguously — never probed.
+    postgres = faults.classify(RuntimeError("PostgreSQL engine not available"))
+    assert postgres is not None
+    assert faults.confirmed_down(postgres) is True

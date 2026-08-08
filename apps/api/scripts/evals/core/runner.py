@@ -287,7 +287,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     # 400 cases from measuring the outage instead of the agent,
                     # whichever suite and whichever backend went away.
                     fault = faults.classify(e)
-                    if fault is not None:
+                    if fault is not None and faults.confirmed_down(fault):
                         aborted = str(fault.as_infra_error())
                         break
                     last_error = f"{type(e).__name__}: {e}"
@@ -448,7 +448,7 @@ async def _run_cases_concurrently(
                 record_case(case, run, scores, status, run.error)
             except Exception as e:
                 fault = faults.classify(e)
-                if fault is not None:
+                if fault is not None and faults.confirmed_down(fault):
                     aborted = str(fault.as_infra_error())
                     return
                 detail = f"{type(e).__name__}: {e}"
