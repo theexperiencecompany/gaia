@@ -18,25 +18,46 @@ which is tried first) — see the loud message when either is missing.
 
 Attachments
 -----------
-~23% of rows carry attachments (pdf/xlsx/images/...). The dev executor
-endpoint accepts no file uploads, so plain-text-representable attachments
-(txt/csv/json/xml/jsonld/py) are downloaded and inlined into the prompt
-(truncated to fit the endpoint's 20_000-char task field); everything else
-gets ``expected["skip_reason"]`` and the transport returns a failed CaseRun
-whose error carries the reason (core/runner.py has no native skip concept —
-it records any run with ``error`` set as ``failed``). The dev endpoint also
-exposes no tool-call trace and no token usage, so ``tool_calls`` is ``[]``
-and token counts are estimates recorded in ``raw``.
+38 of the 165 rows carry attachments (xlsx/png/pdf/mp3/...). Each is delivered
+one of three ways, and every case is tagged with which:
+
+``attachment:uploaded``
+    The file is POSTed to ``/api/v1/dev/attachments``, which runs the same
+    ``FileService.upload`` the product's ``POST /api/v1/upload`` runs — real
+    anydoc/pdf_inspector/vision extraction, real summary, real Mongo + ChromaDB
+    index. The upload and the executor run share a ``conversation_id``, so
+    ``prepare_executor_execution`` surfaces the file to the agent through the
+    shipped path and ``search_uploaded_files`` reads the extracted content.
+    Applies to every extension in ``UPLOAD_CONTENT_TYPES``.
+
+``attachment:inlined``
+    A harness shim, not the product's ingestion path: the file's text is pasted
+    into the task (truncated to the endpoint's 20_000-char field). Reserved for
+    the extensions the product's own uploader refuses (``INLINE_EXTS``) — these
+    cases prove the agent can reason over the content, NOT that upload works.
+
+skipped
+    No ingestion path at all (audio, archives, ``.pdb``). The case gets
+    ``expected["skip_reason"]`` naming the limitation, and the transport returns
+    a failed CaseRun carrying it (core/runner.py has no native skip concept — it
+    records any run with ``error`` set as ``failed``). ``load_cases`` prints the
+    full denominator: total, runnable, and skipped counts per reason.
+
+The dev endpoint exposes no tool-call trace and no token usage, so
+``tool_calls`` is ``[]`` and token counts are estimates recorded in ``raw``.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Coroutine
+from dataclasses import dataclass
 import os
 from pathlib import Path
 import re
 import string
 import sys
+from typing import Any
 import uuid
 import warnings
 
@@ -44,6 +65,8 @@ import httpx
 from opik.evaluation.metrics import base_metric, score_result
 import pandas as pd
 
+from app.constants.files import CSV_MIME, DOCX_MIME, PDF_MIME, PPTX_MIME, XLSX_MIME
+from app.utils.upload_validation import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
@@ -84,7 +107,39 @@ DEV_WRAPPER_RE = re.compile(
 TASK_FIELD_MAX = 20_000
 ATTACH_BUDGET = 18_000
 MIN_ATTACH_BUDGET = 500
-INLINE_EXTS = {".txt", ".csv", ".json", ".xml", ".jsonld", ".py"}
+
+# Content type the harness declares per attachment extension. A browser supplies
+# this on a real upload; the harness has to. Office/PDF types come from the
+# product's own constants, images are literals the allowlist has no constant for.
+UPLOAD_CONTENT_TYPES: dict[str, str] = {
+    ".csv": CSV_MIME,
+    ".docx": DOCX_MIME,
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".json": "application/json",
+    ".pdf": PDF_MIME,
+    ".png": "image/png",
+    ".pptx": PPTX_MIME,
+    ".txt": "text/plain",
+    ".xlsx": XLSX_MIME,
+}
+
+# Fail at import rather than 415 a fifth of the benchmark case-by-case if the
+# product ever narrows its allowlist. upload_validation is the one authority.
+_UNSHIPPED_TYPES = sorted(set(UPLOAD_CONTENT_TYPES.values()) - ALLOWED_CONTENT_TYPES)
+if _UNSHIPPED_TYPES:
+    raise RuntimeError(
+        f"gaia_bench would upload content types the product rejects: {_UNSHIPPED_TYPES}. "
+        "app/utils/upload_validation.py is the authority — fix UPLOAD_CONTENT_TYPES "
+        "or restore the allowlist entry."
+    )
+
+# Extensions the product's uploader refuses — no allowlisted content type
+# (.xml/.jsonld) or a filename extension it blocks outright (.py). Their text is
+# pasted into the task instead. That is a HARNESS SHIM, not the shipped ingestion
+# path, and cases using it are tagged so no report can present them as evidence
+# that attachment upload works.
+INLINE_EXTS = {".xml", ".jsonld", ".py"}
 
 REQUIRED_COLUMNS = ("task_id", "Question", "Level", "Final answer")
 
@@ -354,35 +409,89 @@ def _validate_rows(rows: list[dict[str, object]]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _inline_attachment(file_path: str) -> str | None:
-    """Download a plain-text attachment (cached), or None if it cannot be inlined."""
-    suffix = Path(file_path).suffix.lower()
-    if suffix not in INLINE_EXTS:
-        return None
+@dataclass(frozen=True)
+class AttachmentSpec:
+    """A downloaded attachment and the multipart fields the upload needs."""
+
+    path: Path
+    filename: str
+    content_type: str
+
+
+@dataclass(frozen=True)
+class AttachmentDelivery:
+    """How one row's attachment reaches the agent — or why it cannot.
+
+    Exactly one field is set: ``upload`` for the real ingestion path,
+    ``inline_text`` for the harness shim, ``skip_reason`` when neither applies.
+    """
+
+    upload: AttachmentSpec | None = None
+    inline_text: str | None = None
+    skip_reason: str | None = None
+
+
+def _download_attachment(file_path: str) -> Path | None:
+    """Cache one attachment locally, or None with a loud reason when it can't be fetched."""
     target = ATTACH_DIR / Path(file_path).name
-    if not target.exists():
-        token = os.environ.get("HF_TOKEN", "")
-        if not token:
-            print(
-                f"[gaia_bench] attachment {file_path} needs HF_TOKEN to download "
-                f"({GATE_NOTICE}) — skipping this case."
-            )
-            return None
-        url = f"https://huggingface.co/datasets/{DATASET_REPO}/resolve/main/{file_path}"
-        resp = httpx.get(
-            url,
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=120.0,
+    if target.exists():
+        return target
+    token = os.environ.get("HF_TOKEN", "")
+    if not token:
+        print(
+            f"[gaia_bench] attachment {file_path} needs HF_TOKEN to download "
+            f"({GATE_NOTICE}) — skipping this case."
         )
-        if resp.status_code != 200:
-            print(
-                f"[gaia_bench] attachment {file_path} download failed: "
-                f"HTTP {resp.status_code} — skipping this case."
+        return None
+    url = f"https://huggingface.co/datasets/{DATASET_REPO}/resolve/main/{file_path}"
+    resp = httpx.get(
+        url,
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=120.0,
+        # Binary attachments are LFS-backed and resolve to a CDN redirect.
+        follow_redirects=True,
+    )
+    if resp.status_code != 200:
+        print(
+            f"[gaia_bench] attachment {file_path} download failed: "
+            f"HTTP {resp.status_code} — skipping this case."
+        )
+        return None
+    ATTACH_DIR.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(resp.content)
+    return target
+
+
+def _plan_attachment(file_path: str, file_name: str) -> AttachmentDelivery:
+    """Decide how a row's attachment is delivered, downloading it if it can be."""
+    suffix = Path(file_path).suffix.lower()
+    content_type = UPLOAD_CONTENT_TYPES.get(suffix)
+    if content_type is None and suffix not in INLINE_EXTS:
+        return AttachmentDelivery(
+            skip_reason=(
+                f"no ingestion path for {suffix or 'extension-less'} attachments: the product's "
+                "upload allowlist (app/utils/upload_validation.py) rejects the content type, "
+                "and the file is not text the harness can inline"
             )
-            return None
-        ATTACH_DIR.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(resp.content)
-    return target.read_text(encoding="utf-8", errors="replace")
+        )
+    local = _download_attachment(file_path)
+    if local is None:
+        return AttachmentDelivery(
+            skip_reason=f"attachment {file_path} could not be downloaded (see the message above)"
+        )
+    if content_type is None:
+        return AttachmentDelivery(inline_text=local.read_text(encoding="utf-8", errors="replace"))
+    size = local.stat().st_size
+    if size > MAX_UPLOAD_BYTES:
+        return AttachmentDelivery(
+            skip_reason=(
+                f"attachment is {size} bytes, over the product's "
+                f"{MAX_UPLOAD_BYTES}-byte upload limit"
+            )
+        )
+    return AttachmentDelivery(
+        upload=AttachmentSpec(path=local, filename=file_name, content_type=content_type)
+    )
 
 
 def _fresh_email() -> str:
@@ -409,14 +518,26 @@ def _real_case(row: dict[str, object], index: int) -> Case:
         "score": {"gates": ["gaia_exact"]},
     }
     tags = ["gaia", f"level:L{level}", "source:real"]
+    # Upload and executor run must share this id: prepare_executor_execution
+    # reconstructs a conversation's uploads from the thread id alone.
+    setup: dict[str, Any] = {"email": _fresh_email(), "conversation_id": uuid.uuid4().hex}
     prompt = question
     if file_path:
-        attachment = _inline_attachment(file_path)
-        if attachment is None:
-            suffix = Path(file_path).suffix or "unknown"
-            expected["skip_reason"] = f"attachment not supported via dev endpoint ({suffix})"
+        display_name = file_name or Path(file_path).name
+        delivery = _plan_attachment(file_path, display_name)
+        attachment: dict[str, object] = {"file_name": file_name, "file_path": file_path}
+        if delivery.skip_reason is not None:
+            expected["skip_reason"] = delivery.skip_reason
             tags.append("skip")
+        elif delivery.upload is not None:
+            setup["attachment"] = delivery.upload
+            tags.append("attachment:uploaded")
+            attachment["delivery"] = "uploaded"
+            attachment["content_type"] = delivery.upload.content_type
+            gaia["attachment"] = attachment
         else:
+            # inline_text — the harness shim; see INLINE_EXTS.
+            text = delivery.inline_text or ""
             budget = max(ATTACH_BUDGET - len(CONTRACT_LINE) - len(question), 0)
             if budget < MIN_ATTACH_BUDGET:
                 expected["skip_reason"] = (
@@ -424,24 +545,22 @@ def _real_case(row: dict[str, object], index: int) -> Case:
                 )
                 tags.append("skip")
             else:
-                content = attachment[:budget]
-                truncated = len(attachment) > len(content)
+                content = text[:budget]
+                truncated = len(text) > len(content)
                 if truncated:
                     content = content + "\n...[attachment truncated]"
-                display_name = file_name or Path(file_path).name
                 prompt = f"{question}\n\n[Attachment: {display_name}]\n{content}\n[/Attachment]"
-                gaia["attachment"] = {
-                    "file_name": file_name,
-                    "file_path": file_path,
-                    "truncated": truncated,
-                }
+                tags.append("attachment:inlined")
+                attachment["delivery"] = "inlined"
+                attachment["truncated"] = truncated
+                gaia["attachment"] = attachment
     return Case(
         id=f"gaia-{task_id}",
         ticket=f"GAIA {task_id} (L{level})",
         prompt=prompt,
         expected=expected,
         tags=tags,
-        setup={"email": _fresh_email()},
+        setup=setup,
     )
 
 
@@ -501,6 +620,27 @@ def _curated_cases() -> list[Case]:
     return cases
 
 
+def _print_load_report(cases: list[Case]) -> None:
+    """Print the full denominator: what runs, how attachments arrive, what is skipped and why.
+
+    A skipped case must never vanish from the count — an accuracy quoted over a
+    silently shrunk denominator is the defect this report exists to prevent.
+    """
+    skipped = [case for case in cases if "skip" in case.tags]
+    uploaded = sum(1 for case in cases if "attachment:uploaded" in case.tags)
+    inlined = sum(1 for case in cases if "attachment:inlined" in case.tags)
+    print(
+        f"[gaia_bench] {len(cases)} real GAIA validation cases: "
+        f"{len(cases) - len(skipped)} runnable, {len(skipped)} skipped. "
+        f"Attachments: {uploaded} uploaded through the product's ingestion path, "
+        f"{inlined} inlined as text by the harness."
+    )
+    for reason, count in Counter(
+        str(case.expected.get("skip_reason")) for case in skipped
+    ).most_common():
+        print(f"[gaia_bench]   skipped x{count}: {reason}")
+
+
 def _interleave_by_level(cases: list[Case]) -> list[Case]:
     """Round-robin across levels so ``--limit N`` yields a stratified sample."""
     buckets: dict[str, list[Case]] = {}
@@ -553,11 +693,22 @@ class DevExecutorTransport:
                 ),
             )
         email = str(case.setup.get("email") or _fresh_email())
+        conversation_id = str(case.setup.get("conversation_id") or uuid.uuid4().hex)
+        attachment = case.setup.get("attachment")
+        if attachment is not None and not isinstance(attachment, AttachmentSpec):
+            raise RuntimeError(
+                f"{case.id}: setup['attachment'] must be an AttachmentSpec, got {type(attachment)}"
+            )
         task = f"{CONTRACT_LINE}\n\n{case.prompt}"
         timeout = httpx.Timeout(600.0, connect=30.0)
+        attachment_record: dict[str, Any] = {"kind": "attachment", "delivery": "none"}
         async with httpx.AsyncClient(timeout=timeout) as client:
             await self._mint_user(client, email)
-            payload = await self._run_executor(client, email, task)
+            if attachment is not None:
+                attachment_record = await self._attach(client, email, conversation_id, attachment)
+            elif "attachment:inlined" in case.tags:
+                attachment_record = {"kind": "attachment", "delivery": "inlined"}
+            payload = await self._run_executor(client, email, task, conversation_id)
         text = self._extract_message(payload)
         if not text:
             return CaseRun(case_id=case.id, error="executor returned an empty message")
@@ -589,6 +740,7 @@ class DevExecutorTransport:
                     "conversation_id": payload.get("conversation_id"),
                     "thread_id": payload.get("thread_id"),
                 },
+                attachment_record,
             ],
         )
 
@@ -599,12 +751,55 @@ class DevExecutorTransport:
                 f"dev users endpoint failed: HTTP {resp.status_code}: {_body_snippet(resp)}"
             )
 
+    async def _attach(
+        self,
+        client: httpx.AsyncClient,
+        email: str,
+        conversation_id: str,
+        attachment: AttachmentSpec,
+    ) -> dict[str, Any]:
+        """Ingest the case's file through the product's upload service.
+
+        Raises on anything but a 201: an attachment that silently failed to
+        ingest would let the agent answer from the question text alone and be
+        scored as if it had read the file.
+        """
+        resp = await client.post(
+            f"{DEV_API_BASE}/api/v1/dev/attachments",
+            data={"email": email, "conversation_id": conversation_id},
+            files={
+                "file": (
+                    attachment.filename,
+                    attachment.path.read_bytes(),
+                    attachment.content_type,
+                )
+            },
+        )
+        if resp.status_code != 201:
+            raise RuntimeError(
+                f"dev attachments endpoint failed for {attachment.filename}: "
+                f"HTTP {resp.status_code}: {_body_snippet(resp)}"
+            )
+        document = resp.json()
+        if not isinstance(document, dict):
+            raise RuntimeError(f"dev attachments returned unexpected JSON: {document!r}")
+        pages = document.get("page_wise_summary")
+        return {
+            "kind": "attachment",
+            "delivery": "uploaded",
+            "filename": attachment.filename,
+            "content_type": attachment.content_type,
+            "file_id": document.get("file_id"),
+            "summary": document.get("description"),
+            "extracted_pages": len(pages) if isinstance(pages, list) else None,
+        }
+
     async def _run_executor(
-        self, client: httpx.AsyncClient, email: str, task: str
+        self, client: httpx.AsyncClient, email: str, task: str, conversation_id: str
     ) -> dict[str, object]:
         resp = await client.post(
             f"{DEV_API_BASE}/api/v1/dev/executor",
-            json={"email": email, "task": task},
+            json={"email": email, "task": task, "conversation_id": conversation_id},
         )
         if resp.status_code != 200:
             raise RuntimeError(
@@ -663,11 +858,7 @@ class GaiaBenchSuite(Suite):
             else:
                 _validate_rows(rows)
                 cases = [_real_case(row, index) for index, row in enumerate(rows)]
-                skipped = sum(1 for case in cases if "skip" in case.tags)
-                print(
-                    f"[gaia_bench] loaded {len(cases)} real GAIA validation cases "
-                    f"({skipped} with unsupported attachments, skipped)"
-                )
+                _print_load_report(cases)
                 self._cases = _interleave_by_level(cases)
                 self._dataset_available = True
         return self._cases
@@ -704,6 +895,13 @@ class GaiaBenchSuite(Suite):
 # ---------------------------------------------------------------------------
 # Self-test: run `python -m scripts.evals.suites.gaia_bench` (no network).
 # ---------------------------------------------------------------------------
+
+
+def _skip_reason_names_the_allowlist(suffix: str) -> bool:
+    """A skipped format must say it is a product limitation, and which one."""
+    delivery = _plan_attachment(f"2023/validation/file{suffix}", f"file{suffix}")
+    reason = delivery.skip_reason or ""
+    return suffix in reason and "upload allowlist" in reason
 
 
 def _run_self_test() -> int:
@@ -761,6 +959,44 @@ def _run_self_test() -> int:
         ),
         ("extract: no marker -> last line", extract_final_answer("Line one\nLine two"), "Line two"),
         ("extract: empty text", extract_final_answer(""), ""),
+        # Attachment routing. Every extension must resolve to exactly one
+        # delivery: a second route for the same format is a second way to do one
+        # thing, and it hides which path a result actually came from.
+        (
+            "attachments: no extension is both uploadable and inlineable",
+            sorted(set(UPLOAD_CONTENT_TYPES) & INLINE_EXTS),
+            [],
+        ),
+        (
+            "attachments: every declared content type is on the shipped allowlist",
+            sorted(set(UPLOAD_CONTENT_TYPES.values()) - ALLOWED_CONTENT_TYPES),
+            [],
+        ),
+        (
+            "attachments: the formats GAIA carries route to the real upload path",
+            sorted(
+                {".xlsx", ".png", ".jpg", ".pdf", ".docx", ".pptx", ".csv", ".txt"}
+                - set(UPLOAD_CONTENT_TYPES)
+            ),
+            [],
+        ),
+        # Unsupported formats are classified before any download, so these need
+        # no network and no HF_TOKEN.
+        (
+            "attachments: .zip is skipped, naming the product limitation",
+            _skip_reason_names_the_allowlist(".zip"),
+            True,
+        ),
+        (
+            "attachments: .mp3 is skipped, naming the product limitation",
+            _skip_reason_names_the_allowlist(".mp3"),
+            True,
+        ),
+        (
+            "attachments: .pdb is skipped, naming the product limitation",
+            _skip_reason_names_the_allowlist(".pdb"),
+            True,
+        ),
     ]
 
     rows = _load_dataset_rows()

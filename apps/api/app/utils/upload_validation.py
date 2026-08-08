@@ -45,6 +45,11 @@ _ALLOWED_TYPES: dict[str, tuple[str, tuple[bytes, ...]]] = {
     ),
 }
 
+# The accepted content types, derived from the allowlist above so a caller that
+# needs to know what an upload may claim (the GAIA-Bench harness picks a content
+# type per attachment extension) cannot drift from what this module enforces.
+ALLOWED_CONTENT_TYPES: frozenset[str] = frozenset(_ALLOWED_TYPES)
+
 # Extensions that must never appear in an uploaded filename, even as a
 # secondary extension. Blocks the `.php.png` polyglot trick.
 _DANGEROUS_EXTENSIONS = frozenset(
