@@ -132,6 +132,12 @@ def main() -> int | None:
 
     sub.add_parser("flaky", help="cases whose verdict changes between runs (free, from journals)")
 
+    sub.add_parser(
+        "sweep",
+        help="find runs still holding errored cases; print the retry plan and exit "
+        "non-zero while any remain (retryable ones name their resume command)",
+    )
+
     sub.add_parser("dashboards", help="create/refresh the Opik dashboards (idempotent)")
 
     verify_p = sub.add_parser(
@@ -229,6 +235,12 @@ def main() -> int | None:
         from .core.flaky import report
 
         print(report(runner.RUNS_DIR))
+    elif args.command == "sweep":
+        from .core.sweep import plan, render
+
+        sweeps = plan(runner.RUNS_DIR)
+        print(render(sweeps))
+        sys.exit(1 if sweeps else 0)
     elif args.command == "verify":
         sys.exit(_verify(cfg, args.suite))
     return None
