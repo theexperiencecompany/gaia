@@ -6,6 +6,7 @@ import argparse
 import asyncio
 from contextlib import suppress
 from importlib import import_module
+import os
 import sys
 
 sys.stdout.reconfigure(line_buffering=True)
@@ -33,7 +34,7 @@ def _load_suites() -> None:
             import_module(f".suites.{_suite_module}", __package__)
 
 
-def main() -> None:
+def main() -> int | None:
     _load_suites()
     parser = argparse.ArgumentParser(prog="evals", description="GAIA eval harness")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -83,10 +84,28 @@ def main() -> None:
         action="store_true",
         help="delete existing case traces first (use when the trace shape changed)",
     )
-    seed_p.add_argument(
-        "--prune",
+
+    ingest_p = sub.add_parser(
+        "ingest", help="delete the gaia-* Opik projects and rebuild them from the journals"
+    )
+    ingest_p.add_argument(
+        "--dry-run",
         action="store_true",
-        help="also collapse duplicate traces (slow: a delete costs ~3.5s on this backend)",
+        help="report what would be deleted and written, then stop without touching Opik",
+    )
+    ingest_p.add_argument(
+        "--pilot",
+        action="store_true",
+        help="ingest smoke first, then a longmemeval slice, verifying between stages",
+    )
+    ingest_p.add_argument(
+        "--skip-teardown",
+        action="store_true",
+        help="rebuild in place without deleting the projects first",
+    )
+
+    sub.add_parser(
+        "ingest-check", help="read every Opik project back and fail if the numbers are impossible"
     )
 
     rescore_p = sub.add_parser(
@@ -119,8 +138,6 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "run" and args.sim:
-        import os
-
         os.environ["GAIA_SIM_MODE"] = "1"
         os.environ.setdefault(
             "OPENROUTER_BASE_URL",
@@ -162,7 +179,23 @@ def main() -> None:
     elif args.command == "seed":
         from .core.seed import seed
 
-        seed(cfg, reset=args.reset, prune=args.prune)
+        seed(cfg, reset=args.reset)
+    elif args.command == "ingest":
+        from .core.ingest import rebuild
+
+        return rebuild(
+            cfg,
+            dry_run=args.dry_run,
+            pilot=args.pilot,
+            skip_teardown=args.skip_teardown,
+        )
+    elif args.command == "ingest-check":
+        from .core.ingest import verify
+        from .core.ingest_check import api_base
+
+        ok, report = verify(api_base(os.environ["OPIK_URL_OVERRIDE"]))
+        print(report)
+        return 0 if ok else 1
     elif args.command == "dashboards":
         from .core.dashboards import build
 
@@ -189,6 +222,7 @@ def main() -> None:
         print(report(runner.RUNS_DIR))
     elif args.command == "verify":
         sys.exit(_verify(cfg, args.suite))
+    return None
 
 
 def _verify(cfg: object, only: str | None) -> int:

@@ -79,35 +79,36 @@ def seed(
     runs_dir: Path = RUNS_DIR,
     *,
     reset: bool = False,
-    prune: bool = False,
+    only_runs: set[str] | None = None,
 ) -> None:
-    """Replay every run journal into Opik.
+    """Replay run journals into Opik. Safe to run repeatedly.
 
-    ``reset`` deletes the existing case traces first, which is what you want
-    when the trace *shape* changed (new spans, new metadata) rather than just
-    its contents — an incremental seed would otherwise skip them as present.
+    Every write is an upsert keyed on the case's identity, so a re-seed refreshes
+    what is already there rather than duplicating or skipping it. ``reset``
+    additionally deletes a project's existing case traces first, which is only
+    needed to evict traces whose source journal is gone.
 
-    ``prune`` collapses duplicate traces. It is opt-in because a delete costs
-    ~3.5s on this backend, so pruning a few dozen duplicates takes minutes and
-    would otherwise block the writes that actually matter. A leftover duplicate
-    is cosmetic; a missing project is not.
+    ``only_runs`` limits the backfill to named run ids — the pilot path, where
+    one small suite is ingested and checked before the rest follows.
     """
     prices = price_book(cfg)
-    grouped = _group_runs_by_project(runs_dir)
+    grouped = _group_runs_by_project(runs_dir, only_runs)
     if not grouped:
         print(f"[seed] no runs with a registered suite under {runs_dir}")
         return
     try:
         for project in sorted(grouped):
             try:
-                _seed_project(project, grouped[project], prices, reset=reset, prune=prune)
+                _seed_project(project, grouped[project], prices, reset=reset)
             except Exception as e:
                 print(f"[seed] {project} aborted: {type(e).__name__}: {e}")
     finally:
         opiksink.close_clients()
 
 
-def _group_runs_by_project(runs_dir: Path) -> dict[str, list[str]]:
+def _group_runs_by_project(
+    runs_dir: Path, only_runs: set[str] | None = None
+) -> dict[str, list[str]]:
     """Run ids per Opik project, resolved through the suite registry.
 
     The registry holds the suite classes, so the project name comes from the
@@ -117,6 +118,8 @@ def _group_runs_by_project(runs_dir: Path) -> dict[str, list[str]]:
     for run_dir in sorted(runs_dir.iterdir()):
         meta_file = run_dir / "run.json"
         if not run_dir.is_dir() or not meta_file.exists():
+            continue
+        if only_runs is not None and run_dir.name not in only_runs:
             continue
         suite_name = json.loads(meta_file.read_text()).get("suite", "")
         suite = SUITE_REGISTRY.get(suite_name)
@@ -133,44 +136,43 @@ def _seed_project(
     prices: PriceBook,
     *,
     reset: bool = False,
-    prune: bool = False,
 ) -> None:
+    """Write every seedable record of every run. Always writes, never queries.
+
+    Idempotency comes from the trace id being derived from the case's identity
+    (:func:`opiksink.trace_id_for`), so re-writing a case updates its row instead
+    of adding one. The previous design asked Opik what already existed and
+    skipped those — which duplicated any trace whose first write had not yet
+    become queryable, and could never refresh a trace whose contents had changed.
+    Writing unconditionally is both simpler and more correct.
+    """
     _apply_description(project)
     if reset:
         purged = opiksink.purge_case_traces(project)
         print(f"[seed] {project}: purged {purged} existing case traces")
-    existing = opiksink.existing_trace_keys(project)
-    pruned = _prune_duplicates(project, existing) if prune else 0
 
-    written = repaired = skipped = failed = 0
+    written = failed = 0
     for run_id in run_ids:
-        for record in RunJournal(RUNS_DIR, run_id).records():
+        journal = RunJournal(RUNS_DIR, run_id)
+        meta = journal.load_meta()
+        for record in journal.records():
             if record.get("status") not in SEEDABLE_STATUSES:
                 continue
-            trace = CaseTrace.from_record(run_id, record, prices)
-            present = existing.get(trace.key)
+            trace = CaseTrace.from_record(
+                run_id,
+                record,
+                prices,
+                suite=meta.suite if meta else "",
+                app_version=meta.app_version if meta else "",
+            )
             try:
-                if not present:
-                    opiksink.log_case_trace(project, trace)
-                    written += 1
-                elif not present[0].has_span:
-                    opiksink.repair_case_trace(project, present[0].id, trace)
-                    repaired += 1
-                else:
-                    skipped += 1
-                    continue
+                opiksink.log_case_trace(project, trace)
+                written += 1
             except Exception as e:
                 failed += 1
                 print(f"[seed] {project}/{run_id}/{trace.case_id}: {type(e).__name__}: {e}")
-                continue
-            # Mark as complete so a case repeated within one journal is written once.
-            existing[trace.key] = [opiksink.ExistingTrace(id="", has_span=True)]
     opiksink.flush(project)
-    print(
-        f"[seed] {project:<18} runs={len(run_ids):<3} +{written} new · {repaired} repaired · "
-        f"{skipped} complete · {pruned} duplicates pruned · {failed} failed"
-        f"{'' if prune else ' (pruning off)'}"
-    )
+    print(f"[seed] {project:<18} runs={len(run_ids):<3} {written} written · {failed} failed")
 
 
 MAX_DESCRIPTION = 255

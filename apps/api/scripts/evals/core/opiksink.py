@@ -12,11 +12,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
+import hashlib
 import json
 from pathlib import Path
+import uuid
 
 from dotenv import load_dotenv
 import opik
+from opik import id_helpers
 
 from .journal import RunJournal
 from .types import Case, CaseTrace
@@ -45,6 +49,44 @@ def load_opik_env(path: Path = ENV_OPIK) -> None:
     so pointing a run at a different Opik instance from the shell still works.
     """
     load_dotenv(path, override=False)
+
+
+def trace_id_for(project: str, case: CaseTrace) -> str:
+    """The trace id a case owns in a project — same identity, same id, always.
+
+    Seeding used to be idempotent by *lookup*: read every existing trace, skip
+    the ones already present. That loses a race it cannot see. Opik buffers
+    writes on a background sender, so a trace written by the live run at 05:23
+    is not queryable for some seconds after; a seed that snapshots existing keys
+    before then finds nothing and writes a second copy. That is exactly what the
+    duplicates look like on inspection — one complete trace with its llm span,
+    and a span-less twin created ~3 minutes later.
+
+    Deriving the id from the identity removes the race instead of narrowing it:
+    re-writing the same case becomes an upsert (verified against this backend —
+    two writes of one id leave one trace, last write wins), so a re-seed is
+    idempotent whether or not the first write has landed yet.
+
+    Opik requires a UUIDv7, whose leading 48 bits are a millisecond timestamp,
+    so the case's own start time supplies those and the hash supplies the rest.
+    """
+    return _stable_uuid7(f"trace|{project}|{case.key}", case.started_at)
+
+
+def span_id_for(project: str, case: CaseTrace) -> str:
+    """The llm span's id, stable for the same reason its trace's id is.
+
+    Without this a re-write upserts the trace but appends a second span, so the
+    cost and tokens the span carries would be counted twice.
+    """
+    return _stable_uuid7(f"span|{project}|{case.key}", case.started_at)
+
+
+def _stable_uuid7(key: str, when: datetime) -> str:
+    digest = bytearray(hashlib.blake2b(key.encode(), digest_size=16).digest())
+    digest[6] = 0x40 | (digest[6] & 0x0F)  # claim version 4 for uuid4_to_uuid7
+    digest[8] = 0x80 | (digest[8] & 0x3F)  # RFC 4122 variant
+    return str(id_helpers.uuid4_to_uuid7(when, str(uuid.UUID(bytes=bytes(digest)))))
 
 
 _CLIENTS: dict[str, opik.Opik] = {}
@@ -136,6 +178,7 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
     and TOKEN_USAGE metrics, and every cost widget reading zero.
     """
     trace = client(project).trace(
+        id=trace_id_for(project, case),
         name=case.name,
         start_time=case.started_at,
         end_time=case.ended_at,
@@ -146,6 +189,7 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
         error_info=case.error_info,
     )
     trace.span(
+        id=span_id_for(project, case),
         name=f"{case.provider}:{case.model}",
         type="llm",
         start_time=case.started_at,
@@ -217,7 +261,7 @@ def existing_trace_keys(project: str) -> dict[tuple[str, str], list[ExistingTrac
         # backfill here — which is exactly how three projects ended up empty.
         if not (trace.name or "").startswith("case-"):
             continue
-        run_id = str((trace.metadata or {}).get("run", ""))
+        run_id = str((trace.metadata or {}).get("run_id", ""))
         keys.setdefault((trace.name, run_id), []).append(
             ExistingTrace(id=trace.id, has_span=bool(trace.span_count))
         )

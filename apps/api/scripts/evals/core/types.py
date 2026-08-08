@@ -83,6 +83,9 @@ class CaseTrace:
     status: str
     provider: str
     model: str
+    category: str = ""
+    suite: str = ""
+    app_version: str = ""
     scores: dict[str, float] = field(default_factory=dict)
     duration_s: float = 0.0
     tokens_in: int = 0
@@ -109,10 +112,24 @@ class CaseTrace:
     @property
     def metadata(self) -> dict[str, Any]:
         return {
-            "run": self.run_id,
+            # Named run_id, not run: this is the key every consumer reaches for,
+            # and an audit that looked for "run_id" concluded no trace carried a
+            # run at all — the data was there under a name nobody guessed.
+            "run_id": self.run_id,
+            # Without these three a trace cannot be attributed to a suite, a
+            # build, or a case without joining back to the journal by hand. That
+            # is what made a corrupt run impossible to exclude from a total.
+            "suite": self.suite,
+            "app_version": self.app_version,
+            "case_id": self.case_id,
             "provider": self.provider,
             "model": self.model,
             "status": self.status,
+            # The dimension every dashboard breaks accuracy down by. A suite's
+            # aggregate pass rate hides which capability is broken, and Opik can
+            # only group by a key the trace actually carries — so a case's
+            # category has to travel with it, not stay behind in the journal.
+            "category": self.category,
             "ticket": self.ticket,
             "duration_s": round(self.duration_s, 2),
             "tokens": self.tokens_in + self.tokens_out,
@@ -158,11 +175,21 @@ class CaseTrace:
         }
 
     @classmethod
-    def from_record(cls, run_id: str, record: dict[str, Any], prices: PriceBook) -> CaseTrace:
+    def from_record(
+        cls,
+        run_id: str,
+        record: dict[str, Any],
+        prices: PriceBook,
+        suite: str = "",
+        app_version: str = "",
+    ) -> CaseTrace:
         tokens = record.get("tokens") or {}
         tokens_in = int(tokens.get("input", 0))
         tokens_out = int(tokens.get("output", 0))
         price = prices.get(record.get("provider", ""), _NO_PRICE)
+        # Older journals carry the category only inside the case's expectations;
+        # newer ones lift it to the top level. Both are the same declaration.
+        expected = record.get("expected") or {}
         return cls(
             run_id=run_id,
             case_id=record["case_id"],
@@ -172,6 +199,9 @@ class CaseTrace:
             status=record.get("status", "?"),
             provider=record.get("provider", "?"),
             model=record.get("model", "?"),
+            category=str(record.get("category") or expected.get("category") or "uncategorised"),
+            suite=suite,
+            app_version=app_version,
             scores=record.get("scores") or {},
             duration_s=float(record.get("duration_s") or 0.0),
             tokens_in=tokens_in,
