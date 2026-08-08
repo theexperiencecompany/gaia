@@ -161,7 +161,7 @@ def finalize(
     from opik.evaluation import evaluate
 
     opik_client = client(project)
-    dataset = opik_client.get_or_create_dataset(name=f"{project}-cases", project_name=project)
+    dataset = _dataset_for(opik_client, f"{project}-cases", project)
     dataset.insert(
         [
             {
@@ -186,6 +186,49 @@ def finalize(
     )
     journal.update_meta(experiment_name=experiment_name)
     return result
+
+
+def _dataset_for(opik_client: opik.Opik, name: str, project: str) -> opik.Dataset:
+    """Fetch or create the run's dataset, without the project-scoped deadlock.
+
+    ``get_or_create_dataset`` looks the dataset up *within a project* but dataset
+    names are unique per workspace. Deleting a project therefore orphans its
+    dataset: the project-scoped get 404s, the create then 409s on the name that
+    still exists, and every subsequent finalize fails forever. That is exactly
+    what happened after the first purge.
+
+    Looking it up by name — its real identity — resolves the orphan. The create
+    is still guarded, because two runs finalizing at once would otherwise race.
+    """
+    try:
+        return opik_client.get_dataset(name)
+    except ApiError as e:
+        if e.status_code != HTTPStatus.NOT_FOUND:
+            raise
+    try:
+        return opik_client.create_dataset(name, project_name=project)
+    except ApiError as e:
+        if e.status_code != HTTPStatus.CONFLICT:
+            raise
+        return opik_client.get_dataset(name)
+
+
+def delete_datasets(names: list[str]) -> list[str]:
+    """Remove datasets by name, ignoring the ones that are already gone.
+
+    Teardown deletes projects; datasets live beside them in the workspace and
+    would otherwise survive as orphans that no project-scoped lookup can find.
+    """
+    opik_client = client("default")
+    gone: list[str] = []
+    for name in names:
+        try:
+            opik_client.delete_dataset(name)
+            gone.append(name)
+        except ApiError as e:
+            if e.status_code != HTTPStatus.NOT_FOUND:
+                raise
+    return gone
 
 
 def log_case_trace(project: str, case: CaseTrace) -> None:

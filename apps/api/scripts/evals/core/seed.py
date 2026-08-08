@@ -42,6 +42,20 @@ UNMETERED_LEGACY_SUITES = frozenset(
     {"capability", "memory", "longmemeval", "regression", "gaia_bench", "hil", "smoke"}
 )
 
+#: Suites whose pre-fix journals ARE trustworthy for tokens: they read the usage
+#: the provider reported, per case, off the API's response frames. Instrumenting
+#: the live API settled it — usage arrives once per turn and is per-turn, not
+#: cumulative, so summing across turns is correct. Their large numbers are real
+#: spend rather than a counting bug, and dropping them would throw away the only
+#: sound cost data we have.
+METERED_LEGACY_SUITES = frozenset({"quality", "comms", "safety"})
+
+#: What "this record was never actually measured" looks like. Mirrors the bound
+#: :mod:`.ingest_check` publishes on, so the seeder and the checker cannot
+#: disagree about which records count as unmeasured.
+UNMEASURED_BELOW_TOKENS = 500
+UNMEASURED_BELOW_SECONDS = 2.0
+
 # Descriptions belong to the Opik project rather than to a suite, because a
 # project can be fed by more than one suite (regression writes into capability).
 PROJECT_DESCRIPTIONS: dict[str, str] = {
@@ -205,7 +219,22 @@ def _with_resolved_token_source(record: dict[str, Any], suite: str) -> dict[str,
     tokens = record.get("tokens") or {}
     if tokens.get("source"):
         return record
-    resolved = "unmetered" if suite in UNMETERED_LEGACY_SUITES else "unknown"
+    if suite in METERED_LEGACY_SUITES:
+        # The suite list says the MECHANISM is trustworthy; it cannot say that
+        # every record actually got a reading. Quality's runs split cleanly on
+        # the day the usage-frame wiring landed — every run before it recorded
+        # ~20 tokens for cases that worked for 6-21 seconds, every run after it
+        # measured properly. A record with no measurement is `none` whatever its
+        # suite, so the two rules compose instead of one overriding the other.
+        measured = int(tokens.get("input", 0)) + int(tokens.get("output", 0))
+        worked = float(record.get("duration_s") or 0) >= UNMEASURED_BELOW_SECONDS
+        resolved = "none" if worked and measured < UNMEASURED_BELOW_TOKENS else "metered"
+    elif suite in UNMETERED_LEGACY_SUITES:
+        resolved = "unmetered"
+    else:
+        # A suite nobody has adjudicated. Untrusted by default: a new suite
+        # silently inheriting "believe its numbers" is how this started.
+        resolved = "unknown"
     return {**record, "tokens": {**tokens, "source": resolved}}
 
 

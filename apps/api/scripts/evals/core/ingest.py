@@ -126,6 +126,11 @@ def teardown(base_url: str, *, dry_run: bool) -> list[str]:
         client.rest_client.projects.delete_projects_batch(ids=ids)
     for name in names:
         print(f"[ingest] deleted project {name}")
+    # Datasets are workspace-level, so deleting the projects leaves them behind
+    # as orphans that no project-scoped lookup can find — which deadlocked every
+    # later finalize on a 404-then-409.
+    dropped = opiksink.delete_datasets([f"{name}-cases" for name in names])
+    print(f"[ingest] deleted {len(dropped)} orphaned dataset(s)")
     return names
 
 
@@ -157,7 +162,7 @@ def verify(
             facts, expectations.get(facts.name), unversioned.get(facts.name, 0)
         )
     ]
-    return not findings, ingest_check.render(all_facts, findings)
+    return not findings, ingest_check.render(all_facts, findings, unversioned)
 
 
 def _stage(

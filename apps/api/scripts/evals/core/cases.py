@@ -18,12 +18,20 @@ from pathlib import Path
 
 import yaml
 
+from .gates import ExtraGates
 from .scorers import validate_tool_expectations
 from .types import Case
 
 
-def load_case_files(data_dir: Path, suite: str) -> list[Case]:
-    """Every case defined under ``data_dir``, validated and id-unique."""
+def load_case_files(
+    data_dir: Path, suite: str, extra_gates: ExtraGates | None = None
+) -> list[Case]:
+    """Every case defined under ``data_dir``, validated and id-unique.
+
+    ``extra_gates`` names the gates the calling suite implements beyond the
+    shared set, so a gate name nothing can score dies here rather than being
+    read back as 0.0 at verdict time and reported as an agent failure.
+    """
     cases: list[Case] = []
     seen: dict[str, str] = {}
     for path in sorted(data_dir.glob("*.yaml")):
@@ -47,16 +55,16 @@ def load_case_files(data_dir: Path, suite: str) -> list[Case]:
             setup = row.get("setup") or {}
             if not isinstance(setup, dict):
                 raise ValueError(f"{suite} case {case_id}: 'setup' must be a mapping")
-            cases.append(
-                Case(
-                    id=case_id,
-                    ticket=str(row.get("ticket") or ""),
-                    prompt=str(row.get("prompt") or ""),
-                    expected=expected,
-                    tags=[str(tag) for tag in (row.get("tags") or [])],
-                    setup=setup,
-                )
+            case = Case(
+                id=case_id,
+                ticket=str(row.get("ticket") or ""),
+                prompt=str(row.get("prompt") or ""),
+                expected=expected,
+                tags=[str(tag) for tag in (row.get("tags") or [])],
+                setup=setup,
             )
+            validate_gates(suite, case.id, case.gates, extra_gates)
+            cases.append(case)
     if not cases:
         raise ValueError(f"{suite}: no cases found in {data_dir}")
     return cases

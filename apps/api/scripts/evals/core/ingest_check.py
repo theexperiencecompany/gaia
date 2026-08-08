@@ -34,8 +34,6 @@ from .seed import SEEDABLE_STATUSES
 #: One case is one agent run. Even a long multi-turn LongMemEval case with a
 #: haystack of sessions lands in the low hundreds of thousands; past this the
 #: number is not a big case, it is an accumulator that was never reset.
-MAX_TOKENS_PER_TRACE = 400_000
-
 #: The bound nobody had. Every check here originally looked only for numbers too
 #: LARGE, which is why two suites reporting medians of 56 and 16 tokens per case
 #: went unnoticed for months: a case cannot run an agent, with a system prompt,
@@ -43,6 +41,14 @@ MAX_TOKENS_PER_TRACE = 400_000
 #: is much easier to miss, because an implausibly cheap number looks like good
 #: news. Only applied to cases that actually worked (see MIN_WORKING_SECONDS) so
 #: an instant refusal or a cache hit is not flagged.
+#:
+#: There is deliberately no upper bound. One was tried at 400k and it was
+#: measuring the wrong thing: instrumenting the live API showed a trivial
+#: one-word exchange costs ~22.7k input tokens per turn on this stack (system
+#: prompt plus tool schemas dominate), and a real capability case has a median of
+#: 131k with legitimate cases reaching 9.6M. Size never separated corrupt from
+#: expensive — an honest run just is expensive. ``tokens_source`` is the
+#: discriminator, and a cap would only have flagged honest data.
 MIN_TOKENS_PER_WORKING_TRACE = 500
 MIN_WORKING_SECONDS = 2.0
 
@@ -105,10 +111,19 @@ REQUIRED_METADATA = ("run_id", "suite", "app_version", "case_id")
 
 #: Keys the journal may genuinely not know. ``app_version`` was added after most
 #: of these runs were recorded, so a trace from an older journal cannot carry it
-#: and no amount of re-ingesting will conjure one. Absence is only a fault when
-#: the journal HAS the value and we failed to propagate it — which is what
-#: :func:`journal_missing_app_version` measures. Failing on the rest would make
-#: this check permanently red, and a check that cannot pass gets switched off.
+#: and no amount of re-ingesting will conjure one.
+#:
+#: Handled the way :mod:`.flaky` handles the identical problem: unstamped runs
+#: are POOLED APART rather than tolerated. There, outcomes from runs with no
+#: version go in their own bucket so they can neither manufacture a flake nor be
+#: credited to a fix; here, traces from unstamped runs are counted and reported
+#: as their own category so they can never be mistaken for stamped ones. In both
+#: cases the unstamped data stays visible and stays out of the comparison.
+#:
+#: Absence is a FAILURE only when the run's own journal HAS the value and it did
+#: not reach the trace — that is a propagation defect, and it is the case this
+#: check exists to catch. Failing on the rest would make the check permanently
+#: red, and a check that cannot pass gets switched off.
 BEST_EFFORT_METADATA = frozenset({"app_version"})
 
 #: Trace names Opik itself writes. ``evaluate()`` opens one ``evaluation_task``
@@ -232,9 +247,16 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
         if source != TRUSTED_TOKEN_SOURCE:
             facts.untrusted_cost_usd += cost
         worked = float(str(metadata.get("duration_s") or 0) or 0) >= MIN_WORKING_SECONDS
-        # Only meaningful for metered traces: an unmetered one reports zero
-        # because we withheld it, which is the intended state, not a fault.
-        if source == TRUSTED_TOKEN_SOURCE and worked and tokens < MIN_TOKENS_PER_WORKING_TRACE:
+        # Only meaningful for a metered trace that actually produced an answer.
+        # An unmetered one reports zero because we withheld it, and an errored
+        # one because the case never got far enough to spend anything — neither
+        # is a fault, and flagging them buries the cases that are.
+        if (
+            source == TRUSTED_TOKEN_SOURCE
+            and worked
+            and not trace.get("error_info")
+            and tokens < MIN_TOKENS_PER_WORKING_TRACE
+        ):
             facts.starved_traces += 1
     facts.token_sources = dict(sources)
     facts.duplicate_keys = sum(n - 1 for n in keys.values() if n > 1)
@@ -331,22 +353,23 @@ def check(
             )
         )
     for key, count in sorted(facts.missing_metadata.items()):
-        unexplained = count - unversioned_cases if key in BEST_EFFORT_METADATA else count
-        if unexplained <= 0:
-            continue
-        detail = f"{unexplained} case traces carry no {key!r}"
-        if key in BEST_EFFORT_METADATA and unversioned_cases:
-            detail += f" beyond the {unversioned_cases} whose journal records none either"
-        found.append(Finding(facts.name, "missing metadata", detail))
-    if facts.max_trace_tokens > MAX_TOKENS_PER_TRACE:
-        found.append(
-            Finding(
-                facts.name,
-                "implausible tokens",
-                f"one trace reports {facts.max_trace_tokens:,} tokens "
-                f"(cap {MAX_TOKENS_PER_TRACE:,}) — that is an accumulator, not a case",
+        if key not in BEST_EFFORT_METADATA:
+            found.append(
+                Finding(facts.name, "missing metadata", f"{count} case traces carry no {key!r}")
             )
-        )
+            continue
+        # Only the excess over what the journals themselves cannot supply is a
+        # defect; the rest is reported as `unstamped` in the table, not hidden.
+        unexplained = count - unversioned_cases
+        if unexplained > 0:
+            found.append(
+                Finding(
+                    facts.name,
+                    "metadata not propagated",
+                    f"{unexplained} case traces carry no {key!r} even though their run.json "
+                    f"records one — the value exists and did not reach the trace",
+                )
+            )
     if facts.starved_traces:
         found.append(
             Finding(
@@ -398,31 +421,46 @@ def check(
     return found
 
 
-def render(all_facts: list[ProjectFacts], findings: list[Finding]) -> str:
+def render(
+    all_facts: list[ProjectFacts],
+    findings: list[Finding],
+    unversioned: dict[str, int] | None = None,
+) -> str:
     lines = [
         "",
         "=" * 96,
         "OPIK INGESTION CHECK  (read back from the live backend, not from our writer)",
         "=" * 96,
-        f"{'project':<20}{'traces':>8}{'cases':>8}{'stray':>8}{'w/cost':>8}"
+        f"{'project':<20}{'traces':>8}{'cases':>8}{'stray':>8}{'unstampd':>9}{'w/cost':>8}"
         f"{'cost $':>10}{'tokens':>14}{'tok/case':>10}{'errors':>8}",
     ]
+    unversioned = unversioned or {}
     for facts in all_facts:
         lines.append(
             f"{facts.name[:19]:<20}{facts.traces:>8}{facts.case_traces:>8}"
-            f"{facts.non_case_traces:>8}{facts.traces_with_cost:>8}"
+            f"{facts.non_case_traces:>8}{unversioned.get(facts.name, 0):>9}"
+            f"{facts.traces_with_cost:>8}"
             f"{facts.total_cost_usd:>10.3f}{facts.total_tokens:>14,}"
             f"{facts.tokens_per_trace:>10,.0f}{facts.errors:>8}"
         )
     lines.append("-" * 96)
+    total_unstamped = sum(unversioned.get(f.name, 0) for f in all_facts)
     lines.append(
         f"{'TOTAL':<20}{sum(f.traces for f in all_facts):>8}"
         f"{sum(f.case_traces for f in all_facts):>8}"
         f"{sum(f.non_case_traces for f in all_facts):>8}"
+        f"{total_unstamped:>9}"
         f"{sum(f.traces_with_cost for f in all_facts):>8}"
         f"{sum(f.total_cost_usd for f in all_facts):>10.3f}"
         f"{sum(f.total_tokens for f in all_facts):>14,}"
     )
+    if total_unstamped:
+        lines.append(
+            f"\n  unstampd = {total_unstamped} traces from runs recorded before app-version "
+            f"stamping existed.\n  Their journals carry no version, so none can be invented. "
+            f"Counted apart rather than\n  accepted silently, the same way core/flaky.py pools "
+            f"unstamped runs — they will\n  disappear as those suites are re-run."
+        )
     if findings:
         lines += ["", f"FAILED — {len(findings)} finding(s); these numbers must not be published:"]
         lines += [str(f) for f in findings]
