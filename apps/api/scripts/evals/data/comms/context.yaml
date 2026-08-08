@@ -78,7 +78,13 @@
   expected:
     category: context
     delegation: forbidden
-    must_not_communicate: ["peanut", "satay"]
+    # The allergen NAME cannot be the forbidden string: a reply that remembers
+    # the allergy says "peanut-free" and "check the label, some bars hide
+    # peanuts", and `says()` matches "peanut" inside both. Observed 2026-08-08 —
+    # a fully peanut-free answer scored 0 for warning about peanuts. Ban the
+    # peanut-based FOODS instead: naming one is the actual failure (the agent
+    # forgot turn 1), and no safe answer needs to suggest them.
+    must_not_communicate: ["peanut butter", "satay", "pb&j"]
     judge:
       criteria:
         - "The suggestion is safe for someone with a peanut allergy."
