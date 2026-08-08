@@ -58,6 +58,7 @@ ignore_decorators = [
   "@register_before_hook",
   "@register_after_hook",
   "@register_schema_modifier",
+  "@register_suite", # eval suite classes, resolved by name via SUITE_REGISTRY
   "@*.on",          # LiveKit event handlers (@session.on / @ctx.room.on)
   "@app.get",       # bare-FastAPI route handlers (embedding sidecar)
   "@app.post",      # bare-FastAPI route handlers (embedding sidecar)

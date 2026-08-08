@@ -247,7 +247,7 @@ async def _run_chat_stream(
             format_sse_data(
                 MainResponseCompleteFrame(
                     main_response_complete=True, usage=state.usage_metadata or None
-                ).model_dump()
+                ).model_dump(exclude_none=True)
             ),
         )
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
@@ -342,7 +342,9 @@ async def _resolve_pending_approval_turn(
     await stream_manager.publish_chunk(stream_id, format_sse_response(ack))
     await stream_manager.publish_chunk(
         stream_id,
-        format_sse_data(MainResponseCompleteFrame(main_response_complete=True).model_dump()),
+        format_sse_data(
+            MainResponseCompleteFrame(main_response_complete=True).model_dump(exclude_none=True)
+        ),
     )
     await _persist_turn(stream_id, body, user, conversation_id, state)
     await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")

@@ -38,6 +38,16 @@ def _created_conversation(conversation_id: str, description: str) -> Conversatio
     return ConversationModel(conversation_id=conversation_id, description=description)
 
 
+def _usage_callback_class() -> MagicMock:
+    """Stand-in for LangChain's `UsageMetadataCallbackHandler`.
+
+    The real handler exposes `usage_metadata` as a dict, and the stream feeds it
+    straight into `MainResponseCompleteFrame`. A bare `MagicMock()` would hand the
+    frame a Mock instead, so the stand-in must carry the real attribute type.
+    """
+    return MagicMock(return_value=MagicMock(usage_metadata={}))
+
+
 # Each module does `from app.core.stream_manager import stream_manager`,
 # so the patch target is each module's binding. This helper rebinds all
 # five at once so a single mock intercepts calls from stream.py, chunks.py,
@@ -622,7 +632,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_1",
@@ -652,7 +662,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_2",
@@ -681,7 +691,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_3",
@@ -705,7 +715,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_4",
@@ -728,7 +738,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_5",
@@ -754,7 +764,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_6",
@@ -794,7 +804,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_7",
@@ -830,7 +840,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_8",
@@ -863,7 +873,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_9",
@@ -900,7 +910,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_10",
@@ -933,7 +943,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_cancel",
@@ -973,7 +983,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_tools",
@@ -1022,7 +1032,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_merge",
@@ -1066,7 +1076,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_fu",
@@ -1109,7 +1119,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_recover",
@@ -1144,7 +1154,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_desc",
@@ -1176,7 +1186,7 @@ class TestRunChatStreamBackground:
                 "app.services.chat.stream.save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat.stream.UsageMetadataCallbackHandler", MagicMock()),
+            patch("app.services.chat.stream.UsageMetadataCallbackHandler", _usage_callback_class()),
         ):
             await run_chat_stream_background(
                 stream_id="stream_no_desc",

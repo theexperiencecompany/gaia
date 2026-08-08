@@ -197,8 +197,16 @@ run_knip() {
     return
   fi
 
-  local raw_output
-  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>&1) || true
+  # Findings go to stdout; warnings (node's DEP0205, for one) go to stderr.
+  # Folding stderr into the findings buffer made a clean run look dirty, because
+  # the emptiness check below is the clean signal — so stderr stays out of it.
+  local raw_output stderr_file
+  stderr_file=$(mktemp)
+  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>"$stderr_file") || true
+  if [[ -s "$stderr_file" ]]; then
+    echo -e "  ${DIM}$(cat "$stderr_file")${RESET}"
+  fi
+  rm -f "$stderr_file"
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"
