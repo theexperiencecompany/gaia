@@ -522,6 +522,17 @@ def _emoji_discipline_check(run: CaseRun) -> tuple[float, str]:
     return 1.0, "no emoji before the user's first"
 
 
+class OpenUIPolicyError(ValueError):
+    """A case's ``openui_policy`` cannot be resolved against the shipped prompt.
+
+    Its own error type so the case-id prefix is only ever attached to failures
+    that really are the case's fault. Catching bare ``ValueError`` here meant a
+    pydantic ``ValidationError`` — which IS a ValueError — got relabelled as a
+    broken case, so a missing env var read as "quality-openui-…: 1 validation
+    error for DevelopmentSettings".
+    """
+
+
 #: Directions a case can take on the OpenUI surface policy, via
 #: ``expected.openui_policy``, each mapped to the shipped prompt clauses that
 #: decide it.
@@ -562,7 +573,7 @@ def openui_policy_criteria(direction: str) -> list[str]:
     """
     refs = OPENUI_POLICY_CONTRACTS.get(direction)
     if refs is None:
-        raise ValueError(
+        raise OpenUIPolicyError(
             f"unknown openui_policy {direction!r}; expected one of {OPENUI_POLICY_DIRECTIONS}"
         )
     return contract_criteria(list(refs))
@@ -583,8 +594,13 @@ def _apply_openui_policy_criteria(case_id: str, expected: TurnPayload) -> None:
         derived = openui_policy_criteria(str(direction))
     except ClauseResolutionError as e:
         raise ClauseResolutionError(f"{case_id}: {e}") from e
-    except ValueError as e:
-        raise ValueError(f"{case_id}: {e}") from e
+    except OpenUIPolicyError as e:
+        # Deliberately narrow. This used to catch ValueError, and pydantic's
+        # ValidationError is a ValueError — so a misconfigured environment
+        # (E2B_DOMAIN injected empty) surfaced as "quality-openui-...: 1
+        # validation error for DevelopmentSettings", blaming a case for the
+        # machine's config. A config failure must propagate as itself.
+        raise OpenUIPolicyError(f"{case_id}: {e}") from e
     judge = expected.setdefault("judge", {})
     judge["criteria"] = list(judge.get("criteria") or []) + derived
 

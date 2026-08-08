@@ -245,6 +245,7 @@ def _verify(cfg: object, only: str | None) -> int:
 
     names = [only] if only else sorted(SUITE_REGISTRY)
     verdicts = []
+    unloadable: list[str] = []
     for name in names:
         factory = SUITE_REGISTRY.get(name)
         if factory is None:
@@ -254,14 +255,50 @@ def _verify(cfg: object, only: str | None) -> int:
         try:
             cases = suite.load_cases(cfg)
         except Exception as e:
-            print(f"[verify] {name}: could not load cases: {type(e).__name__}: {e}")
+            unloadable.append(name)
+            print(f"[verify] {name}: DID NOT LOAD — {_load_failure(e)}")
             continue
         verdicts.extend(check_suite(suite, cases))
         print(f"[verify] {name:<14} {len(cases):>4} cases")
 
     print(format_report(verdicts))
+    if unloadable:
+        # A suite that never loaded contributes zero cases, and zero cases look
+        # exactly like zero defects: this used to print an all-clear and exit 0.
+        # The checker's whole job is telling people their work is sound, so it
+        # must never report green on suites it did not actually check.
+        print(
+            f"\n!! {len(unloadable)} suite(s) NOT CHECKED: {', '.join(unloadable)}\n"
+            f"!! Their cases are absent from every number above."
+        )
     counts = summary_counts(verdicts)
-    return 1 if counts["broken"] or counts["errored"] or counts["inert"] else 0
+    return 1 if unloadable or counts["broken"] or counts["errored"] or counts["inert"] else 0
+
+
+def _load_failure(error: Exception) -> str:
+    """Say whether the run is misconfigured or the cases are broken.
+
+    A settings failure reported as "could not load cases" sends the reader
+    hunting through YAML for an hour. Pydantic raises ``ValidationError`` for a
+    bad env var, and it may arrive wrapped, so the whole cause chain is checked.
+    """
+    from pydantic import ValidationError
+
+    chain: list[BaseException] = []
+    current: BaseException | None = error
+    while current is not None and current not in chain:
+        chain.append(current)
+        current = current.__cause__ or current.__context__
+    config_error = next((e for e in chain if isinstance(e, ValidationError)), None)
+    if config_error is not None:
+        fields = ", ".join(str(d.get("loc", ("?",))[0]) for d in config_error.errors())
+        return (
+            f"CONFIGURATION ERROR, not a case defect: {fields} failed validation. "
+            f"This is your environment (Infisical injects some keys empty). "
+            f"Set it and re-run, e.g. E2B_DOMAIN=e2b.dev uv run ...\n"
+            f"           {config_error}"
+        )
+    return f"{type(error).__name__}: {error}"
 
 
 if __name__ == "__main__":
