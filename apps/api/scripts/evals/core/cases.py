@@ -18,6 +18,7 @@ from pathlib import Path
 
 import yaml
 
+from .scorers import validate_tool_expectations
 from .types import Case
 
 
@@ -33,6 +34,7 @@ def load_case_files(data_dir: Path, suite: str) -> list[Case]:
             if not isinstance(row, dict):
                 raise ValueError(f"{suite} data {path.name}: case is not a mapping")
             case_id = str(row["id"])
+            validate_tool_expectations(case_id, row.get("expected") or {})
             if case_id in seen:
                 raise ValueError(
                     f"{suite}: duplicate case id {case_id!r} in {path.name} "

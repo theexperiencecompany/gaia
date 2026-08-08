@@ -54,6 +54,7 @@ import yaml
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.scorers import validate_tool_expectations
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "capability"
@@ -1214,6 +1215,7 @@ class CapabilitySuite(Suite):
             for raw in raw_cases:
                 if not isinstance(raw, dict):
                     raise RuntimeError(f"capability data {path.name}: case is not a mapping")
+                validate_tool_expectations(str(raw["id"]), raw.get("expected") or {})
                 cases.append(
                     Case(
                         id=str(raw["id"]),

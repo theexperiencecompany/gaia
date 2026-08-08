@@ -91,6 +91,25 @@ def _arg_matches(actual: object, wanted: object) -> bool:
     return str(actual).strip().lower() == str(wanted).strip().lower()
 
 
+def validate_tool_expectations(case_id: str, expected: dict[str, object]) -> None:
+    """Reject a tool expectation that no behaviour can fail.
+
+    ``min_calls: 0`` reads like "optional" but means "at least zero calls",
+    which every possible run satisfies — a gate that is green before the agent
+    has done anything. One shipped case carried it and was therefore incapable
+    of failing. Absence is a real claim, but it belongs in
+    ``must_not_call_tools``, which can actually go red.
+    """
+    for want in expected.get("tool_calls", []) or []:
+        if not isinstance(want, dict):
+            continue
+        if int(want.get("min_calls", 1)) < 1:
+            raise ValueError(
+                f"{case_id}: tool expectation {want.get('tool')!r} has min_calls < 1, which no "
+                f"run can fail. Use must_not_call_tools to assert absence."
+            )
+
+
 def _call_matches_args(call: dict[str, object], wanted: dict[str, object]) -> bool:
     args = call.get("args")
     if not isinstance(args, dict):

@@ -109,8 +109,12 @@
   prompt: "Remind me to call the client tomorrow at 11am"
   expected:
     category: ambiguity
-    tool_calls: [{tool: search_memory, min_calls: 0}]
-    score: {gates: [tool_calls]}
+    # The claim here is an ABSENCE — it must not silently invent a reminder for
+    # an unnamed client — so it is gated as one. The previous gate was
+    # `tool_calls: [{tool: search_memory, min_calls: 0}]`, i.e. "at least zero
+    # calls", which no behaviour whatsoever can fail.
+    must_not_call_tools: [create_reminder_tool]
+    score: {gates: [no_forbidden_tools]}
     judge:
       criteria:
         - "either the agent asks which client (good) or resolves it from memory and names the client in the reply"
