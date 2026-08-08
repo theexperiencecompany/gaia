@@ -190,10 +190,34 @@ def test_a_meter_that_never_fired_is_caught_too() -> None:
 
 
 def test_a_fake_transport_is_not_held_to_the_floor() -> None:
-    """The smoke suite answers in 0.07s without a model and says so. Failing it
-    would make the check noise, and noise is what gets switched off."""
+    """A transport that answers in 0.07s never called a model, so it has nothing
+    to under-count. Note this exempts smoke by its speed, not by its name — and
+    smoke's first case sometimes takes 1.7-2.7s of warmup, so it is NOT reliably
+    exempt. The real fix there is for the suite to stop inventing token figures."""
     report = check_records([_worked_for(f"smoke-{i}", 120, 0.07) for i in range(3)])
     assert report.ok, [v.detail for v in report.violations]
+
+
+def test_an_errored_case_is_not_held_to_the_floor() -> None:
+    """A case that died partway has a partial reading by definition. Flagging it
+    fires on exactly the runs an outage already ruined — verified against
+    comms-20260808-092206, where all 5 records the floor caught were errored."""
+    dead = [_worked_for(f"c{i}", 0, 30.0) for i in range(5)]
+    for record in dead:
+        record["status"] = "errored"
+        record["scores"] = {}
+    assert check_records(dead).ok, [v.detail for v in check_records(dead).violations]
+
+
+def test_a_graded_case_is_still_held_to_the_floor() -> None:
+    """The true positives all reach a verdict: every record the floor catches in
+    gaia_bench, hil and regression is passed or failed."""
+    graded = [_worked_for(f"c{i}", 104, 30.0) for i in range(5)]
+    for record in graded:
+        record["status"] = "failed"
+    report = check_records(graded)
+    assert not report.ok
+    assert any("implausibly small" in v.check for v in report.violations)
 
 
 def test_a_real_measurement_is_never_called_too_small() -> None:

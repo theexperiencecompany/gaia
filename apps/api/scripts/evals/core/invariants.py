@@ -40,11 +40,17 @@ from . import faults
 # neither the system prompt, the tool schemas, nor the agent's own turns.
 IMPLAUSIBLE_MINIMUM_CASE_TOKENS = 500
 
-# Only a case that actually waited on a model is held to that floor. The smoke
-# suite's fake transport answers in 0.07s and its token figures are openly
-# invented, which is fine — it exists to exercise the harness, not to measure an
-# agent. Anything that spent seconds of wall clock did call a model.
+# Only a case that actually waited on a model is held to that floor: a fake
+# transport that answers instantly has nothing to under-count.
 MIN_MODEL_CALL_SECONDS = 2.0
+
+# ...and only a case that reached a verdict. An `errored` case died partway, so
+# a partial or zero reading is what you would expect rather than evidence of a
+# broken meter — flagging it is a false positive, and one that fires on exactly
+# the runs an outage already ruined. Verified against comms-20260808-092206:
+# all 5 records the floor caught there were `errored`, while every record it
+# catches in gaia_bench, hil and regression is `passed` or `failed`.
+GRADED_FOR_TOKEN_FLOOR = ("passed", "failed", "skipped")
 
 
 @dataclass
@@ -110,6 +116,7 @@ def check_records(
         (str(r.get("case_id")), int((r.get("tokens") or {}).get("input", 0)))
         for r in records
         if (r.get("text") or r.get("messages"))
+        and r.get("status") in GRADED_FOR_TOKEN_FLOOR
         and float(r.get("duration_s") or 0.0) >= MIN_MODEL_CALL_SECONDS
         and int((r.get("tokens") or {}).get("input", 0)) < IMPLAUSIBLE_MINIMUM_CASE_TOKENS
     ]
