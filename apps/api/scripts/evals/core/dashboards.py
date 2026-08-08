@@ -1,38 +1,50 @@
-"""Build the Opik dashboards for every GAIA eval project.
+"""The four Opik dashboards, grouped by what they measure.
 
-One dashboard per suite plus a cross-suite overview, created idempotently: a
-dashboard is matched by name and updated in place, so re-running never piles up
-duplicates.
+One board per *thing being measured*, not per project: the two external
+benchmarks (LongMemEval, GAIA) each get their own, our memory suite gets its
+own, and the six suites we wrote about our own product share one. Re-running is
+idempotent — a board is matched by name and updated in place — and any dashboard
+this file does not define is deleted, so the script is the whole truth about
+what exists.
 
-Every widget config mirrors the shapes the opik-frontend itself writes
-(``src/types/dashboard.ts``, ``src/lib/dashboard/templates.ts`` and the per-widget
-zod schemas). Four of those details silently produce empty panels when wrong:
+Every board answers questions rather than ranking runs:
 
-* the grid is **6 columns wide**, not 12 (``lib/dashboard/layout.ts``);
+* accuracy is broken out **by category**, never as a single number. An aggregate
+  hides which capability is broken — LongMemEval's aggregate looks fine while
+  ``single-session-user`` scores nothing at all;
+* a **wrong answer and a broken machine are never the same bar**. Opik's own
+  ``error_count`` conflates them (see ``_OUTCOME_NOTE``), so no card uses it;
+* cost, tokens and latency are per category too, and latency is a distribution.
+
+Four schema details silently produce empty panels when wrong. They are mirrored
+from the frontend the container actually serves (``src/types/dashboard.ts``,
+``src/lib/dashboard/layout.ts``, and each widget's zod schema):
+
+* the grid is **6 columns wide**, not 12;
 * the config must declare ``version = DASHBOARD_VERSION``. A lower version makes
   the frontend run its migrations, and the v3→v4 migration overwrites every
   widget's ``projectId`` with the empty string — the widget then renders
   "Project not configured";
-* a widget resolves its project from its own ``projectId``, which is a project
-  **UUID**; a workspace dashboard supplies no runtime project to fall back on;
-* leaderboard score columns are addressed as ``feedback_scores.<name>``. A bare
-  scorer name resolves to nothing and the column renders blank.
-
-Panels are built from what each project actually holds — case-trace count,
-scorer names and its own experiments are all read back from Opik — so a new suite gets a
-full dashboard without touching this file, and a suite whose cases have not been
-seeded yet gets the sections it can fill instead of a wall of empty charts.
+* a widget resolves its project from its own ``projectId``, a project **UUID**;
+  a workspace dashboard supplies no runtime project to fall back on;
+* a breakdown on ``FEEDBACK_SCORES``/``DURATION``/``TOKEN_USAGE`` is dropped
+  unless **exactly one** score, percentile or usage key is selected — the
+  frontend needs it as the breakdown's ``subMetric``. Two scores plus a group-by
+  silently renders ungrouped.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 import json
 import time
 from typing import Literal
 
 import opik
+from opik.rest_api.types.breakdown_config_public import BreakdownConfigPublic
 from opik.rest_api.types.dashboard_public import DashboardPublic
+from opik.rest_api.types.trace_filter_public import TraceFilterPublic
 
 from .seed import PROJECT_DESCRIPTIONS
 
@@ -41,15 +53,16 @@ DASHBOARD_VERSION = 4
 GRID_COLUMNS = 6
 PAGE_SIZE = 200
 MAX_ROWS = 25
-MAX_SCORER_PANELS = 8
 # MAX_WIDGET_HEIGHT in opik-frontend src/lib/dashboard/layout.ts; taller is clamped.
 MAX_WIDGET_HEIGHT = 12
+
+ChartKind = Literal["line", "bar", "radar"]
 
 # A project holds two kinds of trace: the eval records this harness writes
 # (`case-<id>`, carrying the run metadata) and the `evaluation_task` / scorer
 # traces opik.evaluation.evaluate writes during finalize. Only the former are
-# cases, so every project widget is scoped to them — otherwise the counts,
-# durations and cost all double-count the scoring machinery.
+# cases, so every widget is scoped to them — otherwise counts, durations and
+# cost all double-count the scoring machinery.
 CASE_FILTER: list[dict[str, str]] = [
     {
         "id": "case-traces",
@@ -61,10 +74,32 @@ CASE_FILTER: list[dict[str, str]] = [
     }
 ]
 
-DashboardType = Literal["multi_project", "experiments"]
+# The verdicts the harness journals. `failed` is the agent being wrong;
+# `errored` is the harness or a backend falling over. Keeping them apart is the
+# entire point of the outcome section.
+PASSED, FAILED, ERRORED = "passed", "failed", "errored"
+
+# The scores that stand for a whole case rather than one aspect of it, most
+# meaningful first: the judge's verdict, the memory suite's probe aggregate, and
+# the exact-match both external benchmarks are defined by. Anything else grades
+# a single gate, which is a poor headline for a suite.
+AGGREGATE_SCORERS: tuple[str, ...] = ("overall", "probes", "gaia_exact")
+
+_OUTCOME_NOTE = (
+    "**A wrong answer and a broken machine are counted separately here.** "
+    "*Passed* / *failed* / *errored* come from each case's own verdict "
+    "(`metadata.status`): failed means the agent answered and was graded wrong, "
+    "errored means it never produced an answer. Opik's built-in *error count* is "
+    "**not** used on any card — the harness writes both real exceptions and the "
+    "verdict string `gate score below threshold` into Opik's error envelope, so "
+    "that number is the two added together and means nothing on its own. "
+    "*Faults by exception type* below is the honest version: every bar except "
+    "`gate score below threshold` is a real fault."
+)
 
 
 def _status_filter(status: str) -> list[dict[str, str]]:
+    """Case traces carrying one verdict."""
     return [
         *CASE_FILTER,
         {
@@ -76,6 +111,28 @@ def _status_filter(status: str) -> list[dict[str, str]]:
             "value": status,
         },
     ]
+
+
+# A trace whose run journal no longer exists on disk was never rewritten with a
+# category, and Opik charts that empty group as a bar with a blank legend entry.
+# An unlabelled bar is worse than a missing one — nobody can tell whether it is a
+# real category or a bug — so the per-category panels ask for categorised traces
+# and the header says how many were left out. Both numbers move on their own as
+# the orphans are cleared.
+_HAS_CATEGORY: dict[str, str] = {
+    "id": "has-category",
+    "field": "metadata",
+    "type": "dictionary",
+    "operator": "is_not_empty",
+    "key": "category",
+    "value": "",
+}
+
+
+def _category_filter(status: str | None = None) -> list[dict[str, str]]:
+    """Case traces that carry a category, optionally narrowed to one verdict."""
+    base = _status_filter(status) if status else list(CASE_FILTER)
+    return [*base, _HAS_CATEGORY]
 
 
 @dataclass
@@ -118,68 +175,40 @@ class Section:
 
 @dataclass(frozen=True)
 class Suite:
-    """What a project actually contains, as read back from Opik.
+    """What one project actually holds, read back from Opik.
 
-    Both scorer lists matter and they are not the same set: ``trace_scorers``
-    are the scores attached to case traces (what the project widgets can chart),
-    ``experiment_scorers`` are the ones the experiments carry (what the
-    leaderboard can rank on). A scorer that only ever runs inside ``evaluate``
-    appears in the second list and not the first.
+    ``primary_scorer`` is the score that grades the most cases — the one whose
+    per-category mean is worth charting. A suite that scores each case against
+    bespoke probes has dozens of scorers covering one case each; charting those
+    buries the signal, so only the broadest one gets the accuracy panel.
     """
 
     project: str
     project_id: str
     cases: int
-    trace_scorers: list[str]
-    experiment_scorers: list[str]
-    experiment_ids: list[str]
+    primary_scorer: str
+    categories: dict[str, int]
+    status_counts: dict[str, int]
 
+    @property
+    def label(self) -> str:
+        """The suite's name without the `gaia-` prefix every project carries."""
+        return self.project.removeprefix("gaia-")
 
-def markdown(wid: str, content: str, x: int, y: int, w: int, h: int) -> Widget:
-    return Widget(wid, "", "text_markdown", {"content": content}, x, y, w, h)
+    @property
+    def uncategorised(self) -> int:
+        """Cases the per-category panels leave out.
 
+        ``categories`` is read from the same grouped query the panels run and
+        drops the empty group, so whatever it does not account for is exactly
+        what those panels exclude — no second query can disagree with them.
+        """
+        return self.cases - sum(self.categories.values())
 
-def _experiment_filter(suite: Suite) -> list[dict[str, str]]:
-    """Pin an experiment widget to this project's own experiments.
-
-    The experiments API is workspace-wide, so an unfiltered widget lists every
-    suite's runs. Filtering by dataset is not enough either — suites share
-    datasets (longmemeval evaluates against ``gaia-memory-cases``), so only the
-    explicit id set separates them.
-    """
-    if not suite.experiment_ids:
-        return []
-    return [
-        {
-            "id": "experiment-ids-filter",
-            "field": "experiment_ids",
-            "type": "string",
-            "operator": "=",
-            "key": "",
-            "value": ",".join(suite.experiment_ids),
-        }
-    ]
-
-
-def leaderboard(wid: str, suite: Suite, x: int, y: int, w: int, h: int) -> Widget:
-    score_columns = [f"feedback_scores.{name}" for name in suite.experiment_scorers]
-    # No duration column: an experiment replays stored outputs, so its duration
-    # measures the replay, not the agent. The real timings are in Cost & speed.
-    columns = ["dataset_id", "created_at", "trace_count", *score_columns]
-    config: dict[str, object] = {
-        "filters": _experiment_filter(suite),
-        "selectedColumns": columns,
-        "columnsOrder": columns,
-        "scoresColumnsOrder": score_columns,
-        "metadataColumnsOrder": [],
-        "columnsWidth": {},
-        "enableRanking": bool(score_columns),
-        "rankingMetric": score_columns[0] if score_columns else None,
-        "rankingDirection": True,
-        "maxRows": MAX_ROWS,
-        "sorting": [],
-    }
-    return Widget(wid, "Leaderboard", "experiment_leaderboard", config, x, y, w, h)
+    @property
+    def thin_categories(self) -> list[str]:
+        """Categories too small for a percentage to mean anything."""
+        return sorted(name for name, n in self.categories.items() if n < 5)
 
 
 class Panels:
@@ -187,6 +216,9 @@ class Panels:
 
     def __init__(self, suite: Suite) -> None:
         self.suite = suite
+
+    def _id(self, slug: str) -> str:
+        return f"{self.suite.project}-{slug}"
 
     def stat(
         self,
@@ -199,9 +231,9 @@ class Panels:
     ) -> Widget:
         """A single number from the trace-statistics endpoint.
 
-        ``metric`` is a statistic name (``trace_count``, ``error_count``,
-        ``duration.p50``, ``total_estimated_cost_sum``, ``usage.total_tokens``)
-        or ``feedback_scores.<scorer>`` for that scorer's mean.
+        ``metric`` is a statistic name (``trace_count``, ``duration.p50``,
+        ``total_estimated_cost_sum``, ``usage.total_tokens``) or
+        ``feedback_scores.<scorer>`` for that scorer's mean.
         """
         config: dict[str, object] = {
             "source": "traces",
@@ -209,9 +241,7 @@ class Panels:
             "metric": metric,
             "traceFilters": CASE_FILTER if filters is None else filters,
         }
-        return Widget(
-            f"{self.suite.project}-{slug}", title, "project_stats_card", config, x, y, 1, 2
-        )
+        return Widget(self._id(slug), title, "project_stats_card", config, x, y, 1, 2)
 
     def chart(
         self,
@@ -220,401 +250,580 @@ class Panels:
         metric_type: str,
         x: int,
         y: int,
+        *,
         w: int = 3,
         h: int = 4,
-        kind: str = "line",
-        scores: list[str] | None = None,
-        usage: list[str] | None = None,
-        durations: list[str] | None = None,
+        kind: ChartKind = "bar",
+        filters: list[dict[str, str]] | None = None,
+        score: str | None = None,
+        usage: str | None = None,
+        duration: str | None = None,
         group_by: str | None = None,
-        total: bool = False,
+        group_field: str = "metadata",
+        over_time: bool = False,
     ) -> Widget:
-        """A time series, or — with ``total`` — a bar chart of grouped totals.
+        """A grouped total, or — with ``over_time`` — a time series.
 
-        ``group_by`` names a trace-metadata key. ``total`` collapses the time
-        axis to one bucket per group, which is what turns "cases over time" into
-        "cases per provider"; without it a suite that ran inside a single day
-        charts as one lonely point.
+        ``group_by`` names a trace-metadata key; ``group_field`` swaps that for
+        one of Opik's built-in breakdowns (``error_type``, ``name``). Totals are
+        the default because a suite that ran inside one day charts as a single
+        lonely point on a time axis.
+
+        The single-valued ``score`` / ``usage`` / ``duration`` arguments are not
+        a simplification: a breakdown is dropped outright unless exactly one is
+        selected, so the type makes the working shape the only expressible one.
         """
         config: dict[str, object] = {
             "projectId": self.suite.project_id,
             "metricType": metric_type,
             "chartType": kind,
-            "traceFilters": CASE_FILTER,
+            "traceFilters": CASE_FILTER if filters is None else filters,
         }
-        if scores is not None:
-            config["feedbackScores"] = scores
+        if score is not None:
+            config["feedbackScores"] = [score]
         if usage is not None:
-            config["usageMetrics"] = usage
-        if durations is not None:
-            config["durationMetrics"] = durations
-        if group_by is not None:
-            config["breakdown"] = {
-                "field": "metadata",
-                "metadataKey": group_by,
-                "aggregateTotal": total,
+            config["usageMetrics"] = [usage]
+        if duration is not None:
+            config["durationMetrics"] = [duration]
+        if group_by is not None or group_field != "metadata":
+            breakdown: dict[str, object] = {
+                "field": group_field,
+                "aggregateTotal": not over_time,
             }
-        return Widget(f"{self.suite.project}-{slug}", title, "project_metrics", config, x, y, w, h)
+            if group_by is not None:
+                breakdown["metadataKey"] = group_by
+            config["breakdown"] = breakdown
+        return Widget(self._id(slug), title, "project_metrics", config, x, y, w, h)
 
-    def experiment_scores(self, slug: str, title: str, kind: str, x: int, y: int, w: int) -> Widget:
+    def durations(self, slug: str, title: str, x: int, y: int, w: int, h: int) -> Widget:
+        """p50/p90/p99 together — a distribution, which a mean cannot show.
+
+        This is the one duration panel with no breakdown, because selecting
+        three percentiles is exactly what disables one.
+        """
         config: dict[str, object] = {
-            "chartType": kind,
-            "filters": _experiment_filter(self.suite),
-            "groups": [],
-            "feedbackScores": self.suite.experiment_scorers,
-            "maxExperimentsCount": MAX_ROWS,
+            "projectId": self.suite.project_id,
+            "metricType": "DURATION",
+            "chartType": "line",
+            "traceFilters": CASE_FILTER,
+            "durationMetrics": ["p50", "p90", "p99"],
         }
-        wid = f"{self.suite.project}-{slug}"
-        return Widget(wid, title, "experiments_feedback_scores", config, x, y, w, 4)
+        return Widget(self._id(slug), title, "project_metrics", config, x, y, w, h)
+
+
+def markdown(wid: str, content: str, x: int, y: int, w: int, h: int) -> Widget:
+    return Widget(wid, "", "text_markdown", {"content": content}, x, y, w, h)
+
+
+def _category_note(suite: Suite) -> str:
+    """Every category with its case count, so no percentage is read blind."""
+    if not suite.categories:
+        return "_No case carries a category — the accuracy breakdown cannot be drawn._"
+    ranked = sorted(suite.categories.items(), key=lambda kv: (-kv[1], kv[0]))
+    listing = " · ".join(f"`{name}` {n}" for name, n in ranked)
+    note = f"**Cases per category** ({len(ranked)} categories): {listing}."
+    thin = suite.thin_categories
+    if thin:
+        note += (
+            f"\n\n_Read {', '.join(f'`{t}`' for t in thin)} as raw counts, not "
+            "percentages — fewer than 5 cases each._"
+        )
+    if suite.uncategorised:
+        note += (
+            f"\n\n⚠️ **{suite.uncategorised} of {suite.cases} cases carry no category** and are "
+            "excluded from every per-category panel below; the totals above still count them. "
+            "These are traces whose run journal is no longer on disk, so nothing can say which "
+            "category they belonged to. `python -m scripts.evals ingest` rebuilds the projects "
+            "from the journals and clears them."
+        )
+    return note
 
 
 def _headline(suite: Suite, panels: Panels) -> Section:
-    """The suite's purpose, its headline numbers and every scorer's mean."""
+    """What the suite measures, the outcome split, and the latency envelope."""
     content = (
-        f"## {suite.project}\n\n{PROJECT_DESCRIPTIONS.get(suite.project, '')}\n\n"
-        "**How to read this.** One trace is one case execution (`case-<id>`), "
-        "carrying the run that produced it, the provider and model that served "
-        "it, and its verdict. Every panel below is scoped to those, so the "
-        "scorer traces Opik writes while finalising an experiment never inflate "
-        "a count.\n\n"
-        "*Gate failures* are cases that missed an assertion, not infrastructure "
-        "faults.\n\n"
-        "**Every cost here is what we actually paid**, metered off each case's "
-        "LLM span rather than estimated — already net of the lane discount "
-        "(*Paid cost by lane discount* splits it by that percentage). The "
-        "undiscounted rack rate is on each trace as `metadata.list_cost_usd`; "
-        "it is the number to quote for reproducing this suite elsewhere."
+        f"## {suite.label}\n\n{PROJECT_DESCRIPTIONS.get(suite.project, '')}\n\n"
+        f"{_OUTCOME_NOTE}\n\nOne trace is one case execution (`case-<id>`), carrying "
+        "the run that produced it, the provider and model that served it, its "
+        "category and its verdict. Every panel is scoped to those, so the scorer "
+        "traces Opik writes while finalising an experiment never inflate a count."
+        f"\n\n{_category_note(suite)}"
     )
-    # (slug, title, metric, filters) — laid out six to a row under the header,
-    # so a suite with two scorers and one with nine both stay on the grid.
     cards: list[tuple[str, str, str, list[dict[str, str]] | None]] = [
-        ("cases", "Cases", "trace_count", None),
-        ("passed", "Passed", "trace_count", _status_filter("passed")),
-        ("failed", "Failed", "trace_count", _status_filter("failed")),
-        ("gate-fails", "Gate failures", "error_count", None),
-        ("cost", "Cost (paid)", "total_estimated_cost_sum", None),
-        ("tokens", "Avg tokens/case", "usage.total_tokens", None),
-        ("p50", "Duration p50", "duration.p50", None),
-        ("p99", "Duration p99", "duration.p99", None),
-        *(
-            (f"avg-{name}", f"avg {name}", f"feedback_scores.{name}", None)
-            for name in suite.trace_scorers
-        ),
+        ("cases", "Cases run", "trace_count", None),
+        ("passed", "Passed (agent right)", "trace_count", _status_filter(PASSED)),
+        ("failed", "Failed (agent wrong)", "trace_count", _status_filter(FAILED)),
+        ("errored", "Errored (infra, unscored)", "trace_count", _status_filter(ERRORED)),
+        ("p50", "Latency p50", "duration.p50", None),
+        ("p99", "Latency p99", "duration.p99", None),
     ]
-    header_height = 4
-    widgets = [
-        markdown(f"{suite.project}-about", content, x=0, y=0, w=GRID_COLUMNS, h=header_height)
-    ]
+    # The category listing and the uncategorised warning are what make this card
+    # long, and both grow with the suite — so the height follows them instead of
+    # being a fixed guess that either clips a wide suite or leaves a narrow one
+    # half empty.
+    header_height = min(
+        MAX_WIDGET_HEIGHT, 6 + len(suite.categories) // 4 + bool(suite.uncategorised)
+    )
+    widgets = [markdown(f"{suite.project}-about", content, 0, 0, GRID_COLUMNS, header_height)]
     for index, (slug, title, metric, filters) in enumerate(cards):
         widgets.append(
-            panels.stat(
-                slug,
-                title,
-                metric,
-                x=index % GRID_COLUMNS,
-                y=header_height + (index // GRID_COLUMNS) * 2,
-                filters=filters,
-            )
+            panels.stat(slug, title, metric, index % GRID_COLUMNS, header_height, filters)
         )
-    return Section(f"{suite.project}-s1", "At a glance", widgets)
+    return Section(f"{suite.project}-s1", f"{suite.label} — what this measures", widgets)
 
 
-def _outcomes(suite: Suite, panels: Panels) -> Section:
-    widgets = [
-        panels.chart(
-            "by-status",
-            "Pass vs fail",
-            "TRACE_COUNT",
-            0,
-            0,
-            w=2,
-            kind="bar",
-            group_by="status",
-            total=True,
-        ),
-        panels.chart(
-            "by-provider",
-            "Cases by provider",
-            "TRACE_COUNT",
-            2,
-            0,
-            w=2,
-            kind="bar",
-            group_by="provider",
-            total=True,
-        ),
-        panels.chart(
-            "by-model",
-            "Cases by model",
-            "TRACE_COUNT",
-            4,
-            0,
-            w=2,
-            kind="bar",
-            group_by="model",
-            total=True,
-        ),
-        panels.chart(
-            "by-run",
-            "Cases per run",
-            "TRACE_COUNT",
-            0,
-            4,
-            w=3,
-            kind="bar",
-            group_by="run",
-            total=True,
-        ),
-        panels.chart(
-            "errored",
-            "Errored vs clean",
-            "TRACE_COUNT",
-            3,
-            4,
-            w=3,
-            kind="bar",
-            group_by="errored",
-            total=True,
-        ),
-        panels.chart(
-            "volume",
-            "Case volume over time",
-            "TRACE_COUNT",
-            0,
-            8,
-            w=3,
-            kind="bar",
-            group_by="status",
-        ),
-        panels.chart("error-rate", "Failure rate over time", "TRACE_ERROR_RATE", 3, 8, w=3),
-    ]
-    return Section(f"{suite.project}-s2", "Outcomes — what passed, what failed, and where", widgets)
-
-
-def _scores(suite: Suite, panels: Panels) -> Section:
-    """Overall trend, then every scorer split by provider and by run."""
-    widgets = [
-        panels.chart(
-            "score-trend",
-            "Score trend (all scorers)",
-            "FEEDBACK_SCORES",
-            0,
-            0,
-            w=6,
-            scores=suite.trace_scorers,
-        ),
-    ]
-    for index, name in enumerate(suite.trace_scorers):
-        row = 4 + index * 4
+def _accuracy(suite: Suite, panels: Panels) -> Section:
+    """Accuracy per category, then the counts behind each percentage."""
+    widgets: list[Widget] = []
+    if suite.primary_scorer:
         widgets.append(
             panels.chart(
-                f"{name}-provider",
-                f"{name} by provider",
+                "acc-by-category",
+                f"Mean {suite.primary_scorer} by category (0–1, higher is better)",
                 "FEEDBACK_SCORES",
                 0,
-                row,
-                w=3,
-                kind="bar",
-                scores=[name],
-                group_by="provider",
-                total=True,
+                0,
+                w=6,
+                h=5,
+                filters=_category_filter(),
+                score=suite.primary_scorer,
+                group_by="category",
             )
         )
+    row = 5 if suite.primary_scorer else 0
+    widgets.append(
+        panels.chart(
+            "passed-by-category",
+            "Cases PASSED by category (count)",
+            "TRACE_COUNT",
+            0,
+            row,
+            w=3,
+            filters=_category_filter(PASSED),
+            group_by="category",
+        )
+    )
+    # Opik renders a chart with no matching traces as "No data", which reads as
+    # a broken panel rather than as "nothing failed". A suite with a clean sweep
+    # says so through the stat cards instead.
+    if suite.status_counts.get(FAILED):
         widgets.append(
             panels.chart(
-                f"{name}-run",
-                f"{name} per run",
-                "FEEDBACK_SCORES",
+                "failed-by-category",
+                "Cases FAILED — agent wrong — by category (count)",
+                "TRACE_COUNT",
                 3,
                 row,
                 w=3,
-                kind="bar",
-                scores=[name],
-                group_by="run",
-                total=True,
+                filters=_category_filter(FAILED),
+                group_by="category",
             )
         )
-    return Section(f"{suite.project}-s3", "Scores — how well, and for whom", widgets)
+    if suite.status_counts.get(ERRORED):
+        widgets.append(
+            panels.chart(
+                "errored-by-category",
+                "Cases ERRORED — infrastructure, never scored — by category (count)",
+                "TRACE_COUNT",
+                0,
+                row + 4,
+                w=6,
+                filters=_category_filter(ERRORED),
+                group_by="category",
+            )
+        )
+    return Section(
+        f"{suite.project}-s2",
+        f"{suite.label} — accuracy by category (an aggregate hides which capability is broken)",
+        widgets,
+    )
+
+
+def _outcomes(suite: Suite, panels: Panels) -> Section:
+    """The pass/fail/error split, and what the real faults actually were."""
+    widgets = [
+        panels.chart(
+            "by-status",
+            "Cases by verdict (passed / failed / errored, count)",
+            "TRACE_COUNT",
+            0,
+            0,
+            w=3,
+            group_by="status",
+        ),
+        panels.chart(
+            "by-error-type",
+            "Faults by exception type (count) — 'gate score below threshold' is a verdict, not a fault",
+            "TRACE_COUNT",
+            3,
+            0,
+            w=3,
+            group_field="error_type",
+        ),
+        panels.chart(
+            "by-provider",
+            "Cases by provider (count)",
+            "TRACE_COUNT",
+            0,
+            4,
+            w=3,
+            group_by="provider",
+        ),
+        panels.chart(
+            "by-model",
+            "Cases by model (count)",
+            "TRACE_COUNT",
+            3,
+            4,
+            w=3,
+            group_by="model",
+        ),
+    ]
+    return Section(f"{suite.project}-s3", f"{suite.label} — failures vs infrastructure", widgets)
+
+
+def _failing_cases(suite: Suite, panels: Panels) -> Section:
+    """The individual cases that went wrong, by name, so a trace is one click away."""
+    note = (
+        "**Each bar is one case.** Click a bar to open that case's traces in the "
+        "project view, where its prompt, the agent's answer and every scorer's "
+        "verdict are on the trace itself. Failed and errored are drawn "
+        "separately on purpose: the first list is work for whoever owns the "
+        "agent, the second is work for whoever owns the harness.\n\n"
+        "_Opik dashboards have no table widget — a bar per case is the closest "
+        "the widget API gets to listing them. Long suites are legible only after "
+        "narrowing the date range._"
+    )
+    widgets = [markdown(f"{suite.project}-fail-note", note, 0, 0, GRID_COLUMNS, 4)]
+    if suite.status_counts.get(FAILED):
+        widgets.append(
+            panels.chart(
+                "failed-cases",
+                "FAILED cases — agent answered and was graded wrong (1 bar = 1 case)",
+                "TRACE_COUNT",
+                0,
+                4,
+                w=6,
+                h=6,
+                filters=_status_filter(FAILED),
+                group_field="name",
+            )
+        )
+    if suite.status_counts.get(ERRORED):
+        widgets.append(
+            panels.chart(
+                "errored-cases",
+                "ERRORED cases — never produced an answer (1 bar = 1 case)",
+                "TRACE_COUNT",
+                0,
+                10,
+                w=6,
+                h=6,
+                filters=_status_filter(ERRORED),
+                group_field="name",
+            )
+        )
+    return Section(f"{suite.project}-s4", f"{suite.label} — the cases that went wrong", widgets)
 
 
 def _cost(suite: Suite, panels: Panels) -> Section:
+    """What a case costs, in money and in tokens, per category and per run."""
     widgets = [
-        panels.chart(
-            "cost-provider",
-            "Cost by provider",
-            "COST",
-            0,
-            0,
-            w=2,
-            kind="bar",
-            group_by="provider",
-            total=True,
+        panels.stat("cost-total", "Paid cost, total (USD)", "total_estimated_cost_sum", 0, 0),
+        panels.stat("cost-case", "Paid cost per case (USD)", "total_estimated_cost", 1, 0),
+        panels.stat("tokens-case", "Tokens per case (avg)", "usage.total_tokens", 2, 0),
+        panels.stat("tokens-in", "Prompt tokens per case (avg)", "usage.prompt_tokens", 3, 0),
+        panels.stat(
+            "tokens-out", "Completion tokens per case (avg)", "usage.completion_tokens", 4, 0
         ),
         panels.chart(
-            "cost-model",
-            "Cost by model",
+            "cost-by-category",
+            "Paid cost by category (USD)",
             "COST",
+            0,
             2,
-            0,
-            w=2,
-            kind="bar",
-            group_by="model",
-            total=True,
-        ),
-        # Every cost panel is post-discount spend. Grouping by the discount the
-        # lane gave us is the only chartable form of the paid-vs-list split:
-        # list price is per-case metadata, which Opik cannot sum.
-        panels.chart(
-            "cost-discount",
-            "Paid cost by lane discount (%)",
-            "COST",
-            4,
-            0,
-            w=2,
-            kind="bar",
-            group_by="discount_pct",
-            total=True,
-        ),
-        panels.chart(
-            "cost-run", "Cost per run", "COST", 0, 4, w=2, kind="bar", group_by="run", total=True
-        ),
-        panels.chart(
-            "tokens-time",
-            "Token usage over time",
-            "TOKEN_USAGE",
-            2,
-            4,
-            w=2,
-            kind="bar",
-            usage=["prompt_tokens", "completion_tokens"],
-        ),
-        panels.chart(
-            "tokens-provider",
-            "Total tokens by provider",
-            "TOKEN_USAGE",
-            4,
-            4,
-            w=2,
-            kind="bar",
-            usage=["total_tokens"],
-            group_by="provider",
-            total=True,
-        ),
-        panels.chart(
-            "duration",
-            "Duration percentiles",
-            "DURATION",
-            0,
-            8,
             w=3,
-            durations=["p50", "p90", "p99"],
+            filters=_category_filter(),
+            group_by="category",
         ),
         panels.chart(
-            "slowest",
-            "p99 duration by provider",
-            "DURATION",
+            "tokens-by-category",
+            "Total tokens by category (count)",
+            "TOKEN_USAGE",
             3,
-            8,
+            2,
             w=3,
-            kind="bar",
-            durations=["p99"],
-            group_by="provider",
-            total=True,
+            filters=_category_filter(),
+            usage="total_tokens",
+            group_by="category",
+        ),
+        panels.chart(
+            "cost-by-run", "Paid cost per run (USD)", "COST", 0, 6, w=3, group_by="run_id"
+        ),
+        panels.chart(
+            "cost-by-model", "Paid cost by model (USD)", "COST", 3, 6, w=3, group_by="model"
         ),
     ]
-    return Section(f"{suite.project}-s4", "Cost & speed — what the suite burns", widgets)
+    return Section(f"{suite.project}-s5", f"{suite.label} — cost and tokens per case", widgets)
 
 
-def _experiments(suite: Suite, panels: Panels) -> Section:
-    return Section(
-        f"{suite.project}-s5",
-        "Experiments — run against run",
-        [
-            leaderboard(f"{suite.project}-lb", suite, x=0, y=0, w=6, h=4),
-            panels.experiment_scores("radar", "Score profile", "radar", x=0, y=4, w=2),
-            panels.experiment_scores("bars", "Scores per experiment", "bar", x=2, y=4, w=4),
-        ],
-    )
+def _latency(suite: Suite, panels: Panels) -> Section:
+    """A distribution, not a mean — the tail is where the timeouts live."""
+    widgets = [
+        panels.durations("duration-spread", "Latency distribution p50/p90/p99 (ms)", 0, 0, 3, 4),
+        panels.chart(
+            "p99-by-category",
+            "Latency p99 by category (ms) — the slowest tenth of a percent",
+            "DURATION",
+            3,
+            0,
+            w=3,
+            filters=_category_filter(),
+            duration="p99",
+            group_by="category",
+        ),
+        panels.chart(
+            "p50-by-model",
+            "Latency p50 by model (ms)",
+            "DURATION",
+            0,
+            4,
+            w=3,
+            duration="p50",
+            group_by="model",
+        ),
+        panels.chart(
+            "p99-by-provider",
+            "Latency p99 by provider (ms)",
+            "DURATION",
+            3,
+            4,
+            w=3,
+            duration="p99",
+            group_by="provider",
+        ),
+    ]
+    return Section(f"{suite.project}-s6", f"{suite.label} — latency distribution", widgets)
+
+
+def _trend(suite: Suite, panels: Panels) -> Section:
+    """Run against run, so a regression is visible rather than inferred."""
+    widgets = [
+        panels.chart(
+            "cases-per-run",
+            "Cases per run (count) — a short bar means the run did not finish",
+            "TRACE_COUNT",
+            0,
+            0,
+            w=3,
+            group_by="run_id",
+        )
+    ]
+    if suite.status_counts.get(FAILED):
+        widgets.append(
+            panels.chart(
+                "failed-per-run",
+                "Failed cases per run (count)",
+                "TRACE_COUNT",
+                3,
+                0,
+                w=3,
+                filters=_status_filter(FAILED),
+                group_by="run_id",
+            )
+        )
+    if suite.primary_scorer:
+        widgets.append(
+            panels.chart(
+                "score-per-run",
+                f"Mean {suite.primary_scorer} per run (0–1) — a dip is a regression",
+                "FEEDBACK_SCORES",
+                0,
+                4,
+                w=3,
+                score=suite.primary_scorer,
+                group_by="run_id",
+            )
+        )
+        widgets.append(
+            panels.chart(
+                "score-over-time",
+                f"Mean {suite.primary_scorer} over time (0–1)",
+                "FEEDBACK_SCORES",
+                3,
+                4,
+                w=3,
+                kind="line",
+                score=suite.primary_scorer,
+                filters=_category_filter(),
+                over_time=True,
+                group_by="category",
+            )
+        )
+    return Section(f"{suite.project}-s7", f"{suite.label} — trend across runs", widgets)
 
 
 def suite_sections(suite: Suite) -> list[Section]:
-    """The sections this suite can actually fill.
+    """Every section a suite has the data to fill.
 
-    A project with no case traces yet (nothing seeded, or only experiment
-    traces) gets its header and its leaderboard rather than four sections of
-    "No data" — an empty panel reads as a broken dashboard, not an empty suite.
+    A project with no case traces gets its header alone rather than seven
+    sections of "No data" — an empty panel reads as a broken dashboard, not an
+    empty suite.
     """
     panels = Panels(suite)
     sections = [_headline(suite, panels)]
-    if suite.cases:
-        sections.append(_outcomes(suite, panels))
-        if suite.trace_scorers:
-            sections.append(_scores(suite, panels))
-        sections.append(_cost(suite, panels))
-    if suite.experiment_scorers:
-        sections.append(_experiments(suite, panels))
+    if not suite.cases:
+        return sections
+    if suite.categories:
+        sections.append(_accuracy(suite, panels))
+    sections.append(_outcomes(suite, panels))
+    # A suite where nothing went wrong needs no post-mortem section.
+    if suite.status_counts.get(FAILED) or suite.status_counts.get(ERRORED):
+        sections.append(_failing_cases(suite, panels))
+    sections.append(_cost(suite, panels))
+    sections.append(_latency(suite, panels))
+    sections.append(_trend(suite, panels))
     return sections
 
 
-def overview_sections(suites: list[Suite]) -> list[Section]:
-    """Cross-suite comparison: the numbers every suite has, side by side."""
+def compact_sections(suite: Suite) -> list[Section]:
+    """One suite's share of a shared board: outcome, accuracy, and what broke.
+
+    The internal board carries six suites, so each gets the panels that answer
+    "is this suite healthy and which category is dragging" and leaves cost and
+    latency to the roll-up — six suites × seven sections is a scroll nobody reads.
+    """
+    panels = Panels(suite)
+    sections = [_headline(suite, panels)]
+    if not suite.cases:
+        return sections
+    if suite.categories:
+        sections.append(_accuracy(suite, panels))
+    sections.append(_outcomes(suite, panels))
+    # A suite where nothing went wrong needs no post-mortem section.
+    if suite.status_counts.get(FAILED) or suite.status_counts.get(ERRORED):
+        sections.append(_failing_cases(suite, panels))
+    return sections
+
+
+def _roll_up(suites: list[Suite], blurb: str) -> Section:
+    """Every suite on the shared board side by side, before the per-suite detail."""
     lines = "\n".join(
-        f"- **{s.project}** — {PROJECT_DESCRIPTIONS.get(s.project, 'no description registered')}"
+        f"- **{s.label}** — {s.cases} cases · {s.status_counts.get(PASSED, 0)} passed · "
+        f"{s.status_counts.get(FAILED, 0)} failed · {s.status_counts.get(ERRORED, 0)} errored · "
+        f"{len(s.categories)} categories"
         for s in suites
     )
-    content = (
-        "## GAIA eval suites\n\nEvery suite that has run, on the numbers they all "
-        "share. Open a suite's own dashboard for its scorers, its per-run "
-        f"breakdowns and its leaderboard.\n\n{lines}"
-    )
-    # The index grows a bullet per suite, so the header has to grow with it —
-    # a fixed height clips the last suites out of view.
-    header_height = min(MAX_WIDGET_HEIGHT, 4 + len(suites) // 2)
-    cards = [markdown("overview-about", content, x=0, y=0, w=GRID_COLUMNS, h=header_height)]
-    charts: list[Widget] = []
+    content = f"{blurb}\n\n{_OUTCOME_NOTE}\n\n{lines}"
+    # One row per two suites on top of the prose, rather than a flat guess: the
+    # listing is the part that grows, and a card taller than its text is a screen
+    # of blank nobody scrolls past.
+    header_height = min(MAX_WIDGET_HEIGHT, 6 + (len(suites) + 1) // 2)
+    widgets = [markdown("internal-about", content, 0, 0, GRID_COLUMNS, header_height)]
     for index, suite in enumerate(suites):
         panels = Panels(suite)
-        row, col = header_height + (index // 2) * 2, (index % 2) * 3
-        cards.append(panels.stat("ov-cases", f"{suite.project} · cases", "trace_count", col, row))
-        cards.append(
-            panels.stat("ov-fails", f"{suite.project} · gate fails", "error_count", col + 1, row)
-        )
-        cards.append(
+        row = header_height + (index // 2) * 2
+        col = (index % 2) * 3
+        widgets.append(panels.stat("ru-cases", f"{suite.label} · cases", "trace_count", col, row))
+        widgets.append(
             panels.stat(
-                "ov-cost", f"{suite.project} · cost", "total_estimated_cost_sum", col + 2, row
+                "ru-failed",
+                f"{suite.label} · failed",
+                "trace_count",
+                col + 1,
+                row,
+                _status_filter(FAILED),
             )
         )
-        if suite.cases:
-            charts.append(
-                panels.chart(
-                    "ov-status",
-                    f"{suite.project} — pass vs fail",
-                    "TRACE_COUNT",
-                    x=(len(charts) % 3) * 2,
-                    y=(len(charts) // 3) * 4,
-                    w=2,
-                    kind="bar",
-                    group_by="status",
-                    total=True,
-                )
+        widgets.append(
+            panels.stat(
+                "ru-errored",
+                f"{suite.label} · errored",
+                "trace_count",
+                col + 2,
+                row,
+                _status_filter(ERRORED),
             )
-    every_scorer = sorted({name for s in suites for name in s.experiment_scorers})
-    # No id filter: the cross-suite leaderboard ranks every experiment there is.
-    ranked = Suite("all", "", 0, [], every_scorer, [])
-    return [
-        Section("overview-s1", "Every suite at a glance", cards),
-        Section("overview-s2", "Pass rate per suite", charts),
-        Section(
-            "overview-s3",
-            "Every experiment, ranked",
-            [
-                leaderboard("ov-lb", ranked, x=0, y=0, w=6, h=8),
-                Panels(ranked).experiment_scores(
-                    "ov-bars", "Scores across all runs", "bar", x=0, y=8, w=6
-                ),
-            ],
+        )
+    return Section("internal-s0", "Every internal suite at a glance", widgets)
+
+
+@dataclass(frozen=True)
+class Board:
+    """One dashboard: a name, why it exists, and the projects it reads."""
+
+    name: str
+    description: str
+    projects: tuple[str, ...]
+    blurb: str
+
+
+BOARDS: tuple[Board, ...] = (
+    Board(
+        name="LongMemEval",
+        description=(
+            "External long-term-memory benchmark: accuracy per question type, "
+            "separating wrong answers from infrastructure faults."
         ),
-    ]
+        projects=("gaia-longmemeval",),
+        blurb="",
+    ),
+    Board(
+        name="Our memory bench",
+        description=(
+            "Our own memory suite: recall, consolidation, contradiction handling "
+            "and abstention, broken down by probe category."
+        ),
+        projects=("gaia-memory",),
+        blurb="",
+    ),
+    Board(
+        name="GAIA bench",
+        description=(
+            "The external GAIA benchmark: accuracy per difficulty level, with "
+            "infrastructure faults held apart from wrong answers."
+        ),
+        projects=("gaia-bench",),
+        blurb="",
+    ),
+    Board(
+        name="Internal bench",
+        description=(
+            "The suites we wrote about our own product — capability, quality, "
+            "safety, comms, human-in-the-loop and smoke — each by category."
+        ),
+        projects=(
+            "gaia-capability",
+            "gaia-quality",
+            "gaia-safety",
+            "gaia-comms",
+            "gaia-hil",
+            "gaia-smoke",
+        ),
+        blurb=(
+            "## Internal bench\n\nThe suites we wrote about our own product. Each "
+            "suite below is scored on its own terms — capability checks whether a "
+            "tool did the right thing, quality grades how the answer reads, safety "
+            "probes adversarial input, comms tests the front-door agent, hil the "
+            "approval gate, and smoke only the harness plumbing. There is "
+            "deliberately no combined pass rate: averaging a safety refusal against "
+            "a todo creation produces a number that means nothing."
+        ),
+    ),
+)
+
+
+def board_sections(board: Board, suites: dict[str, Suite]) -> list[Section]:
+    """The sections for one board, from the suites it could actually read."""
+    present = [suites[name] for name in board.projects if name in suites]
+    if not present:
+        return []
+    if len(present) == 1:
+        return suite_sections(present[0])
+    sections = [_roll_up(present, board.blurb)]
+    for suite in present:
+        sections.extend(compact_sections(suite))
+    return sections
 
 
 def _upsert(
@@ -645,6 +854,48 @@ def _upsert(
     return dashboards.get_dashboard_by_id(existing.id)
 
 
+def _delete_others(client: opik.Opik, keep: set[str]) -> list[str]:
+    """Remove every dashboard this file does not define.
+
+    Called only once all four have been written, so a failure part-way through
+    leaves the old boards in place rather than none at all.
+    """
+    dashboards = client.rest_client.dashboards
+    stale = [
+        d
+        for d in dashboards.find_dashboards(page=1, size=PAGE_SIZE).content or []
+        if d.name not in keep
+    ]
+    for dashboard in stale:
+        dashboards.delete_dashboard(dashboard.id)
+    return [d.name for d in stale if d.name]
+
+
+def _breakdown_counts(client: opik.Opik, project_id: str, metadata_key: str) -> dict[str, int]:
+    """How many case traces sit in each value of a metadata key.
+
+    Read through the same metrics endpoint the widgets use, so a key that charts
+    empty here charts empty there too — the check and the panel cannot disagree.
+    """
+    response = client.rest_client.projects.get_project_metrics(
+        project_id,
+        metric_type="TRACE_COUNT",
+        interval="TOTAL",
+        interval_start=datetime(2020, 1, 1, tzinfo=UTC),
+        interval_end=datetime.now(UTC) + timedelta(days=1),
+        trace_filters=[
+            TraceFilterPublic(field="name", operator="starts_with", key="", value="case-")
+        ],
+        breakdown=BreakdownConfigPublic(field="metadata", metadata_key=metadata_key),
+    )
+    counts: dict[str, int] = {}
+    for series in response.results or []:
+        total = sum(int(point.value or 0) for point in series.data or [])
+        if series.name and total:
+            counts[series.name] = total
+    return counts
+
+
 def _scorer_coverage(client: opik.Opik, project_id: str, scorer: str) -> int:
     """How many case traces carry ``scorer``."""
     graded = [
@@ -664,57 +915,50 @@ def _scorer_coverage(client: opik.Opik, project_id: str, scorer: str) -> int:
     return page.total or 0
 
 
-def _suite_scorers(client: opik.Opik, project_id: str, cases: int, scorers: list[str]) -> list[str]:
-    """The scorers worth a panel of their own.
+def _primary_scorer(client: opik.Opik, project_id: str, scorers: list[str]) -> str:
+    """The score whose per-category mean is worth putting at the top of a board.
 
-    A suite may score each case against its own bespoke checks — the memory
-    suite writes one score per probe — and charting fifty single-case scorers
-    buries the handful that describe the suite. So a scorer earns a panel by
-    grading most of the suite; the per-case ones stay on their traces, where
-    they belong. If nothing clears the bar, the widest-covering few still get
-    panels rather than leaving the dashboard scoreless.
+    Coverage alone is not enough. The quality suite grades ``overall``,
+    ``bubble_boundary`` and ``tool_card`` on the same 184 cases, so a
+    widest-coverage rule breaks the three-way tie on name and heads the board
+    with `bubble_boundary` — a narrow structural check — instead of the judge's
+    verdict. So a suite's own aggregate verdict wins when it grades a real share
+    of the suite, and coverage only decides between the rest.
     """
-    if len(scorers) <= MAX_SCORER_PANELS:
-        return scorers
+    if not scorers:
+        return ""
     coverage = {name: _scorer_coverage(client, project_id, name) for name in scorers}
-    ranked = sorted(scorers, key=lambda name: (-coverage[name], name))
-    broad = [name for name in ranked if coverage[name] * 2 >= cases]
-    return (broad or ranked)[:MAX_SCORER_PANELS]
+    widest = max(coverage.values(), default=0)
+    if not widest:
+        return ""
+    for aggregate in AGGREGATE_SCORERS:
+        if coverage.get(aggregate, 0) * 2 >= widest:
+            return aggregate
+    return min(scorers, key=lambda name: (-coverage[name], name))
 
 
 def _read_suite(client: opik.Opik, project: str, project_id: str) -> Suite:
-    """Read back what this project holds, using the same queries the widgets run."""
+    """Read back what this project holds, using the queries the widgets run."""
     rest = client.rest_client
     stats = rest.traces.get_trace_stats(project_id=project_id, filters=json.dumps(CASE_FILTER))
     counts = {s.name: s.value for s in stats.stats or []}
     trace_count = counts.get("trace_count")
     cases = int(trace_count) if isinstance(trace_count, int | float) else 0
-    trace_scorers = _suite_scorers(
-        client,
-        project_id,
-        cases,
-        sorted(name for key in counts if (name := key.removeprefix("feedback_scores.")) != key),
+    scorers = sorted(
+        name for key in counts if (name := key.removeprefix("feedback_scores.")) != key
     )
-    # Ask which experiments belong to this project rather than deriving them
-    # from the project's name: a suite can evaluate against another suite's
-    # dataset (longmemeval uses gaia-memory-cases), and a suite can have run
-    # cases without ever finalising an experiment.
-    experiments = rest.projects.find_experiments_by_project(project_id, page=1, size=PAGE_SIZE)
-    found = experiments.content or []
-    experiment_scorers = sorted(
-        {
-            score.name
-            for experiment in found
-            for score in experiment.feedback_scores or []
-            if score.name
-        }
+    return Suite(
+        project=project,
+        project_id=project_id,
+        cases=cases,
+        primary_scorer=_primary_scorer(client, project_id, scorers) if cases else "",
+        categories=_breakdown_counts(client, project_id, "category") if cases else {},
+        status_counts=_breakdown_counts(client, project_id, "status") if cases else {},
     )
-    ids = [experiment.id for experiment in found if experiment.id]
-    return Suite(project, project_id, cases, trace_scorers, experiment_scorers, ids)
 
 
 def build(client: opik.Opik | None = None) -> None:
-    """Create or refresh every dashboard. Safe to run repeatedly."""
+    """Create or refresh the four dashboards, then delete every other one."""
     opik_client = client or opik.Opik()
     found = opik_client.rest_client.projects.find_projects(page=1, size=PAGE_SIZE)
     projects = {p.name: p.id for p in found.content or [] if p.name.startswith("gaia-")}
@@ -722,26 +966,32 @@ def build(client: opik.Opik | None = None) -> None:
         print("[dashboards] no gaia-* projects in Opik — run a suite first")
         return
 
-    suites = [_read_suite(opik_client, name, projects[name]) for name in sorted(projects)]
-    for suite in suites:
-        sections = suite_sections(suite)
-        dashboard = _upsert(
-            opik_client,
-            f"{suite.project} — suite",
-            PROJECT_DESCRIPTIONS.get(suite.project, f"Eval results for {suite.project}."),
-            sections,
-        )
-        panels = sum(len(s.widgets) for s in sections)
+    suites = {name: _read_suite(opik_client, name, pid) for name, pid in sorted(projects.items())}
+    for suite in suites.values():
         print(
-            f"[dashboards] {suite.project:<18} {panels:>2} panels · {suite.cases:>4} cases · "
-            f"scorers={suite.trace_scorers or '-'} · {dashboard.id}"
+            f"[dashboards] read {suite.project:<18} {suite.cases:>4} cases · "
+            f"{len(suite.categories)} categories · scorer={suite.primary_scorer or '-'}"
         )
 
-    overview = _upsert(
-        opik_client,
-        "GAIA evals — all suites",
-        "Cross-suite overview: volume, failures and spend for every eval suite.",
-        overview_sections(suites),
-    )
-    print(f"[dashboards] overview across {len(suites)} suites · {overview.id}")
+    built: set[str] = set()
+    for board in BOARDS:
+        sections = board_sections(board, suites)
+        if not sections:
+            print(f"[dashboards] {board.name}: none of {board.projects} exist in Opik — skipped")
+            continue
+        dashboard = _upsert(opik_client, board.name, board.description, sections)
+        built.add(board.name)
+        panels = sum(len(s.widgets) for s in sections)
+        print(
+            f"[dashboards] {board.name:<18} {len(sections):>2} sections · {panels:>3} panels · "
+            f"{dashboard.id}"
+        )
+
+    if len(built) == len(BOARDS):
+        removed = _delete_others(opik_client, built)
+        print(
+            f"[dashboards] removed {len(removed)} stale dashboard(s): {', '.join(removed) or '-'}"
+        )
+    else:
+        print("[dashboards] not every board built — keeping the existing ones")
     print("[dashboards] open http://localhost:5173 → Dashboards")
