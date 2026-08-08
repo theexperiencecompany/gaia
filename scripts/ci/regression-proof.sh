@@ -34,7 +34,10 @@ printf '  %s\n' "${changed[@]}"
 
 WT="$(mktemp -d)"
 LOG="$(mktemp)"
-JUNIT="$(mktemp -t regression-proof-junit)"
+# Bare mktemp, no -t template: BSD/macOS appends the random suffix for you, GNU
+# requires the template to spell out at least three X's and errors otherwise —
+# which is exactly how this failed on the Linux runner while working locally.
+JUNIT="$(mktemp)"
 trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT"' EXIT
 
 git worktree add --detach "$WT" "$BASE" >/dev/null
