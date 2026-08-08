@@ -49,6 +49,27 @@ def _messages_of(messages: object) -> list[dict[str, object]]:
     return [m for m in messages if isinstance(m, dict)]
 
 
+def produced_nothing(messages: object, tool_calls: object = None, output: object = "") -> bool:
+    """Whether the run yielded no assistant text and no tool calls.
+
+    Every gate below that asserts an ABSENCE — no forbidden tool, no leaked
+    string, no emoji, no delegation — is satisfied by a run that did nothing at
+    all, because nothing is exactly what it was looking for. "No violation
+    found" and "nothing to inspect" are different answers, and conflating them
+    is what made 51 cases incapable of failing: a crashed run scored a clean
+    sweep. An absence gate must therefore establish that something happened
+    before it can credit the agent for what did not.
+    """
+    if _tool_calls_of(tool_calls):
+        return False
+    if str(output or "").strip():
+        return False
+    return not _agent_text(messages).strip()
+
+
+NOTHING_TO_INSPECT = "run produced no output and no tool calls — nothing to inspect"
+
+
 def _arg_matches(actual: object, wanted: object) -> bool:
     """Whether one recorded argument carries the expected value.
 
@@ -234,6 +255,8 @@ class MustNotCommunicate(base_metric.BaseMetric):
         forbidden = expected.get("must_not_communicate", [])
         if not forbidden:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="nothing forbidden")
+        if produced_nothing(messages, None, output):
+            return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
         text = (_agent_text(messages) if messages else output).lower()
         leaked = [str(item) for item in forbidden if str(item).lower() in text]
         if leaked:
@@ -260,13 +283,15 @@ class NoForbiddenToolCalls(base_metric.BaseMetric):
         output: str,
         tool_calls: object = None,
         expected: object = None,
+        messages: object = None,
         **_ignored: object,
     ) -> score_result.ScoreResult:
-        del output
         expected = _expected_of(expected)
         forbidden = {str(name) for name in expected.get("must_not_call_tools", [])}
         if not forbidden:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no tools forbidden")
+        if produced_nothing(messages, tool_calls, output):
+            return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
         called = sorted(
             {
                 str(call.get("name") or "")
@@ -306,15 +331,17 @@ class DelegationGate(base_metric.BaseMetric):
         output: str,
         tool_calls: object = None,
         expected: object = None,
+        messages: object = None,
         **_ignored: object,
     ) -> score_result.ScoreResult:
-        del output
         expected = _expected_of(expected)
         want = str(expected.get("delegation") or "")
         if want not in ("required", "forbidden"):
             return score_result.ScoreResult(
                 name=self.name, value=1.0, reason="no delegation expectation"
             )
+        if produced_nothing(messages, tool_calls, output):
+            return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
         names = [str(call.get("name") or "") for call in _tool_calls_of(tool_calls)]
         delegated = EXECUTOR_HANDOFF_TOOL in names
         if want == "required" and not delegated:
@@ -459,7 +486,17 @@ class ToolCard(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__("tool_card")
 
-    def score(self, tool_calls: object = None, **_ignored: object) -> score_result.ScoreResult:
+    def score(
+        self,
+        tool_calls: object = None,
+        messages: object = None,
+        output: object = "",
+        **_ignored: object,
+    ) -> score_result.ScoreResult:
+        # messages/output are read only to tell "answered without tools" (a pass)
+        # from "produced nothing" (not a pass).
+        if produced_nothing(messages, tool_calls, output):
+            return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
         actual = _tool_calls_of(tool_calls)
         if not actual:
             return score_result.ScoreResult(

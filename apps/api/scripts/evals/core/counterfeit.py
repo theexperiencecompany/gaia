@@ -71,8 +71,25 @@ class CaseVerdict:
 
     @property
     def unfalsifiable(self) -> bool:
-        """A worthless run would have been recorded as a PASS."""
-        return bool(self.passed_wholesale)
+        """A run that produced NOTHING would have been recorded as a pass.
+
+        This is always a defect: no transcript, no tool call, no world change,
+        and the case still scored green.
+        """
+        return "empty" in self.passed_wholesale or "counterfeit" in self.passed_wholesale
+
+    @property
+    def content_blind(self) -> bool:
+        """Passes a reply that only parrots the prompt back.
+
+        NOT automatically a bug. A case whose gates are purely structural or
+        absence-based ("did not delegate a greeting", "produced one clean
+        bubble") is doing its stated job, and an echo satisfying it is a
+        property of what it set out to test rather than a hole in it. It does
+        mean the case asserts nothing about *what the agent actually said*, so
+        it is worth seeing — and worth fixing wherever content is the point.
+        """
+        return "echo" in self.passed_wholesale and not self.unfalsifiable
 
     @property
     def ungated(self) -> bool:
@@ -158,8 +175,9 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
     ungated = [v for v in verdicts if v.ungated]
     errored = [v for v in verdicts if v.error]
     broken = [v for v in verdicts if v.unfalsifiable and not v.ungated]
-    weak = [v for v in verdicts if v.fooled and not v.unfalsifiable]
-    solid = total - len(ungated) - len(errored) - len(broken) - len(weak)
+    blind = [v for v in verdicts if v.content_blind and not v.ungated]
+    weak = [v for v in verdicts if v.fooled and not v.unfalsifiable and not v.content_blind]
+    solid = total - len(ungated) - len(errored) - len(broken) - len(blind) - len(weak)
     cannot_fail = len(broken) + len(ungated)
 
     lines = [
@@ -167,8 +185,10 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
         "=" * 74,
         f"FALSIFIABILITY  {cannot_fail}/{total} cases CANNOT FAIL — a worthless run would pass them",
         "=" * 74,
-        f"  {len(broken):>4}  BROKEN   — every gate accepted a worthless run",
+        f"  {len(broken):>4}  BROKEN   — a run that produced NOTHING scored a pass",
         f"  {len(ungated):>4}  ungated  — no gates declared at all",
+        f"  {len(blind):>4}  content-blind — passes a reply that only parrots the prompt;",
+        "        structural/absence gates only, so it asserts nothing about what was said",
         f"  {len(weak):>4}  weak     — one gate is fakeable, but another still rejects the run",
         f"  {solid:>4}  proven   — every gate rejected every forgery",
         f"  {len(errored):>4}  errored  — the scorer raised on a worthless run",
@@ -181,7 +201,7 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
                 f"gates={','.join(verdict.gates)} via {'/'.join(verdict.passed_wholesale)}"
             )
     by_gate: dict[str, int] = {}
-    for verdict in broken + weak:
+    for verdict in broken + blind + weak:
         for gate in verdict.fooled:
             by_gate[gate] = by_gate.get(gate, 0) + 1
     if by_gate:
@@ -209,6 +229,7 @@ def summary_counts(verdicts: list[CaseVerdict]) -> dict[str, Any]:
     return {
         "total": len(verdicts),
         "broken": len([v for v in verdicts if v.unfalsifiable and not v.ungated]),
+        "content_blind": len([v for v in verdicts if v.content_blind and not v.ungated]),
         "weak": len([v for v in verdicts if v.fooled and not v.unfalsifiable]),
         "ungated": len([v for v in verdicts if v.ungated]),
         "errored": len([v for v in verdicts if v.error]),

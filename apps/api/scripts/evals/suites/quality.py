@@ -53,6 +53,7 @@ import yaml
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.scorers import NOTHING_TO_INSPECT, produced_nothing
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 
 DEV_API_BASE = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
@@ -477,6 +478,8 @@ def _emoji_discipline_check(run: CaseRun) -> tuple[float, str]:
     "aight, add kar raha hoon Inbox me 🌱" — the case passed every structural
     gate it had, because none of them could see this.
     """
+    if produced_nothing(run.messages, run.tool_calls, run.text):
+        return 0.0, NOTHING_TO_INSPECT
     user_has_emojied = False
     for message in run.messages:
         content = str(message.get("content") or "")
@@ -660,7 +663,11 @@ class QualitySuite(Suite):
         expected = case.expected
         scores: dict[str, float] = {}
         scores["bubble_boundary"] = BubbleBoundary().score(messages=run.messages).value
-        scores["tool_card"] = ToolCard().score(tool_calls=run.tool_calls).value
+        scores["tool_card"] = (
+            ToolCard()
+            .score(tool_calls=run.tool_calls, messages=run.messages, output=run.text)
+            .value
+        )
         emoji_value, emoji_reason = _emoji_discipline_check(run)
         scores["emoji_discipline"] = emoji_value
         run.raw.append({"type": "emoji_check", "value": emoji_value, "reason": emoji_reason})
