@@ -82,9 +82,9 @@ def get_summarization_llm() -> BaseChatModel | None:
         # summarization/compaction fractional triggers below require to build.
         _summarization_llm = get_default_llm()
     except LLMNotConfiguredError as exc:
-        log.warning(
-            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled.",
-            error=str(exc),
+        log.set(error=str(exc))
+        log.error(
+            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
         )
         return None
     return _summarization_llm

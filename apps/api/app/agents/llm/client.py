@@ -381,6 +381,12 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     llm = ChatOpenRouter(
         model=DEFAULT_MODEL_NAME,
         temperature=temperature,
+        # ChatOpenRouter defaults streaming to False, and stream_usage only
+        # attaches usage metadata to a stream — set alone it is inert. Both are
+        # set so this matches init_openrouter_llm, and so the model fallback
+        # (create_agent resolves it from here) streams like the primary it
+        # replaces instead of arriving as one lump.
+        streaming=True,
         stream_usage=True,
         max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
         api_key=settings.OPENROUTER_API_KEY,

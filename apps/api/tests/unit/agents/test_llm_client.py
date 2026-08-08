@@ -379,7 +379,13 @@ class TestGetDefaultLlm:
         mock_chat_openrouter.return_value = MagicMock()
 
         assert get_default_llm() is mock_chat_openrouter.return_value
-        assert mock_chat_openrouter.call_args.kwargs["model"] == DEFAULT_MODEL_NAME
+        kwargs = mock_chat_openrouter.call_args.kwargs
+        assert kwargs["model"] == DEFAULT_MODEL_NAME
+        # stream_usage only attaches usage metadata to a STREAM; without
+        # streaming it is inert, and the model fallback built from this factory
+        # would arrive as one lump instead of streaming like the primary.
+        assert kwargs["streaming"] is True
+        assert kwargs["stream_usage"] is True
 
     @patch("app.agents.llm.client.ChatOpenRouter")
     @patch("app.agents.llm.client.settings")

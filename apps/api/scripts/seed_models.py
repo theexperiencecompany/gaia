@@ -102,6 +102,10 @@ def get_models_configuration() -> list[dict[str, Any]]:
             "max_tokens": 1_000_000,
             "supports_streaming": True,
             "supports_function_calling": True,
+            # Text-only: tool results carrying images are captioned by the vision
+            # model instead (see agents/llm/vision/). Exempts it from the
+            # tool-result image gate in tests/model_onboarding.
+            "supports_tool_result_images": False,
             "available_in_plans": [PlanType.FREE.value, PlanType.PRO.value],
             "lowest_tier": PlanType.FREE.value,
             "is_active": True,
