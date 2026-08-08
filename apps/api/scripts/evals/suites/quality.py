@@ -60,7 +60,6 @@ DEV_API_BASE = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
 CHAT_STREAM_URL = f"{DEV_API_BASE}/api/v1/chat-stream"
 DEV_USERS_URL = f"{DEV_API_BASE}/api/v1/dev/users"
 DEV_USER_HEADER = "X-Dev-User"
-QUALITY_EMAIL = "quality.eval@gaia.local"
 TURN_SEPARATOR = "\n---\n"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "quality"
 
@@ -271,8 +270,6 @@ class ChatStreamTransport:
     """Multi-turn SSE transport over the real chat-stream endpoint."""
 
     def __init__(self) -> None:
-        self._email: str | None = None
-        self._pending_email: str = QUALITY_EMAIL
         self.user_prefix: str = "quality"
         self._timeout = httpx.Timeout(connect=15.0, read=900.0, write=30.0, pool=15.0)
 
@@ -297,15 +294,10 @@ class ChatStreamTransport:
         error: str | None = None
         start = time.monotonic()
 
-        # A case owns its user: reset the identity so _ensure_user mints a new
-        # one rather than reusing the previous case's account and its state.
-        self._email = None
-        self._pending_email = self.case_email(case)
-
         try:
             async with asyncio.timeout(deadline):
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    await self._ensure_user(client, provider)
+                    email = await self._mint_user(client, provider, self.case_email(case))
                     for index, turn_text in enumerate(turns):
                         turn_id = f"quality-{case.id}-{index}-{uuid.uuid4().hex[:6]}"
                         payload: TurnPayload = {
@@ -314,7 +306,7 @@ class ChatStreamTransport:
                             "messages": transcript + [{"role": "user", "content": turn_text}],
                             "turn_id": turn_id,
                         }
-                        turn = await self._stream_turn(client, payload, provider)
+                        turn = await self._stream_turn(client, payload, provider, email)
                         conversation_id = turn["conversation_id"] or conversation_id
                         transcript.append({"role": "user", "content": turn_text})
                         if turn["text"]:
@@ -391,22 +383,31 @@ class ChatStreamTransport:
         """
         return f"{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@gaia.local"
 
-    async def _ensure_user(self, client: httpx.AsyncClient, provider: ProviderConfig) -> None:
-        if self._email:
-            return
-        resp = await client.post(DEV_USERS_URL, json={"email": self._pending_email})
+    async def _mint_user(
+        self, client: httpx.AsyncClient, provider: ProviderConfig, email: str
+    ) -> str:
+        """Create this case's user and RETURN it.
+
+        Deliberately returns rather than storing on self: one transport instance
+        serves every case in a run, so instance state is shared state. Holding
+        the identity here let a concurrent case overwrite it mid-run, and the
+        first case's next turn then posted to a conversation another user owned
+        ("404: Conversation not found or does not belong to the user").
+        """
+        resp = await client.post(DEV_USERS_URL, json={"email": email})
         if resp.status_code not in (200, 201):
             raise ProviderError(
                 provider.name,
                 f"dev users endpoint failed: HTTP {resp.status_code}: {(resp.text or '')[:200]}",
             )
-        self._email = self._pending_email
+        return email
 
     async def _stream_turn(
         self,
         client: httpx.AsyncClient,
         payload: TurnPayload,
         provider: ProviderConfig,
+        email: str,
     ) -> TurnRecord:
         frames: list[Frame] = []
         clean = False
@@ -415,7 +416,7 @@ class ChatStreamTransport:
                 "POST",
                 CHAT_STREAM_URL,
                 json=payload,
-                headers={DEV_USER_HEADER: self._email},
+                headers={DEV_USER_HEADER: email},
             ) as resp:
                 if resp.status_code != 200:
                     body = (await resp.aread()).decode("utf-8", errors="replace")

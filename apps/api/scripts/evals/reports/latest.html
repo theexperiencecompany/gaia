@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<title>Eval report — Smoke — smoke-20260808-091758-af0cdd</title>
+<title>Eval report — Comms — comms-20260808-092538-d641cd</title>
 <style>
   body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #0f1115; color: #e5e7eb; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
@@ -25,104 +25,112 @@
   .error { color: #f87171; }
   .banner { color: #9ca3af; font-size: 13px; }
 </style></head><body><div class="wrap">
-<h1>GAIA eval — Smoke</h1>
-<div class="banner">run <code>smoke-20260808-091758-af0cdd</code> · finished 2026-08-08 09:18 UTC · status <b>finished</b> · experiment </div>
+<h1>GAIA eval — Comms</h1>
+<div class="banner">run <code>comms-20260808-092538-d641cd</code> · finished 2026-08-08 09:26 UTC · status <b>finished</b> · experiment </div>
 <div class="score">100.0%</div>
 <div class="pct">3/3 cases passed</div>
-<h2>Metrics</h2><svg viewBox="0 0 640 98" width="640" height="98"><text x="0" y="23" class="lbl">communicate</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">end_state</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text><text x="0" y="75" class="lbl">tool_call_correctness</text><rect x="150" y="62" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="75" class="val">1.00</text></svg>
-<h2>Categories</h2><svg viewBox="0 0 640 98" width="640" height="98"><text x="0" y="23" class="lbl">ROTATION</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">SINGLE_HOP</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text><text x="0" y="75" class="lbl">TOOL_USE</text><rect x="150" y="62" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="75" class="val">1.00</text></svg>
+<h2>Metrics</h2><svg viewBox="0 0 640 124" width="640" height="124"><text x="0" y="23" class="lbl">bubble_boundary</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">communicate</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text><text x="0" y="75" class="lbl">delegation</text><rect x="150" y="62" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="75" class="val">1.00</text><text x="0" y="101" class="lbl">overall</text><rect x="150" y="88" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="101" class="val">1.00</text></svg>
+<h2>Categories</h2><svg viewBox="0 0 640 46" width="640" height="46"><text x="0" y="23" class="lbl">context</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text></svg>
 <h2>Provider usage</h2>
 <table><tr><th>provider</th><th>cases</th><th>tokens in</th><th>tokens out</th><th>est. USD</th></tr>
-<tr><td>opencode</td><td>3</td><td>360</td><td>120</td><td>$0.00</td></tr>
-<tr><td><b>total</b></td><td>3</td><td>360</td><td>120</td><td>$0.00</td></tr>
+<tr><td>nous</td><td>3</td><td>182K</td><td>2K</td><td>$0.00</td></tr>
+<tr><td><b>total</b></td><td>3</td><td>182K</td><td>2K</td><td>$0.00</td></tr>
 </table>
 <h2>Cases</h2>
 <details class="card passed">
-  <summary><b>smoke-1</b>
+  <summary><b>comms-context-subtract-across-turns</b>
     <span class="status">passed</span>
-    <span class="chip ok">communicate=1.00</span>
-    <span class="meta">provider=opencode · 120 in /
-    40 out · 0.1s</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">delegation=1.00</span><span class="chip ok">overall=1.00</span>
+    <span class="meta">provider=nous · 46K in /
+    194 out · 19.8s</span>
   </summary>
   <div class="body">
-    <div class="ticket">Trivial recall — agent must answer directly.</div>
-    <div class="prompt"><b>prompt:</b> What is the capital of France?</div>
+    <div class="ticket">A derived remainder — proves the earlier turn was actually read.</div>
+    <div class="prompt"><b>prompt:</b> how many pages have I got left?</div>
     <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;SINGLE_HOP&quot;,
+ &quot;category&quot;: &quot;context&quot;,
+ &quot;delegation&quot;: &quot;forbidden&quot;,
  &quot;communicate&quot;: [
-  &quot;Paris&quot;
+  &quot;73&quot;
  ],
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;communicate&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> What is the capital of France?</div><div class="msg asst"><b>assistant:</b> The capital of France is Paris.</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card passed">
-  <summary><b>smoke-2</b>
-    <span class="status">passed</span>
-    <span class="chip ok">communicate=1.00</span><span class="chip ok">end_state=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
-    <span class="meta">provider=opencode · 120 in /
-    40 out · 0.1s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">Tool use — create a todo and confirm it.</div>
-    <div class="prompt"><b>prompt:</b> Create a todo for buying milk.</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;TOOL_USE&quot;,
- &quot;tool_calls&quot;: [
-  {
-   &quot;tool&quot;: &quot;create_todo&quot;
-  }
- ],
- &quot;end_state&quot;: {
-  &quot;todos&quot;: [
-   {
-    &quot;title&quot;: &quot;Buy milk&quot;
-   }
+ &quot;judge&quot;: {
+  &quot;criteria&quot;: [
+   &quot;The reply gives 73 pages remaining.&quot;,
+   &quot;The reply does not ask the user for numbers they already gave.&quot;
   ]
  },
- &quot;communicate&quot;: [
-  &quot;milk&quot;
- ],
  &quot;score&quot;: {
   &quot;gates&quot;: [
-   &quot;end_state&quot;,
-   &quot;communicate&quot;
+   &quot;communicate&quot;,
+   &quot;delegation&quot;
   ]
  }
 }</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> Create a todo for buying milk.</div><div class="msg asst"><b>assistant:</b> Your todo &#x27;Buy milk&#x27; is created.</div></div>
-    <div class="tools"><div class="tool"><code>create_todo</code> <pre>{&quot;title&quot;: &quot;Buy milk&quot;}</pre></div></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> I&#x27;m on page 47 of a 120 page book.</div><div class="msg asst"><b>assistant:</b> nice, 39% through. what&#x27;re u reading?</div><div class="msg user"><b>user:</b> how many pages have I got left?</div><div class="msg asst"><b>assistant:</b> 73 left. you&#x27;re past the first third, cruise mode from here 🚀</div></div>
+    <div class="tools"></div>
     <div class="error"></div>
   </div>
 </details><details class="card passed">
-  <summary><b>smoke-3</b>
+  <summary><b>comms-context-pronoun-across-turns</b>
     <span class="status">passed</span>
-    <span class="chip ok">communicate=1.00</span>
-    <span class="meta">provider=opencode · 120 in /
-    40 out · 0.1s</span>
+    <span class="chip ok">bubble_boundary=1.00</span><span class="chip ok">delegation=1.00</span><span class="chip ok">overall=1.00</span>
+    <span class="meta">provider=nous · 68K in /
+    969 out · 30.2s</span>
   </summary>
   <div class="body">
-    <div class="ticket">Provider failure — must rotate off nous and still pass.</div>
-    <div class="prompt"><b>prompt:</b> Write a one-line status report.</div>
+    <div class="ticket">&#x27;That one&#x27; resolves against the earlier turn, not against a guess.</div>
+    <div class="prompt"><b>prompt:</b> the hardware one — what should I do first?</div>
     <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;ROTATION&quot;,
- &quot;communicate&quot;: [
-  &quot;report&quot;
- ],
+ &quot;category&quot;: &quot;context&quot;,
+ &quot;delegation&quot;: &quot;forbidden&quot;,
+ &quot;judge&quot;: {
+  &quot;criteria&quot;: [
+   &quot;The reply is clearly about the synth build, not the blog.&quot;,
+   &quot;The reply does not ask which project the user means.&quot;
+  ]
+ },
  &quot;score&quot;: {
   &quot;gates&quot;: [
-   &quot;communicate&quot;
+   &quot;delegation&quot;,
+   &quot;bubble_boundary&quot;
   ]
  }
 }</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> Write a one-line status report.</div><div class="msg asst"><b>assistant:</b> Created the report.</div></div>
-    <div class="tools"></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> I&#x27;ve got two side projects: one is a bike-repair blog, the other is a synth I&#x27;m building.</div><div class="msg asst"><b>assistant:</b> ooh nice, very different vibes lol. mechanical and musical. which one&#x27;s eating more of your free time rn?</div><div class="msg user"><b>user:</b> the hardware one — what should I do first?</div><div class="msg asst"><b>assistant:</b> hmm, depends where you&#x27;re at with it. breadboard prototype, PCB design, or enclosure/panel stage?&lt;NEW_MESSAGE_BREAK&gt;that kinda decides what &quot;first&quot; even means lol</div></div>
+    <div class="tools"><div class="tool"><code>search_memory</code> <pre>{&quot;query&quot;: &quot;synth project hardware build progress&quot;}</pre></div></div>
+    <div class="error"></div>
+  </div>
+</details><details class="card passed">
+  <summary><b>comms-context-sum-across-turns</b>
+    <span class="status">passed</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">delegation=1.00</span><span class="chip ok">overall=1.00</span>
+    <span class="meta">provider=nous · 69K in /
+    1K out · 34.6s</span>
+  </summary>
+  <div class="body">
+    <div class="ticket">Arithmetic over facts stated a turn earlier; the total is in neither turn.</div>
+    <div class="prompt"><b>prompt:</b> how many is that in total across those three days?</div>
+    <div class="expected"><b>expected:</b> <pre>{
+ &quot;category&quot;: &quot;context&quot;,
+ &quot;delegation&quot;: &quot;forbidden&quot;,
+ &quot;communicate&quot;: [
+  &quot;23&quot;
+ ],
+ &quot;judge&quot;: {
+  &quot;criteria&quot;: [
+   &quot;The reply gives the total of 23 and does not ask the user to repeat the numbers.&quot;,
+   &quot;The reply is brief and does not restate the whole schedule.&quot;
+  ]
+ },
+ &quot;score&quot;: {
+  &quot;gates&quot;: [
+   &quot;communicate&quot;,
+   &quot;delegation&quot;
+  ]
+ }
+}</pre></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> I&#x27;ve got 6 meetings on Monday, 8 on Tuesday and 9 on Wednesday.</div><div class="msg asst"><b>assistant:</b> damn that&#x27;s a packed week 💀 23 meetings in 3 days. monday&#x27;s the lightest at least lol. try to grab some breathing room between em, or want me to block off lunch breaks so you actually get to eat?</div><div class="msg user"><b>user:</b> how many is that in total across those three days?</div><div class="msg asst"><b>assistant:</b> 23 total. 6 + 8 + 9. that&#x27;s a lotta meetings, good luck out there 💀</div></div>
+    <div class="tools"><div class="tool"><code>add_memory</code> <pre>{&quot;content&quot;: &quot;User has a heavy meeting week: 6 meetings on Monday (Aug 10, 2026), 8 on Tuesday (Aug 11, 2026), and 9 on Wednesday (Aug 12, 2026).&quot;}</pre></div></div>
     <div class="error"></div>
   </div>
 </details>
