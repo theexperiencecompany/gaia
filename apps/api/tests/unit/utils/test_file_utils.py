@@ -82,7 +82,7 @@ def processor() -> DocumentProcessor:
         patch("app.utils.file_utils.LlamaParse"),
         patch("app.utils.file_utils.get_default_llm", return_value=_mock_llm()),
     ):
-        proc = DocumentProcessor()
+        proc = DocumentProcessor(user_id="u-test")
     return proc
 
 
@@ -684,6 +684,7 @@ class TestGenerateFileSummary:
             file_content=b"data",
             content_type="text/plain",
             filename="readme.txt",
+            user_id="u-test",
         )
 
         mock_instance.process_file.assert_awaited_once_with(
@@ -699,7 +700,7 @@ class TestGenerateFileSummary:
         mock_instance.process_file = AsyncMock(return_value="")
         mock_proc_cls.return_value = mock_instance
 
-        await generate_file_summary(b"a", "text/plain", "a.txt")
-        await generate_file_summary(b"b", "text/plain", "b.txt")
+        await generate_file_summary(b"a", "text/plain", "a.txt", user_id="u-test")
+        await generate_file_summary(b"b", "text/plain", "b.txt", user_id="u-test")
 
         assert mock_proc_cls.call_count == 2
