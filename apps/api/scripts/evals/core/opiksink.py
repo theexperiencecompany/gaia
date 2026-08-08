@@ -11,15 +11,18 @@ Every write is keyed by ``CaseTrace.key`` (case + run), which is what lets
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 import hashlib
+from http import HTTPStatus
 import json
 from pathlib import Path
+import re
 import uuid
 
 from dotenv import load_dotenv
 import opik
 from opik import id_helpers
+from opik.rest_api.core.api_error import ApiError
 
 from .journal import RunJournal
 from .types import Case, CaseTrace
@@ -61,7 +64,7 @@ def trace_id_for(project: str, case: CaseTrace) -> str:
     Opik requires a UUIDv7, whose leading 48 bits are a millisecond timestamp,
     so the case's own start time supplies those and the hash supplies the rest.
     """
-    return _stable_uuid7(f"trace|{project}|{case.key}", case.started_at)
+    return _stable_uuid7(f"trace|{project}|{case.key}", _identity_time(case))
 
 
 def span_id_for(project: str, case: CaseTrace) -> str:
@@ -70,7 +73,33 @@ def span_id_for(project: str, case: CaseTrace) -> str:
     Without this a re-write upserts the trace but appends a second span, so the
     cost and tokens the span carries would be counted twice.
     """
-    return _stable_uuid7(f"span|{project}|{case.key}", case.started_at)
+    return _stable_uuid7(f"span|{project}|{case.key}", _identity_time(case))
+
+
+#: Run ids look like ``capability-20260808-063606-c9077b``.
+_RUN_ID_TIMESTAMP = re.compile(r"(\d{8})-(\d{6})")
+
+
+def _identity_time(case: CaseTrace) -> datetime:
+    """The timestamp half of a derived id — stable for one (case, run).
+
+    A UUIDv7's leading 48 bits are a millisecond clock, so whatever goes here is
+    part of the id. Using the case's own ``started_at`` looked natural and was
+    wrong: a resumed run journals the same case twice with timestamps tens of
+    milliseconds apart, so the "deterministic" id differed between the two
+    records and the second write inserted a duplicate instead of updating. Three
+    such pairs survived a full rebuild and the check caught them — the ids were
+    identical in their hash half and differed only in the clock half.
+
+    The run id already carries the run's own start, so it gives every record of
+    the same run the same value without needing anything from the record.
+    """
+    found = _RUN_ID_TIMESTAMP.search(case.run_id)
+    if not found:
+        return case.ended_at
+    return datetime.strptime(f"{found.group(1)}{found.group(2)}", "%Y%m%d%H%M%S").replace(
+        tzinfo=UTC
+    )
 
 
 def _stable_uuid7(key: str, when: datetime) -> str:
@@ -191,7 +220,10 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
         model=case.model,
         provider=case.provider,
         usage=case.usage,
-        total_cost=case.cost_usd,
+        # None, not 0.0, when the tokens behind it were never metered: Opik sums
+        # what it is given, and a zero would read as "this case was free" rather
+        # than "nobody measured it".
+        total_cost=case.cost_usd if case.tokens_trusted else None,
         error_info=case.error_info,
     )
     for name, value in case.scores.items():
@@ -209,9 +241,18 @@ def legacy_case_traces(project: str, expected_ids: set[str]) -> int:
     This is why the rebuild tears the projects down first. Seeding without a
     teardown must say so loudly rather than quietly double the data.
     """
+    try:
+        traces = client(project).search_traces(project_name=project, max_results=_MAX_TRACES)
+    except ApiError as e:
+        if e.status_code != HTTPStatus.NOT_FOUND:
+            raise
+        # A project that does not exist holds nothing to duplicate. This is the
+        # normal state immediately after a teardown, and treating it as an error
+        # made the rebuild unable to seed the projects it had just deleted.
+        return 0
     return sum(
         1
-        for trace in client(project).search_traces(project_name=project, max_results=_MAX_TRACES)
+        for trace in traces
         if (trace.name or "").startswith("case-") and trace.id not in expected_ids
     )
 

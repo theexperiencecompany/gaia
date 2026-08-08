@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from . import opiksink
 from .journal import RunJournal
@@ -26,6 +27,20 @@ from .types import CaseTrace, PriceBook
 # those traces, so omitting them would make a backfill disagree with the run it
 # is replaying — and a crashed case is exactly what you go to Opik to look at.
 SEEDABLE_STATUSES = {"passed", "failed", "errored"}
+
+#: Suites whose pre-fix journals cannot be trusted for tokens, per the token
+#: accounting audit. Three differenced a *shared* run meter while 3-14 cases ran
+#: concurrently, so each case was credited with its neighbours' spend; two never
+#: measured at all and inferred tokens from string length; one journalled zero.
+#:
+#: This is a fallback for journals written before ``tokens.source`` existed. A
+#: record that carries the field is believed over this list, so the list retires
+#: itself as suites are re-run rather than becoming a permanent second source of
+#: truth. ``safety``, ``comms`` and ``quality`` are absent deliberately: they read
+#: provider-reported usage per case, which is the mechanism we trust.
+UNMETERED_LEGACY_SUITES = frozenset(
+    {"capability", "memory", "longmemeval", "regression", "gaia_bench", "hil", "smoke"}
+)
 
 # Descriptions belong to the Opik project rather than to a suite, because a
 # project can be fed by more than one suite (regression writes into capability).
@@ -154,7 +169,7 @@ def _seed_project(
     traces = [
         CaseTrace.from_record(
             run_id,
-            record,
+            _with_resolved_token_source(record, meta.suite if meta else ""),
             prices,
             suite=meta.suite if meta else "",
             app_version=meta.app_version if meta else "",
@@ -176,6 +191,22 @@ def _seed_project(
             print(f"[seed] {project}/{trace.run_id}/{trace.case_id}: {type(e).__name__}: {e}")
     opiksink.flush(project)
     print(f"[seed] {project:<18} runs={len(run_ids):<3} {written} written · {failed} failed")
+
+
+def _with_resolved_token_source(record: dict[str, Any], suite: str) -> dict[str, Any]:
+    """Label a pre-fix record's token provenance so cost can be withheld from it.
+
+    A journal written before ``tokens.source`` existed says nothing about how its
+    numbers were obtained, and for seven suites they were obtained wrongly. The
+    accuracy in those runs is sound, so they are still worth ingesting — the
+    tokens and the cost derived from them are not, and are dropped rather than
+    published at a plausible-looking wrong value.
+    """
+    tokens = record.get("tokens") or {}
+    if tokens.get("source"):
+        return record
+    resolved = "unmetered" if suite in UNMETERED_LEGACY_SUITES else "unknown"
+    return {**record, "tokens": {**tokens, "source": resolved}}
 
 
 class LegacyTracesPresent(RuntimeError):

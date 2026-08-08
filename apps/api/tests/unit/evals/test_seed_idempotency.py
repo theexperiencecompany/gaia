@@ -132,6 +132,33 @@ def test_a_metadata_rename_cannot_defeat_idempotency(fake_client: _FakeClient) -
     assert opiksink.trace_id_for(PROJECT, renamed) == before
 
 
+def test_a_resumed_run_journalling_a_case_twice_still_writes_one_trace(
+    fake_client: _FakeClient,
+) -> None:
+    """The bug a full rebuild found, after the first idempotency fix looked done.
+
+    A resumed run writes the same case twice with slightly different timestamps
+    and durations. The derived id embedded the case's own start time (a UUIDv7
+    carries a millisecond clock in its first 48 bits), so the two records
+    produced ids that matched in their hash half and differed in their clock
+    half — and the second inserted a duplicate. Three of these survived a full
+    rebuild of nine projects.
+    """
+    first = _trace(ts="2026-08-08T06:36:12.100000+00:00", duration_s=4.20)
+    second = _trace(ts="2026-08-08T06:36:12.140000+00:00", duration_s=4.19)
+    # Deliberately not a 40ms shift in both: started_at is ts minus duration, so
+    # shifting each by the same amount cancels and the sanity check below would
+    # pass while comparing two identical values.
+    assert first.started_at != second.started_at, "sanity: the records really do differ"
+
+    opiksink.log_case_trace(PROJECT, first)
+    opiksink.log_case_trace(PROJECT, second)
+    assert len(fake_client.rows) == 1, (
+        "a case journalled twice within one run produced two traces — this is the "
+        "resume path, and it inflates every count in the project"
+    )
+
+
 def test_two_different_cases_are_not_collapsed(fake_client: _FakeClient) -> None:
     """The opposite failure: silently losing a case is worse than duplicating it."""
     opiksink.log_case_trace(PROJECT, _trace())

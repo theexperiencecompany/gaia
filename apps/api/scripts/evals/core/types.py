@@ -162,8 +162,21 @@ class CaseTrace:
         return self.ended_at - timedelta(seconds=self.duration_s)
 
     @property
-    def usage(self) -> dict[str, int]:
-        """Token usage in the shape Opik aggregates on."""
+    def tokens_trusted(self) -> bool:
+        """Whether these counts may be turned into a number anyone reads.
+
+        Opik derives a project's cost and token totals from what the span
+        carries, so publishing an unmetered count does not produce a rough
+        figure — it produces a precise, wrong, official-looking one, which is
+        worse than an empty panel that prompts someone to ask why.
+        """
+        return self.tokens_source == "metered"
+
+    @property
+    def usage(self) -> dict[str, int] | None:
+        """Token usage in the shape Opik aggregates on, or None if untrusted."""
+        if not self.tokens_trusted:
+            return None
         return {
             "prompt_tokens": self.tokens_in,
             "completion_tokens": self.tokens_out,
@@ -192,9 +205,20 @@ class CaseTrace:
         run_id: str,
         record: dict[str, Any],
         prices: PriceBook,
-        suite: str = "",
-        app_version: str = "",
+        *,
+        suite: str,
+        app_version: str,
     ) -> CaseTrace:
+        """Build the trace for one journaled case.
+
+        ``suite`` and ``app_version`` are required, and keyword-only, because
+        they used to default to "". The seeder passed them and the live run loop
+        did not, so every trace written during a run was missing both while the
+        same case re-seeded later carried them — two sources of truth for one
+        trace, reconciled only by whoever happened to re-seed. A default is what
+        let one caller silently omit them; without one, the omission is a
+        TypeError at import time rather than a blank field in a dashboard.
+        """
         tokens = record.get("tokens") or {}
         tokens_in = int(tokens.get("input", 0))
         tokens_out = int(tokens.get("output", 0))

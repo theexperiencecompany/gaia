@@ -191,6 +191,9 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
 
     provider_index = 0
     prices = price_book(cfg)
+    # Read once: a resumed run's version is the one the journal recorded, not
+    # whatever the working tree describes as now.
+    app_version = (journal.load_meta() or RunMeta("", "", "")).app_version
 
     def record_case(
         case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
@@ -200,7 +203,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         source = _attribute_tokens(run, tracker, case.id)
         record = _record(case, run, scores, status, error, source)
         journal.append(record)
-        _log_trace(suite.project, run_id, record, prices)
+        _log_trace(suite.project, run_id, record, prices, suite.name, app_version)
 
     aborted: str | None = None
     run_status = "finished"
@@ -473,7 +476,14 @@ def _status_from_scores(case: Case, scores: dict[str, float], error: str | None)
     return "passed" if all(v >= 0.5 for v in gate_values) else "failed"
 
 
-def _log_trace(project: str, run_id: str, record: dict[str, Any], prices: PriceBook) -> None:
+def _log_trace(
+    project: str,
+    run_id: str,
+    record: dict[str, Any],
+    prices: PriceBook,
+    suite: str,
+    app_version: str,
+) -> None:
     """Log one journaled case as an Opik trace with its feedback scores.
 
     Built from the journal record, so a live run and a later ``seed`` backfill
@@ -484,7 +494,10 @@ def _log_trace(project: str, run_id: str, record: dict[str, Any], prices: PriceB
     from .opiksink import log_case_trace
 
     try:
-        log_case_trace(project, CaseTrace.from_record(run_id, record, prices))
+        log_case_trace(
+            project,
+            CaseTrace.from_record(run_id, record, prices, suite=suite, app_version=app_version),
+        )
     except Exception as e:
         print(f"[opik] trace for {record['case_id']} not logged: {type(e).__name__}: {e}")
 

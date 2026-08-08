@@ -139,15 +139,23 @@ def verify(
     not rebuilt yet are still dirty — it would abort the rebuild it exists to
     de-risk.
     """
-    expectations = ingest_check.journal_expectations(runs_dir, suite_projects(), only_projects)
-    names = ingest_check.project_names(base_url)
+    projects = suite_projects()
+    expectations = ingest_check.journal_expectations(runs_dir, projects, only_projects)
+    unversioned = ingest_check.journal_missing_app_version(runs_dir, projects, only_projects)
+    # Drive from what the journals expect, not from what Opik happens to hold.
+    # Iterating the backend's project list meant a stage whose seed failed
+    # outright had nothing to inspect and was therefore reported as passing —
+    # the same "absence reads as success" defect this check exists to catch.
+    names = sorted(set(ingest_check.project_names(base_url)) | set(expectations))
     if only_projects is not None:
         names = [name for name in names if name in only_projects]
     all_facts = [ingest_check.read_project(base_url, name) for name in names]
     findings = [
         finding
         for facts in all_facts
-        for finding in ingest_check.check(facts, expectations.get(facts.name))
+        for finding in ingest_check.check(
+            facts, expectations.get(facts.name), unversioned.get(facts.name, 0)
+        )
     ]
     return not findings, ingest_check.render(all_facts, findings)
 

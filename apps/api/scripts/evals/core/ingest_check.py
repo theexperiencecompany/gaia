@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from http import HTTPStatus
 import json
 from pathlib import Path
 from urllib.parse import urlparse
@@ -63,6 +64,7 @@ class ProjectFacts:
     """What Opik reports for one project, read back rather than assumed."""
 
     name: str
+    exists: bool = True
     traces: int = 0
     case_traces: int = 0
     non_case_traces: int = 0
@@ -100,6 +102,14 @@ class Finding:
 #: to a run, a suite or a build — which is what made corrupt runs unfilterable
 #: and forced a full teardown instead of a targeted purge.
 REQUIRED_METADATA = ("run_id", "suite", "app_version", "case_id")
+
+#: Keys the journal may genuinely not know. ``app_version`` was added after most
+#: of these runs were recorded, so a trace from an older journal cannot carry it
+#: and no amount of re-ingesting will conjure one. Absence is only a fault when
+#: the journal HAS the value and we failed to propagate it — which is what
+#: :func:`journal_missing_app_version` measures. Failing on the rest would make
+#: this check permanently red, and a check that cannot pass gets switched off.
+BEST_EFFORT_METADATA = frozenset({"app_version"})
 
 #: Trace names Opik itself writes. ``evaluate()`` opens one ``evaluation_task``
 #: trace per dataset item, so these are the experiment machinery working, not
@@ -147,6 +157,10 @@ def trace_count(base_url: str, project: str) -> int:
     return int(str(_api(base_url, "/traces", project_name=project, size=1).get("total") or 0))
 
 
+class ProjectMissing(LookupError):
+    """The project holds no traces because it does not exist."""
+
+
 def _all_traces(base_url: str, project: str) -> list[dict[str, object]]:
     """Every trace, paginated.
 
@@ -158,7 +172,12 @@ def _all_traces(base_url: str, project: str) -> list[dict[str, object]]:
     out: list[dict[str, object]] = []
     page = 1
     while True:
-        data = _api(base_url, "/traces", project_name=project, page=page, size=_PAGE)
+        try:
+            data = _api(base_url, "/traces", project_name=project, page=page, size=_PAGE)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code != HTTPStatus.NOT_FOUND:
+                raise
+            raise ProjectMissing(project) from e
         chunk = data.get("content") or []
         if not isinstance(chunk, list):
             return out
@@ -171,11 +190,19 @@ def _all_traces(base_url: str, project: str) -> list[dict[str, object]]:
 
 def read_project(base_url: str, project: str) -> ProjectFacts:
     facts = ProjectFacts(name=project)
+    try:
+        traces = _all_traces(base_url, project)
+    except ProjectMissing:
+        # Absent, not empty. Reported as zero traces so the journal comparison
+        # fires — the alternative, skipping it, is how a stage that wrote nothing
+        # came to report success.
+        facts.exists = False
+        return facts
     keys: Counter[tuple[str, str]] = Counter()
     missing: Counter[str] = Counter()
     non_case: Counter[str] = Counter()
     sources: Counter[str] = Counter()
-    for trace in _all_traces(base_url, project):
+    for trace in traces:
         facts.traces += 1
         name = str(trace.get("name") or "")
         metadata = trace.get("metadata")
@@ -205,7 +232,9 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
         if source != TRUSTED_TOKEN_SOURCE:
             facts.untrusted_cost_usd += cost
         worked = float(str(metadata.get("duration_s") or 0) or 0) >= MIN_WORKING_SECONDS
-        if worked and 0 <= tokens < MIN_TOKENS_PER_WORKING_TRACE:
+        # Only meaningful for metered traces: an unmetered one reports zero
+        # because we withheld it, which is the intended state, not a fault.
+        if source == TRUSTED_TOKEN_SOURCE and worked and tokens < MIN_TOKENS_PER_WORKING_TRACE:
             facts.starved_traces += 1
     facts.token_sources = dict(sources)
     facts.duplicate_keys = sum(n - 1 for n in keys.values() if n > 1)
@@ -245,9 +274,45 @@ def journal_expectations(
     return dict(expected)
 
 
-def check(facts: ProjectFacts, expected_cases: int | None) -> list[Finding]:
+def journal_missing_app_version(
+    runs_dir: Path, suite_projects: dict[str, str], only_projects: set[str] | None = None
+) -> dict[str, int]:
+    """Case records per project whose own run.json records no app_version."""
+    unknown: Counter[str] = Counter()
+    for run_dir in sorted(runs_dir.iterdir()):
+        meta_file = run_dir / "run.json"
+        if not run_dir.is_dir() or not meta_file.exists():
+            continue
+        meta = json.loads(meta_file.read_text())
+        if meta.get("excluded") or meta.get("app_version"):
+            continue
+        project = suite_projects.get(str(meta.get("suite") or ""))
+        if project is None or (only_projects is not None and project not in only_projects):
+            continue
+        unknown[project] += len(
+            {
+                str(record["case_id"])
+                for record in RunJournal(runs_dir, run_dir.name).records()
+                if record.get("status") in SEEDABLE_STATUSES
+            }
+        )
+    return dict(unknown)
+
+
+def check(
+    facts: ProjectFacts, expected_cases: int | None, unversioned_cases: int = 0
+) -> list[Finding]:
     """Every way this project's data is impossible or disagrees with the journals."""
     found: list[Finding] = []
+    if not facts.exists:
+        return [
+            Finding(
+                facts.name,
+                "project missing",
+                f"the journals describe {expected_cases or 0} case(s) here and the project does "
+                f"not exist — the seed wrote nothing",
+            )
+        ]
     if facts.non_case_traces:
         found.append(
             Finding(
@@ -266,9 +331,13 @@ def check(facts: ProjectFacts, expected_cases: int | None) -> list[Finding]:
             )
         )
     for key, count in sorted(facts.missing_metadata.items()):
-        found.append(
-            Finding(facts.name, "missing metadata", f"{count} case traces carry no {key!r}")
-        )
+        unexplained = count - unversioned_cases if key in BEST_EFFORT_METADATA else count
+        if unexplained <= 0:
+            continue
+        detail = f"{unexplained} case traces carry no {key!r}"
+        if key in BEST_EFFORT_METADATA and unversioned_cases:
+            detail += f" beyond the {unversioned_cases} whose journal records none either"
+        found.append(Finding(facts.name, "missing metadata", detail))
     if facts.max_trace_tokens > MAX_TOKENS_PER_TRACE:
         found.append(
             Finding(
@@ -305,12 +374,17 @@ def check(facts: ProjectFacts, expected_cases: int | None) -> list[Finding]:
                 f"${facts.total_cost_usd:,.2f} for {facts.case_traces} cases",
             )
         )
-    if facts.case_traces and facts.total_tokens == 0:
+    metered = facts.token_sources.get(TRUSTED_TOKEN_SOURCE, 0)
+    if metered and facts.total_tokens == 0:
+        # Only a fault when the tokens were supposed to be there. A project whose
+        # counts were deliberately withheld as unmetered reports zero on purpose,
+        # and flagging that would train people to ignore the finding.
         found.append(
             Finding(
                 facts.name,
                 "no tokens",
-                f"{facts.case_traces} case traces and zero tokens — the llm span is missing",
+                f"{metered} case traces claim metered tokens but the project totals zero "
+                f"— the llm span is missing",
             )
         )
     if expected_cases is not None and facts.case_traces != expected_cases:
