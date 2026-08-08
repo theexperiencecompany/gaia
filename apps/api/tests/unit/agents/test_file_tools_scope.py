@@ -97,3 +97,26 @@ class TestSearchUploadedFilesScope:
             )
 
         assert "Time-Parking 2" in content
+
+    async def test_an_unknown_file_id_fails_loud_instead_of_returning_nothing(self):
+        """An id the conversation does not own must not read as "no matches".
+
+        Proven against the live stack: passing the filename — the only file
+        identifier the agent is ever shown — returned "" silently, which the
+        model cannot distinguish from an empty document.
+        """
+        with (
+            patch(
+                "app.agents.tools.file_tools.ChromaClient.get_langchain_client",
+                AsyncMock(return_value=object()),
+            ),
+            patch(
+                "app.agents.tools.file_tools.file_repository.find_ids_for_conversation",
+                AsyncMock(return_value=["file-1"]),
+            ),
+            pytest.raises(ValueError, match="inventory.xlsx"),
+        ):
+            await search_uploaded_files.ainvoke(
+                {"query": "oldest blu-ray", "file_id": "inventory.xlsx"},
+                config=_executor_config(),
+            )

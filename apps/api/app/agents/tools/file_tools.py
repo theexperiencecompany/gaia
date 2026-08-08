@@ -108,7 +108,14 @@ async def _get_similar_documents(
 
     if file_id is not None:
         if file_id not in conversation_file_ids:
-            return []
+            # Fail loud. An unknown id used to return "" — indistinguishable from
+            # "the file says nothing about that" — and the agent is never shown a
+            # file's id anywhere, so a guessed filename lands here every time.
+            raise ValueError(
+                f"No uploaded file with id {file_id!r} in this conversation. "
+                f"Available ids: {conversation_file_ids}. "
+                "Omit file_id to search across all of them."
+            )
         target_file_ids = [file_id]
     else:
         target_file_ids = conversation_file_ids

@@ -808,10 +808,15 @@ def format_files_list(
         # fail. `search_uploaded_files` needs no mount and is the honest route.
         on_disk_available = file.sandbox_path is not None
         any_on_disk = any_on_disk or on_disk_available
+        # The id is shown because `search_uploaded_files(file_id=...)` needs one;
+        # without it an agent scoping to a single file can only guess the
+        # filename, which matches nothing.
         if on_disk_available:
-            lines.append(f"- {file.filename}  →  `{path}`")
+            lines.append(f"- {file.filename}  (id: {file.fileId})  →  `{path}`")
         else:
-            lines.append(f"- {file.filename}  (not on disk — use `search_uploaded_files`)")
+            lines.append(
+                f"- {file.filename}  (id: {file.fileId}) — not on disk, use `search_uploaded_files`"
+            )
         if file.description:
             summary = file.description.strip()
             if len(summary) > UPLOADED_FILE_INLINE_SUMMARY_MAX_CHARS:
