@@ -47,11 +47,10 @@ class LongMemEvalSuite(Suite):
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg
-        from scripts.memory_benchmark.longmemeval import (
-            main as _unused,  # noqa: F401 — dataset keys live in the module
-        )
 
-        items = [i for i in self._load_items() if not str(i.get("question_id", "")).endswith("_abs")]
+        items = [
+            i for i in self._load_items() if not str(i.get("question_id", "")).endswith("_abs")
+        ]
         by_type: dict[str, list[dict[str, Any]]] = {}
         for item in items:
             by_type.setdefault(item.get("question_type", "?"), []).append(item)
@@ -93,7 +92,9 @@ class LongMemEvalSuite(Suite):
             )
         except TimeoutError:
             return CaseRun(
-                case_id=case.id, provider=provider.name, model=provider.model,
+                case_id=case.id,
+                provider=provider.name,
+                model=provider.model,
                 error=f"question timed out after {deadline:.0f}s",
             )
 
@@ -112,8 +113,15 @@ class LongMemEvalSuite(Suite):
         items = self._load_items()
         matches = [i for i in items if str(i.get("question_id", "")) == question_id]
         if not matches:
-            return CaseRun(case_id=case.id, provider=provider.name, model=provider.model, error="dataset item not found")
+            return CaseRun(
+                case_id=case.id,
+                provider=provider.name,
+                model=provider.model,
+                error="dataset item not found",
+            )
         item = matches[0]
+        tokens_in_before = tracker.total_input
+        tokens_out_before = tracker.total_output
         qtype, correct, model_answer = await lme._run_question(item, 1, 1)
         return CaseRun(
             case_id=case.id,
@@ -127,8 +135,8 @@ class LongMemEvalSuite(Suite):
             end_state={"gaia_exact": 1.0 if correct else 0.0, "gold": item.get("answer")},
             text=model_answer or "",
             raw=[{"judge_verdict": bool(correct), "question_type": qtype}],
-            tokens_in=tracker.input_tokens.get(provider.name, 0),
-            tokens_out=tracker.output_tokens.get(provider.name, 0),
+            tokens_in=tracker.total_input - tokens_in_before,
+            tokens_out=tracker.total_output - tokens_out_before,
         )
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
@@ -139,5 +147,6 @@ class LongMemEvalSuite(Suite):
         return {"gaia_exact": float(exact.get("gaia_exact", 0.0))}
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
+        from scripts.evals.core.scorers import ProviderQuality
         del cfg
-        return []
+        return [ProviderQuality()]

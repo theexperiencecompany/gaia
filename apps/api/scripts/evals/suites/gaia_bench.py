@@ -277,14 +277,13 @@ def _as_int(value: object) -> int:
 
 def _read_parquet(path: Path) -> list[dict[str, object]]:
     try:
-        import pyarrow.parquet  # noqa: F401 - engine availability probe
-
-        del pyarrow
+        import pyarrow as pa  # engine availability probe — pandas needs it for parquet
     except ImportError as exc:
         raise RuntimeError(
             "metadata.parquet needs pyarrow to be read: "
             "`uv add --group backend pyarrow` (or install the `datasets` package)."
         ) from exc
+    del pa
     frame = pd.read_parquet(path, engine="pyarrow")
     return frame.to_dict(orient="records")
 

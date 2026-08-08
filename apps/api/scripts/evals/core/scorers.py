@@ -31,7 +31,9 @@ def _agent_text(messages: object) -> str:
     if not isinstance(messages, list):
         return ""
     return "\n".join(
-        str(m.get("content", "")) for m in messages if isinstance(m, dict) and m.get("role") == "assistant"
+        str(m.get("content", ""))
+        for m in messages
+        if isinstance(m, dict) and m.get("role") == "assistant"
     )
 
 
@@ -65,7 +67,9 @@ class ToolCallCorrectness(base_metric.BaseMetric):
         wanted = expected.get("tool_calls", [])
         actual = _tool_calls_of(tool_calls)
         if not wanted:
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="no tool calls expected")
+            return score_result.ScoreResult(
+                name=self.name, value=1.0, reason="no tool calls expected"
+            )
         missing: list[str] = []
         for want in wanted:
             if not isinstance(want, dict):
@@ -81,7 +85,9 @@ class ToolCallCorrectness(base_metric.BaseMetric):
                 value=0.0,
                 reason=f"missing tool calls: {', '.join(missing)}",
             )
-        return score_result.ScoreResult(name=self.name, value=1.0, reason="all expected tool calls seen")
+        return score_result.ScoreResult(
+            name=self.name, value=1.0, reason="all expected tool calls seen"
+        )
 
 
 class EndStateEquality(base_metric.BaseMetric):
@@ -101,7 +107,9 @@ class EndStateEquality(base_metric.BaseMetric):
         expected = _expected_of(expected)
         wanted = expected.get("end_state", {})
         if not wanted:
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="no end state expected")
+            return score_result.ScoreResult(
+                name=self.name, value=1.0, reason="no end state expected"
+            )
         actual = cast(dict[str, object], end_state) if isinstance(end_state, dict) else {}
         mismatches: list[str] = []
         for key, want in wanted.items():
@@ -112,9 +120,7 @@ class EndStateEquality(base_metric.BaseMetric):
             elif got != want:
                 mismatches.append(f"{key}: expected {want}, got {got}")
         if mismatches:
-            return score_result.ScoreResult(
-                name=self.name, value=0.0, reason="; ".join(mismatches)
-            )
+            return score_result.ScoreResult(name=self.name, value=0.0, reason="; ".join(mismatches))
         return score_result.ScoreResult(name=self.name, value=1.0, reason="end state matches")
 
 
@@ -152,7 +158,9 @@ class CommunicateGate(base_metric.BaseMetric):
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason=f"never communicated: {missing}"
             )
-        return score_result.ScoreResult(name=self.name, value=1.0, reason="all required info relayed")
+        return score_result.ScoreResult(
+            name=self.name, value=1.0, reason="all required info relayed"
+        )
 
 
 class BubbleBoundary(base_metric.BaseMetric):
@@ -178,7 +186,9 @@ class BubbleBoundary(base_metric.BaseMetric):
             prev = content
         if issues:
             return score_result.ScoreResult(name=self.name, value=0.0, reason="; ".join(issues[:3]))
-        return score_result.ScoreResult(name=self.name, value=1.0, reason="bubbles distinct and non-empty")
+        return score_result.ScoreResult(
+            name=self.name, value=1.0, reason="bubbles distinct and non-empty"
+        )
 
 
 class ToolCard(base_metric.BaseMetric):
@@ -190,7 +200,9 @@ class ToolCard(base_metric.BaseMetric):
     def score(self, tool_calls: object = None, **_ignored: object) -> score_result.ScoreResult:
         actual = _tool_calls_of(tool_calls)
         if not actual:
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="no tool calls to card")
+            return score_result.ScoreResult(
+                name=self.name, value=1.0, reason="no tool calls to card"
+            )
         issues: list[str] = []
         for t in actual:
             if not t.get("name"):
@@ -214,10 +226,14 @@ class Suggestion(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__("suggestion")
 
-    def score(self, messages: object = None, expected: object = None, **_ignored: object) -> score_result.ScoreResult:
+    def score(
+        self, messages: object = None, expected: object = None, **_ignored: object
+    ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
         if not expected.get("suggestions"):
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="no suggestions expected")
+            return score_result.ScoreResult(
+                name=self.name, value=1.0, reason="no suggestions expected"
+            )
         msgs = _messages_of(messages)
         if not msgs:
             return score_result.ScoreResult(name=self.name, value=0.0, reason="no transcript")
@@ -227,7 +243,9 @@ class Suggestion(base_metric.BaseMetric):
         if not last:
             return score_result.ScoreResult(name=self.name, value=0.0, reason="no assistant bubble")
         return score_result.ScoreResult(
-            name=self.name, value=1.0, reason="suggestion surface present (deep check in quality suite)"
+            name=self.name,
+            value=1.0,
+            reason="suggestion surface present (deep check in quality suite)",
         )
 
 
@@ -237,18 +255,26 @@ class OpenUICheck(base_metric.BaseMetric):
     def __init__(self) -> None:
         super().__init__("openui")
 
-    def score(self, output: str, expected: object = None, **_ignored: object) -> score_result.ScoreResult:
+    def score(
+        self, output: str, expected: object = None, **_ignored: object
+    ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
         want = bool(expected.get("openui"))
         fences = re.findall(r":::openui(.*?):::", output, flags=re.DOTALL)
         if want and not fences:
-            return score_result.ScoreResult(name=self.name, value=0.0, reason="expected OpenUI, none emitted")
+            return score_result.ScoreResult(
+                name=self.name, value=0.0, reason="expected OpenUI, none emitted"
+            )
         if not want:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="not expected")
         bad = [f for f in fences if not f.strip().startswith("{")]
         if bad:
-            return score_result.ScoreResult(name=self.name, value=0.0, reason="unparseable OpenUI fence")
-        return score_result.ScoreResult(name=self.name, value=1.0, reason=f"{len(fences)} OpenUI fence(s)")
+            return score_result.ScoreResult(
+                name=self.name, value=0.0, reason="unparseable OpenUI fence"
+            )
+        return score_result.ScoreResult(
+            name=self.name, value=1.0, reason=f"{len(fences)} OpenUI fence(s)"
+        )
 
 
 _RUBRIC_SYSTEM = """You are an evaluation judge for a personal AI assistant. You grade one
@@ -288,9 +314,13 @@ class RubricJudge(base_metric.BaseMetric):
         criteria = expected.get("judge", {}).get("criteria", [])
         if not criteria:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no judge criteria")
-        transcript = "\n".join(
-            f"{m.get('role', '?')}: {m.get('content', '')}" for m in _messages_of(messages)
-        ) if messages else output
+        transcript = (
+            "\n".join(
+                f"{m.get('role', '?')}: {m.get('content', '')}" for m in _messages_of(messages)
+            )
+            if messages
+            else output
+        )
         user_prompt = (
             f"ASSISTANT RESPONSE:\n{output}\n\nFULL TRANSCRIPT:\n{transcript}\n\n"
             f"CRITERIA (grade each):\n" + "\n".join(f"- {c}" for c in criteria)
@@ -322,6 +352,29 @@ class RubricJudge(base_metric.BaseMetric):
             value=round(mean, 3),
             reason=f"criteria={len(scores)} mean={mean * 5:.1f}/5",
             metadata={"verdicts": scores, "criteria": criteria, "judge": self.model},
+        )
+
+
+class ProviderQuality(base_metric.BaseMetric):
+    """Surfaces provider/model per case in Opik experiments (score value 1.0,
+    the reason column carries the lane so the UI is glanceable)."""
+
+    def __init__(self) -> None:
+        super().__init__("provider")
+
+    def score(
+        self,
+        output: str,
+        provider: object = None,
+        model: object = None,
+        **_ignored: object,
+    ) -> score_result.ScoreResult:
+        del output
+        return score_result.ScoreResult(
+            name=self.name,
+            value=1.0,
+            reason=f"{provider}/{model}",
+            metadata={"provider": str(provider), "model": str(model)},
         )
 
 

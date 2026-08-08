@@ -189,9 +189,7 @@ def _patch_structured_output_for_pinned_lane() -> None:
         )
         content = message.content
         if isinstance(content, list):
-            content = "".join(
-                part.get("text", "") for part in content if isinstance(part, dict)
-            )
+            content = "".join(part.get("text", "") for part in content if isinstance(part, dict))
         return schema.model_validate(JsonOutputParser().parse(str(content)))
 
     extraction_mod.ainvoke_structured = json_object_ainvoke_structured

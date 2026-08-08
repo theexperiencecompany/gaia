@@ -4,31 +4,43 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from contextlib import suppress
+from importlib import import_module
 import sys
 
 sys.stdout.reconfigure(line_buffering=True)
 
-from .core.opiksink import load_opik_env
 
-load_opik_env()
+def _load_suites() -> None:
+    """Import every suite module so @register_suite fires (missing ones are
+    simply not available — e.g. when a suite's optional deps are absent)."""
+    from .core.opiksink import load_opik_env
 
-from contextlib import suppress  # noqa: E402
-from importlib import import_module  # noqa: E402
-
-from .core import runner  # noqa: E402
-from .core.providers import load_config  # noqa: E402
-
-for _suite_module in ("smoke", "memory", "capability", "gaia_bench", "quality", "longmemeval", "regression"):
-    with suppress(ImportError):
-        import_module(f".suites.{_suite_module}", __package__)
+    load_opik_env()
+    for _suite_module in (
+        "smoke",
+        "memory",
+        "capability",
+        "gaia_bench",
+        "quality",
+        "longmemeval",
+        "regression",
+    ):
+        with suppress(ImportError):
+            import_module(f".suites.{_suite_module}", __package__)
 
 
 def main() -> None:
+    _load_suites()
     parser = argparse.ArgumentParser(prog="evals", description="GAIA eval harness")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run_p = sub.add_parser("run", help="run a suite")
-    run_p.add_argument("--suite", required=True, help="suite name (memory, gaia, capability, quality, smoke, regression)")
+    run_p.add_argument(
+        "--suite",
+        required=True,
+        help="suite name (memory, gaia, capability, quality, smoke, regression)",
+    )
     run_p.add_argument("--resume", help="resume an existing run id")
     run_p.add_argument("--limit", type=int, help="run at most N cases")
     run_p.add_argument("--from", dest="from_case", help="start at case id")
@@ -36,8 +48,12 @@ def main() -> None:
     run_p.add_argument("--providers", help="comma list, e.g. nous,opencode")
     run_p.add_argument("--exclude", help="comma list of providers to exclude")
     run_p.add_argument("--max-usd", type=float, help="hard run cost cap")
-    run_p.add_argument("--sim", action="store_true", help="use the scripted LLM stub (free, deterministic)")
-    run_p.add_argument("--no-finalize", action="store_true", help="skip the Opik experiment finalize")
+    run_p.add_argument(
+        "--sim", action="store_true", help="use the scripted LLM stub (free, deterministic)"
+    )
+    run_p.add_argument(
+        "--no-finalize", action="store_true", help="skip the Opik experiment finalize"
+    )
     run_p.add_argument("--tag", action="append", default=[], help="experiment tag (repeatable)")
 
     report_p = sub.add_parser("report", help="regenerate HTML report for a run")
@@ -46,13 +62,19 @@ def main() -> None:
     cost_p = sub.add_parser("cost", help="project eval cost from journal history")
     cost_p.add_argument("--project", action="store_true")
 
+    from .core import runner
+    from .core.providers import load_config
+
     args = parser.parse_args()
 
     if args.command == "run" and args.sim:
         import os
 
         os.environ["GAIA_SIM_MODE"] = "1"
-        os.environ.setdefault("OPENROUTER_BASE_URL", f"http://localhost:{os.environ.get('LLM_STUB_PORT', '9797')}/api/v1")
+        os.environ.setdefault(
+            "OPENROUTER_BASE_URL",
+            f"http://localhost:{os.environ.get('LLM_STUB_PORT', '9797')}/api/v1",
+        )
 
     cfg = load_config()
 

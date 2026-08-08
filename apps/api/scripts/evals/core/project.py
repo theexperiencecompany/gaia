@@ -28,7 +28,9 @@ def project(runs_dir: Path) -> None:
             rec = _json.loads(line)
             tokens_in += int(rec.get("tokens", {}).get("input", 0))
             tokens_out += int(rec.get("tokens", {}).get("output", 0))
-        bucket = per_suite.setdefault(suite, {"runs": 0.0, "cases": 0.0, "tokens_in": 0.0, "tokens_out": 0.0})
+        bucket = per_suite.setdefault(
+            suite, {"runs": 0.0, "cases": 0.0, "tokens_in": 0.0, "tokens_out": 0.0}
+        )
         bucket["runs"] += 1
         bucket["tokens_in"] += tokens_in
         bucket["tokens_out"] += tokens_out
@@ -40,11 +42,10 @@ def project(runs_dir: Path) -> None:
             for pth in runs_dir.glob(f"{suite}-*/journal.jsonl")
         )
         per_case = (b["tokens_in"] + b["tokens_out"]) / max(record_count, 1)
-        cost = (
-            b["tokens_in"] / 1e6 * 0.15
-            + b["tokens_out"] / 1e6 * 0.60
+        cost = b["tokens_in"] / 1e6 * 0.15 + b["tokens_out"] / 1e6 * 0.60
+        print(
+            f"{suite:<18}{b['runs']:<6.0f}{record_count:<8}{per_case / 1e3:,.0f}K{'':<8}{cost:,.2f}"
         )
-        print(f"{suite:<18}{b['runs']:<6.0f}{record_count:<8}{per_case / 1e3:,.0f}K{'':<8}{cost:,.2f}")
 
     print(
         "\nForecast (flash-class pricing, conservative): a weekly full sweep "

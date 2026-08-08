@@ -92,7 +92,7 @@ class RegressionSuite(Suite):
             Case(
                 id="reg-todo-create",
                 ticket="Scripted create_todo through the real executor graph.",
-                prompt="[[tool:create_todo {\"title\":\"Buy milk\"}]]\n[[say:Created it.]]",
+                prompt='[[tool:create_todo {"title":"Buy milk"}]]\n[[say:Created it.]]',
                 expected={
                     "category": "todos",
                     "tool_calls": [{"tool": "create_todo", "args": "name-only"}],
@@ -128,7 +128,7 @@ class RegressionSuite(Suite):
             Case(
                 id="reg-web-search",
                 ticket="Scripted web search binding.",
-                prompt="[[tool:web_search_tool {\"query\":\"eiffel tower\"}]]\n[[say:Found it.]]",
+                prompt='[[tool:web_search_tool {"query":"eiffel tower"}]]\n[[say:Found it.]]',
                 expected={
                     "category": "search",
                     "tool_calls": [{"tool": "web_search_tool"}],
@@ -140,7 +140,7 @@ class RegressionSuite(Suite):
             Case(
                 id="reg-tracked-todo",
                 ticket="Scripted tracked todo canvas tool.",
-                prompt="[[tool:create_tracked_todo {\"title\":\"Q3 plan\",\"purpose\":\"planning\"}]]\n[[say:Tracked.]]",
+                prompt='[[tool:create_tracked_todo {"title":"Q3 plan","purpose":"planning"}]]\n[[say:Tracked.]]',
                 expected={
                     "category": "tracked_todos",
                     "tool_calls": [{"tool": "create_tracked_todo"}],
@@ -164,7 +164,9 @@ class RegressionSuite(Suite):
 
         if not settings.GAIA_SIM_MODE:
             return CaseRun(
-                case_id=case.id, provider=provider.name, model=provider.model,
+                case_id=case.id,
+                provider=provider.name,
+                model=provider.model,
                 error="regression suite requires --sim (GAIA_SIM_MODE)",
             )
         ensure_stub()
@@ -178,25 +180,46 @@ class RegressionSuite(Suite):
         tool_calls: list[dict[str, Any]] = []
         try:
             async with _sim_graph_builder() as graph:
-                async for event in graph.astream({"messages": [HumanMessage(content=case.prompt)]}, config=config, stream_mode="updates"):
+                async for event in graph.astream(
+                    {"messages": [HumanMessage(content=case.prompt)]},
+                    config=config,
+                    stream_mode="updates",
+                ):
                     for node, payload in event.items():
                         for msg in payload.get("messages", []) if isinstance(payload, dict) else []:
                             content = getattr(msg, "content", None)
                             msg_type = getattr(msg, "type", "?")
-                            role = "assistant" if msg_type == "ai" else "human" if msg_type == "human" else msg_type
+                            role = (
+                                "assistant"
+                                if msg_type == "ai"
+                                else "human"
+                                if msg_type == "human"
+                                else msg_type
+                            )
                             if content:
                                 messages.append({"role": role, "content": str(content)})
                             for call in getattr(msg, "tool_calls", []) or []:
-                                tool_calls.append({"name": call.get("name", ""), "args": call.get("args", {})})
+                                tool_calls.append(
+                                    {"name": call.get("name", ""), "args": call.get("args", {})}
+                                )
             text = " ".join(m.get("content", "") for m in messages if m.get("role") == "assistant")
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             return CaseRun(
-                case_id=case.id, provider=provider.name, model=provider.model,
-                messages=messages, tool_calls=tool_calls, text="", error=f"{type(e).__name__}: {e}",
+                case_id=case.id,
+                provider=provider.name,
+                model=provider.model,
+                messages=messages,
+                tool_calls=tool_calls,
+                text="",
+                error=f"{type(e).__name__}: {e}",
             )
         return CaseRun(
-            case_id=case.id, provider=provider.name, model=provider.model,
-            messages=messages, tool_calls=tool_calls, text=text,
+            case_id=case.id,
+            provider=provider.name,
+            model=provider.model,
+            messages=messages,
+            tool_calls=tool_calls,
+            text=text,
             tokens_in=tracker.input_tokens.get(provider.name, 0),
             tokens_out=tracker.output_tokens.get(provider.name, 0),
         )
@@ -206,16 +229,20 @@ class RegressionSuite(Suite):
 
         scores: dict[str, float] = {}
         if case.expected.get("communicate"):
-            scores["communicate"] = CommunicateGate().score(
-                output=run.text, messages=run.messages, expected=case.expected
-            ).value
-        scores["tool_call_correctness"] = ToolCallCorrectness().score(
-            output=run.text, tool_calls=run.tool_calls, expected=case.expected
-        ).value
+            scores["communicate"] = (
+                CommunicateGate()
+                .score(output=run.text, messages=run.messages, expected=case.expected)
+                .value
+            )
+        scores["tool_call_correctness"] = (
+            ToolCallCorrectness()
+            .score(output=run.text, tool_calls=run.tool_calls, expected=case.expected)
+            .value
+        )
         return scores
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         del cfg
-        from scripts.evals.core.scorers import CommunicateGate, ToolCallCorrectness
+        from scripts.evals.core.scorers import CommunicateGate, ProviderQuality, ToolCallCorrectness
 
-        return [CommunicateGate(), ToolCallCorrectness()]
+        return [CommunicateGate(), ToolCallCorrectness(), ProviderQuality()]

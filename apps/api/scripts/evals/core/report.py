@@ -60,7 +60,9 @@ def _case_passed(record: dict[str, Any]) -> bool:
     return record.get("status") == "passed"
 
 
-def render_html(journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]) -> str:
+def render_html(
+    journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]
+) -> str:
     meta = journal.load_meta()
     records = journal.records()
     passed = sum(1 for r in records if _case_passed(r))
@@ -94,9 +96,7 @@ def render_html(journal: RunJournal, suite_label: str, prices: dict[str, tuple[f
         for name in sorted(score_keys)
         if score_keys[name] > 0
     ]
-    category_rows = [
-        (cat, sum(v) / len(v)) for cat, v in sorted(per_category.items())
-    ]
+    category_rows = [(cat, sum(v) / len(v)) for cat, v in sorted(per_category.items())]
 
     provider_rows = [
         (
@@ -128,25 +128,25 @@ def render_html(journal: RunJournal, suite_label: str, prices: dict[str, tuple[f
         )
         tool_calls = "".join(
             f'<div class="tool"><code>{html.escape(str(t.get("name", "")))}</code> '
-            f'<pre>{html.escape(json.dumps(t.get("args", {}), default=str)[:400])}</pre></div>'
+            f"<pre>{html.escape(json.dumps(t.get('args', {}), default=str)[:400])}</pre></div>"
             for t in r.get("tool_calls") or []
         )
         tokens = r.get("tokens") or {}
         cards.append(
             f"""<details class="card {status}">
-  <summary><b>{html.escape(r.get('case_id', '?'))}</b>
+  <summary><b>{html.escape(r.get("case_id", "?"))}</b>
     <span class="status">{status}</span>
     {score_html}
-    <span class="meta">provider={r.get('provider', '?')} · {_fmt_tokens(int(tokens.get('input', 0)))} in /
-    {_fmt_tokens(int(tokens.get('output', 0)))} out · {r.get('duration_s', 0):.1f}s</span>
+    <span class="meta">provider={r.get("provider", "?")} · {_fmt_tokens(int(tokens.get("input", 0)))} in /
+    {_fmt_tokens(int(tokens.get("output", 0)))} out · {r.get("duration_s", 0):.1f}s</span>
   </summary>
   <div class="body">
-    <div class="ticket">{html.escape(r.get('ticket', ''))}</div>
-    <div class="prompt"><b>prompt:</b> {html.escape(r.get('prompt', ''))}</div>
-    <div class="expected"><b>expected:</b> <pre>{html.escape(json.dumps(r.get('expected', {}), indent=1, default=str)[:1200])}</pre></div>
+    <div class="ticket">{html.escape(r.get("ticket", ""))}</div>
+    <div class="prompt"><b>prompt:</b> {html.escape(r.get("prompt", ""))}</div>
+    <div class="expected"><b>expected:</b> <pre>{html.escape(json.dumps(r.get("expected", {}), indent=1, default=str)[:1200])}</pre></div>
     <div class="msglist">{messages}</div>
     <div class="tools">{tool_calls}</div>
-    <div class="error">{html.escape(r.get('error') or '')}</div>
+    <div class="error">{html.escape(r.get("error") or "")}</div>
   </div>
 </details>"""
         )
@@ -187,19 +187,21 @@ def render_html(journal: RunJournal, suite_label: str, prices: dict[str, tuple[f
 <div class="banner">run <code>{run_id}</code> · finished {now} · status <b>{status}</b> · experiment {experiment}</div>
 <div class="score">{pct:.1f}%</div>
 <div class="pct">{passed}/{total} cases passed</div>
-<h2>Metrics</h2>{_svg_bars(metric_rows) if metric_rows else '<p>no metrics</p>'}
-<h2>Categories</h2>{_svg_bars(category_rows) if category_rows else '<p>no categories</p>'}
+<h2>Metrics</h2>{_svg_bars(metric_rows) if metric_rows else "<p>no metrics</p>"}
+<h2>Categories</h2>{_svg_bars(category_rows) if category_rows else "<p>no categories</p>"}
 <h2>Provider usage</h2>
 <table><tr><th>provider</th><th>cases</th><th>tokens in</th><th>tokens out</th><th>est. USD</th></tr>
-{''.join(f'<tr><td>{html.escape(p)}</td><td>{provider_counts[p]}</td><td>{_fmt_tokens(i)}</td><td>{_fmt_tokens(o)}</td><td>{_fmt_usd(c)}</td></tr>' for p, i, o, c in provider_rows)}
+{"".join(f"<tr><td>{html.escape(p)}</td><td>{provider_counts[p]}</td><td>{_fmt_tokens(i)}</td><td>{_fmt_tokens(o)}</td><td>{_fmt_usd(c)}</td></tr>" for p, i, o, c in provider_rows)}
 <tr><td><b>total</b></td><td>{total}</td><td>{_fmt_tokens(total_in)}</td><td>{_fmt_tokens(total_out)}</td><td>{_fmt_usd(total_cost)}</td></tr>
 </table>
 <h2>Cases</h2>
-{''.join(cards)}
+{"".join(cards)}
 </div></body></html>"""
 
 
-def render_markdown(journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]) -> str:
+def render_markdown(
+    journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]
+) -> str:
     records = journal.records()
     passed = sum(1 for r in records if _case_passed(r))
     total = len(records)
@@ -215,14 +217,20 @@ def render_markdown(journal: RunJournal, suite_label: str, prices: dict[str, tup
     ]
     for r in records:
         score = " / ".join(f"{n}={v:.2f}" for n, v in (r.get("scores") or {}).items())
-        lines.append(f"| {r.get('case_id', '?')} | {r.get('status', '?')} | {r.get('provider', '?')} | {score} |")
+        lines.append(
+            f"| {r.get('case_id', '?')} | {r.get('status', '?')} | {r.get('provider', '?')} | {score} |"
+        )
     return "\n".join(lines) + "\n"
 
 
-def write_report(journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]) -> Path:
+def write_report(
+    journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]
+) -> Path:
     html_path = journal.dir / "report.html"
     html_path.write_text(render_html(journal, suite_label, prices), encoding="utf-8")
-    (journal.dir / "summary.md").write_text(render_markdown(journal, suite_label, prices), encoding="utf-8")
+    (journal.dir / "summary.md").write_text(
+        render_markdown(journal, suite_label, prices), encoding="utf-8"
+    )
     latest_dir = journal.dir.parent.parent / "reports"
     latest_dir.mkdir(exist_ok=True)
     (latest_dir / "latest.html").write_text(html_path.read_text(), encoding="utf-8")

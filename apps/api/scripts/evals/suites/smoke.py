@@ -30,7 +30,10 @@ class SmokeTransport:
             "smoke-2": "Your todo 'Buy milk' is created.",
             "smoke-3": "Created the report.",
         }[case.id]
-        messages = [{"role": "user", "content": case.prompt}, {"role": "assistant", "content": text}]
+        messages = [
+            {"role": "user", "content": case.prompt},
+            {"role": "assistant", "content": text},
+        ]
         return CaseRun(
             case_id=case.id,
             messages=messages,
@@ -100,17 +103,23 @@ class SmokeSuite(Suite):
 
         scores = {}
         if case.expected.get("communicate"):
-            scores["communicate"] = CommunicateGate().score(
-                output=run.text, messages=run.messages, expected=case.expected
-            ).value
+            scores["communicate"] = (
+                CommunicateGate()
+                .score(output=run.text, messages=run.messages, expected=case.expected)
+                .value
+            )
         if case.expected.get("end_state"):
-            scores["end_state"] = EndStateEquality().score(
-                output=run.text, end_state=run.end_state, expected=case.expected
-            ).value
+            scores["end_state"] = (
+                EndStateEquality()
+                .score(output=run.text, end_state=run.end_state, expected=case.expected)
+                .value
+            )
         if case.expected.get("tool_calls"):
-            scores["tool_call_correctness"] = ToolCallCorrectness().score(
-                output=run.text, tool_calls=run.tool_calls, expected=case.expected
-            ).value
+            scores["tool_call_correctness"] = (
+                ToolCallCorrectness()
+                .score(output=run.text, tool_calls=run.tool_calls, expected=case.expected)
+                .value
+            )
         return scores
 
     def finalize_scorers(self, cfg: EvalConfig) -> list:
@@ -119,6 +128,7 @@ class SmokeSuite(Suite):
             BubbleBoundary,
             CommunicateGate,
             EndStateEquality,
+            ProviderQuality,
             ToolCallCorrectness,
         )
 
@@ -127,4 +137,5 @@ class SmokeSuite(Suite):
             CommunicateGate(),
             EndStateEquality(),
             ToolCallCorrectness(),
+            ProviderQuality(),
         ]

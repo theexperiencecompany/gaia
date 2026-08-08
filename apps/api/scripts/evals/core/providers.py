@@ -111,7 +111,11 @@ def health_check(p: ProviderConfig) -> ProviderHealth:
         r = httpx.post(
             url,
             headers={"Authorization": f"Bearer {p.api_key}"},
-            json={"model": p.model, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1},
+            json={
+                "model": p.model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+            },
             timeout=15.0,
         )
     except httpx.HTTPError as e:

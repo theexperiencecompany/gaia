@@ -44,9 +44,7 @@ def sync_dataset(
     project: str,
     cases: list[Case],
 ) -> object:
-    dataset = opik_client.get_or_create_dataset(
-        name=f"{project}-cases", project_name=project
-    )
+    dataset = opik_client.get_or_create_dataset(name=f"{project}-cases", project_name=project)
     dataset.insert(
         [
             {
@@ -80,9 +78,7 @@ def finalize(
     from opik.evaluation import evaluate
 
     opik_client = opik.Opik(project_name=project)
-    dataset = opik_client.get_or_create_dataset(
-        name=f"{project}-cases", project_name=project
-    )
+    dataset = opik_client.get_or_create_dataset(name=f"{project}-cases", project_name=project)
     dataset.insert(
         [
             {

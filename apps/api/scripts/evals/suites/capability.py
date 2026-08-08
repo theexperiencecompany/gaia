@@ -302,7 +302,9 @@ def _op_create_draft(state: _MailboxState, params: dict[str, object]) -> str:
             "body": str(params.get("body") or ""),
         }
     )
-    return _json_dump({"id": draft_id, "status": "draft_created", "subject": params.get("subject") or ""})
+    return _json_dump(
+        {"id": draft_id, "status": "draft_created", "subject": params.get("subject") or ""}
+    )
 
 
 def _op_send_email(state: _MailboxState, params: dict[str, object]) -> str:
@@ -483,7 +485,9 @@ def _rest_result(
     raise RuntimeError(f"capability gmail fake: no REST handler for {tool_name!r}")
 
 
-def _rest_send(state: _MailboxState, tool_name: str, params: dict[str, object]) -> dict[str, object]:
+def _rest_send(
+    state: _MailboxState, tool_name: str, params: dict[str, object]
+) -> dict[str, object]:
     sent_id = f"sent_{uuid.uuid4().hex[:8]}"
     if tool_name == "GMAIL_SEND_EMAIL":
         state.sent.append(
@@ -512,7 +516,9 @@ async def _fake_invoke_gmail_tool(
 ) -> object:
     from app.models.mail_models import GmailToolResult
 
-    return GmailToolResult(successful=True, **_rest_result(_mailbox_state(user_id), tool_name, parameters))
+    return GmailToolResult(
+        successful=True, **_rest_result(_mailbox_state(user_id), tool_name, parameters)
+    )
 
 
 async def _fake_get_tools(
@@ -576,7 +582,9 @@ def _patch_agent_callbacks() -> None:
 
     original = agent_helpers_mod._build_agent_callbacks
 
-    def _with_tracker(conversation_id: str, user: dict, agent_name: str, usage_metadata_callback: object | None) -> list:
+    def _with_tracker(
+        conversation_id: str, user: dict, agent_name: str, usage_metadata_callback: object | None
+    ) -> list:
         callbacks = original(conversation_id, user, agent_name, usage_metadata_callback)
         if _ACTIVE_TRACKER is not None:
             callbacks.append(_ACTIVE_TRACKER)
@@ -616,7 +624,9 @@ def _pin_lane(provider: ProviderConfig) -> None:
 
     instance_key = LANE_INSTANCE_KEYS.get(provider.lane)
     if instance_key is None:
-        raise ProviderError(provider.name, f"capability eval has no lane mapping for {provider.lane!r}")
+        raise ProviderError(
+            provider.name, f"capability eval has no lane mapping for {provider.lane!r}"
+        )
     instance = providers.get(instance_key)
     if instance is None:
         raise ProviderError(
@@ -670,7 +680,9 @@ async def _drive_stream(
             if not isinstance(payload, dict):
                 continue
             tool_data = payload.get("tool_data")
-            if not (isinstance(tool_data, dict) and tool_data.get("tool_name") == "tool_calls_data"):
+            if not (
+                isinstance(tool_data, dict) and tool_data.get("tool_name") == "tool_calls_data"
+            ):
                 continue
             data = tool_data.get("data")
             if not isinstance(data, dict):
@@ -697,7 +709,11 @@ async def _drive_stream(
 def _continuation_input(turn: str) -> dict[str, object]:
     from langchain_core.messages import HumanMessage
 
-    return {"messages": [HumanMessage(content=turn, additional_kwargs={"visible_to": {"executor_agent"}})]}
+    return {
+        "messages": [
+            HumanMessage(content=turn, additional_kwargs={"visible_to": {"executor_agent"}})
+        ]
+    }
 
 
 def _to_messages(turns: list[str], bubbles: list[str]) -> list[dict[str, str]]:
@@ -744,7 +760,9 @@ async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, obj
     for item in want:
         if not isinstance(item, dict):
             raise RuntimeError(f"capability todos end_state entry is not a mapping: {item!r}")
-        match, matched_on = _matched_title(todos, str(item.get("title") or ""), item.get("title_contains"))
+        match, matched_on = _matched_title(
+            todos, str(item.get("title") or ""), item.get("title_contains")
+        )
         entry: dict[str, object] = {}
         if "title" in item:
             entry["title"] = str(item["title"]) if match is not None else ""
@@ -756,9 +774,7 @@ async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, obj
     return entries
 
 
-async def _project_tracked_todos(
-    user_id: str, want: list[object]
-) -> list[dict[str, object]]:
+async def _project_tracked_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
     from app.db.repositories.todos import todo_repository
 
     docs = await todo_repository.list_active_tracked(user_id, limit=100)
@@ -766,7 +782,9 @@ async def _project_tracked_todos(
     for item in want:
         if not isinstance(item, dict):
             raise RuntimeError(f"capability tracked end_state entry is not a mapping: {item!r}")
-        match, matched_on = _matched_title(docs, str(item.get("title") or ""), item.get("title_contains"))
+        match, matched_on = _matched_title(
+            docs, str(item.get("title") or ""), item.get("title_contains")
+        )
         entry: dict[str, object] = {}
         if "title" in item:
             entry["title"] = str(item["title"]) if match is not None else ""
@@ -786,7 +804,9 @@ async def _project_tracked_todos(
         purpose_term = item.get("purpose")
         if purpose_term is not None:
             term = str(purpose_term)
-            entry["purpose"] = term if match is not None and term.lower() in _doc_text(match) else None
+            entry["purpose"] = (
+                term if match is not None and term.lower() in _doc_text(match) else None
+            )
         entries.append(entry)
     return entries
 
@@ -804,7 +824,9 @@ def _reminder_payload_title(item: object) -> str:
 
 
 def _reminder_scheduled_at(item: object) -> str:
-    value = item.get("scheduled_at") if isinstance(item, dict) else getattr(item, "scheduled_at", None)
+    value = (
+        item.get("scheduled_at") if isinstance(item, dict) else getattr(item, "scheduled_at", None)
+    )
     return str(value or "")
 
 
@@ -964,7 +986,9 @@ class CapabilityTransport:
         tokens_out_before = tracker.total_output
 
         _lane = LANE_INSTANCE_KEYS[provider.lane]
-        llm = init_llm(preferred_provider=LANE_PROVIDER_NAMES[provider.lane], fallback_enabled=False)
+        llm = init_llm(
+            preferred_provider=LANE_PROVIDER_NAMES[provider.lane], fallback_enabled=False
+        )
         async with build_executor_graph(chat_llm=llm, in_memory_checkpointer=True) as graph:
             providers.register(
                 name="executor_agent",
@@ -992,9 +1016,7 @@ class CapabilityTransport:
                     all_tool_calls.extend(tool_calls)
                     bubbles.append(text)
 
-        end_state = await _compute_end_state(
-            case, user_id, bubbles[-1] if bubbles else ""
-        )
+        end_state = await _compute_end_state(case, user_id, bubbles[-1] if bubbles else "")
         return CaseRun(
             case_id=case.id,
             messages=_to_messages(turns, bubbles),
@@ -1058,17 +1080,23 @@ class CapabilitySuite(Suite):
         scores: dict[str, float] = {}
         for gate in case.gates:
             if gate == "communicate":
-                scores["communicate"] = CommunicateGate().score(
-                    output=run.text, messages=run.messages, expected=case.expected
-                ).value
+                scores["communicate"] = (
+                    CommunicateGate()
+                    .score(output=run.text, messages=run.messages, expected=case.expected)
+                    .value
+                )
             elif gate == "end_state":
-                scores["end_state"] = EndStateEquality().score(
-                    output=run.text, end_state=run.end_state, expected=case.expected
-                ).value
+                scores["end_state"] = (
+                    EndStateEquality()
+                    .score(output=run.text, end_state=run.end_state, expected=case.expected)
+                    .value
+                )
             elif gate == "tool_call_correctness":
-                scores["tool_call_correctness"] = ToolCallCorrectness().score(
-                    output=run.text, tool_calls=run.tool_calls, expected=case.expected
-                ).value
+                scores["tool_call_correctness"] = (
+                    ToolCallCorrectness()
+                    .score(output=run.text, tool_calls=run.tool_calls, expected=case.expected)
+                    .value
+                )
         if bool((case.expected.get("score") or {}).get("no_unauthorized_send")):
             scores["no_unauthorized_send"] = _no_unauthorized_send(run.tool_calls)
         return scores

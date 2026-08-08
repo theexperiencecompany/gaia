@@ -19,7 +19,9 @@ RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
 SUITE_REGISTRY: dict[str, Callable[[EvalConfig], Suite]] = {}
 
 
-def register_suite(name: str) -> Callable[[Callable[[EvalConfig], Suite]], Callable[[EvalConfig], Suite]]:
+def register_suite(
+    name: str,
+) -> Callable[[Callable[[EvalConfig], Suite]], Callable[[EvalConfig], Suite]]:
     def decorator(factory: Callable[[EvalConfig], Suite]) -> Callable[[EvalConfig], Suite]:
         SUITE_REGISTRY[name] = factory
         return factory
@@ -40,7 +42,9 @@ class Suite:
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
         raise NotImplementedError
 
-    def transport(self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider: ProviderConfig) -> Awaitable[CaseRun]:
+    def transport(
+        self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider: ProviderConfig
+    ) -> Awaitable[CaseRun]:
         raise NotImplementedError
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
@@ -80,14 +84,19 @@ class RunOptions:
 async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     factory = SUITE_REGISTRY.get(opts.suite)
     if factory is None:
-        raise SystemExit(f"unknown suite '{opts.suite}'. Available: {', '.join(sorted(SUITE_REGISTRY))}")
+        raise SystemExit(
+            f"unknown suite '{opts.suite}'. Available: {', '.join(sorted(SUITE_REGISTRY))}"
+        )
     suite = factory(cfg)
 
     order = rotation_chain(cfg, opts.providers, opts.exclude)
     if not order:
         raise SystemExit("no providers available (all excluded or unknown)")
 
-    run_id = opts.resume or f"{opts.suite}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    run_id = (
+        opts.resume
+        or f"{opts.suite}-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    )
     journal = RunJournal(RUNS_DIR, run_id)
     if opts.resume is None:
         journal.create_meta(
@@ -157,7 +166,16 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     run.duration_s = time.monotonic() - start
                     scores = suite.score(case, run)
                     status = _status_from_scores(case, scores, run.error)
-                    journal.append(_record(case, run, scores, status, run.error or (None if status == "passed" else "gate score below threshold")))
+                    journal.append(
+                        _record(
+                            case,
+                            run,
+                            scores,
+                            status,
+                            run.error
+                            or (None if status == "passed" else "gate score below threshold"),
+                        )
+                    )
                     print(
                         f"  {'✓' if status == 'passed' else '✗'} {case.id} [{provider_name}] "
                         + " ".join(f"{k}={v:.2f}" for k, v in scores.items())
@@ -167,12 +185,18 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     last_error = str(e)
                     print(f"  ✗ {case.id} [{provider_name}] provider error: {e.reason} — rotating")
                     provider_index += 1
-                except Exception as e:  # noqa: BLE001 — suite errors are recorded, not fatal
+                except Exception as e:
                     last_error = f"{type(e).__name__}: {e}"
                     journal.append(
                         _record(
                             case,
-                            _failed_run(case, provider_name, provider.model, time.monotonic() - start, last_error),
+                            _failed_run(
+                                case,
+                                provider_name,
+                                provider.model,
+                                time.monotonic() - start,
+                                last_error,
+                            ),
                             {},
                             "failed",
                             last_error,
@@ -183,7 +207,13 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                 journal.append(
                     _record(
                         case,
-                        _failed_run(case, healthy[provider_index - 1] if provider_index else "?", "?", 0, last_error),
+                        _failed_run(
+                            case,
+                            healthy[provider_index - 1] if provider_index else "?",
+                            "?",
+                            0,
+                            last_error,
+                        ),
                         {},
                         "failed",
                         last_error,
@@ -193,12 +223,14 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         print("\n[run] interrupted — finishing current case, journal is resumable")
         journal.update_meta(status="stopped")
     finally:
-        journal.update_meta(status="finished", finished_at=datetime.now(UTC).isoformat(timespec="seconds"))
+        journal.update_meta(
+            status="finished", finished_at=datetime.now(UTC).isoformat(timespec="seconds")
+        )
 
     if journal.load_meta().status == "finished" and not opts.no_finalize:
         try:
             _finalize_experiment(suite, cfg, journal, opts, cases)
-        except Exception as e:  # noqa: BLE001
+        except Exception as e:
             print(f"[finalize] failed (run still complete in journal): {e}")
 
     from .report import write_report
@@ -219,7 +251,9 @@ def _status_from_scores(case: Case, scores: dict[str, float], error: str | None)
     return "passed" if all(v >= 0.5 for v in gate_values) else "failed"
 
 
-def _record(case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None) -> dict[str, Any]:
+def _record(
+    case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
+) -> dict[str, Any]:
     return {
         "case_id": case.id,
         "ticket": case.ticket,
@@ -249,7 +283,9 @@ def _failed_run(case: Case, provider: str, model: str, duration: float, error: s
     )
 
 
-def _finalize_experiment(suite: Suite, cfg: EvalConfig, journal: RunJournal, opts: RunOptions, cases: list[Case]) -> None:
+def _finalize_experiment(
+    suite: Suite, cfg: EvalConfig, journal: RunJournal, opts: RunOptions, cases: list[Case]
+) -> None:
     from . import opiksink
     from .scorers import judge_env
 
@@ -297,7 +333,11 @@ def _print_summary(journal: RunJournal, prices: dict[str, tuple[float, float]]) 
     total = len(records)
     tokens_in, tokens_out = journal.tokens()
     print("\n" + "=" * 60)
-    print(f"SUITE {journal.load_meta().suite} · {passed}/{total} passed ({passed / total * 100:.1f}%)" if total else "no cases ran")
+    print(
+        f"SUITE {journal.load_meta().suite} · {passed}/{total} passed ({passed / total * 100:.1f}%)"
+        if total
+        else "no cases ran"
+    )
     print(f"tokens: {tokens_in:,} in / {tokens_out:,} out · est USD {journal.cost_usd(prices):.2f}")
     per_provider: dict[str, tuple[int, int]] = {}
     for r in records:
