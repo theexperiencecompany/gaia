@@ -19,8 +19,9 @@ tests:
         alertname: gaia-ssl-cert-expiry
         exp_alerts:
           - exp_labels:
-              severity: critical
-              service: api
+            instance: https://api.heygaia.io
+            severity: critical
+            service: api
             exp_annotations:
               description: >-
                 When this certificate expires every HTTPS client fails at the TLS handshake — web, desktop, mobile and any external integration — with no graceful degradation. Renewal is normally automatic, so this firing means the renewal path itself is broken and needs a look before the deadline.

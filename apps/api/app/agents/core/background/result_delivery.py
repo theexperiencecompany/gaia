@@ -126,7 +126,10 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
-            log.info(f"{LogTag.AGENT} conversation deleted, skipping cancelled card save", conversation_id=run.conversation_id)
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping cancelled card save",
+                conversation_id=run.conversation_id,
+            )
             return
         raise
     except Exception as e:  # best-effort save of a stopped run
@@ -227,7 +230,10 @@ async def _narrate_and_deliver(
         )
     except HTTPException as e:
         if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
-            log.info(f"{LogTag.AGENT} conversation deleted, skipping message save", conversation_id=run.conversation_id)
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping message save",
+                conversation_id=run.conversation_id,
+            )
             return None, None
         raise
     except Exception as e:
