@@ -454,17 +454,31 @@ async def ainvoke_llm(
     Callers that know their shape narrow it themselves: ``ainvoke_structured`` casts
     to its ``schema``, and the chat-model call sites cast to ``BaseMessage``.
     """
-    async with asyncio.timeout(timeout):
-        try:
-            return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-                messages, config=config
-            )
-        except LLM_FALLBACK_EXCEPTIONS as primary_error:
-            return _stamp_fallback(
-                await _resolve_fallback(fallback, label, primary_error).ainvoke(
-                    messages, config=config
+    # The one metering seam for auxiliary spend. Every one-shot helper reaches a
+    # provider through here — the vision describer, chatbot, research, PDF page
+    # summaries, integration inference, profanity, onboarding — and each used to
+    # spend real money that nothing recorded. Metering here rather than at each
+    # call site is what stops the next helper from silently joining that list.
+    # The agent graph does NOT come through this function (it runs the model via
+    # LangGraph, metered by LLMAccountingMiddleware), so there is no double count.
+    usage_handler = UsageMetadataCallbackHandler()
+    user_id = (config or {}).get("configurable", {}).get("user_id")
+    try:
+        async with asyncio.timeout(timeout):
+            try:
+                return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                    messages, config=_with_usage_handler(config, usage_handler)
                 )
-            )
+            except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                return _stamp_fallback(
+                    await _resolve_fallback(fallback, label, primary_error).ainvoke(
+                        messages, config=_with_usage_handler(config, usage_handler)
+                    )
+                )
+    finally:
+        # ``finally``: a failed call still burned the tokens of every attempt the
+        # retry and fallback made, and that spend is just as real.
+        await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
 
 
 def invoke_llm(
@@ -616,21 +630,9 @@ async def ainvoke_structured(
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
-    usage_handler = UsageMetadataCallbackHandler()
-    configurable = (config or {}).get("configurable") or {}
-    user_id = configurable.get("user_id")
-    try:
-        return cast(
-            _StructuredT,
-            await ainvoke_llm(
-                structured,
-                prompt,
-                config=_with_usage_handler(config, usage_handler),
-                label=label,
-                timeout=timeout,
-            ),
-        )
-    finally:
-        # ``finally``: a failed structured call still burned the tokens of every
-        # attempt the retry/fallback made, and that spend is just as real.
-        await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
+    # Metering lives in ainvoke_llm, which this delegates to — a handler here too
+    # would record the same call twice and over-report the user's COGS.
+    return cast(
+        _StructuredT,
+        await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),
+    )
