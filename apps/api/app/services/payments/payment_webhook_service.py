@@ -429,9 +429,19 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
+        # A cancel scheduled for the end of the billing period
+        # (cancel_at_next_billing_date=True) keeps the subscription active —
+        # and the user on Pro — until the period ends; only the flag records
+        # the cancellation. An immediate cancellation flips status to cancelled.
+        update = SubscriptionUpdate(
+            cancel_at_next_billing_date=sub_data.cancel_at_next_billing_date
+        )
+        if sub_data.cancel_at_next_billing_date:
+            update.status = sub_data.status
+        else:
+            update.status = "cancelled"
         # cancelled_at is only set when Dodo supplied one — leaving it unset keeps
         # it out of the $set rather than writing null over a stored value.
-        update = SubscriptionUpdate(status="cancelled")
         if sub_data.cancelled_at:
             update.cancelled_at = sub_data.cancelled_at
 

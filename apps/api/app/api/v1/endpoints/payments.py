@@ -64,6 +64,26 @@ async def create_subscription_endpoint(
         raise HTTPException(status_code=500, detail="Failed to create subscription")
 
 
+@router.post("/subscriptions/cancel", response_model=UserSubscriptionStatus)
+@limiter.limit("5/minute")
+async def cancel_subscription_endpoint(
+    request: Request,
+    user_id: str = Depends(get_user_id),
+) -> UserSubscriptionStatus:
+    """Cancel the user's subscription at the end of the current billing period."""
+    log.set(
+        user={"id": user_id},
+        payment={"operation": "cancel_subscription"},
+    )
+    try:
+        return await payment_service.cancel_subscription(user_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        log.error(f"{LogTag.PAYMENT} Error cancelling subscription: {e!s}")
+        raise HTTPException(status_code=500, detail="Failed to cancel subscription")
+
+
 @router.post("/verify-payment", response_model=PaymentVerificationResponse)
 @limiter.limit("20/minute")
 async def verify_payment_endpoint(

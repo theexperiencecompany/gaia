@@ -380,6 +380,7 @@ class ProductionSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str
+    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
@@ -564,6 +565,7 @@ class DevelopmentSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str | None = None
+    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
