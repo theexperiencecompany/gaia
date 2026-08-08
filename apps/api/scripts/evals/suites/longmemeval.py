@@ -25,7 +25,7 @@ DEFAULT_DATASET = DATA_DIR / "longmemeval_oracle.json"
 @register_suite("longmemeval")
 class LongMemEvalSuite(Suite):
     name = "longmemeval"
-    project = "gaia-memory"
+    project = "gaia-longmemeval"
     label = "LongMemEval"
 
     def __init__(self, cfg: EvalConfig) -> None:

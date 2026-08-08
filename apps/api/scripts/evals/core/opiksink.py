@@ -122,7 +122,7 @@ def log_case_trace(
         tags=[project],
     )
     for name, value in scores.items():
-        trace.log_feedback_score({"name": name, "value": value})
+        trace.log_feedback_score(name=name, value=value)
     opik_client.flush()
 
 

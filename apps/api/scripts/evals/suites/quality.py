@@ -111,7 +111,13 @@ def _parse_frames(frames: list[Frame]) -> TurnRecord:
             )
             continue
         if "main_response_complete" in frame:
-            raw.append({"type": "main_response_complete"})
+            usage = frame.get("usage")
+            raw.append(
+                {
+                    "type": "main_response_complete",
+                    "usage": usage if isinstance(usage, dict) else None,
+                }
+            )
             continue
         if "follow_up_actions" in frame:
             actions = frame["follow_up_actions"]
@@ -226,6 +232,24 @@ def _parse_frames(frames: list[Frame]) -> TurnRecord:
     }
 
 
+def _aggregate_usage(raw: list[dict[str, object]]) -> tuple[int, int]:
+    """Sum per-model input/output tokens from main_response_complete frames."""
+    total_in = 0
+    total_out = 0
+    for entry in raw:
+        if entry.get("type") != "main_response_complete":
+            continue
+        usage = entry.get("usage")
+        if not isinstance(usage, dict):
+            continue
+        for model_data in usage.values():
+            if not isinstance(model_data, dict):
+                continue
+            total_in += int(model_data.get("input_tokens", 0) or 0)
+            total_out += int(model_data.get("output_tokens", 0) or 0)
+    return total_in, total_out
+
+
 class ChatStreamTransport:
     """Multi-turn SSE transport over the real chat-stream endpoint."""
 
@@ -302,12 +326,14 @@ class ChatStreamTransport:
                 error=f"stream error frame: {error[:200]}",
             )
 
-        tokens_in = estimate_tokens(
-            " ".join(m["content"] for m in transcript if m["role"] == "user")
-        )
-        tokens_out = estimate_tokens(
-            " ".join(m["content"] for m in transcript if m["role"] == "assistant")
-        )
+        tokens_in, tokens_out = _aggregate_usage(raw)
+        if tokens_in == 0 and tokens_out == 0:
+            tokens_in = estimate_tokens(
+                " ".join(m["content"] for m in transcript if m["role"] == "user")
+            )
+            tokens_out = estimate_tokens(
+                " ".join(m["content"] for m in transcript if m["role"] == "assistant")
+            )
         tracker.add_manual(provider.name, tokens_in, tokens_out)
         raw.append(
             {

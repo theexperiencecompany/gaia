@@ -176,6 +176,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                             or (None if status == "passed" else "gate score below threshold"),
                         )
                     )
+                    _log_trace(suite.project, case, run, scores, prices)
                     print(
                         f"  {'✓' if status == 'passed' else '✗'} {case.id} [{provider_name}] "
                         + " ".join(f"{k}={v:.2f}" for k, v in scores.items())
@@ -251,6 +252,36 @@ def _status_from_scores(case: Case, scores: dict[str, float], error: str | None)
     return "passed" if all(v >= 0.5 for v in gate_values) else "failed"
 
 
+def _log_trace(project: str, case: Case, run: CaseRun, scores: dict[str, float], prices: dict[str, tuple[float, float]]) -> None:
+    """Log one case as an Opik trace with feedback scores (best-effort; a
+    broken Opik must never fail the eval run itself)."""
+    from .opiksink import log_case_trace
+
+    price_in, price_out = prices.get(run.provider, (0.0, 0.0))
+    cost_usd = run.tokens_in / 1e6 * price_in + run.tokens_out / 1e6 * price_out
+    try:
+        log_case_trace(
+            project=project,
+            case_id=case.id,
+            run_input=case.prompt,
+            output=run.text,
+            scores=scores,
+            metadata={
+                "provider": run.provider,
+                "model": run.model,
+                "status": "passed" if run.error is None else "failed",
+                "ticket": case.ticket,
+                "duration_s": round(run.duration_s, 2),
+                "tokens_in": run.tokens_in,
+                "tokens_out": run.tokens_out,
+                "cost_usd": round(cost_usd, 6),
+                "error": run.error or "",
+            },
+        )
+    except Exception:
+        pass
+
+
 def _record(
     case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
 ) -> dict[str, Any]:
@@ -303,7 +334,7 @@ def _finalize_experiment(
         cases=cases,
         journal=journal,
         scoring_metrics=scorers,
-        experiment_name=f"{suite.name}-{journal.dir.name}",
+        experiment_name=journal.dir.name,
         tags=tags,
         replay=replay,
     )

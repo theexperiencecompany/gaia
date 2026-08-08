@@ -242,6 +242,14 @@ async def _run_chat_stream(
         await _attach_executor_tool_data(stream_id, body, user, conversation_id, state)
 
         await _finalize_description(description_task, stream_id)
+        await stream_manager.publish_chunk(
+            stream_id,
+            format_sse_data(
+                MainResponseCompleteFrame(
+                    main_response_complete=True, usage=state.usage_metadata or None
+                ).model_dump()
+            ),
+        )
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
         await stream_manager.complete_stream(stream_id)
 
@@ -384,8 +392,8 @@ def _start_description_task(
             conversation_id,
             last_message,
             user,
-            body.selectedTool if body.selectedTool else None,
-            body.selectedWorkflow if body.selectedWorkflow else None,
+            body.selectedTool or None,
+            body.selectedWorkflow or None,
         )
     )
 

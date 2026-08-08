@@ -75,6 +75,7 @@ const ModelFallbackFrameSchema = z.object({
 const KeepaliveFrameSchema = z.object({ keepalive: z.literal(true) });
 const MainResponseCompleteFrameSchema = z.object({
   main_response_complete: z.literal(true),
+  usage: z.record(z.any()).optional(),
 });
 const FollowUpActionsFrameSchema = z.object({
   follow_up_actions: z.array(z.string()),

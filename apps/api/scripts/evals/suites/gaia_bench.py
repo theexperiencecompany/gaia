@@ -302,6 +302,7 @@ def _download_metadata(token: str) -> list[dict[str, object]] | None:
         METADATA_URL,
         headers={"Authorization": f"Bearer {token}"},
         timeout=120.0,
+        follow_redirects=True,
     )
     if resp.status_code == 401:
         print(f"[gaia_bench] HF rejected the token (401) — {GATE_NOTICE}.")
