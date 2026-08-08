@@ -70,13 +70,15 @@ runs:
       working-directory: apps/api
       # Goes through the app's own loaders, so the models, cache dir and ONNX
       # settings are the ones the suite actually uses — a prefetch that drifted
-      # from them would warm the wrong cache and prove nothing. Attempts are
+      # from them would warm the wrong cache and prove nothing. The environment
+      # is already synced above, so --no-sync makes this a pure run of it and
+      # --no-build is then free (nothing is installed here to build). Attempts are
       # retried because huggingface_hub resumes a partial blob rather than
       # restarting the transfer; three consecutive failures is a real outage,
       # not a blip, and fails the job.
       run: |
         for attempt in 1 2 3; do
-          if uv run --frozen python -c '
+          if uv run --frozen --no-sync --no-build python -c '
         from app.memory.embeddings import _embed_sync, _rerank_sync
 
         _embed_sync(["warmup"])
