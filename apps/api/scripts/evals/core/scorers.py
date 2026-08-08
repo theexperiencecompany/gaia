@@ -23,6 +23,28 @@ from typing import cast
 from opik.evaluation.metrics import base_metric, score_result
 
 
+class Gate(base_metric.BaseMetric):
+    """Base for every scorer here: a metric that does NOT log itself as a trace.
+
+    ``BaseMetric`` defaults to ``track=True``, which wraps ``score()`` in
+    ``opik.track``. Called inside ``evaluate()`` that is harmless, but every gate
+    is also called directly by :mod:`.gates` on each case — and outside an Opik
+    context ``track`` has no parent to attach to, so it opens a TOP-LEVEL TRACE
+    named after the metric, in whatever project ``OPIK_PROJECT_NAME`` happens to
+    name. That is how ``gaia-memory`` accumulated 19,235 zero-cost traces called
+    ``end_state``, ``communicate`` and ``tool_call_correctness`` and only 104
+    real case traces: a 45-case suite buried under its own gate invocations.
+
+    A gate result is a feedback score on the case's trace (``log_case_trace``
+    writes it there); it is not an execution worth tracing on its own. Inheriting
+    this instead of passing ``track=False`` at eleven call sites is deliberate —
+    the failure is silent and remote, so it must not be possible to forget.
+    """
+
+    def __init__(self, name: str) -> None:
+        super().__init__(name, track=False)
+
+
 def _expected_of(expected: object) -> dict[str, object]:
     return cast(dict[str, object], expected) if isinstance(expected, dict) else {}
 
@@ -135,7 +157,7 @@ def _call_matches_args(call: dict[str, object], wanted: dict[str, object]) -> bo
     return all(key in args and _arg_matches(args[key], value) for key, value in wanted.items())
 
 
-class ToolCallCorrectness(base_metric.BaseMetric):
+class ToolCallCorrectness(Gate):
     """Every expected tool call happened, with the arguments the case demands.
 
     An expected entry is ``{tool, min_calls?, args?}``. The ``args`` check is
@@ -197,7 +219,7 @@ class ToolCallCorrectness(base_metric.BaseMetric):
         )
 
 
-class EndStateEquality(base_metric.BaseMetric):
+class EndStateEquality(Gate):
     """The world changed as the ground truth demands (τ-bench end-state gate)."""
 
     def __init__(self) -> None:
@@ -241,7 +263,7 @@ def _list_contains_all(got: list[object], want: list[object]) -> bool:
     return all(w in got_norm for w in want_norm)
 
 
-class CommunicateGate(base_metric.BaseMetric):
+class CommunicateGate(Gate):
     """Every required string was actually relayed to the user."""
 
     def __init__(self) -> None:
@@ -269,7 +291,7 @@ class CommunicateGate(base_metric.BaseMetric):
         )
 
 
-class MustNotCommunicate(base_metric.BaseMetric):
+class MustNotCommunicate(Gate):
     """None of the forbidden strings was said to the user.
 
     The mirror of :class:`CommunicateGate`, and the only way to gate a leak:
@@ -304,7 +326,7 @@ class MustNotCommunicate(base_metric.BaseMetric):
         )
 
 
-class NoForbiddenToolCalls(base_metric.BaseMetric):
+class NoForbiddenToolCalls(Gate):
     """None of the named tools was called.
 
     :class:`ToolCallCorrectness` gates presence; absence is a different claim,
@@ -350,7 +372,7 @@ class NoForbiddenToolCalls(base_metric.BaseMetric):
 EXECUTOR_HANDOFF_TOOL = "call_executor"
 
 
-class DelegationGate(base_metric.BaseMetric):
+class DelegationGate(Gate):
     """The turn delegated to the executor exactly when it should have.
 
     ``expected.delegation`` is ``required`` (real work — the comms agent holds no
@@ -450,7 +472,7 @@ def classify_refusal(text: str, base_url: str, api_key: str, model: str) -> bool
     return verdicts[-1] == "REFUSE"
 
 
-class BubbleBoundary(base_metric.BaseMetric):
+class BubbleBoundary(Gate):
     """Every assistant message is a distinct, non-empty, non-duplicated bubble."""
 
     def __init__(self) -> None:
@@ -478,7 +500,7 @@ class BubbleBoundary(base_metric.BaseMetric):
         )
 
 
-class ToolCard(base_metric.BaseMetric):
+class ToolCard(Gate):
     """Every tool call produced a valid card entry (name present, args parse)."""
 
     def __init__(self) -> None:
@@ -512,7 +534,7 @@ class ToolCard(base_metric.BaseMetric):
         return score_result.ScoreResult(name=self.name, value=1.0, reason="all tool calls carded")
 
 
-class OpenUICheck(base_metric.BaseMetric):
+class OpenUICheck(Gate):
     """OpenUI fences present (when expected) and structurally balanced."""
 
     def __init__(self) -> None:
@@ -579,7 +601,7 @@ RULES YOU MUST FOLLOW:
 - Never invent a quote. If QUOTE is NONE the verdict cannot exceed 1."""
 
 
-class RubricJudge(base_metric.BaseMetric):
+class RubricJudge(Gate):
     """LLM judge over per-case rubric criteria (GEval-style, rubric-led).
 
     Judge model comes from the harness config (default: Nous DeepSeek V4
@@ -712,7 +734,7 @@ def _parse_verdicts(reply: str, expected_count: int) -> tuple[list[int], list[st
     return scores, quotes
 
 
-class ProviderQuality(base_metric.BaseMetric):
+class ProviderQuality(Gate):
     """Surfaces provider/model per case in Opik experiments (score value 1.0,
     the reason column carries the lane so the UI is glanceable)."""
 
