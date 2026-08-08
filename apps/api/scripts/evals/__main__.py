@@ -122,6 +122,13 @@ def main() -> int | None:
         action="store_true",
         help="record this run as the suite's baseline instead of judging against it",
     )
+    compare_p.add_argument(
+        "--provisional",
+        default="",
+        metavar="WHY",
+        help="record WHY this baseline is not yet a trustworthy reference point; "
+        "every later comparison against it prints the reason",
+    )
 
     sub.add_parser("flaky", help="cases whose verdict changes between runs (free, from journals)")
 
@@ -210,7 +217,9 @@ def main() -> int | None:
         from .core import baseline
 
         comparison = baseline.for_run(
-            runner.RunJournal(runner.RUNS_DIR, args.run_id), rebaseline=args.rebaseline
+            runner.RunJournal(runner.RUNS_DIR, args.run_id),
+            rebaseline=args.rebaseline,
+            provisional=args.provisional,
         )
         print(comparison.render())
         # A regression is a result, not a crash — the verdict is printed first,

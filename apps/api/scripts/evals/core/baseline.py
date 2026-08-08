@@ -41,6 +41,16 @@ class Comparison:
     per_category: dict[str, tuple[int, int]] = field(default_factory=dict)
     regressions: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
+    provisional: str = ""
+    """Why the recorded baseline is not a trustworthy reference point, if it isn't.
+
+    A baseline is a claim about the agent, so it is only as good as the stack the
+    run was made against. Every baseline on disk today was recorded from a native
+    API with no JuiceFS mount — an agent with no working file ops, sandbox or
+    artifact streaming — which makes a later comparison report an improvement
+    that is really just a working stack. Recording the reason keeps that visible
+    at the moment of comparison instead of in someone's memory.
+    """
 
     @property
     def ok(self) -> bool:
@@ -62,12 +72,17 @@ class Comparison:
             lines.append(f"  this run: {self.accuracy:.1%} over {self.graded} graded")
             return "\n".join(lines + [""])
         arrow = "▲" if (self.delta or 0) >= 0 else "▼"
-        headline = "REGRESSION" if self.regressions else "BASELINE OK"
+        if self.provisional:
+            headline = "PROVISIONAL BASELINE"
+        else:
+            headline = "REGRESSION" if self.regressions else "BASELINE OK"
         lines.append(
             f"{headline}  {self.suite}: {self.accuracy:.1%} vs {self.baseline_accuracy:.1%} "
             f"{arrow} {abs(self.delta or 0):.1%}"
         )
         lines.append("=" * 74)
+        if self.provisional:
+            lines.append(f"  ⚠ this comparison means little: {self.provisional}")
         lines.append(
             f"  graded {self.graded} · errored {self.errored} · baseline from {self.baseline_run}"
         )
@@ -119,6 +134,7 @@ def compare(suite: str, records: list[dict[str, Any]]) -> Comparison:
     stored = json.loads(stored_path.read_text())
     comparison.baseline_accuracy = float(stored.get("baseline_accuracy", 0.0))
     comparison.baseline_run = str(stored.get("run_id", "?"))
+    comparison.provisional = str(stored.get("provisional") or "")
 
     if graded < MIN_CASES_FOR_VERDICT:
         comparison.notes.append(
@@ -165,7 +181,7 @@ def _reject_unbaselineable(meta: RunMeta, run_id: str) -> None:
         )
 
 
-def for_run(journal: RunJournal, *, rebaseline: bool = False) -> Comparison:
+def for_run(journal: RunJournal, *, rebaseline: bool = False, provisional: str = "") -> Comparison:
     """Judge a run against its suite's baseline, or record it as the new one.
 
     The single path both the live run loop and the offline ``compare`` command
@@ -178,11 +194,18 @@ def for_run(journal: RunJournal, *, rebaseline: bool = False) -> Comparison:
     records = list(journal.latest_per_case().values())
     if rebaseline:
         _reject_unbaselineable(meta, run_id)
-        print(f"[baseline] recorded {write(meta.suite, records, run_id, meta.app_version)}")
+        written = write(meta.suite, records, run_id, meta.app_version, provisional)
+        print(f"[baseline] recorded {written}")
     return compare(meta.suite, records)
 
 
-def write(suite: str, records: list[dict[str, Any]], run_id: str, app_version: str) -> Path:
+def write(
+    suite: str,
+    records: list[dict[str, Any]],
+    run_id: str,
+    app_version: str,
+    provisional: str = "",
+) -> Path:
     """Record this run as the suite's baseline. Only ever called explicitly."""
     accuracy, graded, errored = _accuracy(records)
     stored_path = path_for(suite)
@@ -197,6 +220,7 @@ def write(suite: str, records: list[dict[str, Any]], run_id: str, app_version: s
                 "graded": graded,
                 "errored": errored,
                 "per_category": {k: list(v) for k, v in sorted(_by_category(records).items())},
+                "provisional": provisional or None,
                 "captured_at": datetime.now(UTC).date().isoformat(),
             },
             indent=2,

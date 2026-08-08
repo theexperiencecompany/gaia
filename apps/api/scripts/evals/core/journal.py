@@ -14,6 +14,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
+from . import faults
 from .types import PriceBook, ProviderPrice
 
 TERMINAL_STATUSES = {"passed", "failed", "skipped"}
@@ -96,8 +97,18 @@ class RunJournal:
 
         An ``errored`` case is not a verdict — the agent was never measured — so
         it stays resumable rather than freezing a crash into the run's score.
+
+        Neither is a ``failed`` record that never ran. Those exist because a
+        fault used to be journaled as a wrong answer, and the status alone
+        cannot tell them apart from a genuine miss — the record has to be read.
+        Without this, a run contaminated by an outage could not be repaired: the
+        publish gate refuses it, and ``--resume`` skipped exactly the cases that
+        needed re-running, so the only exit was a full re-run from scratch.
         """
-        return self._status.get(case_id, "") in TERMINAL_STATUSES
+        if self._status.get(case_id, "") not in TERMINAL_STATUSES:
+            return False
+        record = self.record_for(case_id)
+        return not (record is not None and faults.never_conducted(record))
 
     def append(self, record: dict[str, Any]) -> None:
         with self._lock:

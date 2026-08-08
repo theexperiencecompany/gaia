@@ -146,6 +146,36 @@ def test_an_unfinished_run_can_never_become_the_baseline(tmp_path: Path) -> None
     assert not baseline.path_for("demo").exists()
 
 
+def test_a_provisional_baseline_says_so_at_every_comparison(tmp_path: Path) -> None:
+    """A baseline is only as good as the stack the run was made against. Every
+    baseline on disk came from an API with no JuiceFS mount, so the agent had no
+    file ops — a later run on a working stack would read as an improvement it
+    did not earn."""
+    journal = _run_on_disk(tmp_path, "run-a", _records(18, 2))
+    baseline.for_run(journal, rebaseline=True, provisional="no JuiceFS mount: no file ops")
+    later = baseline.compare("demo", _records(17, 3))
+    assert later.provisional == "no JuiceFS mount: no file ops"
+    assert "no JuiceFS mount" in later.render()
+    assert "PROVISIONAL BASELINE" in later.render()
+
+
+def test_a_trustworthy_baseline_carries_no_caveat(tmp_path: Path) -> None:
+    journal = _run_on_disk(tmp_path, "run-a", _records(18, 2))
+    baseline.for_run(journal, rebaseline=True)
+    later = baseline.compare("demo", _records(17, 3))
+    assert later.provisional == ""
+    assert "PROVISIONAL" not in later.render()
+
+
+def test_a_provisional_baseline_still_reports_a_regression(tmp_path: Path) -> None:
+    """The caveat explains the number; it does not suppress it."""
+    journal = _run_on_disk(tmp_path, "run-a", _records(18, 2))
+    baseline.for_run(journal, rebaseline=True, provisional="crippled stack")
+    worse = baseline.compare("demo", _records(8, 12))
+    assert not worse.ok
+    assert "crippled stack" in worse.render()
+
+
 def test_a_retried_case_is_counted_once(tmp_path: Path) -> None:
     """The journal appends, so a fixed case must not be counted as its old failure."""
     journal = _run_on_disk(tmp_path, "run-b", _records(9, 1))
