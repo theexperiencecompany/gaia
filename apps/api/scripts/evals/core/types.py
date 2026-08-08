@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 
@@ -41,6 +42,166 @@ class CaseRun:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class ProviderPrice:
+    """List price for a lane's model, plus the discount actually applied to it.
+
+    Two costs fall out of this and they answer different questions: list cost is
+    what reproducing the eval costs at rack rate (the comparable number), paid
+    cost is what the lane actually billed us (the budget number).
+    """
+
+    price_in_per_1m: float = 0.0
+    price_out_per_1m: float = 0.0
+    discount_pct: float = 0.0
+
+    def list_cost(self, tokens_in: int, tokens_out: int) -> float:
+        return tokens_in / 1e6 * self.price_in_per_1m + tokens_out / 1e6 * self.price_out_per_1m
+
+    def paid_cost(self, tokens_in: int, tokens_out: int) -> float:
+        return self.list_cost(tokens_in, tokens_out) * max(0.0, 1.0 - self.discount_pct / 100.0)
+
+
+PriceBook = dict[str, ProviderPrice]
+
+_NO_PRICE = ProviderPrice()
+
+
+@dataclass
+class CaseTrace:
+    """One case execution as Opik sees it: identity, outcome, and the meter.
+
+    Built from a journal record so the live run loop and the backfill seeder
+    produce byte-identical traces — the journal is the only source of truth.
+    """
+
+    run_id: str
+    case_id: str
+    ticket: str
+    prompt: str
+    output: str
+    status: str
+    provider: str
+    model: str
+    scores: dict[str, float] = field(default_factory=dict)
+    duration_s: float = 0.0
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+    list_cost_usd: float = 0.0
+    discount_pct: float = 0.0
+    error: str = ""
+    ended_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def name(self) -> str:
+        return f"case-{self.case_id}"
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """Identity for idempotent seeding: one trace per case per run.
+
+        The run id has to be part of it — the same case legitimately re-runs in
+        later runs, and those are distinct executions, not duplicates.
+        """
+        return (self.name, self.run_id)
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        return {
+            "run": self.run_id,
+            "provider": self.provider,
+            "model": self.model,
+            "status": self.status,
+            "ticket": self.ticket,
+            "duration_s": round(self.duration_s, 2),
+            "tokens": self.tokens_in + self.tokens_out,
+            "tokens_in": self.tokens_in,
+            "tokens_out": self.tokens_out,
+            "cost_usd": round(self.cost_usd, 6),
+            "list_cost_usd": round(self.list_cost_usd, 6),
+            "discount_pct": self.discount_pct,
+            "scored": sorted(self.scores),
+            "error": self.error,
+            "errored": bool(self.error),
+        }
+
+    @property
+    def started_at(self) -> datetime:
+        """Real wall-clock start, so replayed traces land on the timeline they
+        actually ran on instead of bunching up at seed time."""
+        return self.ended_at - timedelta(seconds=self.duration_s)
+
+    @property
+    def usage(self) -> dict[str, int]:
+        """Token usage in the shape Opik aggregates on."""
+        return {
+            "prompt_tokens": self.tokens_in,
+            "completion_tokens": self.tokens_out,
+            "total_tokens": self.tokens_in + self.tokens_out,
+        }
+
+    @property
+    def error_info(self) -> dict[str, str] | None:
+        """Opik's error envelope, so failures count toward its error-rate metric.
+
+        All three keys are required by the API — omitting ``traceback`` fails
+        validation and silently drops the whole trace.
+        """
+        if not self.error:
+            return None
+        kind, _, message = self.error.partition(": ")
+        return {
+            "exception_type": kind or "EvalFailure",
+            "message": message or self.error,
+            "traceback": self.error,
+        }
+
+    @classmethod
+    def from_record(cls, run_id: str, record: dict[str, Any], prices: PriceBook) -> CaseTrace:
+        tokens = record.get("tokens") or {}
+        tokens_in = int(tokens.get("input", 0))
+        tokens_out = int(tokens.get("output", 0))
+        price = prices.get(record.get("provider", ""), _NO_PRICE)
+        return cls(
+            run_id=run_id,
+            case_id=record["case_id"],
+            ticket=record.get("ticket", ""),
+            prompt=record.get("prompt", ""),
+            output=record.get("text") or _last_assistant(record.get("messages") or []),
+            status=record.get("status", "?"),
+            provider=record.get("provider", "?"),
+            model=record.get("model", "?"),
+            scores=record.get("scores") or {},
+            duration_s=float(record.get("duration_s") or 0.0),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cost_usd=price.paid_cost(tokens_in, tokens_out),
+            list_cost_usd=price.list_cost(tokens_in, tokens_out),
+            discount_pct=price.discount_pct,
+            error=record.get("error") or "",
+            ended_at=_parse_ts(record.get("ts")),
+        )
+
+
+def _parse_ts(value: object) -> datetime:
+    """Journal timestamp, falling back to now for pre-``ts`` records."""
+    if isinstance(value, str):
+        try:
+            return datetime.fromisoformat(value)
+        except ValueError:
+            pass
+    return datetime.now(UTC)
+
+
+def _last_assistant(messages: list[dict[str, str]]) -> str:
+    """Fallback output for journals written before records carried ``text``."""
+    for message in reversed(messages):
+        if message.get("role") == "assistant":
+            return str(message.get("content", ""))
+    return str(messages[-1].get("content", "")) if messages else ""
+
+
 @dataclass
 class ProviderError(Exception):
     """Raised by a transport when the provider itself failed (not the agent).
@@ -53,6 +214,23 @@ class ProviderError(Exception):
 
     def __str__(self) -> str:
         return f"provider {self.provider} failed: {self.reason}"
+
+
+@dataclass
+class InfraError(Exception):
+    """Raised by a transport when a backend the suite needs is unavailable.
+
+    Distinct from :class:`ProviderError`: rotating to another LLM lane cannot
+    fix a dead datastore, and nothing about the agent was measured. The run
+    loop aborts instead of journaling cases that never ran — an outage graded
+    as a wrong answer becomes a fabricated 0% in the report.
+    """
+
+    backend: str
+    reason: str
+
+    def __str__(self) -> str:
+        return f"{self.backend} unavailable: {self.reason}"
 
 
 class ProviderHealth:

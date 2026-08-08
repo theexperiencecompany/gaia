@@ -1,24 +1,40 @@
-"""Opik sink: dataset sync + experiment finalize by replaying the journal.
+"""Opik sink: per-case traces + experiment finalize by replaying the journal.
 
-Runs log per-case traces with feedback scores; at finalize the same cases are
+Runs log one trace per case with feedback scores; at finalize the same cases are
 synced as a dataset and evaluated via ``opik.evaluation.evaluate`` with a
 replay task (no agent re-run) so every run becomes a comparable experiment.
+
+Every write is keyed by ``CaseTrace.key`` (case + run), which is what lets
+``seed`` backfill past journals repeatedly without duplicating anything.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 import json
 from pathlib import Path
-from typing import Any
 
 import opik
 
 from .journal import RunJournal
-from .types import Case
+from .types import Case, CaseTrace
 
 _EVALS_DIR = Path(__file__).resolve().parent.parent
 ENV_OPIK = _EVALS_DIR / ".env.opik"
+
+# search_traces has no cursor — one call has to cover a project's whole history.
+_MAX_TRACES = 50_000
+_DELETE_BATCH = 10
+_MAX_PROJECTS = 200
+
+
+@dataclass(frozen=True)
+class ExistingTrace:
+    """A case trace already in Opik, and whether it is complete."""
+
+    id: str
+    has_span: bool
 
 
 def load_opik_env(path: Path = ENV_OPIK) -> None:
@@ -35,29 +51,38 @@ def load_opik_env(path: Path = ENV_OPIK) -> None:
         os.environ.setdefault(key.strip(), value.strip())
 
 
+_CLIENTS: dict[str, opik.Opik] = {}
+
+
 def client(project_name: str) -> opik.Opik:
-    return opik.Opik(project_name=project_name)
+    """One client per project, reused.
+
+    Building a client per trace (and flushing on each) is what turned seeding
+    thousands of journal records into an hours-long job.
+    """
+    if project_name not in _CLIENTS:
+        _CLIENTS[project_name] = opik.Opik(project_name=project_name)
+    return _CLIENTS[project_name]
 
 
-def sync_dataset(
-    opik_client: opik.Opik,
-    project: str,
-    cases: list[Case],
-) -> object:
-    dataset = opik_client.get_or_create_dataset(name=f"{project}-cases", project_name=project)
-    dataset.insert(
-        [
-            {
-                "case_id": c.id,
-                "input": c.prompt,
-                "expected": c.expected,
-                "ticket": c.ticket,
-                "tags": c.tags,
-            }
-            for c in cases
-        ]
-    )
-    return dataset
+def flush(project_name: str) -> None:
+    client(project_name).flush()
+
+
+def close_clients() -> None:
+    """Shut every cached client down.
+
+    The SDK runs its batch sender on non-daemon threads, so a process that only
+    flushes keeps running after its work is done — which is why seeding appeared
+    to "die silently" over and over: it had finished and was hanging, not
+    crashing. Ending the clients is what actually lets the process exit.
+    """
+    for name, opik_client in list(_CLIENTS.items()):
+        try:
+            opik_client.end()
+        except Exception as e:
+            print(f"[opik] client for {name} did not shut down cleanly: {type(e).__name__}: {e}")
+    _CLIENTS.clear()
 
 
 def finalize(
@@ -77,7 +102,7 @@ def finalize(
     """
     from opik.evaluation import evaluate
 
-    opik_client = opik.Opik(project_name=project)
+    opik_client = client(project)
     dataset = opik_client.get_or_create_dataset(name=f"{project}-cases", project_name=project)
     dataset.insert(
         [
@@ -105,25 +130,140 @@ def finalize(
     return result
 
 
-def log_case_trace(
-    project: str,
-    case_id: str,
-    run_input: str,
-    output: str,
-    scores: dict[str, float],
-    metadata: dict[str, Any],
-) -> None:
-    opik_client = opik.Opik(project_name=project)
-    trace = opik_client.trace(
-        name=f"case-{case_id}",
-        input={"prompt": run_input},
-        output={"text": output},
-        metadata=metadata,
-        tags=[project],
+def log_case_trace(project: str, case: CaseTrace) -> None:
+    """Write one case execution as a trace. Buffered — call ``flush`` when done.
+
+    The trace carries an ``llm`` child span holding usage, model, provider and
+    cost. That span is not decoration: Opik derives a trace's
+    ``total_estimated_cost``, its token totals, and the ``model``/``provider``
+    breakdowns from spans, so metadata alone leaves the project list, the COST
+    and TOKEN_USAGE metrics, and every cost widget reading zero.
+    """
+    trace = client(project).trace(
+        name=case.name,
+        start_time=case.started_at,
+        end_time=case.ended_at,
+        input={"prompt": case.prompt},
+        output={"text": case.output},
+        metadata=case.metadata,
+        tags=[project, case.status],
+        error_info=case.error_info,
     )
-    for name, value in scores.items():
+    trace.span(
+        name=f"{case.provider}:{case.model}",
+        type="llm",
+        start_time=case.started_at,
+        end_time=case.ended_at,
+        input={"prompt": case.prompt},
+        output={"text": case.output},
+        metadata=case.metadata,
+        model=case.model,
+        provider=case.provider,
+        usage=case.usage,
+        total_cost=case.cost_usd,
+        error_info=case.error_info,
+    )
+    for name, value in case.scores.items():
         trace.log_feedback_score(name=name, value=value)
-    opik_client.flush()
+
+
+def repair_case_trace(project: str, trace_id: str, case: CaseTrace) -> None:
+    """Attach the missing ``llm`` span (and refresh metadata) on a trace that was
+    written before traces carried spans.
+
+    Rewriting those traces instead would mean deleting them, and a delete costs
+    ~3.5s each on this backend — half an hour to rebuild what a span attach
+    fixes in place.
+    """
+    opik_client = client(project)
+    opik_client.span(
+        trace_id=trace_id,
+        project_name=project,
+        name=f"{case.provider}:{case.model}",
+        type="llm",
+        start_time=case.started_at,
+        end_time=case.ended_at,
+        input={"prompt": case.prompt},
+        output={"text": case.output},
+        metadata=case.metadata,
+        model=case.model,
+        provider=case.provider,
+        usage=case.usage,
+        total_cost=case.cost_usd,
+        error_info=case.error_info,
+    )
+    opik_client.update_trace(
+        trace_id=trace_id,
+        project_name=project,
+        metadata=case.metadata,
+        tags=[project, case.status],
+        error_info=case.error_info,
+    )
+
+
+def purge_case_traces(project: str) -> int:
+    """Delete every ``case-*`` trace in a project. Used by ``seed --reset`` to
+    rebuild a project from the journals when the trace shape itself changed."""
+    ids = [t.id for traces in existing_trace_keys(project).values() for t in traces]
+    return delete_traces(project, ids) if ids else 0
+
+
+def existing_trace_keys(project: str) -> dict[tuple[str, str], list[ExistingTrace]]:
+    """Every case trace already in ``project``, keyed by ``CaseTrace.key``.
+
+    Values are in creation order, so a key holding more than one entry is a
+    duplicate set the seeder can collapse. ``has_span`` distinguishes a complete
+    trace from one written before traces carried their llm span.
+    """
+    keys: dict[tuple[str, str], list[ExistingTrace]] = {}
+    for trace in client(project).search_traces(project_name=project, max_results=_MAX_TRACES):
+        # A trace's name is nullable, and an unnamed one used to abort the whole
+        # backfill here — which is exactly how three projects ended up empty.
+        if not (trace.name or "").startswith("case-"):
+            continue
+        run_id = str((trace.metadata or {}).get("run", ""))
+        keys.setdefault((trace.name, run_id), []).append(
+            ExistingTrace(id=trace.id, has_span=bool(trace.span_count))
+        )
+    return keys
+
+
+def delete_traces(project: str, trace_ids: list[str]) -> int:
+    """Delete traces in small batches, returning how many actually went.
+
+    The self-hosted backend 500s on larger batches (25 is already too many), and
+    a batch that fails takes its whole slice with it — so a failed batch is
+    retried one id at a time before giving up on the stragglers.
+    """
+    traces = client(project).rest_client.traces
+    deleted = 0
+    for start in range(0, len(trace_ids), _DELETE_BATCH):
+        batch = trace_ids[start : start + _DELETE_BATCH]
+        try:
+            traces.delete_traces(ids=batch)
+            deleted += len(batch)
+            continue
+        except Exception as e:
+            print(
+                f"[opik] batch delete of {len(batch)} failed ({type(e).__name__}) — retrying singly"
+            )
+        for trace_id in batch:
+            try:
+                traces.delete_traces(ids=[trace_id])
+                deleted += 1
+            except Exception as e:
+                print(f"[opik] could not delete trace {trace_id}: {type(e).__name__}: {e}")
+    return deleted
+
+
+def set_description(project: str, description: str) -> None:
+    opik_client = client(project)
+    found = opik_client.rest_client.projects.find_projects(page=1, size=_MAX_PROJECTS, name=project)
+    for existing in found.content:
+        if existing.name == project:
+            opik_client.rest_client.projects.update_project(id=existing.id, description=description)
+            return
+    raise LookupError(f"Opik project '{project}' does not exist — run the suite first")
 
 
 def experiment_name(run_dir: Path) -> str | None:

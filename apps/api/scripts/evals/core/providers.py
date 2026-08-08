@@ -9,7 +9,7 @@ import tomllib
 
 import httpx
 
-from .types import ProviderHealth
+from .types import PriceBook, ProviderHealth, ProviderPrice
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.toml"
 
@@ -28,6 +28,7 @@ class ProviderConfig:
     budget_usd: float
     price_in_per_1m: float
     price_out_per_1m: float
+    discount_pct: float = 0.0
 
     def configured(self) -> bool:
         return bool(self.api_key or self.lane == "gemini")
@@ -83,6 +84,7 @@ def load_config(path: Path = CONFIG_PATH) -> EvalConfig:
             budget_usd=float(p.get("budget_usd", 0.0)),
             price_in_per_1m=float(p.get("price_in_per_1m", 0.0)),
             price_out_per_1m=float(p.get("price_out_per_1m", 0.0)),
+            discount_pct=float(p.get("discount_pct", 0.0)),
         )
 
     return EvalConfig(
@@ -91,6 +93,14 @@ def load_config(path: Path = CONFIG_PATH) -> EvalConfig:
         default_max_usd=float(raw["cost"].get("default_max_usd", 8.0)),
         judge=dict(raw["judge"]),
     )
+
+
+def price_book(cfg: EvalConfig) -> PriceBook:
+    """Per-provider pricing, built once from the catalog."""
+    return {
+        name: ProviderPrice(p.price_in_per_1m, p.price_out_per_1m, p.discount_pct)
+        for name, p in cfg.providers.items()
+    }
 
 
 def judge_model(cfg: EvalConfig) -> str:

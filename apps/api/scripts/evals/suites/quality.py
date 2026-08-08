@@ -31,7 +31,7 @@ Scoring is deterministic at runtime (no LLM): structural checks always
 (BubbleBoundary, ToolCard), plus gates that exist in ``expected``
 (communicate, tool_call_correctness, suggestion, openui), plus a real
 suggestion check (3-4 non-empty items, each <=50 chars, from the
-``follow_up_actions`` frame — core's Suggestion is a placeholder, see report).
+``follow_up_actions`` frame).
 ``overall`` is the mean of the applied scores; the RubricJudge LLM pass runs
 at finalize time (1 call per case).
 """
@@ -42,6 +42,7 @@ import asyncio
 import json
 import os
 from pathlib import Path
+import re
 import time
 from typing import Any
 import uuid
@@ -71,6 +72,21 @@ TurnPayload = dict[str, Any]
 
 def _truncate(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def turns_for(case: Case) -> list[str]:
+    """The user turns this case sends, in order.
+
+    A case declares its turns either as ``setup.turns`` (a YAML list) or by
+    separating them in ``prompt`` with a line of ``---``. Named and public so
+    the mapping from case data to what actually reaches the wire is testable
+    without an API — a silent disagreement here runs a multi-turn case as a
+    single turn and grades the agent on a conversation it never had.
+    """
+    setup_turns = case.setup.get("turns") if isinstance(case.setup, dict) else None
+    if setup_turns:
+        return [str(t).strip() for t in setup_turns if str(t).strip()]
+    return [t.strip() for t in case.prompt.split(TURN_SEPARATOR) if t.strip()]
 
 
 def _parse_frames(frames: list[Frame]) -> TurnRecord:
@@ -266,12 +282,7 @@ class ChatStreamTransport:
     ) -> CaseRun:
         del cfg
         deadline = float(os.environ.get("EVALS_CASE_TIMEOUT_S", "300"))
-        setup_turns = case.setup.get("turns") if isinstance(case.setup, dict) else None
-        turns = (
-            [str(t) for t in setup_turns]
-            if setup_turns
-            else [t.strip() for t in case.prompt.split(TURN_SEPARATOR) if t.strip()]
-        )
+        turns = turns_for(case)
         if not turns:
             raise ProviderError(provider.name, "case prompt has no turns")
         transcript: list[dict[str, str]] = []
@@ -421,9 +432,8 @@ class ChatStreamTransport:
 def _suggestion_check(run: CaseRun) -> tuple[float, str]:
     """Real suggestion gate: last follow_up_actions frame, 3-4 short items.
 
-    Core's Suggestion scorer is a placeholder that always passes — the suite
-    overrides it with this check. Reads ``raw`` (the follow_up_actions frame
-    summary), which the finalize replay does not carry yet (see report).
+    Reads ``raw`` (the follow_up_actions frame summary), which the finalize
+    replay does not carry yet (see report).
     """
     actions: list[str] | None = None
     for frame in reversed(run.raw):
@@ -440,6 +450,146 @@ def _suggestion_check(run: CaseRun) -> tuple[float, str]:
     if bad:
         return 0.0, f"bad suggestion item(s): {bad[:3]}"
     return 1.0, f"{len(actions)} suggestions, all non-empty and <=50 chars"
+
+
+# Pictographic ranges only. Deliberately excludes U+2100-27BF (™, ←, ✓, ▶) and
+# the U+FE0F variation selector: those appear in ordinary punctuation and would
+# make the check fire on text carrying no emoji at all.
+_EMOJI_PATTERN = re.compile(
+    "[\U0001f300-\U0001f5ff"  # symbols & pictographs
+    "\U0001f600-\U0001f64f"  # emoticons
+    "\U0001f680-\U0001f6ff"  # transport & map
+    "\U0001f900-\U0001f9ff"  # supplemental symbols & pictographs
+    "\U0001fa70-\U0001faff"  # extended-A (🩵, 🫶)
+    "☀-⛿]"  # miscellaneous symbols (☀, ⚡)
+)
+
+
+def _emoji_discipline_check(run: CaseRun) -> tuple[float, str]:
+    """The assistant must not use an emoji before the user has used one.
+
+    A verbatim prompt rule ("Emojis EXTREMELY RARE, and NEVER use one before
+    the user has used one first"), and therefore deterministically gradeable —
+    no rubric judge required. Walks the transcript in order so a case where the
+    user does open with an emoji correctly permits the reply to answer in kind.
+
+    Caught live: a plain-English "add a todo to water the plants" came back as
+    "aight, add kar raha hoon Inbox me 🌱" — the case passed every structural
+    gate it had, because none of them could see this.
+    """
+    user_has_emojied = False
+    for message in run.messages:
+        content = str(message.get("content") or "")
+        if message.get("role") == "user":
+            user_has_emojied = user_has_emojied or bool(_EMOJI_PATTERN.search(content))
+            continue
+        if message.get("role") != "assistant" or user_has_emojied:
+            continue
+        found = _EMOJI_PATTERN.findall(content)
+        if found:
+            return 0.0, f"assistant used {''.join(found[:4])} before the user used any emoji"
+    return 1.0, "no emoji before the user's first"
+
+
+# A policy rule runs from its number to the next numbered rule (or a blank-line
+# break), because several rules carry their real content in indented
+# sub-bullets — rule 5's "stats/KPIs, timeline, charts → :::openui" forcing
+# clause is a sub-bullet, and a line-only regex would quote the bare header
+# "Structured data shown inline:" and grade nothing.
+_POLICY_RULE_RE = re.compile(r"^[ \t]*(\d)\.[ \t]+(.*?)(?=^[ \t]*\d\.[ \t]|\n\n)", re.M | re.S)
+
+#: Directions a case can take on the OpenUI surface policy, via
+#: ``expected.openui_policy``. Each maps to the policy rule that decides it.
+OPENUI_POLICY_DIRECTIONS = ("required", "forbidden", "suppressed")
+
+
+def _policy_text() -> tuple[str, list[str]]:
+    """The SHIPPED OpenUI surface policy and its suppressed-tool list.
+
+    Imported inside the function on purpose. ``__main__`` imports every suite
+    module eagerly, and this pulls in app settings (Infisical, validators) —
+    at module scope a failure here would take down every suite's run, not just
+    this one.
+    """
+    from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS, OPENUI_SURFACE_POLICY
+
+    return OPENUI_SURFACE_POLICY, list(OPENUI_SUPPRESSED_TOOLS)
+
+
+def _policy_rule(policy: str, number: int) -> str:
+    """One numbered rule, verbatim, from the shipped policy.
+
+    Raises when the rule is missing rather than falling back to a default: if
+    someone renumbers or deletes a rule in the prompt, these evals must break
+    loudly at load time. A rubric that silently keeps grading a rule the
+    product no longer ships is measuring a spec we do not have.
+    """
+    for found, text in _POLICY_RULE_RE.findall(policy):
+        if int(found) == number:
+            return " ".join(text.split())
+    raise ValueError(
+        f"OpenUI surface policy has no rule {number} — the prompt changed shape. "
+        f"Re-derive the openui cases against the new policy instead of pinning a stale one."
+    )
+
+
+def openui_policy_criteria(direction: str) -> list[str]:
+    """Judge criteria composed from the real OpenUI prompt, not paraphrased.
+
+    The rubric quotes the shipped ``OPENUI_SURFACE_POLICY`` verbatim, so an
+    edit to the prompt changes what these cases grade — automatically, with no
+    YAML to update. That is the whole point: a hand-written rubric drifts from
+    the prompt and then measures a spec we stopped shipping.
+    """
+    if direction not in OPENUI_POLICY_DIRECTIONS:
+        raise ValueError(
+            f"unknown openui_policy {direction!r}; expected one of {OPENUI_POLICY_DIRECTIONS}"
+        )
+    policy, suppressed = _policy_text()
+    quoted = "The agent's own shipped OpenUI surface policy says, verbatim:"
+    if direction == "required":
+        return [
+            f'{quoted} "{_policy_rule(policy, 5)}" Judge ONLY whether the reply obeys that rule '
+            f"for this request. For the visual types it names this is stated as a forcing rule, "
+            f"not a preference.",
+            "Any :::openui fence in the reply is closed by a matching ::: and its body is an "
+            "openui-lang expression (root = Component(...)), not prose, JSON, or a code block.",
+            "The prose and the component are layers of one reply: the words carry the lead-in and "
+            "the takeaway, the component carries the data. Neither duplicates the other.",
+        ]
+    if direction == "forbidden":
+        return [
+            f'{quoted} "{_policy_rule(policy, 3)}" Judge whether the reply obeys it.',
+            f'{quoted} "Never put :::openui inside greetings, opinions, or plain conversational '
+            f'replies." The reply must contain NO :::openui fence at all.',
+            "The reply does not reach for a component, a table, or a structured layout where a "
+            "plain sentence is the correct answer.",
+        ]
+    return [
+        f'{quoted} "{_policy_rule(policy, 1)}" The tools that already render a native card are: '
+        f"{', '.join(suppressed)}.",
+        "The reply emits NO :::openui fence duplicating a native tool card, and adds at most a "
+        "short conversational line alongside it.",
+    ]
+
+
+def _apply_openui_policy_criteria(case_id: str, expected: TurnPayload) -> None:
+    """Append policy-derived criteria to a case that opts in.
+
+    Cases declare ``openui_policy: required|forbidden|suppressed`` and get the
+    shipped policy's own words appended to their rubric. Case-specific criteria
+    written in YAML are kept — they say what THIS request is, the imported ones
+    say what the product promises.
+    """
+    direction = expected.get("openui_policy")
+    if not direction:
+        return
+    try:
+        derived = openui_policy_criteria(str(direction))
+    except ValueError as e:
+        raise ValueError(f"{case_id}: {e}") from e
+    judge = expected.setdefault("judge", {})
+    judge["criteria"] = list(judge.get("criteria") or []) + derived
 
 
 @register_suite("quality")
@@ -470,6 +620,7 @@ class QualitySuite(Suite):
                     raise ValueError(f"duplicate case id {case_id!r} in {path}")
                 seen_ids.add(case_id)
                 expected = row.pop("expected")
+                _apply_openui_policy_criteria(case_id, expected)
                 cases.append(
                     Case(
                         id=case_id,
@@ -477,7 +628,7 @@ class QualitySuite(Suite):
                         prompt=row.pop("prompt", ""),
                         expected=expected,
                         tags=row.pop("tags", []),
-                        setup=row,
+                        setup=row.pop("setup", {}),
                     )
                 )
         if not cases:
@@ -498,6 +649,9 @@ class QualitySuite(Suite):
         from scripts.evals.core.scorers import (
             BubbleBoundary,
             CommunicateGate,
+            DelegationGate,
+            MustNotCommunicate,
+            NoForbiddenToolCalls,
             OpenUICheck,
             ToolCallCorrectness,
             ToolCard,
@@ -507,6 +661,9 @@ class QualitySuite(Suite):
         scores: dict[str, float] = {}
         scores["bubble_boundary"] = BubbleBoundary().score(messages=run.messages).value
         scores["tool_card"] = ToolCard().score(tool_calls=run.tool_calls).value
+        emoji_value, emoji_reason = _emoji_discipline_check(run)
+        scores["emoji_discipline"] = emoji_value
+        run.raw.append({"type": "emoji_check", "value": emoji_value, "reason": emoji_reason})
         if expected.get("communicate"):
             scores["communicate"] = (
                 CommunicateGate()
@@ -516,6 +673,24 @@ class QualitySuite(Suite):
         if expected.get("tool_calls"):
             scores["tool_call_correctness"] = (
                 ToolCallCorrectness()
+                .score(output=run.text, tool_calls=run.tool_calls, expected=expected)
+                .value
+            )
+        if expected.get("must_not_call_tools"):
+            scores["no_forbidden_tools"] = (
+                NoForbiddenToolCalls()
+                .score(output=run.text, tool_calls=run.tool_calls, expected=expected)
+                .value
+            )
+        if expected.get("must_not_communicate"):
+            scores["must_not_communicate"] = (
+                MustNotCommunicate()
+                .score(output=run.text, messages=run.messages, expected=expected)
+                .value
+            )
+        if expected.get("delegation"):
+            scores["delegation"] = (
+                DelegationGate()
                 .score(output=run.text, tool_calls=run.tool_calls, expected=expected)
                 .value
             )

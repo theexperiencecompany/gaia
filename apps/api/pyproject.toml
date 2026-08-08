@@ -190,6 +190,7 @@ backend = [
   "litellm>=1.83.4,<1.90",
   "prometheus-fastapi-instrumentator>=7.0.0",
   "prometheus-client>=0.20.0",
+  "pyarrow>=25.0.0",
 ]
 
 [tool.uv.sources]

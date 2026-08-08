@@ -18,7 +18,7 @@
     communicate: ["cake", "birthday"]
     tool_calls:
       - {tool: create_tracked_todo}
-      - {tool: create_reminder}
+      - {tool: create_reminder_tool}
       - {tool: add_memory}
     end_state:
       tracked_todos: [{title: "Sam's birthday", canvas_contains: "cake"}]
@@ -59,7 +59,7 @@
   expected:
     category: temporal
     communicate: ["overlap", "dentist"]
-    tool_calls: [{tool: create_reminder, min_calls: 2}]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 2}]
     end_state:
       reminders: [{title_contains: "dentist"}, {title_contains: "client call"}]
     score: {gates: [communicate, end_state, tool_calls]}
@@ -93,7 +93,7 @@
   expected:
     category: conflict
     communicate: ["Tuesday"]
-    tool_calls: [{tool: create_reminder, min_calls: 1}]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
     end_state:
       reminders: [{title_contains: "dentist"}]
     score: {gates: [communicate, end_state, tool_calls]}
@@ -145,7 +145,7 @@
   expected:
     category: precision
     communicate: ["14:30"]
-    tool_calls: [{tool: create_reminder, min_calls: 1}]
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
     end_state:
       reminders: [{title_contains: "CT scan", datetime_contains: "14:30"}]
     score: {gates: [communicate, end_state, tool_calls]}

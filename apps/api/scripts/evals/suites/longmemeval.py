@@ -16,7 +16,7 @@ from typing import Any
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.providers import EvalConfig
 from scripts.evals.core.runner import Suite, register_suite
-from scripts.evals.core.types import Case, CaseRun
+from scripts.evals.core.types import Case, CaseRun, InfraError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "longmemeval"
 DEFAULT_DATASET = DATA_DIR / "longmemeval_oracle.json"
@@ -31,6 +31,7 @@ class LongMemEvalSuite(Suite):
     def __init__(self, cfg: EvalConfig) -> None:
         self.cfg = cfg
         self._items: list[dict[str, Any]] | None = None
+        self._backend_ready = False
 
     def _load_items(self) -> list[dict[str, Any]]:
         if self._items is not None:
@@ -98,16 +99,41 @@ class LongMemEvalSuite(Suite):
                 error=f"question timed out after {deadline:.0f}s",
             )
 
+    async def _ensure_backend(self, tracker: EvalCostTracker) -> None:
+        """Register the memory backend once per run, then prove it is reachable.
+
+        Registration must NOT repeat per case: ``providers.register`` replaces the
+        LazyLoader, so re-registering discards the live engine (leaking its pool)
+        and forces every case to rebuild one. Once Postgres goes away, that rebuild
+        fails and the swallowed failure surfaces as a bare "engine not available"
+        for every remaining case — which is how an outage got published as 0/64.
+        """
+        from app.db.postgresql import get_postgresql_engine
+
+        if not self._backend_ready:
+            from scripts.memory_benchmark import longmemeval as lme
+
+            lme.init_postgresql_engine()
+            lme.init_chroma()
+            lme.register_llm_providers()
+
+            import app.memory.extraction as extraction_mod
+
+            extraction_mod._SILENT_CONFIG = {
+                **extraction_mod._SILENT_CONFIG,
+                "callbacks": [tracker],
+            }
+            self._backend_ready = True
+
+        try:
+            await get_postgresql_engine()
+        except RuntimeError as e:
+            raise InfraError("postgres", str(e)) from e
+
     async def _run_question_inner(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
         from scripts.memory_benchmark import longmemeval as lme
 
-        lme.init_postgresql_engine()
-        lme.init_chroma()
-        lme.register_llm_providers()
-
-        import app.memory.extraction as extraction_mod
-
-        extraction_mod._SILENT_CONFIG = {**extraction_mod._SILENT_CONFIG, "callbacks": [tracker]}
+        await self._ensure_backend(tracker)
 
         question_id = case.id.removeprefix("lme-")
         items = self._load_items()
@@ -148,5 +174,6 @@ class LongMemEvalSuite(Suite):
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         from scripts.evals.core.scorers import ProviderQuality
+
         del cfg
         return [ProviderQuality()]

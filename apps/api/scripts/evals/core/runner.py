@@ -11,10 +11,19 @@ import uuid
 
 from .cost import EvalCostTracker
 from .journal import RunJournal, RunMeta
-from .providers import EvalConfig, ProviderConfig, health_check, pin_settings, rotation_chain
-from .types import Case, CaseRun, ProviderError
+from .providers import (
+    EvalConfig,
+    ProviderConfig,
+    health_check,
+    pin_settings,
+    price_book,
+    rotation_chain,
+)
+from .types import Case, CaseRun, CaseTrace, InfraError, PriceBook, ProviderError
 
 RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
+
+_MARKERS = {"passed": "✓", "failed": "✗", "errored": "!"}
 
 SUITE_REGISTRY: dict[str, Callable[[EvalConfig], Suite]] = {}
 
@@ -60,6 +69,7 @@ class RunOptions:
         resume: str | None = None,
         limit: int | None = None,
         from_case: str | None = None,
+        only: list[str] | None = None,
         only_failed: bool = False,
         providers: list[str] | None = None,
         exclude: list[str] | None = None,
@@ -72,6 +82,7 @@ class RunOptions:
         self.resume = resume
         self.limit = limit
         self.from_case = from_case
+        self.only = only or []
         self.only_failed = only_failed
         self.providers = providers
         self.exclude = exclude or []
@@ -127,6 +138,15 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         raise SystemExit(f"no healthy providers: {skipped}")
 
     cases = suite.load_cases(cfg)
+    if opts.only:
+        # --from is an ordered cursor, so it cannot pick out a case that sorts
+        # after cases in an earlier data file. --only names cases outright, and
+        # fails loudly on a typo rather than silently running nothing.
+        wanted = set(opts.only)
+        cases = [c for c in cases if c.id in wanted]
+        unknown = sorted(wanted - {c.id for c in cases})
+        if unknown:
+            raise SystemExit(f"--only: no such case id(s): {', '.join(unknown)}")
     if opts.from_case:
         cases = [c for c in cases if c.id >= opts.from_case]
     if opts.limit is not None:
@@ -139,7 +159,19 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     print(f"[run] {run_id} · suite={suite.name} · providers={healthy} · cases={len(cases)}")
 
     provider_index = 0
-    prices = {p: (c.price_in_per_1m, c.price_out_per_1m) for p, c in cfg.providers.items()}
+    prices = price_book(cfg)
+
+    def record_case(
+        case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
+    ) -> None:
+        """Journal a finished case and mirror it into Opik — including failures,
+        which are exactly the cases worth looking at in the UI."""
+        record = _record(case, run, scores, status, error)
+        journal.append(record)
+        _log_trace(suite.project, run_id, record, prices)
+
+    aborted: str | None = None
+    run_status = "finished"
 
     try:
         for case in cases:
@@ -164,21 +196,13 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     run.provider = provider_name
                     run.model = provider.model
                     run.duration_s = time.monotonic() - start
-                    scores = suite.score(case, run)
+                    # A case that produced no answer gets no scores: scoring it
+                    # would write a phantom 0.0 into the metric averages.
+                    scores = {} if run.error else suite.score(case, run)
                     status = _status_from_scores(case, scores, run.error)
-                    journal.append(
-                        _record(
-                            case,
-                            run,
-                            scores,
-                            status,
-                            run.error
-                            or (None if status == "passed" else "gate score below threshold"),
-                        )
-                    )
-                    _log_trace(suite.project, case, run, scores, prices)
+                    record_case(case, run, scores, status, run.error)
                     print(
-                        f"  {'✓' if status == 'passed' else '✗'} {case.id} [{provider_name}] "
+                        f"  {_MARKERS.get(status, '✗')} {case.id} [{provider_name}] "
                         + " ".join(f"{k}={v:.2f}" for k, v in scores.items())
                     )
                     break
@@ -186,46 +210,59 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     last_error = str(e)
                     print(f"  ✗ {case.id} [{provider_name}] provider error: {e.reason} — rotating")
                     provider_index += 1
+                except InfraError as e:
+                    # Nothing about the agent was measured — journaling this case
+                    # (and every one after it) would publish an outage as a 0%.
+                    aborted = str(e)
+                    break
                 except Exception as e:
                     last_error = f"{type(e).__name__}: {e}"
-                    journal.append(
-                        _record(
-                            case,
-                            _failed_run(
-                                case,
-                                provider_name,
-                                provider.model,
-                                time.monotonic() - start,
-                                last_error,
-                            ),
-                            {},
-                            "failed",
-                            last_error,
-                        )
-                    )
-                    break
-            if last_error and journal.record_for(case.id) is None:
-                journal.append(
-                    _record(
+                    record_case(
                         case,
                         _failed_run(
                             case,
-                            healthy[provider_index - 1] if provider_index else "?",
-                            "?",
-                            0,
+                            provider_name,
+                            provider.model,
+                            time.monotonic() - start,
                             last_error,
                         ),
                         {},
-                        "failed",
+                        "errored",
                         last_error,
                     )
+                    print(f"  ! {case.id} [{provider_name}] errored: {last_error}")
+                    break
+            if aborted:
+                break
+            if last_error and journal.record_for(case.id) is None:
+                record_case(
+                    case,
+                    _failed_run(
+                        case,
+                        healthy[provider_index - 1] if provider_index else "?",
+                        "?",
+                        0,
+                        last_error,
+                    ),
+                    {},
+                    "errored",
+                    last_error,
                 )
+        if aborted:
+            print(
+                f"\n[abort] {aborted}\n"
+                f"[abort] {len(cases) - len(journal.records())} case(s) did not run. "
+                "Fix the backend and resume — no scores were recorded for them."
+            )
     except KeyboardInterrupt:
         print("\n[run] interrupted — finishing current case, journal is resumable")
-        journal.update_meta(status="stopped")
+        run_status = "stopped"
+    else:
+        run_status = "aborted" if aborted else "finished"
     finally:
+        _flush_traces(suite.project)
         journal.update_meta(
-            status="finished", finished_at=datetime.now(UTC).isoformat(timespec="seconds")
+            status=run_status, finished_at=datetime.now(UTC).isoformat(timespec="seconds")
         )
 
     if journal.load_meta().status == "finished" and not opts.no_finalize:
@@ -243,8 +280,14 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
 
 
 def _status_from_scores(case: Case, scores: dict[str, float], error: str | None) -> str:
+    """Grade a case, keeping "the agent was wrong" apart from "the case blew up".
+
+    ``failed`` means the agent answered and missed the gate — a real quality
+    signal. ``errored`` means no answer was produced (timeout, crash, dead
+    backend), which is not a quality signal and must not be averaged into one.
+    """
     if error:
-        return "failed"
+        return "errored"
     gates = case.gates
     if not gates:
         return "passed"
@@ -252,34 +295,38 @@ def _status_from_scores(case: Case, scores: dict[str, float], error: str | None)
     return "passed" if all(v >= 0.5 for v in gate_values) else "failed"
 
 
-def _log_trace(project: str, case: Case, run: CaseRun, scores: dict[str, float], prices: dict[str, tuple[float, float]]) -> None:
-    """Log one case as an Opik trace with feedback scores (best-effort; a
-    broken Opik must never fail the eval run itself)."""
+def _log_trace(project: str, run_id: str, record: dict[str, Any], prices: PriceBook) -> None:
+    """Log one journaled case as an Opik trace with its feedback scores.
+
+    Built from the journal record, so a live run and a later ``seed`` backfill
+    produce the identical trace. Opik being down must not fail the eval run —
+    the journal still holds the case and ``seed`` picks it up later — so the
+    failure is reported and the loop continues.
+    """
     from .opiksink import log_case_trace
 
-    price_in, price_out = prices.get(run.provider, (0.0, 0.0))
-    cost_usd = run.tokens_in / 1e6 * price_in + run.tokens_out / 1e6 * price_out
     try:
-        log_case_trace(
-            project=project,
-            case_id=case.id,
-            run_input=case.prompt,
-            output=run.text,
-            scores=scores,
-            metadata={
-                "provider": run.provider,
-                "model": run.model,
-                "status": "passed" if run.error is None else "failed",
-                "ticket": case.ticket,
-                "duration_s": round(run.duration_s, 2),
-                "tokens_in": run.tokens_in,
-                "tokens_out": run.tokens_out,
-                "cost_usd": round(cost_usd, 6),
-                "error": run.error or "",
-            },
-        )
-    except Exception:
-        pass
+        log_case_trace(project, CaseTrace.from_record(run_id, record, prices))
+    except Exception as e:
+        print(f"[opik] trace for {record['case_id']} not logged: {type(e).__name__}: {e}")
+
+
+def _flush_traces(project: str) -> None:
+    """Push the run's buffered traces and shut the client down.
+
+    Traces are batched rather than flushed per case, so the flush is what
+    actually gets them into Opik. The shutdown matters just as much: the SDK's
+    sender runs on non-daemon threads, so a run that only flushes leaves the
+    process alive after its last case instead of exiting.
+    """
+    from .opiksink import close_clients, flush
+
+    try:
+        flush(project)
+    except Exception as e:
+        print(f"[opik] flush failed: {type(e).__name__}: {e} — run `evals seed` to backfill")
+    finally:
+        close_clients()
 
 
 def _record(
@@ -295,6 +342,7 @@ def _record(
         "status": status,
         "provider": run.provider,
         "model": run.model,
+        "text": run.text,
         "messages": run.messages,
         "tool_calls": run.tool_calls,
         "end_state": run.end_state,
@@ -358,16 +406,20 @@ def _make_replay(journal: RunJournal) -> Callable[[dict[str, object]], dict[str,
     return replay
 
 
-def _print_summary(journal: RunJournal, prices: dict[str, tuple[float, float]]) -> None:
+def _print_summary(journal: RunJournal, prices: PriceBook) -> None:
     records = journal.records()
     passed = sum(1 for r in records if r.get("status") == "passed")
-    total = len(records)
+    errored = sum(1 for r in records if r.get("status") == "errored")
+    graded = len(records) - errored
     tokens_in, tokens_out = journal.tokens()
     print("\n" + "=" * 60)
+    # Accuracy is over cases that actually produced an answer; errors are their
+    # own number so a broken backend can never masquerade as a low score.
     print(
-        f"SUITE {journal.load_meta().suite} · {passed}/{total} passed ({passed / total * 100:.1f}%)"
-        if total
-        else "no cases ran"
+        f"SUITE {journal.load_meta().suite} · {passed}/{graded} passed "
+        f"({passed / graded * 100:.1f}%) · {errored} errored"
+        if graded
+        else f"no cases graded · {errored} errored"
     )
     print(f"tokens: {tokens_in:,} in / {tokens_out:,} out · est USD {journal.cost_usd(prices):.2f}")
     per_provider: dict[str, tuple[int, int]] = {}

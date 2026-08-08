@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .journal import RunJournal
+from .types import PriceBook, ProviderPrice
 
 
 def _svg_bars(rows: list[tuple[str, float]], width: int = 640) -> str:
@@ -57,16 +58,24 @@ def _fmt_tokens(n: int) -> str:
 
 
 def _case_passed(record: dict[str, Any]) -> bool:
-    return record.get("status") == "passed"
+    return bool(record.get("status") == "passed")
 
 
-def render_html(
-    journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]
-) -> str:
+def _case_errored(record: dict[str, Any]) -> bool:
+    """A case that never produced an answer — excluded from every accuracy.
+
+    Averaging these in turns an outage into a quality score: a run where the
+    datastore died once reported an entire question type as 0%.
+    """
+    return bool(record.get("status") == "errored")
+
+
+def render_html(journal: RunJournal, suite_label: str, prices: PriceBook) -> str:
     meta = journal.load_meta()
     records = journal.records()
     passed = sum(1 for r in records if _case_passed(r))
-    total = len(records)
+    errored = sum(1 for r in records if _case_errored(r))
+    total = len(records) - errored
     pct = (passed / total * 100) if total else 0.0
 
     score_keys: Counter[str] = Counter()
@@ -84,7 +93,7 @@ def render_html(
             score_keys[name] += 1
             score_sums[name] += float(value)
         category = r.get("category")
-        if category:
+        if category and not _case_errored(r):
             per_category[category].append(1.0 if _case_passed(r) else 0.0)
 
     total_in = sum(provider_tokens_in.values())
@@ -104,8 +113,10 @@ def render_html(
             provider_tokens_in[p],
             provider_tokens_out[p],
             sum(
-                int(r.get("tokens", {}).get("input", 0)) / 1e6 * prices.get(p, (0, 0))[0]
-                + int(r.get("tokens", {}).get("output", 0)) / 1e6 * prices.get(p, (0, 0))[1]
+                prices.get(p, ProviderPrice()).paid_cost(
+                    int(r.get("tokens", {}).get("input", 0)),
+                    int(r.get("tokens", {}).get("output", 0)),
+                )
                 for r in records
                 if r.get("provider") == p
             ),
@@ -173,6 +184,7 @@ def render_html(
   details.card summary {{ padding: 10px 14px; cursor: pointer; }}
   .status {{ text-transform: uppercase; font-size: 11px; padding: 2px 8px; border-radius: 999px; }}
   .passed .status {{ background: #065f46; }} .failed .status {{ background: #7f1d1d; }}
+  .errored .status {{ background: #78350f; }}
   .chip {{ display: inline-block; font-size: 11px; margin: 0 3px; padding: 1px 6px; border-radius: 6px; background: #1f2937; }}
   .chip.ok {{ background: #065f46; }} .chip.no {{ background: #7f1d1d; }}
   .meta {{ color: #6b7280; font-size: 11px; margin-left: 8px; }}
@@ -186,29 +198,29 @@ def render_html(
 <h1>GAIA eval — {suite}</h1>
 <div class="banner">run <code>{run_id}</code> · finished {now} · status <b>{status}</b> · experiment {experiment}</div>
 <div class="score">{pct:.1f}%</div>
-<div class="pct">{passed}/{total} cases passed</div>
+<div class="pct">{passed}/{total} cases passed{f" · {errored} errored (not scored)" if errored else ""}</div>
 <h2>Metrics</h2>{_svg_bars(metric_rows) if metric_rows else "<p>no metrics</p>"}
 <h2>Categories</h2>{_svg_bars(category_rows) if category_rows else "<p>no categories</p>"}
 <h2>Provider usage</h2>
 <table><tr><th>provider</th><th>cases</th><th>tokens in</th><th>tokens out</th><th>est. USD</th></tr>
 {"".join(f"<tr><td>{html.escape(p)}</td><td>{provider_counts[p]}</td><td>{_fmt_tokens(i)}</td><td>{_fmt_tokens(o)}</td><td>{_fmt_usd(c)}</td></tr>" for p, i, o, c in provider_rows)}
-<tr><td><b>total</b></td><td>{total}</td><td>{_fmt_tokens(total_in)}</td><td>{_fmt_tokens(total_out)}</td><td>{_fmt_usd(total_cost)}</td></tr>
+<tr><td><b>total</b></td><td>{len(records)}</td><td>{_fmt_tokens(total_in)}</td><td>{_fmt_tokens(total_out)}</td><td>{_fmt_usd(total_cost)}</td></tr>
 </table>
 <h2>Cases</h2>
 {"".join(cards)}
 </div></body></html>"""
 
 
-def render_markdown(
-    journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]
-) -> str:
+def render_markdown(journal: RunJournal, suite_label: str, prices: PriceBook) -> str:
     records = journal.records()
     passed = sum(1 for r in records if _case_passed(r))
-    total = len(records)
+    errored = sum(1 for r in records if _case_errored(r))
+    total = len(records) - errored
     lines = [
         f"# {suite_label} — {journal.dir.name}",
         "",
         f"- **Score:** {passed}/{total} ({passed / total * 100 if total else 0:.1f}%)",
+        f"- **Errored:** {errored} (never answered — excluded from the score)",
         f"- **Tokens:** {journal.tokens()[0]:,} in / {journal.tokens()[1]:,} out",
         f"- **Est. cost:** {_fmt_usd(journal.cost_usd(prices))}",
         "",
@@ -223,9 +235,7 @@ def render_markdown(
     return "\n".join(lines) + "\n"
 
 
-def write_report(
-    journal: RunJournal, suite_label: str, prices: dict[str, tuple[float, float]]
-) -> Path:
+def write_report(journal: RunJournal, suite_label: str, prices: PriceBook) -> Path:
     html_path = journal.dir / "report.html"
     html_path.write_text(render_html(journal, suite_label, prices), encoding="utf-8")
     (journal.dir / "summary.md").write_text(

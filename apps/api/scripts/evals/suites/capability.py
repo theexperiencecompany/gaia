@@ -15,12 +15,33 @@ Deterministic runtime scoring uses the core scorers (ToolCallCorrectness,
 CommunicateGate, EndStateEquality) plus a suite-local ``no_unauthorized_send``
 safety gate for the prompt-injection cases. Judge criteria are carried in the
 YAML for finalize-time use only.
+
+A case's ``expected`` block carries:
+
+* ``communicate`` — substrings that must appear somewhere in the assistant's
+  text, matched case-insensitively across the whole transcript.
+* ``tool_calls`` — ``[{tool, min_calls?, args?}]``. ``args`` is opt-in per entry
+  and, when present, only calls carrying those argument values count towards
+  ``min_calls`` (see ``ToolCallCorrectness``).
+* ``end_state`` — world state after the run, projected by ``_compute_end_state``.
+  Every key must have a projection here or the case fails loudly rather than
+  silently passing. Supported: ``todos`` (count / title / title_contains /
+  completed / priority / labels_contains / project / subtask_count /
+  subtasks_completed), ``tracked_todos`` (count / title / title_contains /
+  canvas_contains / purpose), ``reminders`` (count / title / title_contains /
+  datetime_contains), ``projects`` (count / name / name_contains), ``labels``
+  (count / name), ``notifications`` (count / title_contains / body_contains /
+  channel), ``workflows`` (count), plus the scalars ``answer_contains`` (checked
+  against the FINAL turn only), ``recalled``, and the fake-mailbox ``sent`` /
+  ``drafts`` / ``labeled``.
+* ``score.gates`` — which of ``communicate`` / ``end_state`` / ``tool_calls``
+  decide pass/fail, and ``no_unauthorized_send`` for the safety cases.
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable, Sequence
 import json
 from pathlib import Path
 from typing import cast
@@ -726,12 +747,18 @@ def _to_messages(turns: list[str], bubbles: list[str]) -> list[dict[str, str]]:
 
 
 def _matched_title(
-    docs: list[object], title_term: str, title_contains: object
+    docs: Sequence[object], title_term: str, title_contains: object
 ) -> tuple[object | None, str | None]:
-    """The doc matching an expected entry's title, plus the term it matched on."""
+    """The doc matching an expected entry's title, plus the term it matched on.
+
+    Both sides are normalized. Lowercasing only the stored title silently made
+    any expectation carrying a capital letter impossible to satisfy, which read
+    as an agent failure rather than a broken gate.
+    """
     if title_term:
+        wanted = title_term.lower().strip()
         match = next(
-            (d for d in docs if str(getattr(d, "title", "")).lower().strip() == title_term), None
+            (d for d in docs if str(getattr(d, "title", "")).lower().strip() == wanted), None
         )
         return match, title_term
     if title_contains is not None:
@@ -752,14 +779,47 @@ def _doc_text(doc: object) -> str:
     return " ".join(parts).lower()
 
 
-async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
-    from app.services.todos.todo_service import get_all_todos
+async def _user_projects(user_id: str) -> list[object]:
+    """Every project the user owns, Inbox included (callers drop it if they must)."""
+    from app.db.repositories.projects import project_repository
 
-    todos = await get_all_todos(user_id)
+    return list(await project_repository.list_with_counts(user_id=user_id))
+
+
+def _term_if(condition: bool, term: str) -> str | None:
+    """The convention every projection here follows: echo the expected term back
+    when it holds, ``None`` when it does not, and let EndStateEquality compare."""
+    return term if condition else None
+
+
+async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
+    # Read the repository directly rather than todo_service.get_all_todos: the
+    # unfiltered service list scopes to the user's Inbox project by design
+    # (TodoService._needs_inbox_default), so a todo the agent correctly filed
+    # into a named project would be invisible here and the end-state gate would
+    # fail a run that did exactly the right thing.
+    from app.db.repositories.todos import todo_repository
+    from app.models.todo_models import SearchMode, TodoSearchParams
+
+    page = await todo_repository.list_page(
+        user_id=user_id,
+        params=TodoSearchParams(mode=SearchMode.TEXT, per_page=100),
+        inbox_project_id=None,
+    )
+    todos = page.items
+    project_names: dict[str, str] = {}
+    if any(isinstance(item, dict) and "project" in item for item in want):
+        project_names = {
+            str(getattr(p, "id", "")): str(getattr(p, "name", "")).lower()
+            for p in await _user_projects(user_id)
+        }
     entries: list[dict[str, object]] = []
     for item in want:
         if not isinstance(item, dict):
             raise RuntimeError(f"capability todos end_state entry is not a mapping: {item!r}")
+        if "count" in item:
+            entries.append({"count": len(todos)})
+            continue
         match, matched_on = _matched_title(
             todos, str(item.get("title") or ""), item.get("title_contains")
         )
@@ -770,6 +830,107 @@ async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, obj
             entry["title_contains"] = matched_on if match is not None else None
         if "completed" in item:
             entry["completed"] = bool(getattr(match, "completed", False))
+        if "priority" in item:
+            term = str(item["priority"]).lower()
+            actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
+            entry["priority"] = _term_if(match is not None and actual == term, term)
+        if "labels_contains" in item:
+            term = str(item["labels_contains"]).lower()
+            labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
+            entry["labels_contains"] = _term_if(match is not None and term in labels, term)
+        if "project" in item:
+            term = str(item["project"]).lower()
+            name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
+            entry["project"] = _term_if(match is not None and term in name, term)
+        subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
+        if "subtask_count" in item:
+            entry["subtask_count"] = len(subtasks)
+        if "subtasks_completed" in item:
+            entry["subtasks_completed"] = len(
+                [s for s in subtasks if getattr(s, "completed", False)]
+            )
+        entries.append(entry)
+    return entries
+
+
+async def _project_projects(user_id: str, want: list[object]) -> list[dict[str, object]]:
+    """Todo projects. ``count`` excludes the auto-created Inbox, which every user
+    gets for free and which no agent action is responsible for."""
+    projects = await _user_projects(user_id)
+    named = [p for p in projects if not bool(getattr(p, "is_default", False))]
+    entries: list[dict[str, object]] = []
+    for item in want:
+        if not isinstance(item, dict):
+            raise RuntimeError(f"capability projects end_state entry is not a mapping: {item!r}")
+        entry: dict[str, object] = {}
+        if "count" in item:
+            entry["count"] = len(named)
+        if "name" in item:
+            term = str(item["name"]).lower()
+            entry["name"] = _term_if(
+                any(str(getattr(p, "name", "")).lower().strip() == term for p in named), term
+            )
+        if "name_contains" in item:
+            term = str(item["name_contains"]).lower()
+            entry["name_contains"] = _term_if(
+                any(term in str(getattr(p, "name", "")).lower() for p in named), term
+            )
+        entries.append(entry)
+    return entries
+
+
+async def _project_labels(user_id: str, want: list[object]) -> list[dict[str, object]]:
+    """Labels in use by the user. Sourced from the todo stats aggregation, which
+    counts labels on INCOMPLETE todos only — a label surviving solely on a
+    completed todo will not appear here."""
+    from app.services.todos.todo_service import get_all_labels
+
+    names = {str(label.name).lower() for label in await get_all_labels(user_id)}
+    entries: list[dict[str, object]] = []
+    for item in want:
+        if not isinstance(item, dict):
+            raise RuntimeError(f"capability labels end_state entry is not a mapping: {item!r}")
+        entry: dict[str, object] = {}
+        if "count" in item:
+            entry["count"] = len(names)
+        if "name" in item:
+            term = str(item["name"]).lower()
+            entry["name"] = _term_if(term in names, term)
+        entries.append(entry)
+    return entries
+
+
+async def _project_notifications(user_id: str, want: list[object]) -> list[dict[str, object]]:
+    """Notifications the agent actually created for this user. ``channel`` asks
+    whether any notification targeted that channel at all — delivery can be
+    skipped for an unconnected channel, and the agent is not accountable for that."""
+    from app.services.notification_service import notification_service
+
+    items = await notification_service.get_user_notifications(user_id, status=None, limit=100)
+    entries: list[dict[str, object]] = []
+    for item in want:
+        if not isinstance(item, dict):
+            raise RuntimeError(
+                f"capability notifications end_state entry is not a mapping: {item!r}"
+            )
+        entry: dict[str, object] = {}
+        if "count" in item:
+            entry["count"] = len(items)
+        if "title_contains" in item:
+            term = str(item["title_contains"]).lower()
+            entry["title_contains"] = _term_if(
+                any(term in n.content.title.lower() for n in items), term
+            )
+        if "body_contains" in item:
+            term = str(item["body_contains"]).lower()
+            entry["body_contains"] = _term_if(
+                any(term in n.content.body.lower() for n in items), term
+            )
+        if "channel" in item:
+            term = str(item["channel"]).lower()
+            entry["channel"] = _term_if(
+                any(ch.channel_type.lower() == term for n in items for ch in n.channels), term
+            )
         entries.append(entry)
     return entries
 
@@ -782,6 +943,9 @@ async def _project_tracked_todos(user_id: str, want: list[object]) -> list[dict[
     for item in want:
         if not isinstance(item, dict):
             raise RuntimeError(f"capability tracked end_state entry is not a mapping: {item!r}")
+        if "count" in item:
+            entries.append({"count": len(docs)})
+            continue
         match, matched_on = _matched_title(
             docs, str(item.get("title") or ""), item.get("title_contains")
         )
@@ -851,8 +1015,10 @@ async def _project_reminders(user_id: str, want: list[object]) -> list[dict[str,
         title_contains = item.get("title_contains")
         matched: object | None = None
         if title_term:
+            wanted_title = title_term.lower().strip()
             matched = next(
-                (r for r in items if _reminder_payload_title(r).lower().strip() == title_term), None
+                (r for r in items if _reminder_payload_title(r).lower().strip() == wanted_title),
+                None,
             )
         elif title_contains is not None:
             term = str(title_contains)
@@ -896,25 +1062,27 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
     wanted = case.expected.get("end_state")
     if not isinstance(wanted, dict):
         return {}
+    list_projections: dict[
+        str, Callable[[str, list[object]], Awaitable[list[dict[str, object]]]]
+    ] = {
+        "todos": _project_todos,
+        "tracked_todos": _project_tracked_todos,
+        "reminders": _project_reminders,
+        "projects": _project_projects,
+        "labels": _project_labels,
+        "notifications": _project_notifications,
+    }
     projected: dict[str, object] = {}
     for key, want in wanted.items():
-        if key == "todos":
+        if key in list_projections:
             if not isinstance(want, list):
                 raise RuntimeError(f"capability end_state key {key!r} must be a list")
-            projected[key] = await _project_todos(user_id, want)
-        elif key == "tracked_todos":
-            if not isinstance(want, list):
-                raise RuntimeError(f"capability end_state key {key!r} must be a list")
-            projected[key] = await _project_tracked_todos(user_id, want)
-        elif key == "reminders":
-            if not isinstance(want, list):
-                raise RuntimeError(f"capability end_state key {key!r} must be a list")
-            projected[key] = await _project_reminders(user_id, want)
+            projected[key] = await list_projections[key](user_id, want)
         elif key == "workflows":
             projected[key] = await _project_workflows(user_id)
         elif key == "answer_contains":
             fact = str(want)
-            projected[key] = fact if fact in (text or "").lower() else ""
+            projected[key] = fact if fact.lower() in (text or "").lower() else ""
         elif key == "recalled":
             projected[key] = await _project_recalled(case, user_id)
         elif key in ("sent", "drafts", "labeled"):
