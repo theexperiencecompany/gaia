@@ -13,10 +13,13 @@ tests.
 
 import asyncio
 from collections.abc import AsyncGenerator, Callable
+from pathlib import Path
+import tempfile
 import uuid
 
 import chromadb
 from chromadb.api import AsyncClientAPI
+from filelock import FileLock
 from langchain_core.messages import BaseMessage
 from pydantic import BaseModel
 import pytest
@@ -40,6 +43,13 @@ import app.memory.extraction as extraction_module
 from tests.memory.llm import FakeMemoryLLM
 
 _SCHEMA_ADVISORY_LOCK_ID = 743_001_993  # serializes create_all across xdist workers
+# Serializes the fastembed model DOWNLOAD across xdist workers, for the same
+# reason the advisory lock above serializes create_all. The session-scoped warm-up
+# runs once per WORKER, so on a cold cache every worker races to populate the same
+# directory: one creates the snapshot dir, the next sees it and loads model.onnx
+# before the first has written it, and fastembed raises NO_SUCHFILE. Warm caches
+# take the lock uncontended, so this costs nothing on a normal run.
+_MODEL_DOWNLOAD_LOCK = Path(tempfile.gettempdir()) / "gaia-fastembed-warmup.lock"
 
 _schema_ready = False
 _chroma_collections_ready = False
@@ -47,9 +57,14 @@ _chroma_collections_ready = False
 
 @pytest.fixture(scope="session", autouse=True)
 def warm_embedding_models() -> None:
-    """Load fastembed models once per worker so latency tests measure warm paths."""
-    _embed_sync(["warmup"])
-    _rerank_sync("warmup", ["warmup document"])
+    """Load fastembed models once per worker so latency tests measure warm paths.
+
+    Held under a cross-process lock: the first worker downloads, the rest block
+    and then load from the populated cache (see _MODEL_DOWNLOAD_LOCK).
+    """
+    with FileLock(str(_MODEL_DOWNLOAD_LOCK), timeout=600):
+        _embed_sync(["warmup"])
+        _rerank_sync("warmup", ["warmup document"])
 
 
 @pytest.fixture
