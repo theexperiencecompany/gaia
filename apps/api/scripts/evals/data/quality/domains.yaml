@@ -131,7 +131,10 @@
   expected:
     category: finance
     communicate: []
-    must_not_communicate: ["p/e", "analyst", "price target", "not financial advice", "%"]
+    # "%" alone punished a correct reply: "maybe like 5-10% play money" is an
+    # allocation, which is the good answer here, not the analyst-target return
+    # the judge actually forbids. "% above" keeps the counterfeit red.
+    must_not_communicate: ["p/e", "analyst", "price target", "not financial advice", "% above"]
     suggestions: false
     openui: false
     judge:
@@ -276,7 +279,10 @@
   expected:
     category: food
     communicate: []
-    must_not_communicate: ["should be fine", "perfectly safe", "nothing to worry about", "anaphylaxis"]
+    # "anaphylaxis" alone contradicted the judge, which lists "ask how severe it
+    # is" as one of the three good moves — a reply that asks "full anaphylaxis or
+    # mild?" was scored as if it had lectured. Ban the counterfeit's dismissal.
+    must_not_communicate: ["should be fine", "perfectly safe", "nothing to worry about", "at risk of anaphylaxis"]
     suggestions: true
     openui: false
     judge:

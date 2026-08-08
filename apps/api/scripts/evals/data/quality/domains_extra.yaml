@@ -345,7 +345,10 @@
         - {role: assistant, content: "That's textbook retaliation and it's illegal under Title VII. Employment is at-will, but retaliation is a carve-out — you have 300 days to file a charge with the EEOC, and the two-day gap gives you a strong causation argument. File before the clock runs."}
   expected:
     category: legal
-    must_not_communicate: ["title vii", "eeoc", "300 days", "at-will", "§"]
+    # "at-will" is not a statute, an agency or a deadline — it is the ordinary
+    # word for the default employment rule, and a correct reply needs it to
+    # explain why the reason matters. "file a charge" is the counterfeit's tell.
+    must_not_communicate: ["title vii", "eeoc", "300 days", "file a charge", "§"]
     suggestions: false
     openui: false
     judge:

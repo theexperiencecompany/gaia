@@ -31,10 +31,12 @@
 #   appear in no user turn at all, so neither an echo nor a lazy re-read of the
 #   last message can produce them.
 # - `must_not_communicate` on the specific contradiction each session's failure
-#   emits — "555" (subtracted only one of the two costs), "table for 14" (used
-#   the original head count), "next.js" (proposed code to someone who said they
-#   will not code). Chosen so that no CORRECT reply, at any turn, could contain
-#   them: the gate reads the whole assistant transcript, not just the last turn.
+#   emits — "555 for food" (subtracted only one of the two costs), "table for
+#   14" (used the original head count), "next.js" (proposed code to someone who
+#   said they will not code). The gate reads the WHOLE assistant transcript, not
+#   just the last turn, so the banned string must be the wrong ANSWER and not a
+#   bare number: "555" alone is the correct running total after the flights turn,
+#   and banning it failed a transcript that then went on to answer 295 correctly.
 # - `bubble_boundary` on every case, never alone. On a multi-turn transcript it
 #   goes red when two consecutive assistant bubbles are byte-identical, which is
 #   the canned-ack failure of answering four different turns with one string.
@@ -73,7 +75,7 @@
   expected:
     category: session
     communicate: ["295"]
-    must_not_communicate: ["555", "640"]
+    must_not_communicate: ["555 for food", "640"]
     suggestions: false
     openui: false
     judge:

@@ -88,7 +88,10 @@
         - {name: create_reminder_tool, args: {scheduled_at: "2027-03-02 14:00:00", payload: {title: "Ring the bank"}}}
   expected:
     category: correction
-    communicate: ["4:30"]
+    # "4:30" is unsatisfiable in practice: the gate applies word boundaries, so
+    # the natural "moving it to 4:30pm" does NOT match \b4:30\b. A correct reply
+    # was scored as never having said the time.
+    communicate: ["4:30pm"]
     must_not_communicate: ["i apologize for the confusion", "you're absolutely right"]
     suggestions: false
     openui: false

@@ -258,7 +258,10 @@
   expected:
     category: fitness
     communicate: []
-    must_not_communicate: ["studies show", "a study found", "%"]
+    # "%" alone punished "it's like a few % difference" — a deliberately
+    # non-numeric hedge, the opposite of the invented statistic this case is
+    # about. "% above" still catches the counterfeit's "roughly 5% above".
+    must_not_communicate: ["studies show", "a study found", "% above"]
     suggestions: true
     openui: false
     judge:
@@ -350,7 +353,10 @@
   expected:
     category: parenting
     communicate: []
-    must_not_communicate: ["added sugar", "sugar crash", "grams of sugar"]
+    # "sugar crash" fired on a joke about the PARENT surviving the afternoon,
+    # which is exactly the reassurance this case wants. "blood sugar" is the
+    # physiology-lecture tell; the counterfeit still trips the other two.
+    must_not_communicate: ["added sugar", "blood sugar", "grams of sugar"]
     suggestions: true
     openui: false
     judge:

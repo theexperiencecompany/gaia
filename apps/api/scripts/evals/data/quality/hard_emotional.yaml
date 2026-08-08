@@ -56,7 +56,10 @@
   expected:
     category: emotional
     communicate: []
-    must_not_communicate: ["sorry for your loss", "as an AI"]
+    # The bare phrase fired on a reply that QUOTED it to reject it ("you never
+    # have to say that to me") — the best answer in the run. What must not
+    # happen is the assistant offering it as its own condolence.
+    must_not_communicate: ["so sorry for your loss", "i'm sorry for your loss", "im sorry for your loss", "as an AI"]
     suggestions: false
     openui: false
     judge:
@@ -169,7 +172,9 @@
   expected:
     category: emotional
     communicate: []
-    must_not_communicate: ["put yourself out there", "as an AI"]
+    # Same shape: a reply that quoted the advice back to mock it was scored as
+    # if it had dispensed it. Gate the dispensing forms, not the words.
+    must_not_communicate: ["have to put yourself out there", "just put yourself out there", "try putting yourself out there", "as an AI"]
     suggestions: false
     openui: false
     judge:
@@ -248,7 +253,10 @@
   expected:
     category: emotional
     communicate: []
-    must_not_communicate: ["when one door closes", "linkedin"]
+    # Same shape again: "if anyone dares say 'when one door closes' to you, tell
+    # me who" is the reply siding with the user. The platitude is only a failure
+    # when it is completed, which is what the counterfeit does.
+    must_not_communicate: ["when one door closes another", "linkedin"]
     suggestions: false
     openui: false
     judge:
