@@ -49,7 +49,7 @@ def register_google_meet_custom_tools(composio: Composio) -> list[str]:
         # returned an empty list — preserve that behavior so the whole tool
         # doesn't error out when only the profile is accessible.
         events_data: dict[str, Any] = {}
-        now = datetime.datetime.utcnow().isoformat() + "Z"
+        now = datetime.datetime.now(datetime.UTC).isoformat().replace("+00:00", "Z")
         try:
             events_data = (
                 proxy_request_sync(

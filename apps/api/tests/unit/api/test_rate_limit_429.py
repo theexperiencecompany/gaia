@@ -1,21 +1,24 @@
 """Endpoint-level 429 wiring for the tiered rate limiter.
 
 The root conftest mocks ``check_and_increment`` to always succeed, so no test
-proves an exceeded limit surfaces as an HTTP 429. The decision logic itself is
-unit-tested with the real limiter in
-tests/unit/decorators/test_rate_limiter_tiers.py; here the storage seam is
-mocked to raise the limiter's real 429 signal and the real ``POST
-/api/v1/notes`` route (a write endpoint behind ``@tiered_rate_limit``) must
-translate it into a 429 with the real detail shape.
+proves an exceeded limit surfaces as an HTTP 429. Here the REAL limiter runs
+against a fake Redis seam (``tiered_limiter.redis``) pre-seeded past the FREE
+notes daily limit (30, see app/config/rate_limits.py) — the decision logic
+raises its real 429 signal and the real ``POST /api/v1/notes`` route (a write
+endpoint behind ``@tiered_rate_limit``) must translate it into a 429 with the
+real detail shape.
 """
 
 from datetime import UTC, datetime, timedelta
+from types import MethodType
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.api.v1.middleware.tiered_rate_limiter import (
+    TieredRateLimiter,
+    tiered_limiter,
+)
 from app.models.payment_models import PlanType
 
 NOTES_BASE = "/api/v1/notes"
@@ -33,24 +36,33 @@ _NOTE_RESPONSE = {
 }
 
 
-@pytest.mark.unit
 async def test_rate_limit_exceeded_returns_429(
     client: AsyncClient,
-    fake_user: dict,
 ) -> None:
-    """A limit-exceeded signal from the limiter becomes an HTTP 429."""
+    """An exhausted FREE window through the real limiter becomes an HTTP 429."""
     reset_time = datetime.now(UTC) + timedelta(hours=2)
     with (
+        # The test app's conftest replaces check_and_increment with a
+        # succeed-mock; restore the real bound method so the decision logic
+        # actually runs, then fake its Redis storage seam.
+        patch.object(
+            tiered_limiter,
+            "check_and_increment",
+            MethodType(TieredRateLimiter.check_and_increment, tiered_limiter),
+        ),
+        patch.object(tiered_limiter, "redis", AsyncMock()) as fake_redis,
         patch(
-            "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
-            new_callable=AsyncMock,
-            side_effect=RateLimitExceededException("notes", reset_time=reset_time),
-        ) as check,
+            "app.api.v1.middleware.tiered_rate_limiter.get_reset_time",
+            return_value=reset_time,
+        ),
         patch(
             "app.api.v1.endpoints.notes.create_note_service",
             new_callable=AsyncMock,
         ) as create,
     ):
+        # notes FREE = 30/day: usage 30 exhausts the window, so the real
+        # decision loop raises RateLimitExceededException.
+        fake_redis.get = AsyncMock(return_value="30")
         response = await client.post(NOTES_BASE, json=_NOTE_BODY)
 
     assert response.status_code == 429
@@ -60,16 +72,13 @@ async def test_rate_limit_exceeded_returns_429(
     assert detail["message"] == "Rate limit exceeded for notes"
     assert detail["reset_time"] == reset_time.isoformat()
 
-    # The limiter was billed for the authenticated user on the FREE tier (the
-    # root conftest's subscription patch), and the handler never ran — the 429
-    # comes from the limiter, not from the endpoint.
-    check.assert_awaited_once()
-    assert check.call_args.kwargs["user_id"] == fake_user["user_id"]
-    assert check.call_args.kwargs["user_plan"] == PlanType.FREE
+    # The limiter read the pre-seeded usage for the authenticated FREE user
+    # (the root conftest's subscription patch), and the handler never ran —
+    # the 429 comes from the real decision logic, not from a raised mock.
+    assert fake_redis.get.await_count >= 1
     create.assert_not_awaited()
 
 
-@pytest.mark.unit
 async def test_pro_user_reaches_limiter_on_pro_plan(
     client: AsyncClient,
     pro_user: dict,

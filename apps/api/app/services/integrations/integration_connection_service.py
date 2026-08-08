@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from mcp_use.exceptions import OAuthAuthenticationError
+from mcp_use.client.exceptions import OAuthAuthenticationError
 import pymongo.errors
 import redis
 

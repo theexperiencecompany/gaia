@@ -51,6 +51,24 @@ class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
     def __init__(self) -> None:
         pass
 
+    @staticmethod
+    def name() -> str:
+        """ChromaDB requires embedding functions to declare a name (added in
+        0.5.x; a missing name() emits a deprecation warning and will become
+        a hard requirement). Called on the class during registration."""
+        return "gaia-noop"
+
+    def get_config(self) -> dict[str, str]:
+        """ChromaDB requires embedding functions to describe their config for
+        collection hashing (same deprecation path as name())."""
+        return {"name": "gaia-noop"}
+
+    @staticmethod
+    def build_from_config(config: dict) -> "_NoOpEmbeddingFunction":
+        """Reconstruct the embedding function from its config dict; the config
+        only carries the name, so the no-op constructor suffices."""
+        return _NoOpEmbeddingFunction()
+
     def __call__(self, input: list[str]) -> ChromaEmbeddings:
         # chromadb's own EmbeddingFunction.__call__ contract declares
         # list[numpy.ndarray], but ChromaDB accepts plain float lists at

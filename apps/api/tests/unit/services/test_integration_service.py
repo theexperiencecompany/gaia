@@ -1944,7 +1944,7 @@ class TestConnectMcpIntegration:
     async def test_connect_catches_oauth_authentication_error(
         self, mock_get_client, mock_update_status
     ):
-        from mcp_use.exceptions import OAuthAuthenticationError
+        from mcp_use.client.exceptions import OAuthAuthenticationError
 
         mock_client = AsyncMock()
         mock_client.connect.side_effect = OAuthAuthenticationError("Need auth")

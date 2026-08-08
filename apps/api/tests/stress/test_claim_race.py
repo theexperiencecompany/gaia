@@ -71,8 +71,12 @@ class TestTrackedTodoClaimRace:
             patch(f"{MODULE}.RedisPoolManager.get_pool", AsyncMock(return_value=pool)),
             patch(f"{MODULE}._execute_todo_with_retry", retry),
         ):
-            results = await asyncio.gather(
-                *[execute_tracked_todo({}, "todo-1") for _ in range(CLAIMANTS)]
+            # Bounded wait: if the lock ever breaks, a broken claim loop must
+            # fail this test fast (10s) instead of hanging the worker until
+            # pytest-timeout kills it.
+            results = await asyncio.wait_for(
+                asyncio.gather(*[execute_tracked_todo({}, "todo-1") for _ in range(CLAIMANTS)]),
+                timeout=10,
             )
 
         assert results.count("success:todo-1") == 1

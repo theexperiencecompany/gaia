@@ -20,7 +20,6 @@ def mock_profanity():
         yield m
 
 
-@pytest.mark.unit
 class TestPublishIntegrationValidator:
     async def test_valid_integration_passes(self, mock_profanity):
         errors = await PublishIntegrationValidator.validate_for_publish(

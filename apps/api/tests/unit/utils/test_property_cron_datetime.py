@@ -88,7 +88,21 @@ class TestGetNextRunTime:
         assert result > base_time
         local = result.astimezone(tz.tzinfo)
         minute, hour = (int(part) for part in cron_expr.split()[:2])
-        assert (local.hour, local.minute) == (hour, minute)
+        if (local.hour, local.minute) != (hour, minute):
+            # Spring-forward gap: the cron wall time does not exist on the
+            # fire date (e.g. 02:30 in America/New_York on the transition
+            # day), and the schedule library fires at the next real instant —
+            # the wall time shifted forward by the DST offset. Assert that is
+            # what happened, not a genuine miss.
+            wall_naive = datetime(local.year, local.month, local.day, hour, minute)
+            assert wall_naive.replace(tzinfo=tz.tzinfo).utcoffset() is None, (
+                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, "
+                f"expected {(hour, minute)}"
+            )
+            assert (local.hour - hour, local.minute - minute) == (1, 0), (
+                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, "
+                f"expected {(hour, minute)}"
+            )
 
     @settings(max_examples=100, deadline=None)
     @given(cron_expr=MINUTE_HOUR_CRON, base_time=AWARE_UTC_DATETIMES)

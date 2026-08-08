@@ -377,9 +377,9 @@ class TestWorkflowExecution:
             if isinstance(m, ToolMessage) and m.name == "search_memory"
         ]
         assert tool_messages, "search_memory must produce a ToolMessage — the comms graph ran it"
-        assert "is not bound" not in tool_messages[0].text(), (
+        assert "is not bound" not in tool_messages[0].text, (
             "search_memory must be bound on the comms agent, but reject_unbound_tools "
-            f"rejected it: {tool_messages[0].text()!r}"
+            f"rejected it: {tool_messages[0].text!r}"
         )
 
     async def test_executor_graph_binds_the_real_subagent_middleware_tool(self):
@@ -488,9 +488,9 @@ class TestWorkflowExecution:
             "spawn_subagent must produce a ToolMessage — the executor graph must route "
             "the call to the SubagentMiddleware tool."
         )
-        assert "is not bound" not in spawn_results[0].text(), (
+        assert "is not bound" not in spawn_results[0].text, (
             "spawn_subagent must be bound via the real SubagentMiddleware, but "
-            f"reject_unbound_tools rejected it: {spawn_results[0].text()!r}"
+            f"reject_unbound_tools rejected it: {spawn_results[0].text!r}"
         )
 
 

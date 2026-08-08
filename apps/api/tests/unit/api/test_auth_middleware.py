@@ -124,7 +124,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, None),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "sealed_tok"})
+            client.cookies.set("wos_session", "sealed_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         data = resp.json()
         assert data["authenticated"] is True
@@ -158,7 +159,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(user_info, new_session),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "old_tok"})
+            client.cookies.set("wos_session", "old_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         # The middleware should set a wos_session cookie
         assert "wos_session" in resp.cookies
@@ -172,7 +174,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             return_value=(None, None),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "bad_tok"})
+            client.cookies.set("wos_session", "bad_tok")
+            resp = client.get("/api/v1/protected")
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False
 
@@ -185,7 +188,8 @@ class TestWorkOSAuthMiddlewareSessionAuth:
             side_effect=RuntimeError("WorkOS error"),
         ):
             client = TestClient(app)
-            resp = client.get("/api/v1/protected", cookies={"wos_session": "tok"})
+            client.cookies.set("wos_session", "tok")
+            resp = client.get("/api/v1/protected")
         # Request should still go through, just unauthenticated
         assert resp.status_code == 200
         assert resp.json()["authenticated"] is False

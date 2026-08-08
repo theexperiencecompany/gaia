@@ -53,6 +53,7 @@ import tempfile
 import time
 
 import httpx
+from hypothesis import given, settings, strategies as st
 from pymongo import MongoClient
 import pytest
 
@@ -65,10 +66,6 @@ from tests.helpers import pick_free_port
 
 pytestmark = [
     pytest.mark.schemathesis,
-    pytest.mark.skipif(
-        os.environ.get("USE_REAL_SERVICES", "0") != "1",
-        reason="needs real services (Docker) + the real app booted; see module docstring",
-    ),
     pytest.mark.slow,
 ]
 
@@ -306,7 +303,7 @@ def schema(live_api_url: str):
     return schemathesis.openapi.from_url(f"{live_api_url}/openapi.json")
 
 
-def test_api_contract(schema) -> None:
+def _fuzz_scoped_operations(schema, data) -> None:
     """No 5xx, schema-valid responses, and no undocumented status codes on the
     scoped operations (or all operations under SCHEMA_FUZZ_FULL=1)."""
     import schemathesis
@@ -322,8 +319,9 @@ def test_api_contract(schema) -> None:
         if not _operations_to_run(operation):
             continue
         print(f"\n  fuzzing {operation.method.upper()} {operation.path} ...", flush=True)
+        strategy = operation.as_strategy()
         for _ in range(EXAMPLES_PER_OP):
-            case = operation.as_strategy().example()
+            case = data.draw(strategy)
             try:
                 case.call_and_validate(timeout=REQUEST_TIMEOUT)
             except (KeyboardInterrupt, SystemExit):
@@ -346,3 +344,14 @@ def test_api_contract(schema) -> None:
             print("    ok", flush=True)
     if failures:
         pytest.fail("contract violations:\n" + "\n".join(failures))
+
+
+@given(data=st.data())
+@settings(max_examples=1, derandomize=True, deadline=None)
+def test_api_contract(schema, data) -> None:
+    """@given rather than .example(): failures are recorded in hypothesis's
+    example database and replayed+minimized on the next run, so a transient
+    fuzz failure reproduces deterministically instead of only appearing on
+    the run that hit it. One test case draws all scoped examples; the live
+    server boots once per session."""
+    _fuzz_scoped_operations(schema, data)
