@@ -79,15 +79,18 @@ class InvariantReport:
 
 def check_records(
     records: list[dict[str, Any]],
-    metered_total: tuple[int, int] | None = None,
+    metered_by_case: dict[str, tuple[int, int]] | None = None,
     sim: bool = False,
-    metered_case_ids: set[str] | None = None,
 ) -> InvariantReport:
     """Cross-check a run's journal against itself, and against the cost tracker.
 
-    ``metered_total`` is the tracker's own (input, output) totals — derived by a
-    completely different path from the per-case figures, which is exactly what
-    makes the comparison worth anything.
+    ``metered_by_case`` is the tracker's own per-case (input, output) readings —
+    derived by a completely different path from the journal's figures, which is
+    exactly what makes the comparison worth anything. The comparison covers only
+    cases present on BOTH sides: a resumed run's journal carries earlier passes
+    the tracker never saw, and an aborted run's tracker carries in-flight spend
+    the journal never recorded. Whole-run totals disagree by construction in
+    both directions; the intersection cannot.
 
     ``sim`` marks a scripted-stub run: the stub reports no usage, so zero tokens
     is the true measurement there, and the token floor would reject every sim
@@ -182,25 +185,20 @@ def check_records(
                 )
             )
 
-    if metered_total is not None:
-        # Reconcile only the cases the tracker actually metered IN THIS PROCESS.
-        # A resumed run's journal carries every earlier pass's cases too, so
-        # summing the whole journal against this process's meter disagrees by
-        # construction — which blocked every retry sweep, punishing exactly the
-        # mechanism that clears errored cases.
+    if metered_by_case is not None:
         latest: dict[str, dict[str, Any]] = {str(r.get("case_id")): r for r in records}
-        in_scope = (
-            [r for cid, r in latest.items() if cid in metered_case_ids]
-            if metered_case_ids is not None
-            else list(latest.values())
-        )
+        both_sides = [cid for cid in latest if cid in metered_by_case]
         summed = (
-            sum(int((r.get("tokens") or {}).get("input", 0)) for r in in_scope),
-            sum(int((r.get("tokens") or {}).get("output", 0)) for r in in_scope),
+            sum(int((latest[c].get("tokens") or {}).get("input", 0)) for c in both_sides),
+            sum(int((latest[c].get("tokens") or {}).get("output", 0)) for c in both_sides),
+        )
+        tracker_side = (
+            sum(metered_by_case[c][0] for c in both_sides),
+            sum(metered_by_case[c][1] for c in both_sides),
         )
         for label, journal_value, tracker_value in (
-            ("input", summed[0], metered_total[0]),
-            ("output", summed[1], metered_total[1]),
+            ("input", summed[0], tracker_side[0]),
+            ("output", summed[1], tracker_side[1]),
         ):
             if tracker_value and abs(journal_value - tracker_value) > max(
                 1000, tracker_value * 0.05

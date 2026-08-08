@@ -385,9 +385,11 @@ def _publish_run(
     # quantity was ever checked against a second, independently-derived one.
     invariants = check_records(
         journal.records(),
-        metered_total=(tracker.total_input, tracker.total_output),
+        metered_by_case={
+            cid: tracker.case_totals(cid)
+            for cid in set(tracker.case_input) | set(tracker.case_output)
+        },
         sim=opts.sim,
-        metered_case_ids=set(tracker.case_input) | set(tracker.case_output),
     )
     if not invariants.ok:
         print(invariants.render())

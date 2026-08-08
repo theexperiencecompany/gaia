@@ -123,11 +123,22 @@ def test_a_genuine_per_case_series_passes() -> None:
 
 
 def test_journal_and_tracker_must_agree() -> None:
-    records = [_ran(f"c{i}", 1000) for i in range(10)]  # 10_000 in
-    assert check_records(records, metered_total=(10_000, 1_000)).ok
-    disagreeing = check_records(records, metered_total=(500_000, 1_000))
-    assert not disagreeing.ok
-    assert any("disagree with the tracker" in v.check for v in disagreeing.violations)
+    records = [_ran(f"c{i}", 1000) for i in range(10)]  # 1000 in / 100 out each
+    agreeing = {f"c{i}": (1000, 100) for i in range(10)}
+    assert check_records(records, metered_by_case=agreeing).ok
+    disagreeing = {f"c{i}": (50_000, 100) for i in range(10)}
+    result = check_records(records, metered_by_case=disagreeing)
+    assert not result.ok
+    assert any("disagree with the tracker" in v.check for v in result.violations)
+
+
+def test_in_flight_spend_at_abort_does_not_block_publish() -> None:
+    """An aborted run's tracker holds spend for cases the journal never saw.
+    The intersection rule must ignore them, or every abort re-publish fails."""
+    records = [_ran(f"c{i}", 1000) for i in range(10)]
+    metered = {f"c{i}": (1000, 100) for i in range(10)}
+    metered["in-flight-never-journaled"] = (62_000, 7_000)
+    assert check_records(records, metered_by_case=metered).ok
 
 
 def test_a_case_graded_twice_is_caught() -> None:
@@ -176,7 +187,7 @@ def test_contamination_is_caught_by_reconciliation_not_by_size() -> None:
     roughly the concurrency times the truth. That fails against the tracker
     whatever the magnitude."""
     inflated = [_worked_for(f"c{i}", 390_716, 60.0) for i in range(12)]
-    report = check_records(inflated, metered_total=(12 * 131_393, 12 * 4_000))
+    report = check_records(inflated, metered_by_case={f"c{i}": (131_393, 4_000) for i in range(12)})
     assert not report.ok
     assert any("disagree with the tracker" in v.check for v in report.violations)
 
