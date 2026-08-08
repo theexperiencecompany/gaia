@@ -165,6 +165,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                 provider_order=order,
                 tags=opts.tags,
                 app_version=_app_version(),
+                extra={"sim": opts.sim},
             )
         )
 
@@ -374,7 +375,9 @@ def _publish_run(
     # (cumulative tokens, an outage scored as zeros) reached a PR because no
     # quantity was ever checked against a second, independently-derived one.
     invariants = check_records(
-        journal.records(), metered_total=(tracker.total_input, tracker.total_output)
+        journal.records(),
+        metered_total=(tracker.total_input, tracker.total_output),
+        sim=opts.sim,
     )
     if not invariants.ok:
         print(invariants.render())

@@ -78,13 +78,19 @@ class InvariantReport:
 
 
 def check_records(
-    records: list[dict[str, Any]], metered_total: tuple[int, int] | None = None
+    records: list[dict[str, Any]],
+    metered_total: tuple[int, int] | None = None,
+    sim: bool = False,
 ) -> InvariantReport:
     """Cross-check a run's journal against itself, and against the cost tracker.
 
     ``metered_total`` is the tracker's own (input, output) totals — derived by a
     completely different path from the per-case figures, which is exactly what
     makes the comparison worth anything.
+
+    ``sim`` marks a scripted-stub run: the stub reports no usage, so zero tokens
+    is the true measurement there, and the token floor would reject every sim
+    run forever — a gate that is always red gets switched off.
     """
     report = InvariantReport()
     if not records:
@@ -112,14 +118,18 @@ def check_records(
             )
         )
 
-    undercounted = [
-        (str(r.get("case_id")), int((r.get("tokens") or {}).get("input", 0)))
-        for r in records
-        if (r.get("text") or r.get("messages"))
-        and r.get("status") in GRADED_FOR_TOKEN_FLOOR
-        and float(r.get("duration_s") or 0.0) >= MIN_MODEL_CALL_SECONDS
-        and int((r.get("tokens") or {}).get("input", 0)) < IMPLAUSIBLE_MINIMUM_CASE_TOKENS
-    ]
+    undercounted = (
+        []
+        if sim
+        else [
+            (str(r.get("case_id")), int((r.get("tokens") or {}).get("input", 0)))
+            for r in records
+            if (r.get("text") or r.get("messages"))
+            and r.get("status") in GRADED_FOR_TOKEN_FLOOR
+            and float(r.get("duration_s") or 0.0) >= MIN_MODEL_CALL_SECONDS
+            and int((r.get("tokens") or {}).get("input", 0)) < IMPLAUSIBLE_MINIMUM_CASE_TOKENS
+        ]
+    )
     if undercounted:
         report.violations.append(
             Violation(
