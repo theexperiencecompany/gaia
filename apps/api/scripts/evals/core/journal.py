@@ -54,6 +54,8 @@ class RunJournal:
         self.meta_path = self.dir / "run.json"
         self._lock = threading.Lock()
         self._status: dict[str, str] = {}
+        self._records_cache: list[dict[str, Any]] = []
+        self._records_stamp: tuple[int, int] | None = None
         if self.path.exists():
             for line in self.path.read_text().splitlines():
                 rec = json.loads(line)
@@ -97,9 +99,37 @@ class RunJournal:
                 f.write(json.dumps(record, default=str) + "\n")
 
     def records(self) -> list[dict[str, Any]]:
+        """Every appended record, in order, parsed once per file revision.
+
+        This used to re-read and re-parse the whole file on every call, and
+        ``record_for`` calls it per case — so a 470-case run re-parsed ~110k
+        lines over its lifetime. The cache is keyed on the file's size and mtime
+        so an external append (a concurrent writer, a resumed run) still
+        invalidates it rather than serving a stale list.
+        """
         if not self.path.exists():
             return []
-        return [json.loads(line) for line in self.path.read_text().splitlines()]
+        stat = self.path.stat()
+        stamp = (stat.st_size, stat.st_mtime_ns)
+        if self._records_stamp != stamp:
+            self._records_cache = [
+                json.loads(line) for line in self.path.read_text().splitlines() if line.strip()
+            ]
+            self._records_stamp = stamp
+        return self._records_cache
+
+    def latest_per_case(self) -> dict[str, dict[str, Any]]:
+        """One record per case — the most recent attempt.
+
+        The journal only appends, so a re-run leaves both attempts on disk.
+        Reports and cost tables that iterate ``records()`` directly count a
+        retried case twice, crediting the stale failure alongside the fresh
+        pass. Anything that aggregates should read this instead.
+        """
+        latest: dict[str, dict[str, Any]] = {}
+        for record in self.records():
+            latest[str(record["case_id"])] = record
+        return latest
 
     def record_for(self, case_id: str) -> dict[str, Any] | None:
         """The case's latest outcome.

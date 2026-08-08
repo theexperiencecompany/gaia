@@ -271,7 +271,19 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         except Exception as e:
             print(f"[finalize] failed (run still complete in journal): {e}")
 
+    from .invariants import check_records
     from .report import write_report
+
+    # The run's own numbers must reconcile before any of them are published. A
+    # loud stop beats a plausible figure: both defects this catches (cumulative
+    # tokens, an outage scored as zeros) reached a PR because nothing ever
+    # checked one quantity against a second, independently-derived one.
+    invariants = check_records(
+        journal.records(), metered_total=(tracker.total_input, tracker.total_output)
+    )
+    if not invariants.ok:
+        print(invariants.render())
+        raise SystemExit(2)
 
     html_path = write_report(journal, suite.label, prices)
     _print_summary(journal, prices)

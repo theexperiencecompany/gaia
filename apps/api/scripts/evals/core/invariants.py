@@ -1,0 +1,140 @@
+"""Cross-checks run against a journal before its numbers are published.
+
+Each check compares a quantity against a second, independently-derived one — a
+per-case token sum against the cost tracker's own total, a score against whether
+the case produced anything. A violation aborts the report rather than degrading
+it, because the failures these catch look like ordinary numbers.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+# A per-case token count above this is not a measurement, it is a running total.
+# The largest single legitimate case observed is ~40k (a LongMemEval haystack).
+IMPLAUSIBLE_CASE_TOKENS = 400_000
+
+
+@dataclass
+class Violation:
+    """One reconciliation failure, named so it can be acted on."""
+
+    check: str
+    detail: str
+
+
+@dataclass
+class InvariantReport:
+    violations: list[Violation] = field(default_factory=list)
+
+    @property
+    def ok(self) -> bool:
+        return not self.violations
+
+    def render(self) -> str:
+        lines = ["", "=" * 74, "PUBLISH BLOCKED — the run's own numbers do not reconcile", "=" * 74]
+        lines += [f"  {v.check}: {v.detail}" for v in self.violations]
+        lines.append("")
+        lines.append("No report was written. The journal is intact; fix the cause and re-report.")
+        return "\n".join(lines)
+
+
+def check_records(
+    records: list[dict[str, Any]], metered_total: tuple[int, int] | None = None
+) -> InvariantReport:
+    """Cross-check a run's journal against itself, and against the cost tracker.
+
+    ``metered_total`` is the tracker's own (input, output) totals — derived by a
+    completely different path from the per-case figures, which is exactly what
+    makes the comparison worth anything.
+    """
+    report = InvariantReport()
+    if not records:
+        return report
+
+    scored_but_silent = [
+        str(r.get("case_id"))
+        for r in records
+        if r.get("scores")
+        and not (r.get("text") or r.get("messages"))
+        and not int((r.get("tokens") or {}).get("input", 0))
+    ]
+    if scored_but_silent:
+        report.violations.append(
+            Violation(
+                "scored a case that produced nothing",
+                f"{len(scored_but_silent)} case(s) carry a score with no output and no tokens "
+                f"— e.g. {scored_but_silent[:3]}. A case that produced nothing cannot have "
+                f"earned a score; this is how an outage became a 0%.",
+            )
+        )
+
+    runaway = [
+        (str(r.get("case_id")), int((r.get("tokens") or {}).get("input", 0)))
+        for r in records
+        if int((r.get("tokens") or {}).get("input", 0)) > IMPLAUSIBLE_CASE_TOKENS
+    ]
+    if runaway:
+        report.violations.append(
+            Violation(
+                "implausible per-case token count",
+                f"{len(runaway)} case(s) above {IMPLAUSIBLE_CASE_TOKENS:,} input tokens — "
+                f"e.g. {runaway[:3]}. A per-case counter this large is a cumulative total, "
+                f"not a measurement.",
+            )
+        )
+
+    inputs = [int((r.get("tokens") or {}).get("input", 0)) for r in records if r.get("tokens")]
+    # A long, almost-never-decreasing series is a running total. The bar is
+    # deliberately high: a suite whose cases genuinely grow (ordered by context
+    # size) can rise for a while, and a check that fires on that is noise
+    # someone will switch off. The real defect ran 99-100% over 393 comparisons;
+    # chance alone cannot reach 95% across 20.
+    if len(inputs) >= 21:
+        rising = sum(1 for i in range(1, len(inputs)) if inputs[i] > inputs[i - 1])
+        if rising / (len(inputs) - 1) > 0.95:
+            report.violations.append(
+                Violation(
+                    "token counts are cumulative",
+                    f"{rising}/{len(inputs) - 1} consecutive cases strictly increased. Token "
+                    f"counts are non-negative, so a genuine per-case series decreases "
+                    f"regularly; a near-monotonic one is a running total.",
+                )
+            )
+
+    if metered_total is not None:
+        summed = (sum(inputs), sum(int((r.get("tokens") or {}).get("output", 0)) for r in records))
+        for label, journal_value, tracker_value in (
+            ("input", summed[0], metered_total[0]),
+            ("output", summed[1], metered_total[1]),
+        ):
+            if tracker_value and abs(journal_value - tracker_value) > max(
+                1000, tracker_value * 0.05
+            ):
+                report.violations.append(
+                    Violation(
+                        f"{label} tokens disagree with the tracker",
+                        f"journal sums to {journal_value:,}, the cost tracker metered "
+                        f"{tracker_value:,}. Two independent paths must agree.",
+                    )
+                )
+
+    ids = [str(r.get("case_id")) for r in records]
+    statuses = {r.get("status") for r in records}
+    unknown = statuses - {"passed", "failed", "errored", "skipped"}
+    if unknown:
+        report.violations.append(
+            Violation("unknown case status", f"{sorted(str(s) for s in unknown)}")
+        )
+    if len(ids) != len(set(ids)):
+        duplicated = sorted({i for i in ids if ids.count(i) > 1})
+        report.violations.append(
+            Violation(
+                "duplicate case records",
+                f"{len(duplicated)} case(s) appear more than once — e.g. {duplicated[:3]}. "
+                f"Aggregations that iterate records() would count both the stale attempt and "
+                f"the fresh one; read latest_per_case() instead.",
+            )
+        )
+    return report
