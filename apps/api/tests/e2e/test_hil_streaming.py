@@ -58,6 +58,8 @@ import fakeredis.aioredis
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.agents.core.background.executor_runner import QUEUED_EXECUTOR_TASK_NAME
+from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.background.session import teardown_session
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
@@ -411,6 +413,17 @@ class HilWorld:
         ]
 
 
+def _tasks_named(*names: str) -> list[asyncio.Task[object]]:
+    """Live background tasks carrying any of ``names``.
+
+    Filtering by name rather than draining the whole keep-alive set: that set
+    also holds work which outlives a single turn, so awaiting all of it would
+    hang here forever instead of failing a test.
+    """
+    wanted = set(names)
+    return [t for t in background_tasks._background_tasks if t.get_name() in wanted]
+
+
 async def drain_publishes() -> None:
     """Wait out the fire-and-forget XADDs the background writer scheduled.
 
@@ -420,8 +433,8 @@ async def drain_publishes() -> None:
     behaviour. Draining the canonical keep-alive set is a superset of the
     publishes, which is what "wait until the turn is quiet" wants.
     """
-    while background_tasks._background_tasks:
-        await asyncio.gather(*list(background_tasks._background_tasks), return_exceptions=True)
+    while pending := _tasks_named(STREAM_PUBLISH_TASK_NAME):
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def drain_resumes() -> None:
@@ -452,11 +465,10 @@ async def drain_background_runs() -> None:
     scripted models. That showed up as this file's only flake: the following
     test's turn produced no approval record at all.
     """
-    while background_tasks._background_tasks or resolution._resume_tasks:
-        pending = [
-            *background_tasks._background_tasks,
-            *resolution._resume_tasks,
-        ]
+    while pending := [
+        *_tasks_named(STREAM_PUBLISH_TASK_NAME, QUEUED_EXECUTOR_TASK_NAME),
+        *resolution._resume_tasks,
+    ]:
         await asyncio.gather(*pending, return_exceptions=True)
 
 

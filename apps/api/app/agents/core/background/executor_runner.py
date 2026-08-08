@@ -66,6 +66,10 @@ from app.utils.agent_utils import format_sse_data
 from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
+#: Task name for a queued executor run. Tests drain by this name to wait out
+#: exactly the runs a turn handed off, not every background task in the process.
+QUEUED_EXECUTOR_TASK_NAME = "queued-executor-run"
+
 
 @traceable(name="executor_background", run_type="chain")
 async def run_executor_background(
@@ -460,7 +464,8 @@ def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
             run=prepared.run,
             task=prepared.task,
             configurable=prepared.configurable,
-        )
+        ),
+        name=QUEUED_EXECUTOR_TASK_NAME,
     )
 
     log.info(

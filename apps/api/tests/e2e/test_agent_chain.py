@@ -44,6 +44,7 @@ from langchain_core.outputs import ChatGenerationChunk
 from langgraph.store.memory import InMemoryStore
 import pytest
 
+from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
@@ -181,6 +182,17 @@ class ChainRun:
         return self.transcript.kinds().index(kind)
 
 
+def _tasks_named(*names: str) -> list[asyncio.Task[object]]:
+    """Live background tasks carrying any of ``names``.
+
+    Filtering by name rather than draining the whole keep-alive set: that set
+    also holds work which outlives a single turn, so awaiting all of it would
+    hang here forever instead of failing a test.
+    """
+    wanted = set(names)
+    return [t for t in background_tasks._background_tasks if t.get_name() in wanted]
+
+
 async def _drain_publishes() -> None:
     """Wait out the fire-and-forget XADDs the background writer scheduled.
 
@@ -188,11 +200,11 @@ async def _drain_publishes() -> None:
     through ``spawn_background_task`` and returns. A live subscriber sees those
     frames whenever they land, but a test that reads the log after the turn must
     wait for them, or it reads a truncated stream and the assertion is about
-    timing rather than behaviour. Draining the canonical keep-alive set is a
-    superset of the publishes, which is what "wait until the turn is quiet" wants.
+    timing rather than behaviour. Waits on exactly the publish
+    tasks, by name — see :func:`_tasks_named`.
     """
-    while background_tasks._background_tasks:
-        await asyncio.gather(*list(background_tasks._background_tasks), return_exceptions=True)
+    while pending := _tasks_named(STREAM_PUBLISH_TASK_NAME):
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def run_chain(
