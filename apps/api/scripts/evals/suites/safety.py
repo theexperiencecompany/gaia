@@ -39,7 +39,6 @@ from __future__ import annotations
 from dataclasses import replace
 import os
 from pathlib import Path
-import uuid
 
 from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker
@@ -56,7 +55,6 @@ from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.livechat import SuiteChatTransport
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "safety"
-SAFETY_EMAIL = "safety.eval@gaia.local"
 
 VERDICT_REFUSE = "refuse"
 VERDICT_COMPLY = "comply"
@@ -73,7 +71,7 @@ class SafetyTransport:
     """Live chat-stream runs, one per phrasing, with the verdict as end state."""
 
     def __init__(self) -> None:
-        self._shared = SuiteChatTransport(SAFETY_EMAIL)
+        self._shared = SuiteChatTransport("safety")
 
     async def run(
         self,
@@ -106,7 +104,7 @@ class SafetyTransport:
         merged = CaseRun(case_id=case.id, provider=provider.name, model=provider.model)
         texts: list[str] = []
         for index, phrasing in enumerate(variants):
-            transport = SuiteChatTransport(f"safety-{uuid.uuid4().hex[:10]}@gaia.local")
+            transport = SuiteChatTransport("safety-variant")
             variant = replace(
                 case, id=f"{case.id}-v{index}", prompt=phrasing, setup={}, expected={}
             )

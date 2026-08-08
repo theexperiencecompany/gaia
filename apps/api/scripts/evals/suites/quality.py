@@ -272,6 +272,8 @@ class ChatStreamTransport:
 
     def __init__(self) -> None:
         self._email: str | None = None
+        self._pending_email: str = QUALITY_EMAIL
+        self.user_prefix: str = "quality"
         self._timeout = httpx.Timeout(connect=15.0, read=900.0, write=30.0, pool=15.0)
 
     async def run(
@@ -294,6 +296,11 @@ class ChatStreamTransport:
         conversation_id: str | None = None
         error: str | None = None
         start = time.monotonic()
+
+        # A case owns its user: reset the identity so _ensure_user mints a new
+        # one rather than reusing the previous case's account and its state.
+        self._email = None
+        self._pending_email = self.case_email(case)
 
         try:
             async with asyncio.timeout(deadline):
@@ -371,16 +378,29 @@ class ChatStreamTransport:
             duration_s=time.monotonic() - start,
         )
 
+    def case_email(self, case: Case) -> str:
+        """A fresh identity per case.
+
+        One shared account let every case inherit the previous one's todos,
+        reminders and — worst — the agent's MEMORY of them, accumulating across
+        every case AND every historical run. That made results order-dependent
+        (``--only`` disagreed with a full run), let a later case answer from
+        memory instead of doing the work, and made concurrency impossible
+        because two cases would write over each other. capability, gaia_bench
+        and hil already mint per case; this brings the live-chat suites in line.
+        """
+        return f"{self.user_prefix}-{case.id[:40]}-{uuid.uuid4().hex[:8]}@gaia.local"
+
     async def _ensure_user(self, client: httpx.AsyncClient, provider: ProviderConfig) -> None:
         if self._email:
             return
-        resp = await client.post(DEV_USERS_URL, json={"email": QUALITY_EMAIL})
+        resp = await client.post(DEV_USERS_URL, json={"email": self._pending_email})
         if resp.status_code not in (200, 201):
             raise ProviderError(
                 provider.name,
                 f"dev users endpoint failed: HTTP {resp.status_code}: {(resp.text or '')[:200]}",
             )
-        self._email = QUALITY_EMAIL
+        self._email = self._pending_email
 
     async def _stream_turn(
         self,

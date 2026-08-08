@@ -49,7 +49,6 @@ from scripts.evals.core.types import Case, CaseRun
 from scripts.evals.suites.livechat import SuiteChatTransport
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "comms"
-COMMS_EMAIL = "comms.eval@gaia.local"
 
 
 @register_suite("comms")
@@ -61,7 +60,7 @@ class CommsSuite(Suite):
     def __init__(self, cfg: EvalConfig) -> None:
         del cfg
         self._cases: list[Case] | None = None
-        self._transport = SuiteChatTransport(COMMS_EMAIL)
+        self._transport = SuiteChatTransport("comms")
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg

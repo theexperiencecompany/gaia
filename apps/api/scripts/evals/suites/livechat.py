@@ -17,28 +17,17 @@ re-read, which is a different shape of run, not a different user (see hil.py).
 
 from __future__ import annotations
 
-import httpx
-
-from scripts.evals.core.providers import ProviderConfig
-from scripts.evals.core.types import ProviderError
-from scripts.evals.suites.quality import DEV_USERS_URL, ChatStreamTransport
+from scripts.evals.suites.quality import ChatStreamTransport
 
 
 class SuiteChatTransport(ChatStreamTransport):
-    """The live chat-stream transport, minting and using ``email`` as its user."""
+    """The live chat-stream transport, scoped to one suite's own identity space.
 
-    def __init__(self, email: str) -> None:
+    ``prefix`` only names the suite so its users are recognisable; the identity
+    itself is minted per case by the base transport, so comms, safety and
+    quality cannot bleed state into each other or into their own later cases.
+    """
+
+    def __init__(self, prefix: str) -> None:
         super().__init__()
-        self._suite_email = email
-
-    async def _ensure_user(self, client: httpx.AsyncClient, provider: ProviderConfig) -> None:
-        if self._email:
-            return
-        resp = await client.post(DEV_USERS_URL, json={"email": self._suite_email})
-        if resp.status_code not in (200, 201):
-            raise ProviderError(
-                provider.name,
-                f"dev users endpoint failed for {self._suite_email}: "
-                f"HTTP {resp.status_code}: {(resp.text or '')[:200]}",
-            )
-        self._email = self._suite_email
+        self.user_prefix = prefix
