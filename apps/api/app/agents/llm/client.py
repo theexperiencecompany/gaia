@@ -22,7 +22,6 @@ from app.agents.llm.exceptions import (
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
-    DEFAULT_GROK_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -37,6 +36,7 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -76,14 +76,14 @@ def is_default_model_config(configurable: AgentConfigurable) -> bool:
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openrouter": DEFAULT_GROK_MODEL_NAME,
+    "openrouter": DEFAULT_MODEL_NAME,
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
     "custom": settings.DEV_LLM_MODEL or "",
 }
 PROVIDER_PRIORITY = {
-    1: "gemini",
-    2: "openrouter",
+    1: "openrouter",
+    2: "gemini",
     3: "custom",
 }
 
@@ -371,14 +371,26 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
-    if not settings.GOOGLE_API_KEY:
-        raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
+    if not settings.OPENROUTER_API_KEY:
+        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
     return _build_default_llm(temperature)
 
 
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
-    llm = ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
+    llm = ChatOpenRouter(
+        model=DEFAULT_MODEL_NAME,
+        temperature=temperature,
+        # ChatOpenRouter defaults streaming to False, and stream_usage only
+        # attaches usage metadata to a stream — set alone it is inert. Both are
+        # set so this matches init_openrouter_llm, and so the model fallback
+        # (create_agent resolves it from here) streams like the primary it
+        # replaces instead of arriving as one lump.
+        streaming=True,
+        stream_usage=True,
+        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+        api_key=settings.OPENROUTER_API_KEY,
+    )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).
     # Consumers that express limits as a FRACTION of the window — the summarization
@@ -389,13 +401,37 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
+def get_vision_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The factory for every image -> text call (``vision/describe.py``).
+
+    Separate from :func:`get_default_llm` on purpose. The default model is picked
+    for cheap text and may not be multimodal; this one must be able to see, or the
+    vision fallback describes nothing — and it fails silently, since
+    ``describe_image`` degrades to ``None``. Raises ``LLMNotConfiguredError`` when
+    Google is not configured.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature)
+    if not settings.GOOGLE_API_KEY:
+        raise LLMNotConfiguredError("Vision model not configured. Set GOOGLE_API_KEY.")
+    return _build_vision_llm(temperature)
+
+
+@cache
+def _build_vision_llm(temperature: float) -> BaseChatModel:
+    llm = ChatGoogleGenerativeAI(model=VISION_MODEL_NAME, temperature=temperature)
+    # Same reason as _build_default_llm: fractional-window middleware reads this.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
 def _stamp_fallback(result: _ResultT) -> _ResultT:
     """Mark a fallback-produced AIMessage so downstream layers can surface the
     downgrade (SSE event, accounting). No-op for non-message results."""
     metadata = getattr(result, "response_metadata", None)
     if isinstance(metadata, dict):
         metadata["gaia_fell_back"] = True
-        metadata["gaia_fallback_model"] = DEFAULT_GEMINI_MODEL_NAME
+        metadata["gaia_fallback_model"] = DEFAULT_MODEL_NAME
     return result
 
 

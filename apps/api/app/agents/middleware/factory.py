@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 
 from app.agents.llm.client import get_default_llm
+from app.agents.llm.exceptions import LLMNotConfiguredError
 from app.agents.middleware.accounting import LLMAccountingMiddleware
 from app.agents.middleware.compaction import WorkspaceCompactionMiddleware
 from app.agents.middleware.hil_approval import HILApprovalMiddleware
@@ -20,7 +21,6 @@ from app.agents.middleware.summarization import (
     WorkspaceArchivingSummarizationMiddleware,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.config.settings import settings
 from app.constants.llm import (
     AGENT_RECURSION_LIMIT,
     DEFAULT_MAX_TOKENS,
@@ -61,22 +61,32 @@ _summarization_llm: BaseChatModel | None = None
 
 
 def get_summarization_llm() -> BaseChatModel | None:
-    """Get the cached summarization LLM (the default Gemini model), or None if the
-    Google API key is not configured."""
+    """The cached summarization model, or None when the default model is not
+    configured (summarization middleware is then dropped).
+
+    Availability is decided by CALLING the factory and catching its refusal, not
+    by checking a provider key here. A key check is a second copy of "what does
+    the default model need", and when the default moved providers the two
+    disagreed: the gate passed on a key the factory no longer used, and — worse
+    the other way round — a missing key silently dropped compaction from the
+    graph while the model itself was perfectly reachable. Long conversations
+    then blow the context window with nothing in the logs pointing here.
+    """
     global _summarization_llm
 
     if _summarization_llm is not None:
         return _summarization_llm
 
-    if not settings.GOOGLE_API_KEY:
-        log.warning(
-            f"{LogTag.AGENT} Google API key not configured. Summarization middleware disabled."
+    try:
+        # get_default_llm() carries the model's context-window profile, which the
+        # summarization/compaction fractional triggers below require to build.
+        _summarization_llm = get_default_llm()
+    except LLMNotConfiguredError as exc:
+        log.set(error=str(exc))
+        log.error(
+            f"{LogTag.AGENT} Default model not configured. Summarization middleware disabled."
         )
         return None
-
-    # get_default_llm() carries the model's context-window profile, which the
-    # summarization/compaction fractional triggers below require to build.
-    _summarization_llm = get_default_llm()
     return _summarization_llm
 
 

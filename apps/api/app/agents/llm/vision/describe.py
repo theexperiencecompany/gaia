@@ -4,7 +4,7 @@ from typing import cast
 
 from langchain_core.messages import BaseMessage
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm
+from app.agents.llm.client import ainvoke_llm, get_vision_llm
 from app.constants.log_tags import LogTag
 from app.utils.multimodal import image_content_block
 from shared.py.wide_events import log
@@ -16,16 +16,22 @@ async def describe_image(
     prompt: str,
     label: str = "vision_fallback",
 ) -> str | None:
-    """Describe an image with a one-off call on the default (multimodal) model.
+    """Describe an image with a one-off call on the dedicated vision model.
 
     The canonical fallback for lanes that can't take pixels — the `read` tool and
     the desktop screenshot tool both route through here. Returns ``None`` when
     the vision call fails, so a caller degrades to telling the user it couldn't
     look rather than failing the whole tool.
+
+    Uses :func:`get_vision_llm`, never the default model: callers reach here
+    precisely BECAUSE the active lane cannot see, so describing with that same
+    lane would return nothing. Callers that are lane-dependent gate on
+    ``model_can_view_images`` first (see ``vision/tool_media.py``) so a
+    vision-capable lane never pays for a description it does not need.
     """
     try:
         response = await ainvoke_llm(
-            get_default_llm(),
+            get_vision_llm(),
             [
                 {
                     "role": "user",
