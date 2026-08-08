@@ -59,6 +59,57 @@ function validateUrl(url: string): boolean {
   return /^https?:\/\/.+/.test(url.trim());
 }
 
+const INVALID_URL_MESSAGE =
+  "Please enter a valid URL starting with http:// or https://";
+
+/** Returns a validation error message, or null when the form is valid. */
+function validateForm(form: FormState, isEditing: boolean): string | null {
+  if (!form.name.trim()) return "Name is required.";
+  if (!isEditing) {
+    if (!form.serverUrl.trim()) return "Server URL is required.";
+    if (!validateUrl(form.serverUrl)) return INVALID_URL_MESSAGE;
+    if (form.authType === "bearer" && !form.bearerToken.trim()) {
+      return "Bearer token is required.";
+    }
+  } else if (form.serverUrl.trim() && !validateUrl(form.serverUrl)) {
+    return INVALID_URL_MESSAGE;
+  }
+  return null;
+}
+
+function buildUpdateParams(
+  form: FormState,
+): Partial<CreateCustomIntegrationParams> {
+  const updates: Partial<CreateCustomIntegrationParams> = {
+    name: form.name.trim(),
+    description: form.description.trim() || undefined,
+    auth_type: form.authType,
+  };
+  if (form.serverUrl.trim()) {
+    updates.server_url = form.serverUrl.trim();
+  }
+  if (form.authType === "bearer" && form.bearerToken.trim()) {
+    updates.bearer_token = form.bearerToken.trim();
+    updates.requires_auth = true;
+  }
+  return updates;
+}
+
+function buildCreateParams(form: FormState): CreateCustomIntegrationParams {
+  return {
+    name: form.name.trim(),
+    description: form.description.trim() || undefined,
+    server_url: form.serverUrl.trim(),
+    requires_auth: form.authType === "bearer" && !!form.bearerToken.trim(),
+    auth_type: form.authType,
+    is_public: false,
+    bearer_token:
+      form.authType === "bearer" && form.bearerToken.trim()
+        ? form.bearerToken.trim()
+        : undefined,
+  };
+}
+
 export const CreateMCPIntegrationSheet = forwardRef<
   CreateMCPIntegrationSheetRef,
   CreateMCPIntegrationSheetProps
@@ -119,66 +170,22 @@ export const CreateMCPIntegrationSheet = forwardRef<
   );
 
   const handleSave = useCallback(async () => {
-    if (!form.name.trim()) {
-      Alert.alert("Validation Error", "Name is required.");
-      return;
-    }
-    if (!isEditing) {
-      if (!form.serverUrl.trim()) {
-        Alert.alert("Validation Error", "Server URL is required.");
-        return;
-      }
-      if (!validateUrl(form.serverUrl)) {
-        Alert.alert(
-          "Validation Error",
-          "Please enter a valid URL starting with http:// or https://",
-        );
-        return;
-      }
-    } else if (form.serverUrl.trim() && !validateUrl(form.serverUrl)) {
-      Alert.alert(
-        "Validation Error",
-        "Please enter a valid URL starting with http:// or https://",
-      );
+    const validationError = validateForm(form, isEditing);
+    if (validationError) {
+      Alert.alert("Validation Error", validationError);
       return;
     }
 
     setIsSaving(true);
     try {
       if (isEditing && editingId) {
-        const updates: Partial<CreateCustomIntegrationParams> = {
-          name: form.name.trim(),
-          description: form.description.trim() || undefined,
-          auth_type: form.authType,
-        };
-        if (form.serverUrl.trim()) {
-          updates.server_url = form.serverUrl.trim();
-        }
-        if (form.authType === "bearer" && form.bearerToken.trim()) {
-          updates.bearer_token = form.bearerToken.trim();
-          updates.requires_auth = true;
-        }
-
-        await updateCustomIntegration(editingId, updates);
+        await updateCustomIntegration(editingId, buildUpdateParams(form));
         onIntegrationUpdated?.(editingId);
         handleClose();
         return;
       }
 
-      const params: CreateCustomIntegrationParams = {
-        name: form.name.trim(),
-        description: form.description.trim() || undefined,
-        server_url: form.serverUrl.trim(),
-        requires_auth: form.authType === "bearer" && !!form.bearerToken.trim(),
-        auth_type: form.authType,
-        is_public: false,
-        bearer_token:
-          form.authType === "bearer" && form.bearerToken.trim()
-            ? form.bearerToken.trim()
-            : undefined,
-      };
-
-      const result = await createCustomIntegration(params);
+      const result = await createCustomIntegration(buildCreateParams(form));
 
       onIntegrationCreated?.(result.integrationId);
       handleClose();

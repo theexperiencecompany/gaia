@@ -167,7 +167,9 @@ class DeviceConnector(BaseConnector):
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.warning(f"{LogTag.MCP} Device inbox drain ended: {e}")
+            log.warning(
+                f"{LogTag.MCP} Device inbox drain ended", error=str(e), error_type=type(e).__name__
+            )
             # Fail the read stream so an in-flight call unblocks immediately and
             # the session tears down, instead of hanging until the read timeout.
             with contextlib.suppress(Exception):
@@ -185,7 +187,11 @@ class DeviceConnector(BaseConnector):
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.warning(f"{LogTag.MCP} Device downstream pump ended: {e}")
+            log.warning(
+                f"{LogTag.MCP} Device downstream pump ended",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _resolve_open(self, error: Exception | None) -> bool:
         """Settle the open future once. Returns True if this call settled it."""

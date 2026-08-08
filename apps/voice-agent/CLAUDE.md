@@ -39,7 +39,15 @@ src/
 
 **Settings**: `VoiceAgentSettings` extends `BaseAppSettings` from `gaia-shared`. `bootstrap_settings()` is pure: it just constructs the cached settings object. Infisical lives in the main process only because LiveKit's `forkserver` on Linux inherits the parent's env vars into every child.
 
-**Logging**: Structured JSON logs written to `apps/voice-agent/logs/` (absolute path) via `shared.py.logging.configure_file_logging` (picked up by Promtail in local dev). Set `LOG_LEVEL=DEBUG` to enable full per-token, per-TTS-flush, per-STT, and per-participant debug timeline logs with `HH:MM:SS.mmm` timestamps and millisecond latency measurements.
+**Logging**: Structured JSON logs written to `apps/voice-agent/logs/` (absolute path) via `shared.py.logging.configure_file_logging` (picked up by Promtail in local dev; a no-op under `LOG_FORMAT=json`, where stdout NDJSON goes to Loki instead). Set `LOG_LEVEL=DEBUG` to enable full per-token, per-TTS-flush, per-STT, and per-participant debug timeline logs with `HH:MM:SS.mmm` timestamps and millisecond latency measurements.
+
+## Wide events and the observability gate
+
+The worker uses the same wide-event facade as the API (`from shared.py.wide_events import log`), but **there is no middleware here** — nothing opens an event for you. A voice entry point must open its own boundary with `async with log_context(...)` / `wide_task(...)`; inside it, `log.set(...)` / `log.set_ns(...)` attach canonical `VoiceContext` fields and `log.warning(...)` / `log.error(...)` also land in the event's `warnings[]`/`errors[]`.
+
+**A bare `log.set()` proves nothing here.** Outside a boundary it is silently discarded — no error, no line, the fields simply never reach Loki. This is the one place the voice rules are stricter than the ARQ worker rules, where a `log.set()` alone is accepted.
+
+The entry points are not a hardcoded list: `tools/evlog_map/voice.py` parses `WorkerOptions(entrypoint_fnc=…, prewarm_fnc=…)` in `agent.py` and the per-turn coroutine behind `CustomLLM.chat` in `llm.py`, so rewiring the worker moves the gate with it. Score the surface with `python3 tools/evlog_map` (it covers `apps/api/app` **and** `apps/voice-agent/src`); CI gates it per-file against the merge base plus a discovery floor (`--min-entries`). Waive a check that genuinely does not apply with `# evlog-map-disable-next-line <check-id> -- <reason>` — the `--` reason is mandatory.
 
 ## Code Style
 

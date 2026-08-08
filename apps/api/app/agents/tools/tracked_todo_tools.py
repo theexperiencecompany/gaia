@@ -5,10 +5,8 @@ Allows GAIA's executor to create tracked todos with VFS canvas
 and search across canvas context via ChromaDB.
 """
 
-import asyncio
-from collections.abc import Coroutine
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 
 from croniter import croniter as _croniter
 from langchain_core.runnables import RunnableConfig
@@ -23,7 +21,7 @@ from app.services.user_service import get_user_by_id
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
@@ -61,15 +59,6 @@ def _compute_first_fire_from_cron(cron_expr: str, tz_name: str) -> datetime:
 
 def _is_cron_expression(recurrence: str) -> bool:
     return recurrence not in _RECURRENCE_SHORTCUTS
-
-
-_background_tasks: set[asyncio.Task] = set()
-
-
-def _fire_and_forget(coro: Coroutine[Any, Any, Any]) -> None:
-    task = asyncio.create_task(coro)
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
 
 def _parse_iso_future_datetime(iso_str: str, field_name: str) -> tuple[datetime | None, str | None]:
@@ -651,7 +640,12 @@ async def update_tracked_todo_canvas(
         new_canvas = _patch_canvas_section(current, section or "", content)
         await write_canvas(todo_id, user_id, new_canvas)
 
-    _fire_and_forget(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
+    spawn_logged_task(
+        "canvas_reindex",
+        tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id),
+        user={"id": user_id},
+        todo={"id": todo_id},
+    )
     section_suffix = f", section={section}" if section else ""
     await tracked_todo_service.system_log(
         todo_id=todo_id,

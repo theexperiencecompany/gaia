@@ -27,5 +27,9 @@ async def list_community_integrations(
         log.set(outcome="success")
         return result
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching community integrations: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch community integrations")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching community integrations",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to fetch community integrations") from e

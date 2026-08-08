@@ -108,8 +108,9 @@ flowchart TD
 ### `.github/workflows/code-quality.yml`
 1. Enter from PRs targeting `develop`/`master`, pushes to those branches, and manual dispatch.
 2. `changes`: one cheap no-toolchain job detects which languages a PR touches; Python lanes and TypeScript lanes are skipped wholesale when their language is untouched (on push/dispatch everything runs).
-3. Eighteen hygiene lanes (Biome, deps, circular, file-size, types-location, components-per-file, duplicates (jscpd), package hygiene, tsc, ruff + custom AST lints, mypy, interrogate, xenon, bandit, knip/vulture dead code, pint over the Grafana alert rules, suppression ratchet, gitleaks), each self-scoping to changed files via `scripts/ci/changed-files.sh` or, for `alert-rules`, to the alerting-config paths.
-4. `Quality gate (required)` (the single required status check) enforces lanes with a marker file under `.github/quality-gate/enforced/`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate.
+3. Eighteen hygiene lanes (Biome, deps, circular, file-size, types-location, components-per-file, jscpd, type-coverage, package hygiene, tsc, ruff + custom AST lints, mypy, interrogate, xenon, bandit, evlog-map observability score, wide-event cross-runtime conformance, knip/vulture dead code), each self-scoping to changed files via `scripts/ci/changed-files.sh`. The `wide-event-conformance` lane runs the Python and TypeScript logging stacks for real and diffs the log shapes they actually emit against each other and against `scripts/ci/wide-event-conformance/contract.json`, so the two halves cannot drift apart. The observability lane (`tools/evlog_map`, enforced) posts the full-repo score to the job summary and fails PRs whose changed files score below the same files at the merge-base.
+
+4. `Quality gate (required)` (the single required status check) fails the merge if any lane is neither `success` nor `skipped`; a lane skipped by `changes` counts as passing, but a failed `changes` job fails the gate. All lanes are enforced — there is no informational tier.
 
 ### `.github/workflows/build.yml`
 1. Start two build lanes: `docker-release` and `docker-web`.

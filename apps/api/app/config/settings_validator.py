@@ -215,7 +215,7 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Resend Email Service",
-                keys=["RESEND_API_KEY", "RESEND_AUDIENCE_ID"],
+                keys=["RESEND_API_KEY", "RESEND_AUDIENCE_ID", "EMAIL_UNSUBSCRIBE_SECRET"],
                 description="Resend email delivery service",
                 affected_features="Email notifications and communication",
                 all_required=True,
@@ -385,7 +385,13 @@ class SettingsValidator:
             if group.affected_features:
                 warning_msg += f"\n  → Affected: {group.affected_features}"
 
-            log.warning(f"{LogTag.STARTUP} {warning_msg}")
+            log.warning(
+                f"{LogTag.STARTUP} Missing configuration for feature group",
+                severity=prefix,
+                group_name=group.name,
+                missing_keys=missing_keys,
+                affected_features=group.affected_features,
+            )
 
 
 settings_validator = SettingsValidator()

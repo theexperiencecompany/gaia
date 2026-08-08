@@ -9,6 +9,7 @@ Provides:
 """
 
 from collections.abc import AsyncGenerator
+import contextlib
 from contextlib import asynccontextmanager
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,7 +23,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 os.environ["ENV"] = "development"
-# The unit suite must be deterministic regardless of a developer's dev-bypass .env.
+# Force the dev auth bypass OFF for the suite: a machine set up for agent-driven
+# e2e has DEV_AUTH_BYPASS_EMAIL in apps/api/.env, which would short-circuit
+# WorkOSAuthMiddleware — including in the tests that exercise that middleware.
 # Force an empty (falsy) value rather than popping: an empty value keeps the
 # prod-guard off, and because the key is now present, load_dotenv(override=False)
 # — called at settings import — will not re-inject a value from the developer's .env.
@@ -35,6 +38,9 @@ os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("WORKOS_API_KEY", "sk_test_fake")
 os.environ.setdefault("WORKOS_CLIENT_ID", "client_fake")
 os.environ.setdefault("WORKOS_COOKIE_PASSWORD", "a" * 32)
+os.environ.setdefault("RESEND_API_KEY", "re_test_fake")
+os.environ.setdefault("RESEND_AUDIENCE_ID", "aud_fake")
+os.environ.setdefault("EMAIL_UNSUBSCRIBE_SECRET", "test-unsubscribe-secret-" + "x" * 16)
 os.environ.setdefault(
     "MCP_ENCRYPTION_KEY",
     "dGVzdF9lbmNyeXB0aW9uX2tleV8zMl9ieXRlcw==",  # pragma: allowlist secret
@@ -333,3 +339,45 @@ def fake_auth_credentials() -> dict:
 # pass without exercising the mock. Tests must patch the call site directly
 # (e.g. `app.services.calendar_service.proxy_request_sync`,
 # `app.utils.twitter_utils.proxy_request_sync`).
+
+
+# The enqueue wrapper is imported into each service module at its call site
+# (`from app.workers.queue import enqueue_worker_job`), so patching the source
+# module would NOT intercept the already-bound names. Patch every known call
+# site. Keep this list in sync with `grep -rl "from app.workers.queue import"`.
+_ENQUEUE_CALL_SITES = (
+    "app.workers.tasks.tracked_todo_tasks",
+    "app.services.workflow.queue_service",
+    "app.services.oauth.oauth_service",
+    "app.services.tracked_todo_service",
+    "app.services.scheduler_service",
+    "app.services.onboarding.intelligence_job",
+    "app.workers.tasks.memory_backfill_tasks",
+)
+
+
+@pytest.fixture
+def route_enqueue_via_pool():
+    """Route the wide-event enqueue wrapper through ``pool.enqueue_job``.
+
+    Services enqueue ARQ jobs through ``enqueue_worker_job`` (the wide-event
+    wrapper in ``app.workers.queue``), which forwards to the pool's
+    ``enqueue_job`` with the same args. Tests that mock the pool directly
+    (``pool.enqueue_job = AsyncMock(...)``) therefore never see the call
+    unless the wrapper is routed through the pool. Requesting this fixture
+    patches the wrapper at every call site with a forwarding side effect so
+    the tests' existing ``pool.enqueue_job`` mocks and assertions stay
+    authoritative.
+    """
+    with contextlib.ExitStack() as stack:
+
+        async def _forward(pool, *args, **kwargs):
+            return await pool.enqueue_job(*args, **kwargs)
+
+        for module in _ENQUEUE_CALL_SITES:
+            # create=True: the module may not be imported in every test context;
+            # the attribute is patched when the module first loads.
+            stack.enter_context(
+                patch(f"{module}.enqueue_worker_job", side_effect=_forward, create=True)
+            )
+        yield

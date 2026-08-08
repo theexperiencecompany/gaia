@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from typing import Any, ClassVar, cast
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from langchain.agents.middleware.types import AgentState
 from langchain_core.messages import AIMessage, HumanMessage
@@ -24,6 +24,7 @@ from app.agents.middleware.accounting import (
     _latest_ai_message,
 )
 from app.constants.llm import AGENT_RECURSION_LIMIT, RECURSION_HWM_FRACTION
+from app.services import llm_metering
 from shared.py.wide_events import log
 
 pytestmark = pytest.mark.unit
@@ -69,9 +70,13 @@ def _state(message: AIMessage) -> AgentState[Any]:
 
 
 def _accounting_env(config: dict[str, Any] = CONFIG):
+    # Pricing + the budget write moved behind record_llm_call (llm_metering);
+    # patch them there so these tests exercise the middleware against a fixed
+    # price and no real Redis/Mongo.
     return (
         patch.object(accounting, "_current_config", lambda: config),
-        patch.object(accounting, "calculate_token_cost", _fixed_cost),
+        patch.object(llm_metering, "calculate_token_cost", _fixed_cost),
+        patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
     )
 
 
@@ -81,8 +86,8 @@ async def _call(
     config: dict[str, Any] = CONFIG,
 ) -> dict[str, Any]:
     """Drive one before/after model pair and return the emitted model context."""
-    config_patch, cost_patch = _accounting_env(config)
-    with config_patch, cost_patch:
+    config_patch, cost_patch, usage_patch = _accounting_env(config)
+    with config_patch, cost_patch, usage_patch:
         await mw.abefore_model({"messages": []}, None)
         await mw.aafter_model(_state(message), None)
     return dict(log.get().get("model") or {})
@@ -283,7 +288,8 @@ async def test_cached_tokens_are_passed_to_the_pricing_call_not_discarded() -> N
     mw = LLMAccountingMiddleware(agent_name="a")
     with (
         patch.object(accounting, "_current_config", lambda: CONFIG),
-        patch.object(accounting, "calculate_token_cost", spy),
+        patch.object(llm_metering, "calculate_token_cost", spy),
+        patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
     ):
         await mw.aafter_model(_state(_ai(input_tokens=100, output_tokens=20, cached=40)), None)
 
@@ -302,7 +308,8 @@ async def test_a_pricing_failure_is_logged_and_charged_as_zero() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
     with (
         patch.object(accounting, "_current_config", lambda: CONFIG),
-        patch.object(accounting, "calculate_token_cost", broken),
+        patch.object(llm_metering, "calculate_token_cost", broken),
+        patch.object(llm_metering, "record_model_call_usage", AsyncMock()),
     ):
         await mw.aafter_model(_state(_ai()), None)
 
@@ -310,7 +317,7 @@ async def test_a_pricing_failure_is_logged_and_charged_as_zero() -> None:
     assert model["cost_usd"] == 0.0
     # The usage itself must still be recorded — only the price is unknown.
     assert model["input_tokens"] == 100
-    assert any("Token cost calc failed" in w["msg"] for w in log.get()["warnings"])
+    assert any("Token cost calc failed" in e["msg"] for e in log.get()["errors"])
 
 
 async def test_a_turn_with_no_model_response_emits_nothing() -> None:
@@ -330,8 +337,8 @@ async def test_state_exposed_as_an_object_is_read_through_its_attribute() -> Non
         messages: ClassVar[list[AIMessage]] = [_ai(input_tokens=7, output_tokens=3)]
 
     mw = LLMAccountingMiddleware(agent_name="a")
-    config_patch, cost_patch = _accounting_env()
-    with config_patch, cost_patch:
+    config_patch, cost_patch, usage_patch = _accounting_env()
+    with config_patch, cost_patch, usage_patch:
         await mw.aafter_model(ObjectState(), cast(Any, None))
 
     assert log.get()["model"]["input_tokens"] == 7
@@ -356,8 +363,13 @@ async def test_legacy_model_key_is_accepted_when_model_name_is_absent() -> None:
 async def test_handoff_latency_is_the_gap_between_the_two_hooks_in_ms() -> None:
     clock = iter([10.0, 10.25])  # 250ms apart
     mw = LLMAccountingMiddleware(agent_name="a")
-    config_patch, cost_patch = _accounting_env()
-    with config_patch, cost_patch, patch.object(time, "monotonic", lambda: next(clock)):
+    config_patch, cost_patch, usage_patch = _accounting_env()
+    with (
+        config_patch,
+        cost_patch,
+        usage_patch,
+        patch.object(time, "monotonic", lambda: next(clock)),
+    ):
         await mw.abefore_model({"messages": []}, None)
         await mw.aafter_model(_state(_ai()), None)
 
@@ -366,8 +378,8 @@ async def test_handoff_latency_is_the_gap_between_the_two_hooks_in_ms() -> None:
 
 async def test_handoff_latency_is_zero_when_the_pre_hook_never_ran() -> None:
     mw = LLMAccountingMiddleware(agent_name="a")
-    config_patch, cost_patch = _accounting_env()
-    with config_patch, cost_patch:
+    config_patch, cost_patch, usage_patch = _accounting_env()
+    with config_patch, cost_patch, usage_patch:
         await mw.aafter_model(_state(_ai()), None)
     assert log.get()["model"]["handoff_latency_ms"] == 0.0
 
@@ -537,10 +549,11 @@ async def test_the_llm_call_event_carries_the_per_step_attribution() -> None:
     # attribution is reconstructed from downstream.
     emitted: list[tuple[str, dict[str, Any]]] = []
     mw = LLMAccountingMiddleware(agent_name="executor_agent")
-    config_patch, cost_patch = _accounting_env()
+    config_patch, cost_patch, usage_patch = _accounting_env()
     with (
         config_patch,
         cost_patch,
+        usage_patch,
         patch.object(log, "info", lambda message, **kw: emitted.append((message, kw))),
     ):
         await mw.aafter_model(_state(_ai(input_tokens=100, output_tokens=20, cached=40)), None)

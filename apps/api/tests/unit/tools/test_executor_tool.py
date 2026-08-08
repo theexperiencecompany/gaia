@@ -30,6 +30,7 @@ from app.constants.streaming import WS_EVENT_EXECUTOR_CANCELLED
 from app.core.stream_manager import StreamManager
 from app.core.websocket_manager import websocket_manager
 from app.db.redis import redis_cache
+from app.utils import background_tasks
 
 
 def tool_function(tool_obj: BaseTool) -> Callable[..., Awaitable[str]]:
@@ -167,10 +168,10 @@ class TestCallExecutorDispatch:
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
         await run_call_executor(config=config_for(), task="x")
-        assert len(executor_tool._executor_tasks) == 1  # GC protection while in flight
+        assert len(background_tasks._background_tasks) == 1  # GC protection while in flight
 
         await drain_background_tasks()
-        assert executor_tool._executor_tasks == set()
+        assert background_tasks._background_tasks == set()
 
     async def test_active_todo_binding_reaches_the_executor_without_mutating_comms_config(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]

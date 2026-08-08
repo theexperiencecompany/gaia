@@ -69,7 +69,11 @@ async def decompose_research_queries(
             if valid:
                 return valid
     except Exception as e:
-        log.warning(f"{LogTag.TOOL} Query decomposition LLM call failed: {e}")
+        log.warning(
+            f"{LogTag.TOOL} Query decomposition LLM call failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     # Fallback: heuristic sub-queries matching n_queries contract (depth 1→3, 2→6, 3→9)
     base = [

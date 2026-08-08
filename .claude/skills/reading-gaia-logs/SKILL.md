@@ -74,7 +74,9 @@ Grafana comes pre-provisioned (`infra/docker/observability/grafana/provisioning/
 - Docker job: `container`, `service`, `service_name`, `stack`, `compose_project`, `stream`, `level`, `logger_name`
 - File job (`gaia_api_local`, for natively-run services shipped from mounted `apps/api/logs`): `service`, `service_name`, `container`, `level`, `logger_name`
 
-Service label values: `gaia-backend`, `arq_worker`, `voice-agent` (files) / `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot` (docker). High-cardinality fields (`user_id`, `path`, `trace_id`) are deliberately **not** labels — filter them with `| json` or a line filter `|=`.
+Service label values: `gaia-backend`, `arq_worker`, `voice-agent-worker` (files) / the same three plus `discord-bot`, `slack-bot`, `telegram-bot`, `whatsapp-bot`, `embedding-sidecar` (docker). High-cardinality fields (`user_id`, `path`, `trace_id`) are deliberately **not** labels — filter them with `| json` or a line filter `|=`.
+
+**`| json` drops arrays.** `errors[]` / `warnings[]` / `audit[]` yield no field at all, and they're absent (not empty) on a clean request — so `| errors != "[]"` matches *every* line. Reach in with an explicit JSON expression, or filter on `final_level`.
 
 **Via curl** (Loki HTTP API, `query_range`):
 ```bash
@@ -99,6 +101,16 @@ curl -sG "$LOKI/loki/api/v1/query_range" \
 **Just the canonical HTTP summaries / errors:**
 ```logql
 {service="gaia-backend"} | json | message="http_request" | status_code>=500
+```
+
+**Every failed request** (`final_level` folds in the HTTP status, so it also catches a 5xx that logged nothing):
+```logql
+{service="gaia-backend"} | json | message="http_request" | final_level=~"ERROR|CRITICAL"
+```
+
+**Requests that logged an error mid-flight** (even if they returned 200) — the second `| json` is what reaches into the array:
+```logql
+{service="gaia-backend"} | json | message="http_request" | json first_error="errors[0].msg" | first_error != ""
 ```
 
 **Slow requests** (`duration_ms` is on the `http_request` line):

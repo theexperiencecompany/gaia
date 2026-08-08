@@ -69,8 +69,8 @@ class SubagentJoinMiddleware(AgentMiddleware):
 
         dropped = [call.get("name", "") for call in response.tool_calls]
         log.info(
-            f"{LogTag.AGENT} Forcing {WAIT_FOR_SUBAGENTS_NAME}: model tried to end the turn "
-            "with uncollected background subagents",
+            f"{LogTag.AGENT} Forcing subagent collection: model tried to end the turn with uncollected background subagents",
+            forced_tool=WAIT_FOR_SUBAGENTS_NAME,
             dropped_calls=dropped,
             conversation_id=conversation_id,
         )

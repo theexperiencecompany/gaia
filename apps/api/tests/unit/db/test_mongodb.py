@@ -68,7 +68,12 @@ class TestMongoDBInit:
         error_calls = [c for c in mock_log.set.call_args_list if "error" in str(c)]
         assert len(error_calls) >= 1
         mock_log.error.assert_called_once()
-        assert "conn error" in mock_log.error.call_args[0][0]
+        # The message is a constant identifier; the exception rides in kwargs,
+        # so one event name stays queryable instead of sharding into thousands.
+        message, kwargs = mock_log.error.call_args[0][0], mock_log.error.call_args[1]
+        assert "conn error" not in message
+        assert kwargs["error"] == "conn error"
+        assert kwargs["error_type"] == "Exception"
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +363,37 @@ class TestGetAsyncCollection:
 # Indexes — create_all_indexes
 # ---------------------------------------------------------------------------
 
+# Must mirror the tasks gathered by create_all_indexes(). Any creator missing
+# here is left unpatched and runs against the real MongoDB, which makes these
+# tests order- and environment-dependent.
+_INDEX_CREATORS = [
+    "create_user_indexes",
+    "create_conversation_indexes",
+    "create_todo_indexes",
+    "create_project_indexes",
+    "create_note_indexes",
+    "create_file_indexes",
+    "create_mail_indexes",
+    "create_calendar_indexes",
+    "create_blog_indexes",
+    "create_notification_indexes",
+    "create_reminder_indexes",
+    "create_workflow_indexes",
+    "create_payment_indexes",
+    "create_processed_webhook_indexes",
+    "create_usage_indexes",
+    "create_ai_models_indexes",
+    "create_integration_indexes",
+    "create_user_integration_indexes",
+    "create_integration_instructions_indexes",
+    "create_device_token_indexes",
+    "create_installed_skills_indexes",
+    "create_workflow_execution_indexes",
+    "create_bot_session_indexes",
+    "create_e2b_sandbox_indexes",
+    "create_hil_approvals_indexes",
+]
+
 
 class TestCreateAllIndexes:
     """Tests for create_all_indexes() and its error handling."""
@@ -366,35 +402,8 @@ class TestCreateAllIndexes:
     async def test_create_all_indexes_success(self, mock_log: MagicMock) -> None:
         """All index creators succeeding should report full success."""
         # Patch all individual creators to be no-op coroutines
-        index_creators = [
-            "create_user_indexes",
-            "create_conversation_indexes",
-            "create_todo_indexes",
-            "create_project_indexes",
-            "create_note_indexes",
-            "create_file_indexes",
-            "create_mail_indexes",
-            "create_calendar_indexes",
-            "create_blog_indexes",
-            "create_notification_indexes",
-            "create_reminder_indexes",
-            "create_workflow_indexes",
-            "create_payment_indexes",
-            "create_processed_webhook_indexes",
-            "create_usage_indexes",
-            "create_ai_models_indexes",
-            "create_integration_indexes",
-            "create_user_integration_indexes",
-            "create_integration_instructions_indexes",
-            "create_device_token_indexes",
-            "create_installed_skills_indexes",
-            "create_workflow_execution_indexes",
-            "create_bot_session_indexes",
-            "create_e2b_sandbox_indexes",
-        ]
-
         patches = {}
-        for name in index_creators:
+        for name in _INDEX_CREATORS:
             patches[name] = patch(
                 f"app.db.mongodb.indexes.{name}",
                 new_callable=AsyncMock,
@@ -425,35 +434,8 @@ class TestCreateAllIndexes:
     @patch("app.db.mongodb.indexes.log")
     async def test_create_all_indexes_partial_failure(self, mock_log: MagicMock) -> None:
         """Some index creators failing should be reported as exceptions, not crash."""
-        index_creators = [
-            "create_user_indexes",
-            "create_conversation_indexes",
-            "create_todo_indexes",
-            "create_project_indexes",
-            "create_note_indexes",
-            "create_file_indexes",
-            "create_mail_indexes",
-            "create_calendar_indexes",
-            "create_blog_indexes",
-            "create_notification_indexes",
-            "create_reminder_indexes",
-            "create_workflow_indexes",
-            "create_payment_indexes",
-            "create_processed_webhook_indexes",
-            "create_usage_indexes",
-            "create_ai_models_indexes",
-            "create_integration_indexes",
-            "create_user_integration_indexes",
-            "create_integration_instructions_indexes",
-            "create_device_token_indexes",
-            "create_installed_skills_indexes",
-            "create_workflow_execution_indexes",
-            "create_bot_session_indexes",
-            "create_e2b_sandbox_indexes",
-        ]
-
         patches_dict = {}
-        for name in index_creators:
+        for name in _INDEX_CREATORS:
             patches_dict[name] = patch(
                 f"app.db.mongodb.indexes.{name}",
                 new_callable=AsyncMock,
@@ -472,12 +454,14 @@ class TestCreateAllIndexes:
             await create_all_indexes()
 
             # Should log the failure for users
-            error_msgs = [c[0][0] for c in mock_log.error.call_args_list]
-            assert any("users" in m for m in error_msgs)
+            failed_collections = [
+                c.kwargs["collection_name"] for c in mock_log.error.call_args_list
+            ]
+            assert failed_collections == ["users"]
 
-            # Should also log warning about failed collections
-            warning_msgs = [c[0][0] for c in mock_log.warning.call_args_list]
-            assert any("Failed" in m for m in warning_msgs)
+            # Should also log a warning summarising every failed collection
+            mock_log.warning.assert_called_once()
+            assert mock_log.warning.call_args.kwargs["failed_collections"] == ["users"]
         finally:
             for p in patches_dict.values():
                 p.stop()

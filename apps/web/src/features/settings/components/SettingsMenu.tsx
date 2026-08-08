@@ -95,6 +95,14 @@ export default function SettingsMenu({
   const supportMenu = useNestedMenu();
   const downloadMenu = useNestedMenu();
 
+  // Maps a submenu item's key to the nested-menu controller driving its flyout.
+  const submenuByKey: Record<string, ReturnType<typeof useNestedMenu>> = {
+    "whats-new": whatsNewMenu,
+    download: downloadMenu,
+    resources: resourcesMenu,
+    support: supportMenu,
+  };
+
   const { currentPlatform, desktopPlatforms } = usePlatformDetection();
   const { openShortcutsModal } = useKeyboardShortcuts();
 
@@ -229,7 +237,7 @@ export default function SettingsMenu({
       showDivider: true,
       items: [
         ...settingsPageItems.filter((item) =>
-          ["memory", "linked-accounts"].includes(item.key),
+          ["memory", "linked-accounts", "usage"].includes(item.key),
         ),
         {
           key: "keyboard_shortcuts",
@@ -321,14 +329,7 @@ export default function SettingsMenu({
 
                 // Handle nested menus (What's new, Download, Resources, Support)
                 if (item.hasSubmenu) {
-                  const menu =
-                    item.key === "whats-new"
-                      ? whatsNewMenu
-                      : item.key === "download"
-                        ? downloadMenu
-                        : item.key === "resources"
-                          ? resourcesMenu
-                          : supportMenu;
+                  const menu = submenuByKey[item.key] ?? supportMenu;
 
                   return (
                     <DropdownItem

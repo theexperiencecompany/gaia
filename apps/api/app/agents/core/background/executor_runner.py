@@ -16,7 +16,6 @@ The executor:busy Redis key prevents concurrent executor spawns per
 conversation. TTL of 30 minutes is a safety net — released explicitly.
 """
 
-import asyncio
 from typing import Any, NamedTuple
 
 from langgraph.errors import GraphRecursionError
@@ -64,10 +63,12 @@ from app.services.hil.approvals_store import (
 )
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.utils.agent_utils import format_sse_data
-from shared.py.wide_events import log
+from app.utils.background_tasks import spawn_background_task
+from shared.py.wide_events import get_trace_id, log, wide_task
 
-# Prevent GC of background tasks spawned from the queue
-_queued_executor_tasks: set[asyncio.Task] = set()
+#: Task name for a queued executor run. Tests drain by this name to wait out
+#: exactly the runs a turn handed off, not every background task in the process.
+QUEUED_EXECUTOR_TASK_NAME = "queued-executor-run"
 
 
 @traceable(name="executor_background", run_type="chain")
@@ -94,31 +95,46 @@ async def run_executor_background(
     Inherits `langfuse_trace_id` from the parent's `configurable` so this run's
     LLM/tool spans land on the same Langfuse trace as comms.
     """
-    result_text = ""
-    result_type = "final"
+    # This task outlives the spawning request/turn (queued, resumed and
+    # post-timeout runs), so it needs its own wide-event boundary or every
+    # log.set() in the run (LLM accounting included) is silently discarded.
+    # get_trace_id() reads the spawner's trace_id from the task's copied
+    # context, correlating this event with the request that dispatched it.
+    async with wide_task(
+        "executor_run",
+        trace_id=get_trace_id() or None,
+        conversation_id=run.conversation_id,
+        stream_id=run.stream_id,
+        task_id=run.task_id,
+    ):
+        result_text = ""
+        result_type = "final"
 
-    try:
-        result = await _execute_executor(task, configurable, run.stream_id, resume)
-        result_text, result_type = result.text, result.type
-        if result.paused_on and not await _record_pause(run, task, configurable, result.paused_on):
-            # The pause is checkpointed but we could not record how to restart it, so no
-            # decision can ever resume this thread. Finalizing it as paused would hold the
-            # conversation's busy lock for its full TTL waiting for a resume that cannot
-            # come. Fail the run instead: the lock is released, queued work drains, and the
-            # sweep closes the orphaned approval.
-            result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
-        log.info(
-            f"{LogTag.AGENT} Background executor {result_type}",
-            task_id=run.task_id,
-            stream_id=run.stream_id,
-        )
-    finally:
-        await _finalize_executor_run(run, task, result_text, result_type)
-        if resume is not None:
-            # This run held the conversation's resume slot (claimed at dispatch).
-            # Freeing it AFTER finalize means the next decision can dispatch only
-            # once this run's pause/completion bookkeeping is fully written.
-            await release_resume_dispatch(run.conversation_id)
+        try:
+            result = await _execute_executor(task, configurable, run.stream_id, resume)
+            result_text, result_type = result.text, result.type
+            if result.paused_on and not await _record_pause(
+                run, task, configurable, result.paused_on
+            ):
+                # The pause is checkpointed but we could not record how to restart it, so no
+                # decision can ever resume this thread. Finalizing it as paused would hold the
+                # conversation's busy lock for its full TTL waiting for a resume that cannot
+                # come. Fail the run instead: the lock is released, queued work drains, and the
+                # sweep closes the orphaned approval.
+                result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
+            log.info(
+                f"{LogTag.AGENT} Background executor finished",
+                result_type=result_type,
+                task_id=run.task_id,
+                stream_id=run.stream_id,
+            )
+        finally:
+            await _finalize_executor_run(run, task, result_text, result_type)
+            if resume is not None:
+                # This run held the conversation's resume slot (claimed at dispatch).
+                # Freeing it AFTER finalize means the next decision can dispatch only
+                # once this run's pause/completion bookkeeping is fully written.
+                await release_resume_dispatch(run.conversation_id)
 
 
 async def _record_pause(
@@ -458,15 +474,14 @@ async def _hand_off_queue(run: ExecutorRun) -> PreparedQueuedTask | None:
 
 def _spawn_queued_run(run: ExecutorRun, prepared: PreparedQueuedTask) -> None:
     """Spawn the next queued run as a GC-tracked background task."""
-    bg_task = asyncio.create_task(
+    spawn_background_task(
         run_executor_background(
             run=prepared.run,
             task=prepared.task,
             configurable=prepared.configurable,
-        )
+        ),
+        name=QUEUED_EXECUTOR_TASK_NAME,
     )
-    _queued_executor_tasks.add(bg_task)
-    bg_task.add_done_callback(_queued_executor_tasks.discard)
 
     log.info(
         f"{LogTag.AGENT} Queued executor task spawned",

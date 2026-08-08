@@ -4,6 +4,10 @@
  * Shared utilities for GAIA TypeScript/JavaScript applications.
  */
 
+// `./analytics` is intentionally NOT re-exported here. It pulls in
+// `posthog-node` which imports Node-only modules (`path`, `fs`) that
+// Metro/React Native cannot resolve. Bot consumers should import it
+// via the subpath: `import { Analytics } from "@gaia/shared/analytics"`.
 export type {
   AddPublicIntegrationParams,
   AddToWorkspaceParams,
@@ -61,10 +65,7 @@ export type {
   WorkflowTriggerOptionsParams,
   WorkflowUpdateParams,
 } from "./api";
-// `./analytics` is intentionally NOT re-exported here. It pulls in
-// `posthog-node` which imports Node-only modules (`path`, `fs`) that
-// Metro/React Native cannot resolve. Bot consumers should import it
-// via the subpath: `import { Analytics } from "@gaia/shared/analytics"`.
+
 export {
   ApiError,
   buildIntegrationUrl,
@@ -92,10 +93,12 @@ export type {
   BotFileData,
   BotLogFields,
   BotLogger,
+  BotLogLevel,
   BotSubcommand,
   BotTodo,
   BotTodoListResponse,
   BotUserContext,
+  BotWideEventFields,
   BotWorkflow,
   BotWorkflowExecutionRequest,
   BotWorkflowExecutionResponse,
@@ -119,6 +122,8 @@ export type {
   SettingsResponse,
   StreamingOptions,
   UnauthenticatedSettingsResponse,
+  WideEventBoundaryFields,
+  WideEventEntry,
 } from "./bots";
 export {
   allCommands,
@@ -137,6 +142,7 @@ export {
   createBotLogger,
   dispatchTodoSubcommand,
   dispatchWorkflowSubcommand,
+  emitBotLogLine,
   escapeHtml,
   escapeHtmlAttr,
   extensionForMime,
@@ -183,6 +189,7 @@ export {
   processBotMedia,
   renderForPlatform,
   richMessageToMarkdown,
+  runBotProcess,
   STREAMING_DEFAULTS,
   sanitizeErrorForLog,
   settingsCommand,
@@ -192,6 +199,9 @@ export {
   truncateResponse,
   unlinkCommand,
   unsupportedMediaMessage,
+  WIDE_EVENT_MESSAGE,
+  wideLog,
+  withWideEvent,
   workflowCommand,
 } from "./bots";
 export type {
@@ -313,6 +323,10 @@ export {
   REQUIRED_DOC_COMMANDS,
   REQUIRED_INSTALL_COMMANDS,
 } from "./cli";
+export {
+  USAGE_DANGER_THRESHOLD,
+  USAGE_WARN_THRESHOLD,
+} from "./constants/usage";
 export type {
   DesktopAppIconOption,
   DesktopMediaAccessStatus,
@@ -379,6 +393,8 @@ export {
 } from "./todos";
 export { formatToolDueDate, groupEventsByDate } from "./tool-utils";
 export type {
+  ActivityDay,
+  BudgetWindow,
   BulkMoveRequest,
   ChannelPlatform,
   ChannelPreferences,
@@ -451,13 +467,13 @@ export type {
   TodoLabel,
   TodoListResponse,
   TodoUpdate,
-  TokenUsage,
-  TokenUsagePeriod,
   Tool,
   ToolCategory,
   ToolsByCategoryResponse,
   ToolsListResponse,
   TriggerConfig,
+  UsageActivity,
+  UsageBudget,
   UsagePeriod,
   UsageSummary,
   UserIntegration,
@@ -504,10 +520,13 @@ export {
   formatCompactNumber,
   formatCurrency,
   formatDate,
+  formatDateUTC,
   formatDueDate,
   formatDuration,
+  formatFeatureName,
   formatFileSize,
   formatNumber,
+  formatPlanName,
   formatRelativeDate,
   formatRelativeTime,
   formatRunCount,

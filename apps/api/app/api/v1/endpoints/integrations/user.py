@@ -51,10 +51,16 @@ async def add_integration_to_workspace(
             connection_status=user_integration.status,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error adding integration: {e}")
-        raise HTTPException(status_code=500, detail="Failed to add integration")
+        log.error(
+            f"{LogTag.INTEGRATION} Error adding integration",
+            integration_id=request.integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to add integration") from e
 
 
 @router.delete("/{integration_id}", response_model=IntegrationSuccessResponse)
@@ -81,8 +87,14 @@ async def remove_integration_from_workspace(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error removing integration: {e}")
-        raise HTTPException(status_code=500, detail="Failed to remove integration")
+        log.error(
+            f"{LogTag.INTEGRATION} Error removing integration",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to remove integration") from e
 
 
 @router.get(
@@ -120,8 +132,16 @@ async def get_integration_instructions(
             updated_at=record.updated_at,
         )
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error fetching integration instructions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch integration instructions")
+        log.error(
+            f"{LogTag.INTEGRATION} Error fetching integration instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to fetch integration instructions"
+        ) from e
 
 
 @router.put(
@@ -163,7 +183,15 @@ async def update_integration_instructions(
     except HTTPException:
         raise
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Error updating integration instructions: {e}")
-        raise HTTPException(status_code=500, detail="Failed to update integration instructions")
+        log.error(
+            f"{LogTag.INTEGRATION} Error updating integration instructions",
+            integration_id=integration_id,
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(
+            status_code=500, detail="Failed to update integration instructions"
+        ) from e

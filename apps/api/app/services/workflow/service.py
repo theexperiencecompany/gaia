@@ -127,7 +127,8 @@ class WorkflowService:
         # Only handle integration type triggers
         if trigger_config.type != TriggerType.INTEGRATION:
             log.debug(
-                f"{LogTag.WORKFLOW} Skipping trigger registration: type={trigger_config.type} is not INTEGRATION"
+                f"{LogTag.WORKFLOW} Skipping trigger registration: trigger type is not INTEGRATION",
+                type=trigger_config.type,
             )
             return [], True
 
@@ -147,8 +148,9 @@ class WorkflowService:
             connected = await check_integration_status(integration_id, user_id)
             if not connected:
                 log.info(
-                    f"{LogTag.WORKFLOW} Skipping trigger registration: integration "
-                    f"'{integration_id}' not connected for user {user_id}"
+                    f"{LogTag.WORKFLOW} Skipping trigger registration: integration not connected for user",
+                    integration_id=integration_id,
+                    user_id=user_id,
                 )
                 return [], False
 
@@ -192,7 +194,10 @@ class WorkflowService:
                 # request-resolved user timezone only when the schedule didn't carry
                 # one (e.g. the agent-created path), then UTC.
                 timezone_to_use = trigger_config.timezone or user_timezone or "UTC"
-                log.info(f"{LogTag.WORKFLOW} Creating workflow with timezone: {timezone_to_use}")
+                log.info(
+                    f"{LogTag.WORKFLOW} Creating workflow with timezone",
+                    timezone_to_use=timezone_to_use,
+                )
                 trigger_config.timezone = timezone_to_use
                 if trigger_config.cron_expression:
                     trigger_config.update_next_run(user_timezone=timezone_to_use)
@@ -254,7 +259,11 @@ class WorkflowService:
                     "step_count": len(workflow_steps),
                 }
             )
-            log.info(f"{LogTag.WORKFLOW} Created pending workflow {workflow_id} for user {user_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Created pending workflow for user",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
 
             # Store in ChromaDB for semantic search (non-critical, don't fail on error)
             try:
@@ -279,7 +288,12 @@ class WorkflowService:
                     ids=[str(workflow.id)],
                 )
             except Exception as e:
-                log.warning(f"{LogTag.WORKFLOW} Failed to store workflow in ChromaDB: {e}")
+                log.warning(
+                    f"{LogTag.WORKFLOW} Failed to store workflow in ChromaDB",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
 
             if not workflow.id:
                 raise ValueError("Workflow ID is required")
@@ -310,8 +324,9 @@ class WorkflowService:
                     }
                 )
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow {workflow.id} created inactive — integration for "
-                    f"trigger '{trigger_config.trigger_name}' not connected"
+                    f"{LogTag.WORKFLOW} Workflow created inactive — integration for trigger not connected",
+                    id=workflow.id,
+                    trigger_name=trigger_config.trigger_name,
                 )
             else:
                 # Step 3: Activate workflow and store trigger IDs. enabled mirrors
@@ -336,7 +351,9 @@ class WorkflowService:
                     }
                 )
                 log.info(
-                    f"{LogTag.WORKFLOW} Activated workflow {workflow.id} with {len(trigger_ids)} triggers"
+                    f"{LogTag.WORKFLOW} Activated workflow with triggers",
+                    id=workflow.id,
+                    trigger_ids_count=len(trigger_ids),
                 )
 
                 # Schedule the workflow if it's a scheduled type (activated here).
@@ -360,30 +377,48 @@ class WorkflowService:
                 success = await WorkflowQueueService.queue_workflow_generation(workflow.id, user_id)
                 if not success:
                     log.error(
-                        f"{LogTag.WORKFLOW} Failed to queue workflow generation for {workflow.id}"
+                        f"{LogTag.WORKFLOW} Failed to queue workflow generation for",
+                        id=workflow.id,
+                        user_id=user_id,
                     )
             else:
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow {workflow.id} created with {len(request.steps)} pre-existing steps, skipping generation"
+                    f"{LogTag.WORKFLOW} Workflow created with pre-existing steps, skipping generation",
+                    id=workflow.id,
+                    steps_count=len(request.steps),
                 )
 
             return workflow
 
         except TriggerRegistrationError as e:
             # Saga compensation: delete the pending workflow
-            log.error(f"{LogTag.WORKFLOW} Trigger registration failed, rolling back workflow: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Trigger registration failed, rolling back workflow",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             if workflow_id:
                 try:
                     await workflow_repository.delete_for_user(workflow_id, user_id)
-                    log.info(f"{LogTag.WORKFLOW} Rolled back workflow {workflow_id}")
+                    log.info(f"{LogTag.WORKFLOW} Rolled back workflow", workflow_id=workflow_id)
                 except Exception as delete_error:
                     log.error(
-                        f"{LogTag.WORKFLOW} Failed to rollback workflow {workflow_id}: {delete_error}"
+                        f"{LogTag.WORKFLOW} Failed to rollback workflow",
+                        workflow_id=workflow_id,
+                        error=str(delete_error),
+                        error_type=type(delete_error).__name__,
+                        user_id=user_id,
                     )
             raise
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error creating workflow: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error creating workflow",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             # For other errors, still try to cleanup if workflow was created
             if workflow_id:
                 try:
@@ -395,10 +430,17 @@ class WorkflowService:
                                 user_id, trigger_name, trigger_ids, workflow_id
                             )
                     await workflow_repository.delete_for_user(workflow_id, user_id)
-                    log.info(f"{LogTag.WORKFLOW} Rolled back workflow {workflow_id} after error")
+                    log.info(
+                        f"{LogTag.WORKFLOW} Rolled back workflow after error",
+                        workflow_id=workflow_id,
+                    )
                 except Exception as cleanup_error:
                     log.error(
-                        f"{LogTag.WORKFLOW} Cleanup failed for {workflow_id}: {cleanup_error}"
+                        f"{LogTag.WORKFLOW} Cleanup failed for",
+                        workflow_id=workflow_id,
+                        error=str(cleanup_error),
+                        error_type=type(cleanup_error).__name__,
+                        user_id=user_id,
                     )
             raise
 
@@ -417,7 +459,13 @@ class WorkflowService:
             return workflow
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error getting workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error getting workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -472,12 +520,20 @@ class WorkflowService:
                     ) = build_integration_refs(required, status_map)
 
             log.debug(
-                f"{LogTag.WORKFLOW} Retrieved {len(workflows)}/{total} workflows for user {user_id}"
+                f"{LogTag.WORKFLOW} Retrieved / workflows for user",
+                workflows_count=len(workflows),
+                total=total,
+                user_id=user_id,
             )
             return workflows, total
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error listing workflows for user {user_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error listing workflows for user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
     @staticmethod
@@ -550,7 +606,9 @@ class WorkflowService:
                         or "UTC"
                     )
                     log.info(
-                        f"{LogTag.WORKFLOW} Updating workflow {workflow_id} with timezone: {timezone_to_use}"
+                        f"{LogTag.WORKFLOW} Updating workflow with timezone",
+                        workflow_id=workflow_id,
+                        timezone_to_use=timezone_to_use,
                     )
                     new_trigger_config.timezone = timezone_to_use
                     if new_trigger_config.cron_expression:
@@ -645,8 +703,12 @@ class WorkflowService:
                 # Compensate: unregister newly created triggers so they don't become orphaned
                 if registered_trigger_ids is not None:
                     log.error(
-                        f"{LogTag.WORKFLOW} MongoDB update failed for workflow {workflow_id}; "
-                        f"unregistering {len(registered_trigger_ids)} newly registered triggers"
+                        f"{LogTag.WORKFLOW} MongoDB update failed for workflow ; unregistering newly registered triggers",
+                        workflow_id=workflow_id,
+                        registered_trigger_ids_count=len(registered_trigger_ids),
+                        error=str(db_err),
+                        error_type=type(db_err).__name__,
+                        user_id=user_id,
                     )
                     await TriggerService.unregister_triggers(
                         user_id,
@@ -659,11 +721,21 @@ class WorkflowService:
             if updated is None:
                 return None
 
-            log.info(f"{LogTag.WORKFLOW} Updated workflow {workflow_id} for user {user_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Updated workflow for user",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
             return await WorkflowService.get_workflow(workflow_id, user_id)
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error updating workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error updating workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -688,7 +760,9 @@ class WorkflowService:
                         )
                     else:
                         log.warning(
-                            f"{LogTag.WORKFLOW} No trigger_name found for workflow {workflow_id}, cannot unregister triggers"
+                            f"{LogTag.WORKFLOW} No trigger_name found for workflow, cannot unregister triggers",
+                            workflow_id=workflow_id,
+                            user_id=user_id,
                         )
 
             deleted = await workflow_repository.delete_for_user(workflow_id, user_id)
@@ -697,11 +771,21 @@ class WorkflowService:
                 return False
 
             log.set(workflow={"id": workflow_id, "status": "deleted"})
-            log.info(f"{LogTag.WORKFLOW} Deleted workflow {workflow_id} for user {user_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Deleted workflow for user",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
             return True
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error deleting workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error deleting workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -743,7 +827,9 @@ class WorkflowService:
                 }
             )
             log.info(
-                f"{LogTag.WORKFLOW} Started execution {execution_id} for workflow {workflow_id}"
+                f"{LogTag.WORKFLOW} Started execution for workflow",
+                execution_id=execution_id,
+                workflow_id=workflow_id,
             )
 
             return WorkflowExecutionResponse(
@@ -752,7 +838,13 @@ class WorkflowService:
             )
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error executing workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error executing workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -781,7 +873,13 @@ class WorkflowService:
             )
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error getting workflow status {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error getting workflow status",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -843,7 +941,9 @@ class WorkflowService:
 
             if trigger_ids:
                 log.info(
-                    f"{LogTag.WORKFLOW} Registered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
+                    f"{LogTag.WORKFLOW} Registered Composio triggers for workflow",
+                    trigger_ids_count=len(trigger_ids),
+                    workflow_id=workflow_id,
                 )
 
             # Get trigger_name for potential rollback
@@ -886,12 +986,22 @@ class WorkflowService:
                 )
 
             log.set(workflow={"id": workflow_id, "status": "activated"})
-            log.info(f"{LogTag.WORKFLOW} Activated workflow {workflow_id} for user {user_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Activated workflow for user",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
             return updated_workflow
 
         except TriggerRegistrationError as e:
             # Trigger registration failed - workflow remains inactive
-            log.error(f"{LogTag.WORKFLOW} Failed to activate workflow {workflow_id}: {e}")
+            log.error(
+                f"{LogTag.WORKFLOW} Failed to activate workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
         except ValueError:
@@ -900,7 +1010,13 @@ class WorkflowService:
             raise
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error activating workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error activating workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -927,11 +1043,15 @@ class WorkflowService:
                         user_id, trigger_name, trigger_ids, workflow_id
                     )
                     log.info(
-                        f"{LogTag.WORKFLOW} Unregistered {len(trigger_ids)} Composio triggers for workflow {workflow_id}"
+                        f"{LogTag.WORKFLOW} Unregistered Composio triggers for workflow",
+                        trigger_ids_count=len(trigger_ids),
+                        workflow_id=workflow_id,
                     )
                 else:
                     log.warning(
-                        f"{LogTag.WORKFLOW} No trigger_name found for workflow {workflow_id}, cannot unregister triggers"
+                        f"{LogTag.WORKFLOW} No trigger_name found for workflow, cannot unregister triggers",
+                        workflow_id=workflow_id,
+                        user_id=user_id,
                     )
 
             # Update trigger to disabled and clear trigger IDs
@@ -941,11 +1061,21 @@ class WorkflowService:
                 return None
 
             log.set(workflow={"id": workflow_id, "status": "deactivated"})
-            log.info(f"{LogTag.WORKFLOW} Deactivated workflow {workflow_id} for user {user_id}")
+            log.info(
+                f"{LogTag.WORKFLOW} Deactivated workflow for user",
+                workflow_id=workflow_id,
+                user_id=user_id,
+            )
             return await WorkflowService.get_workflow(workflow_id, user_id)
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error deactivating workflow {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error deactivating workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -991,8 +1121,9 @@ class WorkflowService:
 
             if missing:
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
-                    f"missing step integrations: {[m.id for m in missing]}"
+                    f"{LogTag.WORKFLOW} Workflow kept inactive — missing step integrations",
+                    workflow_id=workflow_id,
+                    missing_integrations=[m.id for m in missing],
                 )
 
             result = await workflow_repository.set_steps(
@@ -1012,7 +1143,13 @@ class WorkflowService:
             return None
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error regenerating workflow steps {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error regenerating workflow steps",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -1026,18 +1163,26 @@ class WorkflowService:
             )
             if success:
                 log.debug(
-                    f"{LogTag.WORKFLOW} Updated execution count for workflow {workflow_id}: total +1, successful +{1 if is_successful else 0}"
+                    f"{LogTag.WORKFLOW} Updated execution count for workflow",
+                    workflow_id=workflow_id,
+                    successful_increment=1 if is_successful else 0,
                 )
             else:
                 log.warning(
-                    f"{LogTag.WORKFLOW} Failed to update execution count - workflow not found: {workflow_id}"
+                    f"{LogTag.WORKFLOW} Failed to update execution count - workflow not found",
+                    workflow_id=workflow_id,
+                    user_id=user_id,
                 )
 
             return success
 
         except Exception as e:
             log.error(
-                f"{LogTag.WORKFLOW} Error updating execution count for workflow {workflow_id}: {e!s}"
+                f"{LogTag.WORKFLOW} Error updating execution count for workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
             )
             return False
 
@@ -1060,7 +1205,12 @@ class WorkflowService:
             return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error fetching community workflows: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error fetching community workflows",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             raise
 
     @staticmethod
@@ -1119,7 +1269,11 @@ class WorkflowService:
             return PublicWorkflowsResponse(workflows=formatted_workflows, total=total)
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error fetching explore workflows: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error fetching explore workflows",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
     @staticmethod
@@ -1157,8 +1311,9 @@ class WorkflowService:
             if missing:
                 # Keep deactivated when step integrations are not connected.
                 log.info(
-                    f"{LogTag.WORKFLOW} Workflow {workflow_id} kept inactive — "
-                    f"missing step integrations: {[m.id for m in missing]}"
+                    f"{LogTag.WORKFLOW} Workflow kept inactive — missing step integrations",
+                    workflow_id=workflow_id,
+                    missing_integrations=[m.id for m in missing],
                 )
 
             await workflow_repository.set_steps(
@@ -1166,12 +1321,22 @@ class WorkflowService:
             )
 
         except Exception as e:
-            log.error(f"{LogTag.WORKFLOW} Error generating workflow steps for {workflow_id}: {e!s}")
+            log.error(
+                f"{LogTag.WORKFLOW} Error generating workflow steps for",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             # Persist the error message so the status endpoint can report why it failed
             try:
                 await workflow_repository.set_error_message(workflow_id, user_id, str(e))
             except Exception as db_err:
                 log.error(
-                    f"{LogTag.WORKFLOW} Failed to persist error_message for {workflow_id}: {db_err}"
+                    f"{LogTag.WORKFLOW} Failed to persist error_message for",
+                    workflow_id=workflow_id,
+                    error=str(db_err),
+                    error_type=type(db_err).__name__,
+                    user_id=user_id,
                 )
             await handle_workflow_error(workflow_id, user_id, e)

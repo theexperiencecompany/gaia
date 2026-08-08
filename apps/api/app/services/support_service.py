@@ -47,6 +47,9 @@ async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
                 support_index = url_parts.index("support")
                 if support_index + 1 < len(url_parts):
                     filename_with_ext = url_parts[support_index + 1]
+                    # The file is named {ticket_id}_{original_name}; the ticket
+                    # id rides in the URL so a failed delete stays attributable.
+                    ticket_id = filename_with_ext.split("_", 1)[0]
                     # Remove file extension from public_id
                     public_id = f"support/{filename_with_ext.rsplit('.', 1)[0]}"
 
@@ -54,11 +57,20 @@ async def _delete_uploaded_files(attachment_urls: list[str]) -> None:
                     # other request on this worker waits out the round trip.
                     result = await asyncio.to_thread(cloudinary.uploader.destroy, public_id)
                     if result.get("result") != "ok":
-                        log.warning(f"Failed to delete file from Cloudinary: {public_id}")
+                        log.warning(
+                            "Failed to delete file from Cloudinary",
+                            public_id=public_id,
+                        )
                     else:
-                        log.info(f"Successfully deleted file from Cloudinary: {public_id}")
+                        log.info("Successfully deleted file from Cloudinary", public_id=public_id)
         except Exception as e:
-            log.error(f"Error deleting file from Cloudinary {url}: {e!s}")
+            log.error(
+                "Error deleting file from Cloudinary",
+                url=url,
+                ticket_id=ticket_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
 
 async def _upload_single_attachment(
@@ -110,7 +122,13 @@ async def _upload_single_attachment(
         return file_url, attachment_info
 
     except Exception as e:
-        log.error(f"Failed to upload image {attachment.filename}: {e!s}")
+        log.error(
+            "Failed to upload image",
+            filename=attachment.filename,
+            error=str(e),
+            error_type=type(e).__name__,
+            ticket_id=ticket_id,
+        )
         raise HTTPException(
             status_code=500,
             detail=f"Failed to upload image {attachment.filename}",
@@ -127,7 +145,7 @@ async def create_support_request(
 
     Atomic: if email sending fails, the support request is deleted.
     """
-    log.set(service="support_service", user_id=user_id, user_email=user_email)
+    log.set(component="support_service", user_id=user_id, user_email=user_email)
     request_id = None
     try:
         # Generate unique IDs
@@ -157,7 +175,7 @@ async def create_support_request(
         # Store in database first
         created = await support_request_repository.create(support_request)
 
-        log.info(f"Support request created in database: {ticket_id}")
+        log.info("Support request created in database", ticket_id=ticket_id)
 
         # Try to send email notifications
         try:
@@ -174,19 +192,40 @@ async def create_support_request(
                     attachments=[],
                 )
             )
-            log.info(f"Email notifications sent successfully for ticket: {ticket_id}")
+            log.info("Email notifications sent successfully for ticket", ticket_id=ticket_id)
         except Exception as email_error:
             # Email sending failed - rollback the database transaction
-            log.error(f"Email sending failed for ticket {ticket_id}: {email_error!s}")
+            log.error(
+                "Email sending failed for ticket",
+                ticket_id=ticket_id,
+                error=str(email_error),
+                error_type=type(email_error).__name__,
+                user_id=user_id,
+            )
 
             try:
                 # Delete the support request from database
                 if await support_request_repository.delete(request_id, user_id=user_id):
-                    log.info(f"Successfully rolled back support request {ticket_id} from database")
+                    log.info(
+                        "Successfully rolled back support request from database",
+                        ticket_id=ticket_id,
+                    )
                 else:
-                    log.error(f"Failed to rollback support request {ticket_id} from database")
+                    log.error(
+                        "Failed to rollback support request from database",
+                        ticket_id=ticket_id,
+                        error=str(email_error),
+                        error_type=type(email_error).__name__,
+                        user_id=user_id,
+                    )
             except Exception as rollback_error:
-                log.error(f"Error during rollback for ticket {ticket_id}: {rollback_error!s}")
+                log.error(
+                    "Error during rollback for ticket",
+                    ticket_id=ticket_id,
+                    error=str(rollback_error),
+                    error_type=type(rollback_error).__name__,
+                    user_id=user_id,
+                )
 
             # Raise the original email error
             raise HTTPException(
@@ -197,7 +236,9 @@ async def create_support_request(
         # Create response object
         support_request_response = SupportRequestResponse.model_validate(created.model_dump())
 
-        log.info(f"Support request created successfully: {ticket_id} for user {user_id}")
+        log.info(
+            "Support request created successfully: for user", ticket_id=ticket_id, user_id=user_id
+        )
 
         return SupportRequestSubmissionResponse(
             success=True,
@@ -214,11 +255,24 @@ async def create_support_request(
         if request_id:
             try:
                 await support_request_repository.delete(request_id, user_id=user_id)
-                log.info(f"Rolled back support request {request_id} due to unexpected error")
+                log.info(
+                    "Rolled back support request due to unexpected error", request_id=request_id
+                )
             except Exception as rollback_error:
-                log.error(f"Error during rollback for request {request_id}: {rollback_error!s}")
+                log.error(
+                    "Error during rollback for request",
+                    request_id=request_id,
+                    error=str(rollback_error),
+                    error_type=type(rollback_error).__name__,
+                    user_id=user_id,
+                )
 
-        log.error(f"Unexpected error creating support request: {e!s}")
+        log.error(
+            "Unexpected error creating support request",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(status_code=500, detail=f"Failed to create support request: {e!s}")
 
 
@@ -234,7 +288,7 @@ async def create_support_request_with_attachments(
     Atomic: if email sending fails, the support request and uploaded files are deleted.
     """
     log.set(
-        service="support_service",
+        component="support_service",
         user_id=user_id,
         user_email=user_email,
         attachment_count=len(attachments),
@@ -292,14 +346,18 @@ async def create_support_request_with_attachments(
                     processed_attachments.append(attachment_metadata)
 
                 log.info(
-                    f"Successfully uploaded {len(attachment_urls)} files in parallel for ticket {ticket_id}"
+                    "Successfully uploaded files in parallel for ticket",
+                    attachment_urls_count=len(attachment_urls),
+                    ticket_id=ticket_id,
                 )
 
             except Exception:
                 # Clean up any files that were successfully uploaded before the failure
                 if attachment_urls:
                     log.info(
-                        f"Cleaning up {len(attachment_urls)} partially uploaded files for ticket {ticket_id}"
+                        "Cleaning up partially uploaded files for ticket",
+                        attachment_urls_count=len(attachment_urls),
+                        ticket_id=ticket_id,
                     )
                     await _delete_uploaded_files(attachment_urls)
 
@@ -329,7 +387,7 @@ async def create_support_request_with_attachments(
         # Store in database first
         created = await support_request_repository.create(support_request)
 
-        log.info(f"Support request with attachments created in database: {ticket_id}")
+        log.info("Support request with attachments created in database", ticket_id=ticket_id)
 
         # Try to send email notifications
         try:
@@ -346,32 +404,57 @@ async def create_support_request_with_attachments(
             )
 
             await _send_support_email_notifications(notification_data)
-            log.info(f"Email notifications sent successfully for ticket: {ticket_id}")
+            log.info("Email notifications sent successfully for ticket", ticket_id=ticket_id)
         except Exception as email_error:
             # Email sending failed - rollback everything
-            log.error(f"Email sending failed for ticket {ticket_id}: {email_error!s}")
+            log.error(
+                "Email sending failed for ticket",
+                ticket_id=ticket_id,
+                error=str(email_error),
+                error_type=type(email_error).__name__,
+                user_id=user_id,
+            )
 
             # Rollback: Delete uploaded files
             if attachment_urls:
                 try:
                     await _delete_uploaded_files(attachment_urls)
                     log.info(
-                        f"Successfully cleaned up {len(attachment_urls)} uploaded files for ticket {ticket_id}"
+                        "Successfully cleaned up uploaded files for ticket",
+                        attachment_urls_count=len(attachment_urls),
+                        ticket_id=ticket_id,
                     )
                 except Exception as cleanup_error:
                     log.error(
-                        f"Error cleaning up uploaded files for ticket {ticket_id}: {cleanup_error!s}"
+                        "Error cleaning up uploaded files for ticket",
+                        ticket_id=ticket_id,
+                        error=str(cleanup_error),
+                        error_type=type(cleanup_error).__name__,
+                        user_id=user_id,
                     )
 
             # Rollback: Delete the support request from database
             try:
                 if await support_request_repository.delete(request_id, user_id=user_id):
-                    log.info(f"Successfully rolled back support request {ticket_id} from database")
+                    log.info(
+                        "Successfully rolled back support request from database",
+                        ticket_id=ticket_id,
+                    )
                 else:
-                    log.error(f"Failed to rollback support request {ticket_id} from database")
+                    log.error(
+                        "Failed to rollback support request from database",
+                        ticket_id=ticket_id,
+                        error=str(email_error),
+                        error_type=type(email_error).__name__,
+                        user_id=user_id,
+                    )
             except Exception as rollback_error:
                 log.error(
-                    f"Error during database rollback for ticket {ticket_id}: {rollback_error!s}"
+                    "Error during database rollback for ticket",
+                    ticket_id=ticket_id,
+                    error=str(rollback_error),
+                    error_type=type(rollback_error).__name__,
+                    user_id=user_id,
                 )
 
             # Raise the original email error
@@ -384,7 +467,10 @@ async def create_support_request_with_attachments(
         support_request_response = SupportRequestResponse.model_validate(created.model_dump())
 
         log.info(
-            f"Support request with {len(processed_attachments)} images created successfully: {ticket_id} for user {user_id}"
+            "Support request with images created successfully: for user",
+            processed_attachments_count=len(processed_attachments),
+            ticket_id=ticket_id,
+            user_id=user_id,
         )
 
         return SupportRequestSubmissionResponse(
@@ -399,25 +485,44 @@ async def create_support_request_with_attachments(
         raise
     except Exception as e:
         # For any other unexpected errors, also try to rollback everything
-        log.error(f"Unexpected error creating support request with images: {e!s}")
+        log.error(
+            "Unexpected error creating support request with images",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
         # Clean up uploaded files
         if attachment_urls and ticket_id:
             try:
                 await _delete_uploaded_files(attachment_urls)
                 log.info(
-                    f"Cleaned up {len(attachment_urls)} uploaded files due to unexpected error"
+                    "Cleaned up uploaded files due to unexpected error",
+                    attachment_urls_count=len(attachment_urls),
                 )
             except Exception as cleanup_error:
-                log.error(f"Error cleaning up uploaded files: {cleanup_error!s}")
+                log.error(
+                    "Error cleaning up uploaded files",
+                    error=str(cleanup_error),
+                    error_type=type(cleanup_error).__name__,
+                    user_id=user_id,
+                )
 
         # Clean up database entry
         if request_id:
             try:
                 await support_request_repository.delete(request_id, user_id=user_id)
-                log.info(f"Rolled back support request {request_id} due to unexpected error")
+                log.info(
+                    "Rolled back support request due to unexpected error", request_id=request_id
+                )
             except Exception as rollback_error:
-                log.error(f"Error during rollback for request {request_id}: {rollback_error!s}")
+                log.error(
+                    "Error during rollback for request",
+                    request_id=request_id,
+                    error=str(rollback_error),
+                    error_type=type(rollback_error).__name__,
+                    user_id=user_id,
+                )
 
         raise HTTPException(status_code=500, detail=f"Failed to create support request: {e!s}")
 
@@ -437,7 +542,7 @@ async def _send_support_email_notifications(
         await send_support_to_user_email(notification_data)
 
     except Exception as e:
-        log.error(f"Error sending email notifications: {e!s}")
+        log.error("Error sending email notifications", error=str(e), error_type=type(e).__name__)
         # Re-raise the exception to trigger transaction rollback
         raise e
 
@@ -472,5 +577,10 @@ async def get_user_support_requests(
         )
 
     except Exception as e:
-        log.error(f"Error fetching user support requests: {e!s}")
+        log.error(
+            "Error fetching user support requests",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch support requests")

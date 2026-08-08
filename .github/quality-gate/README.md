@@ -1,40 +1,37 @@
-# Quality gate ratchet
+# Quality gate
 
 The `quality-gate` job in `.github/workflows/code-quality.yml` is one of the
 two branch-protection gate jobs on `develop` (the other is `main.yml`'s
-`quality-gate`). This one runs all 18 code-quality lanes but only **fails**
-when an *enforced* lane is red. Every other lane is reported and non-blocking,
-so develop stays green while violations are fixed lane by lane.
+`quality-gate`). It aggregates every code-quality lane and **fails the merge
+if any lane is red**.
 
-## How a lane becomes enforced
+## Enforcement model
 
-A lane is enforced if and only if a marker file exists at:
+Every lane is enforced: a lane whose result is neither `success` nor `skipped`
+(where `skipped` means the `changes` job proved the lane's language was
+untouched) fails the gate. There is no informational tier.
 
-```
-.github/quality-gate/enforced/<lane>
-```
+This replaced the old marker-file ratchet (`.github/quality-gate/enforced/<lane>`)
+that let lanes start informational and be ratcheted up by resolution PRs. The
+rollout is complete — every lane is enforced — and the two sources of truth
+(marker files vs the `LANES` array) had drifted. A flat "all lanes block" is
+the end state: one list, no directory scan, no sync to maintain.
 
-The verdict step lists this directory to build the enforced set. To enforce a
-lane, add its marker file. To relax one, delete it.
+## Adding a new lane
 
-## Why marker files instead of a list
+1. Add the job to `.github/workflows/code-quality.yml`.
+2. Add its result to the `needs:` list and the `RESULT` map in the `quality-gate`
+   job.
+3. Add its name to the `LANES` array in the verdict step.
 
-Each resolution PR enforces exactly one lane. If enforcement were a shared list
-in one file, every PR would edit the same lines and they would all merge-conflict
-with each other. Separate marker files live at distinct paths, so any number of
-lane PRs can be open at once and merge in any order without conflicts.
-
-## Per-lane resolution PR recipe
-
-1. Branch off `develop`.
-2. Fix that lane's violations (verify locally with its `pnpm run quality:*`
-   script or the command in the workflow step).
-3. `touch .github/quality-gate/enforced/<lane>` — do **not** edit the workflow.
-4. Push, open PR. The gate enforces the lane once the PR merges.
+The gate enforces it from the first run — there is no informational grace
+period. If a rollout period is ever wanted again, that is a deliberate decision
+to reintroduce, not a default.
 
 ## Lane names
 
 `biome`, `deps`, `circular`, `file-size`, `types-location`, `components-per-file`,
 `duplicates`, `package-hygiene`, `type-check`, `python-ruff`,
 `python-mypy`, `python-interrogate`, `python-xenon`, `python-security`,
-`dead-code`, `alert-rules`, `suppression-ratchet`, `gitleaks`.
+`observability`, `wide-event-conformance`, `dead-code`, `alert-rules`,
+`suppression-ratchet`, `gitleaks`.

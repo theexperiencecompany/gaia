@@ -27,7 +27,8 @@ contactPoints:
       - uid: slack-alerts
         type: slack
         settings:
-          url: $__file{/run/secrets/gaia_grafana_slack_webhook}
+          url: $__env{SLACK_ALERT_WEBHOOK_URL}
+          recipient: $__env{SLACK_ALERT_CHANNEL}
           title: '{{ template "gaia.slack.title" . }}'
           text: '{{ template "gaia.slack.message" . }}'
         disableResolveMessage: false
@@ -39,7 +40,8 @@ contactPoints:
       - uid: critical-slack
         type: slack
         settings:
-          url: $__file{/run/secrets/gaia_grafana_slack_webhook}
+          url: $__env{SLACK_ALERT_WEBHOOK_URL}
+          recipient: $__env{SLACK_ALERT_CHANNEL}
           title: '{{ template "gaia.slack.title" . }}'
           text: '{{ template "gaia.slack.message" . }}'
         disableResolveMessage: false

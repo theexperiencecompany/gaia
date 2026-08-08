@@ -13,7 +13,7 @@ async def insert_note(
     auto_created: bool = False,
 ) -> NoteResponse:
     log.set(user_id=user_id, auto_created=auto_created, operation="insert_note")
-    log.info(f"{LogTag.API} Creating new note for user: {user_id}")
+    log.info(f"{LogTag.API} Creating new note for user", user_id=user_id)
 
     langchain_chroma_client = await ChromaClient.get_langchain_client(collection_name="notes")
 
@@ -26,7 +26,7 @@ async def insert_note(
         )
     )
     note_id = created.id
-    log.info(f"{LogTag.API} Note created with ID: {note_id}")
+    log.info(f"{LogTag.API} Note created with ID", note_id=note_id)
 
     # Index the note for vector search.
     await langchain_chroma_client.aadd_documents(
@@ -38,6 +38,6 @@ async def insert_note(
         ],
         ids=[note_id],
     )
-    log.info(f"{LogTag.API} Note with id {note_id} indexed in ChromaDB")
+    log.info(f"{LogTag.API} Note with id indexed in ChromaDB", note_id=note_id)
 
     return NoteResponse.model_validate(created.model_dump())

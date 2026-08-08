@@ -19,14 +19,6 @@ class FetchError(Exception):
         return base_message
 
 
-class InfisicalConfigError(Exception):
-    """Exception raised for errors related to Infisical configuration."""
-
-    def __init__(self, message: str) -> None:
-        self.message = message
-        super().__init__(self.message)
-
-
 class ConfigurationError(Exception):
     """
     Exception raised when a service client cannot be initialized due to missing configuration.

@@ -207,8 +207,8 @@ def _resolve_timeframe(
     if explicit_after_or_before:
         if timeframe is not None:
             log.warning(
-                f"GMAIL_FETCH_MESSAGES: query already has after:/before:, "
-                f"ignoring timeframe={timeframe!r}"
+                "GMAIL_FETCH_MESSAGES: query already has after:/before:, ignoring timeframe",
+                timeframe=timeframe,
             )
         return query or "", default_max
 
@@ -392,7 +392,12 @@ def _aggregate_pages(
             # reports `successful: false` instead of masking it as an empty
             # inbox.
             raise
-        log.warning(f"GMAIL_FETCH_MESSAGES: pagination aborted mid-loop: {exc}")
+        log.warning(
+            "GMAIL_FETCH_MESSAGES: pagination aborted mid-loop",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            user_id=user_id,
+        )
         raise _PartialResult(reason=str(exc), partial_messages=all_messages) from exc
 
     return all_messages, truncated
@@ -638,7 +643,9 @@ def _no_session_inline_fallback(
     """
     shown = _count_inline_fit(projected)
     log.warning(
-        f"GMAIL read: no conversation_id for offload; returning {shown}/{len(projected)} inline"
+        "GMAIL read: no conversation_id for offload; returning / inline",
+        shown=shown,
+        projected_count=len(projected),
     )
     _emit_email_card(full_views[:shown])
     result = _format_inline_result(projected[:shown], truncated=truncated or shown < len(projected))
@@ -727,7 +734,12 @@ def _aggregate_threads(
     except Exception as exc:
         if not flat_views:
             raise
-        log.warning(f"GMAIL_FETCH_THREAD: aborted mid-fetch: {exc}")
+        log.warning(
+            "GMAIL_FETCH_THREAD: aborted mid-fetch",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            user_id=user_id,
+        )
         raise _PartialResult(reason=str(exc), partial_messages=flat_views) from exc
 
     return threads, flat_views, truncated
@@ -835,7 +847,12 @@ def _batch_modify(
                 }
             )
             log.warning(
-                f"GMAIL batchModify aborted after {modified}/{len(message_ids)} modified: {exc}"
+                "GMAIL batchModify aborted after / modified",
+                modified=modified,
+                message_ids_count=len(message_ids),
+                error=str(exc),
+                error_type=type(exc).__name__,
+                user_id=user_id,
             )
             return {
                 "modified_count": modified,
@@ -1129,8 +1146,9 @@ def register_gmail_custom_tools(composio: Composio) -> list[str]:
 
         if message_ids and not messages:
             log.error(
-                f"{LogTag.COMPOSIO} Gmail contact list: all {len(message_ids)} message fetches failed "
-                f"for user {user_id}"
+                f"{LogTag.COMPOSIO} Gmail contact list: all message fetches failed for user",
+                message_ids_count=len(message_ids),
+                user_id=user_id,
             )
             return {
                 "success": False,
@@ -1333,5 +1351,11 @@ def _fetch_messages_for_contacts(
                 messages.append(full)
         except Exception as exc:
             fetch_failures += 1
-            log.warning(f"{LogTag.COMPOSIO} Gmail message fetch failed for {message_id}: {exc}")
+            log.warning(
+                f"{LogTag.COMPOSIO} Gmail message fetch failed for",
+                message_id=message_id,
+                error=str(exc),
+                error_type=type(exc).__name__,
+                user_id=user_id,
+            )
     return messages, fetch_failures

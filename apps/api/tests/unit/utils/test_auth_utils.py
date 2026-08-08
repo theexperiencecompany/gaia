@@ -364,7 +364,7 @@ class TestAuthenticateWorkosSession:
         assert user_info == {}
         assert new_session is None
         mock_log.warning.assert_called_once()
-        assert "unknown@example.com" in mock_log.warning.call_args[0][0]
+        assert mock_log.warning.call_args.kwargs["user_email"] == "unknown@example.com"
 
     async def test_user_not_found_after_refresh(self) -> None:
         """When user refreshes but is not in MongoDB, return ({}, new_session)."""
@@ -416,7 +416,7 @@ class TestAuthenticateWorkosSession:
         assert user_info == {}
         assert new_session is None
         mock_log.error.assert_called_once()
-        assert "connection refused" in mock_log.error.call_args[0][0]
+        assert mock_log.error.call_args.kwargs["error"] == "connection refused"
 
     async def test_exception_during_session_authenticate(self) -> None:
         """When session.authenticate() raises, caught by outer try/except -> ({}, None)."""
@@ -456,7 +456,7 @@ class TestAuthenticateWorkosSession:
         assert user_info == {}
         assert new_session is None
         mock_log.error.assert_called_once()
-        assert "MongoDB connection lost" in mock_log.error.call_args[0][0]
+        assert mock_log.error.call_args.kwargs["error"] == "MongoDB connection lost"
 
     async def test_db_exception_after_refresh_preserves_new_session(self) -> None:
         """When DB query fails after a refresh, return ({}, new_session) preserving the refreshed token."""
@@ -679,7 +679,7 @@ class TestAuthenticateWorkosSession:
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
         mock_log.warning.assert_called_once()
-        assert "session_revoked" in mock_log.warning.call_args[0][0]
+        assert mock_log.warning.call_args.kwargs["reason"] == "session_revoked"
 
     async def test_refresh_exception_logs_error(self) -> None:
         """When refresh raises, log.error includes the exception message."""
@@ -695,7 +695,8 @@ class TestAuthenticateWorkosSession:
             await authenticate_workos_session(session_token="tok", workos_client=client)
 
         mock_log.error.assert_called_once()
-        assert "bad token format" in mock_log.error.call_args[0][0]
+        assert mock_log.error.call_args.kwargs["error"] == "bad token format"
+        assert mock_log.error.call_args.kwargs["error_type"] == "ValueError"
 
     # -- Arguments forwarded correctly -------------------------------------
 

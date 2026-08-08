@@ -96,9 +96,12 @@ class OpenRouterModelCatalog:
     def _fail(self, reason: str) -> None:
         self._failed_at = time.monotonic()
         log.warning(
-            f"{LogTag.AGENT} OpenRouter model catalog {reason}; "
-            f"backing off {OPENROUTER_MODEL_CATALOG_RETRY_SECONDS}s",
-            model_catalog={"has_snapshot": self._models is not None},
+            f"{LogTag.AGENT} OpenRouter model catalog unavailable; backing off",
+            model_catalog={
+                "has_snapshot": self._models is not None,
+                "reason": reason,
+                "backoff_seconds": OPENROUTER_MODEL_CATALOG_RETRY_SECONDS,
+            },
         )
 
     @staticmethod

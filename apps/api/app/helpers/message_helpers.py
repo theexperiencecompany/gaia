@@ -110,7 +110,9 @@ def build_current_time_message(
             local_now = Timezone.parse(user_timezone).now().strftime("%A, %B %d, %Y, %H:%M")
             parts.append(f"[User Local Time ({user_timezone}): {local_now}]")
         except Exception as e:
-            log.warning(f"Error formatting user local time: {e}")
+            log.warning(
+                "Error formatting user local time", error=str(e), error_type=type(e).__name__
+            )
     return HumanMessage(
         content="\n".join(parts),
         additional_kwargs={"time_context": True},
@@ -131,14 +133,16 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
     try:
         results = await memory_engine.recall(user_id, query, limit=5)
         if results.memories:
-            log.info(f"Added {len(results.memories)} memories to context")
+            log.info("Added memories to context", memories_count=len(results.memories))
             return (
                 "\n\nBased on our previous conversations (bracketed dates say when "
                 "something happened / was last mentioned):\n"
                 + "\n".join(f"- {entry_to_note(mem)}" for mem in results.memories)
             )
     except Exception as e:
-        log.warning(f"Error retrieving memories: {e}")
+        log.warning(
+            "Error retrieving memories", error=str(e), error_type=type(e).__name__, user_id=user_id
+        )
 
     return ""
 
@@ -153,7 +157,12 @@ async def _get_core_memory_section(user_id: str) -> str:
         if core_context:
             return f"What you remember about this user (memory core):\n{core_context}"
     except Exception as e:
-        log.warning(f"Error retrieving core memory context: {e}")
+        log.warning(
+            "Error retrieving core memory context",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
     return ""
 
@@ -176,12 +185,12 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     try:
         results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
         if results:
-            log.info(f"Added {len(results)} knowledge items to context")
+            log.info("Added knowledge items to context", results_count=len(results))
             return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
                 f"- {result.content}" for result in results
             )
     except Exception as e:
-        log.warning(f"Error retrieving GAIA knowledge: {e}")
+        log.warning("Error retrieving GAIA knowledge", error=str(e), error_type=type(e).__name__)
 
     return ""
 
@@ -360,7 +369,12 @@ async def build_connected_integrations_manifest(
     try:
         items = await get_connected_integrations_named(user_id)
     except Exception as e:
-        log.warning(f"Error building connected-integrations manifest: {e}")
+        log.warning(
+            "Error building connected-integrations manifest",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return ""
     if not items:
         return ""
@@ -533,7 +547,12 @@ async def build_dynamic_context_messages(
         return DynamicContextMessages(stable=stable_msg, memory_recall=recall_msg)
 
     except Exception as e:
-        log.error(f"Error creating dynamic context messages: {e}")
+        log.error(
+            "Error creating dynamic context messages",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         # Return a byte-stable empty stable message so a persistent failure here
         # doesn't change the prompt prefix every minute and silently invalidate
         # the implicit prompt cache. The clock lives in a HumanMessage built by
@@ -594,7 +613,13 @@ async def format_workflow_execution_message(
         try:
             workflow = await WorkflowService.get_workflow(selected_workflow.id, user_id)
         except Exception as e:
-            log.error(f"Failed to fetch workflow {selected_workflow.id}: {e}")
+            log.error(
+                "Failed to fetch workflow",
+                id=selected_workflow.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     # Use fresh database data if available, otherwise use passed data
     if workflow and workflow.steps:
@@ -729,7 +754,9 @@ async def get_onboarding_system_prompt_if_applicable(
             if message_count >= 7:
                 await user_repository.set_onboarding_phase(user_id, OnboardingPhase.COMPLETED)
                 log.info(
-                    f"[onboarding_prompt] Auto-completed onboarding for {user_id} after {message_count} messages"
+                    "[onboarding_prompt] Auto-completed onboarding for after messages",
+                    user_id=user_id,
+                    message_count=message_count,
                 )
                 return None
 
@@ -758,7 +785,13 @@ async def get_onboarding_system_prompt_if_applicable(
         )
 
     except Exception as e:
-        log.warning(f"[onboarding_prompt] Failed to check onboarding conversation: {e}")
+        log.warning(
+            "[onboarding_prompt] Failed to check onboarding conversation",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         return None
 
 

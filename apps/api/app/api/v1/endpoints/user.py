@@ -42,6 +42,7 @@ workos = WorkOSClient(api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS
 # exclude_none: the per-auth-path flags (impersonated/bot_authenticated/dev_bypass)
 # and the optional profile fields are only meaningful when set — the response has
 # always omitted them rather than sending nulls, and clients rely on that.
+# evlog-map-disable-next-line audit -- read-only profile lookup, no state change to audit
 @router.get("/me", response_model_exclude_none=True)
 async def get_me(
     user: AuthenticatedUser = Depends(get_current_user),
@@ -108,6 +109,12 @@ async def update_me(
     # Update user profile
     updated_user = await update_user_profile(user_id=user_id, name=name, picture_data=picture_data)
 
+    changed_fields = [
+        field
+        for field, changed in (("name", name is not None), ("picture", picture_data is not None))
+        if changed
+    ]
+    log.audit("profile updated", actor=user_id, changed_fields=changed_fields)
     log.set(outcome="success")
     return updated_user
 
@@ -128,13 +135,20 @@ async def update_user_name(
             raise HTTPException(status_code=400, detail="Invalid user ID")
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
+        log.audit("profile updated", actor=user_id, changed_fields=["name"])
         log.set(outcome="success")
         return updated_user
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating user name: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update name")
+        log.error(
+            f"{LogTag.API} Error updating user name",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update name") from e
 
 
 @router.patch("/timezone", response_model=UpdateTimezoneResponse)
@@ -167,6 +181,7 @@ async def update_user_timezone(
         if updated is None:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.audit("profile updated", actor=user_id, changed_fields=["timezone"])
         log.set(outcome="success")
         return UpdateTimezoneResponse(
             success=True,
@@ -176,11 +191,19 @@ async def update_user_timezone(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating timezone: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update timezone")
+        log.error(
+            f"{LogTag.API} Error updating timezone",
+            user_id=user_id,
+            timezone=user_timezone.strip(),
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update timezone") from e
 
 
 @router.get("/holo-card/{card_id}")
+# evlog-map-disable-next-line audit -- read-only public card lookup, no state change to audit
 async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     """
     Get public holo card data by card ID (user ID).
@@ -236,8 +259,14 @@ async def get_public_holo_card(card_id: str) -> PublicHoloCardResponse:
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.API} Error fetching holo card: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
+        log.error(
+            f"{LogTag.API} Error fetching holo card",
+            card_id=card_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to fetch holo card data") from e
 
 
 @router.patch("/holo-card/colors")
@@ -269,6 +298,11 @@ async def update_holo_card_colors(
         if not matched:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.audit(
+            "profile updated",
+            actor=user_id,
+            changed_fields=["overlay_color", "overlay_opacity"],
+        )
         log.set(outcome="success")
         return UpdateHoloCardColorsResponse(
             success=True,
@@ -280,8 +314,14 @@ async def update_holo_card_colors(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.API} Error updating holo card colors: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update holo card colors")
+        log.error(
+            f"{LogTag.API} Error updating holo card colors",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update holo card colors") from e
 
 
 @router.post("/logout")
@@ -316,10 +356,15 @@ async def logout(
                 track_logout(user_id=user_id or user_email, email=user_email)
             except Exception as analytics_error:
                 log.warning(
-                    f"{LogTag.API} Failed to track logout analytics for {user_email}: {analytics_error}"
+                    f"{LogTag.API} Failed to track logout analytics",
+                    user_email=user_email,
+                    error_type=type(analytics_error).__name__,
+                    error=str(analytics_error),
                 )
 
         logout_url = session.get_logout_url()
+
+        log.audit("logged out", actor=user_id)
 
         # Create response with logout URL
         response = JSONResponse(content={"logout_url": logout_url})
@@ -337,5 +382,10 @@ async def logout(
         return response
 
     except Exception as e:
-        log.error(f"{LogTag.API} Logout error: {e}")
-        raise HTTPException(status_code=500, detail="Logout failed")
+        log.error(
+            f"{LogTag.API} Logout error",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Logout failed") from e

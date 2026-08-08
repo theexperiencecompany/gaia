@@ -215,7 +215,7 @@ class TestClosePostgresqlDb:
             await close_postgresql_db()
 
         mock_log.error.assert_called_once()
-        assert "dispose failed" in mock_log.error.call_args[0][0]
+        assert mock_log.error.call_args.kwargs["error"] == "dispose failed"
 
 
 # ---------------------------------------------------------------------------

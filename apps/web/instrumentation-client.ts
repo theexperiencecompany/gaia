@@ -47,7 +47,9 @@ if (typeof window !== "undefined") {
               const client = Sentry.getClient();
               if (client) client.addIntegration(replayIntegration());
             })
-            .catch(() => {});
+            .catch(() => {
+              // Replay is best-effort: a load failure must not break the page.
+            });
         };
         const interactionEvents = [
           "pointerdown",

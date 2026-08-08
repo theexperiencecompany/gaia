@@ -22,6 +22,7 @@ def slugify(text: str, max_length: int = 80) -> str:
     # ("Daily Email Summary" -> "dailyemailsummary"), which is the opposite of
     # what a slug is for.
     text = re.sub(r"\s+", "-", text)
+
     # Strip everything that isn't alphanumeric or hyphen
     text = re.sub(r"[^a-z0-9\-]", "", text)
     # Collapse multiple hyphens, strip leading/trailing
@@ -36,4 +37,5 @@ def slugify(text: str, max_length: int = 80) -> str:
         if not cut.endswith("-") and text[max_length] != "-":
             cut = cut.rsplit("-", 1)[0]
         text = cut.rstrip("-")
+
     return text

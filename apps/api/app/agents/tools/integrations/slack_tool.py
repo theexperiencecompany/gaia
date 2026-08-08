@@ -50,7 +50,7 @@ def register_slack_custom_tools(composio: Composio) -> list[str]:
             )
             mentions = mention_data.get("messages", {}).get("matches", [])
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Slack mentions fetch skipped: {e}")
+            log.debug(f"{LogTag.TOOL} Slack mentions fetch skipped", error_type=type(e).__name__)
 
         mention_ts = {m.get("ts") for m in mentions}
         other_messages = [m for m in messages if m.get("ts") not in mention_ts]

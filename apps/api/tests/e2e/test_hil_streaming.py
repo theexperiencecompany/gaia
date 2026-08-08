@@ -58,7 +58,8 @@ import fakeredis.aioredis
 from langgraph.store.memory import InMemoryStore
 import pytest
 
-from app.agents.core.background import executor_runner, redis_writer
+from app.agents.core.background.executor_runner import QUEUED_EXECUTOR_TASK_NAME
+from app.agents.core.background.redis_writer import STREAM_PUBLISH_TASK_NAME
 from app.agents.core.background.session import teardown_session
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
@@ -86,6 +87,7 @@ from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat import stream as chat_stream
 from app.services.hil import resolution
+from app.utils import background_tasks
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 from tests.e2e._harness.transcript import Frame, Transcript
 from tests.e2e.test_agent_chain import call, streaming_model
@@ -411,15 +413,28 @@ class HilWorld:
         ]
 
 
+def _tasks_named(*names: str) -> list[asyncio.Task[object]]:
+    """Live background tasks carrying any of ``names``.
+
+    Filtering by name rather than draining the whole keep-alive set: that set
+    also holds work which outlives a single turn, so awaiting all of it would
+    hang here forever instead of failing a test.
+    """
+    wanted = set(names)
+    return [t for t in background_tasks._background_tasks if t.get_name() in wanted]
+
+
 async def drain_publishes() -> None:
     """Wait out the fire-and-forget XADDs the background writer scheduled.
 
     ``make_redis_stream_writer`` is a *sync* callable that schedules each publish
-    with ``asyncio.create_task``. A test reading the log after the turn must wait,
-    or it reads a truncated stream and asserts about timing instead of behaviour.
+    through ``spawn_background_task``. A test reading the log after the turn must
+    wait, or it reads a truncated stream and asserts about timing instead of
+    behaviour. Draining the canonical keep-alive set is a superset of the
+    publishes, which is what "wait until the turn is quiet" wants.
     """
-    while redis_writer._publish_tasks:
-        await asyncio.gather(*list(redis_writer._publish_tasks), return_exceptions=True)
+    while pending := _tasks_named(STREAM_PUBLISH_TASK_NAME):
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def drain_resumes() -> None:
@@ -438,10 +453,11 @@ async def drain_resumes() -> None:
 async def drain_background_runs() -> None:
     """Wait out every executor task still in flight, whatever spawned it.
 
-    Three module-level keep-alive sets, and a run in any one of them can spawn
-    into another: a resume finalizes, hands the busy lock to a queued task, and
-    that task's own finalize can queue a collection turn. Draining one set once
-    is therefore not enough — this loops until all three are empty.
+    Two module-level keep-alive sets — the canonical ``spawn_background_task``
+    set (publishes and queued executor runs) and HIL's own resume set — and a run
+    in either can spawn into the other: a resume finalizes, hands the busy lock to
+    a queued task, and that task's own finalize can queue a collection turn.
+    Draining one set once is therefore not enough — this loops until both empty.
 
     Load-bearing for isolation, not tidiness. The patches installed by
     :func:`hil_world` are process-wide while they are active, so a run that
@@ -449,16 +465,10 @@ async def drain_background_runs() -> None:
     scripted models. That showed up as this file's only flake: the following
     test's turn produced no approval record at all.
     """
-    while (
-        redis_writer._publish_tasks
-        or resolution._resume_tasks
-        or executor_runner._queued_executor_tasks
-    ):
-        pending = [
-            *redis_writer._publish_tasks,
-            *resolution._resume_tasks,
-            *executor_runner._queued_executor_tasks,
-        ]
+    while pending := [
+        *_tasks_named(STREAM_PUBLISH_TASK_NAME, QUEUED_EXECUTOR_TASK_NAME),
+        *resolution._resume_tasks,
+    ]:
         await asyncio.gather(*pending, return_exceptions=True)
 
 

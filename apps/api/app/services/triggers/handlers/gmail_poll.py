@@ -102,7 +102,10 @@ class GmailPollTriggerHandler(TriggerHandler):
 
         except Exception as e:
             log.error(
-                f"{LogTag.TRIGGER} Error finding workflows for gmail_poll trigger {trigger_id}: {e}"
+                f"{LogTag.TRIGGER} Error finding workflows for gmail_poll trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return []
 

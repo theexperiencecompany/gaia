@@ -22,7 +22,7 @@ from app.constants.device_bridge import (
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.services.device.connection_manager import device_connection_manager
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context
 
 _listener_task: asyncio.Task[None] | None = None
 
@@ -32,15 +32,21 @@ async def _dispatch_revoke(device_id: str) -> None:
 
     Send the revoke frame first so the daemon exits cleanly via its FRAME_REVOKE
     handler, instead of reconnect-looping against a now-dead refresh credential.
+
+    Own boundary per revoke: this is the pod's only enforcement point and runs
+    outside any request, so a failure here would otherwise be a discarded field
+    rather than an event saying which device stayed connected.
     """
-    websocket = device_connection_manager.get(device_id)
-    if websocket is None:
-        return
-    log.info(f"{LogTag.API} Closing revoked device socket", device_id=device_id)
-    with contextlib.suppress(Exception):
-        await websocket.send_text(json.dumps({"t": FRAME_REVOKE}))
-    with contextlib.suppress(Exception):
-        await websocket.close(code=1008)
+    async with log_context("device_revoke", device={"device_id": device_id}):
+        websocket = device_connection_manager.get(device_id)
+        log.set_ns("device", socket_owned=websocket is not None)
+        if websocket is None:
+            return
+        log.info(f"{LogTag.API} Closing revoked device socket", device_id=device_id)
+        with contextlib.suppress(Exception):
+            await websocket.send_text(json.dumps({"t": FRAME_REVOKE}))
+        with contextlib.suppress(Exception):
+            await websocket.close(code=1008)
 
 
 async def _consume() -> None:
@@ -66,16 +72,28 @@ async def _consume() -> None:
 
 
 async def _listener_loop() -> None:
+    """One wide event per subscription lifetime, so a wedged listener is visible.
+
+    The boundary is per attempt, not around the loop: it emits when the
+    subscription ends, carrying how long it survived and why it dropped. One
+    boundary around the whole loop would emit a single event at process exit.
+    """
     if not redis_cache.redis:
-        log.warning(f"{LogTag.API} Device revoke listener disabled (no Redis connection)")
+        async with log_context("device_revoke_subscription"):
+            log.warning(f"{LogTag.API} Device revoke listener disabled (no Redis connection)")
         return
     while True:
-        try:
-            await _consume()
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            log.warning(f"{LogTag.API} Device revoke listener dropped, resubscribing: {e}")
+        async with log_context("device_revoke_subscription"):
+            try:
+                await _consume()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                log.warning(
+                    f"{LogTag.API} Device revoke listener dropped, resubscribing",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
         await asyncio.sleep(DEVICE_LISTENER_RESUBSCRIBE_SECONDS)
 
 

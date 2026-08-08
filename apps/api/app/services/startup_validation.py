@@ -42,7 +42,7 @@ async def validate_startup_requirements() -> None:
     very ``RuntimeError`` and only logged it, so the check never actually halted —
     the raise must propagate.
     """
-    log.set(service="startup_validation", phase="startup")
+    log.set(component="startup_validation", phase="startup")
     log.info("Starting startup scripts validation...")
 
     models_ok = await are_models_seeded()

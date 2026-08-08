@@ -46,7 +46,11 @@ class ChromaClient:
             # via init_chromadb_client(), which returns AsyncClientAPI.
             return cast(AsyncClientAPI, client)
         except Exception as e:
-            log.error(f"{LogTag.CHROMA} Failed to get ChromaDB client: {e}")
+            log.error(
+                f"{LogTag.CHROMA} Failed to get ChromaDB client",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise RuntimeError("ChromaDB client not initialized") from e
 
     @classmethod
@@ -101,7 +105,9 @@ class ChromaClient:
         # Dynamically register a provider for this collection and auto-initialize it
         async def _loader() -> Chroma:
             log.debug(
-                f"{LogTag.CHROMA} Creating Langchain client for collection '{collection_name}' via provider '{provider_name}'"
+                f"{LogTag.CHROMA} Creating Langchain client for collection via provider",
+                collection_name=collection_name,
+                provider_name=provider_name,
             )
             constructor_client = await providers.aget("chromadb_constructor")
             if not constructor_client:
@@ -173,7 +179,7 @@ async def init_chromadb_client() -> AsyncClientAPI:
     )
 
     response = await client.heartbeat()
-    log.debug(f"{LogTag.CHROMA} ChromaDB heartbeat response: {response}")
+    log.debug(f"{LogTag.CHROMA} ChromaDB heartbeat response", response=response)
     log.set(
         db={
             "connection_status": "connected",
@@ -182,7 +188,7 @@ async def init_chromadb_client() -> AsyncClientAPI:
             "port": port,
         }
     )
-    log.info(f"{LogTag.CHROMA} Connected to ChromaDB at {host}:{port}")
+    log.info(f"{LogTag.CHROMA} Connected to ChromaDB at", host=host, port=port)
 
     # Create default collections if they don't exist
     existing_collections = await client.list_collections()
@@ -192,11 +198,11 @@ async def init_chromadb_client() -> AsyncClientAPI:
     # Create collections if they don't exist
     for collection_name in collection_names:
         if collection_name not in existing_collection_names:
-            log.debug(f"{LogTag.CHROMA} Creating collection '{collection_name}'")
+            log.debug(f"{LogTag.CHROMA} Creating collection", collection_name=collection_name)
             await client.create_collection(name=collection_name, metadata={"hnsw:space": "cosine"})
-            log.debug(f"{LogTag.CHROMA} Collection '{collection_name}' created")
+            log.debug(f"{LogTag.CHROMA} Collection created", collection_name=collection_name)
         else:
-            log.debug(f"{LogTag.CHROMA} Collection '{collection_name}' exists")
+            log.debug(f"{LogTag.CHROMA} Collection exists", collection_name=collection_name)
 
     return client
 
@@ -281,5 +287,9 @@ def init_chroma() -> None:
         init_langchain_chroma()
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Error in init_chroma compatibility function: {e}")
+        log.error(
+            f"{LogTag.CHROMA} Error in init_chroma compatibility function",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise RuntimeError(f"ChromaDB connection failed: {e}") from e

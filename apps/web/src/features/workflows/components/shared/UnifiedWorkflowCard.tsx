@@ -73,30 +73,23 @@ interface UnifiedWorkflowCardProps {
   missingIntegrations?: IntegrationRef[];
 }
 
-export default function UnifiedWorkflowCard({
-  workflow,
-  communityWorkflow,
-  title: propTitle,
-  description: propDescription,
-  steps: propSteps,
-  totalExecutions: propTotalExecutions,
-  slug,
-  prompt,
-  actionType: propActionType,
-  variant = "explore",
-  showTrigger,
-  showExecutions = true,
-  showActivationStatus = false,
-  showCreator,
-  useBlurEffect = false,
-  showDescriptionAsTooltip = false,
-  primaryAction,
-  onCardClick,
-  onActionComplete,
-  actionButtonLabel,
-  href,
-  missingIntegrations: propMissingIntegrations,
-}: UnifiedWorkflowCardProps) {
+export default function UnifiedWorkflowCard(props: UnifiedWorkflowCardProps) {
+  const {
+    workflow,
+    communityWorkflow,
+    description: propDescription,
+    slug,
+    prompt,
+    actionType: propActionType,
+    variant = "explore",
+    showExecutions = true,
+    useBlurEffect = false,
+    showDescriptionAsTooltip = false,
+    onCardClick,
+    onActionComplete,
+    actionButtonLabel,
+    href,
+  } = props;
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
@@ -108,38 +101,26 @@ export default function UnifiedWorkflowCard({
   const { integrations } = useIntegrations();
   const appendToInput = useAppendToInput();
 
-  // Normalize data from different sources
-  const title = propTitle || workflow?.title || communityWorkflow?.title || "";
-  const displayDescription =
-    propDescription ||
-    workflow?.description ||
-    communityWorkflow?.description ||
-    "";
-  const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
-  const totalExecutions =
-    propTotalExecutions ??
-    workflow?.total_executions ??
-    communityWorkflow?.total_executions ??
-    0;
-  const creator = communityWorkflow?.creator || workflow?.creator;
-
-  // Determine display settings based on variant
-  const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
-  const shouldShowCreator =
-    showCreator ?? (variant === "community" && !!creator);
-  const shouldShowActivation =
-    showActivationStatus ?? (variant === "user" && !!workflow);
-
-  // Determine primary action based on variant and props
-  const resolvedAction = primaryAction ?? getDefaultAction(variant);
+  // Normalize data + display settings from the various supported prop sources.
+  const {
+    title,
+    displayDescription,
+    steps,
+    totalExecutions,
+    creator,
+    shouldShowTrigger,
+    shouldShowCreator,
+    shouldShowActivation,
+    resolvedAction,
+    resolvedMissingIntegrations,
+    isClickable,
+  } = deriveWorkflowCardConfig(props);
 
   // Get trigger info for user workflows
   const triggerDisplay = workflow
     ? getTriggerDisplayInfo(workflow, integrations)
     : null;
   const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
-  const resolvedMissingIntegrations =
-    propMissingIntegrations ?? workflow?.missing_integrations;
 
   // Action handlers
   const handleRunWorkflow = async () => {
@@ -276,8 +257,6 @@ export default function UnifiedWorkflowCard({
     <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
   );
 
-  const isClickable = !!href || onCardClick || resolvedAction !== "none";
-
   const cardContent = (
     <div
       className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${useBlurEffect ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg" : "bg-zinc-800 outline-zinc-800/70"} p-4 transition-all select-none ${isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""}`}
@@ -390,6 +369,66 @@ export default function UnifiedWorkflowCard({
   ) : (
     cardContent
   );
+}
+
+// Resolve the card's display data and settings from the various supported prop
+// shapes (full Workflow, CommunityWorkflow, or simplified direct props).
+function deriveWorkflowCardConfig(props: UnifiedWorkflowCardProps) {
+  const {
+    workflow,
+    communityWorkflow,
+    title: propTitle,
+    description: propDescription,
+    steps: propSteps,
+    totalExecutions: propTotalExecutions,
+    variant = "explore",
+    showTrigger,
+    showActivationStatus = false,
+    showCreator,
+    primaryAction,
+    onCardClick,
+    href,
+    missingIntegrations: propMissingIntegrations,
+  } = props;
+
+  const title = propTitle || workflow?.title || communityWorkflow?.title || "";
+  const displayDescription =
+    propDescription ||
+    workflow?.description ||
+    communityWorkflow?.description ||
+    "";
+  const steps = propSteps || workflow?.steps || communityWorkflow?.steps || [];
+  const totalExecutions =
+    propTotalExecutions ??
+    workflow?.total_executions ??
+    communityWorkflow?.total_executions ??
+    0;
+  const creator = communityWorkflow?.creator || workflow?.creator;
+
+  const shouldShowTrigger = showTrigger ?? (variant === "user" && !!workflow);
+  const shouldShowCreator =
+    showCreator ?? (variant === "community" && !!creator);
+  const shouldShowActivation =
+    showActivationStatus ?? (variant === "user" && !!workflow);
+
+  const resolvedAction = primaryAction ?? getDefaultAction(variant);
+  const resolvedMissingIntegrations =
+    propMissingIntegrations ?? workflow?.missing_integrations;
+  const isClickable = !!href || onCardClick || resolvedAction !== "none";
+
+  return {
+    title,
+    displayDescription,
+    steps,
+    totalExecutions,
+    creator,
+    shouldShowTrigger,
+    shouldShowCreator,
+    shouldShowActivation,
+    resolvedAction,
+    resolvedMissingIntegrations,
+    isClickable,
+  };
 }
 
 // Helper function to determine default action based on variant

@@ -154,6 +154,200 @@ function FieldRow({
   );
 }
 
+const PICKER_ROW_STYLE = {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 12,
+  paddingHorizontal: 14,
+  paddingVertical: 11,
+  borderRadius: 12,
+} as const;
+
+function PriorityPicker({
+  selected,
+  onSelect,
+}: {
+  selected: Priority;
+  onSelect: (priority: Priority) => void;
+}) {
+  return (
+    <View className="rounded-2xl bg-zinc-800/30 p-1">
+      {PRIORITY_OPTIONS.map((opt) => {
+        const active = selected === opt.value;
+        return (
+          <Pressable
+            key={opt.value}
+            onPress={() => onSelect(opt.value)}
+            style={PICKER_ROW_STYLE}
+          >
+            <AppIcon icon={Flag02Icon} size={14} color={opt.color} />
+            <Text
+              style={{
+                flex: 1,
+                fontSize: 14,
+                color: active ? opt.color : "#e4e4e7",
+                fontWeight: active ? "600" : "400",
+              }}
+            >
+              {opt.label}
+            </Text>
+            {active ? (
+              <AppIcon icon={Tick02Icon} size={14} color={opt.color} />
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ProjectPicker({
+  projects,
+  selectedId,
+  onSelect,
+}: {
+  projects: Project[];
+  selectedId: string | null | undefined;
+  onSelect: (projectId: string | undefined) => void;
+}) {
+  const hasProject = projects.some((p) => p.id === selectedId);
+  return (
+    <View className="rounded-2xl bg-zinc-800/30 p-1">
+      <Pressable onPress={() => onSelect(undefined)} style={PICKER_ROW_STYLE}>
+        <AppIcon icon={Folder02Icon} size={14} color="#71717a" />
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 14,
+            color: hasProject ? "#e4e4e7" : "#00bbff",
+            fontWeight: hasProject ? "400" : "600",
+          }}
+        >
+          No project
+        </Text>
+        {hasProject ? null : (
+          <AppIcon icon={Tick02Icon} size={14} color="#00bbff" />
+        )}
+      </Pressable>
+      {projects.map((proj) => {
+        const active = selectedId === proj.id;
+        const color = proj.color ?? "#71717a";
+        return (
+          <Pressable
+            key={proj.id}
+            onPress={() => onSelect(proj.id)}
+            style={PICKER_ROW_STYLE}
+          >
+            <AppIcon icon={Folder02Icon} size={14} color={color} />
+            <Text
+              style={{
+                flex: 1,
+                fontSize: 14,
+                color: active ? color : "#e4e4e7",
+                fontWeight: active ? "600" : "400",
+              }}
+            >
+              {proj.name}
+            </Text>
+            {active ? (
+              <AppIcon icon={Tick02Icon} size={14} color={color} />
+            ) : null}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function labelsSummary(count: number): string {
+  return count > 0 ? `${count} label${count === 1 ? "" : "s"}` : "Add labels";
+}
+
+function LabelsChips({ labels }: { labels: string[] }) {
+  if (labels.length === 0) return null;
+  return (
+    <View
+      className="flex-row flex-wrap"
+      style={{ gap: 6, paddingHorizontal: 4 }}
+    >
+      {labels.map((lbl) => (
+        <LabelChip key={lbl} label={lbl} size="sm" />
+      ))}
+    </View>
+  );
+}
+
+interface DueDateFieldsProps {
+  dueDate: Date | null;
+  showDatePicker: boolean;
+  showTimePicker: boolean;
+  onOpenDate: () => void;
+  onOpenTime: () => void;
+  onClear: () => void;
+  onDateChange: (event: unknown, picked?: Date) => void;
+  onTimeChange: (event: unknown, picked?: Date) => void;
+}
+
+function DueDateFields({
+  dueDate,
+  showDatePicker,
+  showTimePicker,
+  onOpenDate,
+  onOpenTime,
+  onClear,
+  onDateChange,
+  onTimeChange,
+}: DueDateFieldsProps) {
+  return (
+    <>
+      <FieldRow
+        icon={Calendar03Icon}
+        label="Due date"
+        value={dueDate ? formatDate(dueDate) : "Not set"}
+        iconColor={dueDate ? "#00bbff" : "#71717a"}
+        valueColor={dueDate ? "#f4f4f5" : "#71717a"}
+        onPress={onOpenDate}
+        trailing={
+          dueDate ? (
+            <Pressable onPress={onClear} hitSlop={8}>
+              <AppIcon icon={Cancel01Icon} size={14} color="#71717a" />
+            </Pressable>
+          ) : null
+        }
+      />
+      {showDatePicker ? (
+        <DateTimePicker
+          value={dueDate ?? new Date()}
+          mode="date"
+          display={Platform.OS === "ios" ? "inline" : "default"}
+          themeVariant="dark"
+          onChange={onDateChange}
+        />
+      ) : null}
+
+      {dueDate ? (
+        <>
+          <FieldRow
+            icon={Clock04Icon}
+            label="Time"
+            value={formatTime(dueDate)}
+            onPress={onOpenTime}
+          />
+          {showTimePicker ? (
+            <DateTimePicker
+              value={dueDate}
+              mode="time"
+              display={Platform.OS === "ios" ? "spinner" : "default"}
+              themeVariant="dark"
+              onChange={onTimeChange}
+            />
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
 export function TodoDetailFields({
   todo,
   projects,
@@ -287,58 +481,24 @@ export function TodoDetailFields({
 
         {/* Field rows */}
         <View style={{ gap: 6 }}>
-          <FieldRow
-            icon={Calendar03Icon}
-            label="Due date"
-            value={dueDate ? formatDate(dueDate) : "Not set"}
-            iconColor={dueDate ? "#00bbff" : "#71717a"}
-            valueColor={dueDate ? "#f4f4f5" : "#71717a"}
-            onPress={() => {
+          <DueDateFields
+            dueDate={dueDate}
+            showDatePicker={showDatePicker}
+            showTimePicker={showTimePicker}
+            onOpenDate={() => {
               selectionHaptic();
               closeAllPickers();
               setShowDatePicker(true);
             }}
-            trailing={
-              dueDate ? (
-                <Pressable onPress={clearDueDate} hitSlop={8}>
-                  <AppIcon icon={Cancel01Icon} size={14} color="#71717a" />
-                </Pressable>
-              ) : null
-            }
+            onOpenTime={() => {
+              selectionHaptic();
+              closeAllPickers();
+              setShowTimePicker(true);
+            }}
+            onClear={clearDueDate}
+            onDateChange={handleDateChange}
+            onTimeChange={handleTimeChange}
           />
-          {showDatePicker ? (
-            <DateTimePicker
-              value={dueDate ?? new Date()}
-              mode="date"
-              display={Platform.OS === "ios" ? "inline" : "default"}
-              themeVariant="dark"
-              onChange={handleDateChange}
-            />
-          ) : null}
-
-          {dueDate ? (
-            <>
-              <FieldRow
-                icon={Clock04Icon}
-                label="Time"
-                value={formatTime(dueDate)}
-                onPress={() => {
-                  selectionHaptic();
-                  closeAllPickers();
-                  setShowTimePicker(true);
-                }}
-              />
-              {showTimePicker ? (
-                <DateTimePicker
-                  value={dueDate}
-                  mode="time"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  themeVariant="dark"
-                  onChange={handleTimeChange}
-                />
-              ) : null}
-            </>
-          ) : null}
 
           <FieldRow
             icon={Flag02Icon}
@@ -353,44 +513,14 @@ export function TodoDetailFields({
             }}
           />
           {showPriorityPicker ? (
-            <View className="rounded-2xl bg-zinc-800/30 p-1">
-              {PRIORITY_OPTIONS.map((opt) => {
-                const active = todo.priority === opt.value;
-                return (
-                  <Pressable
-                    key={opt.value}
-                    onPress={() => {
-                      selectionHaptic();
-                      onChange({ priority: opt.value });
-                      setShowPriorityPicker(false);
-                    }}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                      paddingHorizontal: 14,
-                      paddingVertical: 11,
-                      borderRadius: 12,
-                    }}
-                  >
-                    <AppIcon icon={Flag02Icon} size={14} color={opt.color} />
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: 14,
-                        color: active ? opt.color : "#e4e4e7",
-                        fontWeight: active ? "600" : "400",
-                      }}
-                    >
-                      {opt.label}
-                    </Text>
-                    {active ? (
-                      <AppIcon icon={Tick02Icon} size={14} color={opt.color} />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
+            <PriorityPicker
+              selected={todo.priority}
+              onSelect={(priority) => {
+                selectionHaptic();
+                onChange({ priority });
+                setShowPriorityPicker(false);
+              }}
+            />
           ) : null}
 
           <FieldRow
@@ -406,85 +536,21 @@ export function TodoDetailFields({
             }}
           />
           {showProjectPicker ? (
-            <View className="rounded-2xl bg-zinc-800/30 p-1">
-              <Pressable
-                onPress={() => {
-                  selectionHaptic();
-                  onChange({ project_id: undefined });
-                  setShowProjectPicker(false);
-                }}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 12,
-                  paddingHorizontal: 14,
-                  paddingVertical: 11,
-                  borderRadius: 12,
-                }}
-              >
-                <AppIcon icon={Folder02Icon} size={14} color="#71717a" />
-                <Text
-                  style={{
-                    flex: 1,
-                    fontSize: 14,
-                    color: !project ? "#00bbff" : "#e4e4e7",
-                    fontWeight: !project ? "600" : "400",
-                  }}
-                >
-                  No project
-                </Text>
-                {!project ? (
-                  <AppIcon icon={Tick02Icon} size={14} color="#00bbff" />
-                ) : null}
-              </Pressable>
-              {projects.map((proj) => {
-                const active = todo.project_id === proj.id;
-                const color = proj.color ?? "#71717a";
-                return (
-                  <Pressable
-                    key={proj.id}
-                    onPress={() => {
-                      selectionHaptic();
-                      onChange({ project_id: proj.id });
-                      setShowProjectPicker(false);
-                    }}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 12,
-                      paddingHorizontal: 14,
-                      paddingVertical: 11,
-                      borderRadius: 12,
-                    }}
-                  >
-                    <AppIcon icon={Folder02Icon} size={14} color={color} />
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: 14,
-                        color: active ? color : "#e4e4e7",
-                        fontWeight: active ? "600" : "400",
-                      }}
-                    >
-                      {proj.name}
-                    </Text>
-                    {active ? (
-                      <AppIcon icon={Tick02Icon} size={14} color={color} />
-                    ) : null}
-                  </Pressable>
-                );
-              })}
-            </View>
+            <ProjectPicker
+              projects={projects}
+              selectedId={todo.project_id}
+              onSelect={(projectId) => {
+                selectionHaptic();
+                onChange({ project_id: projectId });
+                setShowProjectPicker(false);
+              }}
+            />
           ) : null}
 
           <FieldRow
             icon={Tag01Icon}
             label="Labels"
-            value={
-              todo.labels.length > 0
-                ? `${todo.labels.length} label${todo.labels.length === 1 ? "" : "s"}`
-                : "Add labels"
-            }
+            value={labelsSummary(todo.labels.length)}
             iconColor={todo.labels.length > 0 ? "#a78bfa" : "#71717a"}
             valueColor={todo.labels.length > 0 ? "#f4f4f5" : "#71717a"}
             onPress={() => {
@@ -493,16 +559,7 @@ export function TodoDetailFields({
               labelPickerRef.current?.open(todo.labels, todo.labels);
             }}
           />
-          {todo.labels.length > 0 ? (
-            <View
-              className="flex-row flex-wrap"
-              style={{ gap: 6, paddingHorizontal: 4 }}
-            >
-              {todo.labels.map((lbl) => (
-                <LabelChip key={lbl} label={lbl} size="sm" />
-              ))}
-            </View>
-          ) : null}
+          <LabelsChips labels={todo.labels} />
 
           <FieldRow
             icon={RepeatIcon}

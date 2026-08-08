@@ -365,13 +365,49 @@ interface ToolDataRendererProps {
  * which dedupes by tool_call_id and merges into one entry). Without this,
  * multiple "Used 1 tool" headers stack on top of each other.
  */
+/** Keep only fields with a meaningful (non-undefined, non-empty) value. */
+function pickDefinedFields(
+  call: Record<string, unknown>,
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(call).filter(([, v]) => v !== undefined && v !== ""),
+  );
+}
+
+/**
+ * Merge one streamed tool call into `buffer`, keyed by tool_call_id so a
+ * later event (e.g. carrying `output` once execution finishes) updates the
+ * earlier entry instead of being dropped as a duplicate.
+ */
+function mergeToolCall(
+  buffer: Record<string, unknown>[],
+  idToIndex: Map<string, number>,
+  rawCall: unknown,
+): void {
+  const call = (rawCall ?? {}) as Record<string, unknown>;
+  const id =
+    typeof call.tool_call_id === "string" ? call.tool_call_id : undefined;
+
+  if (id && idToIndex.has(id)) {
+    // Prefer the latest non-empty value for fields that grow over time
+    // (status, output, message). Inputs usually stream complete on the first
+    // event, but we still merge to be defensive.
+    const existingIndex = idToIndex.get(id) as number;
+    const existing = buffer[existingIndex] ?? {};
+    buffer[existingIndex] = { ...existing, ...pickDefinedFields(call) };
+    return;
+  }
+
+  if (id) idToIndex.set(id, buffer.length);
+  buffer.push(call);
+}
+
 function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
   const result: ToolDataEntry[] = [];
   let toolCallsBuffer: Record<string, unknown>[] = [];
   let firstToolCallsTimestamp: ToolDataEntry["timestamp"] | undefined;
   // tool_call_id → index inside toolCallsBuffer, so a later streamed entry
-  // (e.g. carrying `output` once execution finishes) can be merged into the
-  // earlier entry instead of being dropped as a duplicate.
+  // can be merged into the earlier entry instead of being dropped.
   const idToIndex = new Map<string, number>();
 
   const flush = () => {
@@ -382,6 +418,7 @@ function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
         timestamp: firstToolCallsTimestamp,
       });
       toolCallsBuffer = [];
+      idToIndex.clear();
       firstToolCallsTimestamp = undefined;
     }
   };
@@ -390,30 +427,7 @@ function consolidateToolData(toolData: ToolDataEntry[]): ToolDataEntry[] {
     if (entry.tool_name === "tool_calls_data") {
       const calls = Array.isArray(entry.data) ? entry.data : [entry.data];
       for (const rawCall of calls) {
-        const call = (rawCall ?? {}) as Record<string, unknown>;
-        const id =
-          typeof call.tool_call_id === "string" ? call.tool_call_id : undefined;
-
-        if (id && idToIndex.has(id)) {
-          // Merge new fields onto the existing entry. Prefer the latest
-          // non-empty value for fields that grow over time (status, output,
-          // message). Inputs typically stream complete on the first event,
-          // but we still merge to be defensive.
-          const existingIndex = idToIndex.get(id) as number;
-          const existing = toolCallsBuffer[existingIndex] ?? {};
-          toolCallsBuffer[existingIndex] = {
-            ...existing,
-            ...Object.fromEntries(
-              Object.entries(call).filter(
-                ([, v]) => v !== undefined && v !== "",
-              ),
-            ),
-          };
-          continue;
-        }
-
-        if (id) idToIndex.set(id, toolCallsBuffer.length);
-        toolCallsBuffer.push(call);
+        mergeToolCall(toolCallsBuffer, idToIndex, rawCall);
       }
       if (firstToolCallsTimestamp === undefined) {
         firstToolCallsTimestamp = entry.timestamp;

@@ -76,7 +76,11 @@ def register_instagram_custom_tools(composio: Composio) -> list[str]:
                 for m in media_data.get("data", [])
             ]
         except Exception as e:
-            log.warning(f"{LogTag.TOOL} Instagram media fetch failed for user {user_id}: {e}")
+            log.warning(
+                f"{LogTag.TOOL} Instagram media fetch failed",
+                user_id=user_id,
+                error_type=type(e).__name__,
+            )
 
         return {
             "user": {

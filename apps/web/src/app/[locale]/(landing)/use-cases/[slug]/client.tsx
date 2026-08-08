@@ -26,6 +26,91 @@ interface UseCaseDetailClientProps {
   slug: string;
 }
 
+function buildWorkflowRequest(
+  useCase: UseCase | null,
+  communityWorkflow: Workflow | null,
+) {
+  const title = useCase?.title || communityWorkflow?.title;
+  const description = useCase?.description || communityWorkflow?.description;
+  const existingSteps = useCase?.steps || communityWorkflow?.steps;
+
+  if (!title || !description) return null;
+
+  // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
+  const formattedSteps = existingSteps?.map((step, index) => ({
+    id: step.id || `step_${index}`,
+    title: step.title,
+    description: step.description,
+    category: step.category,
+  }));
+
+  return {
+    title,
+    description,
+    prompt: useCase?.prompt || communityWorkflow?.prompt || description,
+    trigger_config: {
+      type: "manual" as const,
+      enabled: true,
+    },
+    // Pass formatted steps if available to avoid regeneration
+    ...(formattedSteps &&
+      formattedSteps.length > 0 && {
+        steps: formattedSteps,
+      }),
+    // Only generate if no steps exist
+    generate_immediately: !formattedSteps || formattedSteps.length === 0,
+  };
+}
+
+function deriveCreatorInfo(communityWorkflow: Workflow | null) {
+  const hasCreatorObject =
+    communityWorkflow &&
+    "creator" in communityWorkflow &&
+    communityWorkflow.creator;
+  const creatorName = hasCreatorObject
+    ? communityWorkflow.creator?.name
+    : communityWorkflow?.created_by
+      ? "Community Member"
+      : communityWorkflow
+        ? "GAIA Team"
+        : undefined;
+  const creatorRecord = hasCreatorObject
+    ? communityWorkflow.creator
+    : communityWorkflow?.created_by
+      ? { id: communityWorkflow.created_by }
+      : null;
+
+  return {
+    creatorName,
+    creatorAvatar: resolveCreatorAvatar(creatorRecord),
+    showCreator: !!communityWorkflow && !!creatorName,
+  };
+}
+
+function deriveRunCountText(communityWorkflow: Workflow | null) {
+  const runCount = communityWorkflow
+    ? communityWorkflow.metadata?.total_executions ||
+      communityWorkflow.total_executions ||
+      0
+    : 0;
+  return runCount === 0
+    ? "Never"
+    : `${runCount} ${runCount === 1 ? "time" : "times"}`;
+}
+
+function deriveFormattedSteps(
+  useCase: UseCase | null,
+  communityWorkflow: Workflow | null,
+) {
+  if (!useCase) return communityWorkflow?.steps;
+  return useCase.steps?.map((step, index) => ({
+    id: `step-${index}`,
+    title: step.title,
+    description: step.description,
+    category: useCase.integrations[index % useCase.integrations.length],
+  }));
+}
+
 export default function UseCaseDetailClient({
   useCase,
   communityWorkflow,
@@ -46,39 +131,11 @@ export default function UseCaseDetailClient({
       return;
     }
 
-    const title = useCase?.title || communityWorkflow?.title;
-    const description = useCase?.description || communityWorkflow?.description;
-    const existingSteps = useCase?.steps || communityWorkflow?.steps;
-
-    if (!title || !description) return;
+    const workflowRequest = buildWorkflowRequest(useCase, communityWorkflow);
+    if (!workflowRequest) return;
 
     startCreateTransition(async () => {
       try {
-        // Convert PublicWorkflowStep to WorkflowStepData format if steps exist
-        const formattedSteps = existingSteps?.map((step, index) => ({
-          id: step.id || `step_${index}`,
-          title: step.title,
-          description: step.description,
-          category: step.category,
-        }));
-
-        const workflowRequest = {
-          title,
-          description,
-          prompt: useCase?.prompt || communityWorkflow?.prompt || description,
-          trigger_config: {
-            type: "manual" as const,
-            enabled: true,
-          },
-          // Pass formatted steps if available to avoid regeneration
-          ...(formattedSteps &&
-            formattedSteps.length > 0 && {
-              steps: formattedSteps,
-            }),
-          // Only generate if no steps exist
-          generate_immediately: !formattedSteps || formattedSteps.length === 0,
-        };
-
         const result = await createWorkflow(workflowRequest);
 
         if (result.success && result.workflow)
@@ -108,25 +165,8 @@ export default function UseCaseDetailClient({
     },
   ];
 
-  // Prepare creator info (only for community workflows)
-  const hasCreatorObject =
-    communityWorkflow &&
-    "creator" in communityWorkflow &&
-    communityWorkflow.creator;
-  const creatorName = hasCreatorObject
-    ? communityWorkflow.creator?.name
-    : communityWorkflow?.created_by
-      ? "Community Member"
-      : communityWorkflow
-        ? "GAIA Team"
-        : null;
-  const creatorRecord = hasCreatorObject
-    ? communityWorkflow.creator
-    : communityWorkflow?.created_by
-      ? { id: communityWorkflow.created_by }
-      : null;
-  const creatorAvatar = resolveCreatorAvatar(creatorRecord);
-  const showCreator = !!communityWorkflow && !!creatorName;
+  const { creatorName, creatorAvatar, showCreator } =
+    deriveCreatorInfo(communityWorkflow);
 
   // Prepare tools - Type-safe extraction from steps, mapped to Tool format for ToolsList.
   // Dedupe by category so a workflow with multiple steps using the same tool only
@@ -140,16 +180,7 @@ export default function UseCaseDetailClient({
     ).values(),
   );
 
-  // Prepare run count
-  const runCount = communityWorkflow
-    ? communityWorkflow.metadata?.total_executions ||
-      communityWorkflow.total_executions ||
-      0
-    : 0;
-  const runCountText =
-    runCount === 0
-      ? "Never"
-      : `${runCount} ${runCount === 1 ? "time" : "times"}`;
+  const runCountText = deriveRunCountText(communityWorkflow);
 
   // Prepare trigger info (only for community workflows)
   const triggerInfo = communityWorkflow
@@ -160,14 +191,7 @@ export default function UseCaseDetailClient({
 
   // Prepare steps
   const steps = useCase?.steps || communityWorkflow?.steps;
-  const stepsFormatted = useCase
-    ? useCase.steps?.map((step, index) => ({
-        id: `step-${index}`,
-        title: step.title,
-        description: step.description,
-        category: useCase.integrations[index % useCase.integrations.length],
-      }))
-    : communityWorkflow?.steps;
+  const stepsFormatted = deriveFormattedSteps(useCase, communityWorkflow);
 
   return (
     <div className="relative">

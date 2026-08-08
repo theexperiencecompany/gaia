@@ -44,6 +44,13 @@ function formatTime(hour: number, minute: number): string {
   return `${displayHour}:${String(minute).padStart(2, "0")} ${period}`;
 }
 
+function ordinalSuffix(day: number): string {
+  if (day === 1 || day === 21 || day === 31) return "st";
+  if (day === 2 || day === 22) return "nd";
+  if (day === 3 || day === 23) return "rd";
+  return "th";
+}
+
 export function parseCronToHuman(cron: string): string {
   const parts = cron.trim().split(/\s+/);
   if (parts.length !== 5) return cron;
@@ -95,15 +102,7 @@ export function parseCronToHuman(cron: string): string {
     dowStr === "*"
   ) {
     const dom = Number.parseInt(domStr, 10);
-    const suffix =
-      dom === 1 || dom === 21 || dom === 31
-        ? "st"
-        : dom === 2 || dom === 22
-          ? "nd"
-          : dom === 3 || dom === 23
-            ? "rd"
-            : "th";
-    return `Monthly on the ${dom}${suffix} at ${formatTime(hour, minute)}`;
+    return `Monthly on the ${dom}${ordinalSuffix(dom)} at ${formatTime(hour, minute)}`;
   }
 
   return cron;

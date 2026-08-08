@@ -23,6 +23,8 @@ This applies to **everything** — coding, debugging, answering questions, decid
 - **Understand before you change or delete.** Don't modify, refactor, or remove code whose purpose you haven't confirmed (Chesterton's fence) — the weird-looking line is often load-bearing. If you don't know why it's there, find out before touching it.
 - **Don't claim done without proof.** Never say "it works," "tests pass," or "this is fixed" unless you actually ran it and saw the result. Report outcomes faithfully — if a step was skipped or something failed, say so with the output. "Done" means verified, not "should be done."
 - **Name what the test did NOT exercise, as loudly as what it did.** A test of a simulation, translation, or proxy proves only that proxy — a fixture tests the fixture's assumptions, a unit test of extracted output proves the extraction, not the real engine. Before calling something verified, say exactly where the run stops being faithful to reality ("verified against a local webhook sink, not Slack"; "fired with synthetic series, not the real app's metrics"; "passed under `act`, not a real runner"). Then reach the highest-fidelity test that is feasible: run the real component, the real integration, the real delivery — first, not after being asked. Every silent-failure bug in a monitoring/alerting system survives precisely because its test stopped short of the real path.
+- **A green test suite is not proof that the feature works.** Passing tests, lint, and type-check only prove the checks you happened to write did not fail. They do not prove the thing actually works — tests exercise the paths you already thought of, with fakes standing in for the parts most likely to break, in a process that never boots the way production does. Plenty of shipped bugs had a fully green suite. **After the work is done, drive it manually the way a real human user would**: boot the stack, hit the real endpoint, click through the real UI, send the real message, then go look at the real artifact it produced — the response body, the database row, the log file, the queue. Do this *in addition to* the suite, never instead of it, and never treat "all tests pass" as the finish line. If you cannot drive it manually, say so explicitly rather than implying it was verified.
+
 - If after genuine investigation something is still ambiguous, stop and ask — do not paper over the gap with a guess.
 
 ### Maintainability & Tech Debt
@@ -39,6 +41,7 @@ Optimize for the next engineer who has to read, extend, or debug this code six m
 - **Tech debt compounds silently.** Each shortcut makes the next change a little harder, until a feature that should take a day takes a week. Treat "it works but it's ugly/duplicated/hacky" as unfinished, not done. Working and maintainable are different bars — we hold the second one.
 - **Keep diffs minimal and reviewable.** No drive-by reformatting, no reordering imports the formatter didn't ask for, no unrelated "while I'm here" changes. Every line in the diff should trace to the task — noise hides the real change from reviewers and pollutes the history.
 - **When you spot debt adjacent to your change, surface it.** Fix it if it's in scope and cheap; otherwise call it out explicitly so it's a decision, not an accident.
+- **Never defer cleanup to a "separate PR" — that PR never comes.** Scoping dead code, a duplicate implementation, or a known workaround out of the current change so some future PR can handle it is exactly how debt becomes permanent: the follow-up is never prioritized and the mess compounds. If your change touches an area that contains dead code, a duplicated implementation, or a stub, clean it up in the *same* PR — the context is loaded and the cost is never lower than right now. If a cleanup is genuinely too large to fold in, do not bury it in a commit message, a `# TODO`, or a PR description as "out of scope, follow-up later": announce it **loudly and explicitly to the user** and let them make the call out loud. Silent deferral is not a decision, it is how it never happens.
 
 ### Agent Guidelines (Karpathy-inspired)
 
@@ -77,6 +80,7 @@ Behavioral guidelines to reduce common LLM coding mistakes. Bias toward caution 
 mise tasks          # List all available tasks with descriptions
 mise run <task>     # Run a task (e.g. mise run lint, mise run dev)
 mise //apps/api:lint  # Run a task in a sub-project from the root
+mise infisical <task>  # Team members: run any task with Infisical secrets injected (e.g. mise infisical dev:full)
 ```
 
 Pre-commit hooks are managed via **prek** (installed by mise). Install once with `mise run pre-commit:install`. Hooks run automatically on `git commit` — to run manually: `mise run pre-commit`.
@@ -312,6 +316,8 @@ Refer to `.env.example` files in each directory for required variables.
 ## Agent-Driven E2E Testing
 
 To verify a change in the real running app (not just lint/type-check), operate the live stack instead of trusting stdout — use the `driving-gaia` skill (boot the stack, dev-bypass auth, drive API/browser/bots, verify in Mongo), `reading-gaia-logs` to debug a failing run, and `parallel-worktrees` to run branches in parallel.
+
+**On a machine with no Docker daemon** (cloud sandbox, CI runner, dev container), `mise dev` cannot start infra. Use `scripts/dev/sandbox-services.sh` + `scripts/dev/sandbox-env.sh` to run the same backing services natively — see the "No Docker daemon?" section of `driving-gaia`. Never conclude a change works because the test suite passed; boot it and drive it.
 
 ## Docker
 

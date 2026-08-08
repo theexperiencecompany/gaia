@@ -67,6 +67,41 @@ export function formatDate(
 }
 
 /**
+ * Format a date in UTC, for values that are UTC calendar days (e.g. a
+ * `YYYY-MM-DD` activity date). `formatDate` renders in the device timezone,
+ * which shifts a UTC-midnight date onto the previous/next day for most users —
+ * use this whenever the underlying value is a UTC calendar day, not an instant.
+ * Formats: "short" (Jul 5), "weekday" (Mon, Jul 5), "month" (Jul).
+ */
+export function formatDateUTC(
+  date: string | Date,
+  format: "short" | "weekday" | "month" = "short",
+): string {
+  const d = toDate(date);
+
+  switch (format) {
+    case "weekday":
+      return d.toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+    case "month":
+      return d.toLocaleDateString(undefined, {
+        month: "short",
+        timeZone: "UTC",
+      });
+    default:
+      return d.toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      });
+  }
+}
+
+/**
  * Format a due date in a context-aware way:
  * - overdue dates show "Overdue · <date>"
  * - today shows "Due today"

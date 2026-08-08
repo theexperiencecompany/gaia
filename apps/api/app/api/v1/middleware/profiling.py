@@ -80,7 +80,8 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
 
         if settings.ENABLE_PROFILING:
             log.info(
-                f"{LogTag.API} PyInstrument profiling enabled: sample_rate={settings.PROFILING_SAMPLE_RATE}"
+                f"{LogTag.API} PyInstrument profiling enabled",
+                sample_rate=settings.PROFILING_SAMPLE_RATE,
             )
         else:
             log.info(f"{LogTag.API} PyInstrument profiling disabled (ENABLE_PROFILING=false)")
@@ -122,21 +123,34 @@ class ProfilingMiddleware(BaseHTTPMiddleware):
                 # Get text output for logging
                 text_output = profiler.output_text()
                 log.info(
-                    f"{LogTag.API} Profiling Results for {request.method} {request.url.path}:\n{text_output}"
+                    f"{LogTag.API} Profiling Results",
+                    method=request.method,
+                    path=request.url.path,
+                    profile_output=text_output,
                 )
             except Exception as profile_error:
                 log.warning(
-                    f"{LogTag.API} Could not generate profiling output for {request.method} {request.url.path}: {profile_error}"
+                    f"{LogTag.API} Could not generate profiling output",
+                    method=request.method,
+                    path=request.url.path,
+                    error_type=type(profile_error).__name__,
+                    error=str(profile_error),
                 )
                 log.info(
-                    f"{LogTag.API} Profiled {request.method} {request.url.path} (output generation failed)"
+                    f"{LogTag.API} Profiled request (output generation failed)",
+                    method=request.method,
+                    path=request.url.path,
                 )
             return response
 
         except Exception as e:
             profiler.stop()
             log.exception(
-                f"{LogTag.API} Profiling error during {request.method} {request.url.path}: {e!s}"
+                f"{LogTag.API} Profiling error",
+                method=request.method,
+                path=request.url.path,
+                error_type=type(e).__name__,
+                error=str(e),
             )
             # Always return the original response on error
             return await call_next(request)

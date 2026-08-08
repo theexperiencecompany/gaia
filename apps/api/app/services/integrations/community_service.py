@@ -54,8 +54,9 @@ async def _search_community_integrations(
         )
     except Exception as e:
         log.warning(
-            f"{LogTag.INTEGRATION} Semantic search unavailable, using MongoDB fallback: "
-            f"{type(e).__name__}: {e}"
+            f"{LogTag.INTEGRATION} Semantic search unavailable, using MongoDB fallback",
+            error=str(e),
+            error_type=type(e).__name__,
         )
         search_results = []
 
@@ -88,9 +89,7 @@ async def _search_community_integrations(
             )
 
     # Fallback to MongoDB regex search
-    log.info(
-        f"{LogTag.INTEGRATION} ChromaDB returned no results for '{query}', falling back to MongoDB"
-    )
+    log.info(f"{LogTag.INTEGRATION} ChromaDB returned no results, falling back to MongoDB")
     total = await integration_repository.count_community_search(query, category)
     integrations = await integration_repository.community_search(
         query, category, offset=offset, limit=limit

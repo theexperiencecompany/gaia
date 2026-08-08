@@ -106,8 +106,13 @@ def mock_executions_repo():
 
 
 @pytest.fixture
-def mock_redis_pool():
-    """Patch RedisPoolManager.get_pool used by WorkflowQueueService."""
+def mock_redis_pool(route_enqueue_via_pool):
+    """Patch RedisPoolManager.get_pool used by WorkflowQueueService.
+
+    ``route_enqueue_via_pool`` (shared conftest) routes the wide-event enqueue
+    wrapper through pool.enqueue_job, so the tests' existing pool mocks and
+    assertions stay authoritative.
+    """
     with patch("app.services.workflow.queue_service.RedisPoolManager.get_pool") as mock_get_pool:
         mock_pool = AsyncMock()
         mock_get_pool.return_value = mock_pool
@@ -342,7 +347,7 @@ class TestWorkflowQueueServiceGeneration:
     async def test_queue_generation_returns_true_on_success(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_abc"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         result = await WorkflowQueueService.queue_workflow_generation(
             workflow_id=WORKFLOW_ID, user_id=USER_ID
@@ -354,14 +359,14 @@ class TestWorkflowQueueServiceGeneration:
         )
 
     async def test_queue_generation_returns_false_when_job_is_none(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+        mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
 
         assert result is False
 
     async def test_queue_generation_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=ConnectionError("redis down"))
+        mock_redis_pool.enqueue_job.side_effect = ConnectionError("redis down")
 
         result = await WorkflowQueueService.queue_workflow_generation(WORKFLOW_ID, USER_ID)
 
@@ -373,7 +378,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_returns_true_on_success(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_xyz"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         result = await WorkflowQueueService.queue_workflow_execution(
             workflow_id=WORKFLOW_ID, user_id=USER_ID
@@ -388,10 +393,10 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_dedup_key_is_deterministic_and_context_scoped(
         self, mock_redis_pool
     ):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=MagicMock(job_id="j"))
+        mock_redis_pool.enqueue_job.return_value = MagicMock(job_id="j")
 
         async def job_id_for(context):
-            mock_redis_pool.enqueue_job.reset_mock()
+            mock_redis_pool.reset_mock()
             await WorkflowQueueService.queue_workflow_execution(
                 WORKFLOW_ID, USER_ID, context=context
             )
@@ -409,7 +414,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_deduped_enqueue_is_not_an_error(self, mock_redis_pool):
         # ARQ returns None when a job with the same _job_id is already queued —
         # that's a successful dedupe, not a failure.
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+        mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
@@ -418,7 +423,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_passes_context(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_ctx"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         ctx = {"trigger_data": {"email_id": "msg1"}}
         await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID, context=ctx)
@@ -429,7 +434,7 @@ class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_uses_empty_dict_when_no_context(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_no_ctx"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
 
         await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
@@ -437,7 +442,7 @@ class TestWorkflowQueueServiceExecution:
         assert args[2] == {}
 
     async def test_queue_execution_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("redis timeout"))
+        mock_redis_pool.enqueue_job.side_effect = Exception("redis timeout")
 
         result = await WorkflowQueueService.queue_workflow_execution(WORKFLOW_ID, USER_ID)
 
@@ -449,7 +454,7 @@ class TestWorkflowQueueServiceTodo:
     async def test_queue_todo_generation_sets_redis_flag(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_todo"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
         mock_redis_pool.set = AsyncMock()
 
         todo_id = "todo_abc123"
@@ -468,7 +473,7 @@ class TestWorkflowQueueServiceTodo:
     async def test_queue_todo_generation_uses_correct_task_name(self, mock_redis_pool):
         mock_job = MagicMock()
         mock_job.job_id = "job_todo2"
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=mock_job)
+        mock_redis_pool.enqueue_job.return_value = mock_job
         mock_redis_pool.set = AsyncMock()
 
         await WorkflowQueueService.queue_todo_workflow_generation("todo_x", USER_ID, "Title")
@@ -477,7 +482,7 @@ class TestWorkflowQueueServiceTodo:
         assert args[0] == "process_workflow_generation_task"
 
     async def test_queue_todo_generation_returns_false_when_job_none(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(return_value=None)
+        mock_redis_pool.enqueue_job.return_value = None
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
             "todo_x", USER_ID, "Title"
@@ -486,7 +491,7 @@ class TestWorkflowQueueServiceTodo:
         assert result is False
 
     async def test_queue_todo_generation_returns_false_on_exception(self, mock_redis_pool):
-        mock_redis_pool.enqueue_job = AsyncMock(side_effect=Exception("connection refused"))
+        mock_redis_pool.enqueue_job.side_effect = Exception("connection refused")
 
         result = await WorkflowQueueService.queue_todo_workflow_generation(
             "todo_x", USER_ID, "Title"

@@ -3,6 +3,7 @@ export { isTokenExpired, parseJwt, shouldRefreshToken } from "./auth";
 export type { DueChipTone } from "./dateUtils";
 export {
   formatDate,
+  formatDateUTC,
   formatDueDate,
   formatRelativeTime,
   getDueChipTone,
@@ -15,8 +16,10 @@ export {
   formatCompactNumber,
   formatCurrency,
   formatDuration,
+  formatFeatureName,
   formatFileSize,
   formatNumber,
+  formatPlanName,
   formatRelativeDate,
   formatRunCount,
   getTriggerLabel,

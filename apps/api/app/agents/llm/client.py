@@ -3,6 +3,7 @@ from collections.abc import Callable
 from functools import cache
 from typing import Any, TypeVar, cast
 
+from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackHandler
 from langchain_core.language_models import LanguageModelInput, LanguageModelLike
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
@@ -22,7 +23,6 @@ from app.agents.llm.exceptions import (
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
-    DEFAULT_GROK_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -37,10 +37,12 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.models.agent_models import AgentConfigurable
+from app.services.llm_metering import record_llm_call
 from shared.py.wide_events import log
 
 _StructuredT = TypeVar("_StructuredT", bound=BaseModel)
@@ -76,14 +78,14 @@ def is_default_model_config(configurable: AgentConfigurable) -> bool:
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openrouter": DEFAULT_GROK_MODEL_NAME,
+    "openrouter": DEFAULT_MODEL_NAME,
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
     "custom": settings.DEV_LLM_MODEL or "",
 }
 PROVIDER_PRIORITY = {
-    1: "gemini",
-    2: "openrouter",
+    1: "openrouter",
+    2: "gemini",
     3: "custom",
 }
 
@@ -371,14 +373,26 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
-    if not settings.GOOGLE_API_KEY:
-        raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
+    if not settings.OPENROUTER_API_KEY:
+        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
     return _build_default_llm(temperature)
 
 
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
-    llm = ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
+    llm = ChatOpenRouter(
+        model=DEFAULT_MODEL_NAME,
+        temperature=temperature,
+        # ChatOpenRouter defaults streaming to False, and stream_usage only
+        # attaches usage metadata to a stream — set alone it is inert. Both are
+        # set so this matches init_openrouter_llm, and so the model fallback
+        # (create_agent resolves it from here) streams like the primary it
+        # replaces instead of arriving as one lump.
+        streaming=True,
+        stream_usage=True,
+        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+        api_key=settings.OPENROUTER_API_KEY,
+    )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).
     # Consumers that express limits as a FRACTION of the window — the summarization
@@ -389,13 +403,37 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     return llm
 
 
+def get_vision_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The factory for every image -> text call (``vision/describe.py``).
+
+    Separate from :func:`get_default_llm` on purpose. The default model is picked
+    for cheap text and may not be multimodal; this one must be able to see, or the
+    vision fallback describes nothing — and it fails silently, since
+    ``describe_image`` degrades to ``None``. Raises ``LLMNotConfiguredError`` when
+    Google is not configured.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature)
+    if not settings.GOOGLE_API_KEY:
+        raise LLMNotConfiguredError("Vision model not configured. Set GOOGLE_API_KEY.")
+    return _build_vision_llm(temperature)
+
+
+@cache
+def _build_vision_llm(temperature: float) -> BaseChatModel:
+    llm = ChatGoogleGenerativeAI(model=VISION_MODEL_NAME, temperature=temperature)
+    # Same reason as _build_default_llm: fractional-window middleware reads this.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
 def _stamp_fallback(result: _ResultT) -> _ResultT:
     """Mark a fallback-produced AIMessage so downstream layers can surface the
     downgrade (SSE event, accounting). No-op for non-message results."""
     metadata = getattr(result, "response_metadata", None)
     if isinstance(metadata, dict):
         metadata["gaia_fell_back"] = True
-        metadata["gaia_fallback_model"] = DEFAULT_GEMINI_MODEL_NAME
+        metadata["gaia_fallback_model"] = DEFAULT_MODEL_NAME
     return result
 
 
@@ -407,7 +445,7 @@ def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseExce
     if resolved is None:
         raise primary_error
     log.warning(
-        f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
+        f"{LogTag.AGENT} llm call failed; falling back to the default model",
         llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
         error=str(primary_error),
     )
@@ -452,17 +490,31 @@ async def ainvoke_llm(
     Callers that know their shape narrow it themselves: ``ainvoke_structured`` casts
     to its ``schema``, and the chat-model call sites cast to ``BaseMessage``.
     """
-    async with asyncio.timeout(timeout):
-        try:
-            return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
-                messages, config=config
-            )
-        except LLM_FALLBACK_EXCEPTIONS as primary_error:
-            return _stamp_fallback(
-                await _resolve_fallback(fallback, label, primary_error).ainvoke(
-                    messages, config=config
+    # The one metering seam for auxiliary spend. Every one-shot helper reaches a
+    # provider through here — the vision describer, chatbot, research, PDF page
+    # summaries, integration inference, profanity, onboarding — and each used to
+    # spend real money that nothing recorded. Metering here rather than at each
+    # call site is what stops the next helper from silently joining that list.
+    # The agent graph does NOT come through this function (it runs the model via
+    # LangGraph, metered by LLMAccountingMiddleware), so there is no double count.
+    usage_handler = UsageMetadataCallbackHandler()
+    user_id = (config or {}).get("configurable", {}).get("user_id")
+    try:
+        async with asyncio.timeout(timeout):
+            try:
+                return await with_llm_retry(primary, max_attempts=max_attempts).ainvoke(
+                    messages, config=_with_usage_handler(config, usage_handler)
                 )
-            )
+            except LLM_FALLBACK_EXCEPTIONS as primary_error:
+                return _stamp_fallback(
+                    await _resolve_fallback(fallback, label, primary_error).ainvoke(
+                        messages, config=_with_usage_handler(config, usage_handler)
+                    )
+                )
+    finally:
+        # ``finally``: a failed call still burned the tokens of every attempt the
+        # retry and fallback made, and that spend is just as real.
+        await _record_auxiliary_usage(usage_handler, label, str(user_id) if user_id else None)
 
 
 def invoke_llm(
@@ -497,6 +549,106 @@ SILENT_LLM_CONFIG: RunnableConfig = {
 }  # type: ignore[typeddict-unknown-key]
 
 
+def metered_config(user_id: str) -> RunnableConfig:
+    """The minimal run config for an auxiliary :func:`ainvoke_structured` call:
+    who its spend is attributed to (COGS observability — never charged to the
+    user's budget). Call sites that already forward a graph config (which
+    carries ``configurable.user_id`` already) don't need this."""
+    return cast(RunnableConfig, {"configurable": {"user_id": user_id}})
+
+
+def silent_metered_config(user_id: str) -> RunnableConfig:
+    """:data:`SILENT_LLM_CONFIG` plus the spend attribution of
+    :func:`metered_config` — for an internal call made *while a graph is
+    streaming* and on behalf of a specific user (the HIL intent judge and the
+    conversational resolver).
+
+    Both halves are needed and each is easy to forget alone: without the silent
+    flags the structured output leaks into the chat as a bot message, and
+    without ``user_id`` the call's real COGS lands on nobody.
+    """
+    return cast(
+        RunnableConfig,
+        {**SILENT_LLM_CONFIG, **metered_config(user_id)},
+    )
+
+
+def _with_usage_handler(
+    config: RunnableConfig | None, handler: BaseCallbackHandler
+) -> RunnableConfig:
+    """Return ``config`` with ``handler`` attached, never mutating the caller's
+    object — several callers pass a shared module-level config constant, and
+    graph nodes forward a config whose ``callbacks`` is a live manager."""
+    merged: dict[str, Any] = dict(config) if config else {}
+    existing = merged.get("callbacks")
+    if existing is None:
+        merged["callbacks"] = [handler]
+    elif isinstance(existing, list):
+        merged["callbacks"] = [*existing, handler]
+    else:
+        manager = existing.copy()
+        manager.add_handler(handler, inherit=True)
+        merged["callbacks"] = manager
+    return cast(RunnableConfig, merged)
+
+
+async def _record_auxiliary_usage(
+    handler: UsageMetadataCallbackHandler, label: str, user_id: str | None
+) -> None:
+    """Meter one auxiliary (non-agent) model call for COGS observability.
+
+    ``ainvoke_structured`` runs outside the agent graph, so
+    ``LLMAccountingMiddleware`` never sees it — without this, memory
+    extraction/reconcile/consolidation and every other one-shot helper would
+    spend real money that nothing ever measured.
+
+    This spend is deliberately NOT charged to the user's allowance
+    (``charge_to_budget=False``): a memory save or an onboarding question is
+    background work GAIA does on the user's behalf, not usage they asked for,
+    so it must never eat into their chat budget (memory volume is bounded by
+    its own count cap). Tokens likewise never touch the per-request token
+    ceiling — that counter bounds a single agent tree against runaway loops.
+    The cost is booked durably per user (``usage_daily.aux_cost``) and the
+    ``llm_call`` event carries ``background=True``, so auxiliary COGS stays
+    fully measurable and splittable from in-turn agent spend.
+    """
+    for model_name, usage in handler.usage_metadata.items():
+        input_tokens = int(usage.get("input_tokens", 0) or 0)
+        output_tokens = int(usage.get("output_tokens", 0) or 0)
+        if not (input_tokens or output_tokens):
+            continue
+        details = usage.get("input_token_details") or {}
+        cached_tokens = int(details.get("cache_read", 0) or 0)
+
+        if user_id is None:
+            log.warning(
+                f"{LogTag.AGENT} auxiliary llm spend not metered — no user_id in "
+                "config.configurable (threading gap?)",
+                llm={"label": label, "model": model_name},
+            )
+
+        cost = await record_llm_call(
+            user_id=user_id,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
+            charge_to_budget=False,
+        )
+        log.info(
+            "llm_call",
+            llm_event="llm_call",
+            background=True,
+            agent_name=label,
+            model=model_name,
+            user_id=user_id,
+            input_tokens=input_tokens,
+            cached_tokens=cached_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost,
+        )
+
+
 async def ainvoke_structured(
     schema: type[_StructuredT],
     prompt: LanguageModelInput,
@@ -509,10 +661,13 @@ async def ainvoke_structured(
     """The single canonical one-shot structured call on the default model. ``prompt``
     is any LangChain input — a plain string (sent as one human message) or a full
     message list — and ``config`` carries optional run config (e.g. silent tags that
-    keep internal tokens out of the chat stream). Adds the transient-retry + fallback
+    keep internal tokens out of the chat stream, and ``configurable.user_id``, which
+    is what the call's spend is metered against). Adds the transient-retry + fallback
     of :func:`ainvoke_llm`. Returns the validated ``schema`` instance. Raises if Google
     is not configured (see ``get_default_llm``)."""
     structured = get_default_llm(temperature=temperature).with_structured_output(schema)
+    # Metering lives in ainvoke_llm, which this delegates to — a handler here too
+    # would record the same call twice and over-report the user's COGS.
     return cast(
         _StructuredT,
         await ainvoke_llm(structured, prompt, config=config, label=label, timeout=timeout),

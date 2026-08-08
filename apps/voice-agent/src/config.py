@@ -9,7 +9,10 @@ from shared.py.settings import BaseAppSettings
 from shared.py.wide_events import log
 from src.constants import LogTag
 
-# Load API's .env for shared Infisical bootstrap vars
+# Load the voice agent's own .env first; fall back to the API's .env for the
+# shared Infisical bootstrap vars (dotenv never overrides already-set keys).
+_own_env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(_own_env_path)
 _api_env_path = Path(__file__).parent.parent.parent / "api" / ".env"
 load_dotenv(_api_env_path)
 

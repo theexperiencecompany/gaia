@@ -31,7 +31,7 @@ from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
 from app.utils.redis_utils import RedisPoolManager
 from app.utils.timezone import is_within_local_daytime
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import log
 
 DORMANT_DAYS = 5
 WAITING_LABEL_MAX_DAYS = 8
@@ -67,44 +67,50 @@ async def maintenance_sweep_tracked_todos(_ctx: dict[str, Any]) -> str:
     - Overdue (due_date <= now, no upcoming schedule): individual notification.
     - Dormant (no update in DORMANT_DAYS): agent re-queues or bundles a digest.
     """
-    async with wide_task("maintenance_sweep_tracked_todos"):
-        now = datetime.now(UTC)
-        log.info("maintenance_sweep.scan_started")
+    now = datetime.now(UTC)
+    log.info("maintenance_sweep.scan_started")
 
-        pool = await RedisPoolManager.get_pool()
+    pool = await RedisPoolManager.get_pool()
 
-        expired, overdue, dormant = await _classify_tracked_todos(pool, now)
+    expired, overdue, dormant = await _classify_tracked_todos(pool, now)
 
-        # Track health-check calls per user to cap LLM usage per sweep
-        health_checks_used: dict[str, int] = {}
-        # Cache the daytime decision per user for the duration of this sweep.
-        daytime_cache: dict[str, bool] = {}
+    # Track health-check calls per user to cap LLM usage per sweep
+    health_checks_used: dict[str, int] = {}
+    # Cache the daytime decision per user for the duration of this sweep.
+    daytime_cache: dict[str, bool] = {}
 
-        archived, notified_expired = await _process_expired(
-            expired, pool, now, health_checks_used, daytime_cache
-        )
-        notified_overdue = await _process_overdue(overdue, pool, now, daytime_cache)
-        requeued, needs_attention_todos = await _process_dormant(
-            dormant, pool, now, health_checks_used, daytime_cache
-        )
+    archived, notified_expired = await _process_expired(
+        expired, pool, now, health_checks_used, daytime_cache
+    )
+    notified_overdue = await _process_overdue(overdue, pool, now, daytime_cache)
+    requeued, needs_attention_todos = await _process_dormant(
+        dormant, pool, now, health_checks_used, daytime_cache
+    )
 
-        if needs_attention_todos:
-            await _send_dormant_digest(needs_attention_todos)
+    if needs_attention_todos:
+        await _send_dormant_digest(needs_attention_todos)
 
-        summary = (
-            f"archived:{archived} notified_expired:{notified_expired} "
-            f"notified_overdue:{notified_overdue} requeued:{requeued} "
-            f"digest_items:{len(needs_attention_todos)}"
-        )
-        log.info(
-            "maintenance_sweep.done",
-            archived=archived,
-            notified_expired=notified_expired,
-            notified_overdue=notified_overdue,
-            requeued=requeued,
-            digest_items=len(needs_attention_todos),
-        )
-        return summary
+    summary = (
+        f"archived:{archived} notified_expired:{notified_expired} "
+        f"notified_overdue:{notified_overdue} requeued:{requeued} "
+        f"digest_items:{len(needs_attention_todos)}"
+    )
+    log.set(
+        archived=archived,
+        notified_expired=notified_expired,
+        notified_overdue=notified_overdue,
+        requeued=requeued,
+        digest_items=len(needs_attention_todos),
+    )
+    log.info(
+        "maintenance_sweep.done",
+        archived=archived,
+        notified_expired=notified_expired,
+        notified_overdue=notified_overdue,
+        requeued=requeued,
+        digest_items=len(needs_attention_todos),
+    )
+    return summary
 
 
 async def _classify_tracked_todos(

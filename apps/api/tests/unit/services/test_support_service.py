@@ -205,7 +205,8 @@ class TestDeleteUploadedFiles:
             await _delete_uploaded_files(urls)
 
             mock_log.error.assert_called_once()
-            assert "network error" in mock_log.error.call_args[0][0]
+            assert mock_log.error.call_args.kwargs["error"] == "network error"
+            assert mock_log.error.call_args.kwargs["ticket_id"] == "TICKET"
 
     async def test_multiple_urls_processed_independently(self, mock_cloudinary):
         """All URLs are processed even if one fails."""
