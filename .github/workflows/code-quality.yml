@@ -915,24 +915,7 @@ jobs:
       - name: Sync Python dependencies
         run: uv sync --frozen --package gaia --group backend --group dev
       - name: Mutation check (zero survivors required, per changed module)
-        run: |
-          bash scripts/ci/mutation-matrix.sh > /tmp/mutation-matrix.json
-          python3 - << 'EOF'
-          import json
-
-          modules = json.load(open("/tmp/mutation-matrix.json"))
-          with open("/tmp/mutation-modules.txt", "w") as f:
-              for m in modules:
-                  f.write(f"{m['module']} {m['testfile']}\n")
-          print(f"{len(modules)} module(s) to mutate")
-          EOF
-          if [ ! -s /tmp/mutation-modules.txt ]; then
-            echo "no changed app modules — nothing to mutate"
-            exit 0
-          fi
-          # xargs -P: bounded parallelism on the runner; exits 123 if any
-          # module's mutation check fails, failing this lane.
-          xargs -P 4 -n 2 bash scripts/test/mutation.sh < /tmp/mutation-modules.txt
+        run: bash scripts/ci/mutation-check.sh
 
   quality-gate:
     name: Quality gate (required)
