@@ -89,6 +89,11 @@ def main() -> None:
         help="also collapse duplicate traces (slow: a delete costs ~3.5s on this backend)",
     )
 
+    rescore_p = sub.add_parser(
+        "rescore", help="re-grade a finished run from its journal (no model calls)"
+    )
+    rescore_p.add_argument("run_id")
+
     sub.add_parser("flaky", help="cases whose verdict changes between runs (free, from journals)")
 
     sub.add_parser("dashboards", help="create/refresh the Opik dashboards (idempotent)")
@@ -152,6 +157,12 @@ def main() -> None:
         from .core.dashboards import build
 
         build()
+    elif args.command == "rescore":
+        from .core.rescore import rescore, write_sibling
+
+        result = rescore(runner.RUNS_DIR, args.run_id, cfg)
+        print(result.render())
+        print(f"[rescore] {write_sibling(runner.RUNS_DIR, result)}")
     elif args.command == "flaky":
         from .core.flaky import report
 
