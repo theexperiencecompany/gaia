@@ -11,9 +11,25 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import faults
+
 # A per-case token count above this is not a measurement, it is a running total.
 # The largest single legitimate case observed is ~40k (a LongMemEval haystack).
 IMPLAUSIBLE_CASE_TOKENS = 400_000
+
+# ...and below this it is not a measurement either. Every case sends a system
+# prompt before it sends anything else, and GAIA's is thousands of tokens on its
+# own, so a case that produced a real transcript cannot have consumed a few
+# dozen. Two suites recorded a median of 56 and 16 input tokens for months:
+# their transports estimate from the question's character count, which sees
+# neither the system prompt, the tool schemas, nor the agent's own turns.
+IMPLAUSIBLE_MINIMUM_CASE_TOKENS = 500
+
+# Only a case that actually waited on a model is held to that floor. The smoke
+# suite's fake transport answers in 0.07s and its token figures are openly
+# invented, which is fine — it exists to exercise the harness, not to measure an
+# agent. Anything that spent seconds of wall clock did call a model.
+MIN_MODEL_CALL_SECONDS = 2.0
 
 
 @dataclass
@@ -82,6 +98,39 @@ def check_records(
                 f"{len(runaway)} case(s) above {IMPLAUSIBLE_CASE_TOKENS:,} input tokens — "
                 f"e.g. {runaway[:3]}. A per-case counter this large is a cumulative total, "
                 f"not a measurement.",
+            )
+        )
+
+    undercounted = [
+        (str(r.get("case_id")), int((r.get("tokens") or {}).get("input", 0)))
+        for r in records
+        if (r.get("text") or r.get("messages"))
+        and float(r.get("duration_s") or 0.0) >= MIN_MODEL_CALL_SECONDS
+        and int((r.get("tokens") or {}).get("input", 0)) < IMPLAUSIBLE_MINIMUM_CASE_TOKENS
+    ]
+    if undercounted:
+        report.violations.append(
+            Violation(
+                "implausibly small per-case token count",
+                f"{len(undercounted)} case(s) below {IMPLAUSIBLE_MINIMUM_CASE_TOKENS:,} input "
+                f"tokens after seconds of work — e.g. {undercounted[:3]}. A figure this small "
+                f"cannot include the system prompt, so it is an estimate of the question's length "
+                f"or a meter that never fired, not a measurement. Cost derived from it is fiction.",
+            )
+        )
+
+    graded_faults = [
+        str(r.get("case_id"))
+        for r in records
+        if r.get("status") == "failed" and faults.never_conducted(r)
+    ]
+    if graded_faults:
+        report.violations.append(
+            Violation(
+                "an outage was graded as a wrong answer",
+                f"{len(graded_faults)} case(s) are journaled `failed` with a fault, no transcript "
+                f"and no scores — e.g. {graded_faults[:3]}. They never ran, so they cannot be "
+                f"wrong; averaging them publishes a backend outage as a quality score.",
             )
         )
 

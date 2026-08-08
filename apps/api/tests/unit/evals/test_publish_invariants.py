@@ -141,3 +141,100 @@ def test_a_clean_run_publishes() -> None:
     varied = [14262, 13474, 14052, 7290, 13910, 14957, 13319, 8752, 14018, 13844, 9001, 13120]
     report = check_records([_ran(f"c{i}", n) for i, n in enumerate(varied)])
     assert report.ok, [v.detail for v in report.violations]
+
+
+def _worked_for(case_id: str, tokens_in: int, seconds: float) -> dict[str, Any]:
+    record = _ran(case_id, tokens_in)
+    record["tokens"]["input"] = tokens_in
+    record["duration_s"] = seconds
+    return record
+
+
+def test_an_estimate_of_the_question_is_not_a_measurement() -> None:
+    """gaia_bench recorded a median of 56 input tokens and hil 16, for cases that
+    spent a real minute in the agent. Both estimate from the question's character
+    count, which never sees the system prompt — and nothing caught it, because
+    every check only ever looked for numbers that were too LARGE."""
+    report = check_records([_worked_for(f"gaia-{i}", n, 53.4) for i, n in enumerate((104, 56, 88))])
+    assert not report.ok
+    assert any("implausibly small" in v.check for v in report.violations)
+
+
+def test_a_meter_that_never_fired_is_caught_too() -> None:
+    """regression journaled 0 tokens for every case: it read a per-provider total
+    under a provider name the tracker never used."""
+    report = check_records([_worked_for(f"reg-{i}", 0, 5.4) for i in range(5)])
+    assert not report.ok
+    assert any("implausibly small" in v.check for v in report.violations)
+
+
+def test_a_fake_transport_is_not_held_to_the_floor() -> None:
+    """The smoke suite answers in 0.07s without a model and says so. Failing it
+    would make the check noise, and noise is what gets switched off."""
+    report = check_records([_worked_for(f"smoke-{i}", 120, 0.07) for i in range(3)])
+    assert report.ok, [v.detail for v in report.violations]
+
+
+def test_a_real_measurement_is_never_called_too_small() -> None:
+    report = check_records([_worked_for(f"c{i}", n, 30.0) for i, n in enumerate((22713, 3699))])
+    assert report.ok, [v.detail for v in report.violations]
+
+
+def test_an_outage_graded_as_a_wrong_answer_blocks_the_run() -> None:
+    """164 GAIA cases were journaled `failed` carrying an HTTP 500 from a dead
+    API, with no transcript and no scores, and were averaged into accuracy."""
+    outage = [
+        {
+            "case_id": f"gaia-{i}",
+            "status": "failed",
+            "text": "",
+            "messages": [],
+            "tool_calls": [],
+            "scores": {},
+            "tokens": {"input": 0, "output": 0},
+            "duration_s": 0.01,
+            "error": "RuntimeError: dev executor endpoint failed: HTTP 500",
+        }
+        for i in range(6)
+    ]
+    report = check_records(outage)
+    assert not report.ok
+    assert any("outage was graded" in v.check for v in report.violations)
+
+
+def test_the_same_outage_recorded_honestly_publishes() -> None:
+    """`errored` is the honest status — unscored, out of the denominator. It is
+    the grading of a fault as a wrong answer that must stop a run, not the fault."""
+    honest = [
+        {
+            "case_id": f"gaia-{i}",
+            "status": "errored",
+            "text": "",
+            "messages": [],
+            "tool_calls": [],
+            "scores": {},
+            "tokens": {"input": 0, "output": 0},
+            "duration_s": 0.01,
+            "error": "RuntimeError: dev executor endpoint failed: HTTP 500",
+        }
+        for i in range(6)
+    ]
+    assert check_records(honest).ok
+
+
+def test_a_case_that_failed_on_its_merits_is_not_mistaken_for_an_outage() -> None:
+    """A real wrong answer has a transcript. It must stay in the denominator."""
+    wrong = [
+        {
+            "case_id": "c1",
+            "status": "failed",
+            "text": "Paris",
+            "messages": [{"role": "assistant", "content": "Paris"}],
+            "tool_calls": [],
+            "scores": {"gaia_exact": 0.0},
+            "tokens": {"input": 12000, "output": 40},
+            "duration_s": 20.0,
+            "error": None,
+        }
+    ]
+    assert check_records(wrong).ok

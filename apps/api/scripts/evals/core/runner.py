@@ -10,6 +10,7 @@ import time
 from typing import Any
 import uuid
 
+from . import faults
 from .cost import EvalCostTracker
 from .journal import RunJournal, RunMeta
 from .providers import (
@@ -20,7 +21,7 @@ from .providers import (
     price_book,
     rotation_chain,
 )
-from .types import Case, CaseRun, CaseTrace, InfraError, PriceBook, ProviderError
+from .types import Case, CaseRun, CaseTrace, PriceBook, ProviderError
 
 RUNS_DIR = Path(__file__).resolve().parent.parent / "runs"
 
@@ -196,7 +197,8 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     ) -> None:
         """Journal a finished case and mirror it into Opik — including failures,
         which are exactly the cases worth looking at in the UI."""
-        record = _record(case, run, scores, status, error)
+        source = _attribute_tokens(run, tracker, case.id)
+        record = _record(case, run, scores, status, error, source)
         journal.append(record)
         _log_trace(suite.project, run_id, record, prices)
 
@@ -248,7 +250,8 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                 try:
                     tracker.set_provider(provider_name)
                     pin_settings(provider)
-                    run = await transport(case, cfg, tracker, provider)
+                    with tracker.case_scope(case.id):
+                        run = await transport(case, cfg, tracker, provider)
                     run.provider = provider_name
                     run.model = provider.model
                     run.duration_s = time.monotonic() - start
@@ -266,12 +269,16 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     last_error = str(e)
                     print(f"  ✗ {case.id} [{provider_name}] provider error: {e.reason} — rotating")
                     provider_index += 1
-                except InfraError as e:
-                    # Nothing about the agent was measured — journaling this case
-                    # (and every one after it) would publish an outage as a 0%.
-                    aborted = str(e)
-                    break
                 except Exception as e:
+                    # An outage reaches this loop as an ordinary exception unless
+                    # some suite happened to hand-wrap it. Classifying here — the
+                    # one place a fault becomes a status — is what stops the next
+                    # 400 cases from measuring the outage instead of the agent,
+                    # whichever suite and whichever backend went away.
+                    fault = faults.classify(e)
+                    if fault is not None:
+                        aborted = str(fault.as_infra_error())
+                        break
                     last_error = f"{type(e).__name__}: {e}"
                     record_case(
                         case,
@@ -415,17 +422,19 @@ async def _run_cases_concurrently(
                 return
             start = time.monotonic()
             try:
-                run = await suite.transport(case, cfg, tracker, provider)
+                with tracker.case_scope(case.id):
+                    run = await suite.transport(case, cfg, tracker, provider)
                 run.provider = provider_name
                 run.model = provider.model
                 run.duration_s = time.monotonic() - start
                 scores = {} if run.error else suite.score(case, run)
                 status = _status_from_scores(case, scores, run.error)
                 record_case(case, run, scores, status, run.error)
-            except InfraError as e:
-                aborted = str(e)
-                return
             except Exception as e:
+                fault = faults.classify(e)
+                if fault is not None:
+                    aborted = str(fault.as_infra_error())
+                    return
                 detail = f"{type(e).__name__}: {e}"
                 record_case(
                     case,
@@ -498,8 +507,47 @@ def _flush_traces(project: str) -> None:
         close_clients()
 
 
+TOKENS_METERED = "metered"
+"""Provider-reported usage for every LLM call the case made. The real number."""
+
+TOKENS_ESTIMATED = "estimated"
+"""A transport's own guess, because its endpoint reports no usage. Not a
+measurement: it sees the prompt and the answer, never the system prompt, the
+tool schemas or the agent's intermediate turns, so it reads low by orders of
+magnitude and must never be summed into a cost figure unlabelled."""
+
+TOKENS_NONE = "none"
+"""Nothing was measured and nothing was claimed."""
+
+
+def _attribute_tokens(run: CaseRun, tracker: EvalCostTracker, case_id: str) -> str:
+    """Settle what this case's tokens are, and say where the figure came from.
+
+    One definition for every suite: the provider-reported input and output of
+    every LLM call made while serving the case. Suites used to each answer this
+    themselves and answered it five different ways — a delta on a shared meter
+    (right only when one case runs at a time), a per-provider running total
+    (never right), a character estimate of the prompt (low by ~1000x). The
+    meter is per case now, so the harness can answer it once, here.
+
+    A transport's own figure survives only where the meter saw nothing at all —
+    an HTTP endpoint that reports no usage — and is labelled as the estimate it
+    is rather than passing for a measurement.
+    """
+    metered_in, metered_out = tracker.case_totals(case_id)
+    if metered_in or metered_out:
+        run.tokens_in, run.tokens_out = metered_in, metered_out
+        return TOKENS_METERED
+    return TOKENS_ESTIMATED if (run.tokens_in or run.tokens_out) else TOKENS_NONE
+
+
 def _record(
-    case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
+    case: Case,
+    run: CaseRun,
+    scores: dict[str, float],
+    status: str,
+    error: str | None,
+    token_source: str = TOKENS_NONE,
 ) -> dict[str, Any]:
     return {
         "case_id": case.id,
@@ -516,7 +564,7 @@ def _record(
         "tool_calls": run.tool_calls,
         "end_state": run.end_state,
         "scores": scores,
-        "tokens": {"input": run.tokens_in, "output": run.tokens_out},
+        "tokens": {"input": run.tokens_in, "output": run.tokens_out, "source": token_source},
         "duration_s": round(run.duration_s, 2),
         "error": error,
         "ts": datetime.now(UTC).isoformat(timespec="seconds"),
