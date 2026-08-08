@@ -2,8 +2,10 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain.agents.middleware import AgentMiddleware, SummarizationMiddleware
+from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage, HumanMessage, RemoveMessage, ToolMessage
+from langchain_google_genai.chat_models import _parse_chat_history
 import pytest
 
 from app.agents.middleware.executor import MiddlewareExecutor, _has_override
@@ -218,6 +220,145 @@ class TestExecuteAfterModel:
         # The returned object is a freshly constructed State from dict(state)
         # so it is NOT the same object but carries the same keys.
         assert result["query"] == state["query"]
+
+
+class MessagesAppendingMiddleware(AgentMiddleware):
+    """Middleware that appends one message, the way LangChain hooks are meant to."""
+
+    async def abefore_model(self, state, runtime):
+        return {"messages": [HumanMessage(content="injected", id="injected-1")]}
+
+
+def _summarizing_executor(trigger_after: int, keep: int) -> MiddlewareExecutor:
+    """Executor wrapping the real ``SummarizationMiddleware``, tuned to fire immediately."""
+    summarizer = GenericFakeChatModel(messages=iter([AIMessage(content="SUMMARY")] * 50))
+    return MiddlewareExecutor(
+        [
+            SummarizationMiddleware(
+                model=summarizer,
+                trigger=("messages", trigger_after),
+                keep=("messages", keep),
+            )
+        ]
+    )
+
+
+def _long_history(turns: int) -> list:
+    messages = []
+    for i in range(turns):
+        messages.append(HumanMessage(content=f"user turn {i}", id=f"h{i}"))
+        messages.append(AIMessage(content=f"assistant turn {i}", id=f"a{i}"))
+    return messages
+
+
+@pytest.mark.unit
+class TestExecuteBeforeModelStateUpdates:
+    """A middleware hook returns a LangGraph *state update*, not replacement state.
+
+    The executor runs those hooks inside a single bigtool node, so it — not the
+    graph — has to resolve them through the channel reducers. Merging them with
+    ``dict.update`` instead is what put a ``RemoveMessage(REMOVE_ALL_MESSAGES)``
+    tombstone at position 0 of the list handed to the model, 500ing the executor
+    endpoint in production.
+    """
+
+    pytestmark = pytest.mark.asyncio
+
+    async def test_summarization_tombstone_never_reaches_model_input(self):
+        executor = _summarizing_executor(trigger_after=6, keep=2)
+        state = make_state(messages=_long_history(10), selected_tool_ids=[])
+
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_before_model(state, make_config())
+
+        assert not any(isinstance(m, RemoveMessage) for m in result["messages"]), (
+            "RemoveMessage tombstones are control-plane markers for the state "
+            "reducer and must never survive into the model's message list"
+        )
+
+    async def test_summarized_messages_are_accepted_by_the_real_provider_serializer(self):
+        """The production symptom, pinned to the real serializer that raised it.
+
+        ``langchain_google_genai._parse_chat_history`` is the function that
+        raised "Unexpected message with type RemoveMessage at the position 0"
+        in the traceback behind the 500s. It runs before any network call, so
+        the real one is used here rather than a stand-in.
+        """
+        executor = _summarizing_executor(trigger_after=6, keep=2)
+        state = make_state(messages=_long_history(10), selected_tool_ids=[])
+
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_before_model(state, make_config())
+
+        _parse_chat_history(result["messages"], convert_system_message_to_human=False)
+
+    async def test_summarization_drops_the_summarized_history(self):
+        """The tombstone must be *applied*, not merely dropped.
+
+        Filtering the sentinel out without honouring it would leave the full
+        pre-summarization history in front of the model — no crash, but
+        summarization silently doing nothing, which is the harder bug to see.
+        """
+        executor = _summarizing_executor(trigger_after=6, keep=2)
+        state = make_state(messages=_long_history(10), selected_tool_ids=[])
+
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_before_model(state, make_config())
+
+        surviving_ids = {m.id for m in result["messages"]}
+        assert "h0" not in surviving_ids and "a0" not in surviving_ids
+        assert len(result["messages"]) < 20
+
+    async def test_message_update_appends_instead_of_replacing_history(self):
+        """A hook returning one message must not wipe the conversation.
+
+        ``LLMAccountingMiddleware.abefore_model`` is documented to start
+        returning ``{"messages": [AIMessage("Credit limit reached…")]}`` for
+        credit gating; under ``dict.update`` that would hand the model a
+        one-message conversation.
+        """
+        executor = MiddlewareExecutor([MessagesAppendingMiddleware()])
+        state = make_state(messages=_long_history(2), selected_tool_ids=[])
+
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_before_model(state, make_config())
+
+        assert [m.id for m in result["messages"]] == ["h0", "a0", "h1", "a1", "injected-1"]
+
+    async def test_non_message_keys_are_still_last_write_wins(self):
+        executor = MiddlewareExecutor([SampleAsyncBeforeMiddleware()])
+        state = make_state(async_key="stale")
+
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_before_model(state, make_config())
+
+        assert result["async_key"] == "async_value"
+
+
+@pytest.mark.unit
+class TestExecuteAfterModelStateUpdates:
+    """``execute_after_model`` merges hook returns the same way and needs the same fix."""
+
+    pytestmark = pytest.mark.asyncio
+
+    async def test_message_update_appends_instead_of_replacing_history(self):
+        class AppendingAfterMiddleware(AgentMiddleware):
+            async def aafter_model(self, state, runtime):
+                return {"messages": [AIMessage(content="appended", id="appended-1")]}
+
+        executor = MiddlewareExecutor([AppendingAfterMiddleware()])
+        state = make_state(messages=_long_history(2), selected_tool_ids=[])
+
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_after_model(state, make_config())
+
+        assert [m.id for m in result["messages"]] == ["h0", "a0", "h1", "a1", "appended-1"]
 
 
 @pytest.mark.unit
