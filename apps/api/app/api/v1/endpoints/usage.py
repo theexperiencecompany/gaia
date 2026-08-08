@@ -133,6 +133,7 @@ async def get_usage_history(
 
 
 @router.get("/activity")
+# evlog-map-disable-next-line audit -- read-only activity lookup, no state change to audit
 async def get_usage_activity(
     days: int = Query(default=365, ge=1, le=366, description="Trailing window in days"),
     user_id: str = Depends(get_user_id),
