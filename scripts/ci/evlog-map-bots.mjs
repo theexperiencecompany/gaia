@@ -575,7 +575,10 @@ function scoreEntry(checks) {
 
 function scoreGlobal(entries) {
   const scored = entries.filter((entry) => !entry.exempt);
-  if (scored.length === 0) return 100;
+  // Discovering nothing is NOT a perfect score — a blind scanner reports 100
+  // over an empty map. Zero scores 0 so the --min-score gate catches discovery
+  // collapse without a hand-maintained entry-count floor.
+  if (scored.length === 0) return 0;
   let totalWeight = 0;
   let weightedSum = 0;
   for (const entry of scored) {

@@ -93,13 +93,17 @@ def score_route(checks: dict[str, CheckResult]) -> int:
 def weighted_score(items: list[tuple[int, str, bool]]) -> int:
     """Weighted average of ``(score, sensitivity_level, exempt)`` items.
 
-    High-sensitivity entries count double; exempt entries are left out; no
-    scorable entries at all is a clean 100. Shared by the global score and the
-    per-file baseline comparison so the two can never disagree.
+    High-sensitivity entries count double; exempt entries are left out.
+    Discovering nothing is NOT a perfect score — it is the scanner going
+    blind (a broken scanner reports 100 over an empty map and everything
+    stays green). Zero scorable entries scores 0 so the ``--min-score``
+    gate catches discovery collapse without a hand-maintained entry-count
+    floor. Shared by the global score and the per-file baseline comparison
+    so the two can never disagree.
     """
     scored = [(score, level) for score, level, exempt in items if not exempt]
     if not scored:
-        return 100
+        return 0
     total_weight = 0.0
     weighted_sum = 0.0
     for score, level in scored:

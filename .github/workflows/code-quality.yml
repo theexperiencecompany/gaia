@@ -601,19 +601,17 @@ jobs:
           set -euo pipefail
           uvx --no-build pytest@9.1.1 tools/evlog_map tools/logcheck -q
           echo "scanner self-tests: OK (evlog map rules + log-contract invariants)"
-      # --min-entries asserts the surface is still visible: a perfect score
-      # over an empty map is still perfect, so a break in entry-point discovery
-      # would otherwise read as an *improvement*. Floors are today's counts
-      # (308 Python, 23 bots) — raise them as the surface grows; a drop is
-      # either a deliberate deletion (lower the floor in the same PR) or the
-      # bug this gate exists to catch.
+      # --min-score 100 gates BOTH quality and discovery: an empty map scores
+      # 0 (not 100), so a scanner that stops seeing entry points fails the
+      # gate instead of reporting a perfect score over nothing — no
+      # hand-maintained entry-count floor needed.
       - name: Full observability score — API + voice-agent + bots (details in job summary)
         run: |
           set -euo pipefail
           echo "evlog map — python surface (apps/api + apps/voice-agent)"
-          python3 tools/evlog_map --github-summary --no-write --min-entries 308
+          python3 tools/evlog_map --github-summary --no-write --min-score 100
           echo "evlog map — bots surface (apps/bots + libs/shared/ts)"
-          node scripts/ci/evlog-map-bots.mjs --min-entries 23
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
           echo "observability: full scores above; per-entry detail in the job summary only"
       - name: Changed-files regression gate (per-file, score must not drop)
         if: github.event_name == 'pull_request'
@@ -646,13 +644,12 @@ jobs:
             exit 0
           fi
           # The bots surface is small and already at 100 — hold it there
-          # outright rather than baselining per file. --min-entries is the
-          # companion gate: 100 over a surface the scanner stopped seeing is
-          # not a pass (floor = today's 23 scored entry points).
+          # outright rather than baselining per file. An empty map scores 0
+          # (not 100), so --min-score also catches the scanner going blind.
           echo "::group::evlog map — bots surface gate"
-          node scripts/ci/evlog-map-bots.mjs --min-score 100 --min-entries 23
+          node scripts/ci/evlog-map-bots.mjs --min-score 100
           echo "::endgroup::"
-          echo "observability-bots: OK (surface held at 100 over 23+ entry points)"
+          echo "observability-bots: OK (surface held at 100)"
 
   # --- Wide-event cross-runtime conformance --------------------------------
   # The Python services and the TypeScript bots must emit the SAME log shape,

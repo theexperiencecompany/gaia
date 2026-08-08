@@ -466,9 +466,9 @@ def test_a_registry_whose_wiring_moved_raises_instead_of_finding_nothing(tmp_pat
         collect_router_mounts(factory, tmp_path / "apps/api")
 
 
-def test_a_map_with_no_entry_points_scores_100_and_is_caught_only_by_min_entries(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_a_map_with_no_entry_points_scores_zero_not_100(tmp_path: Path) -> None:
+    """An empty map is the scanner going blind, not a perfect score — it must
+    fail the --min-score gate instead of reporting 100 over nothing."""
     path = _write(
         tmp_path,
         "services/helpers.py",
@@ -476,11 +476,10 @@ def test_a_map_with_no_entry_points_scores_100_and_is_caught_only_by_min_entries
     )
     cli = _load_cli()
 
+    # The gate must FAIL an empty map (score 0, below --min-score 100)…
+    assert cli.main([str(path), "--no-write", "--min-score", "100"]) == 1
+    # …and the bare scan still exits 0 (the score is reported, not gated).
     assert cli.main([str(path), "--no-write"]) == 0
-    assert "100/100" in capsys.readouterr().out
-
-    assert cli.main([str(path), "--no-write", "--min-entries", "1"]) == 1
-    assert "not seeing the surface" in capsys.readouterr().err
 
 
 # --------------------------------------------------------------------------- #
