@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+import json
 from pathlib import Path
 from typing import Any
 import uuid
@@ -134,15 +135,33 @@ def _require_user_id(ctx: HarnessContext) -> str:
     return ctx.user_id
 
 
+# UserRepository's cache contract (app/db/repositories/users.py): global scope,
+# prefix "user" (USER_CACHE_PREFIX). Every real write refreshes the entity key
+# and bumps the generation so a read can never see a value staler than the
+# last write. A harness fixture that writes ``users`` directly through Mongo
+# bypasses that repository entirely, so it must replicate the same
+# invalidation by hand — otherwise a cached read (e.g. the briefing
+# provisioner's user lookup) silently serves the pre-fixture doc.
+_USER_CACHE_PREFIX = "user"
+_REPO_GLOBAL_SCOPE = "global"
+
+
+async def _invalidate_user_cache(ctx: HarnessContext, user_id: str) -> None:
+    await ctx.redis.delete(f"{_USER_CACHE_PREFIX}:{_REPO_GLOBAL_SCOPE}:{user_id}")
+    await ctx.redis.incr(f"{_USER_CACHE_PREFIX}:{_REPO_GLOBAL_SCOPE}:gen")
+
+
 async def set_timezone(ctx: HarnessContext, tz: str) -> None:
     user_id = _require_user_id(ctx)
     await ctx.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"timezone": tz}})
+    await _invalidate_user_cache(ctx, user_id)
     ctx.log(actor="harness", surface="mongo:users.timezone", content=tz)
 
 
 async def set_focus(ctx: HarnessContext, focus: str) -> None:
     user_id = _require_user_id(ctx)
     await ctx.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": {"onboarding.focus": focus}})
+    await _invalidate_user_cache(ctx, user_id)
     ctx.log(actor="harness", surface="mongo:users.onboarding.focus", content=focus)
 
 
@@ -163,11 +182,22 @@ async def set_dormancy(
             }
         },
     )
+    await _invalidate_user_cache(ctx, user_id)
     ctx.log(
         actor="harness",
         surface="mongo:users.briefing_dormancy",
         content=f"idle_days={idle_days} dormant_since={dormant_since}",
     )
+
+
+# TodoRepository's cache contract (app/db/repositories/todos.py): user_id
+# scope, prefix "todo" (TODO_CACHE_PREFIX). Same bypass problem as the users
+# cache above — a direct Mongo write here must invalidate by hand too.
+_TODO_CACHE_PREFIX = "todo"
+
+
+async def _invalidate_todos_cache(ctx: HarnessContext, user_id: str) -> None:
+    await ctx.redis.incr(f"{_TODO_CACHE_PREFIX}:{user_id}:gen")
 
 
 async def insert_todo(ctx: HarnessContext, **fields: object) -> str:
@@ -196,6 +226,7 @@ async def insert_todo(ctx: HarnessContext, **fields: object) -> str:
     doc.update(fields)
     result = await ctx.db.todos.insert_one(doc)
     todo_id = str(result.inserted_id)
+    await _invalidate_todos_cache(ctx, user_id)
     ctx.log(
         actor="harness",
         surface="mongo:todos.insert",
@@ -206,7 +237,10 @@ async def insert_todo(ctx: HarnessContext, **fields: object) -> str:
 
 
 async def update_todo(ctx: HarnessContext, todo_id: str, **fields: object) -> None:
+    user_id = _require_user_id(ctx)
     await ctx.db.todos.update_one({"_id": ObjectId(todo_id)}, {"$set": fields})
+    await ctx.redis.delete(f"{_TODO_CACHE_PREFIX}:{user_id}:{todo_id}")
+    await _invalidate_todos_cache(ctx, user_id)
     ctx.log(actor="harness", surface="mongo:todos.update", content=f"{todo_id} <- {fields}")
 
 
@@ -320,7 +354,7 @@ async def count_notifications(
     ctx: HarnessContext, *, kind: str, since: datetime | None = None
 ) -> int:
     user_id = _require_user_id(ctx)
-    query: dict[str, Any] = {"user_id": user_id, "metadata.kind": kind}
+    query: dict[str, Any] = {"user_id": user_id, "original_request.metadata.kind": kind}
     if since is not None:
         query["created_at"] = {"$gte": since}
     return await ctx.db.notifications.count_documents(query)
@@ -330,7 +364,7 @@ async def list_notifications(
     ctx: HarnessContext, *, kind: str, since: datetime | None = None
 ) -> list[dict[str, Any]]:
     user_id = _require_user_id(ctx)
-    query: dict[str, Any] = {"user_id": user_id, "metadata.kind": kind}
+    query: dict[str, Any] = {"user_id": user_id, "original_request.metadata.kind": kind}
     if since is not None:
         query["created_at"] = {"$gte": since}
     cursor = ctx.db.notifications.find(query).sort("created_at", 1)
@@ -347,10 +381,15 @@ async def get_user_doc(ctx: HarnessContext) -> dict[str, Any]:
 
 async def set_quota_used(ctx: HarnessContext, *, feature: str, count: int) -> None:
     """Force the tiered rate limiter's monthly counter for ``feature`` to
-    ``count`` (see ``api/v1/middleware/tiered_rate_limiter.py``)."""
+    ``count`` (see ``api/v1/middleware/tiered_rate_limiter.py``).
+
+    ``_get_redis_key`` interpolates the ``RateLimitPeriod`` enum member
+    itself into the f-string, not ``.value`` — verified against a live key:
+    it renders as the literal ``"RateLimitPeriod.MONTH"``, not ``"month"``.
+    """
     user_id = _require_user_id(ctx)
     window = datetime.now(UTC).strftime("%Y%m")
-    key = f"rate_limit:{user_id}:{feature}:month:{window}"
+    key = f"rate_limit:{user_id}:{feature}:RateLimitPeriod.MONTH:{window}"
     await ctx.redis.set(key, count, ex=60 * 60 * 24 * 32)
     ctx.log(actor="harness", surface=f"redis:{key}", content=f"SET {count}")
 
@@ -372,7 +411,11 @@ async def advance_day(ctx: HarnessContext, *, days: int = 1) -> None:
         if todo_updates:
             await ctx.db.todos.update_one({"_id": todo["_id"]}, {"$set": todo_updates})
 
-    async for briefing in ctx.db.briefings.find({"user_id": user_id}):
+    # Oldest-first: `briefings` has a unique {user_id, date, kind} index, and
+    # shifting a newer doc onto an older doc's still-unshifted date would
+    # transiently collide with it. Shifting the oldest doc out of the way
+    # first always vacates the slot the next-oldest doc is about to land on.
+    async for briefing in ctx.db.briefings.find({"user_id": user_id}).sort("date", 1):
         briefing_updates: dict[str, Any] = {}
         if isinstance(briefing.get("created_at"), datetime):
             briefing_updates["created_at"] = briefing["created_at"] - delta
@@ -395,6 +438,7 @@ async def advance_day(ctx: HarnessContext, *, days: int = 1) -> None:
             dormancy_updates["briefing_dormancy.date"] = shifted.strftime("%Y-%m-%d")
         if dormancy_updates:
             await ctx.db.users.update_one({"_id": ObjectId(user_id)}, {"$set": dormancy_updates})
+            await _invalidate_user_cache(ctx, user_id)
 
     ctx.day += days
     ctx.log(
@@ -500,13 +544,35 @@ async def chat_turn(ctx: HarnessContext, message: str) -> str:
     """One user chat turn through the real comms front door; returns the
     concatenated SSE text deltas."""
     text_parts: list[str] = []
+    # MessageRequestWithHistory requires both the top-level `message` (this
+    # turn's text) and `messages` (history incl. this turn) — see
+    # app/models/message_models.py. The driving-gaia skill's curl example
+    # only sends `messages` and 422s; don't copy it verbatim.
     async with ctx.http.stream(
-        "POST", "/chat-stream", json={"messages": [{"role": "user", "content": message}]}
+        "POST",
+        "/chat-stream",
+        json={"message": message, "messages": [{"role": "user", "content": message}]},
     ) as resp:
-        _raise_for_status(ctx, resp, "POST /chat-stream")
+        if resp.status_code >= 400:
+            body = await resp.aread()
+            raise AssertionError(
+                f"POST /chat-stream for {ctx.email} returned {resp.status_code}: {body[:500]!r}"
+            )
         async for line in resp.aiter_lines():
-            if line.startswith("data:"):
-                text_parts.append(line[len("data:") :].strip())
+            if not line.startswith("data:"):
+                continue
+            payload = line[len("data:") :].strip()
+            if payload == "[DONE]":
+                continue
+            # Every SSE frame is one JSON object keyed by frame type (no
+            # discriminator field) — see app/models/stream_events.py. The
+            # assistant's actual text deltas are the frames whose only key is
+            # "response" (app/utils/agent_utils.py format_sse_response());
+            # everything else (conversation-init, tool_data, reasoning,
+            # progress, main_response_complete, ...) is metadata to skip.
+            event = json.loads(payload)
+            if isinstance(event, dict) and "response" in event:
+                text_parts.append(str(event["response"]))
     reply = "".join(text_parts)
     ctx.log(actor=ctx.email, surface="POST /chat-stream", content=f"{message!r} -> {reply[:300]!r}")
     return reply

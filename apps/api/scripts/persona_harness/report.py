@@ -57,6 +57,14 @@ class Report:
         self.failed.append(description)
         raise AssertionFailure(description, expected=expected, found=found)
 
+    def observe(self, cond: bool, description: str) -> bool:
+        """Like ``expect`` but never raises — for a capstone run that must
+        keep going (and still show the miss in the report) past a step
+        already covered by a dedicated persona's hard assertion elsewhere.
+        Returns ``cond`` so the caller can still branch on it."""
+        (self.passed if cond else self.failed).append(description)
+        return cond
+
     def render_markdown(self) -> str:
         status = "PASS" if not self.failed else "FAIL"
         lines = [

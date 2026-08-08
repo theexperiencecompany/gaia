@@ -16,12 +16,14 @@ import asyncio
 import sys
 import traceback
 
-from scripts.persona_harness import founder_week
-from scripts.persona_harness.personas import PERSONAS
+import httpx
+
+from scripts.persona_harness import founder_week, steps
+from scripts.persona_harness.personas import PERSONAS, PersonaFn
 from scripts.persona_harness.report import AssertionFailure, Report
 from scripts.persona_harness.steps import HarnessContext
 
-_ALL_RUNNABLE = {**PERSONAS, "founder-week": founder_week.run}
+_ALL_RUNNABLE: dict[str, PersonaFn] = {**PERSONAS, "founder-week": founder_week.run}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -44,13 +46,13 @@ def _parse_args() -> argparse.Namespace:
 
 
 async def _run_one(
-    name: str, fn: object, *, api: str, sim: bool, write_report: bool, keep_user: bool
+    name: str, fn: PersonaFn, *, api: str, sim: bool, write_report: bool, keep_user: bool
 ) -> bool:
     report = Report(persona=name)
     ctx = HarnessContext(email=f"persona-{name}@gaia.local", api_base=api, sim=sim, report=report)
     ok = True
     try:
-        await fn(ctx)  # type: ignore[operator]
+        await fn(ctx)
     except AssertionFailure as exc:
         ok = False
         print(f"\n[{name}] FAILED: {exc}", file=sys.stderr)
@@ -60,16 +62,19 @@ async def _run_one(
     finally:
         if not keep_user:
             try:
-                from scripts.persona_harness import steps
-
                 await steps.delete_user(ctx)
-            except Exception as teardown_exc:  # noqa: BLE001 — teardown must never mask the real result
+            except (httpx.HTTPError, AssertionError) as teardown_exc:
+                # Teardown must never mask the real result — a torn-down
+                # user's assertions above already decided pass/fail.
                 print(f"[{name}] teardown warning: {teardown_exc}", file=sys.stderr)
         if write_report:
             path = report.write()
             print(f"[{name}] report written to {path}")
         await ctx.aclose()
 
+    # A non-raising Report.observe() miss doesn't hit the except blocks above
+    # but still belongs in the FAIL column.
+    ok = ok and not report.failed
     status = "PASS" if ok else "FAIL"
     print(f"[{name}] {status} — {len(report.passed)} passed, {len(report.failed)} failed")
     return ok

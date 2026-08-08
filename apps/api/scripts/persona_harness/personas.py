@@ -48,19 +48,22 @@ async def empty_day_zero(ctx: HarnessContext) -> None:
 
 async def goal_driven_founder(ctx: HarnessContext) -> None:
     """Scenario: proposals trace to the goal via `serves` (unified-todo-model:
-    'Every GAIA todo is traceable')."""
+    'Every GAIA todo is traceable').
+
+    `mood` tracks queued work, not goal-awareness — a fresh account's very
+    first brief legitimately comes back `idle` (nothing is queued yet) even
+    while the message engages with the stated goal (observed live: "you did
+    tell me the mission once... want me to take that on?"). So this persona
+    doesn't assert on day-zero's mood; it runs a second day to give the model
+    a real chance to turn the goal into a traceable proposal, matching the
+    pattern the founder-week capstone already needed for the same reason."""
     await steps.mint_user(ctx)
     await steps.seed_data(ctx, todos=0, conversations=0)
     await steps.set_focus(ctx, "raise a pre-seed; ship daily")
     await steps.trigger_briefing(ctx, kind="daily")
+    await steps.advance_day(ctx, days=1)
+    await steps.trigger_briefing(ctx, kind="daily")
 
-    briefing = await steps.get_latest_briefing(ctx, kind="daily")
-    ctx.report.expect(
-        briefing["payload"]["mood"] != "idle",
-        "a founder with a stated goal does not get the day-zero idle brief",
-        expected="!= idle",
-        found=briefing["payload"]["mood"],
-    )
     gaia_todos = [
         doc async for doc in ctx.db.todos.find({"user_id": ctx.user_id, "assignee": "gaia"})
     ]
@@ -94,6 +97,14 @@ async def ignorer_winback(ctx: HarnessContext) -> None:
             opened_at=None,
             created_at=datetime.combine(day, datetime.min.time(), tzinfo=UTC),
         )
+
+    fixtures = await steps.list_recent_briefings(ctx, kind="daily", limit=10)
+    ctx.report.expect(
+        len(fixtures) == 3 and all(f["opened_at"] is None for f in fixtures),
+        "all 3 unopened-briefing fixtures actually landed before the winback run",
+        expected="3 unopened briefings",
+        found=[(f["date"], f["opened_at"]) for f in fixtures],
+    )
 
     await steps.trigger_briefing(ctx, kind="daily")
     briefing = await steps.get_latest_briefing(ctx, kind="daily")
@@ -214,13 +225,14 @@ async def blocked_everything(ctx: HarnessContext) -> None:
             ),
         )
 
-    notifications = await steps.list_notifications(ctx, kind="todo_needs_you", since=since)
+    notification_count = await steps.count_notifications(ctx, kind="todo_needs_you", since=since)
     ctx.report.expect(
-        len(notifications) == 3,
+        notification_count == 3,
         "one notification write per block event (the combining is in the content, not a count)",
         expected=3,
-        found=len(notifications),
+        found=notification_count,
     )
+    notifications = await steps.list_notifications(ctx, kind="todo_needs_you", since=since)
     last_title = notifications[-1]["original_request"]["content"]["title"]
     ctx.report.expect(
         last_title == "3 things need your call",
@@ -284,11 +296,19 @@ async def slipped_plan(ctx: HarnessContext) -> None:
 
     await steps.trigger_briefing(ctx, kind="daily")
     briefing = await steps.get_latest_briefing(ctx, kind="daily")
+    payload = briefing["payload"]
+    # `mood` tracks queued work, not look-back content — observed live: a
+    # brief can be honestly `idle` (nothing queued) while its message still
+    # explicitly acknowledges the slip ("it's been sitting there since
+    # yesterday"). So assert on the actual look-back text, not the mood.
+    look_back_text = " ".join(
+        filter(None, [payload.get("lede"), payload.get("message"), payload.get("caption")])
+    ).lower()
     ctx.report.expect(
-        briefing["payload"]["mood"] != "idle",
-        "yesterday's slip gives the run real look-back material, so today isn't an idle brief",
-        expected="!= idle",
-        found=briefing["payload"]["mood"],
+        "lawyer" in look_back_text or "safe" in look_back_text,
+        "the brief's text actually references yesterday's slipped item, not just silence",
+        expected="'lawyer' or 'safe' mentioned",
+        found=look_back_text[:300],
     )
 
 
@@ -430,6 +450,11 @@ async def nudge_flow(ctx: HarnessContext) -> None:
         "summary: 'Compiled the investor list.'"
     )
     await steps.chat_turn(ctx, sim_task_a if ctx.sim else agent_task_a)
+    # call_executor hands the run off to the background executor and comms
+    # replies with an immediate ack ("on it...") — the actual completion +
+    # nudge (result_delivery.deliver_result) lands later, out of band from
+    # this SSE turn. Poll until the executor run actually settles.
+    await steps.wait_for_execution(ctx, todo_a, timeout_s=45.0)
 
     candidate_after_first = await steps.get_todo(ctx, candidate_id)
     first_nudge_fired = bool(candidate_after_first and candidate_after_first.get("nudge_shown"))
@@ -457,6 +482,7 @@ async def nudge_flow(ctx: HarnessContext) -> None:
         "summary: 'Drafted the intro DMs.'"
     )
     await steps.chat_turn(ctx, sim_task_c if ctx.sim else agent_task_c)
+    await steps.wait_for_execution(ctx, todo_c, timeout_s=45.0)
 
     if first_nudge_fired:
         candidate_after_second = await steps.get_todo(ctx, candidate_id)
