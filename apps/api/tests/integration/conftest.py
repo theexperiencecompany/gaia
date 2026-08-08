@@ -18,7 +18,7 @@ from app.db.redis import redis_cache
 from tests.factories import make_config, make_user
 from tests.helpers import worker_redis_url
 
-_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "1") == "1"
+_USE_REAL_SERVICES = os.environ.get("USE_REAL_SERVICES", "0") == "1"
 _POSTGRES_URL = os.environ.get("DATABASE_URL", "")
 _REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 

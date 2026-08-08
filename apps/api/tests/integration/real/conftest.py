@@ -22,6 +22,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import patch
 
 from bson import ObjectId
@@ -33,7 +34,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import ProgrammingError
 import uvicorn
 
-from tests.helpers import HeaderDrivenAuthMiddleware, pick_free_port
+from tests.helpers import (
+    HeaderDrivenAuthMiddleware,
+    pick_free_port,
+    skip_items_without_real_services,
+)
 from tests.integration.real.db_fixtures import (
     hil_approvals_collection,
     mongo_db,
@@ -261,3 +266,16 @@ def make_conversation(conversations_collection):
         return conv_id
 
     return _make
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Real-infra tier: skip at collection when real services are unavailable.
+
+    A bare local run (no USE_REAL_SERVICES=1, no Docker) must skip this whole
+    directory in milliseconds — never hang on dead ports or fail with
+    connection errors after a slow boot. pytest calls this hook with EVERY
+    collected item, so scope the skip to this conftest's own directory.
+    """
+
+    dir_root = Path(__file__).resolve().parent
+    skip_items_without_real_services([item for item in items if item.path.is_relative_to(dir_root)])

@@ -62,6 +62,15 @@ os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 os.environ["LANGFUSE_HOST"] = ""
 
+# Arm the Infisical fence BEFORE any app import: settings.py calls get_settings()
+# at import time (via the module-level `settings` singleton), and the import
+# chain below (payment_models -> ... -> app.config.settings) would dial the real
+# vault before any later patch could intercept. shared.py.secrets imports
+# cleanly, so patching its binding first means every re-export downstream
+# (app/config/secrets.py, settings.py:25) binds the mock by construction.
+_early_infisical_patch = patch("shared.py.secrets.inject_infisical_secrets", return_value=None)
+_early_infisical_patch.start()
+
 # Imported AFTER the env setup above, not with the top-level imports: document
 # models now extend MongoDocument, so importing any of them pulls in
 # app.db.repositories.base -> app.db.redis -> app.config.settings, which
@@ -99,6 +108,11 @@ _mock_subscription.plan_type = PlanType.FREE
 # services that must never be called in any test environment.
 _always_patches = [
     patch("app.config.secrets.inject_infisical_secrets", return_value=None),
+    # settings.py binds the real function into its own namespace at import
+    # (line 25), before this conftest's patches start — so the source-module
+    # patch above is inert for the _ensure_infisical_loaded call path. Patch
+    # the settings-module binding too, or every run dials the real vault.
+    patch("app.config.settings.inject_infisical_secrets", return_value=None),
     patch("shared.py.secrets.inject_infisical_secrets", return_value=None),
     patch(
         "app.decorators.rate_limiting.payment_service.get_user_subscription_status",
@@ -129,6 +143,22 @@ _infra_patches = (
 _patches = [*_always_patches, *_infra_patches]
 for p in _patches:
     p.start()
+
+# Fail loud if the Infisical fence is ever re-pointed at the real vault: a
+# future refactor that binds or resolves inject_infisical_secrets at import
+# time inside settings.py would silently defeat every patch above. These
+# asserts pin the two bindings that matter.
+from app.config import (
+    secrets as _secrets_module,  # noqa: E402
+    settings as _settings_module,  # noqa: E402
+)
+
+assert isinstance(_settings_module.inject_infisical_secrets, MagicMock), (
+    "hermetic fence broken: settings.inject_infisical_secrets is not mocked"
+)
+assert isinstance(_secrets_module.inject_infisical_secrets, MagicMock), (
+    "hermetic fence broken: secrets.inject_infisical_secrets is not mocked"
+)
 
 # ---------------------------------------------------------------------------
 # Hermetic environment fence
@@ -203,6 +233,26 @@ def _hermetic_environment() -> Iterator[None]:
     finally:
         os.environ.clear()
         os.environ.update(snapshot)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _env_pollution_guard(_hermetic_environment: Iterator[None]) -> Iterator[None]:
+    """Fail if any test leaked os.environ mutations.
+
+    The fence restores the original environment at teardown, which silently
+    masks leaks; this guard depends on the fence so it tears down BEFORE the
+    restore and compares the environment a test left behind against the
+    post-fence baseline. Any key added, changed, or removed by a test fails
+    the run with the exact diff.
+    """
+    baseline = os.environ.copy()
+    yield
+    leaked = {
+        key: (baseline.get(key), os.environ.get(key))
+        for key in set(os.environ) | set(baseline)
+        if key.startswith("PYTEST_") is False and baseline.get(key) != os.environ.get(key)
+    }
+    assert not leaked, f"tests leaked environment changes: {leaked}"
 
 
 # ---------------------------------------------------------------------------

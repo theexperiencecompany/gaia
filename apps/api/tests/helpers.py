@@ -9,6 +9,7 @@ from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
 from langchain_core.messages import AIMessage, BaseMessage
+import pytest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 
@@ -167,3 +168,29 @@ class HeaderDrivenAuthMiddleware(BaseHTTPMiddleware):
             request.state.authenticated = False
             request.state.user = None
         return await call_next(request)
+
+
+def real_services_available() -> bool:
+    """True when the run is allowed to dial real service containers.
+
+    CI (the Dagger service container) sets USE_REAL_SERVICES=1 explicitly; a
+    bare local run must stay offline.
+    """
+    return os.environ.get("USE_REAL_SERVICES", "0") == "1"
+
+
+def skip_items_without_real_services(
+    items: list[pytest.Item],
+    reason: str = "requires USE_REAL_SERVICES=1 (Docker + real Postgres/Redis/MongoDB/ChromaDB)",
+) -> None:
+    """Skip collected items in place unless real services are available.
+
+    Collection-time skip: fast (no connections, no imports of the real-infra
+    stack) so a bare run reports an instant, visible skip instead of hanging
+    on dead ports or failing with connection errors minutes later.
+    """
+    if real_services_available():
+        return
+    marker = pytest.mark.skip(reason=reason)
+    for item in items:
+        item.add_marker(marker)
