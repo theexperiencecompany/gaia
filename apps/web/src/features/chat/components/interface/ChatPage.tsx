@@ -26,6 +26,7 @@ import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { useSendMessage } from "@/hooks/useSendMessage";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { db } from "@/lib/db/chatDb";
+import { toast } from "@/lib/toast";
 import { syncSingleConversation } from "@/services/syncService";
 import { useChatStore } from "@/stores/chatStore";
 import {
@@ -97,8 +98,6 @@ const MainChat = React.memo(function MainChat() {
     chatRef,
     dummySectionRef,
     inputRef,
-    droppedFiles,
-    setDroppedFiles,
     fileUploadRef,
     appendToInputRef,
     convoIdParam,
@@ -159,11 +158,11 @@ const MainChat = React.memo(function MainChat() {
 
   const { isDragging, dragHandlers } = useDragAndDrop({
     onDrop: (files: File[]) => {
-      setDroppedFiles(files);
-      if (fileUploadRef.current) {
-        fileUploadRef.current.handleDroppedFiles(files);
-        fileUploadRef.current.openFileUploadModal();
+      if (!fileUploadRef.current) {
+        toast.error("File upload isn't available during a voice call");
+        return;
       }
+      fileUploadRef.current.attachFiles(files);
     },
     multiple: true,
   });
@@ -195,8 +194,6 @@ const MainChat = React.memo(function MainChat() {
     scrollToBottom,
     fileUploadRef,
     appendToInputRef,
-    droppedFiles,
-    onDroppedFilesProcessed: () => setDroppedFiles([]),
     hasMessages,
     conversationId: convoIdParam,
     // Warm the session token on hover so clicking starts ~instantly. Gated
@@ -262,7 +259,6 @@ const MainChat = React.memo(function MainChat() {
       // the gradient entirely (gradient paints in the ancestor's stacking
       // context, below the parent's block-level background).
       <div className="relative isolate flex h-full min-h-0 flex-col">
-        <FileDropModal isDragging={isDragging} />
         <VoiceControlBarContainer>
           <VoiceModeBackground />
           <ChatWithMessages

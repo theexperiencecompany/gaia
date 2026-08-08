@@ -1,0 +1,39 @@
+# gaia-host-disk — fires when the root filesystem is >85% full.
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-host-disk fires when the root filesystem is 95% full
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="xfs"}'
+        values: '5368709120x30'
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="xfs"}'
+        values: '107374182400x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-host-disk
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: host
+              mountpoint: /
+              fstype: xfs
+            exp_annotations:
+              description: >-
+                Every stateful volume shares this one disk — Postgres data, Redis, RabbitMQ, Chroma, 30 days of Prometheus history, Loki logs and the cached embedding and voice models. Filling it takes down Postgres writes, RabbitMQ persistence and log ingestion at the same time. Prometheus retention and Loki are usually the largest reclaimable consumers.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-host-disk
+              __dashboardUid__: gaia-host
+              __panelId__: '3'
+
+  - name: gaia-host-disk stays quiet under 85% usage
+    interval: 1m
+    input_series:
+      - series: 'node_filesystem_avail_bytes{mountpoint="/",fstype="xfs"}'
+        values: '32212254720x30'
+      - series: 'node_filesystem_size_bytes{mountpoint="/",fstype="xfs"}'
+        values: '107374182400x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-host-disk
+        exp_alerts: []

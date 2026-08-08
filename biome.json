@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.7/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.7/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -117,6 +117,7 @@
         "useShorthandFunctionType": "error"
       },
       "suspicious": {
+        "noImportCycles": "error",
         "noArrayIndexKey": "error",
         "noExplicitAny": "error",
         "noConsole": {
@@ -126,7 +127,7 @@
           }
         },
         "useIterableCallbackReturn": "off",
-        "noEmptyBlockStatements": "warn",
+        "noEmptyBlockStatements": "error",
         "noEvolvingTypes": "error",
         "noDebugger": "error",
         "noShadowRestrictedNames": "error",
@@ -139,16 +140,14 @@
       },
       "performance": {
         "noBarrelFile": "off",
-        "noReExportAll": "warn",
+        "noReExportAll": "error",
         "noAccumulatingSpread": "error",
-        "noDelete": "error"
+        "noDelete": "error",
+        "noImgElement": "error"
       },
       "security": {
         "noDangerouslySetInnerHtmlWithChildren": "error",
         "noGlobalEval": "error"
-      },
-      "nursery": {
-        "noImportCycles": "error"
       }
     }
   },
@@ -181,20 +180,24 @@
   ],
   "overrides": [
     {
-      "includes": ["apps/mobile/src/components/icons/index.ts"],
-      "linter": {
-        "rules": {
-          "performance": {
-            "noReExportAll": "off"
-          }
-        }
-      }
-    },
-    {
       "includes": ["apps/web/**"],
       "linter": {
         "domains": {
           "next": "recommended"
+        }
+      }
+    },
+    {
+      "includes": [
+        "apps/web/src/components/seo/JsonLd.tsx",
+        "apps/web/src/components/ui/chart.tsx",
+        "apps/web/src/features/whats-new/components/WhatsNewContent.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
         }
       }
     },

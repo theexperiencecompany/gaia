@@ -1,8 +1,9 @@
 from typing import Annotated, Any
 
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import TypedDict
 
+from app.constants.chat import MAX_MESSAGE_LENGTH
 from app.services.storage import SAFE_PATH_ID_PATTERN
 
 SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
@@ -11,8 +12,8 @@ SafePathId = Annotated[str, StringConstraints(pattern=SAFE_PATH_ID_PATTERN)]
 class MessageDict(TypedDict):
     """One chat turn as {role, content} for LLM history payloads."""
 
-    role: str
-    content: str
+    role: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
+    content: Annotated[str, StringConstraints(max_length=MAX_MESSAGE_LENGTH)]
 
 
 class FileData(BaseModel):
@@ -63,7 +64,7 @@ class ReplyToMessageData(BaseModel):
 class MessageRequestWithHistory(BaseModel):
     """Chat-stream request carrying the full message history and attachments."""
 
-    message: str
+    message: str = Field(max_length=MAX_MESSAGE_LENGTH)
     conversation_id: SafePathId | None = None
     messages: list[MessageDict]
     fileIds: list[str] | None = []
@@ -96,4 +97,4 @@ class MessageRequestWithHistory(BaseModel):
 class MessageRequest(BaseModel):
     """Minimal chat request with a single message."""
 
-    message: str
+    message: str = Field(max_length=MAX_MESSAGE_LENGTH)

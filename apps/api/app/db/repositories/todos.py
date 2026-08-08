@@ -69,6 +69,8 @@ def _first_count(buckets: list[_FacetCount]) -> int:
 
 
 class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
+    """The ``todos`` collection repository (user-scoped, cached)."""
+
     collection_name = "todos"
     document_model = TodoDocument
     update_model = TodoUpdate
@@ -102,6 +104,10 @@ class TodosRepository(UserScopedRepository[TodoDocument, TodoUpdate]):
     async def count_in_project(self, user_id: str, project_id: str) -> int:
         """How many of the user's todos belong to ``project_id``."""
         return await self._count({"user_id": user_id, "project_id": project_id})
+
+    async def count_for_user(self, user_id: str) -> int:
+        """Total todos a user has — the feature-usage signal."""
+        return await self._count({"user_id": user_id})
 
     def _list_filter(
         self, user_id: str, params: TodoSearchParams, inbox_project_id: str | None

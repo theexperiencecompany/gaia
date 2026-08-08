@@ -4,6 +4,7 @@ from app.config.settings import settings
 from app.constants.email import (
     CONTACT_EMAIL,
     DISCORD_URL,
+    FOUNDER_MEETING_URL,
     FOUNDER_SENDER,
     SUPPORT_SENDER,
     TWITTER_URL,
@@ -15,6 +16,7 @@ from app.services.email.models import EmailMessage
 from app.services.email.providers import get_email_provider
 from app.services.email.providers.base import MarketingContactsProvider
 from app.services.email.service import render_email_template, send_email
+from app.utils.notification.unsubscribe import build_unsubscribe_headers, build_unsubscribe_url
 from shared.py.wide_events import log
 
 
@@ -131,6 +133,9 @@ async def send_welcome_email(user_email: str, user_name: str | None = None) -> N
             discord_url=DISCORD_URL,
             whatsapp_url=WHATSAPP_URL,
             twitter_url=TWITTER_URL,
+            founder_meeting_url=FOUNDER_MEETING_URL,
+            cta_url=f"{settings.FRONTEND_URL}/login",
+            cta_label="Get Started",
         )
 
         await send_email(
@@ -166,7 +171,9 @@ async def add_marketing_contact(user_email: str, user_name: str | None = None) -
         log.error(f"{LogTag.MAIL} Failed to add marketing contact for {user_email}: {e!s}")
 
 
-async def send_inactive_user_email(user_email: str, user_name: str | None = None) -> None:
+async def send_inactive_user_email(
+    user_email: str, user_id: str, user_name: str | None = None
+) -> None:
     """Send the re-engagement email to an inactive user.
 
     Send/skip throttling is the caller's policy (see workers/tasks/user_tasks.py).
@@ -176,6 +183,9 @@ async def send_inactive_user_email(user_email: str, user_name: str | None = None
             "inactive.html",
             user_name=user_name,
             contact_email=CONTACT_EMAIL,
+            cta_url=f"{settings.FRONTEND_URL}/login",
+            cta_label="Log In",
+            unsubscribe_url=build_unsubscribe_url(user_id),
         )
 
         await send_email(
@@ -185,6 +195,7 @@ async def send_inactive_user_email(user_email: str, user_name: str | None = None
                 subject="We miss you at GAIA 🌱",
                 html=html_content,
                 reply_to=CONTACT_EMAIL,
+                headers=build_unsubscribe_headers(user_id),
             )
         )
         log.info(f"{LogTag.MAIL} Inactive user email sent to {user_email}")

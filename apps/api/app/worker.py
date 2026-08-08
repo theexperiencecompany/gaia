@@ -27,6 +27,7 @@ from app.workers.tasks import (
     prune_checkpoint_versions,
     prune_inactive_sessions,
     regenerate_workflow_steps,
+    run_nurture_sequence_task,
     sweep_idle_sandboxes,
 )
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
@@ -44,6 +45,7 @@ _process_reminder = instrument_task(process_reminder)
 _cleanup_expired_reminders = instrument_task(cleanup_expired_reminders)
 _sweep_hil_approvals = instrument_task(sweep_hil_approvals)
 _check_inactive_users = instrument_task(check_inactive_users)
+_run_nurture_sequence_task = instrument_task(run_nurture_sequence_task)
 _process_workflow_generation_task = instrument_task(process_workflow_generation_task)
 _execute_workflow_by_id = instrument_task(execute_workflow_by_id)
 _regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
@@ -66,6 +68,7 @@ WorkerSettings.functions = [
     _process_reminder,
     _cleanup_expired_reminders,
     _check_inactive_users,
+    _run_nurture_sequence_task,
     _process_workflow_generation_task,
     _execute_workflow_by_id,
     _regenerate_workflow_steps,
@@ -100,6 +103,13 @@ WorkerSettings.cron_jobs = [
         _check_inactive_users,
         hour=9,  # At 9 AM
         minute=0,
+        second=0,
+    ),
+    # Hourly so every user is evaluated at 9am in their own timezone; the
+    # engine itself filters to users whose local hour matches.
+    cron(
+        _run_nurture_sequence_task,
+        minute=10,
         second=0,
     ),
     cron(

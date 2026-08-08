@@ -218,7 +218,7 @@ function StackedToolIcons({ calls }: { calls: ToolCallEntry[] }) {
       {displayIcons.map((call, index) => (
         // Web wrapper: relative flex min-w-8 items-center justify-center (32px col)
         <View
-          key={`${call.tool_name || "tool"}-${index}`}
+          key={normalizeCategoryName(call.tool_category || "general")}
           style={{
             minWidth: 32,
             height: 32,

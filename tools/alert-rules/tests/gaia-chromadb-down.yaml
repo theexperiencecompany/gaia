@@ -1,0 +1,41 @@
+# gaia-chromadb-down — fires when the ChromaDB heartbeat probe stops returning 200.
+#
+# The noData path (no probe_success series at all) is Grafana-only: this rule has
+# noDataState: Alerting, which promtool cannot model. This fixture covers the
+# value-present path (probe_success=0 fires, =1 stays quiet).
+rule_files: [../gaia-rules.yaml]
+evaluation_interval: 1m
+
+tests:
+  - name: gaia-chromadb-down fires when the probe reports 0
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="chromadb",instance="chromadb:8000"}'
+        values: '0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-chromadb-down
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              service: chromadb
+              incident: availability
+              job: chromadb
+              instance: chromadb:8000
+            exp_annotations:
+              summary: ChromaDB has been failing its heartbeat probe for 2 minutes
+              description: >-
+                ChromaDB is the vector store behind executor-agent tool retrieval, workflow trigger matching, and search over notes, files and knowledge. While it is down the agent cannot retrieve its tool set at inference time, so complex requests silently degrade to plain answers with no tools. Chroma exposes no metrics of its own, so this probe against /api/v2/heartbeat is the only signal.
+              runbook_url: https://docs.lab.heygaia.io/production/runbooks/gaia-chromadb-down
+              __dashboardUid__: gaia-databases
+              __panelId__: '19'
+
+  - name: gaia-chromadb-down stays quiet when the probe returns 1
+    interval: 1m
+    input_series:
+      - series: 'probe_success{job="chromadb",instance="chromadb:8000"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: gaia-chromadb-down
+        exp_alerts: []

@@ -199,7 +199,9 @@ export function useVoiceSpectrum({
       remoteAnalyserRef.current = null;
       remoteFftRef.current = null;
       if (remoteCtxRef.current && remoteCtxRef.current.state !== "closed") {
-        remoteCtxRef.current.close().catch(() => {});
+        remoteCtxRef.current.close().catch(() => {
+          /* best-effort teardown: the AudioContext is dropped either way */
+        });
       }
       remoteCtxRef.current = null;
     };
@@ -236,7 +238,9 @@ export function useVoiceSpectrum({
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current.close().catch(() => {
+        /* best-effort teardown: the AudioContext is dropped either way */
+      });
     }
     audioCtxRef.current = null;
   }, []);
@@ -248,7 +252,9 @@ export function useVoiceSpectrum({
       analyserRef.current?.disconnect();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-        await audioCtxRef.current.close().catch(() => {});
+        await audioCtxRef.current.close().catch(() => {
+          /* best-effort teardown: the AudioContext is dropped either way */
+        });
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({

@@ -17,7 +17,11 @@ function subscribeToQuery(
   query: string,
   callback: (matches: boolean) => void,
 ): () => void {
-  if (typeof window === "undefined") return () => {};
+  if (typeof window === "undefined") {
+    return () => {
+      /* SSR: no subscription to tear down */
+    };
+  }
 
   let entry = queryCache.get(query);
   if (!entry) {

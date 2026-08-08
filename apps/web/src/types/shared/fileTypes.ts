@@ -5,4 +5,5 @@ export interface FileData {
   description: string;
   message: string;
   type?: string;
+  size?: number;
 }

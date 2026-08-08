@@ -1,9 +1,8 @@
+import { formatFileSize } from "@shared/utils";
 import Image from "next/image";
-
-import {
-  getFileIcon,
-  getFormattedFileType,
-} from "@/features/chat/components/files/FilePreview";
+import { getFormattedFileType } from "@/features/chat/components/files/FilePreview";
+import { FileTypeIcon } from "@/features/chat/components/files/FileTypeIcon";
+import { getFileTypeExtension } from "@/features/chat/components/files/fileTypeConfig";
 import type { FileData } from "@/types/shared/fileTypes";
 
 interface ChatBubbleFilePreviewProps {
@@ -21,32 +20,35 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
         {files.map((file) => (
           <div
             key={file.fileId}
-            className={`group ${file?.type?.startsWith("image/") ? "flex h-[300px] w-[300px] flex-col items-center justify-center overflow-hidden rounded-xl" : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"}`}
+            className={`group/filetype group ${file?.type?.startsWith("image/") ? "flex max-h-[300px] w-[300px] flex-col items-center justify-center overflow-hidden rounded-xl" : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"}`}
           >
             {file?.type?.startsWith("image/") ? (
-              <div className="h-full w-full overflow-hidden">
+              <div className="w-full overflow-hidden">
                 <Image
                   src={file.url}
                   alt={file.filename}
                   width={1000}
                   height={1000}
-                  className="h-full w-full object-cover"
+                  className="h-auto w-full object-cover"
                 />
               </div>
             ) : (
               file.type && (
                 <div className="flex items-center gap-3">
-                  <div className="aspect-square rounded-lg bg-primary p-1">
-                    {getFileIcon(file.type, file.filename)}
-                  </div>
+                  <FileTypeIcon
+                    extension={getFileTypeExtension(file.type, file.filename)}
+                    size={36}
+                  />
                   <div>
-                    <div className="font-medium">
+                    <div className="text-sm font-medium">
                       {file.filename.length > 20
                         ? `${file.filename.substring(0, 20)}...`
                         : file.filename}
                     </div>
                     <div className="text-xs text-zinc-300">
-                      {getFormattedFileType(file.type, file.filename)}
+                      {file.size !== undefined
+                        ? formatFileSize(file.size)
+                        : getFormattedFileType(file.type, file.filename)}
                     </div>
                   </div>
                 </div>
