@@ -136,7 +136,11 @@ class StreamManager:
             ttl=STREAM_TTL,
         )
 
-        log.debug(f"{LogTag.STARTUP} Stream {stream_id} started for conversation {conversation_id}")
+        log.debug(
+            f"{LogTag.STARTUP} Stream started for conversation",
+            stream_id=stream_id,
+            conversation_id=conversation_id,
+        )
 
     @classmethod
     async def complete_stream(cls, stream_id: str) -> None:
@@ -157,7 +161,7 @@ class StreamManager:
         # Notify subscribers that stream is done
         await cls._publish(stream_id, STREAM_DONE_SIGNAL)
 
-        log.debug(f"{LogTag.STARTUP} Stream {stream_id} completed")
+        log.debug(f"{LogTag.STARTUP} Stream completed", stream_id=stream_id)
 
     @classmethod
     async def cleanup(cls, stream_id: str) -> None:
@@ -174,7 +178,7 @@ class StreamManager:
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
 
-        log.debug(f"{LogTag.STARTUP} Stream {stream_id} cleaned up")
+        log.debug(f"{LogTag.STARTUP} Stream cleaned up", stream_id=stream_id)
 
     @classmethod
     async def _clear_active_index(cls, progress_data: dict[str, Any]) -> None:
@@ -298,18 +302,24 @@ class StreamManager:
 
                         if data == STREAM_DONE_SIGNAL:
                             log.debug(
-                                f"{LogTag.STARTUP} Stream {stream_id} completed successfully "
-                                f"({chunks_received} chunks)"
+                                f"{LogTag.STARTUP} Stream completed successfully ( chunks)",
+                                stream_id=stream_id,
+                                chunks_received=chunks_received,
                             )
                             return
 
                         if data == STREAM_CANCELLED_SIGNAL:
-                            log.info(f"{LogTag.STARTUP} Stream {stream_id} was cancelled by user")
+                            log.info(
+                                f"{LogTag.STARTUP} Stream was cancelled by user",
+                                stream_id=stream_id,
+                            )
                             yield "data: [DONE]\n\n"
                             return
 
                         if data == STREAM_ERROR_SIGNAL:
-                            log.error(f"{LogTag.STARTUP} Stream {stream_id} encountered an error")
+                            log.error(
+                                f"{LogTag.STARTUP} Stream encountered an error", stream_id=stream_id
+                            )
                             progress = await cls.get_progress(stream_id)
                             error_msg = (
                                 progress.get("error", "An unexpected error occurred")
@@ -324,13 +334,18 @@ class StreamManager:
 
         except Exception as e:
             log.error(
-                f"{LogTag.STARTUP} Error in stream subscription {stream_id}: {e}", exc_info=True
+                f"{LogTag.STARTUP} Error in stream subscription",
+                stream_id=stream_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
             )
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
             if chunks_received == 0:
                 log.warning(
-                    f"{LogTag.STARTUP} Stream {stream_id} ended without receiving any chunks"
+                    f"{LogTag.STARTUP} Stream ended without receiving any chunks",
+                    stream_id=stream_id,
                 )
 
     @classmethod
@@ -385,7 +400,7 @@ class StreamManager:
         # Notify subscribers
         await cls._publish(stream_id, STREAM_CANCELLED_SIGNAL)
 
-        log.info(f"{LogTag.STARTUP} Stream {stream_id} cancelled")
+        log.info(f"{LogTag.STARTUP} Stream cancelled", stream_id=stream_id)
         return True
 
     @classmethod

@@ -126,7 +126,7 @@ services:
   arq_worker:
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
-    command: python -m arq app.worker.WorkerSettings
+    command: python -m arq app.worker.WorkerSettings --custom-log-dict app.workers.config.log_config.ARQ_LOG_CONFIG
     volumes:
       # JuiceFS via the official juicedata/juicefs volume plugin (Swarm-native).
       # The plugin holds the FUSE privilege; this container stays unprivileged
@@ -760,7 +760,10 @@ services:
     user: root
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - promtail_positions:/tmp
+      # Positions file lives at /var/lib/promtail/promtail-positions.yaml (see
+      # promtail-config.yaml). Same basename as the old /tmp mount, so existing
+      # volumes carry their offsets over without re-ingesting retained logs.
+      - promtail_positions:/var/lib/promtail
     configs:
       - source: promtail_config
         target: /etc/promtail/config.yaml

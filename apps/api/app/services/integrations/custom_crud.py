@@ -74,7 +74,12 @@ async def create_custom_integration(
     try:
         await add_user_integration(user_id, integration_id, initial_status="created")
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} Failed to add user_integration, rolling back: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} Failed to add user_integration, rolling back",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         await integration_repository.delete(integration_id)
         raise
 
@@ -113,7 +118,11 @@ async def update_custom_integration(
                     await cleanup_integration_chroma_data(integration_id, old_server_url)
                 except Exception as e:
                     log.warning(
-                        f"{LogTag.INTEGRATION} Failed to clean old namespace for {integration_id}: {e}"
+                        f"{LogTag.INTEGRATION} Failed to clean old namespace for",
+                        integration_id=integration_id,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        user_id=user_id,
                     )
 
         if request.requires_auth is not None:
@@ -161,7 +170,13 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
             try:
                 await remove_public_integration(integration_id)
             except Exception as e:
-                log.warning(f"{LogTag.INTEGRATION} Failed to remove from public integrations: {e}")
+                log.warning(
+                    f"{LogTag.INTEGRATION} Failed to remove from public integrations",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
             # Drop the deleted integration from the cached community marketplace list.
             await delete_cache_by_pattern("marketplace:community:*")
 
@@ -179,7 +194,10 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                     await remove_user_integration(affected_user_id, integration_id)
                 except Exception as e:
                     log.debug(
-                        f"{LogTag.INTEGRATION} Failed to remove integration for user {affected_user_id}: {e}"
+                        f"{LogTag.INTEGRATION} Failed to remove integration for user",
+                        affected_user_id=affected_user_id,
+                        error=str(e),
+                        error_type=type(e).__name__,
                     )
 
             try:
@@ -189,19 +207,32 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                     )
                     await session.commit()
             except Exception as e:
-                log.warning(f"{LogTag.INTEGRATION} Failed to delete MCP credentials: {e}")
+                log.warning(
+                    f"{LogTag.INTEGRATION} Failed to delete MCP credentials",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
 
             try:
                 await delete_cache("mcp:tools:all")
             except Exception as e:
-                log.debug(f"{LogTag.INTEGRATION} Cache deletion for mcp:tools:all failed: {e}")
+                log.debug(
+                    f"{LogTag.INTEGRATION} Cache deletion for mcp:tools:all failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             try:
                 server_url = doc.mcp_config.server_url if doc.mcp_config else ""
                 await cleanup_integration_chroma_data(integration_id, server_url)
             except Exception as e:
                 log.debug(
-                    f"{LogTag.INTEGRATION} Chroma store deletion failed for {integration_id}: {e}"
+                    f"{LogTag.INTEGRATION} Chroma store deletion failed for",
+                    integration_id=integration_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
             return True
@@ -218,7 +249,10 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                 await session.commit()
         except Exception as e:
             log.debug(
-                f"{LogTag.INTEGRATION} MCP credential deletion failed for {integration_id}: {e}"
+                f"{LogTag.INTEGRATION} MCP credential deletion failed for",
+                integration_id=integration_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
 
         return True
@@ -335,7 +369,12 @@ async def _build_oauth_result(mcp_client: MCPClient, integration_id: str) -> dic
         )
         return {"status": "requires_oauth", "oauth_url": auth_url}
     except Exception as e:
-        log.error(f"{LogTag.INTEGRATION} OAuth discovery failed: {e}")
+        log.error(
+            f"{LogTag.INTEGRATION} OAuth discovery failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            integration_id=integration_id,
+        )
         return {
             "status": "failed",
             "error": f"OAuth required but discovery failed: {e}",

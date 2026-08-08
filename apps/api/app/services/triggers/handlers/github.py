@@ -105,7 +105,12 @@ class GitHubTriggerHandler(TriggerHandler):
 
         # Check response status
         if not result["successful"]:
-            log.error(f"{LogTag.TRIGGER} GitHub API error: {result['error']}")
+            log.error(
+                f"{LogTag.TRIGGER} GitHub API error",
+                error=result["error"],
+                user_id=user_id,
+                integration_id=integration_id,
+            )
             return []
 
         # Extract and parse data
@@ -123,7 +128,9 @@ class GitHubTriggerHandler(TriggerHandler):
             if repo.full_name:
                 options.append(TriggerOption(value=repo.full_name, label=repo.full_name))
 
-        log.info(f"{LogTag.TRIGGER} Returning {len(options)} GitHub repository options")
+        log.info(
+            f"{LogTag.TRIGGER} Returning GitHub repository options", options_count=len(options)
+        )
         return options
 
     async def register(
@@ -220,14 +227,23 @@ class GitHubTriggerHandler(TriggerHandler):
                 elif "issue_added" in event_type.lower():
                     GitHubIssueAddedEventPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} GitHub payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} GitHub payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             workflows: list[Workflow] = []
             workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

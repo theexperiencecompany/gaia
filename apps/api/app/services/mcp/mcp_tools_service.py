@@ -13,8 +13,7 @@ from app.constants.log_tags import LogTag
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.repositories.integrations import integration_repository
 from app.models.integration_models import IntegrationTool
-from app.utils.background_tasks import spawn_background_task
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 # One raw tool entry as the callers build it — ``{"name": ..., "description": ...}``
 # assembled from LangChain/Composio tool objects. It stays a mapping rather than a
@@ -40,11 +39,15 @@ async def _refresh_cache() -> None:
     try:
         await get_all_mcp_tools()
     except Exception as e:
-        log.warning(f"{LogTag.MCP} Failed to refresh MCP tools cache: {e}")
+        log.warning(
+            f"{LogTag.MCP} Failed to refresh MCP tools cache",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def _schedule_refresh() -> None:
-    spawn_background_task(_refresh_cache())
+    spawn_logged_task("mcp_tools_cache_refresh", _refresh_cache())
 
 
 async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata]) -> None:
@@ -57,7 +60,12 @@ async def store_mcp_tools(integration_id: str, tools: Sequence[RawToolMetadata])
         await delete_cache(MCP_TOOLS_CACHE_KEY)
         _schedule_refresh()
     except Exception as e:
-        log.error(f"{LogTag.MCP} [{integration_id}] Error storing tools: {e}")
+        log.error(
+            f"{LogTag.MCP} Error storing tools",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -75,7 +83,9 @@ async def store_mcp_tools_batch(items: Sequence[tuple[str, Sequence[RawToolMetad
         await delete_cache(MCP_TOOLS_CACHE_KEY)
         _schedule_refresh()
     except Exception as e:
-        log.error(f"{LogTag.MCP} Error storing tools batch: {e}")
+        log.error(
+            f"{LogTag.MCP} Error storing tools batch", error=str(e), error_type=type(e).__name__
+        )
         raise
 
 
@@ -85,7 +95,12 @@ async def get_integration_tools(integration_id: str) -> list[dict[str, Any]]:
         tools = await integration_repository.get_tools(integration_id)
         return [t.model_dump() for t in tools]
     except Exception as e:
-        log.error(f"{LogTag.MCP} Error getting tools for {integration_id}: {e}")
+        log.error(
+            f"{LogTag.MCP} Error getting tools for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []
 
 
@@ -110,5 +125,7 @@ async def get_all_mcp_tools() -> dict[str, dict[str, Any]]:
         await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL)
         return grouped
     except Exception as e:
-        log.error(f"{LogTag.MCP} Error getting all MCP tools: {e}")
+        log.error(
+            f"{LogTag.MCP} Error getting all MCP tools", error=str(e), error_type=type(e).__name__
+        )
         return {}

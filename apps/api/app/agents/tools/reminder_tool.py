@@ -106,7 +106,7 @@ async def create_reminder_tool(
         return "Reminder created successfully"
 
     except ValueError as e:
-        log.error(f"{LogTag.TOOL} Validation error: {e}")
+        log.error(f"{LogTag.TOOL} Validation error", error_type=type(e).__name__)
         return {"error": str(e)}
     except Exception as e:
         log.exception(f"{LogTag.TOOL} Exception occurred while creating reminder")
@@ -244,7 +244,11 @@ async def update_reminder_tool(
 
                 update.stop_after = processed_stop_after
             except ValueError as e:
-                log.error(f"{LogTag.TOOL} Invalid stop_after format: {stop_after}, error: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Invalid stop_after format",
+                    stop_after=stop_after,
+                    error_type=type(e).__name__,
+                )
                 return {
                     "error": f"Invalid stop_after format: {stop_after}. Use YYYY-MM-DD HH:MM:SS format."
                 }

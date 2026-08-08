@@ -12,8 +12,9 @@ same PR (its header says so too).
   only. Its `quality-gate` job is a branch-protection target.
 - **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Eighteen lanes
   (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity, security,
-  pint over the Grafana alert rules, …) behind the ratcheted
-  `Quality gate (required)` check.
+  evlog-map observability score, wide-event cross-runtime conformance, …)
+  behind the ratcheted `Quality gate (required)` check.
+
 
 **Never add a check to both.** Every static check lives in code-quality.yml
 only. We previously ran ruff/mypy/Biome/tsc/dead-code in BOTH workflows on
@@ -76,12 +77,14 @@ intended semantic, keep it:
   plugin registers test files as entry points and test-only-referenced code
   counts as used. When adding a workspace, add the exclusion.
 
-## The ratchet
+## The quality gate
 
-`code-quality.yml`'s gate enforces a lane iff a marker file exists at
-`quality-gate/enforced/<lane>`. All 18 lanes are currently enforced. New lane:
-add it non-enforced first, burn down findings, then add its marker in its own
-PR (separate marker files never merge-conflict).
+`code-quality.yml`'s gate enforces every lane: a lane that is neither
+`success` nor `skipped` (the `changes` job proved its language untouched)
+fails the merge. The old marker-file ratchet (`quality-gate/enforced/<lane>`)
+is gone — the rollout it enabled is complete and the two sources of truth had
+drifted. New lane: add the job, its result to the gate's `needs:` + `RESULT`
+map, and its name to the `LANES` array; it is enforced from the first run.
 
 ## Log readability (for humans AND agents)
 

@@ -64,7 +64,12 @@ async def is_tool_destructive(
     except Exception as e:
         # Fail closed: every failure mode (registry/LLM/Mongo down, unknown tool)
         # must gate rather than let a possibly-destructive call run unattended.
-        log.warning(f"{LogTag.HIL} Failed to classify {tool_name!r}, failing closed: {e}")
+        log.warning(
+            f"{LogTag.HIL} Failed to classify, failing closed",
+            tool_name=tool_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return True
 
 

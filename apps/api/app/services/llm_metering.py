@@ -64,8 +64,11 @@ async def record_llm_call(
         # the user's turn for a metering bug. The dropped spend is greppable via
         # this event so the budget under-count is visible, not silent.
         log.error(
-            f"{LogTag.AGENT} Token cost calc failed for {model_name} — spend recorded "
-            f"as $0 (budget will under-count this call): {e}"
+            f"{LogTag.AGENT} Token cost calc failed — spend recorded as $0 "
+            "(budget will under-count this call)",
+            model=model_name,
+            error=str(e),
+            error_type=type(e).__name__,
         )
         total_cost = 0.0
 
@@ -82,6 +85,10 @@ async def record_llm_call(
         # philosophy (a Redis blip must never fail an already-completed call).
         # record_model_call_usage already fails open per-op internally; this is
         # the outer backstop.
-        log.warning(f"{LogTag.AGENT} Cost/token budget recording failed (failing open): {e}")
+        log.warning(
+            f"{LogTag.AGENT} Cost/token budget recording failed (failing open)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return total_cost

@@ -19,31 +19,30 @@ from app.services.storage import (
     flush_fs_metrics,
     list_stale_sessions,
 )
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import log
 
 
 async def prune_inactive_sessions(_ctx: dict[str, Any]) -> str:
     """Delete session dirs inactive past SESSION_RETENTION_DAYS."""
-    async with wide_task("prune_inactive_sessions"):
-        cutoff_days = settings.SESSION_RETENTION_DAYS
-        limit = settings.SESSION_PRUNE_BATCH_LIMIT
-        stale = await list_stale_sessions(cutoff_days, limit=limit)
-        pruned = 0
-        for user_id, conv_id in stale:
-            try:
-                await delete_session_dir(user_id, conv_id)
-                pruned += 1
-            except Exception as e:
-                log.warning(
-                    f"{LogTag.WORKER} prune failed",
-                    user_id=user_id,
-                    conv=conv_id,
-                    error=str(e),
-                )
-        fs_metrics = flush_fs_metrics()
-        log.set(
-            stale_count=len(stale),
-            pruned=pruned,
-            **({"fs": fs_metrics} if fs_metrics else {}),
-        )
-        return f"pruned {pruned}/{len(stale)} sessions (cutoff={cutoff_days}d)"
+    cutoff_days = settings.SESSION_RETENTION_DAYS
+    limit = settings.SESSION_PRUNE_BATCH_LIMIT
+    stale = await list_stale_sessions(cutoff_days, limit=limit)
+    pruned = 0
+    for user_id, conv_id in stale:
+        try:
+            await delete_session_dir(user_id, conv_id)
+            pruned += 1
+        except Exception as e:
+            log.warning(
+                f"{LogTag.WORKER} prune failed",
+                user_id=user_id,
+                conv=conv_id,
+                error=str(e),
+            )
+    fs_metrics = flush_fs_metrics()
+    log.set(
+        stale_count=len(stale),
+        pruned=pruned,
+        **({"fs": fs_metrics} if fs_metrics else {}),
+    )
+    return f"pruned {pruned}/{len(stale)} sessions (cutoff={cutoff_days}d)"

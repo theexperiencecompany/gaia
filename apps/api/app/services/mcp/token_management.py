@@ -60,8 +60,9 @@ async def try_refresh_token(
     refresh_token = await token_store.get_refresh_token(integration_id)
     if not refresh_token:
         log.warning(
-            f"{LogTag.MCP} try_refresh_token: no refresh_token stored for {integration_id} "
-            f"user={token_store.user_id}; user must re-OAuth"
+            f"{LogTag.MCP} try_refresh_token: no refresh_token stored for user=; user must re-OAuth",
+            integration_id=integration_id,
+            user_id=token_store.user_id,
         )
         return False
 
@@ -77,9 +78,9 @@ async def try_refresh_token(
 
         if not client_id:
             log.warning(
-                f"{LogTag.MCP} try_refresh_token: no client_id resolved for {integration_id} "
-                f"user={token_store.user_id} (no pre-configured creds, no DCR "
-                f"registration); user must re-authorize"
+                f"{LogTag.MCP} try_refresh_token: no client_id resolved (no pre-configured creds, no DCR registration); user must re-authorize",
+                integration_id=integration_id,
+                user_id=token_store.user_id,
             )
             return False
 
@@ -119,11 +120,13 @@ async def try_refresh_token(
                     pass
 
                 log.warning(
-                    f"{LogTag.MCP} try_refresh_token: token endpoint returned "
-                    f"{response.status_code} for {integration_id} "
-                    f"user={token_store.user_id} "
-                    f"(oauth_error={error_code!r}, desc={error_description!r}) "
-                    f"endpoint={_endpoint_host(token_endpoint)}"
+                    f"{LogTag.MCP} try_refresh_token: token endpoint returned an error",
+                    status_code=response.status_code,
+                    integration_id=integration_id,
+                    user_id=token_store.user_id,
+                    oauth_error=error_code,
+                    oauth_error_description=error_description,
+                    endpoint_host=_endpoint_host(token_endpoint),
                 )
                 return False
 
@@ -133,8 +136,9 @@ async def try_refresh_token(
             # as a failure rather than storing a blank credential.
             if not token.access_token:
                 log.warning(
-                    f"{LogTag.MCP} try_refresh_token: token endpoint returned an empty "
-                    f"access_token for {integration_id} user={token_store.user_id}"
+                    f"{LogTag.MCP} try_refresh_token: token endpoint returned an empty access_token for user",
+                    integration_id=integration_id,
+                    user_id=token_store.user_id,
                 )
                 return False
 
@@ -148,19 +152,21 @@ async def try_refresh_token(
             )
 
             log.info(
-                f"{LogTag.MCP} try_refresh_token: refreshed token for {integration_id} "
-                f"user={token_store.user_id} "
-                f"(new_access_token_length={len(token.access_token)}, "
-                f"refresh_token_rotated={token.refresh_token is not None}, "
-                f"expires_at={expires_at})"
+                f"{LogTag.MCP} try_refresh_token: refreshed token",
+                integration_id=integration_id,
+                user_id=token_store.user_id,
+                new_access_token_length=len(token.access_token),
+                refresh_token_rotated=token.refresh_token is not None,
+                expires_at=expires_at,
             )
             return True
 
     except Exception as e:
         log.warning(
-            f"{LogTag.MCP} try_refresh_token: exception during refresh for "
-            f"{integration_id} user={token_store.user_id}: "
-            f"{type(e).__name__}: {e}"
+            f"{LogTag.MCP} try_refresh_token: exception during refresh",
+            integration_id=integration_id,
+            user_id=token_store.user_id,
+            error_type=type(e).__name__,
         )
         return False
 
@@ -208,4 +214,9 @@ async def revoke_tokens(
 
                 await http_client.post(revocation_endpoint, data=data, headers=headers, timeout=10)
     except Exception as e:
-        log.warning(f"{LogTag.MCP} Token revocation failed for {integration_id}: {e}")
+        log.warning(
+            f"{LogTag.MCP} Token revocation failed for",
+            integration_id=integration_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )

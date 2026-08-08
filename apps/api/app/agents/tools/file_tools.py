@@ -46,7 +46,9 @@ async def search_uploaded_files(
             user_id=configurable["user_id"],
         )
 
-        log.info(f"{LogTag.TOOL} Similar documents found: {similar_documents}")
+        log.info(
+            f"{LogTag.TOOL} Similar documents found", similar_document_count=len(similar_documents)
+        )
 
         document_ids = list(
             {
@@ -56,13 +58,13 @@ async def search_uploaded_files(
             }
         )
 
-        log.info(f"{LogTag.TOOL} Document IDs: {document_ids}")
+        log.info(f"{LogTag.TOOL} Document IDs resolved", document_count=len(document_ids))
 
         documents = await file_repository.find_by_ids_for_user(
             document_ids, configurable["user_id"]
         )
 
-        log.info(f"{LogTag.TOOL} Documents found: {documents}")
+        log.info(f"{LogTag.TOOL} Documents found", document_count=len(documents))
 
         return _construct_content(
             documents=documents,
@@ -70,7 +72,7 @@ async def search_uploaded_files(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error in querying document: {e!s}")
+        log.error(f"{LogTag.TOOL} Error in querying document", error_type=type(e).__name__)
         raise e
 
 
@@ -150,7 +152,7 @@ def _construct_content(
         )
 
         if not document:
-            log.error(f"{LogTag.TOOL} Document with ID {document_id} not found.")
+            log.error(f"{LogTag.TOOL} Document not found", document_id=document_id)
             continue
 
         document_content = document.page_wise_summary
@@ -174,6 +176,6 @@ def _construct_content(
             content += f"Document ID: {document_id}\n"
             content += f"Description: {document_content.get('data', {}).get('content', 'Description not available!')}\n\n"
 
-    log.info(f"{LogTag.TOOL} Constructed content: {content}")
+    log.info(f"{LogTag.TOOL} Constructed document content", content_length=len(content))
 
     return content

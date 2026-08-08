@@ -71,7 +71,12 @@ async def record_activity(user_id: str, amount: int = 1) -> None:
     try:
         await usage_daily_repository.increment(user_id, _day(datetime.now(UTC)), count=amount)
     except PyMongoError as e:
-        log.warning(f"{LogTag.MONGO} record_activity failed for {user_id}: {e}")
+        log.warning(
+            f"{LogTag.MONGO} record_activity failed",
+            user={"id": user_id},
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def record_cost(user_id: str, cost_usd: float, *, charged: bool = True) -> None:
@@ -96,7 +101,12 @@ async def record_cost(user_id: str, cost_usd: float, *, charged: bool = True) ->
         else:
             await usage_daily_repository.increment(user_id, day, aux_cost=cost_usd)
     except PyMongoError as e:
-        log.warning(f"{LogTag.MONGO} record_cost failed for {user_id}: {e}")
+        log.warning(
+            f"{LogTag.MONGO} record_cost failed",
+            user={"id": user_id},
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def _current_streak(counts: dict[str, int], end: datetime) -> int:
@@ -272,5 +282,11 @@ async def sync_activity_tiers(send_emails: bool = True) -> dict[str, int]:
             # One bounced address must not abort the whole sweep; the tier is
             # already recorded, so this user simply misses the (nice-to-have)
             # email rather than risking a duplicate on retry.
-            log.error(f"{LogTag.MAIL} badge email failed for user {user.id} ({tier}): {e!s}")
+            log.error(
+                f"{LogTag.MAIL} badge email failed",
+                user={"id": user.id},
+                tier=tier,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
     return stats

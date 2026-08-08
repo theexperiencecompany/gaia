@@ -27,7 +27,7 @@ def upload_file_to_cloudinary(
     Raises:
         HTTPException: If the upload fails or invalid parameters are provided.
     """
-    log.set(service="upload_service", public_id=public_id)
+    log.set(component="upload_service", public_id=public_id)
     # Validate input parameters
     if not file_data and not file_path:
         log.error("Either file_data or file_path must be provided")
@@ -48,7 +48,7 @@ def upload_file_to_cloudinary(
 
     # Validate file path exists if provided
     if file_path and not os.path.exists(file_path):
-        log.error(f"File not found: {file_path}")
+        log.error("File not found", file_path=file_path)
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
 
     try:
@@ -68,14 +68,16 @@ def upload_file_to_cloudinary(
             raise HTTPException(status_code=500, detail="Invalid response from file upload service")
 
         source_type = "file_data" if file_data else "file_path"
-        log.info(f"File uploaded successfully from {source_type}. URL: {file_url}")
+        log.info(
+            "File uploaded successfully from . URL", source_type=source_type, file_url=file_url
+        )
         return file_url
 
     except cloudinary.exceptions.Error as e:
-        log.error(f"Cloudinary upload failed: {e}")
+        log.error("Cloudinary upload failed", error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=500, detail="Failed to upload file to Cloudinary")
     except Exception as e:
-        log.error(f"Unexpected error during upload: {e}")
+        log.error("Unexpected error during upload", error=str(e), error_type=type(e).__name__)
         raise HTTPException(
             status_code=500, detail="An unexpected error occurred during file upload"
         )

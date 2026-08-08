@@ -50,7 +50,11 @@ class MongoDB:
 
         except Exception as e:
             log.set(db={"connection_status": "error", "backend": "mongodb"})
-            log.error(f"{LogTag.MONGO} An error occurred while connecting to MongoDB: {e}")
+            log.error(
+                f"{LogTag.MONGO} An error occurred while connecting to MongoDB",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             sys.exit(1)
 
     def ping(self) -> None:
@@ -62,7 +66,7 @@ class MongoDB:
             sync_client.admin.command("ping")
             sync_client.close()
         except Exception as e:
-            log.error(f"{LogTag.MONGO} Ping failed: {e}")
+            log.error(f"{LogTag.MONGO} Ping failed", error=str(e), error_type=type(e).__name__)
 
     async def _initialize_indexes(self) -> None:
         try:
@@ -73,7 +77,11 @@ class MongoDB:
             await create_all_indexes()
             # await log_index_summary()
         except Exception as e:
-            log.error(f"{LogTag.MONGO} Error while initializing indexes: {e}")
+            log.error(
+                f"{LogTag.MONGO} Error while initializing indexes",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def get_collection(self, collection_name: str) -> AsyncIOMotorCollection[dict[str, Any]]:
         return self.database.get_collection(collection_name)

@@ -211,7 +211,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
                 str(root_request_id) if root_request_id else None,
             )
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Budget check failed (failing open): {e}")
+            log.warning(
+                f"{LogTag.AGENT} Budget check failed (failing open)",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             stop_reason = None
 
         if stop_reason is not None:

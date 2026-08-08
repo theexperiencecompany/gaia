@@ -61,7 +61,7 @@ from app.constants.general import (
 )
 from app.constants.log_tags import LogTag
 from app.db.repositories.conversations import conversation_repository
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import log
 
 # A conversation_id is normally a uuid; derived thread ids embed it verbatim
 # (`executor_<conv>`, `<integration>_executor_<conv>_<runhex>`, `workflow_<conv>`,
@@ -347,22 +347,21 @@ async def prune_thread_versions(pool: AsyncConnectionPool) -> dict[str, int]:
 async def prune_checkpoint_versions(_ctx: dict[str, Any]) -> str:
     """Nightly: sweep orphaned and stale-spawn threads, then prune checkpoint versions."""
 
-    async with wide_task("prune_checkpoint_versions"):
-        manager = await get_checkpointer_manager()
-        pool = manager.pool
-        checkpointer = manager.get_checkpointer()
+    manager = await get_checkpointer_manager()
+    pool = manager.pool
+    checkpointer = manager.get_checkpointer()
 
-        orphan = await sweep_orphan_threads(pool, checkpointer)
-        spawn = await sweep_stale_spawn_threads(pool, checkpointer)
-        prune = await prune_thread_versions(pool)
+    orphan = await sweep_orphan_threads(pool, checkpointer)
+    spawn = await sweep_stale_spawn_threads(pool, checkpointer)
+    prune = await prune_thread_versions(pool)
 
-        summary = {**orphan, **spawn, **prune}
-        log.set(checkpoint_retention=summary)
-        log.info(f"{LogTag.WORKER} checkpoint retention swept + pruned", **summary)
-        return (
-            f"orphans={orphan['orphan_threads_deleted']} "
-            f"stale_spawns={spawn['spawn_threads_deleted']} "
-            f"pruned_threads={prune['threads_pruned']} "
-            f"checkpoints_deleted={orphan['orphan_checkpoints_deleted'] + prune['checkpoints_deleted']} "
-            f"bytes_estimate={prune['bytes_estimate']}"
-        )
+    summary = {**orphan, **spawn, **prune}
+    log.set(checkpoint_retention=summary)
+    log.info(f"{LogTag.WORKER} checkpoint retention swept + pruned", **summary)
+    return (
+        f"orphans={orphan['orphan_threads_deleted']} "
+        f"stale_spawns={spawn['spawn_threads_deleted']} "
+        f"pruned_threads={prune['threads_pruned']} "
+        f"checkpoints_deleted={orphan['orphan_checkpoints_deleted'] + prune['checkpoints_deleted']} "
+        f"bytes_estimate={prune['bytes_estimate']}"
+    )

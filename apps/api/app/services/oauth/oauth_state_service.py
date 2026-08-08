@@ -42,7 +42,10 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
     # Validate redirect path - only allow safe paths
     if not is_safe_redirect_path(redirect_path):
         log.warning(
-            f"{LogTag.OAUTH} Unsafe redirect path rejected for user {user_id}: {redirect_path}"
+            f"{LogTag.OAUTH} Unsafe redirect path rejected for user",
+            user_id=user_id,
+            redirect_path=redirect_path,
+            integration_id=integration_id,
         )
         # Default to safe path
         redirect_path = "/c"
@@ -64,7 +67,9 @@ async def create_oauth_state(user_id: str, redirect_path: str, integration_id: s
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
     log.info(
-        f"{LogTag.OAUTH} Created OAuth state token for user {user_id}, integration {integration_id}"
+        f"{LogTag.OAUTH} Created OAuth state token",
+        user_id=user_id,
+        integration_id=integration_id,
     )
     return state_token
 
@@ -94,7 +99,7 @@ async def validate_and_consume_oauth_state(
         state_data = await redis_client.hgetall(state_key)
 
         if not state_data:
-            log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token: {state_token}")
+            log.warning(f"{LogTag.OAUTH} Invalid or expired OAuth state token")
             return None
 
         # Decode bytes to strings
@@ -109,20 +114,25 @@ async def validate_and_consume_oauth_state(
 
         # Validate that we have all required fields
         if not all([result["user_id"], result["redirect_path"], result["integration_id"]]):
-            log.warning(f"{LogTag.OAUTH} Incomplete OAuth state data for token: {state_token}")
+            log.warning(f"{LogTag.OAUTH} Incomplete OAuth state data for token")
             return None
 
         # Delete the token to prevent replay attacks
         await redis_client.delete(state_key)
 
         log.info(
-            f"{LogTag.OAUTH} OAuth state validated and consumed for user {result['user_id']}, "
-            f"integration {result['integration_id']}"
+            f"{LogTag.OAUTH} OAuth state validated and consumed",
+            user_id=result["user_id"],
+            integration_id=result["integration_id"],
         )
         return result
 
     except Exception as e:
-        log.error(f"{LogTag.OAUTH} Error validating OAuth state: {e}")
+        log.error(
+            f"{LogTag.OAUTH} Error validating OAuth state",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 

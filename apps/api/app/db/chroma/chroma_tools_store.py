@@ -76,7 +76,8 @@ def _compute_tool_hash(tool: IndexableTool) -> str:
         content = f"{tool.description}::{code_source}"
     except (OSError, TypeError, AttributeError):
         log.debug(
-            f"{LogTag.CHROMA} Source unavailable for {getattr(tool, 'name', 'unknown')}, using description hash"
+            f"{LogTag.CHROMA} Source unavailable for tool, using description hash",
+            tool_name=getattr(tool, "name", "unknown"),
         )
         content = f"{tool.name}::{tool.description}"
 
@@ -194,7 +195,11 @@ async def _get_existing_tools_from_chroma(
                         namespace=namespace,
                     )
     except Exception as e:
-        log.warning(f"{LogTag.CHROMA} Error fetching existing tools: {e}, will register all tools")
+        log.warning(
+            f"{LogTag.CHROMA} Error fetching existing tools, will register all tools",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
     return existing_tools
 
@@ -303,10 +308,12 @@ async def _execute_batch_operations(
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
         log.info(
-            f"{LogTag.CHROMA} Processed batch {i // batch_size + 1}/{(total_ops + batch_size - 1) // batch_size}"
+            f"{LogTag.CHROMA} Processed batch",
+            batch_index=i // batch_size + 1,
+            batch_total=(total_ops + batch_size - 1) // batch_size,
         )
 
-    log.info(f"{LogTag.CHROMA} Successfully updated {total_ops} tools in ChromaDB")
+    log.info(f"{LogTag.CHROMA} Successfully updated tools in ChromaDB", total_ops=total_ops)
 
 
 async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, str]]) -> None:
@@ -331,7 +338,9 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
         )
     )
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store called: namespace='{namespace}' input_tools={input_count}"
+        f"{LogTag.CHROMA} index_tools_to_store called",
+        namespace=namespace,
+        input_count=input_count,
     )
 
     if not tools_with_space:
@@ -347,16 +356,15 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     distinct_namespaces = {space for _, space in tools_with_space}
     if len(distinct_namespaces) > 1:
         log.error(
-            f"{LogTag.CHROMA} index_tools_to_store: mixed namespaces in single call "
-            f"({sorted(distinct_namespaces)}); aborting to prevent partial indexing. "
-            f"Caller must batch per-namespace."
+            f"{LogTag.CHROMA} index_tools_to_store: mixed namespaces in single call; aborting to prevent partial indexing — caller must batch per-namespace",
+            namespaces=sorted(distinct_namespaces),
         )
         return
 
     if not namespace or len(namespace) > 512 or "::" in namespace:
         log.error(
-            f"{LogTag.CHROMA} index_tools_to_store: invalid namespace '{namespace}' "
-            f"(empty/too-long/contains-::), aborting"
+            f"{LogTag.CHROMA} index_tools_to_store: invalid namespace (empty/too-long/contains-::), aborting",
+            namespace=namespace,
         )
         return
 
@@ -372,16 +380,19 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     cached_hash = await get_cache(cache_key)
     if cached_hash == tools_hash:
         log.info(
-            f"{LogTag.CHROMA} index_tools_to_store: namespace '{namespace}' Redis cache HIT "
-            f"(hash={tools_hash}), skipping reindex of {input_count} tools"
+            f"{LogTag.CHROMA} index_tools_to_store: namespace Redis cache HIT, skipping reindex of tools",
+            namespace=namespace,
+            tools_hash=tools_hash,
+            input_count=input_count,
         )
         return
 
     raw_store = await providers.aget("chroma_tools_store")
     if raw_store is None:
         log.warning(
-            f"{LogTag.CHROMA} index_tools_to_store: chroma_tools_store provider returned None "
-            f"for namespace '{namespace}', skipping {input_count} tools"
+            f"{LogTag.CHROMA} index_tools_to_store: provider returned None for namespace, skipping tools",
+            namespace=namespace,
+            input_count=input_count,
         )
         return
 
@@ -396,14 +407,17 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
         composite_key = f"{space}::{tool.name}"
         current_tools[composite_key] = IndexedToolEntry(hash=tool_hash, namespace=space, tool=tool)
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: built current_tools dict for '{namespace}': "
-        f"{len(current_tools)} unique composite keys from {input_count} inputs"
+        f"{LogTag.CHROMA} index_tools_to_store: built current_tools dict of unique composite keys",
+        namespace=namespace,
+        current_tools_count=len(current_tools),
+        input_count=input_count,
     )
 
     existing_tools = await _get_existing_tools_from_chroma(collection, {namespace})
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: fetched {len(existing_tools)} existing docs "
-        f"for namespace '{namespace}'"
+        f"{LogTag.CHROMA} index_tools_to_store: fetched existing docs for namespace",
+        existing_tools_count=len(existing_tools),
+        namespace=namespace,
     )
 
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
@@ -411,16 +425,19 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
 
     if not tools_to_upsert and not tools_to_delete:
         log.info(
-            f"{LogTag.CHROMA} index_tools_to_store: namespace '{namespace}' is up-to-date "
-            f"({len(current_tools)} tools, no diff)"
+            f"{LogTag.CHROMA} index_tools_to_store: namespace is up-to-date ( tools, no diff)",
+            namespace=namespace,
+            current_tools_count=len(current_tools),
         )
         # Cache the hash even if no changes (first time seeing this namespace)
         await set_cache(cache_key, tools_hash, ttl=86400)
         return
 
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: Updating namespace '{namespace}': "
-        f"{len(tools_to_upsert)} to upsert, {len(tools_to_delete)} to delete"
+        f"{LogTag.CHROMA} index_tools_to_store: Updating namespace : to upsert, to delete",
+        namespace=namespace,
+        tools_to_upsert_count=len(tools_to_upsert),
+        tools_to_delete_count=len(tools_to_delete),
     )
 
     put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
@@ -429,7 +446,8 @@ async def index_tools_to_store(tools_with_space: Sequence[tuple[IndexableTool, s
     # Cache the hash after successful indexing (24 hour TTL)
     await set_cache(cache_key, tools_hash, ttl=86400)
     log.info(
-        f"{LogTag.CHROMA} index_tools_to_store: completed namespace '{namespace}', cache key set"
+        f"{LogTag.CHROMA} index_tools_to_store: completed namespace, cache key set",
+        namespace=namespace,
     )
 
 
@@ -462,7 +480,11 @@ async def delete_tools_by_namespace(namespace: str) -> int:
 
     if ids_to_delete:
         await collection.delete(ids=ids_to_delete)
-        log.info(f"{LogTag.CHROMA} Deleted {len(ids_to_delete)} tools from namespace '{namespace}'")
+        log.info(
+            f"{LogTag.CHROMA} Deleted tools from namespace",
+            ids_to_delete_count=len(ids_to_delete),
+            namespace=namespace,
+        )
 
     # Invalidate Redis cache for this namespace (unified format)
     await delete_cache(f"chroma:indexed:{namespace}")
@@ -514,7 +536,7 @@ async def initialize_chroma_tools_store() -> ChromaStore:
 
     managed_namespaces = {tool_data["namespace"] for tool_data in current_tools.values()}
     log.set(vector=VectorContext(operation="upsert", collection="langgraph_tools_store"))
-    log.info(f"{LogTag.CHROMA} Managing namespaces at init: {managed_namespaces}")
+    log.info(f"{LogTag.CHROMA} Managing namespaces at init", managed_namespaces=managed_namespaces)
 
     existing_tools = await _get_existing_tools_from_chroma(collection, managed_namespaces)
 
@@ -526,8 +548,9 @@ async def initialize_chroma_tools_store() -> ChromaStore:
         return store
 
     log.info(
-        f"{LogTag.CHROMA} Updating ChromaDB tools store: {len(tools_to_upsert)} to upsert, "
-        f"{len(tools_to_delete)} to delete"
+        f"{LogTag.CHROMA} Updating ChromaDB tools store: to upsert, to delete",
+        tools_to_upsert_count=len(tools_to_upsert),
+        tools_to_delete_count=len(tools_to_delete),
     )
 
     put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)

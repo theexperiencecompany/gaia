@@ -197,7 +197,12 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
                 {"email": email}, {"last_active_at": datetime.now(UTC)}
             )
         except Exception as exc:
-            log.warning(f"{LogTag.API} touch_last_active failed for {email}: {exc}")
+            log.warning(
+                f"{LogTag.API} touch_last_active failed for",
+                email=email,
+                error=str(exc),
+                error_type=type(exc).__name__,
+            )
 
     # ------------------------------------------------------- onboarding writes
 
@@ -569,7 +574,10 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
         id-encoding concerns stay inside the repository layer.
         """
         if not ObjectId.is_valid(user_id):
-            log.warning(f"[repository] tier promotion skipped non-ObjectId user_id {user_id!r}")
+            log.warning(
+                "[repository] tier promotion skipped non-ObjectId user_id",
+                user={"id": user_id},
+            )
             return None
         return await self._apply_raw_update(
             {

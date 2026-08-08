@@ -20,7 +20,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
     updated in a single write.
     """
     log.set(
-        service="todo_bulk_service",
+        component="todo_bulk_service",
         operation="bulk_complete_todos",
         user_id=user_id,
         todo_count=len(todo_ids),
@@ -51,13 +51,22 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
             )
 
         updated = await todo_repository.find_by_ids(user_id, todo_ids)
-        log.info(f"{LogTag.TODO} Bulk completed {modified + len(tracked)} todos for user {user_id}")
+        log.info(
+            f"{LogTag.TODO} Bulk completed todos",
+            todo_count=modified + len(tracked),
+            user_id=user_id,
+        )
         return [TodoResponse.from_document(todo) for todo in updated]
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.TODO} Error bulk completing todos: {e!s}")
+        log.error(
+            f"{LogTag.TODO} Error bulk completing todos",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk complete todos: {e!s}",
@@ -67,7 +76,7 @@ async def bulk_complete_todos(todo_ids: list[str], user_id: str) -> list[TodoRes
 async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) -> list[TodoResponse]:
     """Move multiple todos to a different project using a bulk operation."""
     log.set(
-        service="todo_bulk_service",
+        component="todo_bulk_service",
         operation="bulk_move_todos",
         user_id=user_id,
         target_project_id=project_id,
@@ -91,14 +100,22 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
 
         updated = await todo_repository.find_by_ids(user_id, todo_ids)
         log.info(
-            f"{LogTag.TODO} Bulk moved {modified} todos to project {project_id} for user {user_id}"
+            f"{LogTag.TODO} Bulk moved todos to project for user",
+            modified=modified,
+            project_id=project_id,
+            user_id=user_id,
         )
         return [TodoResponse.from_document(todo) for todo in updated]
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.TODO} Error bulk moving todos: {e!s}")
+        log.error(
+            f"{LogTag.TODO} Error bulk moving todos",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk move todos: {e!s}",
@@ -108,7 +125,7 @@ async def bulk_move_todos(todo_ids: list[str], project_id: str, user_id: str) ->
 async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
     """Delete multiple todos using a bulk operation."""
     log.set(
-        service="todo_bulk_service",
+        component="todo_bulk_service",
         operation="bulk_delete_todos",
         user_id=user_id,
         todo_count=len(todo_ids),
@@ -134,12 +151,17 @@ async def bulk_delete_todos(todo_ids: list[str], user_id: str) -> None:
                 status_code=status.HTTP_404_NOT_FOUND, detail="No todos found to delete"
             )
 
-        log.info(f"{LogTag.TODO} Bulk deleted {deleted} todos for user {user_id}")
+        log.info(f"{LogTag.TODO} Bulk deleted todos for user", deleted=deleted, user_id=user_id)
 
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.TODO} Error bulk deleting todos: {e!s}")
+        log.error(
+            f"{LogTag.TODO} Error bulk deleting todos",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bulk delete todos: {e!s}",

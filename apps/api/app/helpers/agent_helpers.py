@@ -114,7 +114,7 @@ async def get_handoff_metadata(subagent_id: str) -> HandoffMetadata:
         return metadata
 
     except Exception as e:
-        log.warning(f"Failed to lookup handoff metadata: {e}")
+        log.warning("Failed to lookup handoff metadata", error=str(e), error_type=type(e).__name__)
         return {}
 
 
@@ -834,7 +834,11 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        log.warning(f"Failed to emit mcp_app event: {_e}")
+                        log.warning(
+                            "Failed to emit mcp_app event",
+                            error=str(_e),
+                            error_type=type(_e).__name__,
+                        )
             continue
 
         if stream_mode == "custom":
@@ -911,7 +915,11 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        log.warning(f"Failed to emit mcp_app from subagent: {_e}")
+                        log.warning(
+                            "Failed to emit mcp_app from subagent",
+                            error=str(_e),
+                            error_type=type(_e).__name__,
+                        )
 
     if cancelled:
         # Stop the run before touching the checkpoint: aclose() raises
@@ -922,7 +930,11 @@ async def execute_graph_streaming(
         try:
             await record_interruption(graph, config)
         except Exception as e:  # noqa: BLE001 — the cancel ack must still reach the client
-            log.error(f"{LogTag.AGENT} Failed to record interruption: {e}")
+            log.error(
+                f"{LogTag.AGENT} Failed to record interruption",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         yield f"nostream: {json.dumps({'complete_message': complete_message, 'cancelled': True})}"
         yield "data: [DONE]\n\n"
         return

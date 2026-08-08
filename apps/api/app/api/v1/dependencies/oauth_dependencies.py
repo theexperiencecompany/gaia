@@ -14,9 +14,8 @@ from app.utils.auth_utils import (
     build_user_context,
     resolve_dev_bypass_user,
 )
-from app.utils.background_tasks import spawn_background_task
 from app.utils.timezone import Timezone, TimezoneSource, resolve_home_timezone
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 
 async def _backfill_user_timezone(user_id: str, tz: str) -> None:
@@ -29,7 +28,13 @@ async def _backfill_user_timezone(user_id: str, tz: str) -> None:
             timezone=tz,
         )
     except Exception as e:
-        log.warning(f"{LogTag.OAUTH} Failed to backfill user.timezone for {user_id}: {e}")
+        log.warning(
+            f"{LogTag.OAUTH} Failed to backfill user.timezone",
+            user_id=user_id,
+            timezone=tz,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
 
 
 # NOSONAR justification: FastAPI dispatches a `def` dependency to a threadpool and
@@ -130,8 +135,9 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
                 user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True
             )
         log.error(
-            f"{LogTag.OAUTH} Dev bypass target {target_email!r} has no Mongo user — "
-            f"{DEV_USER_MISSING_HINT}"
+            f"{LogTag.OAUTH} Dev bypass target has no Mongo user",
+            target_email=target_email,
+            fix=DEV_USER_MISSING_HINT,
         )
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
@@ -178,7 +184,7 @@ def get_user_timezone(
     """
     tz = Timezone.parse(x_timezone)
     now = tz.now()
-    log.debug(f"{LogTag.OAUTH} User timezone: {tz.value}, Current time: {now}")
+    log.debug(f"{LogTag.OAUTH} Resolved user timezone", timezone=tz.value, now=str(now))
     return tz.value, now
 
 
@@ -227,11 +233,21 @@ async def get_user_timezone_from_preferences(
             )
 
         if resolved.should_heal and user_id:
-            spawn_background_task(_backfill_user_timezone(user_id, resolved.timezone.value))
+            spawn_logged_task(
+                "timezone_backfill",
+                _backfill_user_timezone(user_id, resolved.timezone.value),
+                user={"id": user_id},
+                timezone=resolved.timezone.value,
+            )
 
         return resolved.timezone.value
 
     except Exception as e:
-        log.warning(f"{LogTag.OAUTH} Error resolving user timezone: {e}", user_id=user_id)
+        log.warning(
+            f"{LogTag.OAUTH} Error resolving user timezone",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         log.set(timezone_source=TimezoneSource.FALLBACK_UTC.value, user_timezone="UTC")
         return "UTC"

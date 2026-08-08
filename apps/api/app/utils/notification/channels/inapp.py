@@ -106,12 +106,13 @@ class InAppChannelAdapter(ChannelAdapter[InAppPayload]):
                     "notification": content,
                 },
             )
-            log.info(
-                f"{LogTag.NOTIFICATION} In-app notification delivered to user {user_id}: {content['title']}"
-            )
+            log.info(f"{LogTag.NOTIFICATION} In-app notification delivered", user_id=user_id)
             return self._success()
         except Exception as e:
             log.error(
-                f"{LogTag.NOTIFICATION} Failed to deliver in-app notification to user {user_id}: {e}"
+                f"{LogTag.NOTIFICATION} Failed to deliver in-app notification to user",
+                user_id=user_id,
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return self._error(str(e))

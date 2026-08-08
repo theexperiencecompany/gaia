@@ -40,7 +40,11 @@ class PaymentWebhookService:
                 # The secret should be base64 encoded for Standard Webhooks
                 self.webhook_verifier = Webhook(self.webhook_secret)
             except Exception as e:
-                log.error(f"{LogTag.PAYMENT} Failed to initialize webhook verifier: {e}")
+                log.error(
+                    f"{LogTag.PAYMENT} Failed to initialize webhook verifier",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 self.webhook_verifier = None
         else:
             self.webhook_verifier = None
@@ -95,7 +99,11 @@ class PaymentWebhookService:
             return True
 
         except Exception as e:
-            log.warning(f"{LogTag.PAYMENT} Webhook signature verification failed: {e}")
+            log.warning(
+                f"{LogTag.PAYMENT} Webhook signature verification failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return False
 
     async def _is_webhook_processed(self, webhook_id: str) -> bool:
@@ -116,7 +124,11 @@ class PaymentWebhookService:
                 subscription_id=result.subscription_id,
             )
         except Exception as e:
-            log.error(f"{LogTag.PAYMENT} Failed to store processed webhook ID: {e}")
+            log.error(
+                f"{LogTag.PAYMENT} Failed to store processed webhook ID",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def process_webhook(
         self, webhook_data: dict[str, Any], webhook_id: str
@@ -156,7 +168,9 @@ class PaymentWebhookService:
 
             # Check if webhook has already been processed
             if await self._is_webhook_processed(webhook_id):
-                log.info(f"{LogTag.PAYMENT} Webhook {webhook_id} already processed, skipping")
+                log.info(
+                    f"{LogTag.PAYMENT} Webhook already processed, skipping", webhook_id=webhook_id
+                )
                 return DodoWebhookProcessingResult(
                     event_type=webhook_data.get("type", "unknown"),
                     status="ignored",
@@ -177,7 +191,7 @@ class PaymentWebhookService:
                 return result
 
             result = await handler(event)
-            log.info(f"{LogTag.PAYMENT} Webhook processed: {event.type} - {result.status}")
+            log.info(f"{LogTag.PAYMENT} Webhook processed", type=event.type, status=result.status)
 
             # Bust the cached plan tier so a plan change applies immediately.
             if result.subscription_id:
@@ -188,7 +202,11 @@ class PaymentWebhookService:
             return result
 
         except Exception as e:
-            log.error(f"{LogTag.PAYMENT} Webhook processing failed: {e}")
+            log.error(
+                f"{LogTag.PAYMENT} Webhook processing failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return DodoWebhookProcessingResult(
                 event_type=webhook_data.get("type", "unknown"),
                 status="failed",
@@ -213,7 +231,7 @@ class PaymentWebhookService:
         if not payment_data:
             raise ValueError("Invalid payment data")
 
-        log.info(f"{LogTag.PAYMENT} Payment succeeded: {payment_data.payment_id}")
+        log.info(f"{LogTag.PAYMENT} Payment succeeded", payment_id=payment_data.payment_id)
 
         # Track payment success in PostHog
         user_email = await self._get_user_email_from_metadata(payment_data.metadata)
@@ -240,7 +258,7 @@ class PaymentWebhookService:
         if not payment_data:
             raise ValueError("Invalid payment data")
 
-        log.warning(f"{LogTag.PAYMENT} Payment failed: {payment_data.payment_id}")
+        log.warning(f"{LogTag.PAYMENT} Payment failed", payment_id=payment_data.payment_id)
 
         # Track payment failure in PostHog
         user_email = await self._get_user_email_from_metadata(payment_data.metadata)
@@ -306,7 +324,10 @@ class PaymentWebhookService:
         existing = await subscription_repository.get_by_dodo_id(sub_data.subscription_id)
 
         if existing:
-            log.info(f"{LogTag.PAYMENT} Subscription already exists: {sub_data.subscription_id}")
+            log.info(
+                f"{LogTag.PAYMENT} Subscription already exists",
+                subscription_id=sub_data.subscription_id,
+            )
             return DodoWebhookProcessingResult(
                 event_type=event.type.value,
                 status="processed",
@@ -321,7 +342,8 @@ class PaymentWebhookService:
             user = await user_repository.get_by_email(user_email)
             if not user:
                 log.error(
-                    f"{LogTag.PAYMENT} User not found for subscription: {sub_data.subscription_id}"
+                    f"{LogTag.PAYMENT} User not found for subscription",
+                    subscription_id=sub_data.subscription_id,
                 )
                 return DodoWebhookProcessingResult(
                     event_type=event.type.value,
@@ -369,7 +391,9 @@ class PaymentWebhookService:
         # Send welcome email
         await self._send_welcome_email(user_id)
 
-        log.info(f"{LogTag.PAYMENT} Subscription activated: {sub_data.subscription_id}")
+        log.info(
+            f"{LogTag.PAYMENT} Subscription activated", subscription_id=sub_data.subscription_id
+        )
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
@@ -401,7 +425,8 @@ class PaymentWebhookService:
 
         if not matched:
             log.warning(
-                f"{LogTag.PAYMENT} Subscription not found for renewal: {sub_data.subscription_id}"
+                f"{LogTag.PAYMENT} Subscription not found for renewal",
+                subscription_id=sub_data.subscription_id,
             )
         else:
             # Track subscription renewal in PostHog
@@ -552,9 +577,14 @@ class PaymentWebhookService:
                     user_name=user.first_name or "User",
                     user_email=user.email,
                 )
-                log.info(f"{LogTag.PAYMENT} Welcome email sent to {user.email}")
+                log.info(f"{LogTag.PAYMENT} Welcome email sent to", email=user.email)
         except Exception as e:
-            log.error(f"{LogTag.PAYMENT} Failed to send welcome email: {e}")
+            log.error(
+                f"{LogTag.PAYMENT} Failed to send welcome email",
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
 
 # Single instance

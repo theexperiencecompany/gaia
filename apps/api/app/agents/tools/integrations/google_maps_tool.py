@@ -49,7 +49,7 @@ def register_google_maps_custom_tools(composio: Composio) -> list[str]:
             status = data.get("status", "UNKNOWN")
             connected = status == "OK"
         except Exception as e:
-            log.debug(f"{LogTag.TOOL} Google Maps integration failed: {e}")
+            log.debug(f"{LogTag.TOOL} Google Maps integration failed", error_type=type(e).__name__)
             status = "ERROR"
             connected = False
 

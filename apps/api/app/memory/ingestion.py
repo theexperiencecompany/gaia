@@ -88,7 +88,11 @@ async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
     try:
         plan = await payment_service.get_cached_plan_type(user_id)
     except Exception as e:
-        log.warning(f"Memory cap plan lookup failed (failing open): {e}")
+        log.warning(
+            "Memory cap plan lookup failed (failing open)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
     if plan != PlanType.FREE:
         return None

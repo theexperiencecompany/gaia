@@ -82,6 +82,47 @@ lines never join the wide event and are invisible to per-request queries.
 sink and must touch loguru directly. Relative imports (`from .logging import
 ...`, a local module) are not flagged.
 
+### Reserved wide-event keys
+
+**Rule:** `log.set(...)` / `log.set_ns(...)` / `log.bind(...)` must not write a
+key named `time`, `level`, `message`, `logger`, `module`, `line`, or `worker`
+(the JSON line's core keys — `_CORE_KEYS` in `libs/shared/py/logging.py`).
+
+**Why:** the JSON sink guarantees core keys always win: a colliding extra field
+is re-emitted as `ctx_<key>` instead of corrupting the line's real
+level/message. So a reserved key never lands where the caller expects — this
+catches the mistake at commit instead of at query time. Applies to the facade
+whatever it is imported as (`log`, or an alias like `wide_log`); the sentry.py
+import allowlist does not exempt it.
+
+Only setters whose keywords land at the JSON **top level** are checked.
+`set_ns` merges its keywords *under* the namespace (so sub-keys can safely be
+named `level`, `worker`, …) — for it, only the namespace argument itself is a
+top-level write and the only collision candidate.
+
+**Fix:** rename the field to a domain-specific name (e.g. `job_level`,
+`source_module`).
+
+### Constant log messages
+
+**Rule:** the message passed to `log.debug` / `log.info` / `log.warning` /
+`log.error` / `log.exception` / `log.critical` must be a constant string. The one
+interpolation allowed is a leading `{LogTag.X}` prefix — anything else in the
+f-string (`{e}`, `{user_id}`, `{len(items)}`) is a violation.
+
+**Why:** a wide-event message is an identifier, not a sentence. Grouping,
+alerting and every Loki query key off the literal string, so
+`f"upload failed for {user_id}"` shards one event into as many distinct messages
+as there are users, and the interpolated value lands in prose where nothing can
+query, filter or aggregate it. Applies to the facade whatever it is imported as
+(`log`, or an alias like `wide_log`).
+
+**Fix:** keep the message constant and move the data to structured kwargs —
+`log.error(f"{LogTag.X} upload failed", error_type=type(e).__name__, user_id=user_id)`.
+Exception logs carry `error_type=`; add the ids already in scope. Never pass
+secrets or raw user content (tokens, message bodies, email addresses) as a field
+— log a count, a length, or a type instead.
+
 ---
 
 ## repository-boundaries

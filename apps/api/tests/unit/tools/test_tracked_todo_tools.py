@@ -43,7 +43,7 @@ from app.agents.tools.tracked_todo_tools import (
 )
 from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import Priority, TodoDocument, TodoResponse
-from app.utils.background_tasks import spawn_background_task
+from shared.py.wide_events import spawn_logged_task
 
 pytestmark = pytest.mark.unit
 
@@ -617,7 +617,7 @@ class TestGetUserTz:
 
 
 # ---------------------------------------------------------------------------
-# spawn_background_task (the canonical fire-and-forget this module now uses)
+# spawn_logged_task (wide-event-aware fire-and-forget)
 # ---------------------------------------------------------------------------
 
 
@@ -628,7 +628,7 @@ class TestSpawnBackgroundTask:
         async def _mark_done():
             ran["done"] = True
 
-        spawn_background_task(_mark_done())
+        spawn_logged_task("mark_done_test", _mark_done())
         # The task is scheduled, not awaited inline — give the loop one tick.
         import asyncio
 

@@ -27,4 +27,9 @@ async def _run(user_id: str, feature_key: str) -> None:
         capture_event(user_id, "rate_limit_hit", {"feature": feature_key})
         await send_limit_reached_email(user_id, feature_key)
     except Exception as e:
-        log.warning(f"Limit upsell side effects failed for user {user_id}: {e}")
+        log.warning(
+            "Limit upsell side effects failed",
+            user={"id": user_id},
+            error=str(e),
+            error_type=type(e).__name__,
+        )

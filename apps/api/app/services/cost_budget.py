@@ -147,8 +147,10 @@ async def record_model_call_usage(
     for (name, _), result in zip(labeled, results):
         if isinstance(result, Exception):
             log.warning(
-                f"{LogTag.STORAGE} Model call usage write failed for {name} "
-                f"(failing open): {result}"
+                f"{LogTag.STORAGE} Model call usage write failed (failing open)",
+                operation=name,
+                error=str(result),
+                error_type=type(result).__name__,
             )
 
 
@@ -166,7 +168,11 @@ async def get_cost(user_id: str, period: RateLimitPeriod) -> float:
     try:
         raw = await client.get(_budget_key(user_id, period))
     except (RedisError, OSError) as e:
-        log.warning(f"{LogTag.STORAGE} Cost budget read failed — reading 0: {e}")
+        log.warning(
+            f"{LogTag.STORAGE} Cost budget read failed — reading 0",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return 0.0
     return float(raw) if raw is not None else 0.0
 
@@ -182,7 +188,11 @@ async def get_request_tokens(root_request_id: str) -> int:
     try:
         raw = await client.get(_REQUEST_TOKENS_KEY.format(root_request_id=root_request_id))
     except (RedisError, OSError) as e:
-        log.warning(f"{LogTag.STORAGE} Request token read failed — reading 0: {e}")
+        log.warning(
+            f"{LogTag.STORAGE} Request token read failed — reading 0",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return 0
     return int(raw) if raw is not None else 0
 
@@ -223,13 +233,16 @@ async def get_budget_stop_reason(
             plan_type = await payment_service.get_cached_plan_type(user_id)
         except Exception as e:
             log.warning(
-                f"{LogTag.AGENT} Budget check failing open — plan lookup failed "
-                f"for user {user_id}: {e}"
+                f"{LogTag.AGENT} Budget check failing open — plan lookup failed",
+                user={"id": user_id},
+                error=str(e),
+                error_type=type(e).__name__,
             )
             return None
         log.warning(
             f"{LogTag.AGENT} plan_type missing from configurable — derived via "
-            f"cached lookup for user {user_id} (upstream threading gap)."
+            "cached lookup (upstream threading gap).",
+            user={"id": user_id},
         )
 
     # Missing root_request_id → only the daily read is needed, so skip the

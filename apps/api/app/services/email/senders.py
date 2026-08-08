@@ -62,11 +62,20 @@ async def send_support_team_notification(
                         reply_to=notification_data.user_email,
                     )
                 )
-                log.info(f"{LogTag.MAIL} Support notification sent to {support_email}")
+                log.info(f"{LogTag.MAIL} Support notification sent to", support_email=support_email)
             except Exception as e:
-                log.error(f"{LogTag.MAIL} Failed to send support email to {support_email}: {e!s}")
+                log.error(
+                    f"{LogTag.MAIL} Failed to send support email to",
+                    support_email=support_email,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Error sending support team notifications: {e!s}")
+        log.error(
+            f"{LogTag.MAIL} Error sending support team notifications",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -95,9 +104,16 @@ async def send_support_to_user_email(
                 html=html_content,
             )
         )
-        log.info(f"{LogTag.MAIL} Confirmation email sent to user {notification_data.user_email}")
+        log.info(
+            f"{LogTag.MAIL} Confirmation email sent to user",
+            user_email=notification_data.user_email,
+        )
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Failed to send confirmation email to user: {e!s}")
+        log.error(
+            f"{LogTag.MAIL} Failed to send confirmation email to user",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -121,9 +137,14 @@ async def send_pro_subscription_email(user_name: str, user_email: str) -> None:
                 reply_to=CONTACT_EMAIL,
             )
         )
-        log.info(f"{LogTag.MAIL} Pro subscription welcome email sent to {user_email}")
+        log.info(f"{LogTag.MAIL} Pro subscription welcome email sent to", user_email=user_email)
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Failed to send pro subscription email to {user_email}: {e!s}")
+        log.error(
+            f"{LogTag.MAIL} Failed to send pro subscription email to",
+            user_email=user_email,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -151,9 +172,14 @@ async def send_welcome_email(user_email: str, user_name: str | None = None) -> N
                 reply_to=CONTACT_EMAIL,
             )
         )
-        log.info(f"{LogTag.MAIL} Welcome email sent to {user_email}")
+        log.info(f"{LogTag.MAIL} Welcome email sent to", user_email=user_email)
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Failed to send welcome email to {user_email}: {e!s}")
+        log.error(
+            f"{LogTag.MAIL} Failed to send welcome email to",
+            user_email=user_email,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -166,13 +192,19 @@ async def add_marketing_contact(user_email: str, user_name: str | None = None) -
         provider = get_email_provider()
         if not isinstance(provider, MarketingContactsProvider):
             log.info(
-                f"{LogTag.MAIL} Email provider has no marketing audience; skipping contact {user_email}"
+                f"{LogTag.MAIL} Email provider has no marketing audience; skipping contact",
+                user_email=user_email,
             )
             return
         await provider.add_contact(user_email, user_name)
-        log.info(f"{LogTag.MAIL} Contact added to marketing audience: {user_email}")
+        log.info(f"{LogTag.MAIL} Contact added to marketing audience", user_email=user_email)
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Failed to add marketing contact for {user_email}: {e!s}")
+        log.error(
+            f"{LogTag.MAIL} Failed to add marketing contact for",
+            user_email=user_email,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def send_inactive_user_email(
@@ -202,9 +234,14 @@ async def send_inactive_user_email(
                 headers=build_unsubscribe_headers(user_id),
             )
         )
-        log.info(f"{LogTag.MAIL} Inactive user email sent to {user_email}")
+        log.info(f"{LogTag.MAIL} Inactive user email sent to", user_email=user_email)
     except Exception as e:
-        log.error(f"{LogTag.MAIL} Failed to send inactive user email to {user_email}: {e!s}")
+        log.error(
+            f"{LogTag.MAIL} Failed to send inactive user email to",
+            user_email=user_email,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         raise
 
 
@@ -237,7 +274,7 @@ async def send_badge_earned_email(
             reply_to=CONTACT_EMAIL,
         )
     )
-    log.info(f"{LogTag.MAIL} Badge earned ({tier}) email sent")
+    log.info(f"{LogTag.MAIL} Badge earned email sent", tier=tier)
 
 
 async def send_limit_reached_email(
@@ -253,7 +290,10 @@ async def send_limit_reached_email(
     """
     user = await user_repository.get(user_id)
     if user is None or not user.email:
-        log.warning(f"{LogTag.MAIL} Limit email skipped — user {user_id} not found or no email")
+        log.warning(
+            f"{LogTag.MAIL} Limit email skipped — user not found or no email",
+            user={"id": user_id},
+        )
         return False
 
     now = datetime.now(UTC)
@@ -284,5 +324,5 @@ async def send_limit_reached_email(
         )
     )
     await user_repository.record_limit_email_sent(user_id)
-    log.info(f"{LogTag.MAIL} Limit-reached upsell email sent to user {user_id}")
+    log.info(f"{LogTag.MAIL} Limit-reached upsell email sent", user={"id": user_id})
     return True

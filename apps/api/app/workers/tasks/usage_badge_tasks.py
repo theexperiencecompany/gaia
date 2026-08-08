@@ -20,5 +20,5 @@ async def promote_usage_badges(_ctx: dict[str, Any]) -> str:
             f"Scanned {stats['scanned']} users, {stats['promoted']} promoted, "
             f"{stats['emailed']} badge emails sent"
         )
-        log.info(f"{LogTag.WORKER} {message}")
+        log.info(f"{LogTag.WORKER} usage badge sweep complete", summary=message)
         return message

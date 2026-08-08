@@ -68,7 +68,11 @@ async def get_cached_live_count(user_id: str) -> int | None:
     try:
         raw = await client.get(_key(user_id))
     except Exception as e:
-        log.warning(f"Memory live-count read failed (treating as miss): {e}")
+        log.warning(
+            "Memory live-count read failed (treating as miss)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
     if raw is None:
         return None
@@ -87,7 +91,11 @@ async def set_cached_live_count(user_id: str, count: int) -> None:
     try:
         await client.set(_key(user_id), str(count), ex=MEMORY_LIVE_COUNT_CACHE_TTL)
     except Exception as e:
-        log.warning(f"Memory live-count seed failed: {e}")
+        log.warning(
+            "Memory live-count seed failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 async def adjust_live_count(user_id: str, delta: int) -> None:
@@ -107,4 +115,9 @@ async def adjust_live_count(user_id: str, delta: int) -> None:
             _ADJUST_SCRIPT, 1, _key(user_id), str(delta), str(MEMORY_LIVE_COUNT_CACHE_TTL)
         )
     except Exception as e:
-        log.warning(f"Memory live-count adjust failed (delta={delta}): {e}")
+        log.warning(
+            "Memory live-count adjust failed",
+            delta=delta,
+            error=str(e),
+            error_type=type(e).__name__,
+        )

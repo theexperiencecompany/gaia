@@ -116,8 +116,9 @@ async def ensure_system_subtree() -> bool:
             # Log loudly and degrade gracefully — the worker must not crash because
             # of a storage fault; per-user copies will be used instead.
             log.error(
-                f"{LogTag.STORAGE} system_subtree I/O error — JuiceFS fault, "
-                f"per-user copies will be used instead: {exc}"
+                f"{LogTag.STORAGE} system_subtree I/O error — JuiceFS fault, per-user copies will be used instead",
+                error=str(exc),
+                error_type=type(exc).__name__,
             )
             return False
         return True
@@ -199,7 +200,7 @@ async def link_system_files_into_workspace(user_id: str) -> int:
 
     count = await asyncio.to_thread(_link)
     if count:
-        log.info(f"{LogTag.STORAGE} linked {count} system files for {user_id}")
+        log.info(f"{LogTag.STORAGE} linked system files for", count=count, user_id=user_id)
     return count
 
 

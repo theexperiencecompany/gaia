@@ -126,5 +126,9 @@ async def _preferences(user_id: str) -> HILPreferences:
     except Exception:
         if HIL_DEFAULT_MODE != "always_allow":
             raise
-        log.error(f"{LogTag.HIL} Preferences unavailable; treating HIL as {HIL_DEFAULT_MODE}")
+        log.error(
+            f"{LogTag.HIL} Preferences unavailable; treating HIL as",
+            hil_default_mode=HIL_DEFAULT_MODE,
+            user_id=user_id,
+        )
         return HILPreferences()

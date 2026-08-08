@@ -48,7 +48,7 @@ if (typeof window !== "undefined") {
               if (client) client.addIntegration(replayIntegration());
             })
             .catch(() => {
-              /* fire-and-forget: replay is best-effort */
+              // Replay is best-effort: a load failure must not break the page.
             });
         };
         const interactionEvents = [

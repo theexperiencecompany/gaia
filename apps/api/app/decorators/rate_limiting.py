@@ -94,7 +94,8 @@ def with_rate_limiting(
                 # Skip rate limiting for system operations if configured
                 if bypass_for_system and initiator == "backend":
                     log.debug(
-                        f"{LogTag.API} Bypassing rate limiting for system operation: {actual_feature_key}"
+                        f"{LogTag.API} Bypassing rate limiting for system operation",
+                        actual_feature_key=actual_feature_key,
                     )
                 else:
                     try:
@@ -121,13 +122,19 @@ def with_rate_limiting(
                         )
 
                         log.debug(
-                            f"{LogTag.API} Rate limit check passed for user {user_id}, feature {actual_feature_key}"
+                            f"{LogTag.API} Rate limit check passed",
+                            user_id=user_id,
+                            actual_feature_key=actual_feature_key,
                         )
 
                     except RateLimitExceededException as e:
                         # Convert to agent-friendly exception
                         log.warning(
-                            f"{LogTag.API} Rate limit exceeded for user {user_id}, feature {actual_feature_key}"
+                            f"{LogTag.API} Rate limit exceeded",
+                            user_id=user_id,
+                            actual_feature_key=actual_feature_key,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
                         detail_dict = {}
                         reset_time = None
@@ -172,7 +179,10 @@ def with_rate_limiting(
                             # background tasks); the card is decoration, the
                             # LangChainRateLimitException below is the real outcome.
                             log.debug(
-                                f"{LogTag.API} Rate limit card not streamed for {actual_feature_key}: {stream_error}"
+                                f"{LogTag.API} Rate limit card not streamed",
+                                actual_feature_key=actual_feature_key,
+                                error=str(stream_error),
+                                error_type=type(stream_error).__name__,
                             )
 
                         raise LangChainRateLimitException(
@@ -182,12 +192,17 @@ def with_rate_limiting(
                         )
                     except Exception as e:
                         log.error(
-                            f"{LogTag.API} Rate limiting failed for user {user_id}, feature {actual_feature_key}: {e!s}"
+                            f"{LogTag.API} Rate limiting failed",
+                            user_id=user_id,
+                            actual_feature_key=actual_feature_key,
+                            error=str(e),
+                            error_type=type(e).__name__,
                         )
                         raise
             else:
                 log.warning(
-                    f"{LogTag.API} No user context for {actual_feature_key}, skipping rate limiting"
+                    f"{LogTag.API} No user context, skipping rate limiting",
+                    actual_feature_key=actual_feature_key,
                 )
 
             # Execute the original function
@@ -222,7 +237,9 @@ def with_rate_limiting(
                 tokens_used = result.get("tokens_used", 0)
                 if tokens_used > 0:
                     log.debug(
-                        f"{LogTag.API} Token usage recorded: {tokens_used} tokens for feature {actual_feature_key}"
+                        f"{LogTag.API} Token usage recorded",
+                        tokens_used=tokens_used,
+                        feature_key=actual_feature_key,
                     )
 
             return result
@@ -340,8 +357,11 @@ async def enforce_daily_cost_budget(user_id: str, feature_key: str) -> None:
     spent = await get_cost(user_id, RateLimitPeriod.DAY)
     if is_daily_budget_exhausted(spent, plan_type):
         log.warning(
-            f"{LogTag.API} Daily cost budget exhausted for user {user_id} "
-            f"(plan={plan_type.value}, spent=${spent:.4f}, feature={feature_key})"
+            f"{LogTag.API} Daily cost budget exhausted",
+            user={"id": user_id},
+            user_plan=plan_type.value,
+            spent_usd=round(spent, 6),
+            feature_key=feature_key,
         )
         schedule_limit_upsell(user_id, feature_key, plan_type)
         raise CostBudgetExceededException(
@@ -356,7 +376,9 @@ def set_user_context(user_id: str, initiator: str = "frontend", **kwargs: object
     """Set user context to avoid parameter pollution."""
     context = {"user_id": user_id, "initiator": initiator, **kwargs}
     user_context.set(context)
-    log.debug(f"{LogTag.API} Set user context for {user_id} (initiator: {initiator})")
+    log.debug(
+        f"{LogTag.API} Set user context for (initiator: )", user_id=user_id, initiator=initiator
+    )
     return context
 
 

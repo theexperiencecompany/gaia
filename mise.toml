@@ -582,3 +582,11 @@ run = "bash scripts/dead-code-check.sh --verbose"
 [tasks."dead-code:strict"]
 description = "Check for dead code (fail on findings)"
 run = "bash scripts/dead-code-check.sh --strict"
+
+[tasks."observability:map"]
+description = "Observability score for the API + voice-agent (evlog map port)"
+run = "python3 tools/evlog_map"
+
+[tasks."observability:map:all"]
+description = "Observability score with the per-entry check matrix"
+run = "python3 tools/evlog_map --all"

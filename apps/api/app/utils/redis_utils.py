@@ -40,6 +40,10 @@ class RedisPoolManager:
                     cls._pool = await create_pool(redis_settings)
                     log.info(f"{LogTag.STORAGE} Redis pool created successfully")
                 except Exception as e:
-                    log.error(f"{LogTag.STORAGE} Failed to create Redis pool: {e}")
+                    log.error(
+                        f"{LogTag.STORAGE} Failed to create Redis pool",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
                     raise
             return cls._pool

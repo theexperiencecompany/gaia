@@ -197,7 +197,11 @@ async def interpret_batch_decision_message(
             config=silent_metered_config(user_id),
         )
     except Exception as e:
-        log.warning(f"{LogTag.HIL} Batch conversational resolve failed, leaving pending: {e}")
+        log.warning(
+            f"{LogTag.HIL} Batch conversational resolve failed, leaving pending",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return BatchDecisionResult(unrelated=False)
 
 
@@ -222,7 +226,11 @@ async def interpret_decision_message(
             config=silent_metered_config(user_id),
         )
     except Exception as e:
-        log.warning(f"{LogTag.HIL} Conversational resolve failed, leaving pending: {e}")
+        log.warning(
+            f"{LogTag.HIL} Conversational resolve failed, leaving pending",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return None
 
 

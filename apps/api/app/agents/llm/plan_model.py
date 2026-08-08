@@ -105,7 +105,11 @@ async def _pro_monthly_budget_exhausted(user_id: str) -> bool:
     try:
         spent = await get_cost(user_id, RateLimitPeriod.MONTH)
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Monthly budget read failed; keeping paid model: {e}")
+        log.warning(
+            f"{LogTag.AGENT} Monthly budget read failed; keeping paid model",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return False
     return spent >= PRO_MONTHLY_COST_BUDGET_USD
 
@@ -137,7 +141,11 @@ async def _notify_degrade_once(user_id: str) -> None:
             )
         )
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Degrade notice failed: {e}")
+        log.warning(
+            f"{LogTag.AGENT} Degrade notice failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 def _apply_dev_model(
@@ -182,8 +190,9 @@ def apply_dev_model_override(
         dev_default = settings.DEV_DEFAULT_MODEL
         if dev_default and dev_default not in DEV_MODEL_OPTIONS:
             log.warning(
-                f"{LogTag.AGENT} DEV_DEFAULT_MODEL '{dev_default}' is not a "
-                "DEV_MODEL_OPTIONS key; keeping the plan model"
+                f"{LogTag.AGENT} DEV_DEFAULT_MODEL is not a DEV_MODEL_OPTIONS key; "
+                "keeping the plan model",
+                dev_default=dev_default,
             )
             return
         comms_model = executor_model = dev_default

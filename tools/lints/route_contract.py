@@ -33,27 +33,6 @@ ALLOWLIST: frozenset[tuple[str, str]] = frozenset(
         # Infra endpoints with no user/operation context to record.
         ("health.py", "health_check"),
         ("health.py", "favicon"),
-        # Pre-auth OAuth flows — no authenticated user exists at entry (redirects).
-        ("oauth.py", "get_client_metadata"),
-        ("oauth.py", "login_workos"),
-        ("oauth.py", "login_workos_desktop"),
-        ("platform_auth.py", "discord_oauth_callback"),
-        ("platform_auth.py", "slack_oauth_callback"),
-        # Deprecated endpoints, kept only until callers migrate off them.
-        ("blog.py", "create_blog_deprecated"),
-        ("blog.py", "update_blog_deprecated"),
-        ("blog.py", "delete_blog_deprecated"),
-        # Operational handlers that should adopt the contract (fixable follow-ups).
-        ("device.py", "pair_poll"),
-        ("device.py", "list_user_devices"),
-        ("device.py", "revoke"),
-        ("mail.py", "process_email"),
-        ("mail.py", "summarize_email"),
-        ("reminders.py", "validate_cron_endpoint"),
-        ("search.py", "fetch_url_metadata_endpoint"),
-        ("todos.py", "get_todo_labels"),
-        ("workflows.py", "get_explore_workflows"),
-        ("workflows.py", "get_public_workflows"),
     }
 )
 

@@ -830,8 +830,8 @@ class TestUpdateSubtask:
         assert resp.status_code == 404
 
     async def test_update_subtask_subtask_not_found(self, client: AsyncClient) -> None:
-        """A non-matching subtask id: the doc comes back without it, the endpoint
-        raises 404 inside the try, and `except Exception` re-raises it as 500."""
+        """A non-matching subtask id: the doc comes back without it and the
+        endpoint's deliberate 404 reaches the client intact."""
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
             "app.api.v1.endpoints.todos.todo_repository.set_subtask_fields",
@@ -841,7 +841,7 @@ class TestUpdateSubtask:
             resp = await client.put(
                 f"{API}/todos/{valid_oid}/subtasks/missing_subtask", json={"title": "X"}
             )
-        assert resp.status_code == 500
+        assert resp.status_code == 404
 
     async def test_update_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
@@ -883,8 +883,8 @@ class TestDeleteSubtask:
         assert resp.status_code == 404
 
     async def test_delete_subtask_not_found_still_exists(self, client: AsyncClient) -> None:
-        """The subtask still present (nothing pulled): endpoint raises 404 inside
-        try, caught by `except Exception` -> 500."""
+        """The subtask is still present (nothing pulled), so the endpoint's
+        deliberate 404 reaches the client intact."""
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
             "app.api.v1.endpoints.todos.todo_repository.remove_subtask",
@@ -892,7 +892,7 @@ class TestDeleteSubtask:
             return_value=_subtask_todo(valid_oid, [{"id": "s1", "title": "Still here"}]),
         ):
             resp = await client.delete(f"{API}/todos/{valid_oid}/subtasks/s1")
-        assert resp.status_code == 500
+        assert resp.status_code == 404
 
     async def test_delete_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"
@@ -945,7 +945,8 @@ class TestToggleSubtaskCompletion:
         assert resp.status_code == 404
 
     async def test_toggle_subtask_subtask_not_found(self, client: AsyncClient) -> None:
-        """HTTPException(404) raised inside try is caught by except Exception -> 500."""
+        """The deliberate HTTPException(404) raised inside the try reaches the
+        client intact instead of being re-raised as a 500."""
         valid_oid = "507f1f77bcf86cd799439011"
         with patch(
             "app.api.v1.endpoints.todos.todo_repository.get",
@@ -953,7 +954,7 @@ class TestToggleSubtaskCompletion:
             return_value=_subtask_todo(valid_oid, []),
         ):
             resp = await client.post(f"{API}/todos/{valid_oid}/subtasks/missing/toggle")
-        assert resp.status_code == 500
+        assert resp.status_code == 404
 
     async def test_toggle_subtask_service_error(self, client: AsyncClient) -> None:
         valid_oid = "507f1f77bcf86cd799439011"

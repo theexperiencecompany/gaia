@@ -18,9 +18,8 @@ from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookAckResponse, ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
 from app.services.triggers.base import TriggerHandler
-from app.utils.background_tasks import spawn_background_task
 from app.utils.webhook_utils import verify_composio_webhook_signature
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 router = APIRouter()
 
@@ -47,12 +46,18 @@ async def _process_webhook_event(handler: TriggerHandler, event_data: ComposioWe
         )
     except TimeoutError:
         log.error(
-            f"{LogTag.COMPOSIO} Webhook background processing timed out after {_WEBHOOK_TASK_TIMEOUT}s "
-            f"for {event_data.type}"
+            f"{LogTag.COMPOSIO} Webhook background processing timed out",
+            timeout_s=_WEBHOOK_TASK_TIMEOUT,
+            event_type=event_data.type,
+            user_id=event_data.user_id,
         )
     except Exception as e:
         log.error(
-            f"{LogTag.COMPOSIO} Webhook background processing failed for {event_data.type}: {e}"
+            f"{LogTag.COMPOSIO} Webhook background processing failed",
+            event_type=event_data.type,
+            user_id=event_data.user_id,
+            error_type=type(e).__name__,
+            error=str(e),
         )
 
 
@@ -72,7 +77,7 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
             f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600
         )
         if already_processed:
-            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored: {webhook_id}")
+            log.info(f"{LogTag.COMPOSIO} Duplicate webhook ignored", webhook_id=webhook_id)
             return ComposioWebhookAckResponse(message="Duplicate webhook ignored")
 
     body = await request.json()
@@ -96,11 +101,16 @@ async def webhook_composio(request: Request) -> ComposioWebhookAckResponse:
     # Find handler for this event type
     handler = get_handler_by_event(event_data.type)
     if not handler:
-        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type: {event_data.type}")
+        log.debug(f"{LogTag.COMPOSIO} Unhandled webhook type", event_type=event_data.type)
         return ComposioWebhookAckResponse(message="Webhook received")
 
     # Fire-and-forget: return 200 immediately, process in background
-    spawn_background_task(_process_webhook_event(handler, event_data))
+    spawn_logged_task(
+        "composio_webhook_processing",
+        _process_webhook_event(handler, event_data),
+        user={"id": event_data.user_id},
+        webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},
+    )
 
     log.set(operation="webhook_accepted", outcome="success")
     return ComposioWebhookAckResponse(message="Webhook accepted")

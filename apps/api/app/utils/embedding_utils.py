@@ -102,7 +102,11 @@ async def search_by_similarity(
         return result_items
     except Exception as e:
         log.error(
-            f"{LogTag.CHROMA} Error searching in ChromaDB collection '{collection_name}': {e!s}",
+            f"{LogTag.CHROMA} Error searching in ChromaDB collection",
+            collection_name=collection_name,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
             exc_info=True,
         )
         return []

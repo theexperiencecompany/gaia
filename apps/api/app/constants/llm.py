@@ -5,7 +5,7 @@ from app.models.models_models import DevModelOption
 GEMINI_PROVIDER = "gemini"
 OPENROUTER_PROVIDER = "openrouter"
 
-DEFAULT_LLM_PROVIDER = GEMINI_PROVIDER
+DEFAULT_LLM_PROVIDER = OPENROUTER_PROVIDER
 
 # How often the messages DeltaChannel writes a full snapshot blob (every Nth
 # update). Between snapshots only per-step deltas are persisted, so checkpoint
@@ -75,7 +75,7 @@ DEFAULT_LLM_TEMPERATURE = 0.1
 # Context window of the default model below, in input tokens. The summarization /
 # compaction middleware trigger on a fraction of this, and get_default_llm() feeds
 # it to the model's profile (LangChain has no profile for newer models). Update it
-# whenever DEFAULT_GEMINI_MODEL_NAME changes.
+# whenever DEFAULT_MODEL_NAME changes.
 # Known limitation: middleware is constructed at graph-build time, so the fractional
 # triggers are denominated in THIS window even when a different chat model serves the
 # request (e.g. the paid OpenRouter model or a dev-menu override).
@@ -84,13 +84,29 @@ DEFAULT_MAX_TOKENS = 1_000_000
 # you do, confirm for the new model:
 #   - context window  -> update DEFAULT_MAX_TOKENS above (else fractional-token
 #     middleware fails to build and the whole agent graph dies; see get_default_llm)
-#   - pricing entry    -> app/config/model_pricing.py
+#   - pricing entry    -> the `ai_models` collection (scripts/seed_models.py);
+#     without one, calculate_token_cost falls back to DEFAULT_PRICING and the
+#     cost budgets meter at the wrong rate
 #   - it's multimodal if vision/file tools rely on it
-# Direct Gemini API model name.
+# Default model for every tier and every auxiliary call, served over OpenRouter.
+# Text-only: tool results carrying images are captioned for it rather than shown
+# (see agents/llm/vision/capability.py).
+DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
+# Retained for the direct-Gemini lane, which is still selectable as a provider
+# alternative and in the dev model menu — it is no longer the default.
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
-# Default model for free / unspecified configs — always the Gemini model above.
-DEFAULT_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
+
+# The model behind every image -> text call: the vision fallback for a lane that
+# cannot take pixels (see vision/capability.py), plus the image-upload and
+# file-summary paths, which produce text as their product and therefore always
+# need it. Deliberately NOT tied to DEFAULT_MODEL_NAME: the default is chosen for
+# cheap text and may be text-only, and a blind describer fails SILENTLY —
+# describe_image degrades to None, so images would just stop being understood
+# with nothing in the logs to say why. Direct Gemini is the one lane
+# resolve_media_delivery treats as unconditionally multimodal.
+VISION_MODEL_PROVIDER = GEMINI_PROVIDER
+VISION_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
 
 # GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
 # the local scripted stub (tools/llm-stub) at this address. The model name is a
@@ -99,11 +115,13 @@ SIM_STUB_BASE_URL = "http://localhost:9797/api/v1"
 SIM_STUB_API_KEY = "sk-stub-dev"  # pragma: allowlist secret
 SIM_STUB_MODEL_NAME = "gaia-sim-stub"
 
-# Per-plan model policy (hardcoded; not user-selectable). Free accounts run the
-# default Gemini model above; every paid (non-free) plan runs a more capable
-# model via OpenRouter.
+# Per-plan model policy (hardcoded; not user-selectable). Both tiers currently
+# run the SAME model, so plan routing is a no-op on model choice and the pro
+# monthly-budget degrade in apply_plan_model has nothing to degrade to — kept in
+# place deliberately, so re-pointing PAID_MODEL_NAME at a stronger model is the
+# only change needed to make that guard bite again.
 PAID_MODEL_PROVIDER = OPENROUTER_PROVIDER
-PAID_MODEL_NAME = "z-ai/glm-5.2"
+PAID_MODEL_NAME = DEFAULT_MODEL_NAME
 
 # Which OpenRouter models accept image input, straight from the live catalog's
 # `architecture.input_modalities` — so vision support needs no per-model
@@ -133,7 +151,7 @@ OPENROUTER_REASONING: dict[str, Any] = {"effort": "medium"}
 # forces the first-party lane. Passed via ChatOpenRouter's `model_kwargs` (the
 # OpenRouter `provider` routing param) and inherited by child agents via
 # agent_helpers._inherit_from_parent_configurable so subagents stay on the same lane.
-PAID_MODEL_PROVIDER_SLUG = "z-ai"
+PAID_MODEL_PROVIDER_SLUG = "deepseek"
 PAID_MODEL_MODEL_KWARGS = {"provider": {"only": [PAID_MODEL_PROVIDER_SLUG]}}
 # Comms-specific reasoning: "low" instead of the executor's "medium". Comms is
 # mostly routing/ack work, so the reasoning budget is most useful for the executor's

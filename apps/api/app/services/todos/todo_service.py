@@ -30,7 +30,6 @@ from app.models.todo_models import (
     UpdateProjectRequest,
 )
 from app.services.user_todos_fs import schedule_user_todos_sync
-from app.utils.background_tasks import spawn_background_task
 from app.utils.canvas_vector_utils import delete_canvas_embedding
 from app.utils.todo_vector_utils import (
     delete_todo_embedding,
@@ -39,7 +38,7 @@ from app.utils.todo_vector_utils import (
     store_todo_embedding,
     update_todo_embedding,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 
 async def _get_workflow_categories_for_todos(
@@ -135,7 +134,7 @@ class TodoService:
     async def create_todo(cls, todo: TodoModel, user_id: str) -> TodoResponse:
         """Create a new todo with automatic inbox assignment."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="create_todo",
             user_id=user_id,
             todo={
@@ -180,13 +179,16 @@ class TodoService:
         try:
             from app.services.workflow.queue_service import WorkflowQueueService
 
-            spawn_background_task(
+            spawn_logged_task(
+                "todo_workflow_generation",
                 WorkflowQueueService.queue_todo_workflow_generation(
                     todo_id=created.id,
                     user_id=user_id,
                     title=todo.title,
                     description=todo.description or "",
-                )
+                ),
+                user={"id": user_id},
+                todo={"id": created.id},
             )
             log.info("todo.workflow_generation_queued", todo_id=created.id, title=todo.title)
         except Exception as e:
@@ -204,7 +206,7 @@ class TodoService:
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
         """Get a single todo by ID."""
-        log.set(service="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
+        log.set(component="todo_service", operation="get_todo", user_id=user_id, todo_id=todo_id)
         todo = await todo_repository.get(todo_id, user_id=user_id)
         if not todo:
             raise ValueError(f"Todo {todo_id} not found")
@@ -257,7 +259,7 @@ class TodoService:
     ) -> TodoResponse:
         """Update a todo."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="update_todo",
             user_id=user_id,
             todo={
@@ -316,7 +318,7 @@ class TodoService:
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
         """Delete a todo."""
-        log.set(service="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
+        log.set(component="todo_service", operation="delete_todo", user_id=user_id, todo_id=todo_id)
         doc = await todo_repository.get(todo_id, user_id=user_id)
         if not doc:
             raise ValueError(f"Todo {todo_id} not found")
@@ -481,7 +483,7 @@ class ProjectService:
     async def create_project(project: ProjectCreate, user_id: str) -> ProjectResponse:
         """Create a new project."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="create_project",
             user_id=user_id,
             project_name=project.name,
@@ -513,7 +515,7 @@ class ProjectService:
     ) -> ProjectResponse:
         """Update a project."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="update_project",
             user_id=user_id,
             project_id=project_id,
@@ -538,7 +540,7 @@ class ProjectService:
     async def delete_project(project_id: str, user_id: str) -> None:
         """Delete a project and move its todos to inbox."""
         log.set(
-            service="todo_service",
+            component="todo_service",
             operation="delete_project",
             user_id=user_id,
             project_id=project_id,

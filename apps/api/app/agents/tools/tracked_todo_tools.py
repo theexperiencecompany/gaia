@@ -18,11 +18,10 @@ from app.models.todo_models import Priority, TodoDocument, TodoResponse, TodoUpd
 from app.services.todo_canvas_storage import append_canvas, read_canvas, write_canvas
 from app.services.tracked_todo_service import tracked_todo_service
 from app.services.user_service import get_user_by_id
-from app.utils.background_tasks import spawn_background_task
 from app.utils.canvas_vector_utils import search_canvas_context
 from app.utils.cron_utils import get_next_run_time
 from app.utils.timezone import Timezone, is_valid_timezone
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 _RECURRENCE_SHORTCUTS = {"daily", "weekly", "every_4h", "every_1h"}
 _UTC_OFFSET = "+00:00"
@@ -641,7 +640,12 @@ async def update_tracked_todo_canvas(
         new_canvas = _patch_canvas_section(current, section or "", content)
         await write_canvas(todo_id, user_id, new_canvas)
 
-    spawn_background_task(tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id))
+    spawn_logged_task(
+        "canvas_reindex",
+        tracked_todo_service.reindex_canvas(todo_id=todo_id, user_id=user_id),
+        user={"id": user_id},
+        todo={"id": todo_id},
+    )
     section_suffix = f", section={section}" if section else ""
     await tracked_todo_service.system_log(
         todo_id=todo_id,
