@@ -186,11 +186,16 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
     return facts
 
 
-def journal_expectations(runs_dir: Path, suite_projects: dict[str, str]) -> dict[str, int]:
+def journal_expectations(
+    runs_dir: Path, suite_projects: dict[str, str], only_projects: set[str] | None = None
+) -> dict[str, int]:
     """How many distinct case traces each project should hold, per the journals.
 
     Distinct ``(case, run)`` pairs, not records: a journal legitimately carries
     the same case twice when a run was resumed, and both collapse onto one trace.
+
+    A run marked ``excluded`` is left out, because the ingest never writes it —
+    counting it here would report a mismatch on every correctly-skipped run.
     """
     expected: Counter[str] = Counter()
     for run_dir in sorted(runs_dir.iterdir()):
@@ -198,8 +203,10 @@ def journal_expectations(runs_dir: Path, suite_projects: dict[str, str]) -> dict
         if not run_dir.is_dir() or not meta_file.exists():
             continue
         meta = json.loads(meta_file.read_text())
+        if meta.get("excluded"):
+            continue
         project = suite_projects.get(str(meta.get("suite") or ""))
-        if project is None:
+        if project is None or (only_projects is not None and project not in only_projects):
             continue
         seen = {
             str(record["case_id"])

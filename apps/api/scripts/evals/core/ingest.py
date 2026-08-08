@@ -129,12 +129,21 @@ def teardown(base_url: str, *, dry_run: bool) -> list[str]:
     return names
 
 
-def verify(base_url: str, runs_dir: Path = RUNS_DIR) -> tuple[bool, str]:
-    """Read every project back out of Opik and judge whether it is believable."""
-    expectations = ingest_check.journal_expectations(runs_dir, suite_projects())
-    all_facts = [
-        ingest_check.read_project(base_url, name) for name in ingest_check.project_names(base_url)
-    ]
+def verify(
+    base_url: str, runs_dir: Path = RUNS_DIR, only_projects: set[str] | None = None
+) -> tuple[bool, str]:
+    """Read projects back out of Opik and judge whether they are believable.
+
+    ``only_projects`` scopes the judgement to what a stage just wrote. A pilot
+    stage that verified everything could never pass while the projects it has
+    not rebuilt yet are still dirty — it would abort the rebuild it exists to
+    de-risk.
+    """
+    expectations = ingest_check.journal_expectations(runs_dir, suite_projects(), only_projects)
+    names = ingest_check.project_names(base_url)
+    if only_projects is not None:
+        names = [name for name in names if name in only_projects]
+    all_facts = [ingest_check.read_project(base_url, name) for name in names]
     findings = [
         finding
         for facts in all_facts
@@ -148,6 +157,7 @@ def _stage(
     base_url: str,
     label: str,
     run_ids: set[str] | None,
+    projects: set[str] | None,
     runs_dir: Path,
     *,
     dry_run: bool,
@@ -158,7 +168,7 @@ def _stage(
         print(f"[ingest] would seed {count}")
         return True
     seed(cfg, runs_dir, only_runs=run_ids)
-    ok, report = verify(base_url, runs_dir)
+    ok, report = verify(base_url, runs_dir, projects)
     print(report)
     if not ok:
         print(f"[ingest] stage {label!r} FAILED verification — stopping before the next stage")
@@ -198,22 +208,25 @@ def rebuild(
     if not skip_teardown:
         teardown(base_url, dry_run=dry_run)
 
-    stages: list[tuple[str, set[str] | None]] = []
-    if pilot:
-        first = {r.run_id for r in usable if r.suite == PILOT_FIRST_SUITE}
-        second = {
-            r.run_id
-            for r in sorted(usable, key=lambda r: r.run_id, reverse=True)
-            if r.suite == PILOT_SECOND_SUITE
-        }
-        stages.append((f"pilot 1 · {PILOT_FIRST_SUITE}", first))
-        stages.append((f"pilot 2 · {PILOT_SECOND_SUITE}", set(list(second)[:PILOT_SECOND_LIMIT])))
-    stages.append(("full", {r.run_id for r in usable}))
+    def stage_for(suite: str, limit: int | None = None) -> tuple[set[str], set[str]]:
+        runs_in = [
+            r for r in sorted(usable, key=lambda r: r.run_id, reverse=True) if r.suite == suite
+        ]
+        chosen = runs_in[:limit] if limit else runs_in
+        return {r.run_id for r in chosen}, {r.project for r in chosen}
 
-    for label, run_ids in stages:
-        if run_ids is not None and not run_ids:
+    stages: list[tuple[str, set[str], set[str]]] = []
+    if pilot:
+        first_runs, first_projects = stage_for(PILOT_FIRST_SUITE)
+        second_runs, second_projects = stage_for(PILOT_SECOND_SUITE, PILOT_SECOND_LIMIT)
+        stages.append((f"pilot 1 · {PILOT_FIRST_SUITE}", first_runs, first_projects))
+        stages.append((f"pilot 2 · {PILOT_SECOND_SUITE}", second_runs, second_projects))
+    stages.append(("full", {r.run_id for r in usable}, {r.project for r in usable}))
+
+    for label, run_ids, projects in stages:
+        if not run_ids:
             print(f"[ingest] stage {label!r}: no runs on disk, skipping")
             continue
-        if not _stage(cfg, base_url, label, run_ids, runs_dir, dry_run=dry_run):
+        if not _stage(cfg, base_url, label, run_ids, projects, runs_dir, dry_run=dry_run):
             return 1
     return 0
