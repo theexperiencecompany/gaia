@@ -916,7 +916,7 @@ jobs:
           version: "0.8.17"
           enable-cache: true
       - name: Sync Python dependencies
-        run: uv sync --frozen --no-build --package gaia --group backend --group dev
+        run: uv sync --frozen --package gaia --group backend --group dev
       - name: Mutation check (zero survivors required, per changed module)
         run: bash scripts/ci/mutation-check.sh
 
