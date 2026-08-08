@@ -1840,10 +1840,12 @@ async def background_dispatch_seams():
     actual background execution (asyncio.create_task'd, never awaited by the
     caller — mocked so the test verifies dispatch/dedup mechanics, not a real
     subagent run). try_claim_bg_dispatch's real Redis call is intentionally NOT
-    mocked — the durable dedup guard is the point of this test — but the shared
-    redis_cache singleton is a client bound to whichever event loop first
-    touched it, which is a DIFFERENT (closed) loop once other tests in this
-    file have run. Force a fresh client on this test's own loop instead."""
+    mocked — the durable dedup guard is the point of this test — so it needs
+    real Redis: skip before dialing when the run is not opted into real
+    services (same pattern as the pg_checkpointer fixtures).
+    """
+    if os.environ.get("USE_REAL_SERVICES") != "1":
+        pytest.skip("background-dispatch dedup guard needs real Redis (USE_REAL_SERVICES=1)")
     from app.db.redis import redis_cache
 
     redis_cache.redis = None  # next `.client` access lazily reconnects on THIS loop

@@ -106,8 +106,16 @@ done
 # gets right, and blanket-checking them is what kept this lane informational.
 # A test claiming to pin a bug opts in by marker, and then must prove it.
 set +e
+# -W ignore::DeprecationWarning: this lane runs the BRANCH's pytest.ini
+# (filterwarnings included) against the BASE's product code. Base code
+# legitimately predates this branch's deprecation fixes (e.g. the
+# mcp_use.exceptions import fixed on this branch), so warning-as-error here
+# measures base deprecations, not whether the pinned bug exists. The
+# warnings policy's job is policing the branch's code — that happens in the
+# main test-python run. This lane's job is assertion-level proof on base.
 "$VENV_PY" -m pytest "${rel_regression_files[@]}" -m regression -q --tb=no --no-header \
-  -p no:cacheprovider -o addopts="--strict-markers" --junitxml="$JUNIT" > "$LOG" 2>&1
+  -p no:cacheprovider -o addopts="--strict-markers" -W ignore::DeprecationWarning \
+  --junitxml="$JUNIT" > "$LOG" 2>&1
 rc=$?
 set -e
 
