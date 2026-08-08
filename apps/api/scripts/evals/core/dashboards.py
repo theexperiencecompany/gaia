@@ -79,6 +79,13 @@ CASE_FILTER: list[dict[str, str]] = [
 # entire point of the outcome section.
 PASSED, FAILED, ERRORED = "passed", "failed", "errored"
 
+# The harness writes this verdict string into Opik's error envelope, so it shows
+# up beside real exception types in an `error_type` breakdown. It is a grade, not
+# a fault, and every count of "what actually broke" has to exclude it.
+GATE_VERDICT = "gate score below threshold"
+# What Opik names the group of traces carrying no error at all.
+NO_FAULT = "No Error"
+
 # The scores that stand for a whole case rather than one aspect of it, most
 # meaningful first: the judge's verdict, the memory suite's probe aggregate, and
 # the exact-match both external benchmarks are defined by. Anything else grades
@@ -189,11 +196,30 @@ class Suite:
     primary_scorer: str
     categories: dict[str, int]
     status_counts: dict[str, int]
+    # Exception types on traces judged `failed` — the records that claim the
+    # agent was wrong while carrying evidence the machine broke.
+    failed_faults: dict[str, int]
 
     @property
     def label(self) -> str:
         """The suite's name without the `gaia-` prefix every project carries."""
         return self.project.removeprefix("gaia-")
+
+    @property
+    def unclassifiable(self) -> int:
+        """Cases whose verdict and whose evidence disagree.
+
+        Journalled ``failed`` — the agent answered and was graded wrong — while
+        carrying a real exception, which says it never got that far. Every one of
+        these is scored as a zero, so accuracy is understated by an unknown
+        amount until the run is re-journalled.
+        """
+        return sum(self.failed_faults.values())
+
+    @property
+    def trustworthy(self) -> bool:
+        """Whether the accuracy on this board can be quoted at all."""
+        return not self.unclassifiable
 
     @property
     def uncategorised(self) -> int:
@@ -339,9 +365,43 @@ def _category_note(suite: Suite) -> str:
     return note
 
 
+def _trust_warning(suite: Suite) -> str:
+    """The banner that refuses to let a contaminated accuracy read as clean.
+
+    An honest "this cannot be quoted, N records are unclassifiable" is worth
+    more than a tidy percentage computed over records that never ran. Written
+    from measured counts, so it disappears by itself once the data is sound —
+    there is no flag to remember to turn off.
+    """
+    if suite.trustworthy:
+        return ""
+    faults = ", ".join(
+        f"`{name}` ×{n}" for name, n in sorted(suite.failed_faults.items(), key=lambda kv: -kv[1])
+    )
+    share = suite.unclassifiable / suite.status_counts.get(FAILED, suite.unclassifiable)
+    return (
+        f"# ⚠️ Accuracy on this board is NOT trustworthy\n\n"
+        f"**{suite.unclassifiable} of {suite.status_counts.get(FAILED, 0)} failures "
+        f"({share:.0%}) are unclassifiable.** They are journalled `failed` — meaning "
+        "the agent answered and was graded wrong — while carrying a real exception, "
+        "which means it never got that far. Both cannot be true, and nothing left in "
+        "the data decides which: only re-running or re-journalling can.\n\n"
+        f"What they actually carry: {faults}.\n\n"
+        "Every one of these is averaged in as a zero, so **the real accuracy is "
+        "higher than every score below, by an unknown amount**. Do not quote a "
+        "number off this board until this count is zero.\n\n---\n"
+    )
+
+
 def _headline(suite: Suite, panels: Panels) -> Section:
-    """What the suite measures, the outcome split, and the latency envelope."""
+    """The trust verdict, what the suite measures, and the outcome split.
+
+    Infrastructure faults lead, before a single accuracy figure: the whole
+    failure mode being designed against is an outage quietly averaged into a
+    score, and a warning below the fold is a warning nobody reads.
+    """
     content = (
+        f"{_trust_warning(suite)}"
         f"## {suite.label}\n\n{PROJECT_DESCRIPTIONS.get(suite.project, '')}\n\n"
         f"{_OUTCOME_NOTE}\n\nOne trace is one case execution (`case-<id>`), carrying "
         "the run that produced it, the provider and model that served it, its "
@@ -357,24 +417,60 @@ def _headline(suite: Suite, panels: Panels) -> Section:
         ("p50", "Latency p50", "duration.p50", None),
         ("p99", "Latency p99", "duration.p99", None),
     ]
-    # The category listing and the uncategorised warning are what make this card
-    # long, and both grow with the suite — so the height follows them instead of
-    # being a fixed guess that either clips a wide suite or leaves a narrow one
-    # half empty.
+    # The category listing and both warnings are what make this card long, and
+    # all three grow with the suite — so the height follows them instead of being
+    # a fixed guess that either clips a wide suite or leaves a narrow one half
+    # empty.
     header_height = min(
-        MAX_WIDGET_HEIGHT, 6 + len(suite.categories) // 4 + bool(suite.uncategorised)
+        MAX_WIDGET_HEIGHT,
+        6 + len(suite.categories) // 4 + bool(suite.uncategorised) + 4 * (not suite.trustworthy),
     )
     widgets = [markdown(f"{suite.project}-about", content, 0, 0, GRID_COLUMNS, header_height)]
     for index, (slug, title, metric, filters) in enumerate(cards):
         widgets.append(
             panels.stat(slug, title, metric, index % GRID_COLUMNS, header_height, filters)
         )
+    # The fault breakdown sits on the first screen rather than three sections
+    # down: a suite whose backend fell over must not be discoverable only by
+    # scrolling past its accuracy charts.
+    widgets.append(
+        panels.chart(
+            "faults-headline",
+            "Infrastructure faults by exception type (count) — "
+            f"every bar except '{GATE_VERDICT}' is a real fault, not a wrong answer",
+            "TRACE_COUNT",
+            0,
+            header_height + 2,
+            w=6,
+            h=5,
+            group_field="error_type",
+        )
+    )
     return Section(f"{suite.project}-s1", f"{suite.label} — what this measures", widgets)
 
 
 def _accuracy(suite: Suite, panels: Panels) -> Section:
     """Accuracy per category, then the counts behind each percentage."""
     widgets: list[Widget] = []
+    row = 0
+    # Repeated here rather than left in the header alone: this is the section
+    # whose numbers get screenshotted and quoted, and a caveat two scrolls above
+    # them does not travel with the screenshot.
+    if not suite.trustworthy:
+        widgets.append(
+            markdown(
+                f"{suite.project}-acc-warning",
+                f"⚠️ **Every score in this section is a floor, not a measurement.** "
+                f"{suite.unclassifiable} failures carry a real exception, are counted "
+                "as zeros, and cannot be told apart from genuine wrong answers. The "
+                "true value of each bar is higher by an unknown amount.",
+                0,
+                0,
+                GRID_COLUMNS,
+                2,
+            )
+        )
+        row = 2
     if suite.primary_scorer:
         widgets.append(
             panels.chart(
@@ -382,7 +478,7 @@ def _accuracy(suite: Suite, panels: Panels) -> Section:
                 f"Mean {suite.primary_scorer} by category (0–1, higher is better)",
                 "FEEDBACK_SCORES",
                 0,
-                0,
+                row,
                 w=6,
                 h=5,
                 filters=_category_filter(),
@@ -390,7 +486,7 @@ def _accuracy(suite: Suite, panels: Panels) -> Section:
                 group_by="category",
             )
         )
-    row = 5 if suite.primary_scorer else 0
+        row += 5
     widgets.append(
         panels.chart(
             "passed-by-category",
@@ -440,7 +536,11 @@ def _accuracy(suite: Suite, panels: Panels) -> Section:
 
 
 def _outcomes(suite: Suite, panels: Panels) -> Section:
-    """The pass/fail/error split, and what the real faults actually were."""
+    """The verdict split and who served the cases.
+
+    The fault breakdown that used to live here now leads the board — see
+    ``_headline``. One chart, one place.
+    """
     widgets = [
         panels.chart(
             "by-status",
@@ -448,17 +548,8 @@ def _outcomes(suite: Suite, panels: Panels) -> Section:
             "TRACE_COUNT",
             0,
             0,
-            w=3,
+            w=6,
             group_by="status",
-        ),
-        panels.chart(
-            "by-error-type",
-            "Faults by exception type (count) — 'gate score below threshold' is a verdict, not a fault",
-            "TRACE_COUNT",
-            3,
-            0,
-            w=3,
-            group_field="error_type",
         ),
         panels.chart(
             "by-provider",
@@ -479,7 +570,7 @@ def _outcomes(suite: Suite, panels: Panels) -> Section:
             group_by="model",
         ),
     ]
-    return Section(f"{suite.project}-s3", f"{suite.label} — failures vs infrastructure", widgets)
+    return Section(f"{suite.project}-s3", f"{suite.label} — verdicts and who served them", widgets)
 
 
 def _failing_cases(suite: Suite, panels: Panels) -> Section:
@@ -712,13 +803,27 @@ def _roll_up(suites: list[Suite], blurb: str) -> Section:
         f"- **{s.label}** — {s.cases} cases · {s.status_counts.get(PASSED, 0)} passed · "
         f"{s.status_counts.get(FAILED, 0)} failed · {s.status_counts.get(ERRORED, 0)} errored · "
         f"{len(s.categories)} categories"
+        + ("" if s.trustworthy else f" · ⚠️ **{s.unclassifiable} unclassifiable**")
         for s in suites
     )
-    content = f"{blurb}\n\n{_OUTCOME_NOTE}\n\n{lines}"
+    # The shared board is where someone skims six suites at once, so a suite
+    # whose accuracy cannot be trusted has to be called out before the listing,
+    # not left as a footnote against one bullet.
+    tainted = [s for s in suites if not s.trustworthy]
+    banner = (
+        ""
+        if not tainted
+        else "# ⚠️ "
+        + ", ".join(f"`{s.label}` ({s.unclassifiable})" for s in tainted)
+        + " cannot be scored\n\nThose suites journalled failures that carry real "
+        "exceptions — an outage recorded as a wrong answer. Their scores below are "
+        "floors, not measurements. Open the suite for the exception breakdown.\n\n---\n"
+    )
+    content = f"{banner}{blurb}\n\n{_OUTCOME_NOTE}\n\n{lines}"
     # One row per two suites on top of the prose, rather than a flat guess: the
     # listing is the part that grows, and a card taller than its text is a screen
     # of blank nobody scrolls past.
-    header_height = min(MAX_WIDGET_HEIGHT, 6 + (len(suites) + 1) // 2)
+    header_height = min(MAX_WIDGET_HEIGHT, 6 + (len(suites) + 1) // 2 + 2 * bool(tainted))
     widgets = [markdown("internal-about", content, 0, 0, GRID_COLUMNS, header_height)]
     for index, suite in enumerate(suites):
         panels = Panels(suite)
@@ -871,22 +976,31 @@ def _delete_others(client: opik.Opik, keep: set[str]) -> list[str]:
     return [d.name for d in stale if d.name]
 
 
-def _breakdown_counts(client: opik.Opik, project_id: str, metadata_key: str) -> dict[str, int]:
-    """How many case traces sit in each value of a metadata key.
+def _grouped_counts(
+    client: opik.Opik,
+    project_id: str,
+    breakdown: BreakdownConfigPublic,
+    status: str | None = None,
+) -> dict[str, int]:
+    """How many case traces fall in each group, optionally within one verdict.
 
-    Read through the same metrics endpoint the widgets use, so a key that charts
-    empty here charts empty there too — the check and the panel cannot disagree.
+    Read through the same metrics endpoint the widgets use, so a group that
+    charts empty here charts empty there too — the check and the panel cannot
+    disagree.
     """
+    filters = [TraceFilterPublic(field="name", operator="starts_with", key="", value="case-")]
+    if status is not None:
+        filters.append(
+            TraceFilterPublic(field="metadata", operator="=", key="status", value=status)
+        )
     response = client.rest_client.projects.get_project_metrics(
         project_id,
         metric_type="TRACE_COUNT",
         interval="TOTAL",
         interval_start=datetime(2020, 1, 1, tzinfo=UTC),
         interval_end=datetime.now(UTC) + timedelta(days=1),
-        trace_filters=[
-            TraceFilterPublic(field="name", operator="starts_with", key="", value="case-")
-        ],
-        breakdown=BreakdownConfigPublic(field="metadata", metadata_key=metadata_key),
+        trace_filters=filters,
+        breakdown=breakdown,
     )
     counts: dict[str, int] = {}
     for series in response.results or []:
@@ -894,6 +1008,27 @@ def _breakdown_counts(client: opik.Opik, project_id: str, metadata_key: str) -> 
         if series.name and total:
             counts[series.name] = total
     return counts
+
+
+def _metadata_counts(client: opik.Opik, project_id: str, metadata_key: str) -> dict[str, int]:
+    return _grouped_counts(
+        client, project_id, BreakdownConfigPublic(field="metadata", metadata_key=metadata_key)
+    )
+
+
+def _failed_fault_counts(client: opik.Opik, project_id: str) -> dict[str, int]:
+    """Exception types carried by cases the harness journalled as ``failed``.
+
+    This is the measurement behind the trust warning. A case marked *failed*
+    says "the agent answered and was wrong"; an exception on that same trace
+    says "the machine broke". Both cannot be true, and nothing left in the data
+    can decide which — only re-journalling from the run can. Counting them is
+    what lets a board refuse to present its accuracy as trustworthy.
+    """
+    counts = _grouped_counts(
+        client, project_id, BreakdownConfigPublic(field="error_type"), status=FAILED
+    )
+    return {name: n for name, n in counts.items() if name not in (NO_FAULT, GATE_VERDICT)}
 
 
 def _scorer_coverage(client: opik.Opik, project_id: str, scorer: str) -> int:
@@ -952,8 +1087,9 @@ def _read_suite(client: opik.Opik, project: str, project_id: str) -> Suite:
         project_id=project_id,
         cases=cases,
         primary_scorer=_primary_scorer(client, project_id, scorers) if cases else "",
-        categories=_breakdown_counts(client, project_id, "category") if cases else {},
-        status_counts=_breakdown_counts(client, project_id, "status") if cases else {},
+        categories=_metadata_counts(client, project_id, "category") if cases else {},
+        status_counts=_metadata_counts(client, project_id, "status") if cases else {},
+        failed_faults=_failed_fault_counts(client, project_id) if cases else {},
     )
 
 
