@@ -380,28 +380,10 @@ async def _record_execution_failure(
     workflow_id: str,
     execution_id: str | None,
 ) -> None:
-    """Close out a failed run: log it, mark the execution record, bump the failure
-    count and notify the user. Every step is best-effort — none of this bookkeeping
-    may mask ``error``, which the caller still reports."""
-    if isinstance(error, RateLimitExceededException):
-        # User hit their plan's workflow-execution quota — an expected, by-design
-        # outcome, not a worker failure. Log at WARNING so it doesn't trip the ARQ
-        # failed-task alert. The execution is still recorded as failed and the user
-        # is notified below.
-        log.warning(
-            f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
-            workflow_id=workflow_id,
-            error=str(error),
-            error_type=type(error).__name__,
-        )
-    else:
-        log.exception(
-            f"{LogTag.WORKER} Error executing workflow",
-            workflow_id=workflow_id,
-            error=str(error),
-            error_type=type(error).__name__,
-        )
-
+    """Close out a failed run: mark the execution record, bump the failure count
+    and notify the user. Every step is best-effort — none of this bookkeeping
+    may mask ``error``. The error itself is recorded on the wide event by the
+    caller's except block (this helper is bookkeeping only)."""
     if execution_id:
         try:
             await complete_execution(
@@ -509,6 +491,26 @@ async def execute_workflow_by_id(
         return f"Workflow {workflow_id} executed successfully"
 
     except Exception as e:
+        # The caught error must land on the wide event from this block — the
+        # bookkeeping helper below cannot vouch for it on its own.
+        if isinstance(e, RateLimitExceededException):
+            # User hit their plan's workflow-execution quota — an expected,
+            # by-design outcome, not a worker failure. WARNING keeps it off the
+            # ARQ failed-task alert.
+            log.warning(
+                f"{LogTag.WORKER} Workflow skipped — rate limit exceeded",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+        else:
+            log.exception(
+                f"{LogTag.WORKER} Error executing workflow",
+                workflow_id=workflow_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
         await _record_execution_failure(e, workflow, workflow_id, execution_id)
 
         # Still arm the next occurrence — a transient failure (rate limit, LLM
