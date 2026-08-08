@@ -30,6 +30,13 @@ class RunMeta:
     experiment_name: str | None = None
     tags: list[str] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)
+    app_version: str = ""
+    """Which build of the app produced these numbers.
+
+    Prompts and tools move constantly, so without this a score change cannot be
+    attributed to anything — a regression and a prompt edit look identical.
+    """
+
     excluded: str | None = None
     """Why this run's measurements must not be aggregated, or None.
 

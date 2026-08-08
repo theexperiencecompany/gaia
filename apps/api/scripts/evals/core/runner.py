@@ -120,6 +120,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                 started_at=datetime.now(UTC).isoformat(timespec="seconds"),
                 provider_order=order,
                 tags=opts.tags,
+                app_version=_app_version(),
             )
         )
 
@@ -152,12 +153,25 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
             raise SystemExit(f"--only: no such case id(s): {', '.join(unknown)}")
     if opts.from_case:
         cases = [c for c in cases if c.id >= opts.from_case]
+
+    # Journal-based selection is ONE decision, not a chain of filters that empty
+    # each other out. --only-failed used to run after --resume had already
+    # removed every finished case, so it selected nothing; without --resume the
+    # journal was new, so it also selected nothing. It silently did nothing in
+    # both modes, which is why every retry has been a full re-run.
+    if opts.only_failed:
+        latest = journal.latest_per_case()
+        if not latest:
+            raise SystemExit("--only-failed needs an existing run to read: pass --resume <run-id>")
+        failed = {cid for cid, rec in latest.items() if rec.get("status") == "failed"}
+        if not failed:
+            raise SystemExit("--only-failed: that run has no failed cases")
+        cases = [c for c in cases if c.id in failed]
+    elif opts.resume:
+        cases = [c for c in cases if not journal.has_terminal(c.id)]
+
     if opts.limit is not None:
         cases = cases[: opts.limit]
-    if opts.resume:
-        cases = [c for c in cases if not journal.has_terminal(c.id)]
-    if opts.only_failed:
-        cases = [c for c in cases if (journal.record_for(c.id) or {}).get("status") == "failed"]
 
     print(f"[run] {run_id} · suite={suite.name} · providers={healthy} · cases={len(cases)}")
 
@@ -295,6 +309,25 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         )
 
     return _publish_run(journal, suite, cfg, opts, cases, prices, tracker)
+
+
+def _app_version() -> str:
+    """The app build under test: nearest tag plus short sha, or the sha alone."""
+    import subprocess
+
+    root = Path(__file__).resolve().parents[4]
+    try:
+        described = subprocess.run(
+            ["git", "describe", "--tags", "--always", "--dirty"],
+            cwd=root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        return described.stdout.strip() or "unknown"
+    except Exception:
+        return "unknown"
 
 
 def _publish_run(
