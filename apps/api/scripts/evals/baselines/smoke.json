@@ -1,0 +1,23 @@
+{
+  "suite": "smoke",
+  "run_id": "smoke-20260808-091758-af0cdd",
+  "app_version": "",
+  "baseline_accuracy": 1.0,
+  "graded": 3,
+  "errored": 0,
+  "per_category": {
+    "ROTATION": [
+      1,
+      1
+    ],
+    "SINGLE_HOP": [
+      1,
+      1
+    ],
+    "TOOL_USE": [
+      1,
+      1
+    ]
+  },
+  "captured_at": "2026-08-08"
+}

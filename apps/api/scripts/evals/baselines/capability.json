@@ -1,9 +1,95 @@
 {
   "suite": "capability",
-  "run_id": "capability-20260807-222839-66a27b",
-  "baseline_accuracy": 0.756,
-  "cases": 41,
-  "passed": 31,
-  "captured_at": "2026-08-08",
-  "notes": "41 cases incl. hard tier. Hard categories (composition 0/2, conflict 0/1, precision 0/1, multihop 0/1) are the improvement targets. Gate: communicate/end_state/tool_call_correctness."
+  "run_id": "capability-20260808-093921-98a7ac",
+  "app_version": "api-v0.17.0-299-gc32f2f973",
+  "baseline_accuracy": 0.8816,
+  "graded": 152,
+  "errored": 0,
+  "per_category": {
+    "ambiguity": [
+      0,
+      1
+    ],
+    "canvas": [
+      11,
+      11
+    ],
+    "composition": [
+      2,
+      2
+    ],
+    "conflict": [
+      0,
+      1
+    ],
+    "gmail": [
+      18,
+      21
+    ],
+    "labels": [
+      4,
+      4
+    ],
+    "memory": [
+      9,
+      9
+    ],
+    "multihop": [
+      0,
+      1
+    ],
+    "multitool": [
+      9,
+      10
+    ],
+    "multiturn": [
+      4,
+      4
+    ],
+    "notifications": [
+      9,
+      10
+    ],
+    "precision": [
+      1,
+      1
+    ],
+    "projects": [
+      6,
+      7
+    ],
+    "reminders": [
+      10,
+      11
+    ],
+    "temporal": [
+      2,
+      2
+    ],
+    "todo_stats": [
+      7,
+      10
+    ],
+    "todos": [
+      11,
+      14
+    ],
+    "tracked_todos": [
+      4,
+      4
+    ],
+    "weather": [
+      9,
+      9
+    ],
+    "web": [
+      9,
+      9
+    ],
+    "workflows": [
+      9,
+      11
+    ]
+  },
+  "captured_at": "2026-08-08"
 }

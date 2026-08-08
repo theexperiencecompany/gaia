@@ -26,7 +26,16 @@ uv run --group backend python -m scripts.evals run --suite memory --resume memor
 # 4. Reports / cost
 uv run --group backend python -m scripts.evals report <run-id>   # writes report.html + summary.md
 uv run --group backend python -m scripts.evals cost --project    # per-suite spend + forecast
+
+# 5. Verdicts from journals already on disk — no model, no API, no cost
+uv run --group backend python -m scripts.evals compare <run-id>              # exits 1 on a regression
+uv run --group backend python -m scripts.evals compare <run-id> --rebaseline # record it as the bar
+uv run --group backend python -m scripts.evals rescore <run-id>              # re-grade after a gate fix
+uv run --group backend python -m scripts.evals flaky                         # cases that flip
 ```
+
+`compare` refuses to baseline a run that is `excluded` or did not finish — an
+outage's numbers must never become the bar every later run is judged against.
 
 mise tasks: `eval:opik:up|down|reset`, `eval:smoke`, `eval:gate`, `eval:all`
 (nightly set), `eval:week` (weekly set), `eval:cost`, `eval:report`.

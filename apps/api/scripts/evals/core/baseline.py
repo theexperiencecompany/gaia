@@ -17,6 +17,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .journal import RunJournal, RunMeta
+
 BASELINES_DIR = Path(__file__).resolve().parent.parent / "baselines"
 
 # Pass rates move on their own: the agent is non-deterministic and providers
@@ -142,6 +144,42 @@ def compare(suite: str, records: list[dict[str, Any]]) -> Comparison:
                 f"{category}: {passed}/{total} ({now:.0%}) vs baseline {was:.0%}"
             )
     return comparison
+
+
+def _reject_unbaselineable(meta: RunMeta, run_id: str) -> None:
+    """Refuse to enshrine a run whose numbers are known not to mean anything.
+
+    Both of these have already happened: a run whose token accounting was wrong
+    was kept for the record with ``excluded`` set, and a run aborted by a dead
+    backend holds only the cases that ran before the outage. Either one, made
+    the baseline, becomes the bar every later run is judged against.
+    """
+    if meta.excluded:
+        raise SystemExit(
+            f"refusing to baseline {run_id}: the run is excluded from aggregation — {meta.excluded}"
+        )
+    if meta.status != "finished":
+        raise SystemExit(
+            f"refusing to baseline {run_id}: status is {meta.status!r}, not 'finished'. "
+            f"A partial run's case set is not the suite."
+        )
+
+
+def for_run(journal: RunJournal, *, rebaseline: bool = False) -> Comparison:
+    """Judge a run against its suite's baseline, or record it as the new one.
+
+    The single path both the live run loop and the offline ``compare`` command
+    take, so a verdict cannot differ depending on which one asked.
+    """
+    run_id = journal.dir.name
+    meta = journal.load_meta()
+    if meta is None:
+        raise SystemExit(f"no run.json for {run_id}")
+    records = list(journal.latest_per_case().values())
+    if rebaseline:
+        _reject_unbaselineable(meta, run_id)
+        print(f"[baseline] recorded {write(meta.suite, records, run_id, meta.app_version)}")
+    return compare(meta.suite, records)
 
 
 def write(suite: str, records: list[dict[str, Any]], run_id: str, app_version: str) -> Path:

@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from scripts.evals.core import baseline
+from scripts.evals.core.journal import RunJournal, RunMeta
 
 
 def _records(passed: int, failed: int, category: str = "todos") -> list[dict[str, Any]]:
@@ -87,3 +88,68 @@ def test_rebaseline_records_categories_for_the_next_comparison() -> None:
     assert stored["per_category"] == {"web": [6, 6]}
     assert stored["run_id"] == "run-x"
     assert stored["app_version"] == "v2"
+
+
+def _run_on_disk(
+    runs_dir: Path,
+    run_id: str,
+    records: list[dict[str, Any]],
+    *,
+    status: str = "finished",
+    excluded: str | None = None,
+) -> RunJournal:
+    journal = RunJournal(runs_dir, run_id)
+    journal.create_meta(
+        RunMeta(
+            run_id=run_id,
+            suite="demo",
+            started_at="2026-08-08T00:00:00+00:00",
+            status=status,
+            app_version="v9",
+            excluded=excluded,
+        )
+    )
+    for record in records:
+        journal.append(record)
+    return journal
+
+
+def test_a_run_is_judged_against_the_baseline_from_its_journal_alone(tmp_path: Path) -> None:
+    """The offline `compare` command and the live run loop take this one path."""
+    baseline.write("demo", _records(18, 2), "run-a", "v1")
+    journal = _run_on_disk(tmp_path, "run-b", _records(10, 10))
+    result = baseline.for_run(journal)
+    assert not result.ok
+    assert result.baseline_run == "run-a"
+
+
+def test_rebaseline_writes_then_judges_against_itself(tmp_path: Path) -> None:
+    journal = _run_on_disk(tmp_path, "run-b", _records(10, 10))
+    result = baseline.for_run(journal, rebaseline=True)
+    assert result.ok
+    assert json.loads(baseline.path_for("demo").read_text())["run_id"] == "run-b"
+
+
+def test_an_excluded_run_can_never_become_the_baseline(tmp_path: Path) -> None:
+    """Its numbers are on record as wrong; enshrining them sets the bar to a bug."""
+    journal = _run_on_disk(tmp_path, "run-b", _records(1, 19), excluded="token accounting defect")
+    with pytest.raises(SystemExit, match="excluded"):
+        baseline.for_run(journal, rebaseline=True)
+    assert not baseline.path_for("demo").exists()
+
+
+def test_an_unfinished_run_can_never_become_the_baseline(tmp_path: Path) -> None:
+    """An aborted run holds only the cases that ran before the backend died."""
+    journal = _run_on_disk(tmp_path, "run-b", _records(2, 0), status="aborted")
+    with pytest.raises(SystemExit, match="not 'finished'"):
+        baseline.for_run(journal, rebaseline=True)
+    assert not baseline.path_for("demo").exists()
+
+
+def test_a_retried_case_is_counted_once(tmp_path: Path) -> None:
+    """The journal appends, so a fixed case must not be counted as its old failure."""
+    journal = _run_on_disk(tmp_path, "run-b", _records(9, 1))
+    journal.append({"case_id": "f0", "status": "passed", "category": "todos"})
+    result = baseline.for_run(journal)
+    assert result.graded == 10
+    assert result.accuracy == pytest.approx(1.0)

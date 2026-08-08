@@ -97,6 +97,47 @@ class RunOptions:
         self.rebaseline = rebaseline
 
 
+def select_cases(cases: list[Case], opts: RunOptions, journal: RunJournal) -> list[Case]:
+    """Decide which of the suite's cases this run executes.
+
+    Kept whole and apart from the run loop because the selection is where every
+    "the run did nothing and said nothing" defect has come from — and because
+    testing it against a journal costs nothing, while testing it through
+    ``run_suite`` costs a live API and a model bill.
+    """
+    if opts.only:
+        # --from is an ordered cursor, so it cannot pick out a case that sorts
+        # after cases in an earlier data file. --only names cases outright, and
+        # fails loudly on a typo rather than silently running nothing.
+        wanted = set(opts.only)
+        cases = [c for c in cases if c.id in wanted]
+        unknown = sorted(wanted - {c.id for c in cases})
+        if unknown:
+            raise SystemExit(f"--only: no such case id(s): {', '.join(unknown)}")
+    if opts.from_case:
+        cases = [c for c in cases if c.id >= opts.from_case]
+
+    # Journal-based selection is ONE decision, not a chain of filters that empty
+    # each other out. --only-failed used to run after --resume had already
+    # removed every finished case, so it selected nothing; without --resume the
+    # journal was new, so it also selected nothing. It silently did nothing in
+    # both modes, which is why every retry has been a full re-run.
+    if opts.only_failed:
+        latest = journal.latest_per_case()
+        if not latest:
+            raise SystemExit("--only-failed needs an existing run to read: pass --resume <run-id>")
+        failed = {cid for cid, rec in latest.items() if rec.get("status") == "failed"}
+        if not failed:
+            raise SystemExit("--only-failed: that run has no failed cases")
+        cases = [c for c in cases if c.id in failed]
+    elif opts.resume:
+        cases = [c for c in cases if not journal.has_terminal(c.id)]
+
+    if opts.limit is not None:
+        cases = cases[: opts.limit]
+    return cases
+
+
 async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     factory = SUITE_REGISTRY.get(opts.suite)
     if factory is None:
@@ -143,37 +184,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     if not healthy:
         raise SystemExit(f"no healthy providers: {skipped}")
 
-    cases = suite.load_cases(cfg)
-    if opts.only:
-        # --from is an ordered cursor, so it cannot pick out a case that sorts
-        # after cases in an earlier data file. --only names cases outright, and
-        # fails loudly on a typo rather than silently running nothing.
-        wanted = set(opts.only)
-        cases = [c for c in cases if c.id in wanted]
-        unknown = sorted(wanted - {c.id for c in cases})
-        if unknown:
-            raise SystemExit(f"--only: no such case id(s): {', '.join(unknown)}")
-    if opts.from_case:
-        cases = [c for c in cases if c.id >= opts.from_case]
-
-    # Journal-based selection is ONE decision, not a chain of filters that empty
-    # each other out. --only-failed used to run after --resume had already
-    # removed every finished case, so it selected nothing; without --resume the
-    # journal was new, so it also selected nothing. It silently did nothing in
-    # both modes, which is why every retry has been a full re-run.
-    if opts.only_failed:
-        latest = journal.latest_per_case()
-        if not latest:
-            raise SystemExit("--only-failed needs an existing run to read: pass --resume <run-id>")
-        failed = {cid for cid, rec in latest.items() if rec.get("status") == "failed"}
-        if not failed:
-            raise SystemExit("--only-failed: that run has no failed cases")
-        cases = [c for c in cases if c.id in failed]
-    elif opts.resume:
-        cases = [c for c in cases if not journal.has_terminal(c.id)]
-
-    if opts.limit is not None:
-        cases = cases[: opts.limit]
+    cases = select_cases(suite.load_cases(cfg), opts, journal)
 
     print(f"[run] {run_id} · suite={suite.name} · providers={healthy} · cases={len(cases)}")
 
@@ -363,16 +374,7 @@ def _publish_run(
 
     from . import baseline
 
-    records = list(journal.latest_per_case().values())
-    if opts.rebaseline:
-        written = baseline.write(
-            suite.name,
-            records,
-            journal.dir.name,
-            (journal.load_meta() or RunMeta("", "", "")).app_version,
-        )
-        print(f"[baseline] recorded {written}")
-    comparison = baseline.compare(suite.name, records)
+    comparison = baseline.for_run(journal, rebaseline=opts.rebaseline)
     print(comparison.render())
 
     html_path = write_report(journal, suite.label, prices)

@@ -26,6 +26,8 @@ class CaseHistory:
     errored: int = 0
     runs: list[str] = field(default_factory=list)
     by_version: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
+    unstamped: set[str] = field(default_factory=set)
+    """Outcomes from runs that never recorded which build produced them."""
 
     @property
     def graded(self) -> int:
@@ -46,8 +48,30 @@ class CaseHistory:
 
     @property
     def changed_across_versions(self) -> bool:
-        """Flipped between versions but never within one: a fix, not flakiness."""
-        return self.passed > 0 and self.failed > 0 and not self.flaky
+        """Flipped between two RECORDED versions: a fix landing, not flakiness.
+
+        Both outcomes have to be witnessed by a stamped run. A flip where either
+        side came from an unstamped run demonstrates nothing about a code change
+        — see ``undetermined``.
+        """
+        stamped = set[str]().union(*self.by_version.values()) if self.by_version else set[str]()
+        return not self.flaky and len(self.by_version) >= 2 and {"passed", "failed"} <= stamped
+
+    @property
+    def undetermined(self) -> bool:
+        """Flipped, but at least one side has no version stamp to attribute it to.
+
+        Calling these "a fix landing" is a claim the journals cannot support, and
+        it is the reassuring half of the sentence — so a genuinely flaky case
+        recorded before version stamping would be filed away as fixed and never
+        looked at again.
+        """
+        return (
+            self.passed > 0
+            and self.failed > 0
+            and not self.flaky
+            and not self.changed_across_versions
+        )
 
     @property
     def pass_rate(self) -> float:
@@ -65,10 +89,10 @@ def history(runs_dir: Path) -> dict[tuple[str, str], CaseHistory]:
         if meta.get("excluded"):
             continue
         suite = str(meta.get("suite", "?"))
-        # No stamp means the run predates version tracking; treat each such run
-        # as its own version so it can never be compared against another and
-        # manufacture a flake out of a code change.
-        version = str(meta.get("app_version") or f"unstamped:{run_dir.name}")
+        # No stamp means the run predates version tracking. Its outcomes are
+        # pooled apart from the versioned ones so they can neither manufacture a
+        # flake out of a code change nor be credited to one.
+        version = str(meta.get("app_version") or "")
         # One verdict per case per run: a retry within a run supersedes rather
         # than counting as a second observation.
         latest: dict[str, str] = {}
@@ -86,7 +110,10 @@ def history(runs_dir: Path) -> dict[tuple[str, str], CaseHistory]:
             elif status == "errored":
                 entry.errored += 1
             if status in ("passed", "failed"):
-                entry.by_version[version].add(status)
+                if version:
+                    entry.by_version[version].add(status)
+                else:
+                    entry.unstamped.add(status)
             entry.runs.append(run_dir.name)
     return seen
 
@@ -98,18 +125,21 @@ def report(runs_dir: Path) -> str:
         (e for e in repeated if e.flaky), key=lambda e: (e.pass_rate, e.suite, e.case_id)
     )
     moved = [e for e in repeated if e.changed_across_versions]
+    undetermined = [e for e in repeated if e.undetermined]
     lines = [
         "",
         "=" * 74,
         f"FLAKY CASES  {len(flaky)} of {len(repeated)} repeated cases flip within one version",
         "=" * 74,
-        f"  {len(moved)} more changed only BETWEEN versions — a fix landing, not flakiness",
+        f"  {len(moved)} changed between RECORDED versions — a fix landing, not flakiness",
+        f"  {len(undetermined)} flipped across runs with no version stamp — undetermined, "
+        f"neither\n    figure can claim them",
     ]
     if not repeated:
         lines.append("  no case has been graded twice yet — run a suite again to build history")
         return "\n".join(lines + [""])
     if not flaky:
-        lines.append("  every repeated case agreed with itself")
+        lines.append("  no repeated case disagreed with itself inside one version")
         return "\n".join(lines + [""])
 
     by_suite: dict[str, int] = defaultdict(int)

@@ -1,9 +1,103 @@
 {
   "suite": "quality",
-  "run_id": "quality-20260807-222851-0ceb9b",
-  "baseline_accuracy": 0.889,
-  "cases": 18,
-  "passed": 16,
-  "captured_at": "2026-08-08",
-  "notes": "18 cases (structural gates + rubric judge). Judge (deepseek-v4-pro via opencode-go) mean 0.87. Failures: reminder tool-fidelity through comms path, correction-loop communicate."
+  "run_id": "quality-20260808-092651-963ed0",
+  "app_version": "",
+  "baseline_accuracy": 0.86,
+  "graded": 100,
+  "errored": 2,
+  "per_category": {
+    "ambiguity": [
+      1,
+      1
+    ],
+    "bubbles": [
+      11,
+      11
+    ],
+    "correction": [
+      1,
+      1
+    ],
+    "delegation": [
+      6,
+      11
+    ],
+    "emotional": [
+      1,
+      1
+    ],
+    "everyday": [
+      4,
+      4
+    ],
+    "finance": [
+      3,
+      3
+    ],
+    "fitness": [
+      3,
+      3
+    ],
+    "followup": [
+      1,
+      2
+    ],
+    "food": [
+      3,
+      3
+    ],
+    "health": [
+      2,
+      2
+    ],
+    "language": [
+      1,
+      1
+    ],
+    "legal": [
+      2,
+      2
+    ],
+    "multiturn": [
+      6,
+      7
+    ],
+    "openui": [
+      8,
+      10
+    ],
+    "overrefusal": [
+      5,
+      5
+    ],
+    "parenting": [
+      2,
+      2
+    ],
+    "refusal": [
+      8,
+      8
+    ],
+    "session": [
+      1,
+      1
+    ],
+    "tone": [
+      9,
+      9
+    ],
+    "tool": [
+      2,
+      4
+    ],
+    "travel": [
+      3,
+      3
+    ],
+    "voice": [
+      3,
+      6
+    ]
+  },
+  "captured_at": "2026-08-08"
 }

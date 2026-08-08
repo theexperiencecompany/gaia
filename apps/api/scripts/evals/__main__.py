@@ -94,6 +94,16 @@ def main() -> None:
     )
     rescore_p.add_argument("run_id")
 
+    compare_p = sub.add_parser(
+        "compare", help="score a finished run against its suite's baseline (free, from the journal)"
+    )
+    compare_p.add_argument("run_id")
+    compare_p.add_argument(
+        "--rebaseline",
+        action="store_true",
+        help="record this run as the suite's baseline instead of judging against it",
+    )
+
     sub.add_parser("flaky", help="cases whose verdict changes between runs (free, from journals)")
 
     sub.add_parser("dashboards", help="create/refresh the Opik dashboards (idempotent)")
@@ -163,6 +173,16 @@ def main() -> None:
         result = rescore(runner.RUNS_DIR, args.run_id, cfg)
         print(result.render())
         print(f"[rescore] {write_sibling(runner.RUNS_DIR, result)}")
+    elif args.command == "compare":
+        from .core import baseline
+
+        comparison = baseline.for_run(
+            runner.RunJournal(runner.RUNS_DIR, args.run_id), rebaseline=args.rebaseline
+        )
+        print(comparison.render())
+        # A regression is a result, not a crash — the verdict is printed first,
+        # then the exit code carries it to whatever called this.
+        sys.exit(0 if comparison.ok else 1)
     elif args.command == "flaky":
         from .core.flaky import report
 

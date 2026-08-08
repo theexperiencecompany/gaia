@@ -1,9 +1,51 @@
 {
   "suite": "memory",
-  "run_id": "memory-20260807-231807-34b2a9",
-  "baseline_accuracy": 0.911,
-  "cases": 45,
-  "passed": 41,
-  "captured_at": "2026-08-08",
-  "notes": "Full 45-scenario suite (52 probes). Previous committed report: 69.6% (46-probe subset, predates KNOWLEDGE_GRAPH). Gate: probes."
+  "run_id": "memory-20260808-100004-859995",
+  "app_version": "api-v0.17.0-303-gdf1027233",
+  "baseline_accuracy": 0.7556,
+  "graded": 45,
+  "errored": 0,
+  "per_category": {
+    "CONTRADICTION_UPDATE": [
+      3,
+      5
+    ],
+    "DISTRACTOR_ROBUSTNESS": [
+      2,
+      4
+    ],
+    "IDENTITY_MAPPINGS": [
+      3,
+      3
+    ],
+    "INDIRECT_PARAPHRASE": [
+      4,
+      5
+    ],
+    "KNOWLEDGE_GRAPH": [
+      4,
+      4
+    ],
+    "MULTI_SESSION_CONSOLIDATION": [
+      5,
+      5
+    ],
+    "NEGATIVE_ABSTENTION": [
+      4,
+      4
+    ],
+    "PREFERENCE_PERSISTENCE": [
+      3,
+      5
+    ],
+    "SINGLE_HOP": [
+      3,
+      5
+    ],
+    "TEMPORAL_REASONING": [
+      3,
+      5
+    ]
+  },
+  "captured_at": "2026-08-08"
 }

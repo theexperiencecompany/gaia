@@ -1,0 +1,15 @@
+{
+  "suite": "longmemeval",
+  "run_id": "longmemeval-20260808-064342-7add21",
+  "app_version": "",
+  "baseline_accuracy": 1.0,
+  "graded": 6,
+  "errored": 0,
+  "per_category": {
+    "temporal-reasoning": [
+      6,
+      6
+    ]
+  },
+  "captured_at": "2026-08-08"
+}

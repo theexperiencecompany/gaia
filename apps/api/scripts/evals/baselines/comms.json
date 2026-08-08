@@ -1,0 +1,31 @@
+{
+  "suite": "comms",
+  "run_id": "comms-20260808-092648-b9c7da",
+  "app_version": "",
+  "baseline_accuracy": 0.875,
+  "graded": 32,
+  "errored": 0,
+  "per_category": {
+    "clarify": [
+      4,
+      6
+    ],
+    "context": [
+      5,
+      6
+    ],
+    "delegation": [
+      7,
+      7
+    ],
+    "honesty": [
+      6,
+      6
+    ],
+    "smalltalk": [
+      6,
+      7
+    ]
+  },
+  "captured_at": "2026-08-08"
+}
