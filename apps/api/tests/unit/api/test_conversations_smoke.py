@@ -17,6 +17,7 @@ Covers:
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
+import pytest
 
 from app.models.chat_models import MessageModel
 from app.models.conversation_models import (
@@ -105,6 +106,7 @@ class TestListConversations:
         resp = await client.get("/api/v1/conversations?page=0")
         assert resp.status_code == 422
 
+    @pytest.mark.regression
     async def test_list_rejects_page_that_would_overflow_the_mongo_skip(
         self, client: AsyncClient
     ) -> None:

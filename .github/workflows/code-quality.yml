@@ -733,8 +733,19 @@ jobs:
 
   # --- Python semgrep (SSRF / path traversal / injection) ------------------
   # Dataflow SAST that bandit cannot do: follows user-controlled input into
-  # URL fetches / file paths / subprocesses. Informational (ratchet) until
-  # findings are burned down — see quality-gate below.
+  # URL fetches / file paths / subprocesses. ENFORCED: the findings it was
+  # ratcheting against are burned down (apps/api/app is at 0 across 815 files),
+  # so the marker in .github/quality-gate/enforced/ is now set.
+  #
+  # Deliberately a whole-directory scan rather than diff-scoped like ruff/mypy:
+  # a security lane that only looks at files a PR happens to touch stops
+  # noticing everything else. The cost is that `--config p/python` resolves the
+  # ruleset from the registry per run, so an upstream rule addition can red an
+  # unrelated PR. That is accepted here because such a red is a real finding to
+  # fix, not style churn — the scanner itself is digest-pinned, so only the
+  # rules move. Vendoring the pack (committing the resolved YAML and refreshing
+  # it via a scheduled PR) is the remaining hardening if that trade stops
+  # feeling right.
   semgrep:
     name: Python security patterns (semgrep)
     needs: [changes]

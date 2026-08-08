@@ -71,6 +71,7 @@ def _column_type(conn: Connection) -> str | None:
     ).scalar()
 
 
+@pytest.mark.regression
 @pytest.mark.usefixtures("legacy_table", "promote_probe_column")
 def test_promotes_naive_column_whose_name_requires_quoting(connection: Connection) -> None:
     assert _column_type(connection) == "timestamp without time zone"
@@ -80,6 +81,7 @@ def test_promotes_naive_column_whose_name_requires_quoting(connection: Connectio
     assert _column_type(connection) == "timestamp with time zone"
 
 
+@pytest.mark.regression
 @pytest.mark.usefixtures("legacy_table", "promote_probe_column")
 def test_promotion_reinterprets_the_stored_value_as_utc(connection: Connection) -> None:
     """A naive value is UTC wall-clock, so promotion must reinterpret, not shift."""
@@ -96,6 +98,7 @@ def test_promotion_reinterprets_the_stored_value_as_utc(connection: Connection) 
     assert stored.astimezone(UTC).replace(tzinfo=None) == datetime(2026, 1, 2, 3, 4, 5)
 
 
+@pytest.mark.regression
 @pytest.mark.usefixtures("legacy_table", "promote_probe_column")
 def test_is_idempotent_across_restarts(connection: Connection) -> None:
     """Startup runs this every boot; the second pass must be a no-op."""

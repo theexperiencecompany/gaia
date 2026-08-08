@@ -317,10 +317,12 @@ jobs:
   # --- Regression-proof: changed tests must FAIL on base -------------------
   # FastAPI's lesson: run the PR's changed test files against origin/develop
   # and report any that PASS there (the fix may no longer be needed).
-  # INFORMATIONAL, not blocking: the FastAPI model assumes tests accompany a
-  # fix, but gap-fill/restructure branches add tests for unchanged behavior —
-  # those legitimately pass on base and would false-positive a blocking gate.
-  # Enforce once test changes are fix-paired (see scripts/ci/regression-proof.sh).
+  # ENFORCED. It was informational because it checked EVERY changed test file,
+  # and gap-fill/restructure branches legitimately add tests for behavior the
+  # base already gets right — a guaranteed false positive. It is now scoped to
+  # tests that opt in with `@pytest.mark.regression`, which only a test claiming
+  # to pin a bug carries, so there is nothing left to false-positive on: a diff
+  # with no such tests passes trivially, and one that has them must prove them.
   regression-proof:
     needs: [detect]
     if: needs.detect.outputs.has_python == 'true' && github.event_name == 'pull_request'
@@ -345,6 +347,7 @@ jobs:
       - test-python
       - test-typescript
       - test-harness-tools
+      - regression-proof
       # static checks + dead-code live in code-quality.yml (its own gate)
       # changelog-sync deliberately excluded (non-blocking, auto-opens fix PRs)
       # trivy-scan deliberately excluded (non-blocking, pre-existing findings)
@@ -361,13 +364,15 @@ jobs:
           echo "  test-python:        ${{ needs.test-python.result }}"
           echo "  test-typescript:    ${{ needs.test-typescript.result }}"
           echo "  test-harness-tools: ${{ needs.test-harness-tools.result }}"
+          echo "  regression-proof:   ${{ needs.regression-proof.result }}"
 
           for r in \
             "${{ needs.detect.result }}" \
             "${{ needs.build.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.test-typescript.result }}" \
-            "${{ needs.test-harness-tools.result }}"; do
+            "${{ needs.test-harness-tools.result }}" \
+            "${{ needs.regression-proof.result }}"; do
             if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
               echo "::error::Required job result: $r"
               exit 1
