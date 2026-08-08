@@ -45,12 +45,12 @@ def _module_refs(path: Path) -> set[str]:
     return refs
 
 
-def _test_files_for(module_rel: str) -> list[str]:
+def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     """Test files (repo-root-relative) referencing the module."""
     module = f"app.{module_rel.replace('/', '.')}"
     module_py = f"{module}.py"
     hits: list[str] = []
-    for path in sorted(TESTS_DIR.rglob("*.py")):
+    for path in sorted(tests_dir.rglob("*.py")):
         refs = _module_refs(path)
         if module in refs or module_py in refs:
             hits.append(str(path))
