@@ -168,6 +168,31 @@ def test_real_journal_faults_are_recognised_as_outages(exc: Exception) -> None:
 
 
 @pytest.mark.parametrize(
+    ("message", "raised_by"),
+    [
+        ("PostgreSQL engine not available", "app/db/postgresql.py:147"),
+        ("ChromaDB client not initialized", "app/db/chroma/chromadb.py:50"),
+        ("ChromaDB client could not be initialized", "app/db/chroma/chromadb.py:44"),
+        ("ChromaDB connection failed: timed out", "app/db/chroma/chromadb.py:285"),
+        ("Failed to establish RabbitMQ connection", "app/db/rabbitmq.py:85"),
+    ],
+)
+def test_the_datastore_messages_the_app_actually_raises_are_recognised(
+    message: str, raised_by: str
+) -> None:
+    """Each signature is copied from a real ``raise`` — none of them is invented.
+
+    An entry that matches nothing the app can emit is worse than no entry: it
+    reads as coverage while never firing. These strings are matched against
+    another module's wording, so if that wording changes this test is what says
+    so rather than an outage quietly being graded again.
+    """
+    assert faults.classify(RuntimeError(message)) is not None, (
+        f"the fault raised at {raised_by} is not recognised as an outage"
+    )
+
+
+@pytest.mark.parametrize(
     "exc",
     [
         NameError("name 'asyncio' is not defined"),

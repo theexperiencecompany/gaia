@@ -44,17 +44,25 @@ _TRANSPORT_FAULTS: tuple[tuple[type[BaseException], str], ...] = (
 )
 
 # Faults that arrive as a generic exception type (usually ``RuntimeError``), so
-# only the message identifies them. Each entry is anchored to a named backend
-# and was taken from a real journal record — none is speculative, and none can
-# be emitted by an agent answering a question.
+# only the message identifies them. Every entry is anchored to a named backend
+# and copied from something that actually exists — either an error text found in
+# a journal record, or a literal ``raise`` in ``app/db`` (postgresql.py:147,
+# chromadb.py:44/50/285, rabbitmq.py:85). None is invented, and none can be
+# emitted by an agent answering a question.
+#
+# These are string matches against another module's messages, so they rot if
+# those messages are reworded. ``never_conducted`` is deliberately not built on
+# this table for exactly that reason — a re-grade must not depend on having
+# guessed the wording right.
 _FAULT_SIGNATURES: tuple[tuple[str, str], ...] = (
     ("postgresql engine not available", "postgres"),
     ("the database system is shutting down", "postgres"),
     ("the database system is starting up", "postgres"),
     ("connection to server at", "postgres"),
-    ("mongodb is not available", "mongo"),
-    ("redis is not available", "redis"),
-    ("chromadb is not available", "chroma"),
+    ("chromadb client not initialized", "chroma"),
+    ("chromadb client could not be initialized", "chroma"),
+    ("chromadb connection failed", "chroma"),
+    ("failed to establish rabbitmq connection", "rabbitmq"),
     ("all connection attempts failed", "api"),
     ("server disconnected without sending a response", "api"),
     ("broken pipe", "api"),
