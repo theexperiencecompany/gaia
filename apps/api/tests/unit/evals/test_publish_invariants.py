@@ -130,11 +130,21 @@ def test_journal_and_tracker_must_agree() -> None:
     assert any("disagree with the tracker" in v.check for v in disagreeing.violations)
 
 
-def test_duplicate_case_records_are_caught() -> None:
-    """A re-run appends, so an aggregation counts the stale attempt too."""
+def test_a_case_graded_twice_is_caught() -> None:
+    """Two graded records for one case double-count in every aggregation."""
     report = check_records([_ran("same", 100), _ran("same", 120)])
     assert not report.ok
-    assert any("duplicate" in v.check for v in report.violations)
+    assert any("graded more than once" in v.check for v in report.violations)
+
+
+def test_a_retry_superseding_an_error_is_not_a_duplicate() -> None:
+    """The sweep mechanism appends errored-then-graded by design; blocking it
+    would punish exactly the path that clears errored cases."""
+    errored = _ran("same", 0)
+    errored["status"] = "errored"
+    errored["tokens"]["input"] = 0
+    report = check_records([errored, _ran("same", 12_000)])
+    assert not any("graded more than once" in v.check for v in report.violations)
 
 
 def test_a_clean_run_publishes() -> None:

@@ -81,6 +81,7 @@ def check_records(
     records: list[dict[str, Any]],
     metered_total: tuple[int, int] | None = None,
     sim: bool = False,
+    metered_case_ids: set[str] | None = None,
 ) -> InvariantReport:
     """Cross-check a run's journal against itself, and against the cost tracker.
 
@@ -128,12 +129,13 @@ def check_records(
             and r.get("status") in GRADED_FOR_TOKEN_FLOOR
             and float(r.get("duration_s") or 0.0) >= MIN_MODEL_CALL_SECONDS
             and int((r.get("tokens") or {}).get("input", 0)) < IMPLAUSIBLE_MINIMUM_CASE_TOKENS
-            # Only a figure CLAIMING to be a measurement can be implausibly
-            # small. A labelled estimate is already excluded from cost and
-            # flagged by ingest-check; failing it here would just teach suites
-            # to launder estimates into the metered channel — the exact bug
-            # this caught in hil.
-            and (r.get("tokens") or {}).get("source") == "metered"
+            # A LABELLED estimate is exempt — it is already excluded from cost
+            # and flagged by ingest-check; failing it here would just teach
+            # suites to launder estimates into the metered channel (the exact
+            # bug this caught in hil). Everything else — metered or unlabelled —
+            # stays subject to the floor: an unlabelled undercount is precisely
+            # the defect this check exists for.
+            and (r.get("tokens") or {}).get("source") != "estimated"
         ]
     )
     if undercounted:
@@ -181,7 +183,21 @@ def check_records(
             )
 
     if metered_total is not None:
-        summed = (sum(inputs), sum(int((r.get("tokens") or {}).get("output", 0)) for r in records))
+        # Reconcile only the cases the tracker actually metered IN THIS PROCESS.
+        # A resumed run's journal carries every earlier pass's cases too, so
+        # summing the whole journal against this process's meter disagrees by
+        # construction — which blocked every retry sweep, punishing exactly the
+        # mechanism that clears errored cases.
+        latest: dict[str, dict[str, Any]] = {str(r.get("case_id")): r for r in records}
+        in_scope = (
+            [r for cid, r in latest.items() if cid in metered_case_ids]
+            if metered_case_ids is not None
+            else list(latest.values())
+        )
+        summed = (
+            sum(int((r.get("tokens") or {}).get("input", 0)) for r in in_scope),
+            sum(int((r.get("tokens") or {}).get("output", 0)) for r in in_scope),
+        )
         for label, journal_value, tracker_value in (
             ("input", summed[0], metered_total[0]),
             ("output", summed[1], metered_total[1]),
@@ -204,14 +220,23 @@ def check_records(
         report.violations.append(
             Violation("unknown case status", f"{sorted(str(s) for s in unknown)}")
         )
-    if len(ids) != len(set(ids)):
-        duplicated = sorted({i for i in ids if ids.count(i) > 1})
+    # A retry legitimately appends a second record — the journal is append-only
+    # and latest_per_case() supersedes, so errored-then-graded is the sweep
+    # mechanism working, not a defect. What can never be legitimate is one case
+    # GRADED twice within a run: that double-counts in any aggregation.
+    graded_counts: dict[str, int] = {}
+    for r in records:
+        if r.get("status") in ("passed", "failed"):
+            cid = str(r.get("case_id"))
+            graded_counts[cid] = graded_counts.get(cid, 0) + 1
+    double_graded = sorted(cid for cid, n in graded_counts.items() if n > 1)
+    if double_graded:
         report.violations.append(
             Violation(
-                "duplicate case records",
-                f"{len(duplicated)} case(s) appear more than once — e.g. {duplicated[:3]}. "
-                f"Aggregations that iterate records() would count both the stale attempt and "
-                f"the fresh one; read latest_per_case() instead.",
+                "case graded more than once",
+                f"{len(double_graded)} case(s) carry two graded records — e.g. "
+                f"{double_graded[:3]}. A retry may supersede an error, but a second "
+                f"grade double-counts in every aggregation that iterates records().",
             )
         )
     return report

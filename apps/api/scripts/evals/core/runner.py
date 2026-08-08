@@ -378,6 +378,7 @@ def _publish_run(
         journal.records(),
         metered_total=(tracker.total_input, tracker.total_output),
         sim=opts.sim,
+        metered_case_ids=set(tracker.case_input) | set(tracker.case_output),
     )
     if not invariants.ok:
         print(invariants.render())
