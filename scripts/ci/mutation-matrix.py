@@ -24,7 +24,14 @@ TESTS_DIR = Path("apps/api/tests")
 
 
 def _module_refs(path: Path) -> set[str]:
-    """Every app.* dotted name a test file mentions (imports + string literals)."""
+    """Every app.* dotted name a test file mentions (imports + string literals).
+
+    String literals must be BARE module paths: a real patch target is
+    ``"app.x.y.z"``, while fixture content embedding a module name inside
+    quotes/parens (``'patch("app.x.y.z", ...)'``) is a test-data string, not
+    a reference — matching it would pull in test files that never exercise
+    the module.
+    """
     refs: set[str] = set()
     try:
         tree = ast.parse(path.read_text())
@@ -39,14 +46,33 @@ def _module_refs(path: Path) -> set[str]:
             for alias in node.names:
                 refs.add(f"{node.module}.{alias.name}")
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            candidate = node.value.strip().strip("'\"")
-            if candidate.startswith("app.") and candidate.count(".") >= 2:
+            candidate = node.value.strip()
+            if _is_bare_module_path(candidate):
                 refs.add(candidate)
     return refs
 
 
+def _is_bare_module_path(candidate: str) -> bool:
+    """True for ``app.some.module`` / ``app.some.module.thing`` and nothing else.
+
+    Rejects strings that embed a module name in surrounding syntax (quotes,
+    parens, spaces) — those are fixture data, not references.
+    """
+    if not candidate.startswith("app."):
+        return False
+    if any(char in candidate for char in "\"'(), "):
+        return False
+    return all(part.isidentifier() for part in candidate.split("."))
+
+
 def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
-    """Test files (repo-root-relative) referencing the module."""
+    """Test files (repo-root-relative) referencing the module, unit tier first.
+
+    Real-tier suites (tests/integration/real/...) skip without
+    USE_REAL_SERVICES=1, which would leave the mutation run with zero
+    covering tests; prefer hermetic tests/unit/ hits so the lane can
+    actually exercise the module.
+    """
     module = f"app.{module_rel.replace('/', '.')}"
     module_py = f"{module}.py"
     hits: list[str] = []
@@ -54,6 +80,7 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
         refs = _module_refs(path)
         if module in refs or module_py in refs:
             hits.append(str(path))
+    hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
     return hits
 
 

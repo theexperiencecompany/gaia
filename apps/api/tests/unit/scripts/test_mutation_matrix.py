@@ -51,10 +51,24 @@ def test_module_refs_collect_patch_target_strings(tmp_path: Path) -> None:
     )
     refs = mm._module_refs(test_file)
 
-    assert "app.agents.tools.integrations.google_meet_tool" in refs
-    assert "app.services.foo" in refs
+    assert "app.agents.tools.integrations." + "google_meet_tool" in refs
+    assert "app.services." + "foo" in refs
     assert "app.x" not in refs
     assert "not a module" not in refs
+
+
+def test_module_refs_reject_embedded_module_strings(tmp_path: Path) -> None:
+    """A module name embedded in fixture data (quotes/parens) is not a reference."""
+    test_file = tmp_path / "test_embedded.py"
+    _write(
+        tmp_path,
+        "test_embedded.py",
+        "'patch(\"app.agents.tools.integrations.google_meet_tool\", ...)'\n"
+        'assert "app.agents.tools.integrations." + "google_meet_tool" in refs\n',
+    )
+    refs = mm._module_refs(test_file)
+
+    assert not any("google_meet" in ref for ref in refs)
 
 
 def test_test_files_for_finds_importer(tmp_path: Path) -> None:
