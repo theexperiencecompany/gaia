@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 import time
 from typing import Any
@@ -196,6 +197,9 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     # whatever the working tree describes as now.
     app_version = (journal.load_meta() or RunMeta("", "", "")).app_version
 
+    def _sink_deferred() -> bool:
+        return os.environ.get("EVALS_DEFER_OPIK_SINK", "") == "1"
+
     def record_case(
         case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
     ) -> None:
@@ -204,7 +208,12 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         source = _attribute_tokens(run, tracker, case.id)
         record = _record(case, run, scores, status, error, source)
         journal.append(record)
-        _log_trace(suite.project, run_id, record, prices, suite.name, app_version)
+        # The live sink serialises and compresses every transcript on SDK
+        # background threads DURING the run — on long-context suites that burned
+        # more CPU than the cases themselves. `evals seed` rebuilds the same
+        # traces from the journal afterwards, so deferring loses nothing.
+        if not _sink_deferred():
+            _log_trace(suite.project, run_id, record, prices, suite.name, app_version)
 
     aborted: str | None = None
     run_status = "finished"
