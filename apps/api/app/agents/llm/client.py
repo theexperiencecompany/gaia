@@ -22,7 +22,6 @@ from app.agents.llm.exceptions import (
 from app.config.settings import settings
 from app.constants.llm import (
     DEFAULT_GEMINI_MODEL_NAME,
-    DEFAULT_GROK_MODEL_NAME,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_TOKENS,
@@ -76,14 +75,14 @@ def is_default_model_config(configurable: AgentConfigurable) -> bool:
 
 PROVIDER_MODELS = {
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
-    "openrouter": DEFAULT_GROK_MODEL_NAME,
+    "openrouter": DEFAULT_MODEL_NAME,
     # The env-defined custom dev endpoint; empty when unset — the provider is
     # only registered in development with all DEV_LLM_* settings present.
     "custom": settings.DEV_LLM_MODEL or "",
 }
 PROVIDER_PRIORITY = {
-    1: "gemini",
-    2: "openrouter",
+    1: "openrouter",
+    2: "gemini",
     3: "custom",
 }
 
@@ -371,14 +370,20 @@ def get_default_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChat
     configured."""
     if settings.GAIA_SIM_MODE:
         return _sim_llm(temperature)
-    if not settings.GOOGLE_API_KEY:
-        raise LLMNotConfiguredError("Default LLM not configured. Set GOOGLE_API_KEY.")
+    if not settings.OPENROUTER_API_KEY:
+        raise LLMNotConfiguredError("Default LLM not configured. Set OPENROUTER_API_KEY.")
     return _build_default_llm(temperature)
 
 
 @cache
 def _build_default_llm(temperature: float) -> BaseChatModel:
-    llm = ChatGoogleGenerativeAI(model=DEFAULT_GEMINI_MODEL_NAME, temperature=temperature)
+    llm = ChatOpenRouter(
+        model=DEFAULT_MODEL_NAME,
+        temperature=temperature,
+        stream_usage=True,
+        max_tokens=OPENROUTER_MAX_OUTPUT_TOKENS,
+        api_key=settings.OPENROUTER_API_KEY,
+    )
     # LangChain resolves a model's context window from its curated profile registry,
     # which lags new model releases (it has no profile for the current default model).
     # Consumers that express limits as a FRACTION of the window — the summarization
@@ -395,7 +400,7 @@ def _stamp_fallback(result: _ResultT) -> _ResultT:
     metadata = getattr(result, "response_metadata", None)
     if isinstance(metadata, dict):
         metadata["gaia_fell_back"] = True
-        metadata["gaia_fallback_model"] = DEFAULT_GEMINI_MODEL_NAME
+        metadata["gaia_fallback_model"] = DEFAULT_MODEL_NAME
     return result
 
 
