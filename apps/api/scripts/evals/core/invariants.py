@@ -128,6 +128,12 @@ def check_records(
             and r.get("status") in GRADED_FOR_TOKEN_FLOOR
             and float(r.get("duration_s") or 0.0) >= MIN_MODEL_CALL_SECONDS
             and int((r.get("tokens") or {}).get("input", 0)) < IMPLAUSIBLE_MINIMUM_CASE_TOKENS
+            # Only a figure CLAIMING to be a measurement can be implausibly
+            # small. A labelled estimate is already excluded from cost and
+            # flagged by ingest-check; failing it here would just teach suites
+            # to launder estimates into the metered channel — the exact bug
+            # this caught in hil.
+            and (r.get("tokens") or {}).get("source") == "metered"
         ]
     )
     if undercounted:

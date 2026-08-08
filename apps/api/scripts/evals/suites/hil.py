@@ -152,7 +152,7 @@ class HilTransport:
         tracker: EvalCostTracker,
         provider: ProviderConfig,
     ) -> CaseRun:
-        del cfg
+        del cfg, tracker
         email = f"hil-{uuid.uuid4().hex[:10]}@gaia.local"
         transcript: list[dict[str, str]] = []
         tool_calls: list[dict[str, Any]] = []
@@ -211,13 +211,16 @@ class HilTransport:
                 duration_s=time.monotonic() - start,
                 error=error[:300],
             )
+        # Estimates only — the HIL endpoints report no usage. Deliberately NOT
+        # pushed through tracker.add_manual: that books into the per-case meter,
+        # and the runner would then stamp the figure "metered". A chars/4 guess
+        # entering the trusted channel is how 14-token cases passed for real.
         tokens_in = estimate_tokens(
             " ".join(m["content"] for m in transcript if m["role"] == "user")
         )
         tokens_out = estimate_tokens(
             " ".join(m["content"] for m in transcript if m["role"] == "assistant")
         )
-        tracker.add_manual(provider.name, tokens_in, tokens_out)
         return CaseRun(
             case_id=case.id,
             provider=provider.name,
