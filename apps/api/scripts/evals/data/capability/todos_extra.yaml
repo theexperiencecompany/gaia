@@ -112,12 +112,16 @@
   expected:
     category: todos
     communicate: ["nadia"]
-    tool_calls: [{tool: create_todo, min_calls: 2}]
+    # Gated on what was extracted, not on which todo tool wrote it: the ticket
+    # is about pulling exactly two actionable items out of the ramble. A run
+    # that captured both via `create_tracked_todo` was failed on the tool name
+    # despite the end state being exactly right. `end_state` pins both titles
+    # and their open status, and the judge rejects a third todo for the boiler.
     end_state:
       todos:
         - {title_contains: "plumber", completed: false}
         - {title_contains: "nadia", completed: false}
-    score: {gates: [communicate, end_state, tool_calls]}
+    score: {gates: [communicate, end_state]}
     judge:
       criteria:
         - "exactly two todos were created — the plumber and the photos for Nadia"

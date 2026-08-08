@@ -265,11 +265,13 @@
       end_state: {answer_contains: "", sent: 0, drafts: 0}
   expected:
     category: gmail
-    # Both consequences are stated verbatim in the corpus and nowhere else:
-    # the account "will be paused" (m1) and the terms "revert to
-    # month-to-month" (m16). A hallucinated "late fees / collections" answer
-    # cannot produce either.
-    communicate: ["month-to-month", "paused"]
+    # "month-to-month" is stated verbatim in the corpus (m16) and nowhere else,
+    # so a hallucinated "late fees / collections" answer cannot produce it.
+    # The pause consequence (m1) is NOT asserted here: `says` matches on word
+    # boundaries, so "paused" rejects "will trigger an account pause" — the run
+    # of 2026-08-08 named the consequence correctly and was failed on the tense.
+    # It stays a MUST criterion for the judge, which reads meaning, not tokens.
+    communicate: ["month-to-month"]
     tool_calls: [{tool: GMAIL_FETCH_MESSAGES, min_calls: 1}]
     end_state:
       answer_contains: "month-to-month"

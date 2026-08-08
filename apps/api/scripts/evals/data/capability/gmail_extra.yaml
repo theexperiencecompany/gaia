@@ -21,12 +21,15 @@
   prompt: "My flight got moved — what time does it leave now?"
   expected:
     category: gmail
-    communicate: ["11:40"]
+    # The time is gated by `end_state.answer_contains`, which is a plain
+    # substring test, and NOT by `communicate`: that gate matches on word
+    # boundaries, so "11:40" rejects the natural rendering "11:40am" and failed
+    # a run that reported the exact time the email states.
     tool_calls: [{tool: GMAIL_FETCH_MESSAGES}]
     end_state:
       answer_contains: "11:40"
       sent: 0
-    score: {gates: [communicate, end_state, tool_calls]}
+    score: {gates: [end_state, tool_calls]}
     judge:
       criteria:
         - "the new departure time is 11:40am and the old one was 9:15am"

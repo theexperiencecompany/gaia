@@ -16,7 +16,11 @@
   prompt: "Remind me every weekday at 8:30am to take my meds"
   expected:
     category: reminders
-    communicate: ["meds"]
+    # "meds" rejected a reply that said "take your medication" — `says` matches
+    # whole words, so the agent's synonym read as never having answered. What
+    # the reply must actually confirm is the RECURRENCE, which is also the thing
+    # the failure mode (five one-off reminders) gets wrong.
+    communicate: ["weekday"]
     tool_calls: [{tool: create_reminder_tool}]
     end_state: {reminders: [{count: 1}]}
     score: {gates: [communicate, end_state, tool_calls]}
@@ -74,9 +78,13 @@
   expected:
     category: reminders
     communicate: ["dentist"]
+    # `search_reminders_tool` is NOT demanded: it raises "Object of type
+    # datetime is not JSON serializable" on every call, and the agent that fell
+    # back to `list_user_reminders_tool` answered from the real reminder set and
+    # was failed for routing around a broken tool. The lookup is still gated —
+    # `answer_contains` + the judge reject an answer that names the wrong one.
     tool_calls:
       - {tool: create_reminder_tool, min_calls: 2}
-      - {tool: search_reminders_tool}
     end_state:
       answer_contains: "dentist"
       reminders: [{count: 2}]

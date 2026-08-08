@@ -60,9 +60,16 @@
   prompt: "What's the weather like?"
   expected:
     category: weather
-    communicate: ["where"]
-    end_state: {answer_contains: "where"}
-    score: {gates: [communicate, end_state]}
+    # "where" failed the reply "I don't have a location on file for you yet —
+    # which city would you like the weather for?", which is precisely the
+    # behaviour this case wants. The clarification is now gated on naming the
+    # missing LOCATION (the word both "which city" and "where are you" answers
+    # sit next to), paired with the absence check that actually separates asking
+    # from guessing: a run that invented a city reports a temperature.
+    communicate: ["location"]
+    must_not_communicate: ["°c", "°f"]
+    end_state: {answer_contains: "?"}
+    score: {gates: [communicate, must_not_communicate, end_state]}
     judge:
       criteria:
         - "the agent asks where the user is or which location they mean"

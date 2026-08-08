@@ -185,9 +185,13 @@
   expected:
     category: labels
     communicate: ["health"]
+    # `get_all_labels` is not demanded: the ticket is "read the REAL label set",
+    # and `list_todos` reads it just as truthfully. A run that listed the todos
+    # and named both labels correctly was failed purely on which reader it used.
+    # `end_state.labels` still reads the label set from the DB, so an invented
+    # label cannot pass.
     tool_calls:
       - {tool: create_todo, min_calls: 2}
-      - {tool: get_all_labels}
     end_state:
       answer_contains: "car"
       labels: [{count: 2}, {name: "car"}, {name: "health"}]

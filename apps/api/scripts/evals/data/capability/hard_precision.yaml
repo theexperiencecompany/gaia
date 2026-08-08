@@ -126,10 +126,15 @@
         todos: [{title_contains: null}]
   expected:
     category: precision
-    tool_calls: [{tool: create_todo, min_calls: 1, args: {title: "#114 (staging only)"}}]
+    # Gated on the STORED title, not on which todo tool stored it. The run of
+    # 2026-08-08 preserved the title character-for-character via
+    # `create_tracked_todo` — the exact thing this case tests — and was failed
+    # for not using `create_todo`. `end_state` is the stronger check anyway: it
+    # reads the title back out of the database, and rejects the counterfeit that
+    # dropped the hash and the parenthetical.
     end_state:
       todos: [{title_contains: "#114 (staging only)"}]
-    score: {gates: [end_state, tool_calls]}
+    score: {gates: [end_state]}
     judge:
       criteria:
         - "MUST: the stored title contains '#114 (staging only)' exactly, hash and parentheses included."

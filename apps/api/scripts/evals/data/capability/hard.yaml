@@ -153,19 +153,27 @@
 - id: hard-multihop-weather-pack
   ticket: "Two-hop research (capital → weather) plus a conditional todo with exact end state."
   tags: [hard, multihop, web]
+  # The threshold is 30°C, not 15°C, and that is deliberate: Lisbon's overnight
+  # low is below 30°C on every day of the year, so the condition is TRUE for
+  # every run and the artifact assertion is deterministic. At 15°C the case was
+  # unwinnable half the year — the run of 2026-08-08 reported a low of 20.9°C,
+  # correctly created no todo, and the end_state gate failed it for being right.
+  # The conditional reasoning is still what is being tested; only the outcome is
+  # now fixed. `get_weather` is the tool the product actually ships for hop two;
+  # demanding `web_search_tool` failed a run that used the right one.
   prompt: >-
     What's the capital of Portugal, and will it be cold there tomorrow? If the
-    low temperature is below 15°C, create a todo to pack a jacket.
+    low temperature is below 30°C, create a todo to pack a jacket.
   expected:
     category: multihop
     communicate: ["Lisbon"]
-    tool_calls: [{tool: web_search_tool, min_calls: 1}]
+    tool_calls: [{tool: get_weather, min_calls: 1}]
     end_state:
       todos: [{title_contains: "jacket"}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
-        - "the todo exists only if the reported low is actually below 15°C in Lisbon tomorrow"
+        - "the todo exists only if the reported low is actually below 30°C in Lisbon tomorrow"
         - "the reply names Lisbon and the forecast"
 
 # ── 6. Precision constraints ─────────────────────────────────────────────────

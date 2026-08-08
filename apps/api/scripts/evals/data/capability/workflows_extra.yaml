@@ -64,7 +64,9 @@
   prompt: "Create an automated workflow using the create_workflow tool: every day at 7am send me an in-app notification with the weather in Lisbon"
   expected:
     category: workflows
-    communicate: ["pause"]
+    # "paused", not "pause": `says` matches whole words, so the noun rejected
+    # "Workflow paused successfully" — the exact confirmation this case wants.
+    communicate: ["paused"]
     tool_calls: [{tool: create_workflow}, {tool: pause_workflow}]
     end_state: {workflows: [{count: 1}]}
     score: {gates: [communicate, end_state, tool_calls]}

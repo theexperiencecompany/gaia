@@ -46,12 +46,18 @@
         - {role: assistant, content: "Japan's capital is Kyoto, and the US dollar is what's used for most transactions there — so there's no need for a travel-money todo."}
       tool_calls: []
       end_state:
-        todos: [{title_contains: null}]
+        todos: [{count: 0}]
   expected:
     category: multihop
     communicate: ["Tokyo", "yen"]
+    # The user's words are "order travel money"; a faithful agent may title the
+    # todo after the currency it looked up ("Order Japanese Yen for the trip").
+    # Asserting the user's phrasing verbatim failed a run that did exactly the
+    # right thing, so the artifact is gated on there being exactly one todo —
+    # zero (condition mis-evaluated) and two (a todo per hop) both still fail,
+    # and `communicate` + the judge carry the content.
     end_state:
-      todos: [{title_contains: "travel money"}]
+      todos: [{count: 1}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:
@@ -141,8 +147,11 @@
   expected:
     category: multihop
     communicate: ["Colombia"]
+    # "reading list" is where the todo goes, not what it is called — an agent
+    # that creates a Reading List project and titles the todo after the book is
+    # doing the right thing. Gate on the book, which any faithful title names.
     end_state:
-      todos: [{title_contains: "reading list"}]
+      todos: [{title_contains: "solitude"}]
     score: {gates: [communicate, end_state]}
     judge:
       criteria:

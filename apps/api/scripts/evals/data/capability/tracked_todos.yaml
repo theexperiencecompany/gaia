@@ -38,8 +38,14 @@
   expected:
     category: tracked_todos
     communicate: ["budget"]
-    tool_calls: [{tool: create_tracked_todo}, {tool: update_tracked_todo_canvas}]
-    end_state: {tracked_todos: [{title: "plan summer vacation", canvas_contains: "budget"}]}
+    # `title` is an EXACT match, and the agent is free to name the initiative
+    # "Summer Vacation Planning" — which it did, so the lookup found nothing and
+    # `canvas_contains` came back null for a canvas that held "Budget: $3000".
+    # Matching on the subject fixes that. `update_tracked_todo_canvas` is also
+    # not demanded: writing the note in `initial_canvas` at creation puts it in
+    # the same place, and `canvas_contains` reads the stored canvas either way.
+    tool_calls: [{tool: create_tracked_todo}]
+    end_state: {tracked_todos: [{title_contains: "vacation", canvas_contains: "budget"}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
