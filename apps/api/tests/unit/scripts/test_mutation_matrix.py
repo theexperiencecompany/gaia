@@ -71,6 +71,20 @@ def test_module_refs_reject_embedded_module_strings(tmp_path: Path) -> None:
     assert not any("google_meet" in ref for ref in refs)
 
 
+def test_module_refs_find_fstring_patch_targets(tmp_path: Path) -> None:
+    """f"{MODULE}.thing" patch targets still expose the bare module constant."""
+    test_file = tmp_path / "test_fstring.py"
+    _write(
+        tmp_path,
+        "test_fstring.py",
+        'MODULE = "app.api.v1.endpoints.memory"\n'
+        'patch(f"{MODULE}.memory_engine.list_memories")\n',
+    )
+    refs = mm._module_refs(test_file)
+
+    assert "app.api.v1.endpoints.memory" in refs
+
+
 def test_test_files_for_finds_importer(tmp_path: Path) -> None:
     _write(
         tmp_path,
