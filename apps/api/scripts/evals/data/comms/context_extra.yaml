@@ -1,0 +1,71 @@
+# Carrying an earlier turn — second batch.
+#
+# Same rule as context.yaml: every deterministic gate is on a token the user
+# never wrote in ANY turn, because the transport joins all assistant bubbles
+# before matching, so anything the agent could have echoed back in turn 1 would
+# make the gate unfailable.
+#
+# Both cases stay non-delegated (`delegation: forbidden`), because a delegated
+# turn's SSE text is the ack and a content gate there would measure the ack's
+# wording rather than whether the earlier turn was carried.
+#
+# New ground relative to context.yaml: a value that is SUPERSEDED mid-conversation
+# (the gate names both the right answer and the answer you get from the stale
+# figure, so "which number did it use" is directly observable), and a referent
+# chosen by a ROLE stated earlier rather than by a noun the user repeats.
+
+- id: comms-context-superseded-value
+  ticket: "A corrected figure must replace the first one — the stale answer is a specific, catchable number."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "my standup's at 9:15"
+      - "wait, they moved it to 10:00. it's 8:20 now — how many minutes until it kicks off? just the number please"
+    counterfeit:
+      text: "You've got 55 minutes until your standup — just enough for a coffee."
+      messages:
+        - {role: user, content: "my standup's at 9:15"}
+        - {role: assistant, content: "Got it — 9:15."}
+        - {role: user, content: "wait, they moved it to 10:00. it's 8:20 now — how many minutes until it kicks off? just the number please"}
+        - {role: assistant, content: "You've got 55 minutes until your standup — just enough for a coffee."}
+  prompt: "wait, they moved it to 10:00. it's 8:20 now — how many minutes until it kicks off? just the number please"
+  expected:
+    category: context
+    delegation: forbidden
+    # 100 = 8:20 -> 10:00 (the corrected time). 55 = 8:20 -> 9:15, i.e. the
+    # answer you get by using the superseded figure. Neither appears in any turn.
+    communicate: ["100"]
+    must_not_communicate: ["55"]
+    judge:
+      criteria:
+        - "MUST: the reply gives 100 minutes, counting to the corrected 10:00 start."
+        - "MUST NOT: the reply counts to 9:15 or asks the user to restate a time they already gave."
+    score: {gates: [communicate, must_not_communicate, delegation]}
+
+- id: comms-context-role-disambiguation
+  ticket: "'Who do I chase' resolves by the role stated a turn earlier, not by whoever was mentioned last."
+  tags: [context, multiturn]
+  setup:
+    turns:
+      - "quick context: Pieter owns my flat, Tomasz is just my flatmate"
+      - "the boiler's died again. who am i meant to be chasing about that"
+    counterfeit:
+      text: "That'll be Tomasz — he was the last one you mentioned, so give him a nudge about the boiler."
+      messages:
+        - {role: user, content: "quick context: Pieter owns my flat, Tomasz is just my flatmate"}
+        - {role: assistant, content: "Noted."}
+        - {role: user, content: "the boiler's died again. who am i meant to be chasing about that"}
+        - {role: assistant, content: "That'll be Tomasz — he was the last one you mentioned, so give him a nudge about the boiler."}
+  prompt: "the boiler's died again. who am i meant to be chasing about that"
+  expected:
+    category: context
+    delegation: forbidden
+    # "Pieter" is in turn 1 but not in the turn being scored, so an echo of the
+    # user's own last words cannot satisfy it. The agent has to resolve "owns my
+    # flat" -> landlord itself.
+    communicate: ["Pieter"]
+    judge:
+      criteria:
+        - "MUST: the reply names Pieter as the person to chase about the boiler."
+        - "MUST NOT: the reply asks the user which of the two people they mean."
+    score: {gates: [communicate, delegation]}

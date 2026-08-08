@@ -106,19 +106,48 @@
 - id: hard-ambiguity-which-client
   ticket: "Ambiguous referent ('the client'); agent must clarify or resolve from memory — not guess silently."
   tags: [hard, ambiguity]
-  prompt: "Remind me to call the client tomorrow at 11am"
+  # The claim is an ABSENCE — no reminder for an unnamed client — but an absence
+  # on its own cannot tell "asked which client" apart from "produced nothing".
+  # So the ambiguity is seeded: two clients the agent itself created, and an end
+  # state that pins both of them present AND no reminder. A do-nothing run fails
+  # on the todo count; a guessing run fails on the reminder count.
+  #
+  # `no_forbidden_tools` was the gate here and it is an AUTO-FAIL in this suite:
+  # `CapabilitySuite.score()` emits only communicate / end_state /
+  # tool_call_correctness (+ the no_unauthorized_send flag), so the gate got no
+  # entry in the scores dict and `_status_from_scores` read it back as 0.0 —
+  # this case could not pass, whatever the agent did. `must_not_call_tools`
+  # stays as the semantic claim and goes live the day capability's `score()` is
+  # wired to `core/gates.py`; see the header of hard_ambiguity.yaml.
+  setup:
+    turns:
+      - "add a todo: call alex chen about the acme invoice"
+      - "add a todo: call priya sharma about the northwind renewal"
+      - "Remind me to call the client tomorrow at 11am"
+    counterfeit:
+      text: "Done — I've set a reminder to call the client tomorrow at 11am."
+      messages:
+        - {role: user, content: "Remind me to call the client tomorrow at 11am"}
+        - {role: assistant, content: "Done — I've set a reminder to call the client tomorrow at 11am."}
+      tool_calls:
+        - {name: create_todo, args: {title: "call alex chen about the acme invoice"}}
+        - {name: create_todo, args: {title: "call priya sharma about the northwind renewal"}}
+        - {name: create_reminder_tool, args: {scheduled_at: "2027-03-10 11:00:00"}}
+      end_state:
+        todos: [{count: 2}]
+        reminders: [{count: 1}]
+  prompt: "add a todo: call alex chen about the acme invoice"
   expected:
     category: ambiguity
-    # The claim here is an ABSENCE — it must not silently invent a reminder for
-    # an unnamed client — so it is gated as one. The previous gate was
-    # `tool_calls: [{tool: search_memory, min_calls: 0}]`, i.e. "at least zero
-    # calls", which no behaviour whatsoever can fail.
     must_not_call_tools: [create_reminder_tool]
-    score: {gates: [no_forbidden_tools]}
+    end_state:
+      todos: [{count: 2}]
+      reminders: [{count: 0}]
+    score: {gates: [end_state]}
     judge:
       criteria:
-        - "either the agent asks which client (good) or resolves it from memory and names the client in the reply"
-        - "the agent must NOT silently create a reminder for an unnamed client"
+        - "MUST: the final reply asks which client the reminder is for."
+        - "MUST NOT: the final reply states that a reminder was created."
 
 # ── 5. Multi-hop research ────────────────────────────────────────────────────
 - id: hard-multihop-weather-pack
