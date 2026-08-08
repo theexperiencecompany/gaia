@@ -407,7 +407,7 @@ def _resolve_fallback(fallback: LLMFallback, label: str, primary_error: BaseExce
     if resolved is None:
         raise primary_error
     log.warning(
-        f"{LogTag.AGENT} llm '{label}' failed; falling back to the default model",
+        f"{LogTag.AGENT} llm call failed; falling back to the default model",
         llm={"label": label, "error_type": type(primary_error).__name__, "fell_back": True},
         error=str(primary_error),
     )

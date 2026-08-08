@@ -89,6 +89,11 @@ const config: KnipConfig = {
 
   // Exclude non-app files from unused file detection
   ignore: [
+    // Wide-event conformance emitters: run as subprocesses from
+    // scripts/ci/wide-event-conformance/run.py (python3/pnpm exec tsx), never
+    // imported as modules — so knip reads them as unused files.
+    "scripts/ci/wide-event-conformance/emit_typescript.ts",
+
     // Agent skill templates (not app code, used by Claude Code skill system)
     ".agents/skills/**",
     ".claude/skills/**",
@@ -219,6 +224,11 @@ const config: KnipConfig = {
         // React/ReactDOM are peer deps consumed by all workspaces
         "react",
         "react-dom",
+        // Imported by scripts/ci/lib/bots-facts.mjs (the bots evlog-map AST
+        // scanner). Declared in apps/mobile + apps/web; resolved here via
+        // pnpm workspace hoisting, so knip reads them as unlisted at the root.
+        "@babel/parser",
+        "@babel/traverse",
         // Invoked dynamically as `pnpm exec jscpd` inside
         // scripts/ci/check-duplication.mjs, so knip can't see the usage.
         "jscpd",

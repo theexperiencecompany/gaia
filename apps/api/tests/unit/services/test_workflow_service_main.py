@@ -1998,6 +1998,12 @@ class TestWorkflowScheduler:
 class TestWorkflowQueueService:
     """Tests for WorkflowQueueService."""
 
+    @pytest.fixture(autouse=True)
+    def _route_enqueue_through_pool(self, route_enqueue_via_pool):
+        """Shared conftest fixture routes the wide-event enqueue wrapper through
+        pool.enqueue_job so the tests' pool mocks stay authoritative."""
+        return
+
     @patch("app.services.workflow.queue_service.RedisPoolManager")
     async def test_queue_generation_success(self, mock_redis):
         mock_pool = AsyncMock()

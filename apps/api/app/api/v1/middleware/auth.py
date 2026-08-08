@@ -98,7 +98,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         if self.dev_bypass_email:
             log.warning(
                 f"{LogTag.API} DEV AUTH BYPASS ACTIVE — every request is "
-                f"authenticated as {self.dev_bypass_email} (development only)"
+                f"authenticated as the bypass user (development only)",
+                dev_bypass_email=self.dev_bypass_email,
             )
 
     async def dispatch(
@@ -163,7 +164,11 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                 try:
                     user_data = await user_repository.get(str(agent_info["user_id"]))
                 except Exception as e:
-                    log.error(f"{LogTag.API} Invalid user_id in agent token: {e}")
+                    log.error(
+                        f"{LogTag.API} Invalid user_id in agent token",
+                        error_type=type(e).__name__,
+                        error=str(e),
+                    )
                     user_data = None
                 if user_data is not None:
                     # Same shape as the WorkOS session path — the shared builder
@@ -211,7 +216,8 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
         target_email, user_data = await resolve_dev_bypass_user(request.headers)
         if user_data is None:
             log.error(
-                f"{LogTag.API} Dev bypass target {target_email!r} has no Mongo user",
+                f"{LogTag.API} Dev bypass target has no Mongo user",
+                target_email=target_email,
                 dev_impersonated=bool(request.headers.get(DEV_USER_HEADER)),
             )
             return JSONResponse(

@@ -137,8 +137,9 @@ async def decide_tool_call(request: ToolCallRequest) -> ToolMessage | None:
     settled = await _verdict(request)
     if isinstance(settled, _Pending):
         log.error(
-            f"{LogTag.HIL} {settled.tool_name} resumed with no decision on its record",
+            f"{LogTag.HIL} resumed with no decision on its record",
             approval_id=settled.approval_id,
+            tool_name=settled.tool_name,
         )
         return _unpausable_denial_message(unpack_tool_call(request))
     return settled
@@ -159,7 +160,12 @@ async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
     except GraphBubbleUp:
         raise
     except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
-        log.error(f"{LogTag.HIL} Gate check failed for {call.name}; denying: {e}")
+        log.error(
+            f"{LogTag.HIL} Gate check failed for ; denying",
+            name=call.name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return _gate_error_message(call)
 
     if policy == "allow":
@@ -168,7 +174,7 @@ async def _verdict(request: ToolCallRequest) -> ToolMessage | _Pending | None:
         # The call is gated and HIL is on, but this run (background subagent, workflow,
         # scheduled task) has no live client to approve it. Fail closed: refuse rather
         # than run it unapproved or stall on an interrupt nothing can resume.
-        log.info(f"{LogTag.HIL} Denying gated {call.name}: run cannot pause for approval")
+        log.info(f"{LogTag.HIL} Denying gated : run cannot pause for approval", name=call.name)
         return _unpausable_denial_message(call)
     return await _decide(request, context, policy, call)
 
@@ -225,7 +231,7 @@ async def _decide(
         # retries) — auto-deny with their original feedback instead.
         declined = await recall_declined_call(context.stream_id, call.name, call.args)
         if declined is not None:
-            log.info(f"{LogTag.HIL} auto-denying {call.name}: declined earlier this turn")
+            log.info(f"{LogTag.HIL} auto-denying : declined earlier this turn", name=call.name)
             return _refusal_message(call, declined)
 
         integration_name = await _integration_name_for(call.name)
@@ -236,7 +242,11 @@ async def _decide(
             decision = await _judge(request, context, call, record, summary)
 
         if decision is not None and decision.aligned:
-            log.info(f"{LogTag.HIL} auto-approved {call.name}: {decision.reason}")
+            log.info(
+                f"{LogTag.HIL} auto-approved",
+                call_name=call.name,
+                reason=decision.reason,
+            )
             # The receipt says GAIA decided to act, and why. It is not a claim that the
             # action happened — the tool node runs it afterwards, like any other call.
             await publish_auto_approval(
@@ -264,7 +274,12 @@ async def _decide(
     except GraphBubbleUp:
         raise
     except Exception as e:  # noqa: BLE001 — an approval gate must fail closed
-        log.error(f"{LogTag.HIL} Could not publish approval for {call.name}; denying: {e}")
+        log.error(
+            f"{LogTag.HIL} Could not publish approval for ; denying",
+            name=call.name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return _gate_error_message(call)
 
 
@@ -312,7 +327,7 @@ async def _judge(
     if record is not None:
         return None
     if await has_pausing_sibling(request, context.user_id, call.id):
-        log.info(f"{LogTag.HIL} not auto-approving {call.name}: a sibling call may pause")
+        log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
         return None
     return await judge_intent(
         user_messages=context.user_messages,

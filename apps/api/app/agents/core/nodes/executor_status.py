@@ -55,5 +55,5 @@ async def executor_status_hook(state: State, config: RunnableConfig, store: Base
         messages = state.get("messages", [])
         return cast(State, {**state, "messages": [*messages, status]})
     except Exception as e:  # noqa: BLE001 — a status frame must never break the turn
-        log.error(f"{LogTag.AGENT} executor_status_hook failed: {e}")
+        log.error(f"{LogTag.AGENT} executor_status_hook failed", error_type=type(e).__name__)
         return state

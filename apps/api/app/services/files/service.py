@@ -147,8 +147,10 @@ class FileService:
             resource_type=resource_type,
         )
         log.info(
-            f"[files] upload start file_id={upload.file_id} "
-            f"name={upload.filename!r} type={content_type}"
+            "[files] upload start",
+            file_id=upload.file_id,
+            filename=upload.filename,
+            content_type=content_type,
         )
 
         try:
@@ -198,13 +200,21 @@ class FileService:
                     conversation_id=conversation_id,
                 ),
             )
-            log.info(f"[files] upload complete file_id={upload.file_id}")
+            log.info("[files] upload complete file_id", file_id=upload.file_id)
 
             return metadata
         except HTTPException:
             raise
         except Exception as e:
-            log.error(f"[files] upload failed file_id={upload.file_id}: {e!s}", exc_info=True)
+            log.error(
+                "[files] upload failed file_id",
+                file_id=upload.file_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                exc_info=True,
+            )
             raise HTTPException(status_code=500, detail=f"Failed to upload file: {e!s}")
 
     @staticmethod
@@ -245,14 +255,14 @@ class FileService:
     @CacheInvalidator(key_patterns=[FILES_CACHE_PATTERN])
     async def delete(file_id: str, user_id: str | None) -> FileDeletedResponse:
         """Delete a file from Mongo, Cloudinary, and the vector index."""
-        log.info(f"[files] delete start file_id={file_id}")
+        log.info("[files] delete start file_id", file_id=file_id)
         if user_id is None:
             raise HTTPException(status_code=400, detail="User ID is required")
         log.set(file=FileContext(operation="delete", file_id=file_id))
 
         file_data = await file_repository.get_by_file_id(file_id, user_id)
         if not file_data:
-            log.warning(f"[files] delete: file_id={file_id} not found for user")
+            log.warning("[files] delete: file not found for user", file_id=file_id, user_id=user_id)
             raise HTTPException(status_code=404, detail="File not found")
 
         if not await file_repository.delete_by_file_id(file_id, user_id):
@@ -262,10 +272,14 @@ class FileService:
         if public_id:
             destroy_in_cloudinary(public_id)
         else:
-            log.warning(f"[files] delete: file_id={file_id} has no public_id; skipping blob delete")
+            log.warning(
+                "[files] delete: file has no public_id; skipping blob delete",
+                file_id=file_id,
+                user_id=user_id,
+            )
 
         await delete_from_index(file_id)
-        log.info(f"[files] delete complete file_id={file_id}")
+        log.info("[files] delete complete file_id", file_id=file_id)
 
         return FileDeletedResponse(
             message="File deleted successfully",
@@ -283,7 +297,7 @@ class FileService:
         conversation_id: str | None = None,
     ) -> FileDocument:
         """Update file metadata, regenerating the summary + vector index when new content is given."""
-        log.info(f"[files] update start file_id={file_id}")
+        log.info("[files] update start file_id", file_id=file_id)
         log.set(file=FileContext(operation="update", file_id=file_id))
 
         file_data = await file_repository.get_by_file_id(file_id, user_id)
@@ -311,7 +325,15 @@ class FileService:
                 set_fields["description"] = description
                 set_fields["page_wise_summary"] = page_wise_summary
             except Exception as e:
-                log.error(f"[files] update: summary regeneration failed: {e!s}", exc_info=True)
+                log.error(
+                    "[files] update: summary regeneration failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    file_id=file_id,
+                    user_id=user_id,
+                    conversation_id=conversation_id,
+                    exc_info=True,
+                )
                 raise HTTPException(status_code=500, detail=f"Failed to process file: {e!s}")
 
         description_updated = "description" in set_fields
@@ -332,7 +354,7 @@ class FileService:
                 conversation_id=conversation_id,
             )
 
-        log.info(f"[files] update complete file_id={file_id}")
+        log.info("[files] update complete file_id", file_id=file_id)
         return updated_file
 
     @staticmethod
@@ -351,7 +373,11 @@ class FileService:
         if not file_data:
             return
 
-        log.info(f"[files] seeding {len(file_data)} upload(s) into conversation={conversation_id}")
+        log.info(
+            "[files] seeding upload(s) into conversation",
+            file_data_count=len(file_data),
+            conversation_id=conversation_id,
+        )
         async with httpx.AsyncClient(timeout=FILE_SEED_DOWNLOAD_TIMEOUT_SECONDS) as client:
             await asyncio.gather(
                 *(
@@ -378,7 +404,14 @@ class FileService:
         try:
             safe_filename = safe_upload_filename(filename)
         except ValueError as e:
-            log.warning(f"[files] skipping sandbox mirror, unsafe filename {filename!r}: {e}")
+            log.warning(
+                "[files] skipping sandbox mirror, unsafe filename",
+                filename=filename,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
             return None
 
         sandbox_path = await mirror_upload(
@@ -412,14 +445,26 @@ class FileService:
         try:
             safe_name = safe_upload_filename(file.filename)
         except ValueError:
-            log.warning(f"[files] seed: skipping {file.filename!r}, unsafe after sanitize")
+            log.warning(
+                "[files] seed: skipping file, unsafe after sanitize",
+                filename=file.filename,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
             return
 
         try:
             resp = await client.get(file.url)
             resp.raise_for_status()
         except Exception as e:
-            log.warning(f"[files] seed: download failed for {file.filename!r}: {e}")
+            log.warning(
+                "[files] seed: download failed for",
+                filename=file.filename,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                conversation_id=conversation_id,
+            )
             return
 
         await mirror_upload(

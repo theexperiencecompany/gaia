@@ -38,7 +38,7 @@ async def describe_image(
             label=label,
         )
     except Exception as exc:  # any provider failure degrades gracefully
-        log.warning(f"{LogTag.TOOL} Vision fallback call failed: {exc}")
+        log.warning(f"{LogTag.TOOL} Vision fallback call failed", error_type=type(exc).__name__)
         return None
     # `.text` flattens the message's content blocks to a string; `.content` may
     # be a list (Gemini), whose repr would leak into the description.

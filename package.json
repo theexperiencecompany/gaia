@@ -14,6 +14,7 @@
     "quality:format": "biome format --write",
     "quality:lint": "biome check",
     "quality:lint:fix": "biome check --write",
+    "quality:observability-bots": "node scripts/ci/evlog-map-bots.mjs --min-score 100",
     "quality:pkg-json": "npmPkgJsonLint . --configFile config/.npmpackagejsonlintrc.json --quiet",
     "quality:publint": "pnpm --filter @heygaia/cli build && publint packages/cli",
     "quality:py:interrogate": "uvx interrogate -c pyproject.toml apps/api apps/voice-agent libs/shared/py",

@@ -100,14 +100,23 @@ class GoogleDocsTriggerHandler(TriggerHandler):
             try:
                 GoogleDocsPageAddedPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Google Docs payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Google Docs payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             workflows: list[Workflow] = []
             workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

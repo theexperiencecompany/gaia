@@ -149,7 +149,13 @@ async def resolve_approvals_batch(
         except Exception as e:  # noqa: BLE001 — one item's infra failure must not strand the rest
             # The item stays pending (nothing transitioned), so the sweep retries it; the
             # rest of the batch still processes. Reported, not swallowed.
-            log.error(f"{LogTag.HIL} Batch decision failed for {approval_id}: {e}")
+            log.error(
+                f"{LogTag.HIL} Batch decision failed for",
+                approval_id=approval_id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             outcomes.append(
                 BatchDecisionOutcome(approval_id=approval_id, resolved=False, reason="error")
             )
@@ -392,7 +398,12 @@ async def sweep_approvals() -> dict[str, int]:
         except ApprovalRequestNotFound:
             continue
         except Exception as e:  # noqa: BLE001 — one bad record must not strand the rest of the pass
-            log.error(f"{LogTag.HIL} Sweep could not expire {record.approval_id}: {e}")
+            log.error(
+                f"{LogTag.HIL} Sweep could not expire",
+                approval_id=record.approval_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     redispatched = 0
     for record in await list_decided_unresumed(HIL_DECIDED_UNRESUMED_GRACE_SECONDS):
@@ -403,7 +414,12 @@ async def sweep_approvals() -> dict[str, int]:
             )
             redispatched += 1
         except Exception as e:  # noqa: BLE001 — a failed redispatch is retried next sweep; don't abort
-            log.error(f"{LogTag.HIL} Sweep could not redispatch {record.approval_id}: {e}")
+            log.error(
+                f"{LogTag.HIL} Sweep could not redispatch",
+                approval_id=record.approval_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     if expired or redispatched:
         log.info(f"{LogTag.HIL} Approval sweep", expired=expired, redispatched=redispatched)

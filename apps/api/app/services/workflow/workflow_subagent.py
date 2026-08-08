@@ -200,7 +200,7 @@ class WorkflowSubagentRunner:
             "integration_usernames": {},
         }
 
-        log.info(f"{LogTag.WORKFLOW} Executing with task: {task[:100]}...")
+        log.info(f"{LogTag.WORKFLOW} Executing workflow subagent task", task_length=len(task))
 
         # Generate, validate, and correct: if the agent returns invalid json (bad
         # structure or integration_ids that name a non-existent integration), hand the
@@ -224,12 +224,13 @@ class WorkflowSubagentRunner:
                 break
             if attempt == MAX_DRAFT_CORRECTIONS:
                 log.warning(
-                    f"{LogTag.WORKFLOW} Draft still invalid after {attempt} correction(s); "
-                    f"handing off as-is: {correction[:150]}"
+                    f"{LogTag.WORKFLOW} Draft still invalid after corrections; handing off as-is",
+                    corrections=attempt,
+                    correction_length=len(correction),
                 )
                 break
             log.info(
-                f"{LogTag.WORKFLOW} Draft invalid (attempt {attempt + 1}); re-prompting to correct"
+                f"{LogTag.WORKFLOW} Draft invalid; re-prompting to correct", attempt=attempt + 1
             )
             state = {
                 "messages": [
@@ -240,7 +241,10 @@ class WorkflowSubagentRunner:
                 ]
             }
 
-        log.info(f"{LogTag.WORKFLOW} Completed. Response: {len(complete_message)} chars")
+        log.info(
+            f"{LogTag.WORKFLOW} Completed. Response: chars",
+            complete_message_count=len(complete_message),
+        )
         return complete_message if complete_message else "Task completed"
 
     @staticmethod

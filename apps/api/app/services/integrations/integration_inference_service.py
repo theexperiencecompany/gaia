@@ -79,7 +79,10 @@ async def infer_integration_category(
             )
     except Exception as e:
         log.error(
-            f"{LogTag.INTEGRATION} Failed to infer category for integration '{name}': {e}",
+            f"{LogTag.INTEGRATION} Failed to infer category for integration",
+            name=name,
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
         return _FALLBACK_CATEGORY
@@ -89,12 +92,16 @@ async def infer_integration_category(
     category = cast(BaseMessage, response).text.strip().lower()
     if category not in INTEGRATION_CATEGORIES:
         log.warning(
-            f"{LogTag.INTEGRATION} LLM returned invalid category '{category}' for integration "
-            f"'{name}', falling back to '{_FALLBACK_CATEGORY}'"
+            f"{LogTag.INTEGRATION} LLM returned an invalid category for integration, falling back",
+            category=category,
+            name=name,
+            _fallback_category=_FALLBACK_CATEGORY,
         )
         return _FALLBACK_CATEGORY
 
-    log.info(f"{LogTag.INTEGRATION} Inferred category '{category}' for integration '{name}'")
+    log.info(
+        f"{LogTag.INTEGRATION} Inferred category for integration", category=category, name=name
+    )
     return category
 
 
@@ -133,15 +140,18 @@ async def infer_integration_content(
             )
     except Exception as e:
         log.error(
-            f"{LogTag.INTEGRATION} Content generation errored for integration '{name}': {e}",
+            f"{LogTag.INTEGRATION} Content generation errored for integration",
+            name=name,
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
         return None
 
     if _is_complete(content):
-        log.info(f"{LogTag.INTEGRATION} Generated marketplace content for integration '{name}'")
+        log.info(f"{LogTag.INTEGRATION} Generated marketplace content for integration", name=name)
         return content
-    log.warning(f"{LogTag.INTEGRATION} Incomplete content for integration '{name}'")
+    log.warning(f"{LogTag.INTEGRATION} Incomplete content for integration", name=name)
     return None
 
 

@@ -131,7 +131,7 @@ class TriggerConfig(BaseModel):
             schedule_tz = Timezone.parse(user_timezone or self.timezone)
             return get_next_run_time(self.cron_expression, base_time, schedule_tz)
         except Exception as e:
-            log.error(f"Error calculating next run time: {e}")
+            log.error("Error calculating next run time", error=str(e), error_type=type(e).__name__)
             return None
 
     def update_next_run(

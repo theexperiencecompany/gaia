@@ -39,7 +39,7 @@ from app.models.chat_models import (
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
-from shared.py.wide_events import log
+from shared.py.wide_events import get_trace_id, log, log_context
 
 
 @traceable(name="bg_notification_delivery", run_type="chain")
@@ -397,44 +397,55 @@ async def _generate_and_push_follow_ups(
     show_reply_quote: bool,
     user_msg_content: str,
 ) -> None:
-    user_id = run.user.get("user_id", "")
-    try:
-        follow_up_actions = await _build_follow_up_actions(
-            msg_type=result_type,
-            notification_text=bot_message.response,
-            user_msg_content=user_msg_content,
-            user_id=user_id,
-        )
-        if not follow_up_actions:
-            return
+    # Runs detached from the executor's boundary and typically finishes after
+    # that event has emitted — without its own boundary, the follow-up LLM
+    # call's context (and any log.error below) is silently discarded.
+    async with log_context(
+        "follow_up_generation",
+        trace_id=get_trace_id() or None,
+        conversation_id=run.conversation_id,
+        task_id=run.task_id,
+    ):
+        user_id = run.user.get("user_id", "")
+        try:
+            follow_up_actions = await _build_follow_up_actions(
+                msg_type=result_type,
+                notification_text=bot_message.response,
+                user_msg_content=user_msg_content,
+                user_id=user_id,
+            )
+            if not follow_up_actions:
+                return
 
-        bot_message.follow_up_actions = follow_up_actions
-        persisted = await _persist_follow_up_actions(
-            user_id=user_id,
-            conversation_id=run.conversation_id,
-            message_id=bot_message.message_id,
-            follow_up_actions=follow_up_actions,
-        )
-        if not persisted:
-            # Broadcasting unpersisted suggestions would show them in the UI
-            # only to vanish on reload — drop them instead.
-            return
-        await _broadcast_bot_message(
-            user_id=user_id,
-            conversation_id=run.conversation_id,
-            bot_message=bot_message,
-            notification_text=bot_message.response,
-            tool_data=tool_data,
-            follow_up_actions=follow_up_actions,
-            task_id=run.task_id,
-            show_reply_quote=show_reply_quote,
-            user_message_id=run.user_message_id,
-            user_msg_content=user_msg_content,
-        )
-    except Exception as e:
-        # Non-critical enhancement — the answer is already delivered. Log loudly
-        # but never let a follow-up failure crash the background task.
-        log.error(f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e))
+            bot_message.follow_up_actions = follow_up_actions
+            persisted = await _persist_follow_up_actions(
+                user_id=user_id,
+                conversation_id=run.conversation_id,
+                message_id=bot_message.message_id,
+                follow_up_actions=follow_up_actions,
+            )
+            if not persisted:
+                # Broadcasting unpersisted suggestions would show them in the UI
+                # only to vanish on reload — drop them instead.
+                return
+            await _broadcast_bot_message(
+                user_id=user_id,
+                conversation_id=run.conversation_id,
+                bot_message=bot_message,
+                notification_text=bot_message.response,
+                tool_data=tool_data,
+                follow_up_actions=follow_up_actions,
+                task_id=run.task_id,
+                show_reply_quote=show_reply_quote,
+                user_message_id=run.user_message_id,
+                user_msg_content=user_msg_content,
+            )
+        except Exception as e:
+            # Non-critical enhancement — the answer is already delivered. Log loudly
+            # but never let a follow-up failure crash the background task.
+            log.error(
+                f"{LogTag.AGENT} deliver_result: deferred follow-up actions failed", error=str(e)
+            )
 
 
 async def _persist_follow_up_actions(

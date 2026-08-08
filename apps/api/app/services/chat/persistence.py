@@ -135,7 +135,12 @@ async def save_conversation_async(
         try:
             await process_token_usage_and_cost(user_id, metadata)
         except Exception as e:  # noqa: BLE001 — billing failure must not block save
-            log.error(f"{LogTag.CHAT} Failed to process token usage: {e}")
+            log.error(
+                f"{LogTag.CHAT} Failed to process token usage",
+                error=str(e),
+                error_type=type(e).__name__,
+                conversation_id=conversation_id,
+            )
 
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
@@ -230,4 +235,8 @@ async def process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -
         )
 
     except Exception as e:  # noqa: BLE001 — billing failure must not block save
-        log.debug(f"{LogTag.CHAT} Token usage processing failed: {e}")
+        log.debug(
+            f"{LogTag.CHAT} Token usage processing failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )

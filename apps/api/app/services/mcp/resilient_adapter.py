@@ -92,13 +92,24 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Get tools from MCP server
         try:
             mcp_tools = await connector.list_tools()
-            log.info(f"{LogTag.MCP} [{integration_id}] MCP server returned {len(mcp_tools)} tools")
+            log.info(
+                f"{LogTag.MCP} MCP server returned tools",
+                integration_id=integration_id,
+                mcp_tools_count=len(mcp_tools),
+            )
         except Exception as e:
-            log.error(f"{LogTag.MCP} [{integration_id}] Failed to list tools: {e}")
+            log.error(
+                f"{LogTag.MCP} Failed to list tools",
+                integration_id=integration_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             raise
 
         if not mcp_tools:
-            log.warning(f"{LogTag.MCP} [{integration_id}] No tools returned from MCP server")
+            log.warning(
+                f"{LogTag.MCP} No tools returned from MCP server", integration_id=integration_id
+            )
             return []
 
         # Normalize schemas before conversion
@@ -109,7 +120,11 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                 normalized_tools.append(normalized_tool)
             except Exception as e:
                 log.warning(
-                    f"{LogTag.MCP} [{integration_id}] Could not normalize schema for {tool.name}: {e}"
+                    f"{LogTag.MCP} Could not normalize schema for",
+                    integration_id=integration_id,
+                    name=tool.name,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
                 # Still try to use the original tool
                 normalized_tools.append(tool)
@@ -145,23 +160,32 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                             "permissions": ui_meta.get("permissions", []),
                         }
                         log.debug(
-                            f"{LogTag.MCP} [{integration_id}] Attached mcp_ui metadata to tool: {tool.name}"
+                            f"{LogTag.MCP} Attached mcp_ui metadata to tool",
+                            integration_id=integration_id,
+                            name=tool.name,
                         )
 
                 successfully_converted.append(langchain_tool)
-                log.debug(f"{LogTag.MCP} [{integration_id}] Converted tool: {tool.name}")
+                log.debug(
+                    f"{LogTag.MCP} Converted tool", integration_id=integration_id, name=tool.name
+                )
             except Exception as e:
                 failed_tools.append((tool.name, str(e)))
                 log.warning(
-                    f"{LogTag.MCP} [{integration_id}] Failed to convert tool '{tool.name}': "
-                    f"{type(e).__name__}: {e}"
+                    f"{LogTag.MCP} Failed to convert tool",
+                    integration_id=integration_id,
+                    tool_name=tool.name,
+                    error_type=type(e).__name__,
                 )
                 # Continue with other tools
 
         # Log summary
         if successfully_converted:
             log.info(
-                f"{LogTag.MCP} [{integration_id}] Successfully converted {len(successfully_converted)}/{len(mcp_tools)} tools"
+                f"{LogTag.MCP} Successfully converted / tools",
+                integration_id=integration_id,
+                successfully_converted_count=len(successfully_converted),
+                mcp_tools_count=len(mcp_tools),
             )
 
         if failed_tools:

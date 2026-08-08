@@ -156,7 +156,12 @@ class SlackTriggerHandler(TriggerHandler):
             if isinstance(result, Exception):
                 has_failure = True
                 failure_message = str(result)
-                log.error(f"{LogTag.TRIGGER} Slack trigger registration failed: {result}")
+                log.error(
+                    f"{LogTag.TRIGGER} Slack trigger registration failed",
+                    result=result,
+                    user_id=user_id,
+                    workflow_id=_workflow_id,
+                )
             elif isinstance(result, list):
                 successful_ids.extend(result)
 
@@ -164,7 +169,10 @@ class SlackTriggerHandler(TriggerHandler):
         if has_failure:
             if successful_ids:
                 log.warning(
-                    f"{LogTag.TRIGGER} Rolling back {len(successful_ids)} Slack triggers due to partial failure"
+                    f"{LogTag.TRIGGER} Rolling back Slack triggers due to partial failure",
+                    successful_ids_count=len(successful_ids),
+                    user_id=user_id,
+                    workflow_id=_workflow_id,
                 )
                 await self.unregister(user_id, successful_ids)
 
@@ -190,12 +198,21 @@ class SlackTriggerHandler(TriggerHandler):
 
             if result and hasattr(result, "trigger_id"):
                 log.info(
-                    f"{LogTag.TRIGGER} Registered {composio_slug} for user {user_id}: {result.trigger_id}"
+                    f"{LogTag.TRIGGER} Registered for user",
+                    composio_slug=composio_slug,
+                    user_id=user_id,
+                    trigger_id=result.trigger_id,
                 )
                 return [result.trigger_id]
             return []
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Failed to register Slack trigger {composio_slug}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Failed to register Slack trigger",
+                composio_slug=composio_slug,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return []
 
     async def find_workflows(
@@ -211,7 +228,11 @@ class SlackTriggerHandler(TriggerHandler):
                 elif "message" in event_type.lower() or "message" in trigger_id:
                     SlackReceiveMessagePayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Slack payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Slack payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             workflows: list[Workflow] = []
             for workflow in await workflow_repository.find_active_by_composio_trigger(trigger_id):
@@ -244,19 +265,31 @@ class SlackTriggerHandler(TriggerHandler):
                         # If channels specified and message not in list, skip
                         if selected_channels and message_channel not in selected_channels:
                             log.debug(
-                                f"{LogTag.TRIGGER} Message channel {message_channel} not in selected channels for workflow {workflow.id}"
+                                f"{LogTag.TRIGGER} Message channel not in selected channels for workflow",
+                                message_channel=message_channel,
+                                id=workflow.id,
                             )
                             continue
 
                     workflows.append(workflow)
                 except Exception as e:
-                    log.error(f"{LogTag.TRIGGER} Error processing workflow document: {e}")
+                    log.error(
+                        f"{LogTag.TRIGGER} Error processing workflow document",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        trigger_id=trigger_id,
+                    )
                     continue
 
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
     async def get_config_options(
@@ -301,7 +334,12 @@ class SlackTriggerHandler(TriggerHandler):
 
                     # Check response status
                     if not result["successful"]:
-                        log.error(f"{LogTag.TRIGGER} Slack API error: {result['error']}")
+                        log.error(
+                            f"{LogTag.TRIGGER} Slack API error",
+                            error=result["error"],
+                            user_id=user_id,
+                            integration_id=integration_id,
+                        )
                         break
 
                     data = SlackListAllChannelsData.model_validate(result["data"])
@@ -336,11 +374,20 @@ class SlackTriggerHandler(TriggerHandler):
 
                     page_count += 1
 
-                log.info(f"{LogTag.TRIGGER} Returning {len(all_channels)} Slack channel options")
+                log.info(
+                    f"{LogTag.TRIGGER} Returning Slack channel options",
+                    all_channels_count=len(all_channels),
+                )
                 return all_channels
 
             except Exception as e:
-                log.error(f"{LogTag.TRIGGER} Failed to fetch Slack channels: {e}")
+                log.error(
+                    f"{LogTag.TRIGGER} Failed to fetch Slack channels",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                    integration_id=integration_id,
+                )
                 return []
 
         return []

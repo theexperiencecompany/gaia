@@ -59,7 +59,7 @@ from app.services.storage import (
     sessions_root_inode,
     stat_artifact,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import log, log_context, spawn_logged_task
 
 SESSIONS_WATCH_ROOT = f"{WORKSPACE_ROOT}/{SESSIONS_DIRNAME}"
 # `.accesslog` is a JuiceFS *mount-root* virtual file. mount_juicefs.sh mounts
@@ -106,6 +106,20 @@ def _strip_artifacts_prefix(abs_path: str, conv_id: str) -> str:
     if abs_path.startswith(root):
         return abs_path[len(root) :]
     return abs_path.rsplit("/", 1)[-1]
+
+
+async def _record_watch_exit(user_id: str, mode: DetectionMode, exc: Exception | None) -> None:
+    """One wide event per dead watch stream, with the reason when there is one."""
+    async with log_context(
+        "sandbox_artifact_watch_exit",
+        user={"id": user_id},
+        sandbox={"artifact_mode": mode},
+    ):
+        log.warning(
+            f"{LogTag.ARTIFACT_WATCHER} watch stream exited",
+            error=str(exc) if exc else None,
+            error_type=type(exc).__name__ if exc else None,
+        )
 
 
 class ArtifactWatcher:
@@ -218,36 +232,58 @@ class ArtifactWatcher:
             timeout=0,
         )
 
-    def _on_watch_exit(self, _exc: Exception | None = None) -> None:
+    def _on_watch_exit(self, exc: Exception | None = None) -> None:
         # Stream died (envd restart / pause). Mark dead so the next acquire
-        # transparently reopens it.
+        # transparently reopens it. envd only invokes on_exit on a real error,
+        # and until now it flipped the flag with no trace at all — a sandbox
+        # whose artifacts silently stopped reaching chat looked identical to
+        # one the agent never wrote to. The flag flip is synchronous (the envd
+        # callback is sync and must complete before acquire can reopen), and
+        # the wide-event record of the exit is spawned so it still lands even
+        # though the callback itself cannot await.
         self._stopped = True
         self._handle = None
+        spawn_logged_task(
+            "sandbox_artifact_watch_exit",
+            _record_watch_exit(self.user_id, self._mode, exc),
+        )
 
     async def _on_fs_event(self, ev: FilesystemEvent) -> None:
-        try:
-            name = getattr(ev, "name", "") or ""
-            abs_path = f"{SESSIONS_WATCH_ROOT}/{name}"
-            if abs_path.endswith(WORKSPACE_TMP_SUFFIX):
+        async with log_context(
+            "sandbox_artifact_event",
+            user={"id": self.user_id},
+            sandbox={"artifact_mode": self._mode},
+        ):
+            try:
+                name = getattr(ev, "name", "") or ""
+                abs_path = f"{SESSIONS_WATCH_ROOT}/{name}"
+                if abs_path.endswith(WORKSPACE_TMP_SUFFIX):
+                    return
+                role, conv = classify(abs_path)
+                if role != MountRole.ARTIFACTS or conv is None:
+                    return
+                etype = getattr(getattr(ev, "type", None), "name", "")
+                rel = _strip_artifacts_prefix(abs_path, conv)
+                if not rel or rel.endswith("/"):
+                    return
+                log.set(chat={"conversation_id": conv}, file_name=rel, operation=etype)
+                if etype in ("REMOVE", "RENAME"):
+                    await publish_artifact_event(self.user_id, remove_event(conv, rel))
+                    return
+                info = await stat_artifact(self.user_id, conv, rel)
+                if info is None:
+                    return
+                await publish_artifact_event(self.user_id, upsert_event(conv, info))
+            except JuiceFSUnavailable:
                 return
-            role, conv = classify(abs_path)
-            if role != MountRole.ARTIFACTS or conv is None:
-                return
-            etype = getattr(getattr(ev, "type", None), "name", "")
-            rel = _strip_artifacts_prefix(abs_path, conv)
-            if not rel or rel.endswith("/"):
-                return
-            if etype in ("REMOVE", "RENAME"):
-                await publish_artifact_event(self.user_id, remove_event(conv, rel))
-                return
-            info = await stat_artifact(self.user_id, conv, rel)
-            if info is None:
-                return
-            await publish_artifact_event(self.user_id, upsert_event(conv, info))
-        except JuiceFSUnavailable:
-            return
-        except Exception as e:
-            log.debug(f"{LogTag.ARTIFACT_WATCHER} event dispatch failed: {e}")
+            except Exception as e:
+                # Was debug — i.e. below the default level, so an artifact that
+                # never reached the chat UI left no record anywhere.
+                log.warning(
+                    f"{LogTag.ARTIFACT_WATCHER} event dispatch failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
     # -- accesslog mode ---------------------------------------------------
 
@@ -263,7 +299,12 @@ class ArtifactWatcher:
             timeout=0,
             user="root",
         )
-        self._accesslog_monitor = asyncio.create_task(self._watch_accesslog_exit(self._handle))
+        self._accesslog_monitor = spawn_logged_task(
+            "sandbox_accesslog_watch",
+            self._watch_accesslog_exit(self._handle),
+            user={"id": self.user_id},
+            sandbox={"artifact_mode": self._mode},
+        )
 
     async def _watch_accesslog_exit(self, handle: AsyncCommandHandle) -> None:
         """Mark the watcher dead when the background tail stream ends.
@@ -271,12 +312,16 @@ class ArtifactWatcher:
         The tail handle has no exit callback (unlike watch_dir's on_exit), so a
         paused/restarted sandbox would otherwise leave is_alive() returning True
         forever and the next acquire would never reopen the watcher.
+
+        Spawned with a boundary so the stream's death is one event (when it
+        happened, how long it lived) rather than a silent flag flip.
         """
         with contextlib.suppress(Exception):
             await handle.wait()
         if self._handle is handle:
             self._stopped = True
             self._handle = None
+            log.warning(f"{LogTag.ARTIFACT_WATCHER} accesslog tail stream ended")
 
     def _on_accesslog_line(self, line: str) -> None:
         """Route a mutating accesslog op to a scoped or full rescan.
@@ -307,7 +352,12 @@ class ArtifactWatcher:
     def _schedule_rescan(self) -> None:
         if self._rescan_task is not None and not self._rescan_task.done():
             return  # a rescan is already pending; it'll pick up the change
-        self._rescan_task = asyncio.create_task(self._debounced_rescan())
+        self._rescan_task = spawn_logged_task(
+            "sandbox_artifact_rescan",
+            self._debounced_rescan(),
+            user={"id": self.user_id},
+            sandbox={"artifact_mode": self._mode},
+        )
 
     async def _debounced_rescan(self) -> None:
         try:
@@ -329,7 +379,13 @@ class ArtifactWatcher:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.debug(f"{LogTag.ARTIFACT_WATCHER} rescan failed: {e}")
+            # Was debug — a rescan that never ran is an artifact the user never
+            # sees, so it has to survive on the event.
+            log.warning(
+                f"{LogTag.ARTIFACT_WATCHER} rescan failed",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def _rescan_all(self) -> None:
         async with fs_timer(FsOps.WATCHER_RESCAN):

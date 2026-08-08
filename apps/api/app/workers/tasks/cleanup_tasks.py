@@ -13,7 +13,7 @@ from app.services.onboarding.intelligence_job import (
     is_intelligence_job_live,
     is_workflows_job_live,
 )
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import log
 
 
 class _RequeueOutcome(Enum):
@@ -82,49 +82,55 @@ async def cleanup_stuck_personalization(ctx: dict[str, Any], max_age_minutes: in
     Skips users whose ARQ job is still live so a slow-but-healthy pipeline is
     never aborted. Keep max_age_minutes >= ARQ job_timeout.
     """
-    async with wide_task("cleanup_stuck_personalization", max_age_minutes=max_age_minutes):
-        try:
-            cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
+    log.set(max_age_minutes=max_age_minutes)
+    try:
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
 
-            stuck_candidates = await user_repository.find_stuck_personalization(
-                cutoff_time, limit=50
-            )
+        stuck_candidates = await user_repository.find_stuck_personalization(cutoff_time, limit=50)
 
-            if not stuck_candidates:
-                return (
-                    f"No stuck users found "
-                    f"(checked users older than {max_age_minutes}m at "
-                    f"phase=personalization_pending)"
-                )
-
-            log.set(stuck_candidates_detected=len(stuck_candidates))
-
-            tally = {
-                _RequeueOutcome.QUEUED: 0,
-                _RequeueOutcome.SKIPPED: 0,
-                _RequeueOutcome.ERROR: 0,
-            }
-            for user in stuck_candidates:
-                user_id = user.id
-                try:
-                    outcome = await _requeue_stuck_user(user)
-                except Exception as e:
-                    log.exception(f"{LogTag.WORKER} error re-queueing user {user_id}: {e}")
-                    outcome = _RequeueOutcome.ERROR
-                tally[outcome] += 1
-
-            log.set(
-                jobs_queued=tally[_RequeueOutcome.QUEUED],
-                jobs_skipped_live=tally[_RequeueOutcome.SKIPPED],
-            )
+        if not stuck_candidates:
             return (
-                f"Cleanup completed: {tally[_RequeueOutcome.QUEUED]} re-queued, "
-                f"{tally[_RequeueOutcome.SKIPPED]} skipped (live), "
-                f"{tally[_RequeueOutcome.ERROR]} errors "
-                f"(found {len(stuck_candidates)} candidates)"
+                f"No stuck users found "
+                f"(checked users older than {max_age_minutes}m at "
+                f"phase=personalization_pending)"
             )
 
-        except Exception as e:
-            error_msg = f"Error in cleanup_stuck_personalization: {e}"
-            log.exception(f"{LogTag.WORKER} {error_msg}")
-            return error_msg
+        log.set(stuck_candidates_detected=len(stuck_candidates))
+
+        tally = {
+            _RequeueOutcome.QUEUED: 0,
+            _RequeueOutcome.SKIPPED: 0,
+            _RequeueOutcome.ERROR: 0,
+        }
+        for user in stuck_candidates:
+            user_id = user.id
+            try:
+                outcome = await _requeue_stuck_user(user)
+            except Exception as e:
+                log.exception(
+                    f"{LogTag.WORKER} error re-queueing user",
+                    user_id=user_id,
+                    error_type=type(e).__name__,
+                    error=str(e),
+                )
+                outcome = _RequeueOutcome.ERROR
+            tally[outcome] += 1
+
+        log.set(
+            jobs_queued=tally[_RequeueOutcome.QUEUED],
+            jobs_skipped_live=tally[_RequeueOutcome.SKIPPED],
+        )
+        return (
+            f"Cleanup completed: {tally[_RequeueOutcome.QUEUED]} re-queued, "
+            f"{tally[_RequeueOutcome.SKIPPED]} skipped (live), "
+            f"{tally[_RequeueOutcome.ERROR]} errors "
+            f"(found {len(stuck_candidates)} candidates)"
+        )
+
+    except Exception as e:
+        log.exception(
+            f"{LogTag.WORKER} Error in cleanup_stuck_personalization",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        return f"Error in cleanup_stuck_personalization: {e}"

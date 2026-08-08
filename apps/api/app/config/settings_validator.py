@@ -385,7 +385,13 @@ class SettingsValidator:
             if group.affected_features:
                 warning_msg += f"\n  → Affected: {group.affected_features}"
 
-            log.warning(f"{LogTag.STARTUP} {warning_msg}")
+            log.warning(
+                f"{LogTag.STARTUP} Missing configuration for feature group",
+                severity=prefix,
+                group_name=group.name,
+                missing_keys=missing_keys,
+                affected_features=group.affected_features,
+            )
 
 
 settings_validator = SettingsValidator()

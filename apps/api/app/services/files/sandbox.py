@@ -56,10 +56,23 @@ async def mirror_upload(
             )
             await chmod_path(host_path, _READ_ONLY)
     except JuiceFSUnavailable as e:
-        log.warning(f"[files] juicefs unavailable; not mirroring upload: {e}")
+        log.warning(
+            "[files] juicefs unavailable; not mirroring upload",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
         return None
     except Exception as e:
-        log.error(f"[files] failed to mirror upload to sandbox: {e!s}", exc_info=True)
+        log.error(
+            "[files] failed to mirror upload to sandbox",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            exc_info=True,
+        )
         return None
 
     # Cross-mount host writes may not reach the sandbox watcher; publish the
@@ -73,7 +86,7 @@ async def mirror_upload(
             content_type=content_type,
         ),
     )
-    log.info(f"[files] mirrored upload to {sandbox_path}")
+    log.info("[files] mirrored upload to", sandbox_path=sandbox_path)
     return sandbox_path
 
 
@@ -98,11 +111,18 @@ async def write_summary_sidecar(
             content=summary_md.encode("utf-8"),
         )
         await chmod_path(host_path, _READ_ONLY)
-        log.info(f"[files] wrote summary sidecar for {safe_filename}")
+        log.info("[files] wrote summary sidecar for", safe_filename=safe_filename)
     except JuiceFSUnavailable:
         return
     except Exception as e:
-        log.warning(f"[files] failed to write summary sidecar for {safe_filename}: {e!s}")
+        log.warning(
+            "[files] failed to write summary sidecar for",
+            safe_filename=safe_filename,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
 
 
 __all__ = ["mirror_upload", "write_summary_sidecar"]

@@ -12,14 +12,13 @@ import type { Readable } from "node:stream";
 import type { AxiosInstance } from "axios";
 import type { ApprovalRequestData } from "../../chat";
 import type { BotUserContext, ChatRequest } from "../types";
-import { createBotLogger, getHttpStatus } from "../utils/logger";
+import { getHttpStatus } from "../utils/logger";
+import { wideLog } from "../utils/wide-events";
 
 /** Fired when a HIL approval frame arrives (bots render it out-of-band). */
 export type ApprovalUpdateHandler = (
   data: ApprovalRequestData,
 ) => void | Promise<void>;
-
-const logger = createBotLogger("shared", "chat-stream");
 
 /**
  * The slice of {@link GaiaClient} the streamer needs: the HTTP client, auth
@@ -93,11 +92,11 @@ export async function streamChat(
         MAX_RETRY_DELAY_MS,
       );
       attemptedRetries++;
-      logger.warn("chat_stream_retrying", {
+      wideLog.warning("chat_stream_retrying", {
         attempt: attemptedRetries,
         max_retries: maxRetries,
         delay_ms: delayMs,
-        error_message: lastError.message,
+        error: lastError.message,
       });
       await new Promise((resolve) => setTimeout(resolve, delayMs));
     }

@@ -269,5 +269,9 @@ def manage_system_prompts_node(state: State, config: RunnableConfig, store: Base
         return cast(State, {**state, "messages": filtered})
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error in manage system prompts node: {e}")
+        log.error(
+            f"{LogTag.AGENT} Error in manage system prompts node",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return state

@@ -229,15 +229,20 @@ async def extract_social_profiles_from_emails(
         capped.extend(sorted_entries[:_MAX_CANDIDATES_PER_PLATFORM])
 
     log.info(
-        f"{LogTag.ONBOARDING} Harvested {len(capped)} social URL candidates "
-        f"across {len(by_platform)} platforms from {len(emails)} emails"
+        f"{LogTag.ONBOARDING} Harvested social URL candidates across platforms from emails",
+        capped_count=len(capped),
+        by_platform_count=len(by_platform),
+        emails_count=len(emails),
     )
 
     for entry in capped:
         sent_label = "SENT" if entry.is_sent else "recv"
         log.info(
-            f"{LogTag.ONBOARDING} social profile candidate: {entry.platform}/{entry.handle} "
-            f"freq={entry.frequency} {sent_label}"
+            f"{LogTag.ONBOARDING} social profile candidate: / freq",
+            entry_platform=entry.platform,
+            entry_handle=entry.handle,
+            entry_frequency=entry.frequency,
+            sent_label=sent_label,
         )
 
     candidates_lines: list[str] = []
@@ -295,22 +300,27 @@ async def extract_social_profiles_from_emails(
                 owned.append(SocialProfile(platform=item_platform, url=canonical_url))
 
         log.info(
-            f"{LogTag.ONBOARDING} social_profiles LLM filtered to {len(owned)} owned profiles "
-            f"from {len(capped)} candidates"
+            f"{LogTag.ONBOARDING} social_profiles LLM filtered to owned profiles from candidates",
+            owned_count=len(owned),
+            capped_count=len(capped),
         )
         if owned:
             for p in owned:
-                log.info(f"{LogTag.ONBOARDING} social_profiles accepted: {p.platform} -> {p.url}")
+                log.info(
+                    f"{LogTag.ONBOARDING} social_profiles accepted", platform=p.platform, url=p.url
+                )
         else:
             log.info(
-                f"{LogTag.ONBOARDING} social_profiles LLM returned 0 owned. "
-                f"Raw output: {result.owned_profiles!r}"
+                f"{LogTag.ONBOARDING} social_profiles LLM returned 0 owned. Raw output",
+                owned_profiles=result.owned_profiles,
             )
         return dedup_profiles_by_platform(owned)
 
     except Exception as e:
         log.error(
-            f"{LogTag.ONBOARDING} social_profiles LLM filter failed, using sent-email fallback: {e}",
+            f"{LogTag.ONBOARDING} social_profiles LLM filter failed, using sent-email fallback",
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
         return dedup_profiles_by_platform(sent_fallback)
@@ -329,4 +339,8 @@ def dedup_profiles_by_platform(profiles: list[SocialProfile]) -> list[SocialProf
 async def save_confirmed_profiles(user_id: str, profiles: list[SocialProfile]) -> None:
     """Persist user-confirmed social profiles, overwriting extracted ones."""
     await user_repository.set_social_profiles(user_id, profiles)
-    log.info(f"{LogTag.ONBOARDING} Saved {len(profiles)} confirmed social profiles for {user_id}")
+    log.info(
+        f"{LogTag.ONBOARDING} Saved confirmed social profiles for",
+        profiles_count=len(profiles),
+        user_id=user_id,
+    )

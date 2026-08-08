@@ -120,7 +120,7 @@ async def create_workflow(
 
         # Parse the response
         result = parse_subagent_response(subagent_response)
-        log.info(f"{LogTag.TOOL} create_workflow: Parsed mode={result.mode}")
+        log.info(f"{LogTag.TOOL} create_workflow: parsed mode", mode=result.mode)
 
         if result.mode == "finalized" and result.draft:
             draft = result.draft
@@ -128,7 +128,8 @@ async def create_workflow(
             # Check if we can create directly (simple, unambiguous workflows)
             if can_create_directly(draft):
                 log.info(
-                    f"{LogTag.TOOL} create_workflow: Attempting direct creation for: {draft.title}"
+                    f"{LogTag.TOOL} create_workflow: attempting direct creation",
+                    draft_title=draft.title,
                 )
 
                 # Try to create the workflow directly
@@ -150,7 +151,9 @@ async def create_workflow(
 
             # Stream workflow draft to frontend for user confirmation
             writer(result.draft.to_stream_payload())
-            log.info(f"{LogTag.TOOL} create_workflow: Streamed draft: {result.draft.title}")
+            log.info(
+                f"{LogTag.TOOL} create_workflow: streamed draft", draft_title=result.draft.title
+            )
 
             return success_response(
                 {"status": "draft_sent"},
@@ -173,7 +176,9 @@ async def create_workflow(
         if result.mode == "parse_error":
             # Subagent returned something we couldn't parse.
             # Let the executor know so it can inform the user or retry.
-            log.warning(f"{LogTag.TOOL} create_workflow: Parse error: {result.parse_error}")
+            log.warning(
+                f"{LogTag.TOOL} create_workflow: parse error", parse_error=result.parse_error
+            )
             return error_response(
                 "parse_error",
                 f"Failed to process the workflow assistant's response: {result.parse_error}. "
@@ -186,7 +191,9 @@ async def create_workflow(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} create_workflow: Exception: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} create_workflow: exception", error_type=type(e).__name__, exc_info=True
+        )
         return error_response("subagent_failed", str(e))
 
 
@@ -210,7 +217,11 @@ async def get_workflow(
         return success_response(workflow.model_dump())
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error getting workflow {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error getting workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
         return error_response("fetch_failed", str(e))
 
 
@@ -240,7 +251,11 @@ async def execute_workflow(
         return success_response(data)
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error executing workflow {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error executing workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
         return error_response("execution_failed", str(e))
 
 
@@ -271,7 +286,11 @@ async def pause_workflow(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error pausing workflow {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error pausing workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
         return error_response("pause_failed", str(e))
 
 
@@ -306,7 +325,11 @@ async def resume_workflow(
         )
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Error resuming workflow {workflow_id}: {e}")
+        log.error(
+            f"{LogTag.TOOL} Error resuming workflow",
+            workflow_id=workflow_id,
+            error_type=type(e).__name__,
+        )
         return error_response("resume_failed", str(e))
 
 
@@ -359,7 +382,7 @@ async def edit_workflow(
         )
 
         result = parse_subagent_response(subagent_response)
-        log.info(f"{LogTag.TOOL} edit_workflow: Parsed mode={result.mode}")
+        log.info(f"{LogTag.TOOL} edit_workflow: parsed mode", mode=result.mode)
 
         if result.mode == "finalized" and result.draft:
             return await apply_workflow_edit(
@@ -378,7 +401,7 @@ async def edit_workflow(
             )
 
         if result.mode == "parse_error":
-            log.warning(f"{LogTag.TOOL} edit_workflow: Parse error: {result.parse_error}")
+            log.warning(f"{LogTag.TOOL} edit_workflow: parse error", parse_error=result.parse_error)
             return error_response(
                 "parse_error",
                 f"Failed to process the workflow assistant's response: {result.parse_error}. "
@@ -388,7 +411,9 @@ async def edit_workflow(
         return success_response({"status": "completed"}, "Workflow edit completed.")
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} edit_workflow: Exception: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.TOOL} edit_workflow: exception", error_type=type(e).__name__, exc_info=True
+        )
         return error_response("edit_failed", str(e))
 
 

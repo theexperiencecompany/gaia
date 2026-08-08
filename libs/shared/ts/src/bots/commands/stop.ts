@@ -7,9 +7,7 @@
  * @module
  */
 import type { BotCommand, CommandExecuteParams } from "../types";
-import { createBotLogger } from "../utils/logger";
-
-const logger = createBotLogger("shared", "command:stop");
+import { wideLog } from "../utils/wide-events";
 
 /** `/stop` command definition. */
 export const stopCommand: BotCommand = {
@@ -21,7 +19,7 @@ export const stopCommand: BotCommand = {
       await gaia.resetSession(ctx.platform, ctx.platformUserId, ctx.channelId);
       await target.sendEphemeral("⏹️ Stopped. Starting a new conversation.");
     } catch (error) {
-      logger.error("stop_command_error", undefined, error);
+      wideLog.error("stop_command_error", undefined, error);
       await target.sendEphemeral("❌ Failed to stop. Please try again.");
     }
   },

@@ -257,10 +257,14 @@ class ToolRegistry:
             }
         )
         log.info(
-            f"{LogTag.TOOL} _add_category: '{name}' space='{space}' tools_in="
-            f"{len(tools) if tools else 0} core_in="
-            f"{len(core_tools) if core_tools else 0} final="
-            f"{len(category.tools)} replacing={replacing} (was {prior_tools_count})"
+            f"{LogTag.TOOL} _add_category",
+            category_name=name,
+            space=space,
+            tools_in=len(tools) if tools else 0,
+            core_in=len(core_tools) if core_tools else 0,
+            final=len(category.tools),
+            replacing=replacing,
+            prior_tools_count=prior_tools_count,
         )
 
     def _initialize_categories(self) -> None:
@@ -422,7 +426,9 @@ class ToolRegistry:
             return self._categories[toolkit_name]
 
         log.info(
-            f"{LogTag.TOOL} Registering provider tools for {toolkit_name} (space: {space_name})"
+            f"{LogTag.TOOL} Registering provider tools",
+            toolkit_name=toolkit_name,
+            space_name=space_name,
         )
 
         composio_service = get_composio_service()
@@ -448,7 +454,11 @@ class ToolRegistry:
 
         await self._index_category_tools(toolkit_name)
 
-        log.info(f"{LogTag.TOOL} Registered {len(tools)} tools for {toolkit_name}")
+        log.info(
+            f"{LogTag.TOOL} Registered tools for toolkit",
+            tool_count=len(tools),
+            toolkit_name=toolkit_name,
+        )
         return self._categories[toolkit_name]
 
     async def populate_provider_catalog(self) -> int:
@@ -500,7 +510,11 @@ class ToolRegistry:
                     tool_kit=toolkit, specific_tools=specific
                 )
             except Exception as e:
-                log.error(f"{LogTag.TOOL} Failed to load catalog metadata for {toolkit}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Failed to load catalog metadata",
+                    toolkit=toolkit,
+                    error_type=type(e).__name__,
+                )
                 return
 
             metas = [
@@ -517,7 +531,11 @@ class ToolRegistry:
             try:
                 await index_tools_to_store([(m, space) for m in metas])
             except Exception as e:
-                log.error(f"{LogTag.TOOL} Failed to index catalog metadata for {toolkit}: {e}")
+                log.error(
+                    f"{LogTag.TOOL} Failed to index catalog metadata",
+                    toolkit=toolkit,
+                    error_type=type(e).__name__,
+                )
                 return
 
             mongo_batch.append(
@@ -536,8 +554,9 @@ class ToolRegistry:
         for integration, result in zip(integrations, results):
             if isinstance(result, Exception):
                 log.error(
-                    f"{LogTag.TOOL} Catalog metadata population failed for "
-                    f"{integration.composio_config.toolkit}: {result}"
+                    f"{LogTag.TOOL} Catalog metadata population failed",
+                    toolkit=integration.composio_config.toolkit,
+                    error_type=type(result).__name__,
                 )
 
         if mongo_batch:
@@ -545,12 +564,14 @@ class ToolRegistry:
                 await store_mcp_tools_batch(mongo_batch)
             except Exception as e:
                 log.warning(
-                    f"{LogTag.TOOL} Failed to store provider catalog metadata to Mongo: {e}"
+                    f"{LogTag.TOOL} Failed to store provider catalog metadata to Mongo",
+                    error_type=type(e).__name__,
                 )
 
         log.info(
-            f"{LogTag.TOOL} Provider catalog metadata indexed: {total} tools "
-            f"across {len(integrations)} toolkits (no StructuredTools materialized)"
+            f"{LogTag.TOOL} Provider catalog metadata indexed (no StructuredTools materialized)",
+            tool_count=total,
+            toolkit_count=len(integrations),
         )
         return total
 
@@ -570,8 +591,9 @@ class ToolRegistry:
         category = self._categories.get(category_name)
         if not category:
             log.warning(
-                f"{LogTag.TOOL} _index_category_tools: category '{category_name}' not in registry, "
-                f"known={sorted(self._categories.keys())[:20]}..."
+                f"{LogTag.TOOL} _index_category_tools: category not in registry",
+                category_name=category_name,
+                known_categories=sorted(self._categories.keys())[:20],
             )
             return
 
@@ -584,16 +606,18 @@ class ToolRegistry:
             }
         )
         log.info(
-            f"{LogTag.TOOL} _index_category_tools: '{category_name}' space='{category.space}' "
-            f"category.tools count={category_tools_count}"
+            f"{LogTag.TOOL} _index_category_tools",
+            category_name=category_name,
+            space=category.space,
+            category_tools_count=category_tools_count,
         )
 
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
         if not tools_with_space:
             log.warning(
-                f"{LogTag.TOOL} _index_category_tools: category '{category_name}' has 0 tools "
-                f"(space='{category.space}'), nothing to index — caller likely passed "
-                f"empty tools to _add_category"
+                f"{LogTag.TOOL} _index_category_tools: category has 0 tools, nothing to index — caller likely passed empty tools to _add_category",
+                category_name=category_name,
+                space=category.space,
             )
             return
 

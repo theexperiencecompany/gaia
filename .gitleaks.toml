@@ -1,0 +1,16 @@
+# Gitleaks configuration — keep everything at gitleaks defaults except one
+# allowlist. scripts/dev/sandbox-env.sh carries deliberately fake throwaway
+# values for local development (documented in the file header); the Fernet
+# MCP_ENCRYPTION_KEY must be a valid 32-byte url-safe base64 key for settings
+# validation to pass, which the default generic-api-key rule reads as a secret
+# despite the `# pragma: allowlist secret` annotations on every value.
+#
+# The allowlist is scoped to this exact file, so a real secret anywhere else
+# still fails the scan.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "deliberate local-dev throwaway values (see scripts/dev/sandbox-env.sh header)"
+paths = ["scripts/dev/sandbox-env.sh"]

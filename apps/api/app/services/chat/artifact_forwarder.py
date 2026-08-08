@@ -158,14 +158,22 @@ class ArtifactForwarder:
             await pubsub.subscribe(channel)
             self._signal_subscribed()
             log.info(
-                f"{ARTIFACT_LOG_PREFIX} subscribed "
-                f"(conv={self.conversation_id}, registry={len(self.registry_mtimes)})"
+                "subscribed",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                conversation_id=self.conversation_id,
+                registry_mtimes_count=len(self.registry_mtimes),
             )
             await self._consume(pubsub)
         except asyncio.CancelledError:
             raise
         except Exception as e:  # noqa: BLE001 — log and exit; orchestrator cleans up
-            log.warning(f"{ARTIFACT_LOG_PREFIX} forwarder error (conv={self.conversation_id}): {e}")
+            log.warning(
+                "forwarder error",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                conversation_id=self.conversation_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
         finally:
             self._signal_subscribed()  # no-op when set; unblocks waiters if subscribe failed
             self._log_summary()
@@ -195,7 +203,11 @@ class ArtifactForwarder:
                 raise
             except Exception as e:  # noqa: BLE001 — one bad event must not kill the turn
                 log.warning(
-                    f"{ARTIFACT_LOG_PREFIX} event failed (conv={self.conversation_id}): {e}"
+                    "event failed",
+                    artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                    conversation_id=self.conversation_id,
+                    error=str(e),
+                    error_type=type(e).__name__,
                 )
 
     # ── Per-event routing ──────────────────────────────────────────────────
@@ -208,7 +220,7 @@ class ArtifactForwarder:
             await self._apply_remove(path)
         elif self._is_unchanged(path, payload):
             self.stats.unchanged += 1  # idempotent re-emit — kills the cross-turn leak
-            log.debug(f"{ARTIFACT_LOG_PREFIX} skip unchanged path={path}")
+            log.debug("skip unchanged path", artifact_log_prefix=ARTIFACT_LOG_PREFIX, path=path)
         else:
             await self._apply_upsert(payload, path, event)
 
@@ -276,11 +288,18 @@ class ArtifactForwarder:
                     return
                 await asyncio.sleep(ARTIFACT_PERSIST_RETRY_BASE_DELAY * (attempt + 1))
             log.warning(
-                f"{ARTIFACT_LOG_PREFIX} persist matched no bot message after retries "
-                f"(conv={self.conversation_id}, msg={self.bot_message_id})"
+                "persist matched no bot message after retries",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                conversation_id=self.conversation_id,
+                bot_message_id=self.bot_message_id,
             )
         except Exception as e:  # noqa: BLE001 — best-effort; live stream already delivered it
-            log.warning(f"{ARTIFACT_LOG_PREFIX} failed to persist artifact entry: {e}")
+            log.warning(
+                "failed to persist artifact entry",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _maybe_deliver_to_bot(self, payload: dict[str, Any], path: str, event: str | None) -> None:
         """Push an agent-generated artifact to a bot user's outbound queue, once.
@@ -330,15 +349,24 @@ class ArtifactForwarder:
                 )
                 await asyncio.to_thread(_warm_artifact_blocks, host_path)
         except Exception as e:  # noqa: BLE001 — best-effort cache warm
-            log.debug(f"{ARTIFACT_LOG_PREFIX} cache warm skipped: {e}")
+            log.debug(
+                "cache warm skipped",
+                artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     def _log_summary(self) -> None:
         s = self.stats
         log.set(artifacts=s.as_wide_event(self.conversation_id))
         log.info(
-            f"{ARTIFACT_LOG_PREFIX} closed (conv={self.conversation_id}, "
-            f"upserts={s.upserts}, removes={s.removes}, "
-            f"unchanged={s.unchanged}, delivered={s.delivered})"
+            "closed",
+            artifact_log_prefix=ARTIFACT_LOG_PREFIX,
+            conversation_id=self.conversation_id,
+            upserts=s.upserts,
+            removes=s.removes,
+            unchanged=s.unchanged,
+            delivered=s.delivered,
         )
 
 

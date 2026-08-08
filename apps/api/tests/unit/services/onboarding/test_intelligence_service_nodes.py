@@ -201,8 +201,10 @@ class TestEmitStage:
             )
 
         line = log.info.call_args.args[0]
-        assert "inbox_scanning" in line
-        assert "Connecting to Gmail" in line
+        kwargs = log.info.call_args.kwargs
+        assert "stage" in line
+        assert kwargs.get("stage_value") == OnboardingStage.INBOX_SCANNING.value
+        assert kwargs.get("status_text") == "Connecting to Gmail"
 
     async def test_a_payload_without_status_text_logs_only_the_stage(self) -> None:
         manager = MagicMock()
@@ -211,8 +213,10 @@ class TestEmitStage:
             await _emit_stage(USER, OnboardingStage.COMPLETE, CompletePayload(conversation_id="c1"))
 
         line = log.info.call_args.args[0]
-        assert "complete" in line
-        assert "—" not in line
+        kwargs = log.info.call_args.kwargs
+        assert "stage" in line
+        assert kwargs.get("stage_value") == OnboardingStage.COMPLETE.value
+        assert kwargs.get("status_text") is None
 
 
 # ---------------------------------------------------------------------------

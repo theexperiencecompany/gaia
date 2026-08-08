@@ -54,9 +54,10 @@ class TestAsyncTimer:
             await my_fn()
 
         mock_log.info.assert_called_once()
-        msg = mock_log.info.call_args[0][0]
-        assert "my_fn" in msg
-        assert "0.456" in msg
+        assert mock_log.info.call_args.kwargs == {
+            "func_name": "my_fn",
+            "execution_time": 0.456,
+        }
 
     async def test_slow_function_warning(self) -> None:
         """Functions taking > 1.0s should produce a warning."""
@@ -115,10 +116,12 @@ class TestAsyncTimer:
                 await explode()
 
         mock_log.error.assert_called_once()
-        error_msg = mock_log.error.call_args[0][0]
-        assert "explode" in error_msg
-        assert "0.789" in error_msg
-        assert "kaboom" in error_msg
+        assert mock_log.error.call_args.kwargs == {
+            "func_name": "explode",
+            "execution_time": 0.789,
+            "error": "kaboom",
+            "error_type": "ValueError",
+        }
 
     async def test_preserves_function_metadata(self) -> None:
         with patch("app.decorators.timing.log"), patch("app.decorators.timing.time"):
@@ -213,9 +216,10 @@ class TestSyncTimer:
             my_sync()
 
         mock_log.info.assert_called_once()
-        msg = mock_log.info.call_args[0][0]
-        assert "my_sync" in msg
-        assert "0.321" in msg
+        assert mock_log.info.call_args.kwargs == {
+            "func_name": "my_sync",
+            "execution_time": 0.321,
+        }
 
     def test_slow_function_warning(self) -> None:
         with (
@@ -273,10 +277,12 @@ class TestSyncTimer:
                 fail()
 
         mock_log.error.assert_called_once()
-        error_msg = mock_log.error.call_args[0][0]
-        assert "fail" in error_msg
-        assert "0.567" in error_msg
-        assert "disk error" in error_msg
+        assert mock_log.error.call_args.kwargs == {
+            "func_name": "fail",
+            "execution_time": 0.567,
+            "error": "disk error",
+            "error_type": "OSError",
+        }
 
     def test_preserves_function_metadata(self) -> None:
         with patch("app.decorators.timing.log"), patch("app.decorators.timing.time"):
@@ -385,9 +391,10 @@ class TestTimer:
             fn()
 
         mock_log.info.assert_called_once()
-        msg = mock_log.info.call_args[0][0]
-        assert "fn" in msg
-        assert "0.555" in msg
+        assert mock_log.info.call_args.kwargs == {
+            "func_name": "fn",
+            "execution_time": 0.555,
+        }
 
     async def test_async_via_timer_logs_correctly(self) -> None:
         with (
@@ -405,9 +412,10 @@ class TestTimer:
             await fn()
 
         mock_log.info.assert_called_once()
-        msg = mock_log.info.call_args[0][0]
-        assert "fn" in msg
-        assert "0.777" in msg
+        assert mock_log.info.call_args.kwargs == {
+            "func_name": "fn",
+            "execution_time": 0.777,
+        }
 
 
 # ---------------------------------------------------------------------------

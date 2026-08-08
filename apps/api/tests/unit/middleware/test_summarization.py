@@ -513,7 +513,10 @@ async def test_an_unexpected_archive_failure_is_reported_as_an_error(
         result = await mw.abefore_model({"messages": _humans(10)}, _runtime())
 
     assert result is not None  # summarization is never blocked by a failed archive
-    assert any("Archive failed: disk full" in e["msg"] for e in log.get()["errors"])
+    assert any(
+        e["msg"].endswith("Archive failed") and e.get("error_type") == "OSError"
+        for e in log.get()["errors"]
+    )
 
 
 async def test_the_default_configuration_matches_the_documented_contract() -> None:

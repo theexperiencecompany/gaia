@@ -12,7 +12,7 @@ from app.db.repositories.users import user_repository
 from app.models.user_models import UserDocument
 from app.utils.notification.channel_preferences import normalize_channel_preferences
 from app.utils.timezone import as_utc
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import log
 
 
 def _emails_sent_this_episode(user: UserDocument) -> int:
@@ -59,43 +59,52 @@ async def check_inactive_users(ctx: dict[str, Any]) -> str:
     Returns:
         Processing result message
     """
-    async with wide_task("check_inactive_users"):
-        from app.services.email import send_inactive_user_email
+    from app.services.email import send_inactive_user_email
 
-        if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
-            log.info(f"{LogTag.WORKER} Inactive-email run skipped: email delivery not configured")
-            return "skipped: email not configured"
+    if not settings.RESEND_API_KEY or not settings.EMAIL_UNSUBSCRIBE_SECRET:
+        # The boundary emits one canonical event per run; the skip reason rides
+        # on it instead of a standalone line.
+        log.set(outcome="skipped", reason="email delivery not configured")
+        return "skipped: email not configured"
 
-        log.info(f"{LogTag.WORKER} Checking for inactive users")
+    log.set(stage="checking")
 
-        now = datetime.now(UTC)
-        seven_days_ago = now - timedelta(days=7)
+    now = datetime.now(UTC)
+    seven_days_ago = now - timedelta(days=7)
 
-        # Convert to naive datetime for comparison with potentially naive database values
-        seven_days_ago_naive = seven_days_ago.replace(tzinfo=None)
+    # Convert to naive datetime for comparison with potentially naive database values
+    seven_days_ago_naive = seven_days_ago.replace(tzinfo=None)
 
-        # Find users inactive for 7+ days who haven't gotten email recently
-        inactive_users = await user_repository.find_inactive_email_candidates(seven_days_ago_naive)
+    # Find users inactive for 7+ days who haven't gotten email recently
+    inactive_users = await user_repository.find_inactive_email_candidates(seven_days_ago_naive)
 
-        log.set(inactive_users_detected=len(inactive_users))
+    log.set(inactive_users_detected=len(inactive_users))
 
-        email_count = 0
-        email_failures = 0
-        for user in inactive_users:
-            if not user.email or not _should_send_inactive_email(user):
-                continue
-            try:
-                await send_inactive_user_email(user.email, user.id, user.name)
-                await user_repository.record_inactive_email(
-                    user.id, _emails_sent_this_episode(user) + 1
-                )
-                email_count += 1
-                log.info(f"{LogTag.WORKER} Sent inactive email to {user.email}")
-            except Exception as e:
-                email_failures += 1
-                log.error(f"{LogTag.WORKER} Failed to send email to {user.email}: {e!s}")
+    email_count = 0
+    email_failures = 0
+    for user in inactive_users:
+        if not user.email or not _should_send_inactive_email(user):
+            continue
+        try:
+            await send_inactive_user_email(user.email, user.id, user.name)
+            await user_repository.record_inactive_email(
+                user.id, _emails_sent_this_episode(user) + 1
+            )
+            email_count += 1
+            log.set(sent_to_email=user.email)
+        except Exception as e:
+            email_failures += 1
+            log.error(
+                f"{LogTag.WORKER} Failed to send email",
+                email=user.email,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
-        log.set(emails_sent=email_count, email_failures=email_failures)
-        message = f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
-        log.info(f"{LogTag.WORKER} {message}")
-        return message
+    log.set(
+        emails_sent=email_count,
+        email_failures=email_failures,
+        checked_users=len(inactive_users),
+        outcome="success",
+    )
+    return f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"

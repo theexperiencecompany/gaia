@@ -110,7 +110,7 @@ async def read(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"{LogTag.SANDBOX} read tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} read tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error reading file: {e}"
 
 
@@ -145,7 +145,7 @@ async def _read_image(
     except SandboxAcquisitionError as e:
         return f"Error: sandbox unavailable — {e}"
     except Exception as e:
-        log.error(f"{LogTag.SANDBOX} read tool failed: {e}", exc_info=True)
+        log.error(f"{LogTag.SANDBOX} read tool failed", error_type=type(e).__name__, exc_info=True)
         return f"Error reading file: {e}"
 
     file_size = len(data)

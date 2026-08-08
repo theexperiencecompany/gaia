@@ -151,7 +151,9 @@ async def regenerate_example_for_style(
 
     except Exception as e:
         log.error(
-            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example: {e}",
+            f"{LogTag.ONBOARDING} writing_style Failed to regenerate example",
+            error=str(e),
+            error_type=type(e).__name__,
             exc_info=True,
         )
         return None
@@ -160,10 +162,10 @@ async def regenerate_example_for_style(
 async def save_user_edited_summary(user_id: str, edited_summary: str) -> None:
     """Persist a user-edited writing style summary as the canonical style."""
     await user_repository.set_writing_style_user_summary(user_id, edited_summary)
-    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved user-edited summary for", user_id=user_id)
 
 
 async def save_generated_example(user_id: str, example: WritingStyleExampleBlocks) -> None:
     """Persist a regenerated example email to MongoDB as structured blocks."""
     await user_repository.set_writing_style_and_triage(user_id, writing_style_example=example)
-    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for {user_id}")
+    log.info(f"{LogTag.ONBOARDING} writing_style Saved regenerated example for", user_id=user_id)

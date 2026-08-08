@@ -28,14 +28,19 @@ router = APIRouter()
 
 @router.get("/plans", response_model=list[PlanResponse])
 @limiter.limit("30/minute")
+# evlog-map-disable-next-line audit -- read-only plan catalog lookup, no state change to audit
 async def get_plans_endpoint(request: Request, active_only: bool = True) -> list[PlanResponse]:
     """Get all available subscription plans."""
     log.set(payment={"operation": "get_plans"})
     try:
         return await payment_service.get_plans(active_only=active_only)
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error getting plans: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to get plans")
+        log.error(
+            f"{LogTag.PAYMENT} Error getting plans",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to get plans") from e
 
 
 @router.post("/subscriptions")
@@ -56,12 +61,25 @@ async def create_subscription_endpoint(
         },
     )
     try:
-        return await payment_service.create_subscription(
+        result = await payment_service.create_subscription(
             user_id, subscription_data.product_id, subscription_data.quantity
         )
+        log.audit(
+            "subscription checkout created",
+            actor=user_id,
+            resource=str(subscription_data.product_id) if subscription_data.product_id else None,
+            provider="dodo",
+        )
+        return result
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error creating subscription: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to create subscription")
+        log.error(
+            f"{LogTag.PAYMENT} Error creating subscription",
+            user_id=user_id,
+            product_id=str(subscription_data.product_id) if subscription_data.product_id else None,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to create subscription") from e
 
 
 @router.post("/verify-payment", response_model=PaymentVerificationResponse)
@@ -76,14 +94,22 @@ async def verify_payment_endpoint(
         payment={"operation": "verify_payment"},
     )
     try:
-        return await payment_service.verify_payment_completion(user_id)
+        result = await payment_service.verify_payment_completion(user_id)
+        log.audit("payment verification completed", actor=user_id, provider="dodo")
+        return result
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error verifying payment: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to verify payment")
+        log.error(
+            f"{LogTag.PAYMENT} Error verifying payment",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to verify payment") from e
 
 
 @router.get("/subscription-status", response_model=UserSubscriptionStatus)
 @limiter.limit("60/minute")
+# evlog-map-disable-next-line audit -- read-only subscription status lookup, no state change to audit
 async def get_subscription_status_endpoint(
     request: Request,
     user_id: str = Depends(get_user_id),
@@ -96,8 +122,13 @@ async def get_subscription_status_endpoint(
     try:
         return await payment_service.get_user_subscription_status(user_id)
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error getting subscription status: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to get subscription status")
+        log.error(
+            f"{LogTag.PAYMENT} Error getting subscription status",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to get subscription status") from e
 
 
 @router.post("/webhooks/dodo")
@@ -108,6 +139,10 @@ async def handle_dodo_webhook(
     webhook_signature: str = Header(..., alias="webhook-signature"),
 ) -> DodoWebhookAckResponse:
     """Handle incoming webhooks from Dodo Payments with signature verification."""
+    # Set before signature verification so a rejected webhook — the event worth
+    # seeing — still carries the payment context instead of emitting bare.
+    log.set(payment={"operation": "webhook", "webhook_id": webhook_id})
+
     try:
         # Get raw body for signature verification
         body = await request.body()
@@ -122,7 +157,7 @@ async def handle_dodo_webhook(
 
         # Verify webhook signature using Standard Webhooks library
         if not payment_webhook_service.verify_webhook_signature(payload, headers):
-            log.warning(f"{LogTag.PAYMENT} Invalid webhook signature")
+            log.warning(f"{LogTag.PAYMENT} Invalid webhook signature", webhook_id=webhook_id)
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
         # Raw provider payload: process_webhook validates it into DodoWebhookEvent and
@@ -130,18 +165,22 @@ async def handle_dodo_webhook(
         # policy stays driven by the processing result rather than a request rejection.
         webhook_data: dict[str, Any] = json.loads(payload)
 
-        event_type = webhook_data.get("type", "unknown")
-        log.set(
-            payment={
-                "operation": "webhook",
-                "event_type": event_type,
-            }
-        )
+        log.set_ns("payment", event_type=webhook_data.get("type", "unknown"))
 
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
 
-        log.info(f"{LogTag.PAYMENT} Webhook processed: {result.event_type} - {result.status}")
+        log.audit(
+            "payment webhook processed",
+            actor="dodo-webhook",
+            event_type=result.event_type,
+            processing_status=result.status,
+        )
+        log.info(
+            f"{LogTag.PAYMENT} Webhook processed",
+            event_type=result.event_type,
+            processing_status=result.status,
+        )
         return DodoWebhookAckResponse(
             event_type=result.event_type,
             processing_status=result.status,
@@ -150,9 +189,15 @@ async def handle_dodo_webhook(
 
     except HTTPException:
         raise
-    except json.JSONDecodeError:
-        log.error(f"{LogTag.PAYMENT} Invalid JSON in webhook payload")
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+    except json.JSONDecodeError as exc:
+        log.error(
+            f"{LogTag.PAYMENT} Invalid JSON in webhook payload", error_type=type(exc).__name__
+        )
+        raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
     except Exception as e:
-        log.error(f"{LogTag.PAYMENT} Error processing webhook: {e}")
-        raise HTTPException(status_code=500, detail="Webhook processing failed")
+        log.error(
+            f"{LogTag.PAYMENT} Error processing webhook",
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Webhook processing failed") from e

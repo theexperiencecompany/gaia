@@ -174,7 +174,9 @@ class MiddlewareExecutor:
                 raise
             except Exception as e:
                 log.warning(
-                    f"{LogTag.AGENT} Middleware {mw.__class__.__name__}.before_model failed: {e}"
+                    f"{LogTag.AGENT} Middleware before_model failed",
+                    middleware=mw.__class__.__name__,
+                    error_type=type(e).__name__,
                 )
 
         return State(**current_state)
@@ -223,7 +225,9 @@ class MiddlewareExecutor:
                 raise
             except Exception as e:
                 log.warning(
-                    f"{LogTag.AGENT} Middleware {mw.__class__.__name__}.after_model failed: {e}"
+                    f"{LogTag.AGENT} Middleware after_model failed",
+                    middleware=mw.__class__.__name__,
+                    error_type=type(e).__name__,
                 )
 
         return State(**current_state)
@@ -316,7 +320,10 @@ class MiddlewareExecutor:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.error(f"{LogTag.AGENT} Middleware wrap_model_call chain failed: {e}")
+            log.error(
+                f"{LogTag.AGENT} Middleware wrap_model_call chain failed",
+                error_type=type(e).__name__,
+            )
             # Fallback to direct invocation
             return await invoke_fn(state.get("messages", []))
 
@@ -408,7 +415,11 @@ class MiddlewareExecutor:
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            log.error(f"{LogTag.AGENT} Middleware wrap_tool_call chain failed for {tool_name}: {e}")
+            log.error(
+                f"{LogTag.AGENT} Middleware wrap_tool_call chain failed",
+                tool_name=tool_name,
+                error_type=type(e).__name__,
+            )
             # The tool already ran — re-invoking would fire its side effects a
             # second time (another screen capture, another write). Ship the raw
             # result and lose only the post-tool middleware's transforms.

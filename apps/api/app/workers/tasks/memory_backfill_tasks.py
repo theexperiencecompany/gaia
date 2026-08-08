@@ -41,7 +41,8 @@ from app.models.notification.notification_models import (
 )
 from app.services.notification_service import notification_service
 from app.utils.redis_utils import RedisPoolManager
-from shared.py.wide_events import MemoryContext, UserContext, log, wide_task
+from app.workers.queue import enqueue_worker_job
+from shared.py.wide_events import MemoryContext, UserContext, log
 
 _BACKFILL_TASK = "backfill_user_memories"
 _MEMORY_SETTINGS_URL = "/settings/memory"
@@ -59,26 +60,27 @@ async def backfill_active_users(ctx: dict[str, Any]) -> str:
     extraction LLM; the marker means the next run resumes with whoever is left
     (plus anyone who became active in the meantime).
     """
-    async with wide_task("backfill_active_users"):
-        active_since = _active_since()
-        remaining = await user_repository.count_backfill_candidates(
-            active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE
-        )
-        candidate_ids = await user_repository.find_backfill_candidate_ids(
-            active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
-        )
+    active_since = _active_since()
+    remaining = await user_repository.count_backfill_candidates(
+        active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE
+    )
+    candidate_ids = await user_repository.find_backfill_candidate_ids(
+        active_since, MEMORY_BACKFILL_ELIGIBLE_BEFORE, limit=MEMORY_BACKFILL_MAX_USERS_PER_RUN
+    )
 
-        pool = await RedisPoolManager.get_pool()
-        enqueued = 0
-        for user_id in candidate_ids:
-            # Deterministic job id: a user already queued/running is not
-            # re-enqueued by an overlapping cron run.
-            job = await pool.enqueue_job(_BACKFILL_TASK, user_id, _job_id=f"membackfill:{user_id}")
-            if job is not None:
-                enqueued += 1
+    pool = await RedisPoolManager.get_pool()
+    enqueued = 0
+    for user_id in candidate_ids:
+        # Deterministic job id: a user already queued/running is not
+        # re-enqueued by an overlapping cron run.
+        job = await enqueue_worker_job(
+            pool, _BACKFILL_TASK, user_id, _job_id=f"membackfill:{user_id}"
+        )
+        if job is not None:
+            enqueued += 1
 
-        log.set(eligible_remaining=remaining, enqueued=enqueued)
-        return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
+    log.set(eligible_remaining=remaining, enqueued=enqueued)
+    return f"memory backfill: enqueued {enqueued}, {max(remaining - enqueued, 0)} still pending"
 
 
 async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:
@@ -88,62 +90,62 @@ async def backfill_user_memories(ctx: dict[str, Any], user_id: str) -> str:
     facts, so a retry never double-stores. The marker is set even on a zero-fact
     no-op so the cron won't keep re-selecting the user.
     """
-    async with wide_task("backfill_user_memories", user=UserContext(id=user_id)):
-        user = await user_repository.get(user_id)
-        if user is None or user.memory_backfilled is not None:
-            log.set(skipped=True)
-            return f"skip {user_id}: missing or already backfilled"
+    log.set(user=UserContext(id=user_id))
+    user = await user_repository.get(user_id)
+    if user is None or user.memory_backfilled is not None:
+        log.set(skipped=True)
+        return f"skip {user_id}: missing or already backfilled"
 
-        user_name = user.name or "the user"
-        # Most-recent conversations, replayed oldest-first so journal dates and
-        # recency-based reconciliation land on the right days.
-        docs = [
-            conversation.model_dump(mode="json")
-            for conversation in await conversation_repository.recent_for_user(
-                user_id, limit=MEMORY_BACKFILL_MAX_CONVERSATIONS
-            )
-        ]
-        docs.reverse()
-
-        facts = 0
-        processed = 0
-        for doc in docs:
-            messages = _conversation_to_messages(doc)
-            if not messages:
-                continue
-            result = await memory_engine.retain(
-                user_id,
-                messages,
-                source_type=MemorySourceType.CONVERSATION,
-                source_id=doc.get("conversation_id"),
-                user_name=user_name,
-                now=_conversation_date(doc),
-            )
-            facts += result.facts_extracted
-            processed += 1
-
-        if processed:
-            # Each retain only *scheduled* a debounced (120s) core-document
-            # consolidation. Cancel it and run one pass inline so the memory is
-            # genuinely ready when we notify — and so the result survives a
-            # worker restart that would otherwise drop the debounced pass.
-            await cancel_consolidation(user_id)
-            last_day = max(_conversation_date(doc).date() for doc in docs)
-            await memory_engine.summarize_episode(user_id, last_day)
-            await memory_engine.consolidate(user_id)
-
-        await user_repository.mark_memory_backfilled(user_id)
-        log.set(
-            memory=MemoryContext(operation="retain", facts_extracted=facts, result_count=facts),
-            conversations=processed,
+    user_name = user.name or "the user"
+    # Most-recent conversations, replayed oldest-first so journal dates and
+    # recency-based reconciliation land on the right days.
+    docs = [
+        conversation.model_dump(mode="json")
+        for conversation in await conversation_repository.recent_for_user(
+            user_id, limit=MEMORY_BACKFILL_MAX_CONVERSATIONS
         )
+    ]
+    docs.reverse()
 
-        # Only tell the user when something was actually learned — a 0-fact
-        # no-op shouldn't surface a "we organized your memories" message.
-        if facts > 0:
-            await _notify_memory_ready(user_id)
+    facts = 0
+    processed = 0
+    for doc in docs:
+        messages = _conversation_to_messages(doc)
+        if not messages:
+            continue
+        result = await memory_engine.retain(
+            user_id,
+            messages,
+            source_type=MemorySourceType.CONVERSATION,
+            source_id=doc.get("conversation_id"),
+            user_name=user_name,
+            now=_conversation_date(doc),
+        )
+        facts += result.facts_extracted
+        processed += 1
 
-        return f"backfilled {user_id}: {processed} conversations, {facts} facts"
+    if processed:
+        # Each retain only *scheduled* a debounced (120s) core-document
+        # consolidation. Cancel it and run one pass inline so the memory is
+        # genuinely ready when we notify — and so the result survives a
+        # worker restart that would otherwise drop the debounced pass.
+        await cancel_consolidation(user_id)
+        last_day = max(_conversation_date(doc).date() for doc in docs)
+        await memory_engine.summarize_episode(user_id, last_day)
+        await memory_engine.consolidate(user_id)
+
+    await user_repository.mark_memory_backfilled(user_id)
+    log.set(
+        memory=MemoryContext(operation="retain", facts_extracted=facts, result_count=facts),
+        conversations=processed,
+    )
+
+    # Only tell the user when something was actually learned — a 0-fact
+    # no-op shouldn't surface a "we organized your memories" message.
+    if facts > 0:
+        await _notify_memory_ready(user_id)
+
+    return f"backfilled {user_id}: {processed} conversations, {facts} facts"
 
 
 def _conversation_to_messages(doc: dict[str, Any]) -> list[dict[str, str]]:

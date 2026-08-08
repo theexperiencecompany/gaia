@@ -33,6 +33,7 @@ usage_service = UsageService()
 
 
 @router.get("/summary")
+# evlog-map-disable-next-line audit -- read-only usage lookup, no state change to audit
 async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummaryResponse:
     """Get real-time usage summary for the current user."""
     log.set(operation="get_usage_summary")
@@ -54,11 +55,17 @@ async def get_usage_summary(user_id: str = Depends(get_user_id)) -> UsageSummary
             last_updated=datetime.now(UTC),
         )
     except Exception as e:
-        log.error(f"Error getting usage summary: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to get usage summary")
+        log.error(
+            "Error getting usage summary",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to get usage summary") from e
 
 
 @router.get("/history")
+# evlog-map-disable-next-line audit -- read-only usage/plan history lookup, no state change to audit
 async def get_usage_history(
     days: int = Query(default=7, ge=1, le=90, description="Number of days to retrieve"),
     feature_key: str | None = Query(default=None, description="Specific feature to filter by"),
@@ -101,8 +108,13 @@ async def get_usage_history(
         log.set(outcome="success")
         return formatted_history
     except Exception as e:
-        log.error(f"Error getting usage history: {e!s}")
-        raise HTTPException(status_code=500, detail="Failed to get usage history")
+        log.error(
+            "Error getting usage history",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to get usage history") from e
 
 
 async def _get_realtime_usage(user_id: str, user_plan: PlanType) -> dict[str, RealtimeFeatureUsage]:

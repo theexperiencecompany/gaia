@@ -183,13 +183,19 @@ async def fetch_all_calendar_events(
 
         if page_count > 5:
             log.info(
-                f"Calendar {calendar_id} has many events - fetched {len(all_items)} so far, page {page_count}"
+                "Calendar has many events - fetched so far, page",
+                calendar_id=calendar_id,
+                all_items_count=len(all_items),
+                page_count=page_count,
             )
 
     truncated = page_count >= max_pages and next_page_token is not None
     if truncated:
         log.warning(
-            f"Calendar {calendar_id} truncated at {len(all_items)} events (hit max pages limit)"
+            "Calendar truncated at events (hit max pages limit)",
+            calendar_id=calendar_id,
+            all_items_count=len(all_items),
+            user_id=user_id,
         )
 
     return CalendarEventFetchResult(
@@ -307,7 +313,10 @@ async def get_calendar_events(
     fetch_every_page = fetch_all or not max_results
 
     if fetch_every_page:
-        log.info(f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range")
+        log.info(
+            "Fetching ALL events for calendars in date range",
+            selected_cal_objs_count=len(selected_cal_objs),
+        )
 
     for cal in selected_cal_objs:
         try:
@@ -316,7 +325,7 @@ async def get_calendar_events(
                 events = result.items
                 if result.truncated:
                     calendars_truncated.append(cal.id)
-                    log.warning(f"Calendar {cal.id} ({cal.summary or 'Unknown'}) was truncated")
+                    log.warning("Calendar was truncated", calendar_id=cal.id, user_id=user_id)
             else:
                 events = (
                     await fetch_calendar_events(
@@ -326,7 +335,13 @@ async def get_calendar_events(
 
             all_events.extend(_tag_with_source_calendar(events, cal, seen_event_ids))
         except Exception as e:
-            log.error(f"Error fetching events for calendar {cal.id}: {e}")
+            log.error(
+                "Error fetching events for calendar",
+                cal_id=cal.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
     all_events.sort(key=_event_sort_key)
 
@@ -338,7 +353,11 @@ async def get_calendar_events(
             "calendars_truncated": len(calendars_truncated),
         }
     )
-    log.info(f"Fetched {len(all_events)} total events from {len(selected_cal_objs)} calendars")
+    log.info(
+        "Fetched total events from calendars",
+        all_events_count=len(all_events),
+        selected_cal_objs_count=len(selected_cal_objs),
+    )
 
     return CalendarEventsResponse(
         events=all_events,
@@ -531,18 +550,17 @@ async def search_calendar_events_native(
     preferences = await calendar_repository.get_for_user(user_id)
     if preferences is not None and preferences.selected_calendars:
         user_selected_calendars = preferences.selected_calendars
-        log.info(f"User has calendar preferences: {user_selected_calendars}")
+        log.info("User has calendar preferences", user_selected_calendars=user_selected_calendars)
     else:
         user_selected_calendars = [cal.id for cal in calendars]
         log.info(
-            f"No preferences found, defaulting to all calendars: {len(user_selected_calendars)} calendars"
+            "No preferences found, defaulting to all calendars: calendars",
+            user_selected_calendars_count=len(user_selected_calendars),
         )
 
     selected_cal_objs = [cal for cal in calendars if cal.id in user_selected_calendars]
 
-    log.info(
-        f"Searching in {len(selected_cal_objs)} calendars: {[cal.summary for cal in selected_cal_objs]}"
-    )
+    log.info("Searching selected calendars", calendar_count=len(selected_cal_objs))
 
     if not selected_cal_objs:
         log.info("No selected calendars found, searching all available calendars")
@@ -555,7 +573,7 @@ async def search_calendar_events_native(
         try:
             result = await search_events_in_calendar(cal.id, query, user_id, time_min, time_max)
             events = result.items
-            log.info(f"Found {len(events)} events in calendar '{cal.summary or cal.id}'")
+            log.info("Found events in calendar", event_count=len(events), calendar_id=cal.id)
 
             for event in events:
                 event.calendarId = cal.id
@@ -563,15 +581,26 @@ async def search_calendar_events_native(
 
             filtered_events = filter_events(events)
             log.info(
-                f"After filtering: {len(filtered_events)} events in calendar '{cal.summary or cal.id}'"
+                "Events remaining after filtering",
+                filtered_event_count=len(filtered_events),
+                calendar_id=cal.id,
             )
 
             all_matching_events.extend(filtered_events)
             total_events_searched += len(filtered_events)
         except Exception as e:
-            log.error(f"Error searching events in calendar {cal.id}: {e}")
+            log.error(
+                "Error searching events in calendar",
+                cal_id=cal.id,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
 
-    log.info(f"Total matching events across all calendars: {len(all_matching_events)}")
+    log.info(
+        "Total matching events across all calendars",
+        all_matching_events_count=len(all_matching_events),
+    )
 
     if not all_matching_events and selected_cal_objs != calendars:
         log.info("No events found in selected calendars, searching all calendars...")
@@ -582,7 +611,9 @@ async def search_calendar_events_native(
                 events = result.items
 
                 if events:
-                    log.info(f"Found {len(events)} events in calendar '{cal.summary or cal.id}'")
+                    log.info(
+                        "Found events in calendar", event_count=len(events), calendar_id=cal.id
+                    )
 
                     for event in events:
                         event.calendarId = cal.id
@@ -592,7 +623,13 @@ async def search_calendar_events_native(
                     all_matching_events.extend(filtered_events)
                     total_events_searched += len(filtered_events)
             except Exception as e:
-                log.error(f"Error searching events in calendar {cal.id}: {e}")
+                log.error(
+                    "Error searching events in calendar",
+                    cal_id=cal.id,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    user_id=user_id,
+                )
 
     return CalendarSearchResult(
         query=query,
@@ -622,7 +659,7 @@ async def search_events_in_calendar(
     if time_max:
         params["timeMax"] = time_max
 
-    log.info(f"Searching calendar {calendar_id} with query '{query}' and params: {params}")
+    log.info("Searching calendar", calendar_id=calendar_id, time_min=time_min, time_max=time_max)
     result = GoogleCalendarEventsPage.model_validate(
         await _proxy(
             user_id,
@@ -631,7 +668,9 @@ async def search_events_in_calendar(
             query=params,
         )
     )
-    log.info(f"Calendar {calendar_id} search returned {len(result.items)} events")
+    log.info(
+        "Calendar search returned events", calendar_id=calendar_id, event_count=len(result.items)
+    )
     return result
 
 
@@ -664,7 +703,7 @@ def _update_recurrence_rules(
     try:
         return event.recurrence.to_google_calendar_format()
     except Exception as e:
-        log.error(f"Error processing recurrence rules: {e}")
+        log.error("Error processing recurrence rules", error=str(e), error_type=type(e).__name__)
         raise HTTPException(status_code=400, detail=f"Invalid recurrence rule format: {e!s}")
 
 

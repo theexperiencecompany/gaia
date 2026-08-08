@@ -38,11 +38,11 @@ export function attachPlainReporter(store: CLIStore): void {
   store.on("change", (state) => {
     if (state.step && state.step !== lastStep) {
       lastStep = state.step;
-      console.log(`\n[${state.step}]`);
+      console.info(`\n[${state.step}]`);
     }
     if (state.status && state.status !== lastStatus) {
       lastStatus = state.status;
-      console.log(`  ${state.status}`);
+      console.info(`  ${state.status}`);
     }
     if (state.error && state.error.message !== lastErrorMsg) {
       lastErrorMsg = state.error.message;

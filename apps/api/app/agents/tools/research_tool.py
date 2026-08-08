@@ -221,9 +221,7 @@ async def deep_research(
                 fetch_counter += 1
                 snippet = url_info.get("snippet", "").strip()
                 if snippet:
-                    log.warning(
-                        f"{LogTag.TOOL} All fetchers failed for {url[:60]}, using search snippet"
-                    )
+                    log.warning(f"{LogTag.TOOL} All fetchers failed, using search snippet", url=url)
                     return {
                         **url_info,
                         "content": f"[Snippet only — full page unavailable]\n\n{snippet}",
@@ -281,5 +279,5 @@ async def deep_research(
         }
 
     except Exception as e:
-        log.error(f"{LogTag.TOOL} Deep research error: {e}", exc_info=True)
+        log.error(f"{LogTag.TOOL} Deep research error", error_type=type(e).__name__, exc_info=True)
         return {"error": str(e), "query": query, "data": None}

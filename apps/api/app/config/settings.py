@@ -54,7 +54,11 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            log.warning(f"{LogTag.STARTUP} Error creating settings: {e!s}")
+            log.warning(
+                f"{LogTag.STARTUP} Error creating settings",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -665,7 +669,8 @@ def _ensure_infisical_loaded() -> None:
         infisical_start = time.time()
         inject_infisical_secrets()
         log.info(
-            f"{LogTag.STARTUP} Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
+            f"{LogTag.STARTUP} Infisical secrets loaded",
+            duration_seconds=round(time.time() - infisical_start, 3),
         )
         _infisical_secrets_loaded = True
 
@@ -688,7 +693,6 @@ def get_settings() -> Any:
     showed `from_env(**kwargs: object)` adds 4 more: `cls(**kwargs)` feeds
     per-field types (`ENV: Literal[...]`, `SHOW_MISSING_KEY_WARNINGS: bool`).
     """
-    log.set(service={"name": "gaia-api"})
     log.info(f"{LogTag.STARTUP} Starting settings initialization...")
 
     _ensure_infisical_loaded()
@@ -748,7 +752,11 @@ def get_settings() -> Any:
         return settings_obj
 
     except Exception as e:
-        log.error(f"{LogTag.STARTUP} Error initializing settings: {e!s}")
+        log.error(
+            f"{LogTag.STARTUP} Error initializing settings",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":

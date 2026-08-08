@@ -164,7 +164,7 @@ async def memory_node(
     # Quick validation - skip trivial conversations
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:
-        log.debug(f"{LogTag.AGENT} Memory learning skipped: {reason}")
+        log.debug(f"{LogTag.AGENT} Memory learning skipped", reason=reason)
         return state
 
     if user_id:
@@ -183,7 +183,9 @@ async def memory_node(
         _background_tasks.add(task)
         task.add_done_callback(_task_done_callback)
         log.debug(
-            f"{LogTag.AGENT} Memory learning spawned ({subagent_id or 'agent'}): {task.get_name()}"
+            f"{LogTag.AGENT} Memory learning spawned",
+            subagent_id=subagent_id,
+            task_name=task.get_name(),
         )
 
     return state

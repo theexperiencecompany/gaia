@@ -9,4 +9,5 @@
  */
 export { BaseBotAdapter } from "./base";
 export { BotServer } from "./base-server";
+export { runBotProcess } from "./process-lifecycle";
 export { richMessageToMarkdown } from "./rich-renderer";

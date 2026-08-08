@@ -52,9 +52,10 @@ export {
   PLATFORM_MARKDOWN,
   renderForPlatform,
 } from "./formatters";
-export type { BotLogFields, BotLogger } from "./logger";
+export type { BotLogFields, BotLogger, BotLogLevel } from "./logger";
 export {
   createBotLogger,
+  emitBotLogLine,
   getHttpStatus,
   hashLogIdentifier,
   sanitizeErrorForLog,
@@ -84,3 +85,9 @@ export {
   parseTextArgs,
   truncateResponse,
 } from "./text";
+export type {
+  BotWideEventFields,
+  WideEventBoundaryFields,
+  WideEventEntry,
+} from "./wide-events";
+export { WIDE_EVENT_MESSAGE, wideLog, withWideEvent } from "./wide-events";

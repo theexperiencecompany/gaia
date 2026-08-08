@@ -162,7 +162,8 @@ class TestManageSystemPrompts:
 
         mock_log.error.assert_called_once()
         logged = mock_log.error.call_args.args[0]
+        kwargs = mock_log.error.call_args.kwargs
         assert "manage system prompts node" in logged
-        assert "unexpected failure" in logged, (
-            f"The swallowed exception must be named in the log, got: {logged}"
+        assert "unexpected failure" in kwargs.get("error", ""), (
+            f"The swallowed exception must be named in the log, got: {kwargs}"
         )

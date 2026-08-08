@@ -10,7 +10,7 @@ from arq.typing import WorkerCoroutine
 import app.patches  # noqa: F401
 from app.workers.config.worker_settings import WorkerSettings
 from app.workers.lifecycle import shutdown, startup
-from app.workers.metrics import instrument_task
+from app.workers.task_envelope import arq_task
 from app.workers.tasks import (
     backfill_active_users,
     backfill_user_memories,
@@ -38,31 +38,33 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 
-# Wrap every task with the Prometheus histogram instrumentation so arq-worker.json
-# can show real p50/p95/p99 latency per task name. Cron jobs reference the same
-# wrapped functions so scheduled runs are also instrumented.
-_process_reminder = instrument_task(process_reminder)
-_cleanup_expired_reminders = instrument_task(cleanup_expired_reminders)
-_sweep_hil_approvals = instrument_task(sweep_hil_approvals)
-_check_inactive_users = instrument_task(check_inactive_users)
-_run_nurture_sequence_task = instrument_task(run_nurture_sequence_task)
-_process_workflow_generation_task = instrument_task(process_workflow_generation_task)
-_execute_workflow_by_id = instrument_task(execute_workflow_by_id)
-_regenerate_workflow_steps = instrument_task(regenerate_workflow_steps)
-_generate_workflow_steps = instrument_task(generate_workflow_steps)
-_process_gmail_emails_to_memory = instrument_task(process_gmail_emails_to_memory)
-_process_onboarding_intelligence_task = instrument_task(process_onboarding_intelligence_task)
-_process_onboarding_workflows_task = instrument_task(process_onboarding_workflows_task)
-_cleanup_stuck_personalization = instrument_task(cleanup_stuck_personalization)
-_backfill_active_users = instrument_task(backfill_active_users)
-_backfill_user_memories = instrument_task(backfill_user_memories)
-_sweep_idle_sandboxes = instrument_task(sweep_idle_sandboxes)
-_prune_inactive_sessions = instrument_task(prune_inactive_sessions)
-_prune_checkpoint_versions = instrument_task(prune_checkpoint_versions)
-_execute_tracked_todo = instrument_task(execute_tracked_todo)
-_safety_net_check_orphaned_todos = instrument_task(safety_net_check_orphaned_todos)
-_maintenance_sweep_tracked_todos = instrument_task(maintenance_sweep_tracked_todos)
-_rescan_pending_scheduled_tasks = instrument_task(rescan_pending_scheduled_tasks)
+# Wrap every task in the standard envelope (wide event + Prometheus histogram)
+# so arq-worker.json can show real p50/p95/p99 latency per task name and every
+# run emits one correlated worker_task event. Cron jobs reference the same
+# wrapped functions so scheduled runs get both too.
+_process_reminder = arq_task(process_reminder)
+_cleanup_expired_reminders = arq_task(cleanup_expired_reminders)
+_sweep_hil_approvals = arq_task(sweep_hil_approvals)
+_check_inactive_users = arq_task(check_inactive_users)
+_process_workflow_generation_task = arq_task(process_workflow_generation_task)
+_execute_workflow_by_id = arq_task(execute_workflow_by_id)
+_regenerate_workflow_steps = arq_task(regenerate_workflow_steps)
+_generate_workflow_steps = arq_task(generate_workflow_steps)
+_process_gmail_emails_to_memory = arq_task(process_gmail_emails_to_memory)
+_process_onboarding_intelligence_task = arq_task(process_onboarding_intelligence_task)
+_process_onboarding_workflows_task = arq_task(process_onboarding_workflows_task)
+_cleanup_stuck_personalization = arq_task(cleanup_stuck_personalization)
+_backfill_active_users = arq_task(backfill_active_users)
+_backfill_user_memories = arq_task(backfill_user_memories)
+_sweep_idle_sandboxes = arq_task(sweep_idle_sandboxes)
+_prune_inactive_sessions = arq_task(prune_inactive_sessions)
+_prune_checkpoint_versions = arq_task(prune_checkpoint_versions)
+_execute_tracked_todo = arq_task(execute_tracked_todo)
+_safety_net_check_orphaned_todos = arq_task(safety_net_check_orphaned_todos)
+_maintenance_sweep_tracked_todos = arq_task(maintenance_sweep_tracked_todos)
+_rescan_pending_scheduled_tasks = arq_task(rescan_pending_scheduled_tasks)
+_run_nurture_sequence_task = arq_task(run_nurture_sequence_task)
+
 WorkerSettings.functions = [
     _sweep_hil_approvals,
     _process_reminder,

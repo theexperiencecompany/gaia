@@ -145,11 +145,20 @@ async def _emit_stage(
         )
         status_text = payload.status_text if isinstance(payload, StatusTextPayload) else None
         if status_text:
-            log.info(f"{LogTag.ONBOARDING} stage {stage.value} — {status_text}")
+            log.info(
+                f"{LogTag.ONBOARDING} stage emitted with status",
+                stage_value=stage.value,
+                status_text=status_text,
+            )
         else:
-            log.info(f"{LogTag.ONBOARDING} stage {stage.value}")
+            log.info(f"{LogTag.ONBOARDING} stage emitted", stage_value=stage.value)
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} Failed to emit stage {stage.value}: {e}")
+        log.warning(
+            f"{LogTag.ONBOARDING} Failed to emit stage",
+            stage_value=stage.value,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
 
 
 T = TypeVar("T")
@@ -159,7 +168,13 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
     try:
         return await coro
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Node '{name}' failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Node failed",
+            name=name,
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return default
 
 
@@ -1197,7 +1212,12 @@ async def _persist_social_profiles(user_id: str, social_profiles: list[SocialPro
     try:
         await user_repository.set_social_profiles_if_unset(user_id, social_profiles)
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} persist social_profiles failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} persist social_profiles failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
 
 
 async def _persist_profiles(
@@ -1227,7 +1247,12 @@ async def _persist_profiles(
                 triage_summary=triage_summary,
             )
         except Exception as e:
-            log.error(f"{LogTag.ONBOARDING} persist update_fields failed: {e}", exc_info=True)
+            log.error(
+                f"{LogTag.ONBOARDING} persist update_fields failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
 
     log.info(
         f"{LogTag.ONBOARDING} persist_profiles done",
@@ -1254,7 +1279,12 @@ def _triage_from_doc(raw: object) -> InboxTriage | None:
             ],
         )
     except (TypeError, ValueError) as e:
-        log.error(f"{LogTag.ONBOARDING} triage reconstruction failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} triage reconstruction failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return None
 
 
@@ -1273,7 +1303,12 @@ def _writing_style_from_doc(raw: object) -> WritingStyleProfile | None:
             user_edited_summary=raw.get("user_edited_summary"),
         )
     except ValidationError as e:
-        log.error(f"{LogTag.ONBOARDING} writing_style reconstruction failed: {e}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} writing_style reconstruction failed",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return None
 
 
@@ -1344,9 +1379,10 @@ async def process_onboarding_workflows_phase(user_id: str) -> None:
     if prior_workflow_ids:
         deleted = await workflow_repository.delete_many_for_user(prior_workflow_ids, user_id)
         log.info(
-            f"{LogTag.ONBOARDING} workflows phase retry — purged {deleted} "
-            f"stale suggested workflows before regenerating",
+            f"{LogTag.ONBOARDING} workflows phase retry — purged stale "
+            f"suggested workflows before regenerating",
             user_id=user_id,
+            deleted=deleted,
         )
 
     workflows = await _run_workflows(
@@ -1518,12 +1554,17 @@ async def _create_todos_from_triage(
                     )
                 elif spec.source_sender or spec.source_subject:
                     log.warning(
-                        f"{LogTag.ONBOARDING} Dropped hallucinated source_email "
-                        f"sender={spec.source_sender!r} subject={spec.source_subject!r}"
+                        f"{LogTag.ONBOARDING} Dropped hallucinated source_email",
+                        source_sender=spec.source_sender,
+                        source_subject=spec.source_subject,
                     )
                 return created
             except Exception as e:
-                log.warning(f"{LogTag.ONBOARDING} Failed to create todo: {e}")
+                log.warning(
+                    f"{LogTag.ONBOARDING} Failed to create todo",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 return None
 
         t_create = time.monotonic()
@@ -1898,5 +1939,9 @@ async def _create_fallback_workflow(
             )
         ]
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} Fallback workflow creation failed: {e}")
+        log.warning(
+            f"{LogTag.ONBOARDING} Fallback workflow creation failed",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []

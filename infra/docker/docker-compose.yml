@@ -265,7 +265,7 @@ services:
       - JUICEFS_META_URL_TEMPLATE=postgres://postgres:postgres@postgres:5432/gaia_juicefs_{shard}?sslmode=disable
     expose:
       - "9100"
-    command: ["python", "-m", "arq", "app.worker.WorkerSettings"]
+    command: ["python", "-m", "arq", "app.worker.WorkerSettings", "--custom-log-dict", "app.workers.config.log_config.ARQ_LOG_CONFIG"]
     restart: always
     volumes:
       - ../../apps/api/app:/app/apps/api/app
@@ -519,6 +519,12 @@ services:
     container_name: promtail
     profiles: ["observability", "all"]
     user: root
+    # The config expands ${LOKI_PUSH_URL:-...} — promtail only expands env vars
+    # when told to, and the image default doesn't. Without this flag promtail
+    # dies at startup parsing the unexpanded URL.
+    command:
+      - -config.file=/etc/promtail/config.yaml
+      - -config.expand-env=true
     # Prevent log feedback loop — Promtail's own stdout must not be captured by
     # Docker, or JSON parse errors spiral into tens of GB of disk usage.
     logging:
@@ -526,12 +532,30 @@ services:
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
+      # Persist read positions across container recreations — without this,
+      # promtail re-ingests every retained structured-*.json from byte 0.
+      - promtail_positions:/var/lib/promtail
       # Mount local log files so promtail can ship them even when services
-      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent).
+      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent,
+      # nx dev bot-<platform>). These back the file jobs in
+      # observability/promtail-config.yaml — a __path__ whose directory is not
+      # mounted here reads nothing, forever, silently.
+      #
+      # The bots need this for the SAME reason the Python services do, and only
+      # for the same case: a bot started with `nx dev bot-<platform>` runs on
+      # the host with cwd apps/bots/<platform> and writes
+      # logs/structured-<date>.json (libs/shared/ts/src/bots/utils/log-file-sink.ts).
+      # A *dockered* bot writes no such file — the image's WORKDIR is /app so
+      # the sink never resolves a directory — and is scraped from container
+      # stdout by the `docker` job below instead, which explicitly keeps
+      # discord-bot|slack-bot|telegram-bot|whatsapp-bot.
       - ../../apps/api/logs:/var/log/gaia-api:ro
       - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
       - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
-    command: -config.file=/etc/promtail/config.yaml
+      - ../../apps/bots/discord/logs:/var/log/gaia-discord-bot:ro
+      - ../../apps/bots/slack/logs:/var/log/gaia-slack-bot:ro
+      - ../../apps/bots/telegram/logs:/var/log/gaia-telegram-bot:ro
+      - ../../apps/bots/whatsapp/logs:/var/log/gaia-whatsapp-bot:ro
     restart: unless-stopped
     depends_on:
       loki:
@@ -559,7 +583,10 @@ services:
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
       # Use the provisioned GAIA Overview dashboard as the home page
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
-      # Slack webhook consumed by contact-points.yaml (leave empty to disable alerts)
+      # Slack webhook consumed by contact-points.yaml. Empty = no alerts; Grafana
+      # 11 still validates provisioning cleanly with an empty webhook (verified).
+      # A real webhook enables alert delivery when set. No placeholder is used —
+      # a fake hooks.slack.com URL trips GitHub push protection's secret scanner.
       SLACK_ALERT_WEBHOOK_URL: ${SLACK_ALERT_WEBHOOK_URL:-}
       SLACK_ALERT_CHANNEL: ${SLACK_ALERT_CHANNEL:-#alerts}
       # Destination for the email contact point ($__env{GRAFANA_ALERT_EMAIL} in
@@ -616,6 +643,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  promtail_positions:
   juicefs_cache:
 
 networks:

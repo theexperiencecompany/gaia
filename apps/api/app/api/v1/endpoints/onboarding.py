@@ -118,8 +118,14 @@ async def complete_user_onboarding(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error completing onboarding: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to complete onboarding")
+        log.error(
+            f"{LogTag.ONBOARDING} Error completing onboarding",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to complete onboarding") from e
 
 
 @router.post(
@@ -144,8 +150,14 @@ async def submit_integrations(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error submitting integrations: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to submit integrations")
+        log.error(
+            f"{LogTag.ONBOARDING} Error submitting integrations",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to submit integrations") from e
 
 
 class ClarifyQuestionsRequest(BaseModel):
@@ -189,8 +201,14 @@ async def reset_user_onboarding(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error resetting onboarding: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to reset onboarding")
+        log.error(
+            f"{LogTag.ONBOARDING} Error resetting onboarding",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to reset onboarding") from e
 
 
 @router.get("/status")
@@ -209,8 +227,14 @@ async def get_onboarding_status(
         log.set(onboarding={"operation": "get_status", "is_complete": status.completed})
         return status
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error getting onboarding status: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to get onboarding status")
+        log.error(
+            f"{LogTag.ONBOARDING} Error getting onboarding status",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to get onboarding status") from e
 
 
 @router.post("/phase")
@@ -232,18 +256,21 @@ async def update_onboarding_phase(
         )
 
         if not user_id or not isinstance(user_id, str):
-            log.error(f"{LogTag.ONBOARDING} user_id is missing or not a string")
+            log.error(
+                f"{LogTag.ONBOARDING} user_id is missing or not a string",
+                user_id_type=type(user_id).__name__,
+            )
             raise HTTPException(status_code=400, detail="Invalid user_id")
 
-        log.info(f"{LogTag.ONBOARDING} Updating phase to {phase} for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Updating phase", user_id=user_id, phase=request.phase.value)
 
         matched = await user_repository.set_onboarding_phase(user_id, request.phase)
 
         if not matched:
-            log.warning(f"{LogTag.ONBOARDING} No document found for user {user_id}")
+            log.warning(f"{LogTag.ONBOARDING} No document found for user", user_id=user_id)
             raise HTTPException(status_code=404, detail="User not found")
 
-        log.info(f"{LogTag.ONBOARDING} Successfully updated phase to {phase} for user {user_id}")
+        log.set_ns("onboarding", phase_updated=True)
 
         try:
             await websocket_manager.broadcast_to_user(
@@ -253,9 +280,18 @@ async def update_onboarding_phase(
                     "data": {"phase": phase},
                 },
             )
-            log.info(f"{LogTag.ONBOARDING} Sent WebSocket notification for phase update to {phase}")
+            log.info(
+                f"{LogTag.ONBOARDING} Sent WebSocket notification for phase update",
+                phase=phase,
+                user_id=user_id,
+            )
         except Exception as ws_error:
-            log.warning(f"{LogTag.ONBOARDING} Failed to send WebSocket update: {ws_error}")
+            log.warning(
+                f"{LogTag.ONBOARDING} Failed to send WebSocket update",
+                user_id=user_id,
+                error_type=type(ws_error).__name__,
+                error=str(ws_error),
+            )
 
         return OnboardingPhaseUpdateResponse(
             success=True,
@@ -266,8 +302,14 @@ async def update_onboarding_phase(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error updating onboarding phase: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update onboarding phase")
+        log.error(
+            f"{LogTag.ONBOARDING} Error updating onboarding phase",
+            user_id=user.get("user_id"),
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update onboarding phase") from e
 
 
 @router.patch("/preferences")
@@ -295,8 +337,14 @@ async def update_user_preferences(
     except HTTPException as e:
         raise e
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error updating preferences: {e!s}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to update preferences")
+        log.error(
+            f"{LogTag.ONBOARDING} Error updating preferences",
+            user_id=user["user_id"],
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to update preferences") from e
 
 
 async def _resolve_account_identity(
@@ -334,7 +382,12 @@ async def _load_suggested_workflows(workflow_ids: list[str]) -> list[Personaliza
             if (wf := wf_docs.get(wf_id))
         ]
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error fetching workflows: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Error fetching workflows",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         return []
 
 
@@ -378,7 +431,11 @@ async def _load_onboarding_todos(user_id: str) -> list[PersonalizationTodo]:
     try:
         todos = await todo_repository.list_onboarding_todos(user_id, limit=ONBOARDING_TODO_LIMIT)
     except Exception as e:
-        log.warning(f"{LogTag.ONBOARDING} Failed to fetch onboarding todos: {e}")
+        log.warning(
+            f"{LogTag.ONBOARDING} Failed to fetch onboarding todos",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return []
     return [
         PersonalizationTodo(
@@ -408,7 +465,7 @@ async def get_onboarding_personalization(
         )
         if not user_id or not isinstance(user_id, str):
             raise HTTPException(status_code=400, detail="Invalid user_id")
-        log.info(f"{LogTag.ONBOARDING} Fetching personalization for user {user_id}")
+        log.info(f"{LogTag.ONBOARDING} Fetching personalization for user", user_id=user_id)
         user_doc = await user_repository.get(user_id)
 
         if not user_doc:
@@ -417,7 +474,10 @@ async def get_onboarding_personalization(
         onboarding = user_doc.onboarding or {}
         phase = onboarding.get("phase", "initial")
         log.info(
-            f"{LogTag.ONBOARDING} User {user_id} has phase: {phase}, bio_status: {onboarding.get('bio_status')}"
+            f"{LogTag.ONBOARDING} User onboarding state",
+            user_id=user_id,
+            phase=phase,
+            bio_status=onboarding.get("bio_status"),
         )
 
         account_number, member_since = await _resolve_account_identity(user_doc, onboarding)
@@ -461,7 +521,12 @@ async def get_onboarding_personalization(
     except HTTPException:
         raise
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Error fetching personalization: {e!s}", exc_info=True)
+        log.error(
+            f"{LogTag.ONBOARDING} Error fetching personalization",
+            error=str(e),
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="Failed to fetch personalization data")
 
 
@@ -489,8 +554,14 @@ async def save_writing_style(
         await save_user_edited_summary(user_id, request.edited_summary.strip())
         return SaveWritingStyleResponse(success=True)
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Failed to save writing style: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to save writing style")
+        log.error(
+            f"{LogTag.ONBOARDING} Failed to save writing style",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to save writing style") from e
 
 
 @router.post(
@@ -514,10 +585,15 @@ async def regenerate_writing_style_example(
         return RegenerateWritingStyleExampleResponse(example=example)
     except Exception as e:
         log.error(
-            f"{LogTag.ONBOARDING} Failed to regenerate writing style example: {e}",
+            f"{LogTag.ONBOARDING} Failed to regenerate writing style example",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
             exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to regenerate writing style example")
+        raise HTTPException(
+            status_code=500, detail="Failed to regenerate writing style example"
+        ) from e
 
 
 class SocialProfilesConfirmRequest(BaseModel):
@@ -539,5 +615,11 @@ async def confirm_social_profiles(
         await save_confirmed_profiles(user_id, request.profiles)
         return SaveSocialProfilesResponse(success=True, saved=len(request.profiles))
     except Exception as e:
-        log.error(f"{LogTag.ONBOARDING} Failed to save social profiles: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to save social profiles")
+        log.error(
+            f"{LogTag.ONBOARDING} Failed to save social profiles",
+            user_id=user_id,
+            error_type=type(e).__name__,
+            error=str(e),
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to save social profiles") from e

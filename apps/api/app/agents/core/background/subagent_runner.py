@@ -31,7 +31,7 @@ from app.utils.agent_utils import (
     format_subagent_end_event,
     format_subagent_start_event,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import get_trace_id, log, wide_task
 
 
 async def run_subagent_background(
@@ -61,66 +61,80 @@ async def run_subagent_background(
         integration_id: Releases this integration's background slot on exit.
     """
     conversation_id = str(ctx.configurable.get("conversation_id", ""))
-    try:
-        writer = make_redis_stream_writer(stream_id)
+    # This task outlives the spawning executor turn, so it needs its own
+    # wide-event boundary or every log.set() in the run (LLM accounting
+    # included) is silently discarded. get_trace_id() reads the spawner's
+    # trace_id from the task's copied context, correlating this event with
+    # the run that dispatched it.
+    async with wide_task(
+        "subagent_run",
+        trace_id=get_trace_id() or None,
+        agent_name=ctx.agent_name,
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+        subagent_id=subagent_id,
+        integration_id=integration_id,
+    ):
+        try:
+            writer = make_redis_stream_writer(stream_id)
 
-        if subagent_id:
-            writer(
-                {
-                    "subagent_start": format_subagent_start_event(
-                        subagent_name=display_name or ctx.agent_name,
-                        agent_type="handoff",
-                        subagent_id=subagent_id,
-                        icon_url=icon_url,
-                        tool_category=tool_category,
-                    )
-                }
+            if subagent_id:
+                writer(
+                    {
+                        "subagent_start": format_subagent_start_event(
+                            subagent_name=display_name or ctx.agent_name,
+                            agent_type="handoff",
+                            subagent_id=subagent_id,
+                            icon_url=icon_url,
+                            tool_category=tool_category,
+                        )
+                    }
+                )
+
+            start_time = time.monotonic()
+            outcome = await execute_subagent_stream(
+                ctx=ctx,
+                stream_writer=writer,
+                integration_metadata=integration_metadata,
+                subagent_id=subagent_id,
             )
+            if outcome.paused:
+                await _park(ctx, outcome.interrupt or {}, stream_id)
+                return
+            result = outcome.text
+            duration_ms = int((time.monotonic() - start_time) * 1000)
 
-        start_time = time.monotonic()
-        outcome = await execute_subagent_stream(
-            ctx=ctx,
-            stream_writer=writer,
-            integration_metadata=integration_metadata,
-            subagent_id=subagent_id,
-        )
-        if outcome.paused:
-            await _park(ctx, outcome.interrupt or {}, stream_id)
-            return
-        result = outcome.text
-        duration_ms = int((time.monotonic() - start_time) * 1000)
-
-        if subagent_id:
-            writer(
-                {
-                    "subagent_end": format_subagent_end_event(
-                        subagent_id=subagent_id,
-                        duration_ms=duration_ms,
-                    )
-                }
+            if subagent_id:
+                writer(
+                    {
+                        "subagent_end": format_subagent_end_event(
+                            subagent_id=subagent_id,
+                            duration_ms=duration_ms,
+                        )
+                    }
+                )
+            log.info(
+                f"{LogTag.AGENT} Background subagent completed",
+                agent_name=ctx.agent_name,
+                stream_id=stream_id,
             )
-        log.info(
-            f"{LogTag.AGENT} Background subagent completed",
-            agent_name=ctx.agent_name,
-            stream_id=stream_id,
-        )
-        await append_bg_subagent_result(conversation_id, ctx.agent_name, result)
-    except Exception as e:
-        log.error(
-            f"{LogTag.AGENT} Background subagent failed",
-            agent_name=ctx.agent_name,
-            stream_id=stream_id,
-            error=str(e),
-        )
-        await _append_error_result(conversation_id, ctx.agent_name, e)
-    finally:
-        if integration_id:
-            release_bg_integration(stream_id, integration_id)
-        # Decrement AFTER appending the result (or stamping the park) so any
-        # wait_for_subagents that wakes on the count change sees this subagent's
-        # terminal state.
-        decrement_pending_subagents(stream_id)
-        await _wake_if_executor_rested(conversation_id, ctx.configurable)
+            await append_bg_subagent_result(conversation_id, ctx.agent_name, result)
+        except Exception as e:
+            log.error(
+                f"{LogTag.AGENT} Background subagent failed",
+                agent_name=ctx.agent_name,
+                stream_id=stream_id,
+                error=str(e),
+            )
+            await _append_error_result(conversation_id, ctx.agent_name, e)
+        finally:
+            if integration_id:
+                release_bg_integration(stream_id, integration_id)
+            # Decrement AFTER appending the result (or stamping the park) so any
+            # wait_for_subagents that wakes on the count change sees this subagent's
+            # terminal state.
+            decrement_pending_subagents(stream_id)
+            await _wake_if_executor_rested(conversation_id, ctx.configurable)
 
 
 async def _wake_if_executor_rested(conversation_id: str, configurable: AgentConfigurable) -> None:

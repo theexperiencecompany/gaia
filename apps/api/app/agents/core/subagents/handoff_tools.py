@@ -146,7 +146,12 @@ async def check_integration_connection(
         return build_integration_connection_message(subagent.name, connect_url)
 
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Error checking integration status for {integration_id}: {e}")
+        log.error(
+            f"{LogTag.AGENT} Error checking integration status",
+            integration_id=integration_id,
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return None
 
 
@@ -268,7 +273,10 @@ async def index_custom_mcp_as_subagent(
 
     await store.abatch([put_op])
     log.info(
-        f"{LogTag.AGENT} Indexed custom MCP {name} ({integration_id}) as subagent with {len(tools or [])} tools"
+        f"{LogTag.AGENT} Indexed custom MCP as subagent",
+        integration_name=name,
+        integration_id=integration_id,
+        tool_count=len(tools or []),
     )
 
 
@@ -868,7 +876,9 @@ async def handoff(
             _background_subagent_tasks.add(bg_task)
             bg_task.add_done_callback(_background_subagent_tasks.discard)
             log.info(
-                f"{LogTag.AGENT} Subagent {agent_name} dispatched to background for stream {sid}"
+                f"{LogTag.AGENT} Subagent dispatched to background",
+                agent_name=agent_name,
+                stream_id=sid,
             )
             return (
                 f"Subagent {agent_name} started in background. "

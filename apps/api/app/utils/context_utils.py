@@ -64,7 +64,13 @@ def execute_tool(
             validated = output_model.model_validate(data)
             return validated.model_dump()
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Schema validation warning for {tool_name}: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Schema validation warning for",
+                tool_name=tool_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
             return data
 
     return data
@@ -91,7 +97,13 @@ def fetch_all_providers(
             data = execute_tool(tool_slug, {}, user_id)
             return provider, data
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Provider {provider} ({tool_slug}) failed: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Provider failed",
+                provider=provider,
+                tool_slug=tool_slug,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return provider, None
 
     results: dict[str, Any] = {}
@@ -106,10 +118,16 @@ def fetch_all_providers(
                 results[provider] = data
         except FuturesTimeout:
             provider = futures[future]
-            log.warning(f"{LogTag.AGENT} Provider {provider} timed out")
+            log.warning(f"{LogTag.AGENT} Provider timed out", provider=provider, user_id=user_id)
         except Exception as e:
             provider = futures[future]
-            log.error(f"{LogTag.AGENT} Unexpected error for {provider}: {e}")
+            log.error(
+                f"{LogTag.AGENT} Unexpected error for",
+                provider=provider,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+            )
     return results
 
 
@@ -142,13 +160,20 @@ async def resolve_providers(
     try:
         connected = await get_user_available_tool_namespaces(user_id)
     except Exception as e:
-        log.warning(f"{LogTag.AGENT} Could not get connected namespaces: {e}")
+        log.warning(
+            f"{LogTag.AGENT} Could not get connected namespaces",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
     if connected:
         filtered = [p for p, slug in provider_tools.items() if namespace_fn(slug) in connected]
         if filtered:
             log.info(
-                f"{LogTag.AGENT} Auto-selected {len(filtered)} connected providers: {filtered}"
+                f"{LogTag.AGENT} Auto-selected connected providers",
+                filtered_count=len(filtered),
+                filtered=filtered,
             )
             return filtered
 

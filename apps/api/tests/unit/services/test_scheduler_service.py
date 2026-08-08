@@ -486,12 +486,16 @@ class TestEnqueueTask:
     async def test_enqueue_success(self, service):
         future = datetime.now(UTC) + timedelta(hours=1)
         mock_job = MagicMock(job_id="job1")
-        service.arq_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
-        result = await service._enqueue_task("task1", future)
+        with patch(
+            "app.services.scheduler_service.enqueue_worker_job",
+            new=AsyncMock(return_value=mock_job),
+        ) as mock_enqueue:
+            result = await service._enqueue_task("task1", future)
 
         assert result is True
-        service.arq_pool.enqueue_job.assert_awaited_once_with(
+        mock_enqueue.assert_awaited_once_with(
+            service.arq_pool,
             "test_job",
             "task1",
             _job_id=f"test_job:task1:{int(future.timestamp())}",

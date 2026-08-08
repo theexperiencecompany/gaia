@@ -90,7 +90,11 @@ async def install_skill(
     await skill_repository.create(skill)
 
     log.info(
-        f"{LogTag.SKILLS} Installed '{name}' for user {user_id} (target={target}, source={source.value})"
+        f"{LogTag.SKILLS} Installed skill for user",
+        skill_name=name,
+        user_id=user_id,
+        target=target,
+        source=source.value,
     )
     return skill
 
@@ -102,7 +106,7 @@ async def uninstall_skill(user_id: str, skill_id: str) -> bool:
     deleted = await skill_repository.delete_for_user(skill_id, user_id)
     log.set_ns("skill", success=deleted)
     if deleted:
-        log.info(f"{LogTag.SKILLS} Uninstalled skill {skill_id} for user {user_id}")
+        log.info(f"{LogTag.SKILLS} Uninstalled skill", skill_id=skill_id, user_id=user_id)
     return deleted
 
 
@@ -164,5 +168,5 @@ async def update_skill(user_id: str, skill_id: str, fields: dict[str, Any]) -> S
     updated = await skill_repository.patch(user_id, skill_id, update=SkillUpdate(**fields))
     log.set_ns("skill", success=updated is not None)
     if updated is not None:
-        log.info(f"{LogTag.SKILLS} Updated skill {skill_id} for user {user_id}")
+        log.info(f"{LogTag.SKILLS} Updated skill", skill_id=skill_id, user_id=user_id)
     return updated

@@ -100,7 +100,12 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                 # Check response status
                 if not result["successful"]:
-                    log.error(f"{LogTag.TRIGGER} Google Sheets API error: {result['error']}")
+                    log.error(
+                        f"{LogTag.TRIGGER} Google Sheets API error",
+                        error=result["error"],
+                        user_id=user_id,
+                        integration_id=integration_id,
+                    )
                     return []
 
                 # Extract and parse data
@@ -124,7 +129,8 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                     options.append(TriggerOption(value=sheet.id, label=label))
 
                 log.info(
-                    f"{LogTag.TRIGGER} Returning {len(options)} Google Sheets spreadsheet options"
+                    f"{LogTag.TRIGGER} Returning Google Sheets spreadsheet options",
+                    options_count=len(options),
                 )
                 return options
 
@@ -151,8 +157,9 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
 
                     if not sheets_result["successful"]:
                         log.error(
-                            f"{LogTag.TRIGGER} Failed to get sheet names for {spreadsheet_id}: "
-                            f"{sheets_result['error']}"
+                            f"{LogTag.TRIGGER} Failed to get sheet names for",
+                            spreadsheet_id=spreadsheet_id,
+                            sheets_result_error=sheets_result["error"],
                         )
                         return None
 
@@ -181,13 +188,23 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 # Filter out None/errors and collect results
                 grouped_results = [r for r in results if isinstance(r, TriggerOptionGroup)]
 
-                log.info(f"{LogTag.TRIGGER} Returning {len(grouped_results)} grouped sheet options")
+                log.info(
+                    f"{LogTag.TRIGGER} Returning grouped sheet options",
+                    grouped_results_count=len(grouped_results),
+                )
                 return grouped_results
 
             return []
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Failed to get Google Sheets options for {field_name}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Failed to get Google Sheets options for",
+                field_name=field_name,
+                error=str(e),
+                error_type=type(e).__name__,
+                user_id=user_id,
+                integration_id=integration_id,
+            )
             return []
 
     async def register(
@@ -207,7 +224,12 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
         """
         composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
         if not composio_slug:
-            log.error(f"{LogTag.TRIGGER} Unknown Google Sheets trigger: {trigger_name}")
+            log.error(
+                f"{LogTag.TRIGGER} Unknown Google Sheets trigger",
+                trigger_name=trigger_name,
+                user_id=user_id,
+                workflow_id=_workflow_id,
+            )
             raise TriggerRegistrationError(
                 f"Unknown Google Sheets trigger: {trigger_name}",
                 trigger_name,
@@ -285,14 +307,23 @@ class GoogleSheetsTriggerHandler(TriggerHandler):
                 elif "new_sheet" in event_type.lower():
                     GoogleSheetsNewSheetAddedPayload.model_validate(data)
             except Exception as e:
-                log.debug(f"{LogTag.TRIGGER} Google Sheets payload validation failed: {e}")
+                log.debug(
+                    f"{LogTag.TRIGGER} Google Sheets payload validation failed",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
 
             workflows: list[Workflow] = []
             workflows.extend(await workflow_repository.find_active_by_composio_trigger(trigger_id))
             return workflows
 
         except Exception as e:
-            log.error(f"{LogTag.TRIGGER} Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(
+                f"{LogTag.TRIGGER} Error finding workflows for trigger",
+                trigger_id=trigger_id,
+                error=str(e),
+                error_type=type(e).__name__,
+            )
             return []
 
 

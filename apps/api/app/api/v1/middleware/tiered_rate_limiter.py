@@ -38,7 +38,7 @@ from app.models.usage_models import (
     UserUsageSnapshot,
 )
 from app.services.usage_service import UsageService
-from shared.py.wide_events import log
+from shared.py.wide_events import log, spawn_logged_task
 
 # UsageInfo is imported (not defined here) but re-exported for
 # `app.api.v1.middleware.__init__` — explicit re-export required under
@@ -179,13 +179,16 @@ class TieredRateLimiter:
                         continue
 
         # Real-time usage sync after rate limit usage
-        asyncio.create_task(
+        spawn_logged_task(
+            "usage_sync",
             self._sync_usage_real_time(
                 user_id=user_id,
                 feature_key=feature_key,
                 user_plan=user_plan,
                 credits_used=credits_used,
-            )
+            ),
+            user={"id": user_id},
+            feature_key=feature_key,
         )
 
         return usage_info
@@ -232,7 +235,11 @@ class TieredRateLimiter:
         except Exception as e:
             # Log error but don't raise - this shouldn't break the main request
             log.error(
-                f"{LogTag.API} Real-time usage sync failed for user {user_id}, feature {feature_key}: {e!s}"
+                f"{LogTag.API} Real-time usage sync failed",
+                user_id=user_id,
+                feature_key=feature_key,
+                error_type=type(e).__name__,
+                error=str(e),
             )
 
     async def _collect_feature_usage(self, user_id: str, user_plan: PlanType) -> list[FeatureUsage]:

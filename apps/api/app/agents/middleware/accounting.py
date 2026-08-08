@@ -195,7 +195,11 @@ class LLMAccountingMiddleware(AgentMiddleware[AgentState[Any], Any]):
             )
             total_cost = float(cost.get("total_cost", 0.0))
         except Exception as e:
-            log.warning(f"{LogTag.AGENT} Token cost calc failed for {model_name}: {e}")
+            log.warning(
+                f"{LogTag.AGENT} Token cost calc failed",
+                model_name=model_name,
+                error_type=type(e).__name__,
+            )
             total_cost = 0.0
 
         step_index = self._next_step(thread_id)

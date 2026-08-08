@@ -392,7 +392,10 @@ async def extract_username_with_llm(
     # Deduplicate similar emails to avoid sending redundant context
     unique_emails = _deduplicate_emails(emails)
     log.info(
-        f"{LogTag.MEMORY} Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
+        f"{LogTag.MEMORY} Deduplicated platform emails",
+        platform=platform,
+        email_count=len(emails),
+        unique_count=len(unique_emails),
     )
 
     await _write_debug_json(
@@ -467,8 +470,11 @@ async def extract_username_with_llm(
 
         elapsed = time.time() - start_time
         log.info(
-            f"{LogTag.MEMORY} LLM extracted username for {platform}: '{username}' "
-            f"(confidence: {confidence}) in {elapsed:.2f}s"
+            f"{LogTag.MEMORY} LLM extracted username",
+            platform=platform,
+            username=username,
+            confidence=confidence,
+            duration_s=round(elapsed, 2),
         )
 
         await _write_debug_json(
@@ -487,5 +493,11 @@ async def extract_username_with_llm(
 
     except Exception as e:
         elapsed = time.time() - start_time
-        log.error(f"{LogTag.MEMORY} LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
+        log.error(
+            f"{LogTag.MEMORY} LLM username extraction failed",
+            platform=platform,
+            duration_s=round(elapsed, 2),
+            error_type=type(e).__name__,
+            error=str(e),
+        )
         return "NOT_FOUND"

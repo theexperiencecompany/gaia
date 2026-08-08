@@ -64,7 +64,7 @@ from app.services.hil.approvals_store import (
 )
 from app.services.hil.resume_slot import release_resume_dispatch
 from app.utils.agent_utils import format_sse_data
-from shared.py.wide_events import log
+from shared.py.wide_events import get_trace_id, log, wide_task
 
 # Prevent GC of background tasks spawned from the queue
 _queued_executor_tasks: set[asyncio.Task] = set()
@@ -94,31 +94,46 @@ async def run_executor_background(
     Inherits `langfuse_trace_id` from the parent's `configurable` so this run's
     LLM/tool spans land on the same Langfuse trace as comms.
     """
-    result_text = ""
-    result_type = "final"
+    # This task outlives the spawning request/turn (queued, resumed and
+    # post-timeout runs), so it needs its own wide-event boundary or every
+    # log.set() in the run (LLM accounting included) is silently discarded.
+    # get_trace_id() reads the spawner's trace_id from the task's copied
+    # context, correlating this event with the request that dispatched it.
+    async with wide_task(
+        "executor_run",
+        trace_id=get_trace_id() or None,
+        conversation_id=run.conversation_id,
+        stream_id=run.stream_id,
+        task_id=run.task_id,
+    ):
+        result_text = ""
+        result_type = "final"
 
-    try:
-        result = await _execute_executor(task, configurable, run.stream_id, resume)
-        result_text, result_type = result.text, result.type
-        if result.paused_on and not await _record_pause(run, task, configurable, result.paused_on):
-            # The pause is checkpointed but we could not record how to restart it, so no
-            # decision can ever resume this thread. Finalizing it as paused would hold the
-            # conversation's busy lock for its full TTL waiting for a resume that cannot
-            # come. Fail the run instead: the lock is released, queued work drains, and the
-            # sweep closes the orphaned approval.
-            result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
-        log.info(
-            f"{LogTag.AGENT} Background executor {result_type}",
-            task_id=run.task_id,
-            stream_id=run.stream_id,
-        )
-    finally:
-        await _finalize_executor_run(run, task, result_text, result_type)
-        if resume is not None:
-            # This run held the conversation's resume slot (claimed at dispatch).
-            # Freeing it AFTER finalize means the next decision can dispatch only
-            # once this run's pause/completion bookkeeping is fully written.
-            await release_resume_dispatch(run.conversation_id)
+        try:
+            result = await _execute_executor(task, configurable, run.stream_id, resume)
+            result_text, result_type = result.text, result.type
+            if result.paused_on and not await _record_pause(
+                run, task, configurable, result.paused_on
+            ):
+                # The pause is checkpointed but we could not record how to restart it, so no
+                # decision can ever resume this thread. Finalizing it as paused would hold the
+                # conversation's busy lock for its full TTL waiting for a resume that cannot
+                # come. Fail the run instead: the lock is released, queued work drains, and the
+                # sweep closes the orphaned approval.
+                result_text, result_type = EXECUTOR_APPROVAL_LOST_MESSAGE, "error"
+            log.info(
+                f"{LogTag.AGENT} Background executor finished",
+                result_type=result_type,
+                task_id=run.task_id,
+                stream_id=run.stream_id,
+            )
+        finally:
+            await _finalize_executor_run(run, task, result_text, result_type)
+            if resume is not None:
+                # This run held the conversation's resume slot (claimed at dispatch).
+                # Freeing it AFTER finalize means the next decision can dispatch only
+                # once this run's pause/completion bookkeeping is fully written.
+                await release_resume_dispatch(run.conversation_id)
 
 
 async def _record_pause(

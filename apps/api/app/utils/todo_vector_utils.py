@@ -110,11 +110,17 @@ async def store_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id:
         # Store in ChromaDB (LangChain Chroma handles embedding generation automatically)
         chroma_collection.add_texts(texts=[content], metadatas=[metadata], ids=[str(todo_id)])
 
-        log.info(f"{LogTag.CHROMA} Stored embedding for todo {todo_id}")
+        log.info(f"{LogTag.CHROMA} Stored embedding for todo", todo_id=todo_id)
         return True
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Error storing embedding for todo {todo_id}: {e!s}")
+        log.error(
+            f"{LogTag.CHROMA} Error storing embedding for todo",
+            todo_id=todo_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return False
 
 
@@ -128,7 +134,13 @@ async def update_todo_embedding(todo_id: str, todo_data: dict[str, Any], user_id
         return await store_todo_embedding(todo_id, todo_data, user_id)
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Error updating embedding for todo {todo_id}: {e!s}")
+        log.error(
+            f"{LogTag.CHROMA} Error updating embedding for todo",
+            todo_id=todo_id,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         return False
 
 
@@ -143,11 +155,16 @@ async def delete_todo_embedding(todo_id: str) -> bool:
         # Delete the embedding
         chroma_collection.delete(ids=[str(todo_id)])
 
-        log.info(f"{LogTag.CHROMA} Deleted embedding for todo {todo_id}")
+        log.info(f"{LogTag.CHROMA} Deleted embedding for todo", todo_id=todo_id)
         return True
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Error deleting embedding for todo {todo_id}: {e!s}")
+        log.error(
+            f"{LogTag.CHROMA} Error deleting embedding for todo",
+            todo_id=todo_id,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return False
 
 
@@ -205,7 +222,7 @@ async def semantic_search_todos(
 
         if not todo_ids:
             # No vector results found
-            log.info(f"{LogTag.CHROMA} No vector results for query '{query}'")
+            log.info(f"{LogTag.CHROMA} No vector results for query", query=query)
             return []
 
         # Fetch full todo documents in the order of similarity
@@ -215,11 +232,18 @@ async def semantic_search_todos(
             if todo_doc:
                 todos.append(TodoResponse.from_document(todo_doc))
 
-        log.info(f"{LogTag.CHROMA} Semantic search returned {len(todos)} todos for query '{query}'")
+        log.info(
+            f"{LogTag.CHROMA} Semantic search returned todos", todo_count=len(todos), query=query
+        )
         return todos
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Error in semantic search for todos: {e!s}")
+        log.error(
+            f"{LogTag.CHROMA} Error in semantic search for todos",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
         # Fallback to traditional search on error
         if include_traditional_search:
@@ -294,11 +318,18 @@ async def hybrid_search_todos(
         # Return top results
         result = [all_todos[todo_id] for todo_id in sorted_todo_ids[:top_k]]
 
-        log.info(f"{LogTag.CHROMA} Hybrid search returned {len(result)} todos for query '{query}'")
+        log.info(
+            f"{LogTag.CHROMA} Hybrid search returned todos", todo_count=len(result), query=query
+        )
         return result
 
     except Exception as e:
-        log.error(f"{LogTag.CHROMA} Error in hybrid search: {e!s}")
+        log.error(
+            f"{LogTag.CHROMA} Error in hybrid search",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
         # Fallback to semantic search only
         return await semantic_search_todos(
             query,

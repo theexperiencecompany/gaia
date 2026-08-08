@@ -147,7 +147,7 @@ def create_middleware_stack(
         middleware.append(
             LLMAccountingMiddleware(agent_name=agent_name, recursion_limit=recursion_limit)
         )
-        log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled for {agent_name}")
+        log.debug(f"{LogTag.AGENT} LLMAccountingMiddleware enabled", agent_name=agent_name)
         log.set(
             middleware_stack={
                 "agent_name": agent_name,
@@ -160,7 +160,7 @@ def create_middleware_stack(
     # effect before the user decides. A no-op unless the user's HIL preference is
     # on, so it needs no build-time flag.
     middleware.append(HILApprovalMiddleware())
-    log.debug(f"{LogTag.AGENT} HILApprovalMiddleware enabled for {agent_name}")
+    log.debug(f"{LogTag.AGENT} HILApprovalMiddleware enabled", agent_name=agent_name)
 
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
@@ -191,7 +191,9 @@ def create_middleware_stack(
             )
             middleware.append(summarization)
             log.debug(
-                f"{LogTag.AGENT} Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
+                f"{LogTag.AGENT} Summarization middleware enabled",
+                summarization_trigger=summarization_trigger,
+                summarization_keep=summarization_keep,
             )
 
     # Compaction middleware (always available, but respects enable flag). It also
@@ -207,14 +209,17 @@ def create_middleware_stack(
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
-        log.debug(f"{LogTag.AGENT} Compaction middleware enabled: threshold={compaction_threshold}")
+        log.debug(
+            f"{LogTag.AGENT} Compaction middleware enabled",
+            compaction_threshold=compaction_threshold,
+        )
 
     # Media description — a lane that can't see pixels gets prose for any tool
     # result carrying images. Inner to compaction, so the description is attached
     # before compaction inspects the result; compaction never spills media anyway.
     # No enable flag: it no-ops on every result without media, i.e. nearly all.
     middleware.append(MediaDescriptionMiddleware())
-    log.debug(f"{LogTag.AGENT} Media description middleware enabled for {agent_name}")
+    log.debug(f"{LogTag.AGENT} Media description middleware enabled", agent_name=agent_name)
 
     # Loop-guard middleware — added LAST so it sits innermost and observes the
     # raw tool result before compaction/summarization transform it, counting the
@@ -222,8 +227,9 @@ def create_middleware_stack(
     if enable_loop_guard:
         middleware.append(LoopGuardMiddleware(hard_stop=loop_guard_hard_stop))
         log.debug(
-            f"{LogTag.AGENT} Loop guard middleware enabled for {agent_name}: "
-            f"hard_stop={loop_guard_hard_stop}"
+            f"{LogTag.AGENT} Loop guard middleware enabled",
+            agent_name=agent_name,
+            hard_stop=loop_guard_hard_stop,
         )
 
     # Subagent-join enforcement (executor only) — after everything else so it
@@ -233,7 +239,7 @@ def create_middleware_stack(
     # remembering to call the join.
     if enable_subagent_join:
         middleware.append(SubagentJoinMiddleware())
-        log.debug(f"{LogTag.AGENT} SubagentJoinMiddleware enabled for {agent_name}")
+        log.debug(f"{LogTag.AGENT} SubagentJoinMiddleware enabled", agent_name=agent_name)
 
     return middleware
 

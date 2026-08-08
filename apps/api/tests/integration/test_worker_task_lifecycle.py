@@ -20,6 +20,7 @@ import pytest
 
 from app.models.todo_models import TodoDocument, TodoUpdate
 from app.models.user_models import OnboardingPhase, UserDocument
+from app.utils.errors import AppError
 from app.workers.lifecycle.startup import startup
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 from app.workers.tasks.memory_email_tasks import process_gmail_emails_to_memory
@@ -740,7 +741,7 @@ class TestWorkflowGenerationTask:
             mock_wf_svc.create_workflow = AsyncMock(return_value=None)
             mock_queue_svc.clear_workflow_generating_flag = AsyncMock()
 
-            with pytest.raises(ValueError, match="No workflow created"):
+            with pytest.raises(AppError, match="No workflow created"):
                 await process_workflow_generation_task(
                     ARQ_CTX,
                     todo_id="bbbbbbbbbbbbbbbbbbbbbbbb",

@@ -71,7 +71,12 @@ def identify_user(
             properties={"first_seen": datetime.now(UTC).isoformat()},
         )
     except Exception as e:
-        log.error(f"Failed to identify user in PostHog: {e}")
+        log.error(
+            "Failed to identify user in PostHog",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def capture_event(
@@ -89,7 +94,7 @@ def capture_event(
     """
     client = _get_posthog_client()
     if client is None:
-        log.debug(f"PostHog client not available, skipping event: {event}")
+        log.debug("PostHog client not available, skipping event", event=event)
         return
 
     log.set(analytics={"user_id": user_id, "event": event})
@@ -104,7 +109,13 @@ def capture_event(
             properties=event_properties,
         )
     except Exception as e:
-        log.error(f"Failed to capture event {event} in PostHog: {e}")
+        log.error(
+            "Failed to capture event in PostHog",
+            event=event,
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def track_signup(
@@ -291,7 +302,12 @@ def track_subscription_event(
     try:
         client.set(distinct_id=user_id, properties=metadata)
     except Exception as e:
-        log.error(f"Failed to update user subscription properties: {e}")
+        log.error(
+            "Failed to update user subscription properties",
+            error=str(e),
+            error_type=type(e).__name__,
+            user_id=user_id,
+        )
 
 
 def track_payment_event(

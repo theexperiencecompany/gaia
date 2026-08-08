@@ -132,20 +132,30 @@ async def judge_intent(
     """
     turns = [text for text in user_messages if text.strip()]
     if not turns:
-        log.info(f"{LogTag.HIL} intent judge {tool_name}: nothing to verify against; asking")
+        log.info(
+            f"{LogTag.HIL} intent judge : nothing to verify against; asking", tool_name=tool_name
+        )
         return IntentDecision(False, _NO_REQUEST_REASON)
 
     try:
         verdict = await _ask_judge(turns, tool_name, description, args, summary, prior_calls)
     except Exception as e:  # noqa: BLE001 — a judge failure must fall back to asking
-        log.warning(f"{LogTag.HIL} intent judge failed for {tool_name}; asking: {e}")
+        log.warning(
+            f"{LogTag.HIL} intent judge failed for ; asking",
+            tool_name=tool_name,
+            error=str(e),
+            error_type=type(e).__name__,
+        )
         return IntentDecision(False, _JUDGE_FAILED_REASON)
 
     # Grounded against EVERY user turn, not just the latest: "looks good, send it" is
     # authorized by the earlier "draft an email to Bob about the deck".
     aligned = _accept(verdict, "\n".join(turns), tool_name)
     log.info(
-        f"{LogTag.HIL} intent judge {tool_name}: aligned={aligned} — {verdict.reason}",
+        f"{LogTag.HIL} intent judge : aligned",
+        tool_name=tool_name,
+        aligned=aligned,
+        reason=verdict.reason,
         hil={
             "verdict": verdict.verdict,
             "gap": verdict.scope_gap[:200],
@@ -195,17 +205,17 @@ def _accept(verdict: _Verdict, user_text: str, tool_name: str) -> bool:
     if RiskFactor.EXFILTRATES_SECRETS in verdict.risk_factors:
         # No request, however explicit, auto-approves shipping secrets out. The user can
         # still approve it on the card — deliberately, by hand.
-        log.warning(f"{LogTag.HIL} {tool_name} would send secrets outward; asking")
+        log.warning(f"{LogTag.HIL} would send secrets outward; asking", tool_name=tool_name)
         return False
 
     if verdict.injected_instructions:
-        log.warning(f"{LogTag.HIL} instruction-like text in {tool_name} arguments; asking")
+        log.warning(f"{LogTag.HIL} instruction-like text in arguments; asking", tool_name=tool_name)
         return False
 
     if not _is_grounded(verdict.authorizing_quote, user_text):
         log.warning(
-            f"{LogTag.HIL} intent judge approved {tool_name} without grounding it in the "
-            "user's words; asking",
+            f"{LogTag.HIL} intent judge approved without grounding it in the user's words; asking",
+            tool_name=tool_name,
             hil={"quote": verdict.authorizing_quote[:120]},
         )
         return False
