@@ -350,9 +350,13 @@ class TestScheduleExecution:
         ok = await TrackedTodoService.schedule_execution(TODO_ID, when)
 
         assert ok is True
-        pool.enqueue_job.assert_awaited_once_with(
-            "execute_tracked_todo", TODO_ID, _defer_until=when
-        )
+        # enqueue_worker_job may stamp the caller's _gaia_trace_id kwarg when
+        # an ambient wide-event trace is active (the full suite leaks one
+        # into this worker) — pin the job contract, not the trace.
+        pool.enqueue_job.assert_awaited_once()
+        args, kwargs = pool.enqueue_job.await_args
+        assert args == ("execute_tracked_todo", TODO_ID)
+        assert kwargs["_defer_until"] == when
 
     async def test_false_when_enqueue_fails(self, mock_repo, mock_deps):
         mock_deps.pool.side_effect = RuntimeError("redis down")
