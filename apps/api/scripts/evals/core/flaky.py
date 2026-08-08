@@ -25,6 +25,7 @@ class CaseHistory:
     failed: int = 0
     errored: int = 0
     runs: list[str] = field(default_factory=list)
+    by_version: dict[str, set[str]] = field(default_factory=lambda: defaultdict(set))
 
     @property
     def graded(self) -> int:
@@ -32,8 +33,21 @@ class CaseHistory:
 
     @property
     def flaky(self) -> bool:
-        """Both outcomes observed for the same case, with nothing changed."""
-        return self.passed > 0 and self.failed > 0
+        """Both outcomes observed for the same case within ONE harness version.
+
+        Scoping by version is the whole point. Across versions a case that flips
+        is usually a fix landing, not the agent wavering — gmail-label-q3 reads
+        fail, fail, then pass on every run since, and hard-compose-birthday-plan
+        failed five times before the create_reminder typo was corrected. Counting
+        those as flaky inflated the figure from 26 to 69 and pointed at the wrong
+        cause entirely.
+        """
+        return any({"passed", "failed"} <= outcomes for outcomes in self.by_version.values())
+
+    @property
+    def changed_across_versions(self) -> bool:
+        """Flipped between versions but never within one: a fix, not flakiness."""
+        return self.passed > 0 and self.failed > 0 and not self.flaky
 
     @property
     def pass_rate(self) -> float:
@@ -51,6 +65,10 @@ def history(runs_dir: Path) -> dict[tuple[str, str], CaseHistory]:
         if meta.get("excluded"):
             continue
         suite = str(meta.get("suite", "?"))
+        # No stamp means the run predates version tracking; treat each such run
+        # as its own version so it can never be compared against another and
+        # manufacture a flake out of a code change.
+        version = str(meta.get("app_version") or f"unstamped:{run_dir.name}")
         # One verdict per case per run: a retry within a run supersedes rather
         # than counting as a second observation.
         latest: dict[str, str] = {}
@@ -67,6 +85,8 @@ def history(runs_dir: Path) -> dict[tuple[str, str], CaseHistory]:
                 entry.failed += 1
             elif status == "errored":
                 entry.errored += 1
+            if status in ("passed", "failed"):
+                entry.by_version[version].add(status)
             entry.runs.append(run_dir.name)
     return seen
 
@@ -77,11 +97,13 @@ def report(runs_dir: Path) -> str:
     flaky = sorted(
         (e for e in repeated if e.flaky), key=lambda e: (e.pass_rate, e.suite, e.case_id)
     )
+    moved = [e for e in repeated if e.changed_across_versions]
     lines = [
         "",
         "=" * 74,
-        f"FLAKY CASES  {len(flaky)} of {len(repeated)} cases seen more than once change verdict",
+        f"FLAKY CASES  {len(flaky)} of {len(repeated)} repeated cases flip within one version",
         "=" * 74,
+        f"  {len(moved)} more changed only BETWEEN versions — a fix landing, not flakiness",
     ]
     if not repeated:
         lines.append("  no case has been graded twice yet — run a suite again to build history")
