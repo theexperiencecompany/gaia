@@ -929,48 +929,32 @@ jobs:
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
+                 observability wide-event-conformance \
                  dead-code alert-rules suppression-ratchet gitleaks)
-
-
-          # ---------------------------------------------------------------
-          # RATCHET: a lane is ENFORCED (can fail this gate) if the marker
-          # file .github/quality-gate/enforced/<lane> exists. Every other
-          # lane is reported but never blocks merge. Each resolution PR adds
-          # its own marker file — separate paths never merge-conflict the way
-          # editing one shared list does. When all 18 markers exist, the full
-          # strict rule set is enforced.
-
-          # ---------------------------------------------------------------
-          ENFORCED=()
-          if [ -d .github/quality-gate/enforced ]; then
-            for marker in .github/quality-gate/enforced/*; do
-              [ -e "$marker" ] || continue
-              ENFORCED+=("$(basename "$marker")")
-            done
-          fi
-          # ---------------------------------------------------------------
-
-          is_enforced() { local l; for l in "${ENFORCED[@]}"; do [[ "$l" == "$1" ]] && return 0; done; return 1; }
 
           echo "::group::Per-lane results"
           for lane in "${LANES[@]}"; do
-            if is_enforced "$lane"; then tag="[enforced]"; else tag="[informational]"; fi
-            printf '  %-22s %-12s %s\n' "$lane:" "${RESULT[$lane]}" "$tag"
+            printf '  %-22s %-12s\n' "$lane:" "${RESULT[$lane]}"
           done
           echo "::endgroup::"
 
+          # Every lane is enforced: a lane that is neither success nor skipped
+          # (the changes job proved its language was untouched) fails the gate.
+          # The old marker-file ratchet is gone — the rollout it enabled is
+          # complete, and the two sources of truth had drifted
+          # (observability + wide-event-conformance were enforced but missing
+          # from LANES).
           failed=0
-          for lane in "${ENFORCED[@]}"; do
+          for lane in "${LANES[@]}"; do
             r="${RESULT[$lane]}"
-            # skipped = changes proved the lane's language wasn't touched
             if [[ "$r" != "success" && "$r" != "skipped" ]]; then
-              echo "::error::enforced lane '$lane' did not pass (result: $r)"
+              echo "::error::lane '$lane' did not pass (result: $r)"
               failed=$((failed + 1))
             fi
           done
 
           if [[ "$failed" -gt 0 ]]; then
-            echo "::error::Quality gate FAILED — $failed enforced lane(s) did not pass"
+            echo "::error::Quality gate FAILED — $failed lane(s) did not pass"
             exit 1
           fi
           echo "Quality gate: PASSED — ${#ENFORCED[@]}/${#LANES[@]} lanes enforced; remainder informational (ratchet in progress)"
