@@ -34,7 +34,8 @@ printf '  %s\n' "${changed[@]}"
 
 WT="$(mktemp -d)"
 LOG="$(mktemp)"
-trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG"' EXIT
+JUNIT="$(mktemp -t regression-proof-junit)"
+trap 'git worktree remove --force "$WT" 2>/dev/null || true; rm -rf "$WT" "$LOG" "$JUNIT"' EXIT
 
 git worktree add --detach "$WT" "$BASE" >/dev/null
 
@@ -103,7 +104,7 @@ done
 # A test claiming to pin a bug opts in by marker, and then must prove it.
 set +e
 "$VENV_PY" -m pytest "${rel_regression_files[@]}" -m regression -q --tb=no --no-header \
-  -p no:cacheprovider -o addopts="--strict-markers" > "$LOG" 2>&1
+  -p no:cacheprovider -o addopts="--strict-markers" --junitxml="$JUNIT" > "$LOG" 2>&1
 rc=$?
 set -e
 
@@ -113,46 +114,23 @@ if [ "$rc" -eq 5 ]; then
   exit 0
 fi
 
-# A run that never produced a summary line did not execute the tests at all
-# (missing interpreter, import error, unwritable log). That must fail loudly:
-# a previous version of this script redirected into a directory that does not
-# exist on the runner, so pytest never ran, and every branch below was skipped
-# on the way to printing success — the lane passed without checking anything.
-if ! grep -qE '[0-9]+ (passed|failed|error)' "$LOG"; then
-  echo "ERROR: regression-proof — pytest produced no result summary (exit $rc)."
+# No report at all means pytest never ran (missing interpreter, unwritable path,
+# a collection abort). That is a failure, not a pass — an earlier version of
+# this script redirected into a directory absent on the runner, so pytest never
+# executed and every check below was skipped on the way to printing success.
+if [ ! -s "$JUNIT" ]; then
+  echo "ERROR: regression-proof — pytest wrote no JUnit report (exit $rc)."
   echo "       The check did not run; treating that as a failure, not a pass."
-  tail -30 "$LOG"
+  tail -40 "$LOG"
   exit 1
 fi
 
-# Any PASS means a test that claims to pin a bug already passes without the
-# fix — it does not prove what it says it proves.
-passed_count=$(grep -oE '[0-9]+ passed' "$LOG" | tail -1 | cut -d' ' -f1 || true)
-if [ -n "${passed_count}" ] && [ "${passed_count}" != "0" ]; then
-  echo "ERROR: regression-proof — $passed_count regression-marked test(s) PASS on base."
-  echo "       A regression test must fail without its fix. Either the fix is not"
-  echo "       needed, or the test does not actually exercise the bug."
-  tail -30 "$LOG"
+# The verdict is per-test and structural (JUnit), not a count scraped from the
+# summary line: a run can be "0 passed" while proving nothing, because a test
+# that ERRORS never reached its assertions. See regression_proof_verdict.py.
+if ! uv run --no-project "$SCRIPT_DIR/regression_proof_verdict.py" "$JUNIT"; then
+  echo "--- pytest output (base revision) ---"
+  tail -40 "$LOG"
   exit 1
 fi
-
-# A usage/collection abort (exit 2+) means the tests never really ran — an
-# unknown marker, an import error. That is not proof of anything either.
-if [ "$rc" -ne 1 ]; then
-  echo "ERROR: regression-proof — pytest exited $rc (expected 1 = tests failed)."
-  echo "       The tests aborted rather than failing on their assertions, so"
-  echo "       nothing was proven. Summary was:"
-  grep -E '[0-9]+ (passed|failed|error)' "$LOG" | tail -3
-  tail -30 "$LOG"
-  exit 1
-fi
-
-echo "regression-proof: every regression-marked test fails on base as required"
-# Print the per-test outcomes, not just the count: the whole value of this lane
-# is being able to see WHICH test proved WHAT. An ERROR counts as "did not
-# pass", but it is weaker evidence than a FAILED assertion (it can mean the
-# test could not run on base at all rather than catching the bug), so name them
-# individually and let review judge.
-grep -E '^(FAILED|ERROR) ' "$LOG" | sort -u
-grep -E '[0-9]+ (passed|failed|error)' "$LOG" | tail -1
 exit 0
