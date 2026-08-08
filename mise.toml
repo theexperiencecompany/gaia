@@ -370,6 +370,14 @@ run = "nx affected -t test --parallel=3"
 description = "Run all Python tests with real services via Dagger"
 run = "dagger call -s test-python"
 
+[tasks."test:python:hermetic"]
+description = "Run the hermetic API suite (no Docker, no network) — must finish within the fast-suite budget"
+run = "cd apps/api && uv run --group backend --group dev pytest -q --tb=short"
+
+[tasks."test:python:real"]
+description = "Run the real-infra tier (Postgres/Redis/Mongo/Chroma via docker compose) — opt-in"
+run = "cd apps/api && USE_REAL_SERVICES=1 uv run --group backend --group dev pytest tests/integration/real tests/contracts tests/e2e/test_hil_barrier_e2e.py tests/e2e/test_hil_spawn_e2e.py --tb=short -q"
+
 [tasks."test:python:unit"]
 description = "Run Python unit tests only (no services, fast)"
 run = "cd apps/api && USE_REAL_SERVICES=0 uv run pytest tests/unit --tb=short -q"

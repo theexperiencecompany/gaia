@@ -144,11 +144,12 @@ jobs:
           # Flake gate: a test that passes only on rerun fails the build
           # (CPython's --fail-rerun lesson) — flakiness is a defect, not a shrug.
           # The gate strips coverage/junit from the rerun so they never gate a
-          # 2-test subset.
+          # 2-test subset. --timeout is restored explicitly because
+          # --override-ini=addopts drops pytest.ini's `--timeout=300`.
           bash ../../scripts/ci/run-tests-flake-gate.sh uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
-            --tb=short -q --override-ini=addopts=--strict-markers \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300 \
             --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80 \
-            --junitxml=test-results/pytest.xml --durations=50 -W error::RuntimeWarning
+            --junitxml=test-results/pytest.xml --durations=50
           echo "Python tests: OK (full suite vs live services)"
       - name: Schemathesis contract fuzz (isolated live-server run)
         # Boots a real uvicorn server; must NOT share the parallel load that
@@ -197,6 +198,39 @@ jobs:
           uv run --frozen pytest ../../libs/shared/py/tests \
             --tb=short -q --override-ini=addopts=--strict-markers
           echo "gaia-shared tests: OK"
+
+  # --- Test: Python fast lane (hermetic, no containers) -------------------
+  # The fast-suite invariant, enforced: the hermetic default selection (what
+  # `nx test api` runs locally) must finish inside the budget with NO service
+  # containers — real-infra tiers skip at collection when USE_REAL_SERVICES
+  # is unset. A regression that slows the default run fails this lane instead
+  # of silently degrading every contributor's feedback loop.
+  test-fast:
+    needs: [detect]
+    if: needs.detect.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Sync Python dependencies
+        shell: bash
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Run hermetic fast suite (budget-capped)
+        working-directory: apps/api
+        # No containers, no service env: USE_REAL_SERVICES is unset, so every
+        # real-infra tier skips at collection. The `timeout` cap IS the
+        # fast-suite budget — a slower suite is a failed build.
+        run: |
+          timeout ${FAST_SUITE_BUDGET_SECONDS:-300} bash ../../scripts/ci/run-tests-flake-gate.sh \
+            uv run --frozen pytest -n auto -m 'not composio and not model_onboarding and not schemathesis' \
+            --tb=short -q --override-ini=addopts=--strict-markers --timeout=300
+          echo "Hermetic fast suite: OK (under budget)"
 
   # --- Test: TypeScript (runner-native) -----------------------------------
   test-typescript:

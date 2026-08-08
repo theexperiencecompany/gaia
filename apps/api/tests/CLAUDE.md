@@ -10,7 +10,7 @@ One doc, read before writing any test. Enforcement lives in the lints and `tests
 |---|---|---|---|
 | Unit | `tests/unit/` (mirrors `app/`) | nothing — mocked, hermetic, no I/O | new service fn → `unit/services/`; new endpoint → `unit/api/` |
 | Integration | `tests/integration/` | nothing — real production code, mocked infra | wiring between components, full request cycle |
-| Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` | behavior only provable against real Postgres/Redis/Mongo |
+| Real-infra | `tests/integration/real/` (incl. `real/memory/`) | Docker + `USE_REAL_SERVICES=1` — otherwise the whole tier skips at collection (milliseconds, never a hang) | behavior only provable against real Postgres/Redis/Mongo |
 | Contracts | `tests/contracts/` | real Mongo + Redis | repository contract changes (never mocks) |
 | E2E | `tests/e2e/` | real compiled graphs + fake LLM (`_harness/`), offline | user journey through the compiled graph |
 | Stress | `tests/stress/` | none — in-process fakes, no sleeps | race/retry/idempotency invariants |
@@ -33,11 +33,14 @@ A bug ships a failing-then-passing test in the *natural* file for the tier that 
 
 | What | Command |
 |---|---|
-| Fast local (hermetic, no Docker) | `nx test api` — unit + integration only |
-| Real infra (Docker up + `USE_REAL_SERVICES=1`) | `nx run api:test:e2e` · `nx run api:test:service` · `nx run api:test:contracts` |
-| Specialized | `nx run api:test:stress` · `nx run api:test:meta` |
+| Hermetic default (no Docker, no network) | `nx test api` — every tier that runs offline; real-infra/contracts/HIL skip at collection |
+| Real-infra tier (docker compose up + opt-in) | `nx run api:test:real` — `tests/integration/real/` + contracts + HIL e2e |
+| Specialized | `nx run api:test:stress` · `nx run api:test:meta` · `nx run api:test:composio` |
 
-Never run a raw full `pytest` locally — the targets pin the dirs, markers, and exclusions (`-m "not composio and not model_onboarding"`, xdist, timeout). A raw run drags in live-credential and real-infra suites.
+`mise run test:python:hermetic` and `mise run test:python:real` mirror the two
+tiers. Fast-suite invariant: the hermetic default must finish within the CI
+`test-fast` lane's budget (~4 min); never slow it down — real-infra behavior
+belongs in `test:real`, not in the default run.
 
 ## Structure
 
