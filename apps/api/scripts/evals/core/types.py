@@ -86,6 +86,17 @@ class CaseTrace:
     category: str = ""
     suite: str = ""
     app_version: str = ""
+    tokens_source: str = "unknown"
+    """How this case's tokens were obtained: metered | estimated | none | unknown.
+
+    Cost is tokens times a price, so a cost figure is only as trustworthy as the
+    count under it. Three suites measured tokens by differencing a *shared* run
+    meter while 3-14 cases ran concurrently, crediting each case with its
+    neighbours' spend; two never measured at all and inferred tokens from string
+    length. Carrying the provenance onto the trace is what lets a reader — and
+    :mod:`.ingest_check` — refuse to add an estimate into a dollar total.
+    ``unknown`` means the journal predates the field and must not be trusted.
+    """
     scores: dict[str, float] = field(default_factory=dict)
     duration_s: float = 0.0
     tokens_in: int = 0
@@ -122,6 +133,7 @@ class CaseTrace:
             "suite": self.suite,
             "app_version": self.app_version,
             "case_id": self.case_id,
+            "tokens_source": self.tokens_source,
             "provider": self.provider,
             "model": self.model,
             "status": self.status,
@@ -202,6 +214,7 @@ class CaseTrace:
             category=str(record.get("category") or expected.get("category") or "uncategorised"),
             suite=suite,
             app_version=app_version,
+            tokens_source=str(tokens.get("source") or "unknown"),
             scores=record.get("scores") or {},
             duration_s=float(record.get("duration_s") or 0.0),
             tokens_in=tokens_in,

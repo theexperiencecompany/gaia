@@ -151,28 +151,58 @@ def _seed_project(
         purged = opiksink.purge_case_traces(project)
         print(f"[seed] {project}: purged {purged} existing case traces")
 
+    traces = [
+        CaseTrace.from_record(
+            run_id,
+            record,
+            prices,
+            suite=meta.suite if meta else "",
+            app_version=meta.app_version if meta else "",
+        )
+        for run_id in run_ids
+        for meta in [RunJournal(RUNS_DIR, run_id).load_meta()]
+        for record in RunJournal(RUNS_DIR, run_id).records()
+        if record.get("status") in SEEDABLE_STATUSES
+    ]
+    _refuse_to_double(project, traces)
+
     written = failed = 0
-    for run_id in run_ids:
-        journal = RunJournal(RUNS_DIR, run_id)
-        meta = journal.load_meta()
-        for record in journal.records():
-            if record.get("status") not in SEEDABLE_STATUSES:
-                continue
-            trace = CaseTrace.from_record(
-                run_id,
-                record,
-                prices,
-                suite=meta.suite if meta else "",
-                app_version=meta.app_version if meta else "",
-            )
-            try:
-                opiksink.log_case_trace(project, trace)
-                written += 1
-            except Exception as e:
-                failed += 1
-                print(f"[seed] {project}/{run_id}/{trace.case_id}: {type(e).__name__}: {e}")
+    for trace in traces:
+        try:
+            opiksink.log_case_trace(project, trace)
+            written += 1
+        except Exception as e:
+            failed += 1
+            print(f"[seed] {project}/{trace.run_id}/{trace.case_id}: {type(e).__name__}: {e}")
     opiksink.flush(project)
     print(f"[seed] {project:<18} runs={len(run_ids):<3} {written} written · {failed} failed")
+
+
+class LegacyTracesPresent(RuntimeError):
+    """A seed would duplicate traces instead of updating them."""
+
+
+def _refuse_to_double(project: str, traces: list[CaseTrace]) -> None:
+    """Abort rather than silently double a project's totals.
+
+    Upsert-by-derived-id only updates traces that were themselves written with a
+    derived id. A trace written by an older build carries a random one, so
+    seeding on top of it INSERTS a second copy — every count, cost and token
+    total doubles, and nothing in the output says so.
+
+    This is the loud half of the fix. Idempotency is no longer defeatable by a
+    metadata rename (the id comes from the journal, never from Opik), but it is
+    still defeatable by legacy rows, and that has to fail rather than pass
+    quietly. `ingest` tears the project down first, so it never trips.
+    """
+    expected = {opiksink.trace_id_for(project, trace) for trace in traces}
+    legacy = opiksink.legacy_case_traces(project, expected)
+    if legacy:
+        raise LegacyTracesPresent(
+            f"{project}: {legacy} case trace(s) predate derived ids, so seeding would add "
+            f"duplicates rather than update them. Rebuild the project instead: "
+            f"`python -m scripts.evals ingest` (or seed --reset for this project alone)."
+        )
 
 
 MAX_DESCRIPTION = 255

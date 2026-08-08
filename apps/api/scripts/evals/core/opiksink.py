@@ -198,6 +198,24 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
         trace.log_feedback_score(name=name, value=value)
 
 
+def legacy_case_traces(project: str, expected_ids: set[str]) -> int:
+    """Case traces in ``project`` that a re-seed would duplicate rather than update.
+
+    Upsert-by-id only protects traces that were written WITH the derived id.
+    Anything written before that — every trace currently in Opik — carries a
+    random id, so seeding on top of it inserts a second copy rather than
+    replacing it, silently doubling every count, cost and token total.
+
+    This is why the rebuild tears the projects down first. Seeding without a
+    teardown must say so loudly rather than quietly double the data.
+    """
+    return sum(
+        1
+        for trace in client(project).search_traces(project_name=project, max_results=_MAX_TRACES)
+        if (trace.name or "").startswith("case-") and trace.id not in expected_ids
+    )
+
+
 def purge_case_traces(project: str) -> int:
     """Delete every ``case-*`` trace in a project.
 

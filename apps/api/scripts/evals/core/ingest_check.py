@@ -35,9 +35,25 @@ from .seed import SEEDABLE_STATUSES
 #: number is not a big case, it is an accumulator that was never reset.
 MAX_TOKENS_PER_TRACE = 400_000
 
+#: The bound nobody had. Every check here originally looked only for numbers too
+#: LARGE, which is why two suites reporting medians of 56 and 16 tokens per case
+#: went unnoticed for months: a case cannot run an agent, with a system prompt,
+#: for two seconds and spend fifty tokens. Too-small is as wrong as too-large and
+#: is much easier to miss, because an implausibly cheap number looks like good
+#: news. Only applied to cases that actually worked (see MIN_WORKING_SECONDS) so
+#: an instant refusal or a cache hit is not flagged.
+MIN_TOKENS_PER_WORKING_TRACE = 500
+MIN_WORKING_SECONDS = 2.0
+
 #: A whole suite costing more than this locally means the token counts feeding
 #: it are wrong, not that we spent it — every lane here is cheap or free.
 MAX_PLAUSIBLE_PROJECT_COST_USD = 15.0
+
+#: The only provenance whose tokens may be turned into a dollar figure. Anything
+#: else is a guess wearing a number's clothes: ``estimated`` is len(text)//4 and
+#: cannot see a system prompt, and ``unknown`` is a pre-fix journal whose counts
+#: were differenced off a meter shared by concurrent cases.
+TRUSTED_TOKEN_SOURCE = "metered"
 
 _PAGE = 1000
 
@@ -59,6 +75,9 @@ class ProjectFacts:
     duplicate_keys: int = 0
     missing_metadata: dict[str, int] = field(default_factory=dict)
     max_trace_tokens: int = 0
+    token_sources: dict[str, int] = field(default_factory=dict)
+    starved_traces: int = 0
+    untrusted_cost_usd: float = 0.0
 
     @property
     def tokens_per_trace(self) -> float:
@@ -155,6 +174,7 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
     keys: Counter[tuple[str, str]] = Counter()
     missing: Counter[str] = Counter()
     non_case: Counter[str] = Counter()
+    sources: Counter[str] = Counter()
     for trace in _all_traces(base_url, project):
         facts.traces += 1
         name = str(trace.get("name") or "")
@@ -180,6 +200,14 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
         facts.total_tokens += tokens
         facts.max_trace_tokens = max(facts.max_trace_tokens, tokens)
         facts.errors += 1 if trace.get("error_info") else 0
+        source = str(metadata.get("tokens_source") or "unknown")
+        sources[source] += 1
+        if source != TRUSTED_TOKEN_SOURCE:
+            facts.untrusted_cost_usd += cost
+        worked = float(str(metadata.get("duration_s") or 0) or 0) >= MIN_WORKING_SECONDS
+        if worked and 0 <= tokens < MIN_TOKENS_PER_WORKING_TRACE:
+            facts.starved_traces += 1
+    facts.token_sources = dict(sources)
     facts.duplicate_keys = sum(n - 1 for n in keys.values() if n > 1)
     facts.missing_metadata = dict(missing)
     facts.non_case_names = dict(non_case.most_common(6))
@@ -248,6 +276,25 @@ def check(facts: ProjectFacts, expected_cases: int | None) -> list[Finding]:
                 "implausible tokens",
                 f"one trace reports {facts.max_trace_tokens:,} tokens "
                 f"(cap {MAX_TOKENS_PER_TRACE:,}) — that is an accumulator, not a case",
+            )
+        )
+    if facts.starved_traces:
+        found.append(
+            Finding(
+                facts.name,
+                "implausible tokens",
+                f"{facts.starved_traces} traces worked >={MIN_WORKING_SECONDS:g}s but report "
+                f"<{MIN_TOKENS_PER_WORKING_TRACE} tokens — an agent turn cannot be that cheap",
+            )
+        )
+    if facts.untrusted_cost_usd > 0:
+        untrusted = {k: v for k, v in facts.token_sources.items() if k != TRUSTED_TOKEN_SOURCE}
+        found.append(
+            Finding(
+                facts.name,
+                "untrusted cost",
+                f"${facts.untrusted_cost_usd:,.3f} of cost comes from tokens that were not "
+                f"metered: {untrusted} — a price times a guess is not a cost",
             )
         )
     if facts.total_cost_usd > MAX_PLAUSIBLE_PROJECT_COST_USD:
