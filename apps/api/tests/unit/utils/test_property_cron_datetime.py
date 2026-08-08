@@ -96,12 +96,10 @@ class TestGetNextRunTime:
             # what happened, not a genuine miss.
             wall_naive = datetime(local.year, local.month, local.day, hour, minute)
             assert wall_naive.replace(tzinfo=tz.tzinfo).utcoffset() is None, (
-                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, "
-                f"expected {(hour, minute)}"
+                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
             )
             assert (local.hour - hour, local.minute - minute) == (1, 0), (
-                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, "
-                f"expected {(hour, minute)}"
+                f"{cron_expr} in {zone_name} fired at {local:%H:%M}, expected {(hour, minute)}"
             )
 
     @settings(max_examples=100, deadline=None)
