@@ -1,4 +1,4 @@
-"""Eval harness CLI — python -m scripts.evals <run|report|cost> [options]."""
+"""Eval harness CLI — python -m scripts.evals <run|report|cost|seed|dashboards> [options]."""
 
 from __future__ import annotations
 
@@ -23,6 +23,9 @@ def _load_suites() -> None:
         "capability",
         "gaia_bench",
         "quality",
+        "comms",
+        "safety",
+        "hil",
         "longmemeval",
         "regression",
     ):
@@ -44,6 +47,7 @@ def main() -> None:
     run_p.add_argument("--resume", help="resume an existing run id")
     run_p.add_argument("--limit", type=int, help="run at most N cases")
     run_p.add_argument("--from", dest="from_case", help="start at case id")
+    run_p.add_argument("--only", help="comma list of exact case ids to run")
     run_p.add_argument("--only-failed", action="store_true", help="only re-run failed cases")
     run_p.add_argument("--providers", help="comma list, e.g. nous,opencode")
     run_p.add_argument("--exclude", help="comma list of providers to exclude")
@@ -62,8 +66,27 @@ def main() -> None:
     cost_p = sub.add_parser("cost", help="project eval cost from journal history")
     cost_p.add_argument("--project", action="store_true")
 
+    seed_p = sub.add_parser("seed", help="backfill Opik from every run journal (idempotent)")
+    seed_p.add_argument(
+        "--reset",
+        action="store_true",
+        help="delete existing case traces first (use when the trace shape changed)",
+    )
+    seed_p.add_argument(
+        "--prune",
+        action="store_true",
+        help="also collapse duplicate traces (slow: a delete costs ~3.5s on this backend)",
+    )
+
+    sub.add_parser("dashboards", help="create/refresh the Opik dashboards (idempotent)")
+
+    verify_p = sub.add_parser(
+        "verify", help="prove every case's gates can reject a worthless run (no model, no DB)"
+    )
+    verify_p.add_argument("--suite", help="only this suite (default: every registered suite)")
+
     from .core import runner
-    from .core.providers import load_config
+    from .core.providers import load_config, price_book
 
     args = parser.parse_args()
 
@@ -84,6 +107,7 @@ def main() -> None:
             resume=args.resume,
             limit=args.limit,
             from_case=args.from_case,
+            only=args.only.split(",") if args.only else None,
             only_failed=args.only_failed,
             providers=args.providers.split(",") if args.providers else None,
             exclude=args.exclude.split(",") if args.exclude else None,
@@ -97,14 +121,54 @@ def main() -> None:
         from .core.report import write_report
 
         journal = runner.RunJournal(runner.RUNS_DIR, args.run_id)
-        prices = {p: (c.price_in_per_1m, c.price_out_per_1m) for p, c in cfg.providers.items()}
+        prices = price_book(cfg)
         label = (journal.load_meta() or runner.RunMeta(args.run_id, "?", "?")).suite
         path = write_report(journal, label, prices)
         print(path)
     elif args.command == "cost":
         from .core.project import project
 
-        project(runner.RUNS_DIR)
+        project(runner.RUNS_DIR, price_book(cfg))
+    elif args.command == "seed":
+        from .core.seed import seed
+
+        seed(cfg, reset=args.reset, prune=args.prune)
+    elif args.command == "dashboards":
+        from .core.dashboards import build
+
+        build()
+    elif args.command == "verify":
+        sys.exit(_verify(cfg, args.suite))
+
+
+def _verify(cfg: object, only: str | None) -> int:
+    """Falsifiability sweep across every registered suite.
+
+    Exits non-zero when any case's gate accepted a worthless run, so this can
+    gate a report or a merge without anyone remembering to look.
+    """
+    from .core.counterfeit import check_suite, format_report, summary_counts
+    from .core.runner import SUITE_REGISTRY
+
+    names = [only] if only else sorted(SUITE_REGISTRY)
+    verdicts = []
+    for name in names:
+        factory = SUITE_REGISTRY.get(name)
+        if factory is None:
+            print(f"[verify] unknown suite {name!r}")
+            return 2
+        suite = factory(cfg)
+        try:
+            cases = suite.load_cases(cfg)
+        except Exception as e:
+            print(f"[verify] {name}: could not load cases: {type(e).__name__}: {e}")
+            continue
+        verdicts.extend(check_suite(suite, cases))
+        print(f"[verify] {name:<14} {len(cases):>4} cases")
+
+    print(format_report(verdicts))
+    counts = summary_counts(verdicts)
+    return 1 if counts["broken"] or counts["errored"] else 0
 
 
 if __name__ == "__main__":

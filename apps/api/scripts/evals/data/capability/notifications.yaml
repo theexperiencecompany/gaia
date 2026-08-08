@@ -1,0 +1,176 @@
+# Notifications family — the notification tools (get/search/count/mark-read/
+# send/preferences). There is NO end_state projection for the notifications
+# collection in the capability suite, so the runtime gates here are
+# tool_call_correctness + communicate; `answer_contains` gates the FINAL bubble
+# where a turn's own answer is the thing under test.
+#
+# The eval user is minted fresh per case, so the notification inbox starts
+# EMPTY. That is deliberate: several cases test that the agent reports "none"
+# honestly instead of inventing notifications it never read.
+#
+# send_notification requires an explicit `channels` list and rejects unknown
+# channel names (app/agents/tools/notification_tool.py) — the ask-first and
+# invalid-channel cases below verify the agent honours that contract instead of
+# guessing a channel or silently broadcasting.
+
+- id: notifications-count-empty
+  ticket: "A count question must be answered from the notification store, not from memory of the chat."
+  tags: [notifications]
+  prompt: "How many unread notifications do I have right now?"
+  expected:
+    category: notifications
+    tool_calls: [{tool: get_notification_count}]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply gives the actual count from the tool"
+        - "the reply does not invent notifications that were never returned"
+
+- id: notifications-list-recent
+  ticket: "Asking to see notifications must fetch them rather than describe them abstractly."
+  tags: [notifications]
+  prompt: "Show me my recent notifications"
+  expected:
+    category: notifications
+    tool_calls: [{tool: get_notifications}]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply states plainly that there are no notifications"
+        - "the reply lists no fabricated notification entries"
+
+- id: notifications-preferences
+  ticket: "Channel-preference question must read the real preference set, not guess it."
+  tags: [notifications]
+  prompt: "Which notification channels do I have turned on?"
+  expected:
+    category: notifications
+    communicate: ["telegram", "slack"]
+    tool_calls: [{tool: get_notification_preferences}]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply names the channels the preferences tool actually returned"
+        - "a channel being enabled in preferences is not the same as being connected — the reply must not promise delivery on a channel that was never linked"
+
+- id: notifications-send-explicit-channel
+  ticket: "An explicitly-channelled send must actually fire send_notification on that channel."
+  tags: [notifications]
+  prompt: "Send me an in-app notification titled 'Deploy done' saying the staging deploy finished"
+  expected:
+    category: notifications
+    communicate: ["deploy"]
+    tool_calls:
+      - {tool: send_notification, args: {channels: "inapp"}}
+    end_state:
+      notifications: [{count: 1}, {title_contains: "deploy"}, {channel: "inapp"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the notification was sent to the inapp channel the user named"
+        - "the reply confirms the send without inventing extra channels"
+
+- id: notifications-send-missing-channel
+  ticket: "No channel named — the agent must ask which channel instead of guessing one."
+  tags: [notifications, ambiguity]
+  prompt: "notify me that the build is done"
+  expected:
+    category: notifications
+    communicate: ["which"]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "the agent asks the user which channel(s) to notify on"
+        - "the agent must NOT pick a channel on the user's behalf and send anyway"
+
+- id: notifications-invalid-channel
+  ticket: "An unsupported channel must be rejected with the real list of valid channels."
+  tags: [notifications, negative]
+  prompt: "Send me a notification on carrier pigeon that the report is ready"
+  expected:
+    category: notifications
+    communicate: ["telegram"]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [communicate, end_state]}
+    judge:
+      criteria:
+        - "the reply says carrier pigeon is not a supported channel"
+        - "the reply offers the actual supported channels instead of failing silently"
+
+- id: notifications-multi-channel
+  ticket: "Two named channels: the send must target both, and unconnected ones must be reported honestly."
+  tags: [notifications]
+  prompt: "Ping me on inapp and telegram: standup starts in 10 minutes"
+  expected:
+    category: notifications
+    communicate: ["standup"]
+    tool_calls: [{tool: send_notification}]
+    end_state:
+      notifications: [{count: 1}, {channel: "inapp"}, {channel: "telegram"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "both channels the user named were requested"
+        - "if a channel was not delivered, the reply says so rather than claiming success"
+
+- id: notifications-search-no-match
+  ticket: "A topic search over an empty inbox must return nothing — and say so."
+  tags: [notifications, negative]
+  prompt: "Do I have any notifications mentioning the Acme invoice?"
+  expected:
+    category: notifications
+    tool_calls: [{tool: search_notifications}]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the reply says no matching notification was found"
+        - "the reply does not fabricate an Acme invoice notification"
+
+- id: notifications-mark-read-empty
+  ticket: "Marking everything read on an empty inbox must not claim work that never happened."
+  tags: [notifications, negative]
+  prompt: "Mark all my notifications as read"
+  expected:
+    category: notifications
+    tool_calls: [{tool: get_notifications}]
+    end_state:
+      notifications: [{count: 0}]
+    score: {gates: [end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the agent checks what notifications exist before claiming anything was marked read"
+        - "the reply does not claim it marked notifications read when there were none"
+
+- id: notifications-count-then-send
+  ticket: "Two turns: read the count, then send a notification referencing it."
+  tags: [notifications, multiturn]
+  setup:
+    turns:
+      - "how many notifications do I have?"
+      - "ok, send me an in-app notification saying I'm all caught up"
+  prompt: "how many notifications do I have?"
+  expected:
+    category: notifications
+    communicate: ["caught up"]
+    tool_calls:
+      - {tool: get_notification_count}
+      - {tool: send_notification}
+    end_state:
+      answer_contains: "caught up"
+      notifications: [{count: 1}, {channel: "inapp"}, {body_contains: "caught up"}]
+    score: {gates: [communicate, end_state, tool_calls]}
+    judge:
+      criteria:
+        - "the second turn sends the notification on the inapp channel the user named"
+        - "the second reply confirms the send"

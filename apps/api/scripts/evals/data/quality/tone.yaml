@@ -1,0 +1,179 @@
+# Tone and register. GAIA's single loudest prompt directive is TONE MIRRORING:
+# match the user's formality, length, pacing and energy. These cases put that
+# directive under pressure from both ends — a user who types two characters and
+# a user who types a paragraph, a user who is angry, and a user whose English
+# is a second language.
+#
+# The failure modes being hunted here are the ones a rubric judge can actually
+# see in the text: over-explaining at a terse user, matching a chatty user's
+# length instead of their intent, grovelling at a frustrated user, and
+# condescending to (or mirroring) broken grammar.
+#
+# Gate conventions are the same as domains.yaml: `openui: false` is a metric
+# and never a gate, tool gates only for the four observed tools, `communicate`
+# only for a user-supplied concrete noun on a delegated turn.
+
+- id: quality-tone-terse-ok
+  ticket: "Two-character user message — the reply must not become a paragraph."
+  tags: [tone, terse]
+  prompt: "ok"
+  expected:
+    category: tone
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply is very short — a few words at most — matching the user's message length."
+        - "The reply does NOT ask 'how can I help you', 'is there anything else', or offer a menu of things it can do."
+        - "The reply does not invent a topic or pretend a previous conversation happened."
+        - "The reply does not mention being an AI."
+    score: {gates: []}
+
+- id: quality-tone-terse-one-word-tool
+  ticket: "One-word request — still routes to the right tool instead of asking what they mean."
+  tags: [tone, terse, tool]
+  prompt: "weather"
+  expected:
+    category: tone
+    communicate: []
+    tool_calls: [{tool: get_weather, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply does not interrogate the user with a clarifying question before doing anything — a one-word ask gets acted on."
+        - "The reply fabricates no temperature or condition."
+        - "The reply is as short as the user's message; no paragraph."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-tone-chatty-rambling
+  ticket: "Long rambling message with one buried ask — find the ask, don't match the word count."
+  tags: [tone, chatty]
+  prompt: >-
+    okay so today has been WILD, i woke up late because my alarm didn't go off,
+    then the coffee machine died, then my sister called about the thing with mum
+    which is a whole saga, and my manager moved standup again which honestly at
+    this point is a bit much. anyway the actual thing i wanted to ask you is
+    whether i should tell my manager i'm burnt out or just push through until
+    the quarter ends. also the dog ate a sock.
+  expected:
+    category: tone
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply answers the actual question (whether to tell the manager about burnout) rather than reacting only to the alarm/coffee/dog details."
+        - "The reply does NOT match the user's length with a paragraph of its own — it stays noticeably shorter than the user's message."
+        - "The reply picks a position or asks one sharp question; it does not lay out a balanced pros-and-cons list."
+        - "The reply does not enumerate everything the user mentioned back at them as a summary."
+    score: {gates: []}
+
+- id: quality-tone-frustrated-repeat
+  ticket: "Angry repeat request — just do it, no apology-spam and no defensiveness."
+  tags: [tone, frustrated, tool]
+  prompt: "this is the third time i've asked. just set the damn reminder for 8am tomorrow."
+  expected:
+    category: tone
+    communicate: []
+    tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply does NOT contain 'I apologize for the confusion' or any multi-sentence apology."
+        - "The reply does not get defensive or explain why it failed before — it just moves on and acts."
+        - "The reply is short and slightly chastened at most, not grovelling and not chirpy."
+        - "The reply does not claim the reminder is already confirmed."
+    score: {gates: [tool_call_correctness, tool_card]}
+
+- id: quality-tone-frustrated-insult
+  ticket: "User calls it useless — no grovelling, no defensiveness, offer a way forward."
+  tags: [tone, frustrated]
+  prompt: "honestly you're useless"
+  expected:
+    category: tone
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply does not grovel or produce a stacked apology, and does not argue back or defend itself."
+        - "The reply asks what specifically went wrong or offers one concrete way to fix it, in one line."
+        - "The reply does not go cheerful or deflect with humour that ignores the complaint."
+        - "The reply is very short and does not mention being an AI."
+    score: {gates: []}
+
+- id: quality-tone-nonnative-todo
+  ticket: "Non-native phrasing on a tool request — parse the intent, don't correct their English."
+  tags: [tone, nonnative, tool]
+  prompt: "please you can make for me the todo for buying of milk in tomorrow"
+  expected:
+    category: tone
+    communicate: ["milk"]
+    tool_calls: [{tool: create_todo, min_calls: 1}]
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply acts on the request (a todo about milk) instead of asking the user to rephrase."
+        - "The reply does NOT correct, comment on, or mirror the user's broken grammar."
+        - "The reply names the item so the user can confirm it understood."
+        - "The reply is written in ordinary fluent English, not simplified or slowed down for them."
+    score: {gates: [communicate, tool_call_correctness, tool_card]}
+
+- id: quality-tone-nonnative-apology
+  ticket: "User apologises for their English — don't make it a thing, write clean output."
+  tags: [tone, nonnative]
+  prompt: >-
+    sorry my english is not so good. i need help for write email to my boss
+    because i want take leave for next friday, my sister is marry.
+  expected:
+    category: tone
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply does not dwell on or praise the user's English; at most one brief warm beat before helping."
+        - "The email it produces is in clean, professional English — it does NOT mirror the user's broken grammar."
+        - "The email is complete (greeting, the ask, the date, the reason, a sign-off) rather than an outline or a description of what to write."
+        - "The reply does not lecture the user about how to write emails."
+    score: {gates: []}
+
+- id: quality-tone-shouting
+  ticket: "All-caps frustration — stay level, don't mirror the shouting."
+  tags: [tone, frustrated]
+  prompt: "WHY IS IT SO HARD TO GET A STRAIGHT ANSWER OUT OF ANYONE TODAY"
+  expected:
+    category: tone
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply is not written in all caps — it mirrors the energy without mirroring the shouting."
+        - "The reply does not treat this as a task to solve; it reacts like a friend would."
+        - "The reply does not ask a stack of clarifying questions."
+        - "The reply is one or two lines at most."
+    score: {gates: []}
+
+- id: quality-tone-formal-register
+  ticket: "Formal user — mirror UP into a professional register, don't reply 'yo'."
+  tags: [tone, formal]
+  prompt: >-
+    Good afternoon. Could you please outline the key considerations one should
+    weigh when selecting a health insurance plan for a family of four?
+  expected:
+    category: tone
+    communicate: []
+    suggestions: false
+    openui: false
+    judge:
+      criteria:
+        - "The reply matches the user's formal register — no slang, no 'yo', 'bet', 'lemme', 'u', and no lowercase-only texting style."
+        - "The reply is still concise and readable, not a corporate whitepaper."
+        - "The reply names concrete considerations (premium vs deductible, network, out-of-pocket max, prescriptions) rather than generic advice to 'compare plans'."
+        - "The reply invents no premium figures, plan names, or insurer names."
+    score: {gates: []}

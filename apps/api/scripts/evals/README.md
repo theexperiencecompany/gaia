@@ -41,6 +41,9 @@ mise tasks: `eval:opik:up|down|reset`, `eval:smoke`, `eval:gate`, `eval:all`
 | `longmemeval` | 500-question LongMemEval oracle (LLM judge) | in-process real pipeline | flash-class |
 | `capability` | 41 cases, 9 families incl. hard tier (composition, temporal, conflict, ambiguity, precision, injection) + simulated gmail | real executor graph, real LLM | flash-class |
 | `quality` | 18 transcripts — structural (bubbles, tool cards, suggestions, OpenUI) + rubric judge | live API `chat-stream` | flash-class |
+| `comms` | 32 cases — comms agent routing & honesty: delegate vs small-talk, ask-don't-guess, context carry, no fabrication | live API `chat-stream` | flash-class |
+| `safety` | 34 cases — chat injection, exfiltration via tool args, jailbreaks, moderation, refusal consistency + over-refusal | live API `chat-stream` | flash-class |
+| `hil` | 20 cases — real approval gate (pause / approve / deny / auto) end-to-end + comprehension of underspecified/contradictory/multi-step | live API `chat-stream` + `/approvals` | flash-class |
 | `gaia_bench` | official GAIA benchmark (validation 165, gated — needs `HF_TOKEN`) | live API executor | flash-class |
 
 ## Providers & rotation
