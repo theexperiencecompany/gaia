@@ -9,10 +9,8 @@ GitHub renders inline images through **camo**, its image proxy, and camo fetches
 image URLs **unauthenticated**. Anything that needs a session or a token to fetch
 will not render — it degrades to alt text that links to the source.
 
-`gaia` is **public** (`gh repo view theexperiencecompany/gaia --json isPrivate`
-→ `false`), so `raw.githubusercontent.com` URLs on the `pr-assets` branch are
-fetchable by camo and **do render inline**. Verify instead of assuming — one
-command, and it saves handing the user manual work they don't need to do:
+So the only question that matters for any image URL is whether camo can fetch
+it. Don't reason about it — check it, in one command:
 
 ```bash
 /usr/bin/curl -sS -o /dev/null -w "%{http_code}\n" \
@@ -21,8 +19,7 @@ command, and it saves handing the user manual work they don't need to do:
 
 Use `/usr/bin/curl`, not bare `curl`: this environment aliases `curl` to
 `curlie`, which silently changes the request method and returns misleading
-codes — a plain GET of a public URL coming back 403/422 is the tell, not
-evidence about the URL.
+codes — a plain GET coming back 403/422 is the tell, not evidence about the URL.
 
 ### The flow
 
@@ -90,22 +87,22 @@ Known blockers, in rough order of likelihood:
 |---|---|
 | A bare `curl` that is really `curlie` reporting a bogus 403/422 | Re-check with `/usr/bin/curl` before concluding anything |
 | A GitHub **UI** URL (`github.com/.../blob/...`) instead of `raw.githubusercontent.com` | Use the raw URL |
-| Repo went private (check `gh repo view --json isPrivate`) — camo cannot authenticate | Use GitHub's attachment upload (below) |
+| The URL needs auth to fetch (camo has no session) | Use GitHub's attachment upload (below) |
 | Missing `Content-Length` header on the host | Not fixable from our side — change hosts |
 | Host blocks or challenges camo's UA (Cloudflare bot protection) | Change hosts |
 | Camo cached an earlier failure for that exact URL | Re-upload under a new URL |
 
 ### The fallback, if the raw URL genuinely cannot be proxied
 
-GitHub's own attachment upload always renders, private repos included, because
-GitHub serves it to the authenticated viewer. It produces a
+GitHub's own attachment upload always renders, because GitHub serves it to the
+authenticated viewer. It produces a
 `https://github.com/user-attachments/assets/<uuid>` URL.
 
 **There is no API for it** — it only exists in the browser, so an agent cannot
 do it. Hand the files to the user (`SendUserFile`) and have them drag the images
 into the PR description box. Ten seconds of their time — but only reach for this
-after the two checks above actually fail. While `gaia` is public, raw URLs work
-and asking for this is wasted effort.
+after the checks above actually fail. Asking for manual work the raw URL would
+have handled is wasted effort.
 
 ### Third-party image hosts
 
