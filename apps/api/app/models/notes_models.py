@@ -37,6 +37,10 @@ class NoteDocument(UserScopedDocument):
     description: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Set when vector indexing failed after the note was already persisted. The
+    # note is safe and the request still succeeds, but it is invisible to search
+    # until reindexed — this flag is what makes that repairable instead of silent.
+    needs_reindex: bool = False
 
 
 class NoteUpdate(BaseModel):
@@ -44,6 +48,8 @@ class NoteUpdate(BaseModel):
 
     content: str | None = None
     plaintext: str | None = None
+    # Server-set only, never accepted from a client payload.
+    needs_reindex: bool | None = None
 
 
 class NoteSearchHit(BaseModel):

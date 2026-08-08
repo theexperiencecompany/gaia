@@ -26,6 +26,10 @@ class NotesRepository(UserScopedRepository[NoteDocument, NoteUpdate]):
             {"_id": {"$in": [self._id_value(nid) for nid in note_ids]}, "user_id": user_id}
         )
 
+    async def find_needing_reindex(self, user_id: str) -> list[NoteDocument]:
+        """The user's notes whose vector indexing failed and were never repaired."""
+        return await self._find({"user_id": user_id, "needs_reindex": True})
+
     async def search_by_plaintext(self, user_id: str, *, pattern: str) -> list[NoteSearchHit]:
         """Notes whose plaintext matches a regex ``pattern`` (caller escapes it)."""
         return await self._aggregate(
