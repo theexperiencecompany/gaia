@@ -120,6 +120,7 @@ dev = [
   "time-machine>=3.3.1",
   "schemathesis>=4.24.3",
   "hypothesis>=6.165.2",
+  "mutmut>=3.7.0",
 ]
 
 backend = [
@@ -208,3 +209,19 @@ Homepage = "https://heygaia.io"
 Documentation = "https://docs.heygaia.io"
 Repository = "https://github.com/theexperiencecompany/gaia"
 Issues = "https://github.com/theexperiencecompany/gaia/issues"
+
+[tool.mutmut]
+# Mutation spot-checks (scripts/test/mutation.sh) — see that script for how
+# the pieces fit. Key repo integration points:
+# - Single-process pytest: the repo pytest.ini addopts carry -n 4 (xdist),
+#   but mutmut's trampoline stats are collected by in-process pytest plugins
+#   (pytest_runtest_teardown) — xdist workers run the tests where the
+#   collector does not exist, so no test ever associates with a mutant.
+# - also_copy: the mutants/ dir isolates mutated files, but tests/conftest
+#   imports the whole app at collection; a full copy keeps imports resolving.
+# - The script swaps source_paths + pytest_add_cli_args_test_selection to
+#   the module + its test file per run; stats then executes only that file.
+source_paths = ["app"]
+also_copy = ["app", "tests", "scripts"]
+pytest_add_cli_args_test_selection = []
+pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']
