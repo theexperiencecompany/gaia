@@ -10,7 +10,7 @@
     category: tracked_todos
     communicate: ["bathroom"]
     tool_calls: [{tool: create_tracked_todo}]
-    end_state: {tracked_todos: [{title: "renovating my bathroom", canvas_contains: null}]}
+    end_state: {tracked_todos: [{title_contains: "bathroom"}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:

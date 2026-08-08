@@ -8,6 +8,7 @@ Cases use scripted directives: [[tool:name {...}]] and [[say:...]].
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 import subprocess
@@ -61,6 +62,16 @@ def _sim_graph_builder():
 
     register_llm_providers()
     return build_executor_graph(chat_llm=init_llm(preferred_provider="custom"))
+
+
+async def _ensure_registered() -> None:
+    """Register the app's lazy providers + services the executor graph needs."""
+    from app.core.provider_registration import register_lazy_providers
+    from app.db.redis import redis_cache
+    from app.helpers.lifespan_helpers import init_mongodb_async
+
+    register_lazy_providers("arq_worker")
+    await asyncio.gather(init_mongodb_async(), redis_cache.verify_connection())
 
 
 @register_suite("regression")
@@ -157,6 +168,7 @@ class RegressionSuite(Suite):
                 error="regression suite requires --sim (GAIA_SIM_MODE)",
             )
         ensure_stub()
+        await _ensure_registered()
         config = {
             "configurable": {"thread_id": f"reg-{case.id}", "user_id": "reg-user"},
             "metadata": {"user_id": "reg-user"},
@@ -170,11 +182,13 @@ class RegressionSuite(Suite):
                     for node, payload in event.items():
                         for msg in payload.get("messages", []) if isinstance(payload, dict) else []:
                             content = getattr(msg, "content", None)
+                            msg_type = getattr(msg, "type", "?")
+                            role = "assistant" if msg_type == "ai" else "human" if msg_type == "human" else msg_type
                             if content:
-                                messages.append({"role": getattr(msg, "type", "?"), "content": str(content)})
+                                messages.append({"role": role, "content": str(content)})
                             for call in getattr(msg, "tool_calls", []) or []:
                                 tool_calls.append({"name": call.get("name", ""), "args": call.get("args", {})})
-            text = " ".join(m.get("content", "") for m in messages if m.get("role") == "ai")
+            text = " ".join(m.get("content", "") for m in messages if m.get("role") == "assistant")
         except Exception as e:  # noqa: BLE001
             return CaseRun(
                 case_id=case.id, provider=provider.name, model=provider.model,

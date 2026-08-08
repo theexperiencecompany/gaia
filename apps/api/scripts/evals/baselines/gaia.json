@@ -1,5 +1,9 @@
 {
   "suite": "gaia",
-  "baseline": 0.0,
-  "notes": "set by first real run — target context: good agents score 45-65% on validation; HAL: Claude Sonnet 4.5 74.55%, GPT-5 Medium 62.8%"
+  "run_id": "gaia_bench-20260808-000707-86bf74",
+  "baseline_accuracy": 1.0,
+  "cases": 3,
+  "passed": 3,
+  "captured_at": "2026-08-08",
+  "notes": "Curated placeholder cases only — the real 165-question validation split is HF-gated and awaits HF_TOKEN. Reference: good agents score 45-65% (HAL: Claude Sonnet 4.5 74.55%, GPT-5 Medium 62.8%). Gate: gaia_exact (official scorer, bug-for-bug)."
 }

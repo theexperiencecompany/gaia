@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<title>Eval report — LongMemEval — longmemeval-20260808-000323-65b9a7</title>
+<title>Eval report — Regression gate — regression-20260808-001924-b0cb16</title>
 <style>
   body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #0f1115; color: #e5e7eb; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
@@ -24,266 +24,176 @@
   .error { color: #f87171; }
   .banner { color: #9ca3af; font-size: 13px; }
 </style></head><body><div class="wrap">
-<h1>GAIA eval — LongMemEval</h1>
-<div class="banner">run <code>longmemeval-20260808-000323-65b9a7</code> · finished 2026-08-08 00:06 UTC · status <b>finished</b> · experiment </div>
-<div class="score">90.0%</div>
-<div class="pct">9/10 cases passed</div>
-<h2>Metrics</h2><svg viewBox="0 0 640 46" width="640" height="46"><text x="0" y="23" class="lbl">gaia_exact</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">0.90</text></svg>
-<h2>Categories</h2><svg viewBox="0 0 640 46" width="640" height="46"><text x="0" y="23" class="lbl">temporal-reasoning</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">0.90</text></svg>
+<h1>GAIA eval — Regression gate</h1>
+<div class="banner">run <code>regression-20260808-001924-b0cb16</code> · finished 2026-08-08 00:20 UTC · status <b>finished</b> · experiment </div>
+<div class="score">100.0%</div>
+<div class="pct">5/5 cases passed</div>
+<h2>Metrics</h2><svg viewBox="0 0 640 72" width="640" height="72"><text x="0" y="23" class="lbl">communicate</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">tool_call_correctness</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text></svg>
+<h2>Categories</h2><svg viewBox="0 0 640 124" width="640" height="124"><text x="0" y="23" class="lbl">chat</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">search</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text><text x="0" y="75" class="lbl">todos</text><rect x="150" y="62" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="75" class="val">1.00</text><text x="0" y="101" class="lbl">tracked_todos</text><rect x="150" y="88" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="101" class="val">1.00</text></svg>
 <h2>Provider usage</h2>
 <table><tr><th>provider</th><th>cases</th><th>tokens in</th><th>tokens out</th><th>est. USD</th></tr>
-<tr><td>nous</td><td>10</td><td>707K</td><td>78K</td><td>$0.15</td></tr>
-<tr><td><b>total</b></td><td>10</td><td>707K</td><td>78K</td><td>$0.15</td></tr>
+<tr><td>nous</td><td>5</td><td>0</td><td>0</td><td>$0.00</td></tr>
+<tr><td><b>total</b></td><td>5</td><td>0</td><td>0</td><td>$0.00</td></tr>
 </table>
 <h2>Cases</h2>
 <details class="card passed">
-  <summary><b>lme-d01c6aa8</b>
+  <summary><b>reg-todo-create</b>
     <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 14K in /
-    994 out · 20.8s</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
+    <span class="meta">provider=nous · 0 in /
+    0 out · 13.2s</span>
   </summary>
   <div class="body">
-    <div class="ticket">How old was I when I moved to the United States?</div>
-    <div class="prompt"><b>prompt:</b> How old was I when I moved to the United States?</div>
+    <div class="ticket">Scripted create_todo through the real executor graph.</div>
+    <div class="prompt"><b>prompt:</b> [[tool:create_todo {&quot;title&quot;:&quot;Buy milk&quot;}]]
+[[say:Created it.]]</div>
     <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;27&quot;
- },
+ &quot;category&quot;: &quot;todos&quot;,
+ &quot;tool_calls&quot;: [
+  {
+   &quot;tool&quot;: &quot;create_todo&quot;,
+   &quot;args&quot;: &quot;name-only&quot;
+  }
+ ],
+ &quot;communicate&quot;: [
+  &quot;Created&quot;
+ ],
  &quot;score&quot;: {
   &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
+   &quot;communicate&quot;,
+   &quot;tool_call_correctness&quot;
   ]
  }
 }</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How old was I when I moved to the United States?</div><div class="msg asst"><b>assistant:</b> You were 27 years old when you moved to the United States.</div></div>
+    <div class="msglist"><div class="msg tool"><b>tool:</b> {&quot;todo&quot;: {&quot;title&quot;: &quot;Buy milk&quot;, &quot;description&quot;: null, &quot;labels&quot;: [], &quot;due_date&quot;: null, &quot;due_date_timezone&quot;: null, &quot;priority&quot;: &quot;none&quot;, &quot;project_id&quot;: &quot;6a7675e3a5bd44357ab8f5a5&quot;, &quot;completed&quot;: false, &quot;subtasks&quot;: [], &quot;workflow_id&quot;: null, &quot;vfs_path&quot;: null, &quot;scheduled_at&quot;: null, &quot;recurrence&quot;: null, &quot;gaia_retry_count&quot;: 0, &quot;expires_at&quot;: null, &quot;references&quot;: [], &quot;id&quot;: &quot;6a76761c5c6d52ae30651b44&quot;, &quot;user_id&quot;: &quot;reg-user&quot;, &quot;created_at&quot;: &quot;2026-08-08T00:19:40.126000Z&quot;, &quot;updated_at&quot;: &quot;2026-08-08T00:19:40.126000Z&quot;, &quot;completed_at&quot;: null, &quot;workflow_categories&quot;: []}, &quot;error&quot;: null, &quot;_rate_limit_info&quot;: {&quot;feature&quot;: &quot;todo_operations&quot;, &quot;plan&quot;: &quot;free&quot;, &quot;usage&quot;: {&quot;day&quot;: {&quot;used&quot;: 1, &quot;limit&quot;: 50, &quot;reset_time&quot;: &quot;2026-08-09T00:00:00+00:00&quot;}, &quot;month&quot;: {&quot;used&quot;: 1, &quot;limit&quot;: 1000, &quot;reset_time&quot;: &quot;2026-09-01T00:00:00+00:00&quot;}}}}</div><div class="msg asst"><b>assistant:</b> Created it.</div></div>
+    <div class="tools"><div class="tool"><code>create_todo</code> <pre>{&quot;title&quot;: &quot;Buy milk&quot;}</pre></div></div>
+    <div class="error"></div>
+  </div>
+</details><details class="card passed">
+  <summary><b>reg-todo-list</b>
+    <span class="status">passed</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
+    <span class="meta">provider=nous · 0 in /
+    0 out · 5.2s</span>
+  </summary>
+  <div class="body">
+    <div class="ticket">Scripted list_todos.</div>
+    <div class="prompt"><b>prompt:</b> [[tool:list_todos {}]]
+[[say:Here they are.]]</div>
+    <div class="expected"><b>expected:</b> <pre>{
+ &quot;category&quot;: &quot;todos&quot;,
+ &quot;tool_calls&quot;: [
+  {
+   &quot;tool&quot;: &quot;list_todos&quot;
+  }
+ ],
+ &quot;communicate&quot;: [
+  &quot;Here&quot;
+ ],
+ &quot;score&quot;: {
+  &quot;gates&quot;: [
+   &quot;communicate&quot;,
+   &quot;tool_call_correctness&quot;
+  ]
+ }
+}</pre></div>
+    <div class="msglist"><div class="msg tool"><b>tool:</b> {&quot;todos&quot;: [{&quot;title&quot;: &quot;Buy milk&quot;, &quot;description&quot;: null, &quot;labels&quot;: [], &quot;due_date&quot;: null, &quot;due_date_timezone&quot;: null, &quot;priority&quot;: &quot;none&quot;, &quot;project_id&quot;: &quot;6a7675e3a5bd44357ab8f5a5&quot;, &quot;completed&quot;: false, &quot;subtasks&quot;: [], &quot;workflow_id&quot;: &quot;wf_d68e1c93a61d&quot;, &quot;vfs_path&quot;: null, &quot;scheduled_at&quot;: null, &quot;recurrence&quot;: null, &quot;gaia_retry_count&quot;: 0, &quot;expires_at&quot;: null, &quot;references&quot;: [], &quot;id&quot;: &quot;6a76761c5c6d52ae30651b44&quot;, &quot;user_id&quot;: &quot;reg-user&quot;, &quot;created_at&quot;: &quot;2026-08-08T00:19:40.126000Z&quot;, &quot;updated_at&quot;: &quot;2026-08-08T00:19:42.859000Z&quot;, &quot;completed_at&quot;: null, &quot;workflow_categories&quot;: [&quot;search&quot;, &quot;reminders&quot;, &quot;todos&quot;]}, {&quot;title&quot;: &quot;Q3 plan&quot;, &quot;description&quot;: null, &quot;labels&quot;: [&quot;gaia-tracked&quot;], &quot;due_date&quot;: null, &quot;due_date_timezone&quot;: null, &quot;priority&quot;: &quot;none&quot;, &quot;project_id&quot;: &quot;6a7675e3a5bd44357ab8f5a5&quot;, &quot;completed&quot;: false, &quot;subtasks&quot;: [], &quot;workflow_id&quot;: &quot;wf_a74a0e7ab444&quot;, &quot;vfs_path&quot;: &quot;/users/reg-user/todos/6a7675f9a5bd44357ab8f5a8&quot;, &quot;scheduled_at&quot;: null, &quot;recurrence&quot;: null, &quot;gaia_retry_count&quot;: 0, &quot;expires_at&quot;: null, &quot;references&quot;: [], &quot;id&quot;: &quot;6a7675f9a5bd44357ab8f5a8&quot;, &quot;user_id&quot;: &quot;reg-user&quot;, &quot;created_at&quot;: &quot;2026-08-08T00:19:05.046000Z&quot;, &quot;updated_at&quot;: &quot;2026-08-08T00:19:08.076000Z&quot;, &quot;completed_at&quot;: null, &quot;workflow_categories&quot;: [&quot;documents&quot;, &quot;search&quot;, &quot;gaia&quot;]}, {&quot;title&quot;: &quot;Buy milk&quot;, &quot;description&quot;: null, &quot;labels&quot;: [], &quot;due_date&quot;: null, &quot;due_date_timezone&quot;: null, &quot;priority&quot;: &quot;none&quot;, &quot;project_id&quot;: &quot;6a7675e3a5bd44357ab8f5a5&quot;, &quot;completed&quot;: false, &quot;subtasks&quot;: [], &quot;workflow_id&quot;: &quot;wf_a92b13fa81f9&quot;, &quot;vfs_path&quot;: null, &quot;scheduled_at&quot;: null, &quot;recurrence&quot;: null, &quot;gaia_retry_count&quot;: 0, &quot;expires_at&quot;: null, &quot;references&quot;: [], &quot;id&quot;: &quot;6a7675e3a5bd44357ab8f5a6&quot;, &quot;user_id&quot;: &quot;reg-user&quot;, &quot;created_at&quot;: &quot;2026-08-08T00:18:43.212000Z&quot;, &quot;updated_at&quot;: &quot;2026-08-08T00:18:46.274000Z&quot;, &quot;completed_at&quot;: null, &quot;workflow_categories&quot;: [&quot;search&quot;, &quot;reminders&quot;, &quot;todos&quot;]}], &quot;count&quot;: 3, &quot;error&quot;: null}</div><div class="msg asst"><b>assistant:</b> Here they are.</div></div>
+    <div class="tools"><div class="tool"><code>list_todos</code> <pre>{}</pre></div></div>
+    <div class="error"></div>
+  </div>
+</details><details class="card passed">
+  <summary><b>reg-plain-reply</b>
+    <span class="status">passed</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
+    <span class="meta">provider=nous · 0 in /
+    0 out · 5.1s</span>
+  </summary>
+  <div class="body">
+    <div class="ticket">Scripted plain reply, no tools.</div>
+    <div class="prompt"><b>prompt:</b> [[say:All good.]]</div>
+    <div class="expected"><b>expected:</b> <pre>{
+ &quot;category&quot;: &quot;chat&quot;,
+ &quot;tool_calls&quot;: [],
+ &quot;communicate&quot;: [
+  &quot;All good&quot;
+ ],
+ &quot;score&quot;: {
+  &quot;gates&quot;: [
+   &quot;communicate&quot;
+  ]
+ }
+}</pre></div>
+    <div class="msglist"><div class="msg asst"><b>assistant:</b> All good.</div></div>
     <div class="tools"></div>
     <div class="error"></div>
   </div>
 </details><details class="card passed">
-  <summary><b>lme-gpt4_8e165409</b>
+  <summary><b>reg-web-search</b>
     <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 28K in /
-    3K out · 20.2s</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
+    <span class="meta">provider=nous · 0 in /
+    0 out · 5.5s</span>
   </summary>
   <div class="body">
-    <div class="ticket">How many days passed between the day I repotted the previous spider plant and the day I gave my neighbor, Mrs. Johnson, a few cuttings from my spider plant?</div>
-    <div class="prompt"><b>prompt:</b> How many days passed between the day I repotted the previous spider plant and the day I gave my neighbor, Mrs. Johnson, a few cuttings from my spider plant?</div>
+    <div class="ticket">Scripted web search binding.</div>
+    <div class="prompt"><b>prompt:</b> [[tool:web_search_tool {&quot;query&quot;:&quot;eiffel tower&quot;}]]
+[[say:Found it.]]</div>
     <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;14 days. 15 days (including the last day) is also acceptable.&quot;
- },
+ &quot;category&quot;: &quot;search&quot;,
+ &quot;tool_calls&quot;: [
+  {
+   &quot;tool&quot;: &quot;web_search_tool&quot;
+  }
+ ],
+ &quot;communicate&quot;: [
+  &quot;Found&quot;
+ ],
  &quot;score&quot;: {
   &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
+   &quot;communicate&quot;,
+   &quot;tool_call_correctness&quot;
   ]
  }
 }</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How many days passed between the day I repotted the previous spider plant and the day I gave my neighbor, Mrs. Johnson, a few cuttings from my spider plant?</div><div class="msg asst"><b>assistant:</b> 14 days passed between repotting the spider plant and giving cuttings to Mrs. Johnson (2023-03-18 minus 2023-03-04 = 14 days).</div></div>
-    <div class="tools"></div>
+    <div class="msglist"><div class="msg tool"><b>tool:</b> Error: ValidationError: 1 validation error for web_search_tool
+query_text
+  Field required [type=missing, input_value={&#x27;query&#x27;: &#x27;eiffel tower&#x27;}, input_type=dict]
+    For further information visit https://errors.pydantic.dev/2.12/v/missing</div><div class="msg asst"><b>assistant:</b> Found it.</div></div>
+    <div class="tools"><div class="tool"><code>web_search_tool</code> <pre>{&quot;query&quot;: &quot;eiffel tower&quot;}</pre></div></div>
     <div class="error"></div>
   </div>
 </details><details class="card passed">
-  <summary><b>lme-gpt4_93159ced</b>
+  <summary><b>reg-tracked-todo</b>
     <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 42K in /
-    4K out · 19.2s</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
+    <span class="meta">provider=nous · 0 in /
+    0 out · 6.3s</span>
   </summary>
   <div class="body">
-    <div class="ticket">How long have I been working before I started my current job at NovaTech?</div>
-    <div class="prompt"><b>prompt:</b> How long have I been working before I started my current job at NovaTech?</div>
+    <div class="ticket">Scripted tracked todo canvas tool.</div>
+    <div class="prompt"><b>prompt:</b> [[tool:create_tracked_todo {&quot;title&quot;:&quot;Q3 plan&quot;,&quot;purpose&quot;:&quot;planning&quot;}]]
+[[say:Tracked.]]</div>
     <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;4 years and 9 months&quot;
- },
+ &quot;category&quot;: &quot;tracked_todos&quot;,
+ &quot;tool_calls&quot;: [
+  {
+   &quot;tool&quot;: &quot;create_tracked_todo&quot;
+  }
+ ],
+ &quot;communicate&quot;: [
+  &quot;Tracked&quot;
+ ],
  &quot;score&quot;: {
   &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
+   &quot;communicate&quot;,
+   &quot;tool_call_correctness&quot;
   ]
  }
 }</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How long have I been working before I started my current job at NovaTech?</div><div class="msg asst"><b>assistant:</b> You have been working for 4 years and 9 months before starting your current job at NovaTech (9 years total experience minus 4 years and 3 months at NovaTech).</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card passed">
-  <summary><b>lme-gpt4_b5700ca9</b>
-    <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 49K in /
-    5K out · 8.8s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">How many days ago did I attend the Maundy Thursday service at the Episcopal Church?</div>
-    <div class="prompt"><b>prompt:</b> How many days ago did I attend the Maundy Thursday service at the Episcopal Church?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;4 days.&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How many days ago did I attend the Maundy Thursday service at the Episcopal Church?</div><div class="msg asst"><b>assistant:</b> You attended the service 4 days ago.</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card passed">
-  <summary><b>lme-gpt4_1e4a8aeb</b>
-    <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 63K in /
-    7K out · 20.3s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">How many days passed between the day I attended the gardening workshop and the day I planted the tomato saplings?</div>
-    <div class="prompt"><b>prompt:</b> How many days passed between the day I attended the gardening workshop and the day I planted the tomato saplings?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;6 days. 7 days (including the last day) is also acceptable.&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How many days passed between the day I attended the gardening workshop and the day I planted the tomato saplings?</div><div class="msg asst"><b>assistant:</b> 2023-04-21 minus 2023-04-15 = 6 days.</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card passed">
-  <summary><b>lme-gpt4_1d80365e</b>
-    <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 78K in /
-    8K out · 24.0s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">How many days did I spend on my solo camping trip to Yosemite National Park?</div>
-    <div class="prompt"><b>prompt:</b> How many days did I spend on my solo camping trip to Yosemite National Park?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;2 days. 3 days (including the last day) is also acceptable.&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How many days did I spend on my solo camping trip to Yosemite National Park?</div><div class="msg asst"><b>assistant:</b> You spent 2 days on your solo camping trip to Yosemite National Park.</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card failed">
-  <summary><b>lme-gpt4_2312f94c</b>
-    <span class="status">failed</span>
-    <span class="chip no">gaia_exact=0.00</span>
-    <span class="meta">provider=nous · 92K in /
-    11K out · 21.6s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">Which device did I got first, the Samsung Galaxy S22 or the Dell XPS 13?</div>
-    <div class="prompt"><b>prompt:</b> Which device did I got first, the Samsung Galaxy S22 or the Dell XPS 13?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;Samsung Galaxy S22&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> Which device did I got first, the Samsung Galaxy S22 or the Dell XPS 13?</div><div class="msg asst"><b>assistant:</b> You got the Dell XPS 13 first.</div></div>
-    <div class="tools"></div>
-    <div class="error">gate score below threshold</div>
-  </div>
-</details><details class="card passed">
-  <summary><b>lme-gpt4_7bc6cf22</b>
-    <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 100K in /
-    11K out · 10.6s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">How many days ago did I read the March 15th issue of The New Yorker?</div>
-    <div class="prompt"><b>prompt:</b> How many days ago did I read the March 15th issue of The New Yorker?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;12 days ago. 13 days (including the last day) is also acceptable.&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How many days ago did I read the March 15th issue of The New Yorker?</div><div class="msg asst"><b>assistant:</b> Today is 2023-04-01. 2023-04-01 minus 2023-03-20 = 12 days ago.</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card passed">
-  <summary><b>lme-gpt4_c27434e8</b>
-    <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 114K in /
-    13K out · 17.9s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">Which project did I start first, the Ferrari model or the Japanese Zero fighter plane model?</div>
-    <div class="prompt"><b>prompt:</b> Which project did I start first, the Ferrari model or the Japanese Zero fighter plane model?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;Japanese Zero fighter plane model&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> Which project did I start first, the Ferrari model or the Japanese Zero fighter plane model?</div><div class="msg asst"><b>assistant:</b> You started the Japanese Zero fighter plane model first.</div></div>
-    <div class="tools"></div>
-    <div class="error"></div>
-  </div>
-</details><details class="card passed">
-  <summary><b>lme-gpt4_4ef30696</b>
-    <span class="status">passed</span>
-    <span class="chip ok">gaia_exact=1.00</span>
-    <span class="meta">provider=nous · 128K in /
-    15K out · 21.3s</span>
-  </summary>
-  <div class="body">
-    <div class="ticket">How many days passed between the day I finished reading &#x27;The Nightingale&#x27; and the day I started reading &#x27;The Hitchhiker&#x27;s Guide to the Galaxy&#x27;?</div>
-    <div class="prompt"><b>prompt:</b> How many days passed between the day I finished reading &#x27;The Nightingale&#x27; and the day I started reading &#x27;The Hitchhiker&#x27;s Guide to the Galaxy&#x27;?</div>
-    <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;temporal-reasoning&quot;,
- &quot;gaia&quot;: {
-  &quot;ground_truth&quot;: &quot;1 day. 2 days (including the last day) is also acceptable.&quot;
- },
- &quot;score&quot;: {
-  &quot;gates&quot;: [
-   &quot;gaia_exact&quot;
-  ]
- }
-}</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> How many days passed between the day I finished reading &#x27;The Nightingale&#x27; and the day I started reading &#x27;The Hitchhiker&#x27;s Guide to the Galaxy&#x27;?</div><div class="msg asst"><b>assistant:</b> 1 day passed between finishing &#x27;The Nightingale&#x27; and starting &#x27;The Hitchhiker&#x27;s Guide to the Galaxy&#x27; (2022-01-16 minus 2022-01-15 = 1 day).</div></div>
-    <div class="tools"></div>
+    <div class="msglist"><div class="msg tool"><b>tool:</b> Tracked todo created: 6a7676315c6d52ae30651b45
+Title: Q3 plan
+Canvas + activity log are stored on this todo — edit them ONLY via update_tracked_todo_canvas(todo_id=&#x27;6a7676315c6d52ae30651b45&#x27;, ...), never with filesystem tools.</div><div class="msg asst"><b>assistant:</b> Tracked.</div></div>
+    <div class="tools"><div class="tool"><code>create_tracked_todo</code> <pre>{&quot;title&quot;: &quot;Q3 plan&quot;, &quot;purpose&quot;: &quot;planning&quot;}</pre></div></div>
     <div class="error"></div>
   </div>
 </details>

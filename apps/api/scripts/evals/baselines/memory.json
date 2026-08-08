@@ -1,5 +1,9 @@
 {
   "suite": "memory",
-  "baseline": 0.0,
-  "notes": "to be set by first validated run — target: reproduce committed 69.6% on the 46-probe subset"
+  "run_id": "memory-20260807-231807-34b2a9",
+  "baseline_accuracy": 0.911,
+  "cases": 45,
+  "passed": 41,
+  "captured_at": "2026-08-08",
+  "notes": "Full 45-scenario suite (52 probes). Previous committed report: 69.6% (46-probe subset, predates KNOWLEDGE_GRAPH). Gate: probes."
 }

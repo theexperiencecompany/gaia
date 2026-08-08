@@ -1,1 +1,9 @@
-{"suite": "quality", "baseline": 0.0, "notes": "set by first real run"}
+{
+  "suite": "quality",
+  "run_id": "quality-20260807-222851-0ceb9b",
+  "baseline_accuracy": 0.889,
+  "cases": 18,
+  "passed": 16,
+  "captured_at": "2026-08-08",
+  "notes": "18 cases (structural gates + rubric judge). Judge (deepseek-v4-pro via opencode-go) mean 0.87. Failures: reminder tool-fidelity through comms path, correction-loop communicate."
+}

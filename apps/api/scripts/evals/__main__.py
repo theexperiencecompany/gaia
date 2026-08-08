@@ -82,7 +82,7 @@ def main() -> None:
     elif args.command == "cost":
         from .core.project import project
 
-        project(cfg, runner.RUNS_DIR)
+        project(runner.RUNS_DIR)
 
 
 if __name__ == "__main__":

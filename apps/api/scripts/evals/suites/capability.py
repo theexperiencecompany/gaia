@@ -812,12 +812,18 @@ async def _project_reminders(user_id: str, want: list[object]) -> list[dict[str,
     from app.services.reminder_service import reminder_scheduler
 
     items = await reminder_scheduler.list_user_reminders(user_id, limit=100)
+
+    def _is_cancelled(item: object) -> bool:
+        status = item.get("status") if isinstance(item, dict) else getattr(item, "status", None)
+        return status is not None and "cancelled" in str(status).lower()
+
+    active_count = len([r for r in items if not _is_cancelled(r)])
     entries: list[dict[str, object]] = []
     for item in want:
         if not isinstance(item, dict):
             raise RuntimeError(f"capability reminders end_state entry is not a mapping: {item!r}")
         if "count" in item:
-            entries.append({"count": len(items)})
+            entries.append({"count": active_count})
             continue
         title_term = str(item.get("title") or "")
         title_contains = item.get("title_contains")
