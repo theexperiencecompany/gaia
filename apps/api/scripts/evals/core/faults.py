@@ -1,0 +1,117 @@
+"""Did we fail to conduct the test, or did the agent answer wrongly?
+
+The harness has exactly one question to answer before it may grade anything, and
+this module is the only place that answers it. Getting it wrong is the most
+expensive defect the harness can have: a datastore that went away for four hours
+was averaged into accuracy as 157 wrong answers, and one question type was
+published as ``single-session-user 0/64`` when not one of those 64 questions was
+ever asked.
+
+Two rules live here, deliberately kept apart because they answer different
+questions with different evidence:
+
+``classify`` reads a *live exception* and says whether a backend the suite
+depends on is unavailable — which must abort the run, because every case after
+it would measure the outage rather than the agent.
+
+``never_conducted`` reads a *journal record* and says whether that case ever
+executed. It needs no exception and no signature table: a record carrying a
+fault, an empty transcript and no scores is a case that never ran, whatever
+raised it. That covers the outages, the harness's own crashes, and anything
+neither list anticipated.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import httpx
+
+from .types import InfraError
+
+# Exception types that can only ever mean "the thing we were talking to is not
+# there". None of them can be produced by an agent giving a poor answer, which
+# is what makes matching on the type alone safe.
+_TRANSPORT_FAULTS: tuple[tuple[type[BaseException], str], ...] = (
+    (httpx.ConnectError, "api"),
+    (httpx.ConnectTimeout, "api"),
+    (httpx.RemoteProtocolError, "api"),
+    (httpx.ReadError, "api"),
+    (httpx.WriteError, "api"),
+    (ConnectionError, "api"),
+    (BrokenPipeError, "api"),
+)
+
+# Faults that arrive as a generic exception type (usually ``RuntimeError``), so
+# only the message identifies them. Each entry is anchored to a named backend
+# and was taken from a real journal record — none is speculative, and none can
+# be emitted by an agent answering a question.
+_FAULT_SIGNATURES: tuple[tuple[str, str], ...] = (
+    ("postgresql engine not available", "postgres"),
+    ("the database system is shutting down", "postgres"),
+    ("the database system is starting up", "postgres"),
+    ("connection to server at", "postgres"),
+    ("mongodb is not available", "mongo"),
+    ("redis is not available", "redis"),
+    ("chromadb is not available", "chroma"),
+    ("all connection attempts failed", "api"),
+    ("server disconnected without sending a response", "api"),
+    ("connect call failed", "api"),
+    ("dev executor endpoint failed: http 5", "api"),
+)
+
+
+@dataclass(frozen=True)
+class Fault:
+    """An identified infrastructure outage: which backend, and what it said."""
+
+    backend: str
+    reason: str
+
+    def as_infra_error(self) -> InfraError:
+        """The exception the run loop aborts on."""
+        return InfraError(self.backend, self.reason)
+
+
+def classify(exc: BaseException) -> Fault | None:
+    """The outage behind ``exc``, or ``None`` if it is not an outage.
+
+    ``None`` does not mean the case succeeded — a harness bug is still a fault,
+    and the run loop still records it as ``errored``. It means only that the run
+    need not abort, because retrying elsewhere or continuing is sane.
+    """
+    if isinstance(exc, InfraError):
+        return Fault(exc.backend, exc.reason)
+    for fault_type, backend in _TRANSPORT_FAULTS:
+        if isinstance(exc, fault_type):
+            return Fault(backend, f"{type(exc).__name__}: {exc}")
+    message = f"{type(exc).__name__}: {exc}".lower()
+    for signature, backend in _FAULT_SIGNATURES:
+        if signature in message:
+            return Fault(backend, f"{type(exc).__name__}: {exc}")
+    return None
+
+
+def never_conducted(record: dict[str, Any]) -> bool:
+    """Whether this journal record is a case that never actually ran.
+
+    Deliberately independent of :func:`classify`: it asks what the record *is*,
+    not what raised it. A case that hit a fault and produced no transcript, no
+    tool calls and no scores did not answer anything — grading it as a wrong
+    answer invents a measurement that was never taken. This is what makes the
+    re-grade complete rather than limited to outages we happened to anticipate:
+    a ``NameError`` in our own runner is just as much "not conducted" as a dead
+    datastore, and both must leave the accuracy denominator.
+
+    A case that errored *after* producing output is not covered here — it has
+    real evidence in it, and the run loop already recorded it as ``errored``.
+    """
+    if not record.get("error"):
+        return False
+    return not (
+        record.get("text")
+        or record.get("messages")
+        or record.get("tool_calls")
+        or record.get("scores")
+    )
