@@ -60,6 +60,11 @@ def main() -> None:
     )
     run_p.add_argument("--tag", action="append", default=[], help="experiment tag (repeatable)")
     run_p.add_argument(
+        "--rebaseline",
+        action="store_true",
+        help="record this run as the suite's baseline (deliberate; never automatic)",
+    )
+    run_p.add_argument(
         "--concurrency",
         type=int,
         default=1,
@@ -122,6 +127,7 @@ def main() -> None:
             no_finalize=args.no_finalize,
             tags=args.tag,
             concurrency=args.concurrency,
+            rebaseline=args.rebaseline,
         )
         asyncio.run(runner.run_suite(cfg, opts))
     elif args.command == "report":

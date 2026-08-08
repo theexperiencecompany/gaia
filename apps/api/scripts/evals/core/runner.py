@@ -79,6 +79,7 @@ class RunOptions:
         no_finalize: bool = False,
         tags: list[str] | None = None,
         concurrency: int = 1,
+        rebaseline: bool = False,
     ) -> None:
         self.suite = suite
         self.resume = resume
@@ -93,6 +94,7 @@ class RunOptions:
         self.no_finalize = no_finalize
         self.tags = tags or []
         self.concurrency = max(1, concurrency)
+        self.rebaseline = rebaseline
 
 
 async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
@@ -359,9 +361,27 @@ def _publish_run(
         print(invariants.render())
         raise SystemExit(2)
 
+    from . import baseline
+
+    records = list(journal.latest_per_case().values())
+    if opts.rebaseline:
+        written = baseline.write(
+            suite.name,
+            records,
+            journal.dir.name,
+            (journal.load_meta() or RunMeta("", "", "")).app_version,
+        )
+        print(f"[baseline] recorded {written}")
+    comparison = baseline.compare(suite.name, records)
+    print(comparison.render())
+
     html_path = write_report(journal, suite.label, prices)
     _print_summary(journal, prices)
     print(f"[report] {html_path}")
+    if not comparison.ok:
+        # A regression is a result, not a crash: the report is written and the
+        # journal is intact, but the exit code says the suite got worse.
+        raise SystemExit(1)
     return journal.dir
 
 
