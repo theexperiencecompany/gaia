@@ -154,7 +154,12 @@ def _entry(module_rel: str, testfile: str) -> dict[str, object]:
 
 
 def _changed_line_ranges(path: str) -> list[list[int]]:
-    """PR-changed line ranges for a file, from the merge-base diff (unified=0)."""
+    """PR-changed line ranges for a file, from the merge-base diff (unified=0).
+
+    Returns [] when GITHUB_BASE_REF is unset (local runs). In CI the diff
+    MUST succeed — empty ranges would silently pass every survivor, so a
+    git failure there is a hard lane error.
+    """
     base = os.environ.get("GITHUB_BASE_REF", "")
     if not base:
         return []
@@ -164,8 +169,13 @@ def _changed_line_ranges(path: str) -> list[list[int]]:
             text=True,
             stderr=subprocess.DEVNULL,
         )
-    except subprocess.CalledProcessError:
-        return []
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"::error::mutation gate: could not diff {path} against "
+            f"origin/{base}: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
     ranges: list[list[int]] = []
     for line in out.splitlines():
         if not line.startswith("@@"):
