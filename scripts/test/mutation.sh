@@ -150,7 +150,32 @@ open(module, "w").write("\n".join(out) + "\n")
 EOF
 fi
 MUTMUT_RC=0
-"$VENV_PY" -m mutmut run 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
+# timeout: mutmut can finish its work and then hang at interpreter teardown
+# (threads from C-extension-heavy test runs keep the process alive — seen
+# with the chroma tests), so the pipeline never completes and the lane
+# hangs. 15 minutes covers even a full-module local run; scoped CI runs
+# finish in well under a minute. A hang past the cap leaves the state for
+# the verdict below to judge (not-checked mutants fail it loudly). The
+# wrapper is a portable `timeout`: GNU coreutils' binary is missing on
+# macOS, and the process-group kill takes mutmut's mutant children with it.
+"$VENV_PY" -c "
+import os
+import signal
+import subprocess
+import sys
+
+proc = subprocess.Popen(
+    [sys.executable, '-m', 'mutmut', 'run'],
+    start_new_session=True,
+)
+try:
+    proc.communicate(timeout=900)
+except subprocess.TimeoutExpired:
+    os.killpg(proc.pid, signal.SIGKILL)
+    proc.wait()
+    sys.exit(124)
+sys.exit(proc.returncode)
+" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
 if [ "$MUTMUT_RC" -ne 0 ]; then
   # mutmut 3.7 cannot mutate decorated functions (verified in its source:
   # file_mutation.py skips every FunctionDef with decorators — FastAPI
