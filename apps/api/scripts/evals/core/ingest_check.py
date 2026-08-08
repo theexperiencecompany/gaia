@@ -52,6 +52,10 @@ from .seed import SEEDABLE_STATUSES
 MIN_TOKENS_PER_WORKING_TRACE = 500
 MIN_WORKING_SECONDS = 2.0
 
+#: Statuses that reached a verdict, so a token reading was owed. ``errored`` is
+#: absent on purpose — the case never got far enough to spend anything.
+GRADED_STATUSES = frozenset({"passed", "failed", "skipped"})
+
 #: A whole suite costing more than this locally means the token counts feeding
 #: it are wrong, not that we spent it — every lane here is cheap or free.
 MAX_PLAUSIBLE_PROJECT_COST_USD = 15.0
@@ -247,14 +251,20 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
         if source != TRUSTED_TOKEN_SOURCE:
             facts.untrusted_cost_usd += cost
         worked = float(str(metadata.get("duration_s") or 0) or 0) >= MIN_WORKING_SECONDS
-        # Only meaningful for a metered trace that actually produced an answer.
-        # An unmetered one reports zero because we withheld it, and an errored
-        # one because the case never got far enough to spend anything — neither
-        # is a fault, and flagging them buries the cases that are.
+        # Only meaningful for a metered trace that reached a verdict. An
+        # unmetered one reports zero because we withheld it, and an errored one
+        # because the case died before it could spend anything — that is the
+        # outage showing through, not a broken meter, and it fires on exactly
+        # the runs an outage already ruined.
+        #
+        # Judged on STATUS, not on whether an error string is present: 424
+        # records are `failed` and still carry one ("gate score below
+        # threshold"), because a graded wrong answer records why it was wrong.
+        # Keying on the string would have silently exempted every one of them.
         if (
             source == TRUSTED_TOKEN_SOURCE
             and worked
-            and not trace.get("error_info")
+            and str(metadata.get("status") or "") in GRADED_STATUSES
             and tokens < MIN_TOKENS_PER_WORKING_TRACE
         ):
             facts.starved_traces += 1
