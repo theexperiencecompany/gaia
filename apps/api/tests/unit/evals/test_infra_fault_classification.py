@@ -228,6 +228,36 @@ def test_a_record_with_a_fault_and_no_transcript_never_ran() -> None:
     assert faults.never_conducted(_never_ran_record("NameError: name 'asyncio' is not defined"))
 
 
+def test_a_record_with_no_fault_is_never_touched() -> None:
+    """The error field is the gate. Without one, the case reached a real verdict."""
+    assert not faults.never_conducted(dict(_never_ran_record(""), error=None))
+    assert not faults.never_conducted(dict(_never_ran_record(""), error=""))
+
+
+@pytest.mark.parametrize(
+    ("evidence", "value"),
+    [
+        ("text", "The meeting is on Tuesday."),
+        ("messages", [{"role": "assistant", "content": "Tuesday"}]),
+        ("tool_calls", [{"name": "search_memory", "args": {}}]),
+        ("scores", {"gaia_exact": 0.0}),
+    ],
+)
+def test_any_single_piece_of_evidence_means_the_case_ran(evidence: str, value: object) -> None:
+    """Each clause must be independently load-bearing, or the rule is too eager.
+
+    ``scores`` is the subtle one: a case can be graded 0.0 and still have hit a
+    fault on the way out, and a re-grade that erased it would be laundering real
+    failures instead of correcting an outage — the opposite defect, and a much
+    harder one to notice because the number moves the flattering way.
+    """
+    record = _never_ran_record(f"RuntimeError: {POSTGRES_DOWN}")
+    record[evidence] = value
+    assert not faults.never_conducted(record), (
+        f"a record carrying {evidence} was written off as never having run"
+    )
+
+
 def test_a_real_wrong_answer_is_never_called_un_conducted() -> None:
     """Mutation guard: the re-grade must not quietly erase genuine failures."""
     graded_wrong = _never_ran_record("gate score below threshold")
