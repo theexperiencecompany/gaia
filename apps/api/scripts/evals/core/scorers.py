@@ -70,6 +70,24 @@ def produced_nothing(messages: object, tool_calls: object = None, output: object
 NOTHING_TO_INSPECT = "run produced no output and no tool calls — nothing to inspect"
 
 
+def says(text: object, needle: str) -> bool:
+    """Whether ``text`` actually contains ``needle`` as a word, not a fragment.
+
+    Plain substring matching credits an agent for words it never said: ``"milk"``
+    is satisfied by ``"buttermilkshake"`` and ``"oat"`` by ``"coat"``. Word
+    boundaries are applied only where the needle begins/ends with a word
+    character, so assertions on times (``"06:45"``), money (``"2,450.75"``) and
+    addresses (``"priya@northwind.io"``) still match inside a sentence.
+    """
+    haystack = str(text or "").lower()
+    target = needle.strip().lower()
+    if not target:
+        return False
+    prefix = r"\b" if target[0].isalnum() or target[0] == "_" else ""
+    suffix = r"\b" if target[-1].isalnum() or target[-1] == "_" else ""
+    return re.search(f"{prefix}{re.escape(target)}{suffix}", haystack) is not None
+
+
 def _arg_matches(actual: object, wanted: object) -> bool:
     """Whether one recorded argument carries the expected value.
 
@@ -241,8 +259,7 @@ class CommunicateGate(base_metric.BaseMetric):
         if not required:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="nothing required")
         text = _agent_text(messages) if messages else output
-        lowered = text.lower()
-        missing = [str(req) for req in required if str(req).lower() not in lowered]
+        missing = [str(req) for req in required if not says(text, str(req))]
         if missing:
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason=f"never communicated: {missing}"
@@ -276,8 +293,8 @@ class MustNotCommunicate(base_metric.BaseMetric):
             return score_result.ScoreResult(name=self.name, value=1.0, reason="nothing forbidden")
         if produced_nothing(messages, None, output):
             return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
-        text = (_agent_text(messages) if messages else output).lower()
-        leaked = [str(item) for item in forbidden if str(item).lower() in text]
+        text = _agent_text(messages) if messages else output
+        leaked = [str(item) for item in forbidden if says(text, str(item))]
         if leaked:
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason=f"said forbidden: {leaked}"

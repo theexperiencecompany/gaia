@@ -63,6 +63,9 @@ class CaseVerdict:
     fooled: dict[str, list[str]]  # gate name -> forgery labels that fooled it
     gates: list[str]
     passed_wholesale: list[str] = field(default_factory=list)  # forgeries that passed every gate
+    parroted: list[str] = field(
+        default_factory=list
+    )  # communicate terms the prompt already supplies
     error: str = ""
 
     @property
@@ -133,6 +136,25 @@ def _authored_run(case: Case) -> CaseRun | None:
     )
 
 
+def parroted_assertions(case: Case) -> list[str]:
+    """``communicate`` strings the user's own prompt already contains.
+
+    A presence assertion the prompt supplies can be satisfied by repeating the
+    question back, so it credits the agent for nothing. This is reported rather
+    than rejected: for a recall case ("remember my order is a large oat latte")
+    the word genuinely does belong in both, and the case is honest as long as a
+    stronger gate stands beside it. Assert the value where it is authoritative —
+    the database — and keep prose assertions for tokens that cannot arrive by
+    accident.
+
+    Absence assertions are deliberately excluded: an injection canary belongs in
+    the prompt, because the prompt IS the attack.
+    """
+    prompt = case.prompt.lower()
+    required = case.expected.get("communicate") or []
+    return [str(term) for term in required if str(term).strip().lower() in prompt]
+
+
 def forgeries(case: Case) -> list[Forgery]:
     out = [
         Forgery("empty", _empty_run(case), "gate can reach 0.0 at all"),
@@ -146,7 +168,13 @@ def forgeries(case: Case) -> list[Forgery]:
 
 def check_case(suite: Scorable, case: Case) -> CaseVerdict:
     """Score every forgery through the suite's real scorer."""
-    verdict = CaseVerdict(case_id=case.id, suite=suite.name, fooled={}, gates=case.gates)
+    verdict = CaseVerdict(
+        case_id=case.id,
+        suite=suite.name,
+        fooled={},
+        gates=case.gates,
+        parroted=parroted_assertions(case),
+    )
     if verdict.ungated:
         return verdict
     for forgery in forgeries(case):
