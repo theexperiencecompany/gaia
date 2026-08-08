@@ -131,7 +131,8 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
                 conversation_id=run.conversation_id,
             )
             return
-        raise
+        log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
+        return
     except Exception as e:  # best-effort save of a stopped run
         log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
         return
@@ -235,7 +236,8 @@ async def _narrate_and_deliver(
                 conversation_id=run.conversation_id,
             )
             return None, None
-        raise
+        log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
+        return None, None
     except Exception as e:
         log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
         return None, None
