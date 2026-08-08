@@ -5,10 +5,24 @@ description: Embed images (benchmark charts, screenshots, diagrams) inline in a 
 
 ## PR Image Embedding
 
-`gaia` is a **private** repo. That single fact drives every rule below, because
 GitHub renders inline images through **camo**, its image proxy, and camo fetches
 image URLs **unauthenticated**. Anything that needs a session or a token to fetch
 will not render — it degrades to alt text that links to the source.
+
+`gaia` is **public** (`gh repo view theexperiencecompany/gaia --json isPrivate`
+→ `false`), so `raw.githubusercontent.com` URLs on the `pr-assets` branch are
+fetchable by camo and **do render inline**. Verify instead of assuming — one
+command, and it saves handing the user manual work they don't need to do:
+
+```bash
+/usr/bin/curl -sS -o /dev/null -w "%{http_code}\n" \
+  -A "github-camo (b2d0ea9c)" "<raw-url>"        # 200 => camo can fetch it
+```
+
+Use `/usr/bin/curl`, not bare `curl`: this environment aliases `curl` to
+`curlie`, which silently changes the request method and returns misleading
+codes — a plain GET of a public URL coming back 403/422 is the tell, not
+evidence about the URL.
 
 ### The flow
 
@@ -63,31 +77,35 @@ The symptom is specific: **alt text that is clickable and opens the image fine**
 That means the URL is good and camo could not proxy it. Diagnose in this order:
 
 ```bash
-# 1. Is it actually served as an image?
-curl -sS -D - -o /dev/null "<url>" | grep -iE "^HTTP|content-type|content-length"
+# 1. Is it actually served as an image? (real binary — see the alias warning above)
+/usr/bin/curl -sS -D - -o /dev/null "<url>" | grep -iE "^HTTP|content-type|content-length"
 
 # 2. Does the host block camo's user-agent?
-curl -sS -o /dev/null -w "%{http_code}\n" -A "github-camo (b2d0ea9c)" "<url>"
+/usr/bin/curl -sS -o /dev/null -w "%{http_code}\n" -A "github-camo (b2d0ea9c)" "<url>"
 ```
 
 Known blockers, in rough order of likelihood:
 
 | Cause | Fix |
 |---|---|
-| Private-repo URL needing auth (`raw.githubusercontent.com` on a private repo, or a GitHub UI URL) | Use GitHub's own attachment upload (below) |
+| A bare `curl` that is really `curlie` reporting a bogus 403/422 | Re-check with `/usr/bin/curl` before concluding anything |
+| A GitHub **UI** URL (`github.com/.../blob/...`) instead of `raw.githubusercontent.com` | Use the raw URL |
+| Repo went private (check `gh repo view --json isPrivate`) — camo cannot authenticate | Use GitHub's attachment upload (below) |
 | Missing `Content-Length` header on the host | Not fixable from our side — change hosts |
 | Host blocks or challenges camo's UA (Cloudflare bot protection) | Change hosts |
 | Camo cached an earlier failure for that exact URL | Re-upload under a new URL |
 
-### The guaranteed fallback
+### The fallback, if the raw URL genuinely cannot be proxied
 
-GitHub's own attachment upload always renders, in private repos included,
-because GitHub serves it to the authenticated viewer. It produces a
+GitHub's own attachment upload always renders, private repos included, because
+GitHub serves it to the authenticated viewer. It produces a
 `https://github.com/user-attachments/assets/<uuid>` URL.
 
-**There is no API for it** — it only exists in the browser. So an agent cannot
-do this step. Hand the files to the user (`SendUserFile`) and have them drag the
-images into the PR description box. Ten seconds of their time, guaranteed result.
+**There is no API for it** — it only exists in the browser, so an agent cannot
+do it. Hand the files to the user (`SendUserFile`) and have them drag the images
+into the PR description box. Ten seconds of their time — but only reach for this
+after the two checks above actually fail. While `gaia` is public, raw URLs work
+and asking for this is wasted effort.
 
 ### Third-party image hosts
 
@@ -106,8 +124,10 @@ Workable, but treat with care and never as the default:
 
 ### Rules of thumb
 
-- Never claim images render until the user confirms it — you cannot see the
-  rendered PR, and a private repo means you cannot fetch it to check.
+- You cannot see the rendered PR — but you can prove the precondition. Fetch the
+  raw URL as camo (above) and say what you verified: "the asset returns 200 as
+  `image/png` to camo's user-agent, so it renders." Don't hedge with "I can't
+  check" when a check exists, and don't claim the rendered page looks right.
 - Never let the PR sit with broken image markup. Either fix it or strip the tags
   and leave the numbers in text.
 - The charts are a convenience; the text is the record. Write the description so
