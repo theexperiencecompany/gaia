@@ -36,6 +36,7 @@ from app.constants.llm import (
     SIM_STUB_API_KEY,
     SIM_STUB_BASE_URL,
     SIM_STUB_MODEL_NAME,
+    VISION_MODEL_NAME,
 )
 from app.constants.log_tags import LogTag
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -390,6 +391,30 @@ def _build_default_llm(temperature: float) -> BaseChatModel:
     # and compaction middleware — raise at construction without it, which fails the
     # whole agent graph build. Supply the window here so the default model always
     # carries it; harmless metadata for every other caller.
+    llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
+    return llm
+
+
+def get_vision_llm(*, temperature: float = DEFAULT_LLM_TEMPERATURE) -> BaseChatModel:
+    """The factory for every image -> text call (``vision/describe.py``).
+
+    Separate from :func:`get_default_llm` on purpose. The default model is picked
+    for cheap text and may not be multimodal; this one must be able to see, or the
+    vision fallback describes nothing — and it fails silently, since
+    ``describe_image`` degrades to ``None``. Raises ``LLMNotConfiguredError`` when
+    Google is not configured.
+    """
+    if settings.GAIA_SIM_MODE:
+        return _sim_llm(temperature)
+    if not settings.GOOGLE_API_KEY:
+        raise LLMNotConfiguredError("Vision model not configured. Set GOOGLE_API_KEY.")
+    return _build_vision_llm(temperature)
+
+
+@cache
+def _build_vision_llm(temperature: float) -> BaseChatModel:
+    llm = ChatGoogleGenerativeAI(model=VISION_MODEL_NAME, temperature=temperature)
+    # Same reason as _build_default_llm: fractional-window middleware reads this.
     llm.profile = {"max_input_tokens": DEFAULT_MAX_TOKENS}
     return llm
 

@@ -97,6 +97,17 @@ DEFAULT_MODEL_NAME = "deepseek/deepseek-v4-flash-0731"
 DEFAULT_GEMINI_MODEL_NAME = "gemini-3.1-flash-lite"
 DEFAULT_GROK_MODEL_NAME = "x-ai/grok-4.3"
 
+# The model behind every image -> text call: the vision fallback for a lane that
+# cannot take pixels (see vision/capability.py), plus the image-upload and
+# file-summary paths, which produce text as their product and therefore always
+# need it. Deliberately NOT tied to DEFAULT_MODEL_NAME: the default is chosen for
+# cheap text and may be text-only, and a blind describer fails SILENTLY —
+# describe_image degrades to None, so images would just stop being understood
+# with nothing in the logs to say why. Direct Gemini is the one lane
+# resolve_media_delivery treats as unconditionally multimodal.
+VISION_MODEL_PROVIDER = GEMINI_PROVIDER
+VISION_MODEL_NAME = DEFAULT_GEMINI_MODEL_NAME
+
 # GAIA_SIM_MODE (see app/agents/llm/client.py): every model factory resolves to
 # the local scripted stub (tools/llm-stub) at this address. The model name is a
 # marker the stub ignores; the key satisfies client construction only.
