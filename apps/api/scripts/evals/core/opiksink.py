@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
+from dotenv import load_dotenv
 import opik
 
 from .journal import RunJournal
@@ -38,17 +39,12 @@ class ExistingTrace:
 
 
 def load_opik_env(path: Path = ENV_OPIK) -> None:
-    """Load .env.opik into the process before any opik import."""
-    import os
+    """Load .env.opik into the process.
 
-    if not path.exists():
-        return
-    for line in path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip())
+    ``override=False`` keeps an already-exported variable winning over the file,
+    so pointing a run at a different Opik instance from the shell still works.
+    """
+    load_dotenv(path, override=False)
 
 
 _CLIENTS: dict[str, opik.Opik] = {}
