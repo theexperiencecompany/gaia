@@ -117,7 +117,12 @@ class TestInferIntegrationContent:
         mock_llm.structured.return_value = content
 
         result = await infer_integration_content(
-            "My Tool", "desc", [{"name": "a"}], "https://x.example", "productivity"
+            "My Tool",
+            "desc",
+            [{"name": "a"}],
+            "https://x.example",
+            "productivity",
+            user_id="u-1",
         )
 
         assert result is content
@@ -126,7 +131,9 @@ class TestInferIntegrationContent:
         mock_llm.structured.return_value = IntegrationContent(use_cases=["only one"])
 
         assert (
-            await infer_integration_content("My Tool", "desc", [], "https://x.example", "other")
+            await infer_integration_content(
+                "My Tool", "desc", [], "https://x.example", "other", user_id="u-1"
+            )
             is None
         )
 
@@ -134,7 +141,9 @@ class TestInferIntegrationContent:
         mock_llm.structured.side_effect = RuntimeError("llm down")
 
         assert (
-            await infer_integration_content("My Tool", "desc", [], "https://x.example", "other")
+            await infer_integration_content(
+                "My Tool", "desc", [], "https://x.example", "other", user_id="u-1"
+            )
             is None
         )
 
@@ -142,7 +151,9 @@ class TestInferIntegrationContent:
         mock_llm.structured.side_effect = TimeoutError()
 
         assert (
-            await infer_integration_content("My Tool", "desc", [], "https://x.example", "other")
+            await infer_integration_content(
+                "My Tool", "desc", [], "https://x.example", "other", user_id="u-1"
+            )
             is None
         )
 

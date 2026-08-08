@@ -16,7 +16,7 @@ import pytest
 
 from app.memory.engine import memory_engine
 from app.models.memory_models import MemorySearchResult
-from tests.memory.store import (
+from tests.integration.real.memory.store import (
     MemorySpec,
     chroma_user_vector_ids,
     chroma_vector_metadata,

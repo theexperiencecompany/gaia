@@ -61,9 +61,11 @@ class TestPlanTierLimits:
     def test_chat_messages_pro_limit_exceeds_free(self) -> None:
         free = get_limits_for_plan("chat_messages", PlanType.FREE)
         pro = get_limits_for_plan("chat_messages", PlanType.PRO)
-        assert (free.day, free.month) == (200, 5000)
-        assert (pro.day, pro.month) == (3000, 60000)
-        assert pro.day > free.day
+        # Day=0 on both: the daily wall is the rolling COST budget (see
+        # rate_limits.py), not a message tally; the monthly count is the
+        # abuse backstop, and pro's must exceed free's.
+        assert (free.day, free.month) == (0, 2000)
+        assert (pro.day, pro.month) == (0, 60000)
         assert pro.month > free.month
 
     def test_voice_mode_is_pro_only(self) -> None:
@@ -71,7 +73,7 @@ class TestPlanTierLimits:
         free = get_limits_for_plan("voice_mode", PlanType.FREE)
         pro = get_limits_for_plan("voice_mode", PlanType.PRO)
         assert (free.day, free.month) == (0, 0)
-        assert (pro.day, pro.month) == (200, 3000)
+        assert (pro.day, pro.month) == (200, 6000)
 
 
 # ---------------------------------------------------------------------------
@@ -146,4 +148,4 @@ class TestTieredLimiterRealDecision:
         result = await self.limiter.check_and_increment("user1", "voice_mode", PlanType.PRO)
 
         assert result["day"].limit == 200
-        assert result["month"].limit == 3000
+        assert result["month"].limit == 6000

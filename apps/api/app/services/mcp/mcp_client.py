@@ -31,7 +31,8 @@ import urllib.parse
 
 import httpx
 from langchain_core.tools import BaseTool
-from mcp_use import MCPClient as BaseMCPClient, MCPSession
+from mcp_use import MCPClient as BaseMCPClient
+from mcp_use.client.session import MCPSession
 from pydantic import AnyHttpUrl, AnyUrl
 
 from app.config.settings import settings

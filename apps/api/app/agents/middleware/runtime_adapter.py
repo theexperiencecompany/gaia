@@ -148,11 +148,18 @@ def create_model_request(
 
     # Extract system message if present
     extracted_system = None
-    non_system_messages = []
+    non_system_messages: list[Any] = []
     for msg in messages:
         if isinstance(msg, SystemMessage):
             if extracted_system is None:
                 extracted_system = msg
+            else:
+                # Extra system frames (dynamic context, memory recall,
+                # todo context) must ride in the request's message list —
+                # the final handler prepends only ``system_message``, so
+                # dropping them here would silently erase the dynamic
+                # context and every memory recall from the model's prompt.
+                non_system_messages.append(msg)
         else:
             non_system_messages.append(msg)
 

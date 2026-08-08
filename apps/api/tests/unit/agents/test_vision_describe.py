@@ -76,7 +76,7 @@ class TestTheDescriberCanSee:
 
 @pytest.mark.unit
 class TestDescribeImage:
-    @patch(f"{_MOD}.get_default_llm")
+    @patch(f"{_MOD}.get_vision_llm")
     @patch(f"{_MOD}.ainvoke_llm", new_callable=AsyncMock)
     async def test_happy_path_returns_trimmed_text(
         self, mock_ainvoke: AsyncMock, mock_llm: AsyncMock

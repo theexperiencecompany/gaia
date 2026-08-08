@@ -198,11 +198,17 @@ class TestCallExecutorDispatch:
     async def test_background_task_is_kept_alive_then_released(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]
     ) -> None:
+        # The registry is process-global — other test files in the same
+        # worker may leave entries behind. Assert the DELTA, not an
+        # absolute count, so the check is order-independent.
+        baseline = set(background_tasks._background_tasks)
         await run_call_executor(config=config_for(), task="x")
-        assert len(background_tasks._background_tasks) == 1  # GC protection while in flight
+        assert (
+            len(background_tasks._background_tasks) == len(baseline) + 1
+        )  # GC protection while in flight
 
         await drain_background_tasks()
-        assert background_tasks._background_tasks == set()
+        assert background_tasks._background_tasks == baseline
 
     async def test_active_todo_binding_reaches_the_executor_without_mutating_comms_config(
         self, fake_redis: fakeredis.aioredis.FakeRedis, spawned_runs: list[dict[str, Any]]

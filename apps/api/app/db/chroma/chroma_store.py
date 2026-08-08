@@ -12,7 +12,6 @@ from typing import Any, cast
 
 from chromadb.api import AsyncClientAPI
 from chromadb.api.models.AsyncCollection import AsyncCollection
-from chromadb.api.types import EmbeddingFunction, Embeddings as ChromaEmbeddings
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -32,53 +31,8 @@ from langgraph.store.base import (
 )
 
 from app.constants.log_tags import LogTag
+from app.db.chroma.noop_embedding import NoOpEmbeddingFunction
 from shared.py.wide_events import VectorContext, log
-
-
-class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
-    """Embedding function that bypasses model loading.
-
-    ChromaStore computes its own embeddings via ``self.embeddings`` and passes
-    them explicitly to ``collection.upsert(embeddings=...)``.  When no
-    embeddings are provided, ChromaDB falls back to its default ONNX-based
-    model which requires downloading and loading ``all-MiniLM-L6-v2``.
-
-    Registering this no-op function on the collection prevents ChromaDB from
-    ever attempting to load the ONNX model, avoiding failures in environments
-    where the model is unavailable (CI, minimal containers, etc.).
-    """
-
-    def __init__(self) -> None:
-        pass
-
-    @staticmethod
-    def name() -> str:
-        """ChromaDB requires embedding functions to declare a name (added in
-        0.5.x; a missing name() emits a deprecation warning and will become
-        a hard requirement). Called on the class during registration."""
-        return "gaia-noop"
-
-    def get_config(self) -> dict[str, str]:
-        """ChromaDB requires embedding functions to describe their config for
-        collection hashing (same deprecation path as name())."""
-        return {"name": "gaia-noop"}
-
-    @staticmethod
-    def build_from_config(config: dict) -> "_NoOpEmbeddingFunction":
-        """Reconstruct the embedding function from its config dict; the config
-        only carries the name, so the no-op constructor suffices."""
-        return _NoOpEmbeddingFunction()
-
-    def __call__(self, input: list[str]) -> ChromaEmbeddings:
-        # chromadb's own EmbeddingFunction.__call__ contract declares
-        # list[numpy.ndarray], but ChromaDB accepts plain float lists at
-        # runtime just fine — do NOT convert this to numpy arrays; that broke
-        # collection initialization previously. cast() only changes what the
-        # type checker sees, not the actual returned values.
-        return cast(ChromaEmbeddings, [[0.0] * 384 for _ in input])
-
-
-_NOOP_EF = _NoOpEmbeddingFunction()
 
 # A filter value (or the item value it's compared against) is an arbitrary
 # JSON-like scalar/container pulled out of a MongoDB-style query filter dict.
@@ -138,7 +92,7 @@ class ChromaStore(BaseStore):
     async def _get_collection(self) -> AsyncCollection:
         """Get or create the ChromaDB collection.
 
-        Uses ``_NOOP_EF`` as the collection-level embedding function so
+        Uses ``NoOpEmbeddingFunction`` as the collection-level embedding function so
         ChromaDB never attempts to load its default ONNX model.  ChromaStore
         manages embeddings itself via ``self.embeddings`` and always passes
         them explicitly to ``collection.upsert()``.
@@ -161,13 +115,13 @@ class ChromaStore(BaseStore):
                 self._collection_cache = await self.client.create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
-                    embedding_function=_NOOP_EF,
+                    embedding_function=NoOpEmbeddingFunction(),
                 )
             else:
                 try:
                     self._collection_cache = await self.client.get_collection(
                         name=self.collection_name,
-                        embedding_function=_NOOP_EF,
+                        embedding_function=NoOpEmbeddingFunction(),
                     )
                 except ValueError:
                     # ChromaDB 1.x rejects a new embedding function when one is
