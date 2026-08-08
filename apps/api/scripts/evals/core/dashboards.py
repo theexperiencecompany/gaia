@@ -85,6 +85,11 @@ PASSED, FAILED, ERRORED = "passed", "failed", "errored"
 GATE_VERDICT = "gate score below threshold"
 # What Opik names the group of traces carrying no error at all.
 NO_FAULT = "No Error"
+# The metrics endpoint returns at most ten groups and lumps the rest under this
+# name (BREAKDOWN_GROUP_NAMES.OTHERS in the frontend). It is a remainder, not a
+# category — printing it in a category listing invents one that does not exist,
+# and counting it as a category understates how many there really are.
+OTHERS_GROUP = "__others__"
 
 # The scores that stand for a whole case rather than one aspect of it, most
 # meaningful first: the judge's verdict, the memory suite's probe aggregate, and
@@ -199,6 +204,10 @@ class Suite:
     # Exception types on traces judged `failed` — the records that claim the
     # agent was wrong while carrying evidence the machine broke.
     failed_faults: dict[str, int]
+    # Whether this suite's tokens were actually measured. The ingest deliberately
+    # withholds cost and usage for runs whose token counts could not be stood
+    # behind, so a zero here means "not measured", never "free".
+    metered: bool
 
     @property
     def label(self) -> str:
@@ -222,6 +231,16 @@ class Suite:
         return not self.unclassifiable
 
     @property
+    def named_categories(self) -> dict[str, int]:
+        """The categories Opik actually named, without the lumped remainder."""
+        return {name: n for name, n in self.categories.items() if name != OTHERS_GROUP}
+
+    @property
+    def others(self) -> int:
+        """Cases in categories beyond the ten the metrics endpoint will name."""
+        return self.categories.get(OTHERS_GROUP, 0)
+
+    @property
     def uncategorised(self) -> int:
         """Cases the per-category panels leave out.
 
@@ -234,7 +253,7 @@ class Suite:
     @property
     def thin_categories(self) -> list[str]:
         """Categories too small for a percentage to mean anything."""
-        return sorted(name for name, n in self.categories.items() if n < 5)
+        return sorted(name for name, n in self.named_categories.items() if n < 5)
 
 
 class Panels:
@@ -345,14 +364,27 @@ def _category_note(suite: Suite) -> str:
     """Every category with its case count, so no percentage is read blind."""
     if not suite.categories:
         return "_No case carries a category — the accuracy breakdown cannot be drawn._"
-    ranked = sorted(suite.categories.items(), key=lambda kv: (-kv[1], kv[0]))
+    ranked = sorted(suite.named_categories.items(), key=lambda kv: (-kv[1], kv[0]))
     listing = " · ".join(f"`{name}` {n}" for name, n in ranked)
-    note = f"**Cases per category** ({len(ranked)} categories): {listing}."
+    note = f"**Cases per category** ({len(ranked)} shown): {listing}."
+    if suite.others:
+        note += (
+            f" A further **{suite.others} cases sit in categories beyond the ten** Opik will "
+            "name in one breakdown; they are pooled as *Others* in every chart below. Narrow "
+            "the date range or open the project to see them individually."
+        )
     thin = suite.thin_categories
     if thin:
         note += (
             f"\n\n_Read {', '.join(f'`{t}`' for t in thin)} as raw counts, not "
             "percentages — fewer than 5 cases each._"
+        )
+    if not suite.metered:
+        note += (
+            "\n\n💰 **No cost or token panels: this suite's usage was never measured.** The "
+            "ingest withholds cost and tokens for runs whose token counts could not be stood "
+            "behind, rather than pricing a guess. A zero here would read as *free*, which is a "
+            "different claim entirely — so the section is absent until the suite is re-run."
         )
     if suite.uncategorised:
         note += (
@@ -423,7 +455,12 @@ def _headline(suite: Suite, panels: Panels) -> Section:
     # empty.
     header_height = min(
         MAX_WIDGET_HEIGHT,
-        6 + len(suite.categories) // 4 + bool(suite.uncategorised) + 4 * (not suite.trustworthy),
+        6
+        + len(suite.named_categories) // 4
+        + bool(suite.uncategorised)
+        + bool(suite.others)
+        + (not suite.metered)
+        + 4 * (not suite.trustworthy),
     )
     widgets = [markdown(f"{suite.project}-about", content, 0, 0, GRID_COLUMNS, header_height)]
     for index, (slug, title, metric, filters) in enumerate(cards):
@@ -771,7 +808,9 @@ def suite_sections(suite: Suite) -> list[Section]:
     # A suite where nothing went wrong needs no post-mortem section.
     if suite.status_counts.get(FAILED) or suite.status_counts.get(ERRORED):
         sections.append(_failing_cases(suite, panels))
-    sections.append(_cost(suite, panels))
+    # A cost section built on unmeasured tokens would render a confident $0.00.
+    if suite.metered:
+        sections.append(_cost(suite, panels))
     sections.append(_latency(suite, panels))
     sections.append(_trend(suite, panels))
     return sections
@@ -1082,6 +1121,9 @@ def _read_suite(client: opik.Opik, project: str, project_id: str) -> Suite:
     scorers = sorted(
         name for key in counts if (name := key.removeprefix("feedback_scores.")) != key
     )
+    metered = _positive(counts.get("total_estimated_cost_sum")) or _positive(
+        counts.get("usage.total_tokens")
+    )
     return Suite(
         project=project,
         project_id=project_id,
@@ -1090,7 +1132,12 @@ def _read_suite(client: opik.Opik, project: str, project_id: str) -> Suite:
         categories=_metadata_counts(client, project_id, "category") if cases else {},
         status_counts=_metadata_counts(client, project_id, "status") if cases else {},
         failed_faults=_failed_fault_counts(client, project_id) if cases else {},
+        metered=bool(cases) and metered,
     )
+
+
+def _positive(value: object) -> bool:
+    return isinstance(value, int | float) and value > 0
 
 
 def build(client: opik.Opik | None = None) -> None:
