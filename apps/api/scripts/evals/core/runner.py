@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -77,6 +78,7 @@ class RunOptions:
         sim: bool = False,
         no_finalize: bool = False,
         tags: list[str] | None = None,
+        concurrency: int = 1,
     ) -> None:
         self.suite = suite
         self.resume = resume
@@ -90,6 +92,7 @@ class RunOptions:
         self.sim = sim
         self.no_finalize = no_finalize
         self.tags = tags or []
+        self.concurrency = max(1, concurrency)
 
 
 async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
@@ -172,6 +175,32 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
 
     aborted: str | None = None
     run_status = "finished"
+
+    # Concurrency pins ONE provider for the whole run, deliberately. pin_settings
+    # mutates a shared settings singleton and resets the lazy provider, so two
+    # cases pinning different lanes would race — and re-pinning mid-flight is the
+    # same engine-reset that turned one Postgres blip into 76 fabricated zeros.
+    # Rotation is therefore a sequential-only feature; a pinned run that loses
+    # its provider aborts rather than silently continuing on another.
+    if opts.concurrency > 1:
+        pinned_name = healthy[0]
+        pin_settings(cfg.providers[pinned_name])
+        tracker.set_provider(pinned_name)
+        print(
+            f"[run] concurrency={opts.concurrency} · provider pinned to {pinned_name} "
+            f"(rotation disabled: the app's provider settings are process-global)"
+        )
+        aborted = await _run_cases_concurrently(
+            cases, suite, cfg, opts, tracker, cfg.providers[pinned_name], pinned_name, record_case
+        )
+        if aborted:
+            print(f"\n[abort] {aborted}")
+        run_status = "aborted" if aborted else "finished"
+        _flush_traces(suite.project)
+        journal.update_meta(
+            status=run_status, finished_at=datetime.now(UTC).isoformat(timespec="seconds")
+        )
+        return _publish_run(journal, suite, cfg, opts, cases, prices, tracker)
 
     try:
         for case in cases:
@@ -265,6 +294,19 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
             status=run_status, finished_at=datetime.now(UTC).isoformat(timespec="seconds")
         )
 
+    return _publish_run(journal, suite, cfg, opts, cases, prices, tracker)
+
+
+def _publish_run(
+    journal: RunJournal,
+    suite: Suite,
+    cfg: EvalConfig,
+    opts: RunOptions,
+    cases: list[Case],
+    prices: PriceBook,
+    tracker: EvalCostTracker,
+) -> Path:
+    """Finalize, check the run's numbers against themselves, then report."""
     if journal.load_meta().status == "finished" and not opts.no_finalize:
         try:
             _finalize_experiment(suite, cfg, journal, opts, cases)
@@ -274,10 +316,9 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     from .invariants import check_records
     from .report import write_report
 
-    # The run's own numbers must reconcile before any of them are published. A
-    # loud stop beats a plausible figure: both defects this catches (cumulative
-    # tokens, an outage scored as zeros) reached a PR because nothing ever
-    # checked one quantity against a second, independently-derived one.
+    # A loud stop beats a plausible figure: both defects this catches
+    # (cumulative tokens, an outage scored as zeros) reached a PR because no
+    # quantity was ever checked against a second, independently-derived one.
     invariants = check_records(
         journal.records(), metered_total=(tracker.total_input, tracker.total_output)
     )
@@ -289,6 +330,67 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     _print_summary(journal, prices)
     print(f"[report] {html_path}")
     return journal.dir
+
+
+async def _run_cases_concurrently(
+    cases: list[Case],
+    suite: Suite,
+    cfg: EvalConfig,
+    opts: RunOptions,
+    tracker: EvalCostTracker,
+    provider: ProviderConfig,
+    provider_name: str,
+    record_case: Callable[[Case, CaseRun, dict[str, float], str, str | None], None],
+) -> str | None:
+    """Run cases against one pinned provider, at most ``concurrency`` at a time.
+
+    Safe only because a case now owns its user: two cases sharing an account
+    would write over each other's todos and memory. Returns an abort reason when
+    a backend is down — nothing about the agent was measured, so journaling those
+    cases would publish an outage as a score.
+    """
+    semaphore = asyncio.Semaphore(opts.concurrency)
+    aborted: str | None = None
+    done = 0
+
+    async def run_one(case: Case) -> None:
+        nonlocal aborted, done
+        async with semaphore:
+            if aborted or tracker.total_exceeded:
+                return
+            start = time.monotonic()
+            try:
+                run = await suite.transport(case, cfg, tracker, provider)
+                run.provider = provider_name
+                run.model = provider.model
+                run.duration_s = time.monotonic() - start
+                scores = {} if run.error else suite.score(case, run)
+                status = _status_from_scores(case, scores, run.error)
+                record_case(case, run, scores, status, run.error)
+            except InfraError as e:
+                aborted = str(e)
+                return
+            except Exception as e:
+                detail = f"{type(e).__name__}: {e}"
+                record_case(
+                    case,
+                    _failed_run(
+                        case, provider_name, provider.model, time.monotonic() - start, detail
+                    ),
+                    {},
+                    "errored",
+                    detail,
+                )
+                status = "errored"
+                scores = {}
+            done += 1
+            print(
+                f"  {_MARKERS.get(status, '✗')} [{done}/{len(cases)}] {case.id} "
+                + " ".join(f"{k}={v:.2f}" for k, v in scores.items())
+            )
+
+    await asyncio.gather(*(run_one(case) for case in cases))
+    return aborted
 
 
 def _status_from_scores(case: Case, scores: dict[str, float], error: str | None) -> str:

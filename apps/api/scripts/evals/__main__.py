@@ -59,6 +59,12 @@ def main() -> None:
         "--no-finalize", action="store_true", help="skip the Opik experiment finalize"
     )
     run_p.add_argument("--tag", action="append", default=[], help="experiment tag (repeatable)")
+    run_p.add_argument(
+        "--concurrency",
+        type=int,
+        default=1,
+        help="run N cases at once (pins one provider; rotation is sequential-only)",
+    )
 
     report_p = sub.add_parser("report", help="regenerate HTML report for a run")
     report_p.add_argument("run_id")
@@ -115,6 +121,7 @@ def main() -> None:
             sim=args.sim,
             no_finalize=args.no_finalize,
             tags=args.tag,
+            concurrency=args.concurrency,
         )
         asyncio.run(runner.run_suite(cfg, opts))
     elif args.command == "report":

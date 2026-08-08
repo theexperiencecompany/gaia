@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<title>Eval report — Capability — capability-20260808-073056-279827</title>
+<title>Eval report — Smoke — smoke-20260808-091758-af0cdd</title>
 <style>
   body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; margin: 0; background: #0f1115; color: #e5e7eb; }
   .wrap { max-width: 960px; margin: 0 auto; padding: 24px 16px 80px; }
@@ -25,82 +25,104 @@
   .error { color: #f87171; }
   .banner { color: #9ca3af; font-size: 13px; }
 </style></head><body><div class="wrap">
-<h1>GAIA eval — Capability</h1>
-<div class="banner">run <code>capability-20260808-073056-279827</code> · finished 2026-08-08 07:32 UTC · status <b>finished</b> · experiment </div>
+<h1>GAIA eval — Smoke</h1>
+<div class="banner">run <code>smoke-20260808-091758-af0cdd</code> · finished 2026-08-08 09:18 UTC · status <b>finished</b> · experiment </div>
 <div class="score">100.0%</div>
-<div class="pct">1/1 cases passed</div>
+<div class="pct">3/3 cases passed</div>
 <h2>Metrics</h2><svg viewBox="0 0 640 98" width="640" height="98"><text x="0" y="23" class="lbl">communicate</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">end_state</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text><text x="0" y="75" class="lbl">tool_call_correctness</text><rect x="150" y="62" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="75" class="val">1.00</text></svg>
-<h2>Categories</h2><svg viewBox="0 0 640 46" width="640" height="46"><text x="0" y="23" class="lbl">composition</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text></svg>
+<h2>Categories</h2><svg viewBox="0 0 640 98" width="640" height="98"><text x="0" y="23" class="lbl">ROTATION</text><rect x="150" y="10" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="23" class="val">1.00</text><text x="0" y="49" class="lbl">SINGLE_HOP</text><rect x="150" y="36" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="49" class="val">1.00</text><text x="0" y="75" class="lbl">TOOL_USE</text><rect x="150" y="62" width="430" height="18" rx="4" class="bar"/><text x="586.0" y="75" class="val">1.00</text></svg>
 <h2>Provider usage</h2>
 <table><tr><th>provider</th><th>cases</th><th>tokens in</th><th>tokens out</th><th>est. USD</th></tr>
-<tr><td>nous</td><td>1</td><td>127K</td><td>5K</td><td>$0.00</td></tr>
-<tr><td><b>total</b></td><td>1</td><td>127K</td><td>5K</td><td>$0.00</td></tr>
+<tr><td>opencode</td><td>3</td><td>360</td><td>120</td><td>$0.00</td></tr>
+<tr><td><b>total</b></td><td>3</td><td>360</td><td>120</td><td>$0.00</td></tr>
 </table>
 <h2>Cases</h2>
 <details class="card passed">
-  <summary><b>hard-compose-trip-plan</b>
+  <summary><b>smoke-1</b>
     <span class="status">passed</span>
-    <span class="chip ok">communicate=1.00</span><span class="chip ok">end_state=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
-    <span class="meta">provider=nous · 127K in /
-    5K out · 73.3s</span>
+    <span class="chip ok">communicate=1.00</span>
+    <span class="meta">provider=opencode · 120 in /
+    40 out · 0.1s</span>
   </summary>
   <div class="body">
-    <div class="ticket">Planning task: tracked todo with purpose + subtasks, plus concrete free-attraction recommendations.</div>
-    <div class="prompt"><b>prompt:</b> Plan a 3-day Lisbon trip under $400. Start a tracked todo with purpose &quot;budget city trip&quot; and subtasks for flights, hostel, and free attractions. Then tell me the two best free attractions.</div>
+    <div class="ticket">Trivial recall — agent must answer directly.</div>
+    <div class="prompt"><b>prompt:</b> What is the capital of France?</div>
     <div class="expected"><b>expected:</b> <pre>{
- &quot;category&quot;: &quot;composition&quot;,
+ &quot;category&quot;: &quot;SINGLE_HOP&quot;,
  &quot;communicate&quot;: [
-  &quot;Lisbon&quot;,
-  &quot;free&quot;
+  &quot;Paris&quot;
  ],
- &quot;tool_calls&quot;: [
-  {
-   &quot;tool&quot;: &quot;create_tracked_todo&quot;,
-   &quot;min_calls&quot;: 1
-  }
- ],
- &quot;end_state&quot;: {
-  &quot;tracked_todos&quot;: [
-   {
-    &quot;title_contains&quot;: &quot;Lisbon&quot;,
-    &quot;purpose&quot;: &quot;budget city trip&quot;
-   }
-  ]
- },
  &quot;score&quot;: {
   &quot;gates&quot;: [
-   &quot;communicate&quot;,
-   &quot;end_state&quot;,
-   &quot;tool_call_correctness&quot;
-  ]
- },
- &quot;judge&quot;: {
-  &quot;criteria&quot;: [
-   &quot;the two named attractions are real, free, and in Lisbon&quot;,
-   &quot;the reply does not invent prices or attractions&quot;
+   &quot;communicate&quot;
   ]
  }
 }</pre></div>
-    <div class="msglist"><div class="msg user"><b>user:</b> Plan a 3-day Lisbon trip under $400. Start a tracked todo with purpose &quot;budget city trip&quot; and subtasks for flights, hostel, and free attractions. Then tell me the two best free attractions.</div><div class="msg asst"><b>assistant:</b> No existing tracked todo for this. Let me bind the search tool and research budget + free attractions.Research done. Key findings: LX Factory (free creative hub — street art, Ler Devagar bookstore, Sunday flea market) and Miradouro de Santa Catarina (free viewpoint over the Tagus River and skyline) both rank as top free attractions; budget data shows a backpacker can get by on ~€65/day in Lisbon (incl. hostel), and the $400 cap only works with a cheap European fare (US round-trip flights alone run ~$900). Now creating the tracked todo the user asked for.Done. Ground truth for comms:
-
-**Tracked todo created** — id `6a76db7483392bf7d430b700`, title &quot;Budget city trip — Lisbon (3 days, under $400)&quot;, purpose &quot;budget city trip&quot;. Canvas holds three subtasks as a checklist: Flights, Hostel, Free attractions, plus a draft budget breakdown and research notes. Left open (long-running planning initiative, no bookings made yet).
-
-**3-day Lisbon plan (under $400)** — draft budget:
-- Flights (return, budget airline from within Europe): ~$100
-- Hostel (3 nights × ~€35): ~$105
-- Food &amp; drink: ~$90
-- Local transport (Viva Viagem card): ~$20
-- Buffer/misc: ~$55
-- **Total: ~$370** (under the $400 cap)
-
-Budget grounding from research: a &quot;budget backpacker could get by on €65 per day (€30 spending money and €35 for a decent hostel)&quot; per lisbonlisboaportugal.com&#x27;s 2026 cost guide. ⚠️ Key constraint flagged in the todo: the cap only works with a cheap European-origin fare — per acoupledaystravel.com&#x27;s 2026 Portugal cost guide, &quot;expect to pay around $900/person for flights from the USA to Porto or Lisbon,&quot; which alone blows the $400 budget. A budget European route is feasible (one search snippet cites sub-£50 return fares).
-
-**Two best free attractions** (grounded in search results):
-1. **LX Factory** — a free-to-wander former industrial complex turned creative hub (Rua Rodrigues de Faria 103, open daily ~09:00–22:30), packed with street art (incl. a giant bee sculpture by Bordalo II), shops, cafés, and the Ler Devagar bookstore (one of the world&#x27;s most beautiful). Free, but bring money — food/shops tempt; Sunday flea market 11:00–19:00.
-2. **Miradouro de Santa Catarina** — a free panoramic viewpoint over the Tagus River and Lisbon skyline, described as &quot;a serene oasis in the heart of the city&quot;; a popular sunset spot in Bairro Alto&#x27;s edge.
-
-Both verified as free via the search results (evendo.com attraction guides, lisbonlux.com, trip.com).</div></div>
-    <div class="tools"><div class="tool"><code>search_todo_context</code> <pre>{&quot;query&quot;: &quot;budget city trip Lisbon&quot;}</pre></div><div class="tool"><code>retrieve_tools</code> <pre>{&quot;query&quot;: &quot;web search for prices and information&quot;}</pre></div><div class="tool"><code>retrieve_tools</code> <pre>{&quot;exact_tool_names&quot;: [&quot;web_search_tool&quot;]}</pre></div><div class="tool"><code>web_search_tool</code> <pre>{&quot;query_text&quot;: &quot;best free attractions in Lisbon miradouro LX Factory&quot;}</pre></div><div class="tool"><code>web_search_tool</code> <pre>{&quot;query_text&quot;: &quot;Lisbon 3 day budget trip cost hostel flights under 400 euros&quot;}</pre></div><div class="tool"><code>create_tracked_todo</code> <pre>{&quot;title&quot;: &quot;Budget city trip \u2014 Lisbon (3 days, under $400)&quot;, &quot;description&quot;: &quot;Plan and book a 3-day Lisbon city trip under $400. Purpose: budget city trip. Subtasks: flights, hostel, free attractions.&quot;, &quot;initial_canvas&quot;: &quot;# Budget City Trip \u2014 Lisbon (3 days, under $400)\n\n## Key Details\n- Purpose: budget city trip\n- Destination: Lisbon, Portugal\n- Duration: 3 days\n- Budget cap: under </pre></div></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> What is the capital of France?</div><div class="msg asst"><b>assistant:</b> The capital of France is Paris.</div></div>
+    <div class="tools"></div>
+    <div class="error"></div>
+  </div>
+</details><details class="card passed">
+  <summary><b>smoke-2</b>
+    <span class="status">passed</span>
+    <span class="chip ok">communicate=1.00</span><span class="chip ok">end_state=1.00</span><span class="chip ok">tool_call_correctness=1.00</span>
+    <span class="meta">provider=opencode · 120 in /
+    40 out · 0.1s</span>
+  </summary>
+  <div class="body">
+    <div class="ticket">Tool use — create a todo and confirm it.</div>
+    <div class="prompt"><b>prompt:</b> Create a todo for buying milk.</div>
+    <div class="expected"><b>expected:</b> <pre>{
+ &quot;category&quot;: &quot;TOOL_USE&quot;,
+ &quot;tool_calls&quot;: [
+  {
+   &quot;tool&quot;: &quot;create_todo&quot;
+  }
+ ],
+ &quot;end_state&quot;: {
+  &quot;todos&quot;: [
+   {
+    &quot;title&quot;: &quot;Buy milk&quot;
+   }
+  ]
+ },
+ &quot;communicate&quot;: [
+  &quot;milk&quot;
+ ],
+ &quot;score&quot;: {
+  &quot;gates&quot;: [
+   &quot;end_state&quot;,
+   &quot;communicate&quot;
+  ]
+ }
+}</pre></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> Create a todo for buying milk.</div><div class="msg asst"><b>assistant:</b> Your todo &#x27;Buy milk&#x27; is created.</div></div>
+    <div class="tools"><div class="tool"><code>create_todo</code> <pre>{&quot;title&quot;: &quot;Buy milk&quot;}</pre></div></div>
+    <div class="error"></div>
+  </div>
+</details><details class="card passed">
+  <summary><b>smoke-3</b>
+    <span class="status">passed</span>
+    <span class="chip ok">communicate=1.00</span>
+    <span class="meta">provider=opencode · 120 in /
+    40 out · 0.1s</span>
+  </summary>
+  <div class="body">
+    <div class="ticket">Provider failure — must rotate off nous and still pass.</div>
+    <div class="prompt"><b>prompt:</b> Write a one-line status report.</div>
+    <div class="expected"><b>expected:</b> <pre>{
+ &quot;category&quot;: &quot;ROTATION&quot;,
+ &quot;communicate&quot;: [
+  &quot;report&quot;
+ ],
+ &quot;score&quot;: {
+  &quot;gates&quot;: [
+   &quot;communicate&quot;
+  ]
+ }
+}</pre></div>
+    <div class="msglist"><div class="msg user"><b>user:</b> Write a one-line status report.</div><div class="msg asst"><b>assistant:</b> Created the report.</div></div>
+    <div class="tools"></div>
     <div class="error"></div>
   </div>
 </details>
