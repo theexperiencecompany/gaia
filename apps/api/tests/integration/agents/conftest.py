@@ -23,13 +23,20 @@ def no_model_fallback():
     """Build the graph with NO default-model fallback available.
 
     ``create_agent`` resolves the fallback once, at build time, from
-    ``get_default_llm()`` — which succeeds whenever ``GOOGLE_API_KEY`` is
-    configured. A test asserting that a provider error *propagates* must
-    therefore pin the key off, or an ambient key (Infisical, a developer's
-    shell, CI secrets) silently makes the fallback available and swallows the
-    error the test exists to catch.
+    ``get_default_llm()``. A test asserting that a provider error *propagates*
+    must therefore pin off whatever key that factory needs, or an ambient key
+    (Infisical, a developer's shell, CI secrets) silently makes the fallback
+    available and swallows the error the test exists to catch.
+
+    Both provider keys are pinned rather than the one the default happens to use
+    today: the default model has already moved providers once, and naming a
+    single key here is what let this fixture keep passing while quietly no
+    longer disabling anything.
     """
-    with patch.object(settings, "GOOGLE_API_KEY", None):
+    with (
+        patch.object(settings, "OPENROUTER_API_KEY", None),
+        patch.object(settings, "GOOGLE_API_KEY", None),
+    ):
         yield
 
 
