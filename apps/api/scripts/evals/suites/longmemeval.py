@@ -83,6 +83,21 @@ class LongMemEvalSuite(Suite):
         return self._run_question(case, tracker, provider)
 
     async def _run_question(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
+        import asyncio as _asyncio
+        import os as _os
+
+        deadline = float(_os.environ.get("EVALS_CASE_TIMEOUT_S", "420"))
+        try:
+            return await _asyncio.wait_for(
+                self._run_question_inner(case, tracker, provider), timeout=deadline
+            )
+        except TimeoutError:
+            return CaseRun(
+                case_id=case.id, provider=provider.name, model=provider.model,
+                error=f"question timed out after {deadline:.0f}s",
+            )
+
+    async def _run_question_inner(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
         from scripts.memory_benchmark import longmemeval as lme
 
         lme.init_postgresql_engine()
