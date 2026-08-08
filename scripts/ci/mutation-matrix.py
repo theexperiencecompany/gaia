@@ -171,8 +171,7 @@ def _changed_line_ranges(path: str) -> list[list[int]]:
         )
     except subprocess.CalledProcessError as exc:
         print(
-            f"::error::mutation gate: could not diff {path} against "
-            f"origin/{base}: {exc}",
+            f"::error::mutation gate: could not diff {path} against origin/{base}: {exc}",
             file=sys.stderr,
         )
         raise SystemExit(1)

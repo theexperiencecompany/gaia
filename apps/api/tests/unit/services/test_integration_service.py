@@ -2577,7 +2577,9 @@ class TestConnectProbeDetection:
         "app.services.integrations.integration_connection_service.get_mcp_client",
         new_callable=AsyncMock,
     )
-    async def test_probe_detects_auth_and_records_it(self, mock_get_client, mock_update_status) -> None:
+    async def test_probe_detects_auth_and_records_it(
+        self, mock_get_client, mock_update_status
+    ) -> None:
         mock_client = AsyncMock()
         mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
@@ -2604,7 +2606,9 @@ class TestConnectProbeDetection:
         "app.services.integrations.integration_connection_service.get_mcp_client",
         new_callable=AsyncMock,
     )
-    async def test_probe_ignored_when_auth_already_required(self, mock_get_client, mock_update_status) -> None:
+    async def test_probe_ignored_when_auth_already_required(
+        self, mock_get_client, mock_update_status
+    ) -> None:
         mock_client = AsyncMock()
         mock_client.build_oauth_auth_url.return_value = "https://auth.example.com"
         mock_get_client.return_value = mock_client
@@ -2656,9 +2660,7 @@ class TestConnectMorePaths:
         "app.services.integrations.integration_connection_service.get_mcp_client",
         new_callable=AsyncMock,
     )
-    async def test_connect_time_oauth_discovery_routes_to_redirect(
-        self, mock_get_client
-    ) -> None:
+    async def test_connect_time_oauth_discovery_routes_to_redirect(self, mock_get_client) -> None:
         from mcp_use.client.exceptions import OAuthAuthenticationError
 
         mock_client = AsyncMock()
