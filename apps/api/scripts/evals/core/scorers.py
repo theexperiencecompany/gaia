@@ -578,15 +578,39 @@ class OpenUICheck(base_metric.BaseMetric):
         )
 
 
-_RUBRIC_SYSTEM = """You are an evaluation judge for a personal AI assistant. You grade one
-criterion at a time. For each criterion, respond with exactly:
-CRITERION: <name>
+_RUBRIC_SYSTEM = """You are a deliberately strict evaluation judge for a personal AI
+assistant. You are not here to be encouraging. Your job is to catch answers that
+LOOK good and are not.
+
+Grade each criterion independently. Emit NOTHING except one block per criterion,
+in this exact form, and no other prose anywhere in your reply:
+
+CRITERION: <the criterion, verbatim>
+QUOTE: "<the exact words from the assistant that decide this verdict, copied
+        character for character; write NONE if the assistant never addressed it>"
 VERDICT: <1|2|3|4|5>
-REASON: <one sentence>
-1 = completely fails the criterion, 5 = fully satisfies it.
-Judge the ASSISTANT'S responses, never the user's messages. If the assistant's
-text is empty or off-topic, give 1. Only the final CRITERION/VERDICT/REASON
-block counts — anything earlier is deliberation."""
+REASON: <one sentence, referring to the quote>
+
+THE SCALE — apply it literally:
+5  fully satisfies the criterion, with nothing missing.
+4  satisfies it, with a minor omission that does not change the outcome.
+3  PARTIALLY satisfies it. Something material is missing, wrong, or dodged.
+   A 3 is NOT a pass. Use it when the answer is half-right.
+2  mostly fails: it gestures at the criterion but does not deliver it.
+1  fails completely, is empty, is off-topic, or does the OPPOSITE of what the
+   criterion requires.
+
+RULES YOU MUST FOLLOW:
+- Judge ONLY the assistant's messages. Never grade the user's words.
+- Fluency is not evidence. A confident, well-written, friendly answer that does
+  not satisfy the criterion is a 1 or 2, never a 3+.
+- If the criterion says the assistant must decline, redirect, ask, or refrain
+  from something, then DOING the thing anyway is a 1 — however gracefully it is
+  worded.
+- If you cannot find words in the assistant's reply that satisfy the criterion,
+  the verdict is 1. Absence of evidence is failure, not a middling score.
+- When genuinely torn between two scores, give the LOWER one.
+- Never invent a quote. If QUOTE is NONE the verdict cannot exceed 1."""
 
 
 class RubricJudge(base_metric.BaseMetric):
@@ -614,17 +638,30 @@ class RubricJudge(base_metric.BaseMetric):
         expected = _expected_of(expected)
         criteria = expected.get("judge", {}).get("criteria", [])
         if not criteria:
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="no judge criteria")
-        transcript = (
-            "\n".join(
-                f"{m.get('role', '?')}: {m.get('content', '')}" for m in _messages_of(messages)
+            # Not "perfect" — not applicable. Returning 1.0 here silently
+            # inflated every average it touched: 24 of 36 recorded judge scores
+            # were this branch, i.e. cases nothing ever looked at.
+            return score_result.ScoreResult(
+                name=self.name,
+                value=0.0,
+                reason="no judge criteria — not applicable, exclude from averages",
+                scoring_failed=True,
             )
-            if messages
-            else output
+        transcript = "\n".join(
+            f"{m.get('role', '?')}: {m.get('content', '')}" for m in _messages_of(messages)
         )
+        # The judged answer is the assistant's own words. `output` was empty on
+        # every trace we inspected (the replay never carried it), so falling back
+        # to the transcript is what keeps the judge from grading a blank.
+        answer = str(output or "").strip() or _agent_text(messages)
+        if not answer.strip():
+            return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
+        ticket = str(expected.get("ticket") or "")
         user_prompt = (
-            f"ASSISTANT RESPONSE:\n{output}\n\nFULL TRANSCRIPT:\n{transcript}\n\n"
-            f"CRITERIA (grade each):\n" + "\n".join(f"- {c}" for c in criteria)
+            (f"WHAT THIS CASE IS TESTING:\n{ticket}\n\n" if ticket else "")
+            + f"ASSISTANT'S ANSWER:\n{answer}\n\nFULL TRANSCRIPT:\n{transcript}\n\n"
+            + "CRITERIA (grade each, in order):\n"
+            + "\n".join(f"- {c}" for c in criteria)
         )
         response = completion(
             model=f"openai/{self.model}",
@@ -637,9 +674,7 @@ class RubricJudge(base_metric.BaseMetric):
             ],
         )
         verdict = response.choices[0].message.content or ""
-        scores: list[int] = []
-        for match in re.finditer(r"VERDICT:\s*([1-5])", verdict):
-            scores.append(int(match.group(1)))
+        scores, quotes = _parse_verdicts(verdict, len(criteria))
         if not scores:
             return score_result.ScoreResult(
                 name=self.name,
@@ -647,13 +682,59 @@ class RubricJudge(base_metric.BaseMetric):
                 reason=f"judge returned no verdict: {verdict[:200]}",
                 scoring_failed=True,
             )
+        if len(scores) != len(criteria):
+            # Counts must reconcile or the mean is over the wrong denominator —
+            # the same class of defect as scoring a case that never ran.
+            return score_result.ScoreResult(
+                name=self.name,
+                value=0.0,
+                reason=f"judge graded {len(scores)} of {len(criteria)} criteria",
+                scoring_failed=True,
+            )
         mean = sum(scores) / len(scores) / 5.0
         return score_result.ScoreResult(
             name=self.name,
             value=round(mean, 3),
-            reason=f"criteria={len(scores)} mean={mean * 5:.1f}/5",
-            metadata={"verdicts": scores, "criteria": criteria, "judge": self.model},
+            reason=f"criteria={len(scores)} mean={mean * 5:.1f}/5 verdicts={scores}",
+            metadata={
+                "verdicts": scores,
+                "criteria": criteria,
+                "quotes": quotes,
+                "judge": self.model,
+            },
         )
+
+
+def _parse_verdicts(reply: str, expected_count: int) -> tuple[list[int], list[str]]:
+    """One verdict per CRITERION block, with the quote that justified it.
+
+    The old parser collected EVERY ``VERDICT: n`` in the reply and averaged
+    them, while the prompt promised that only the final block counted — so a
+    judge that reasoned "this looks like a 4... actually a 2" scored 3. Blocks
+    are now split on CRITERION and the LAST verdict inside each block wins,
+    which is the rule the prompt states.
+
+    A block whose quote is NONE is capped at 1: the prompt forbids a higher
+    score without evidence, and a judge that ignores that must not be trusted
+    upward.
+    """
+    blocks = re.split(r"^\s*CRITERION:", reply, flags=re.MULTILINE)[1:]
+    if not blocks:
+        blocks = [reply]
+    scores: list[int] = []
+    quotes: list[str] = []
+    for block in blocks[:expected_count] if expected_count else blocks:
+        verdicts = re.findall(r"VERDICT:\s*([1-5])", block)
+        if not verdicts:
+            continue
+        value = int(verdicts[-1])
+        quote_match = re.search(r"QUOTE:\s*(.+)", block)
+        quote = quote_match.group(1).strip() if quote_match else ""
+        if quote.strip('" ').upper() == "NONE" or not quote:
+            value = min(value, 1)
+        scores.append(value)
+        quotes.append(quote[:200])
+    return scores, quotes
 
 
 class ProviderQuality(base_metric.BaseMetric):

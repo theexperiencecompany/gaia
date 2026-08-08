@@ -87,7 +87,11 @@ class SmokeSuite(Suite):
                 id="smoke-3",
                 ticket="Provider failure — must rotate off nous and still pass.",
                 prompt="Write a one-line status report.",
-                expected={"category": "ROTATION", "communicate": ["report"]},
+                expected={
+                    "category": "ROTATION",
+                    "communicate": ["report"],
+                    "score": {"gates": ["communicate"]},
+                },
             ),
         ]
 

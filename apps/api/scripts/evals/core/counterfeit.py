@@ -94,10 +94,21 @@ class CaseVerdict:
         """
         return "echo" in self.passed_wholesale and not self.unfalsifiable
 
+    judge_criteria: int = 0
+
+    @property
+    def judge_only(self) -> bool:
+        """No runtime gate, but the judge grades it at finalize.
+
+        Weaker than a real gate and worth seeing separately: the judge runs only
+        when a run finalizes, so at runtime such a case cannot fail at all.
+        """
+        return not self.gates and self.judge_criteria > 0
+
     @property
     def ungated(self) -> bool:
-        """A case with no gates cannot fail, whatever its criteria say."""
-        return not self.gates
+        """Nothing can ever fail this case — no gate, and nothing to judge."""
+        return not self.gates and self.judge_criteria == 0
 
 
 def _empty_run(case: Case) -> CaseRun:
@@ -174,8 +185,9 @@ def check_case(suite: Scorable, case: Case) -> CaseVerdict:
         fooled={},
         gates=case.gates,
         parroted=parroted_assertions(case),
+        judge_criteria=len((case.expected.get("judge") or {}).get("criteria") or []),
     )
-    if verdict.ungated:
+    if not verdict.gates:
         return verdict
     for forgery in forgeries(case):
         try:
@@ -201,11 +213,14 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
     """A report that leads with the number, because that is the decision."""
     total = len(verdicts)
     ungated = [v for v in verdicts if v.ungated]
+    judge_only = [v for v in verdicts if v.judge_only]
     errored = [v for v in verdicts if v.error]
     broken = [v for v in verdicts if v.unfalsifiable and not v.ungated]
     blind = [v for v in verdicts if v.content_blind and not v.ungated]
     weak = [v for v in verdicts if v.fooled and not v.unfalsifiable and not v.content_blind]
-    solid = total - len(ungated) - len(errored) - len(broken) - len(blind) - len(weak)
+    solid = (
+        total - len(ungated) - len(judge_only) - len(errored) - len(broken) - len(blind) - len(weak)
+    )
     cannot_fail = len(broken) + len(ungated)
 
     lines = [
@@ -214,7 +229,8 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
         f"FALSIFIABILITY  {cannot_fail}/{total} cases CANNOT FAIL — a worthless run would pass them",
         "=" * 74,
         f"  {len(broken):>4}  BROKEN   — a run that produced NOTHING scored a pass",
-        f"  {len(ungated):>4}  ungated  — no gates declared at all",
+        f"  {len(ungated):>4}  ungated  — no gate and no judge criteria: nothing can fail it",
+        f"  {len(judge_only):>4}  judge-only — no runtime gate; graded only when a run finalizes",
         f"  {len(blind):>4}  content-blind — passes a reply that only parrots the prompt;",
         "        structural/absence gates only, so it asserts nothing about what was said",
         f"  {len(weak):>4}  weak     — one gate is fakeable, but another still rejects the run",
