@@ -252,10 +252,9 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
     y: number;
   } | null>(null);
 
-  const { columns, max, activeDays } = useMemo(() => {
+  const { columns, max } = useMemo(() => {
     const days = activity.days;
-    if (days.length < 14)
-      return { columns: [] as Cell[][], max: 1, activeDays: 0 };
+    if (days.length < 14) return { columns: [] as Cell[][], max: 1 };
     const byDate = new Map(days.map((d) => [d.date, d.count]));
     const first = new Date(`${days[0].date}T00:00:00Z`);
     const last = new Date(`${days[days.length - 1].date}T00:00:00Z`);
@@ -280,11 +279,7 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
       }
       columns.push(col);
     }
-    return {
-      columns,
-      max: Math.max(1, ...days.map((d) => d.count)),
-      activeDays: days.filter((d) => d.count > 0).length,
-    };
+    return { columns, max: Math.max(1, ...days.map((d) => d.count)) };
   }, [activity]);
 
   // One shared hover label positioned over the hovered cell — a grid of ~365
@@ -309,13 +304,14 @@ export function UsageHeatmap({ activity }: { activity: UsageActivity }) {
     <section className="rounded-2xl bg-zinc-900/60 p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-baseline gap-2">
-          <p className="text-base font-semibold text-white">Activity</p>
+          <p className="text-base font-semibold text-white">
+            GAIA&apos;s activity
+          </p>
           <p className="text-[13px] text-zinc-500">
             <span className="font-medium tabular-nums text-zinc-300">
               {formatCompactNumber(activity.total)}
             </span>{" "}
-            actions &middot; {activeDays} days &middot; {activity.streak}-day
-            streak
+            actions &middot; {activity.streak}-day streak
           </p>
         </div>
         <Button
