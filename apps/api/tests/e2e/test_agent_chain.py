@@ -44,7 +44,6 @@ from langchain_core.outputs import ChatGenerationChunk
 from langgraph.store.memory import InMemoryStore
 import pytest
 
-from app.agents.core.background import redis_writer
 from app.agents.core.graph_builder import build_graph as build_graph_module
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.nodes.follow_up_actions_node import FollowUpActions
@@ -58,6 +57,7 @@ from app.memory.ingestion import RetainedMemory
 from app.models.memory_models import MemoryEntry
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
+from app.utils import background_tasks
 from tests.e2e._harness.graph_run import RecordingFakeModel, scripted_model
 from tests.e2e._harness.transcript import UNKNOWN, Transcript
 
@@ -185,13 +185,14 @@ async def _drain_publishes() -> None:
     """Wait out the fire-and-forget XADDs the background writer scheduled.
 
     ``make_redis_stream_writer`` is a *sync* callable — it schedules each publish
-    with ``asyncio.create_task`` and returns. A live subscriber sees those frames
-    whenever they land, but a test that reads the log after the turn must wait
-    for them, or it reads a truncated stream and the assertion is about timing
-    rather than behaviour.
+    through ``spawn_background_task`` and returns. A live subscriber sees those
+    frames whenever they land, but a test that reads the log after the turn must
+    wait for them, or it reads a truncated stream and the assertion is about
+    timing rather than behaviour. Draining the canonical keep-alive set is a
+    superset of the publishes, which is what "wait until the turn is quiet" wants.
     """
-    while redis_writer._publish_tasks:
-        await asyncio.gather(*list(redis_writer._publish_tasks), return_exceptions=True)
+    while background_tasks._background_tasks:
+        await asyncio.gather(*list(background_tasks._background_tasks), return_exceptions=True)
 
 
 async def run_chain(
