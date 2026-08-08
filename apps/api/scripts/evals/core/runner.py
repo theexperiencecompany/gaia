@@ -258,9 +258,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     run.provider = provider_name
                     run.model = provider.model
                     run.duration_s = time.monotonic() - start
-                    # A case that produced no answer gets no scores: scoring it
-                    # would write a phantom 0.0 into the metric averages.
-                    scores = {} if run.error else suite.score(case, run)
+                    scores = _score_or_zero(case, run, suite)
                     status = _status_from_scores(case, scores, run.error)
                     record_case(case, run, scores, status, run.error)
                     print(
@@ -460,13 +458,38 @@ async def _run_cases_concurrently(
     return aborted
 
 
+def _score_or_zero(case: Case, run: CaseRun, suite: Suite) -> dict[str, float]:
+    """Grade the case, or record the zero a declined case earned.
+
+    A case that produced no answer gets no scores: scoring it would write a
+    phantom 0.0 into the metric averages. A DECLINED case is the exception —
+    the benchmark asked a question we have no way to answer, which is worth
+    exactly zero and belongs in the average. The zero is written here rather
+    than left to each suite's scorer so that every suite counts a skip the same
+    way; GAIA's official scorer already treats an unanswered question as 0.0,
+    and this agrees with it.
+    """
+    if case.skip_reason:
+        return dict.fromkeys(case.gates, 0.0)
+    return {} if run.error else suite.score(case, run)
+
+
 def _status_from_scores(case: Case, scores: dict[str, float], error: str | None) -> str:
     """Grade a case, keeping "the agent was wrong" apart from "the case blew up".
 
     ``failed`` means the agent answered and missed the gate — a real quality
     signal. ``errored`` means no answer was produced (timeout, crash, dead
     backend), which is not a quality signal and must not be averaged into one.
+    ``skipped`` means we declined to attempt the case at all — which IS a
+    quality signal, scored zero and kept in the denominator, because the
+    benchmark asked and we had no answer.
     """
+    if case.skip_reason:
+        # Checked before the error, deliberately: the transport signals a skip
+        # by setting `error`, so reading the error first would file every skip
+        # as an outage — which is how a suite scored 36/89 and published 40.4%
+        # when the benchmark it claims to run has 165 questions.
+        return "skipped"
     if error:
         return "errored"
     gates = case.gates
@@ -570,6 +593,10 @@ def _record(
         "tags": case.tags,
         "category": case.expected.get("category"),
         "status": status,
+        # Present only on a declined case, and the only thing that tells the
+        # publish gate "this produced nothing because we never asked" apart from
+        # "we asked and got silence" — which look identical in the record.
+        "skip_reason": case.skip_reason or None,
         "provider": run.provider,
         "model": run.model,
         "text": run.text,
@@ -637,20 +664,33 @@ def _make_replay(journal: RunJournal) -> Callable[[dict[str, object]], dict[str,
 
 
 def _print_summary(journal: RunJournal, prices: PriceBook) -> None:
-    records = journal.records()
+    records = list(journal.latest_per_case().values())
     passed = sum(1 for r in records if r.get("status") == "passed")
     errored = sum(1 for r in records if r.get("status") == "errored")
+    skipped = sum(1 for r in records if r.get("status") == "skipped")
     graded = len(records) - errored
+    attempted = graded - skipped
     tokens_in, tokens_out = journal.tokens()
     print("\n" + "=" * 60)
-    # Accuracy is over cases that actually produced an answer; errors are their
-    # own number so a broken backend can never masquerade as a low score.
-    print(
-        f"SUITE {journal.load_meta().suite} · {passed}/{graded} passed "
-        f"({passed / graded * 100:.1f}%) · {errored} errored"
-        if graded
-        else f"no cases graded · {errored} errored"
-    )
+    # Two numbers, and which is which has to be unmistakable. The headline is
+    # over everything the benchmark asked, counting what we declined as the
+    # zeros they are — that is the figure comparable to anyone else's. The
+    # second is diagnostic: how the agent does on what it can attempt at all.
+    # Errors are excluded from both, because an outage measured nothing.
+    if graded:
+        print(
+            f"SUITE {journal.load_meta().suite} · "
+            f"FULL SPLIT {passed}/{graded} = {passed / graded * 100:.1f}% "
+            f"(skips count as zero — comparable to the benchmark)"
+        )
+        if attempted:
+            print(
+                f"  attempted-only {passed}/{attempted} = {passed / attempted * 100:.1f}% "
+                f"(diagnostic only — NOT comparable, {skipped} case(s) removed)"
+            )
+        print(f"  cases {len(records)} · graded {graded} · skipped {skipped} · errored {errored}")
+    else:
+        print(f"no cases graded · {skipped} skipped · {errored} errored")
     print(f"tokens: {tokens_in:,} in / {tokens_out:,} out · est USD {journal.cost_usd(prices):.2f}")
     per_provider: dict[str, tuple[int, int]] = {}
     for r in records:

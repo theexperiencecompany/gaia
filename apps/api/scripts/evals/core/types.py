@@ -23,6 +23,21 @@ class Case:
     def gates(self) -> list[str]:
         return list(self.expected.get("score", {}).get("gates", []))
 
+    @property
+    def skip_reason(self) -> str:
+        """Why we decline to attempt this case, or "" if we attempt it.
+
+        A skip is not an outage. An outage means we failed to conduct the test
+        and the case leaves the denominator; a skip means the question was asked
+        of us and we have no way to answer it — an unsupported attachment, a
+        capability we lack — which on an external benchmark is a wrong answer
+        worth 0.0, in the denominator, exactly as that benchmark's own scorer
+        counts it. Declared on the case rather than inferred from the run's error
+        text, because a skip and a crash both arrive as a string and telling them
+        apart by reading it is how they got conflated in the first place.
+        """
+        return str(self.expected.get("skip_reason") or "")
+
 
 @dataclass
 class CaseRun:

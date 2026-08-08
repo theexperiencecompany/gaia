@@ -84,10 +84,15 @@ def check_records(
     if not records:
         return report
 
+    # A declined case is silent for a reason it declared up front, and its zero
+    # is the honest score for a question we could not attempt. That is not the
+    # defect this check exists for — which is a case that WAS asked, returned
+    # nothing, and still came back with a number attached.
     scored_but_silent = [
         str(r.get("case_id"))
         for r in records
         if r.get("scores")
+        and not r.get("skip_reason")
         and not (r.get("text") or r.get("messages"))
         and not int((r.get("tokens") or {}).get("input", 0))
     ]

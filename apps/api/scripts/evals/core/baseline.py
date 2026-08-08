@@ -93,8 +93,18 @@ class Comparison:
         return "\n".join(lines + [""])
 
 
+GRADED_STATUSES = ("passed", "failed", "skipped")
+"""What counts in the denominator.
+
+``skipped`` is in it. A skip means the benchmark asked something we have no way
+to answer, which is a wrong answer worth zero — dropping it from the denominator
+is how a 36/165 became a published 40.4%. ``errored`` stays out: an outage
+measured nothing, so there is no answer to be wrong.
+"""
+
+
 def _accuracy(records: list[dict[str, Any]]) -> tuple[float, int, int]:
-    graded = [r for r in records if r.get("status") in ("passed", "failed")]
+    graded = [r for r in records if r.get("status") in GRADED_STATUSES]
     errored = sum(1 for r in records if r.get("status") == "errored")
     if not graded:
         return 0.0, 0, errored
@@ -105,7 +115,7 @@ def _accuracy(records: list[dict[str, Any]]) -> tuple[float, int, int]:
 def _by_category(records: list[dict[str, Any]]) -> dict[str, tuple[int, int]]:
     out: dict[str, tuple[int, int]] = {}
     for record in records:
-        if record.get("status") not in ("passed", "failed"):
+        if record.get("status") not in GRADED_STATUSES:
             continue
         category = str(record.get("category") or "uncategorised")
         passed, total = out.get(category, (0, 0))
@@ -141,6 +151,16 @@ def compare(suite: str, records: list[dict[str, Any]]) -> Comparison:
             f"only {graded} graded case(s) — too few to call a regression, reporting only"
         )
         return comparison
+
+    previous_graded = int(stored.get("graded", 0) or 0)
+    if previous_graded and abs(graded - previous_graded) > previous_graded * 0.05:
+        # Making a benchmark more honest moves the denominator, and a bigger
+        # denominator with the same numerator reads exactly like the agent got
+        # worse. It didn't; the measurement did. Say so before the rate is read.
+        comparison.notes.append(
+            f"denominator moved {previous_graded} -> {graded} case(s): the rate is over a "
+            f"different set, so this comparison measures the harness, not the agent"
+        )
 
     if comparison.accuracy < comparison.baseline_accuracy - REGRESSION_MARGIN:
         comparison.regressions.append(

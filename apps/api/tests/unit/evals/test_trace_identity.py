@@ -96,7 +96,13 @@ def test_different_cases_runs_and_projects_get_different_ids() -> None:
     other_project = trace_id_for("gaia-quality", _trace())
     other_run = trace_id_for(
         "gaia-capability",
-        CaseTrace.from_record("capability-20260101-000000-aaaaaa", dict(RECORD), PRICES),
+        CaseTrace.from_record(
+            "capability-20260101-000000-aaaaaa",
+            dict(RECORD),
+            PRICES,
+            suite="capability",
+            app_version="api-v0.17.0-299-gc32f2f973",
+        ),
     )
     assert len({base, other_case, other_project, other_run}) == 4
 
@@ -106,7 +112,13 @@ def test_a_later_run_of_the_same_case_is_a_distinct_trace() -> None:
     first = trace_id_for("gaia-capability", _trace())
     second = trace_id_for(
         "gaia-capability",
-        CaseTrace.from_record("capability-20260809-111111-bbbbbb", dict(RECORD), PRICES),
+        CaseTrace.from_record(
+            "capability-20260809-111111-bbbbbb",
+            dict(RECORD),
+            PRICES,
+            suite="capability",
+            app_version="api-v0.17.0-299-gc32f2f973",
+        ),
     )
     assert first != second
 
