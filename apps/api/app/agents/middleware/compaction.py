@@ -30,10 +30,11 @@ Two independent triggers (unchanged from the prior VFS-backed version):
 - Thread-level: estimated context usage exceeds `compaction_threshold` →
   compact any output bigger than `MIN_COMPACTION_SIZE`
 
-The decide-and-spill logic lives in the module-level `compact_tool_output`
-helper so the spawned-subagent loop (which runs outside the middleware stack)
-compacts its tool outputs the exact same way. The middleware is a thin wrapper
-around it.
+The decide-and-compact logic lives in the module-level `compact_tool_output`
+helper and the middleware is a thin wrapper around it, so the tiering is
+testable without a middleware stack. Subagents reach it through that same
+middleware (`create_subagent_middleware` passes `enable_compaction=True`);
+comms deliberately does not compact, having no tools to mine a spilled file.
 """
 
 from __future__ import annotations
