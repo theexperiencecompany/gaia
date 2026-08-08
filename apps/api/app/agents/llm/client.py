@@ -507,6 +507,22 @@ def metered_config(user_id: str) -> RunnableConfig:
     return cast(RunnableConfig, {"configurable": {"user_id": user_id}})
 
 
+def silent_metered_config(user_id: str) -> RunnableConfig:
+    """:data:`SILENT_LLM_CONFIG` plus the spend attribution of
+    :func:`metered_config` — for an internal call made *while a graph is
+    streaming* and on behalf of a specific user (the HIL intent judge and the
+    conversational resolver).
+
+    Both halves are needed and each is easy to forget alone: without the silent
+    flags the structured output leaks into the chat as a bot message, and
+    without ``user_id`` the call's real COGS lands on nobody.
+    """
+    return cast(
+        RunnableConfig,
+        {**SILENT_LLM_CONFIG, **metered_config(user_id)},
+    )
+
+
 def _with_usage_handler(
     config: RunnableConfig | None, handler: BaseCallbackHandler
 ) -> RunnableConfig:

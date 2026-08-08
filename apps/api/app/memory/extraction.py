@@ -14,7 +14,7 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import ainvoke_structured, metered_config
+from app.agents.llm.client import ainvoke_structured, silent_metered_config
 from app.agents.llm.exceptions import LLM_FALLBACK_EXCEPTIONS, LLMNotConfiguredError
 from app.constants.memory import (
     EXTRACTION_TRANSCRIPT_HEAD_CHARS,
@@ -54,9 +54,7 @@ _TRANSCRIPT_TRUNCATION_MARKER = "\n[... transcript truncated ...]\n"
 # nobody's budget.
 def _silent_config(user_id: str) -> RunnableConfig:
     return {
-        **metered_config(user_id),
-        "silent": True,  # top-level flag, matching follow_up_actions_node
-        "metadata": {"silent": True},  # canonical location the messages-stream consumers read
+        **silent_metered_config(user_id),
         "tags": ["memory_internal"],
     }  # type: ignore[typeddict-unknown-key]
 

@@ -47,6 +47,7 @@ async def judge(judge_verdict: _Verdict | Exception, turns: list[str] | None = N
         else:
             llm.return_value = judge_verdict
         decision = await judge_intent(
+            user_id="u-hil",
             user_messages=USER_TURNS if turns is None else turns,
             tool_name="send_email",
             description="Send an email.",
@@ -181,6 +182,7 @@ class TestPromptInjection:
         with patch(f"{MODULE}.ainvoke_structured", new=AsyncMock()) as llm:
             llm.return_value = verdict(authorizing_quote=injected, injected_instructions=False)
             decision = await judge_intent(
+                user_id="u-hil",
                 user_messages=USER_TURNS,
                 tool_name="send_email",
                 description="Send an email.",
