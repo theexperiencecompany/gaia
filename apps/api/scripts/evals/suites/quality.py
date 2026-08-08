@@ -28,9 +28,12 @@ through the same conversation: turn 1 gets a fresh conversation id (from the
 accumulated transcript as ``messages``.
 
 Scoring is deterministic at runtime (no LLM): structural checks always
-(BubbleBoundary, ToolCard), plus gates that exist in ``expected``
-(communicate, tool_call_correctness, suggestion, openui), plus a real
-suggestion check (3-4 non-empty items, each <=50 chars, from the
+(BubbleBoundary, ToolCard), the prompt-derived absolutes always
+(emoji_discipline plus ``core.prompt_gates`` — dashes, banned chatbot phrases,
+internal machinery, routing markers — whose banned lists are read out of
+``COMMS_AGENT_PROMPT`` itself rather than copied here), plus gates that exist
+in ``expected`` (communicate, tool_call_correctness, suggestion, openui), plus
+a real suggestion check (3-4 non-empty items, each <=50 chars, from the
 ``follow_up_actions`` frame).
 ``overall`` is the mean of the applied scores; the RubricJudge LLM pass runs
 at finalize time (1 call per case).
@@ -51,6 +54,8 @@ import httpx
 import yaml
 
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
+from scripts.evals.core.prompt_contracts import ClauseResolutionError, contract_criteria
+from scripts.evals.core.prompt_gates import PROMPT_GATES
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import NOTHING_TO_INSPECT, produced_nothing
@@ -515,86 +520,50 @@ def _emoji_discipline_check(run: CaseRun) -> tuple[float, str]:
     return 1.0, "no emoji before the user's first"
 
 
-# A policy rule runs from its number to the next numbered rule (or a blank-line
-# break), because several rules carry their real content in indented
-# sub-bullets — rule 5's "stats/KPIs, timeline, charts → :::openui" forcing
-# clause is a sub-bullet, and a line-only regex would quote the bare header
-# "Structured data shown inline:" and grade nothing.
-_POLICY_RULE_RE = re.compile(r"^[ \t]*(\d)\.[ \t]+(.*?)(?=^[ \t]*\d\.[ \t]|\n\n)", re.M | re.S)
-
 #: Directions a case can take on the OpenUI surface policy, via
-#: ``expected.openui_policy``. Each maps to the policy rule that decides it.
-OPENUI_POLICY_DIRECTIONS = ("required", "forbidden", "suppressed")
+#: ``expected.openui_policy``, each mapped to the shipped prompt clauses that
+#: decide it.
+#:
+#: These used to be hand-written prose beside a second, suite-local extractor
+#: that sliced ``OPENUI_SURFACE_POLICY`` by rule number. Two mechanisms for one
+#: job is one too many, and the prose half drifted the moment the prompt moved:
+#: the "forbidden" rubric carried its own frozen copy of "Never put :::openui
+#: inside greetings…", so rewording that rule in the prompt would leave the
+#: judge grading the old sentence forever. Every criterion is now a registered
+#: clause, which means the CI gate in ``tests/unit/evals/test_prompt_contracts``
+#: fails the moment one of them stops matching the prompt we ship.
+OPENUI_POLICY_CONTRACTS: dict[str, tuple[str, ...]] = {
+    "required": (
+        "openui.rule_structured_data",
+        "openui.prose_and_component_are_layers",
+        "openui.how_to_emit",
+    ),
+    "forbidden": (
+        "openui.rule_plain_text",
+        "openui.never_openui_in_conversation",
+    ),
+    "suppressed": ("openui.rule_native_card",),
+}
 
-
-def _policy_text() -> tuple[str, list[str]]:
-    """The SHIPPED OpenUI surface policy and its suppressed-tool list.
-
-    Imported inside the function on purpose. ``__main__`` imports every suite
-    module eagerly, and this pulls in app settings (Infisical, validators) —
-    at module scope a failure here would take down every suite's run, not just
-    this one.
-    """
-    from app.agents.prompts.openui_prompts import OPENUI_SUPPRESSED_TOOLS, OPENUI_SURFACE_POLICY
-
-    return OPENUI_SURFACE_POLICY, list(OPENUI_SUPPRESSED_TOOLS)
-
-
-def _policy_rule(policy: str, number: int) -> str:
-    """One numbered rule, verbatim, from the shipped policy.
-
-    Raises when the rule is missing rather than falling back to a default: if
-    someone renumbers or deletes a rule in the prompt, these evals must break
-    loudly at load time. A rubric that silently keeps grading a rule the
-    product no longer ships is measuring a spec we do not have.
-    """
-    for found, text in _POLICY_RULE_RE.findall(policy):
-        if int(found) == number:
-            return " ".join(text.split())
-    raise ValueError(
-        f"OpenUI surface policy has no rule {number} — the prompt changed shape. "
-        f"Re-derive the openui cases against the new policy instead of pinning a stale one."
-    )
+OPENUI_POLICY_DIRECTIONS = tuple(OPENUI_POLICY_CONTRACTS)
 
 
 def openui_policy_criteria(direction: str) -> list[str]:
     """Judge criteria composed from the real OpenUI prompt, not paraphrased.
 
-    The rubric quotes the shipped ``OPENUI_SURFACE_POLICY`` verbatim, so an
-    edit to the prompt changes what these cases grade — automatically, with no
-    YAML to update. That is the whole point: a hand-written rubric drifts from
-    the prompt and then measures a spec we stopped shipping.
+    The rubric quotes the shipped ``OPENUI_SURFACE_POLICY`` verbatim, so an edit
+    to the prompt changes what these cases grade — automatically, with no YAML
+    to update. ``rule_native_card`` carries the suppressed-tool list itself
+    (``OPENUI_SURFACE_POLICY`` interpolates ``OPENUI_SUPPRESSED_TOOLS`` into the
+    rule), so the criterion names today's tools without this suite holding a
+    second copy of the list.
     """
-    if direction not in OPENUI_POLICY_DIRECTIONS:
+    refs = OPENUI_POLICY_CONTRACTS.get(direction)
+    if refs is None:
         raise ValueError(
             f"unknown openui_policy {direction!r}; expected one of {OPENUI_POLICY_DIRECTIONS}"
         )
-    policy, suppressed = _policy_text()
-    quoted = "The agent's own shipped OpenUI surface policy says, verbatim:"
-    if direction == "required":
-        return [
-            f'{quoted} "{_policy_rule(policy, 5)}" Judge ONLY whether the reply obeys that rule '
-            f"for this request. For the visual types it names this is stated as a forcing rule, "
-            f"not a preference.",
-            "Any :::openui fence in the reply is closed by a matching ::: and its body is an "
-            "openui-lang expression (root = Component(...)), not prose, JSON, or a code block.",
-            "The prose and the component are layers of one reply: the words carry the lead-in and "
-            "the takeaway, the component carries the data. Neither duplicates the other.",
-        ]
-    if direction == "forbidden":
-        return [
-            f'{quoted} "{_policy_rule(policy, 3)}" Judge whether the reply obeys it.',
-            f'{quoted} "Never put :::openui inside greetings, opinions, or plain conversational '
-            f'replies." The reply must contain NO :::openui fence at all.',
-            "The reply does not reach for a component, a table, or a structured layout where a "
-            "plain sentence is the correct answer.",
-        ]
-    return [
-        f'{quoted} "{_policy_rule(policy, 1)}" The tools that already render a native card are: '
-        f"{', '.join(suppressed)}.",
-        "The reply emits NO :::openui fence duplicating a native tool card, and adds at most a "
-        "short conversational line alongside it.",
-    ]
+    return contract_criteria(list(refs))
 
 
 def _apply_openui_policy_criteria(case_id: str, expected: TurnPayload) -> None:
@@ -610,6 +579,8 @@ def _apply_openui_policy_criteria(case_id: str, expected: TurnPayload) -> None:
         return
     try:
         derived = openui_policy_criteria(str(direction))
+    except ClauseResolutionError as e:
+        raise ClauseResolutionError(f"{case_id}: {e}") from e
     except ValueError as e:
         raise ValueError(f"{case_id}: {e}") from e
     judge = expected.setdefault("judge", {})
@@ -692,6 +663,16 @@ class QualitySuite(Suite):
         emoji_value, emoji_reason = _emoji_discipline_check(run)
         scores["emoji_discipline"] = emoji_value
         run.raw.append({"type": "emoji_check", "value": emoji_value, "reason": emoji_reason})
+        # Unconditional, like the three above, because the prompt states each of
+        # these as an absolute with no exceptions — "NEVER use em dashes", the
+        # banned-phrase list, ONE ENTITY, the routing markers. A case does not
+        # opt in to a rule that applies to every reply. Their inputs are read
+        # out of the live prompt (``core/prompt_gates``), so extending the
+        # prompt's banned-phrase list extends the gate with no eval change.
+        for gate_name, check in PROMPT_GATES.items():
+            value, reason = check(run)
+            scores[gate_name] = value
+            run.raw.append({"type": f"{gate_name}_check", "value": value, "reason": reason})
         if expected.get("communicate"):
             scores["communicate"] = (
                 CommunicateGate()

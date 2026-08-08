@@ -380,6 +380,13 @@ CLAUSES: tuple[Clause, ...] = (
         governs="the absolute against components in conversational replies",
         depends_on=("openui_policy:forbidden", "data/quality/openui.yaml"),
     ),
+    Clause(
+        name="how_to_emit",
+        source="openui",
+        starts_at="How to emit openui — fence the openui-lang code",
+        governs="a component is openui-lang inside a :::openui fence, mixed with ordinary prose",
+        depends_on=("openui_policy:required", "data/quality/openui.yaml"),
+    ),
     # -- subagents ---------------------------------------------------------
     Clause(
         name="finish_task_carries_the_data",

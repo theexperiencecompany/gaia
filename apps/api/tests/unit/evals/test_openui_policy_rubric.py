@@ -5,43 +5,25 @@ A hand-written rubric is a copy of the spec, and copies drift: someone edits
 grading a policy the product no longer ships — green while wrong, which is the
 worst state an eval can be in.
 
-So the criteria are composed by quoting the real policy, and these tests pin
-the two properties that make that worth anything: the quoted text really is the
-shipped text, and a structural change to the prompt breaks loudly at load time
-instead of silently degrading.
+So the criteria are composed by quoting the real policy. This file pins what the
+rubric must SAY; ``test_prompt_contracts_wiring.py`` pins that it is composed
+rather than written, and that a prompt edit reaches it.
+
+These criteria used to be sliced out of the policy by a suite-local
+numbered-rule regex living beside a second, general clause registry. Two
+extraction mechanisms for one job is one too many, so the numbered-rule parser
+is gone and every criterion is now a registered clause in
+``scripts/evals/core/prompt_contracts.py`` — which also puts the OpenUI rules
+under that module's CI gate for the first time.
 """
 
 from __future__ import annotations
 
 import pytest
 from scripts.evals.suites.quality import (
-    OPENUI_POLICY_DIRECTIONS,
     _apply_openui_policy_criteria,
-    _policy_rule,
     openui_policy_criteria,
 )
-
-
-def _policy() -> str:
-    from app.agents.prompts.openui_prompts import OPENUI_SURFACE_POLICY
-
-    return OPENUI_SURFACE_POLICY
-
-
-def test_criteria_quote_the_shipped_policy_verbatim() -> None:
-    """The rubric's quoted text must appear in the real prompt, character for character."""
-    policy = " ".join(_policy().split())
-    for direction in OPENUI_POLICY_DIRECTIONS:
-        quoted = [
-            c.split('verbatim: "', 1)[1].rsplit('"', 1)[0]
-            for c in openui_policy_criteria(direction)
-            if 'verbatim: "' in c
-        ]
-        assert quoted, f"{direction} derived no quoted policy text"
-        for fragment in quoted:
-            assert fragment in policy, (
-                f"{direction} rubric quotes text absent from the shipped policy: {fragment[:120]!r}"
-            )
 
 
 def test_required_rubric_carries_the_forcing_clause() -> None:
@@ -66,12 +48,6 @@ def test_suppressed_rubric_lists_the_live_tool_set() -> None:
     assert OPENUI_SUPPRESSED_TOOLS, "no suppressed tools resolved"
     for tool in OPENUI_SUPPRESSED_TOOLS:
         assert tool in text, f"{tool} missing from the suppressed rubric"
-
-
-def test_a_renumbered_policy_breaks_loudly() -> None:
-    """If the prompt loses a rule, loading must raise — not grade a stale spec."""
-    with pytest.raises(ValueError, match="no rule 9"):
-        _policy_rule(_policy(), 9)
 
 
 def test_unknown_direction_is_rejected() -> None:
