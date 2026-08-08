@@ -196,20 +196,3 @@ def _apply_description(project: str) -> None:
         opiksink.set_description(project, description)
     except Exception as e:
         print(f"[seed] {project}: description not set: {type(e).__name__}: {e}")
-
-
-def _prune_duplicates(
-    project: str, existing: dict[tuple[str, str], list[opiksink.ExistingTrace]]
-) -> int:
-    """Collapse each key to a single trace, deleting the extras.
-
-    Best-effort on purpose: a duplicate left behind is cosmetic, and pruning
-    must never stop the seeding that follows it.
-    """
-    extras = [t.id for traces in existing.values() for t in traces[1:]]
-    if not extras:
-        return 0
-    deleted = opiksink.delete_traces(project, extras)
-    for key, ids in existing.items():
-        existing[key] = ids[:1]
-    return deleted

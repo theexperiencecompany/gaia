@@ -11,7 +11,6 @@ Every write is keyed by ``CaseTrace.key`` (case + run), which is what lets
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import datetime
 import hashlib
 import json
@@ -32,14 +31,6 @@ ENV_OPIK = _EVALS_DIR / ".env.opik"
 _MAX_TRACES = 50_000
 _DELETE_BATCH = 10
 _MAX_PROJECTS = 200
-
-
-@dataclass(frozen=True)
-class ExistingTrace:
-    """A case trace already in Opik, and whether it is complete."""
-
-    id: str
-    has_span: bool
 
 
 def load_opik_env(path: Path = ENV_OPIK) -> None:
@@ -207,65 +198,22 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
         trace.log_feedback_score(name=name, value=value)
 
 
-def repair_case_trace(project: str, trace_id: str, case: CaseTrace) -> None:
-    """Attach the missing ``llm`` span (and refresh metadata) on a trace that was
-    written before traces carried spans.
-
-    Rewriting those traces instead would mean deleting them, and a delete costs
-    ~3.5s each on this backend — half an hour to rebuild what a span attach
-    fixes in place.
-    """
-    opik_client = client(project)
-    opik_client.span(
-        trace_id=trace_id,
-        project_name=project,
-        name=f"{case.provider}:{case.model}",
-        type="llm",
-        start_time=case.started_at,
-        end_time=case.ended_at,
-        input={"prompt": case.prompt},
-        output={"text": case.output},
-        metadata=case.metadata,
-        model=case.model,
-        provider=case.provider,
-        usage=case.usage,
-        total_cost=case.cost_usd,
-        error_info=case.error_info,
-    )
-    opik_client.update_trace(
-        trace_id=trace_id,
-        project_name=project,
-        metadata=case.metadata,
-        tags=[project, case.status],
-        error_info=case.error_info,
-    )
-
-
 def purge_case_traces(project: str) -> int:
-    """Delete every ``case-*`` trace in a project. Used by ``seed --reset`` to
-    rebuild a project from the journals when the trace shape itself changed."""
-    ids = [t.id for traces in existing_trace_keys(project).values() for t in traces]
-    return delete_traces(project, ids) if ids else 0
+    """Delete every ``case-*`` trace in a project.
 
-
-def existing_trace_keys(project: str) -> dict[tuple[str, str], list[ExistingTrace]]:
-    """Every case trace already in ``project``, keyed by ``CaseTrace.key``.
-
-    Values are in creation order, so a key holding more than one entry is a
-    duplicate set the seeder can collapse. ``has_span`` distinguishes a complete
-    trace from one written before traces carried their llm span.
+    Only needed to evict traces whose source journal is gone — a plain re-seed
+    already refreshes everything in place, because the ids are derived from the
+    case identity. To empty a project wholesale, delete the project instead
+    (``ingest``): a single trace delete costs ~3.5s on this backend.
     """
-    keys: dict[tuple[str, str], list[ExistingTrace]] = {}
-    for trace in client(project).search_traces(project_name=project, max_results=_MAX_TRACES):
+    ids = [
+        trace.id
+        for trace in client(project).search_traces(project_name=project, max_results=_MAX_TRACES)
         # A trace's name is nullable, and an unnamed one used to abort the whole
         # backfill here — which is exactly how three projects ended up empty.
-        if not (trace.name or "").startswith("case-"):
-            continue
-        run_id = str((trace.metadata or {}).get("run_id", ""))
-        keys.setdefault((trace.name, run_id), []).append(
-            ExistingTrace(id=trace.id, has_span=bool(trace.span_count))
-        )
-    return keys
+        if (trace.name or "").startswith("case-")
+    ]
+    return delete_traces(project, ids) if ids else 0
 
 
 def delete_traces(project: str, trace_ids: list[str]) -> int:
