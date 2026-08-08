@@ -86,7 +86,7 @@ function intensity(count: number | null, max: number): string {
 }
 
 function shareToX(activity: UsageActivity) {
-  const label = activity.tier ? TIERS[activity.tier].label : "an active";
+  const label = activity.tier ? TIERS[activity.tier].label : null;
   openTweetIntent(buildTweetText(label, activity.streak));
 }
 

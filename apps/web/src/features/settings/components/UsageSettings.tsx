@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
 
@@ -12,11 +13,15 @@ import { UsageView } from "./usage/UsageView";
 
 export default function UsageSettings() {
   const openPricingModal = usePricingModalStore((s) => s.openModal);
-  const { data: summary, isLoading } = useUsageSummary();
+  const { data: summary, isLoading, refetch } = useUsageSummary();
   const { data: history } = useUsageHistory(30);
   const { data: activity } = useUsageActivity(365);
 
-  if (isLoading || !summary) return <UsageSkeleton />;
+  if (isLoading) return <UsageSkeleton />;
+  // Retries are exhausted by now (see useUsageSummary), so a missing summary is
+  // a settled failure, not a slow one. Keeping the skeleton up would shimmer
+  // forever with no message and no way out.
+  if (!summary) return <UsageError onRetry={() => void refetch()} />;
 
   return (
     <UsageView
@@ -25,6 +30,30 @@ export default function UsageSettings() {
       activity={activity}
       onUpgrade={openPricingModal}
     />
+  );
+}
+
+function UsageError({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-3 rounded-2xl bg-zinc-900/60 p-10 text-center">
+      <p className="text-sm font-medium text-zinc-200">
+        Couldn&apos;t load your usage
+      </p>
+      <p className="max-w-sm text-xs text-zinc-500">
+        Your usage is still being tracked — this page just couldn&apos;t reach
+        it. Try again in a moment.
+      </p>
+      <Button
+        size="sm"
+        color="primary"
+        variant="flat"
+        radius="full"
+        className="mt-1 font-medium"
+        onPress={onRetry}
+      >
+        Try again
+      </Button>
+    </div>
   );
 }
 

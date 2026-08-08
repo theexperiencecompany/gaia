@@ -371,14 +371,18 @@ function DailyBars({
       daysWithData.every((d) => d.dayLimit === currentDayLimit);
     const rows = data.map((d) => ({
       ...d,
+      // `asPct` is decided from days that HAVE data, but this maps every day in
+      // the window — a quiet day carries dayLimit 0, so dividing unguarded
+      // yields NaN and the bar disappears. A day with no usage is 0% of its
+      // allowance.
       value: asPct
-        ? Math.round((d.messages / d.dayLimit) * 1000) / 10
+        ? d.dayLimit > 0
+          ? Math.round((d.messages / d.dayLimit) * 1000) / 10
+          : 0
         : d.messages,
     }));
     return { data: rows, daysHit, asPct, isEmpty: daysWithData.length === 0 };
   }, [history, primary, currentDayLimit]);
-
-  if (data.length < 2) return null;
 
   return (
     <section className={cn(CARD, "flex min-w-0 flex-1 flex-col p-5")}>
@@ -483,7 +487,13 @@ function Stats({
   // Chat is cost-priced (no daily count allowance), so this averages plain
   // message activity per day rather than a share of any count limit.
   const { dailyAvg, activeDays, elapsedDays } = useMemo(() => {
-    const empty = { dailyAvg: 0, activeDays: 0, elapsedDays: 0 };
+    // Days elapsed this month (today included) is a calendar fact — it is never
+    // zero, and it is the denominator BOTH metrics are reported against. Compute
+    // it before any early return, or a user with no history yet reads
+    // "0 of 0 days this month" on their first visit. Only the derived counts
+    // may collapse to zero.
+    const elapsedDays = new Date().getUTCDate();
+    const empty = { dailyAvg: 0, activeDays: 0, elapsedDays };
     const resetIso = summary.features[primary]?.periods.month?.reset_time;
     if (!history.length || !resetIso) return empty;
     const window = currentMonthWindow(resetIso);
@@ -497,9 +507,6 @@ function Stats({
       if (day?.used !== undefined) byDom.set(d.getUTCDate(), day.used);
     }
     if (!byDom.size) return empty;
-    // Denominator = calendar days elapsed (today included), NOT the last day
-    // with activity — otherwise a quiet week inflates both metrics.
-    const elapsedDays = new Date().getUTCDate();
     let total = 0;
     let activeDays = 0;
     for (const used of byDom.values()) {
