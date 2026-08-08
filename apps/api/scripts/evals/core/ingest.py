@@ -59,6 +59,7 @@ class RunInfo:
     project: str
     cases: int
     excluded: str | None
+    status: str = "finished"
 
 
 def survey(runs_dir: Path = RUNS_DIR) -> list[RunInfo]:
@@ -85,6 +86,7 @@ def survey(runs_dir: Path = RUNS_DIR) -> list[RunInfo]:
                 project=_project_of(suite),
                 cases=len(cases),
                 excluded=meta.get("excluded"),
+                status=str(meta.get("status") or "finished"),
             )
         )
     return out
@@ -96,8 +98,13 @@ def ingestable(runs: list[RunInfo]) -> list[RunInfo]:
     A run marked ``excluded`` in its ``run.json`` recorded numbers we already
     know are wrong. Seeding it puts those numbers back into the totals — which
     is precisely how a project came to report 461 million tokens.
+
+    A run still ``running`` is skipped too: it appends between the seed and the
+    read-back, so the reconciliation is off by however many cases landed in
+    that window — a moving target can never verify. It seeds on its next
+    finished (or aborted) ingest.
     """
-    return [run for run in runs if not run.excluded]
+    return [run for run in runs if not run.excluded and run.status != "running"]
 
 
 def suite_projects() -> dict[str, str]:

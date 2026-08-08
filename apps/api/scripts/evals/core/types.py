@@ -121,6 +121,10 @@ class CaseTrace:
     discount_pct: float = 0.0
     error: str = ""
     ended_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    tool_calls: tuple[dict[str, Any], ...] = ()
+    """What the agent actually did, straight from the journal. Rendered as one
+    ``tool`` span per call so a reader inspecting a failed case in Opik sees the
+    calls, not just the final text."""
 
     @property
     def name(self) -> str:
@@ -200,12 +204,18 @@ class CaseTrace:
 
     @property
     def error_info(self) -> dict[str, str] | None:
-        """Opik's error envelope, so failures count toward its error-rate metric.
+        """Opik's error envelope — for cases that ERRORED, never merely failed.
+
+        A graded wrong answer records why it was wrong in ``error`` too ("gate
+        score below threshold"), and writing that into the envelope made every
+        failed case count as an error in Opik's project list — 105 phantom
+        "errors" on suites whose runs had zero. The envelope means "the machine
+        broke", and only an errored status earns it.
 
         All three keys are required by the API — omitting ``traceback`` fails
         validation and silently drops the whole trace.
         """
-        if not self.error:
+        if not self.error or self.status != "errored":
             return None
         kind, _, message = self.error.partition(": ")
         return {
@@ -269,6 +279,7 @@ class CaseTrace:
             discount_pct=price.discount_pct,
             error=record.get("error") or "",
             ended_at=_parse_ts(record.get("ts")),
+            tool_calls=tuple(record.get("tool_calls") or []),
         )
 
 

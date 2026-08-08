@@ -169,6 +169,11 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                 extra={"sim": opts.sim},
             )
         )
+    else:
+        # A resumed run is live again. Leaving the stale terminal status in
+        # place made a mid-append run look finished to ingest, whose read-back
+        # then chased a moving target and failed on a phantom mismatch.
+        journal.update_meta(status="running")
 
     tracker = EvalCostTracker(cfg.providers, opts.max_usd or cfg.default_max_usd)
     transport = suite.transport

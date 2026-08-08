@@ -243,6 +243,10 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
     trace = client(project).trace(
         id=trace_id_for(project, case),
         name=case.name,
+        # Every attempt at one case shares a thread, so Opik's Threads view
+        # shows a case's history across runs in one place instead of leaving
+        # each attempt to be hunted down by name.
+        thread_id=f"{case.suite}:{case.case_id}",
         start_time=case.started_at,
         end_time=case.ended_at,
         input={"prompt": case.prompt},
@@ -262,13 +266,32 @@ def log_case_trace(project: str, case: CaseTrace) -> None:
         metadata=case.metadata,
         model=case.model,
         provider=case.provider,
-        usage=case.usage,
+        # Usage rides the span only when the provider actually reported it.
+        # Opik prices span usage against its own model table whenever
+        # total_cost is absent — so attaching an estimated or legacy count
+        # here resurrects exactly the phantom cost the pricing guard removed.
+        # Untrusted counts stay in metadata, where nothing prices them.
+        usage=case.usage if case.tokens_trusted else None,
         # None, not 0.0, when the tokens behind it were never metered: Opik sums
         # what it is given, and a zero would read as "this case was free" rather
         # than "nobody measured it".
         total_cost=case.cost_usd if case.tokens_trusted else None,
         error_info=case.error_info,
     )
+    # The agent's actual actions, one `tool` span per call — without these a
+    # reader inspecting a failed case sees only the final text and has to open
+    # the journal to learn what the agent did. Ids derive from the trace key
+    # and position, so a re-seed upserts rather than appending twins.
+    for index, call in enumerate(case.tool_calls):
+        trace.span(
+            id=_stable_uuid7(f"tool|{project}|{case.key}|{index}", _identity_time(case)),
+            name=str(call.get("name") or call.get("tool") or f"tool-{index}"),
+            type="tool",
+            start_time=case.started_at,
+            end_time=case.ended_at,
+            input={"arguments": call.get("args") or call.get("arguments") or {}},
+            output={"result": call.get("result") or call.get("output") or ""},
+        )
     for name, value in case.scores.items():
         trace.log_feedback_score(name=name, value=value)
 

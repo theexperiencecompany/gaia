@@ -297,7 +297,9 @@ def journal_expectations(
         if not run_dir.is_dir() or not meta_file.exists():
             continue
         meta = json.loads(meta_file.read_text())
-        if meta.get("excluded"):
+        # Same filter as ingest: a still-running run appends between seed and
+        # read-back, so counting it makes the reconciliation a moving target.
+        if meta.get("excluded") or str(meta.get("status") or "") == "running":
             continue
         project = suite_projects.get(str(meta.get("suite") or ""))
         if project is None or (only_projects is not None and project not in only_projects):
