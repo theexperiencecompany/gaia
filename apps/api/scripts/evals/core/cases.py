@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-from .gates import ExtraGates
+from .gates import ExtraGates, validate_gates
 from .scorers import validate_tool_expectations
 from .types import Case
 
