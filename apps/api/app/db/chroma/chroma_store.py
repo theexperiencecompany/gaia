@@ -528,11 +528,21 @@ class ChromaStore(BaseStore):
         if not tasks:
             return
 
+        # Limit concurrent ChromaDB HTTP connections to avoid exhausting OS file
+        # descriptors (ENFILE 24) when a large batch fans out all sockets at once.
+        sem = asyncio.Semaphore(10)
+
+        async def _guarded(coro: object) -> BaseException | None:
+            async with sem:
+                return await coro  # type: ignore[misc]
+
         # return_exceptions=True keeps one bad doc from killing the batch, but
         # silently swallows every failure. Surface them so we don't end up with
         # an indexing pass that "succeeded" yet wrote zero rows (the PostHog
         # case — 336 tools "indexed", 0 in ChromaDB, no errors anywhere).
-        results: list[BaseException | None] = await asyncio.gather(*tasks, return_exceptions=True)
+        results: list[BaseException | None] = await asyncio.gather(
+            *[_guarded(t) for t in tasks], return_exceptions=True
+        )
         failures: list[tuple[str, BaseException]] = [
             (d, r) for d, r in zip(doc_ids, results) if isinstance(r, BaseException)
         ]
