@@ -36,27 +36,70 @@ class LongMemEvalSuite(Suite):
 
     def __init__(self, cfg: EvalConfig) -> None:
         self.cfg = cfg
-        self._items: list[dict[str, Any]] | None = None
+        #: question_id -> byte offset into the JSONL sidecar. The whole parsed
+        #: dataset used to sit on this attribute for the entire run so each case
+        #: could linear-scan it; now only the offsets stay resident and each
+        #: case reads exactly its own line on demand.
+        self._offsets: dict[str, int] | None = None
         self._backend_ready = False
 
-    def _load_items(self) -> list[dict[str, Any]]:
-        if self._items is not None:
-            return self._items
+    def _jsonl_path(self) -> Path:
+        return DEFAULT_DATASET.with_suffix(".jsonl")
+
+    def _ensure_jsonl(self) -> Path:
+        """Convert the oracle array to a JSONL sidecar once, so items can be
+        read one line at a time instead of holding the parsed array all run."""
         if not DEFAULT_DATASET.exists():
             raise SystemExit(
                 f"LongMemEval dataset not found at {DEFAULT_DATASET}. "
                 "Download the oracle JSONL (longmemeval_oracle.json) there and re-run."
             )
+        sidecar = self._jsonl_path()
+        if sidecar.exists() and sidecar.stat().st_mtime >= DEFAULT_DATASET.stat().st_mtime:
+            return sidecar
         with DEFAULT_DATASET.open() as f:
             data = json.load(f)
-        self._items = data if isinstance(data, list) else []
-        return self._items
+        items = data if isinstance(data, list) else []
+        with sidecar.open("w") as out:
+            for item in items:
+                out.write(json.dumps(item, separators=(",", ":")) + "\n")
+        return sidecar
+
+    def _load_offsets(self) -> dict[str, int]:
+        if self._offsets is not None:
+            return self._offsets
+        sidecar = self._ensure_jsonl()
+        offsets: dict[str, int] = {}
+        with sidecar.open("rb") as f:
+            position = f.tell()
+            for raw in iter(f.readline, b""):
+                if raw.strip():
+                    item = json.loads(raw)
+                    offsets[str(item.get("question_id", ""))] = position
+                position = f.tell()
+        self._offsets = offsets
+        return offsets
+
+    def _read_item(self, question_id: str) -> dict[str, Any] | None:
+        offset = self._load_offsets().get(question_id)
+        if offset is None:
+            return None
+        with self._jsonl_path().open("rb") as f:
+            f.seek(offset)
+            item = json.loads(f.readline())
+        return item if isinstance(item, dict) else None
+
+    def _iter_items(self) -> list[dict[str, Any]]:
+        """Transient full read for case listing; nothing retains the result."""
+        sidecar = self._ensure_jsonl()
+        with sidecar.open() as f:
+            return [json.loads(line) for line in f if line.strip()]
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg
 
         items = [
-            i for i in self._load_items() if not str(i.get("question_id", "")).endswith("_abs")
+            i for i in self._iter_items() if not str(i.get("question_id", "")).endswith("_abs")
         ]
         by_type: dict[str, list[dict[str, Any]]] = {}
         for item in items:
@@ -144,16 +187,14 @@ class LongMemEvalSuite(Suite):
         await self._ensure_backend(tracker)
 
         question_id = case.id.removeprefix("lme-")
-        items = self._load_items()
-        matches = [i for i in items if str(i.get("question_id", "")) == question_id]
-        if not matches:
+        item = self._read_item(question_id)
+        if item is None:
             return CaseRun(
                 case_id=case.id,
                 provider=provider.name,
                 model=provider.model,
                 error="dataset item not found",
             )
-        item = matches[0]
         tokens_in_before = tracker.total_input
         tokens_out_before = tracker.total_output
         qtype, correct, model_answer = await lme._run_question(item, 1, 1)
