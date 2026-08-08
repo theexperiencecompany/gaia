@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 
+APP_DIR = Path("apps/api/app")
 TESTS_DIR = Path("apps/api/tests")
 
 
@@ -89,6 +90,22 @@ def _is_bare_module_path(candidate: str) -> bool:
     return all(part.isidentifier() for part in candidate.split("."))
 
 
+def _matches(module: str, module_py: str, refs: set[str]) -> bool:
+    """Whether ``refs`` reference ``module`` exactly or as a prefix."""
+    return module in refs or module_py in refs or any(ref.startswith(f"{module}.") for ref in refs)
+
+
+def _importers_of(module: str) -> list[str]:
+    """App modules that import ``module`` (one level of consumer following)."""
+    module_py = f"{module}.py"
+    importers: set[str] = set()
+    for path in sorted(APP_DIR.rglob("*.py")):
+        if _matches(module, module_py, _module_refs(path)):
+            relative = path.relative_to(APP_DIR).with_suffix("")
+            importers.add(f"app.{relative.as_posix().replace('/', '.')}")
+    return sorted(importers)
+
+
 def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     """Test files (repo-root-relative) referencing the module, unit tier first.
 
@@ -101,14 +118,25 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     module_py = f"{module}.py"
     hits: list[str] = []
     for path in sorted(tests_dir.rglob("*.py")):
+        # Only actual test files qualify: conftest.py defines fixtures and
+        # helper modules (store.py, llm.py, ...) support them — running one
+        # as the module's test file would prove nothing and mask the real
+        # gap.
+        if not path.name.startswith("test_"):
+            continue
         refs = _module_refs(path)
         # Match the module exactly or as a prefix — patch targets routinely
         # carry a function suffix (app.x.y.module.get_conversations).
-        if module in refs or module_py in refs:
+        if _matches(module, module_py, refs):
             hits.append(str(path))
-            continue
-        if any(ref.startswith(f"{module}.") for ref in refs):
-            hits.append(str(path))
+    if not hits:
+        # No test references the module directly — follow its CONSUMERS one
+        # level: modules that import it exercise it, so their test files
+        # cover it. (app.memory.chroma_store is only reached through
+        # app.memory.engine, whose real-tier tests drive every store line.)
+        consumers = _importers_of(module)
+        for consumer in consumers:
+            hits.extend(_test_files_for(consumer.replace("app.", "", 1), tests_dir))
     hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
     return hits
 

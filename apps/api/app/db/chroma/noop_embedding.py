@@ -21,7 +21,7 @@ from app.constants.memory import EMBEDDING_DIM
 NOOP_EMBEDDING_NAME = "gaia-noop"
 
 
-class NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
+class NoOpEmbeddingFunction(EmbeddingFunction[list[str]]):
     """Embedding function that bypasses model loading."""
 
     def __init__(self) -> None:
