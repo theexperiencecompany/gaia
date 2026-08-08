@@ -89,6 +89,7 @@ class ProjectFacts:
     max_trace_tokens: int = 0
     token_sources: dict[str, int] = field(default_factory=dict)
     starved_traces: int = 0
+    starved_examples: list[str] = field(default_factory=list)
     untrusted_cost_usd: float = 0.0
 
     @property
@@ -268,6 +269,10 @@ def read_project(base_url: str, project: str) -> ProjectFacts:
             and tokens < MIN_TOKENS_PER_WORKING_TRACE
         ):
             facts.starved_traces += 1
+            if len(facts.starved_examples) < 5:
+                facts.starved_examples.append(
+                    f"{trace.get('name')}@{metadata.get('run_id')}={tokens}tok"
+                )
     facts.token_sources = dict(sources)
     facts.duplicate_keys = sum(n - 1 for n in keys.values() if n > 1)
     facts.missing_metadata = dict(missing)
@@ -386,7 +391,8 @@ def check(
                 facts.name,
                 "implausible tokens",
                 f"{facts.starved_traces} traces worked >={MIN_WORKING_SECONDS:g}s but report "
-                f"<{MIN_TOKENS_PER_WORKING_TRACE} tokens — an agent turn cannot be that cheap",
+                f"<{MIN_TOKENS_PER_WORKING_TRACE} tokens — an agent turn cannot be that cheap: "
+                f"{facts.starved_examples}",
             )
         )
     if facts.untrusted_cost_usd > 0:

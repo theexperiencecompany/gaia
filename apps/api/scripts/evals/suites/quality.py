@@ -306,7 +306,10 @@ class ChatStreamTransport:
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
                     email = await self._mint_user(client, provider, self.case_email(case))
                     for index, turn_text in enumerate(turns):
-                        turn_id = f"quality-{case.id}-{index}-{uuid.uuid4().hex[:6]}"
+                        # turn_id is a SafePathId (<=64 chars); long case ids
+                        # overflowed it and 422'd every turn. Trim the readable
+                        # part and let the uuid carry uniqueness.
+                        turn_id = f"q-{case.id[:44]}-{index % 100}-{uuid.uuid4().hex[:8]}"
                         payload: TurnPayload = {
                             "message": turn_text,
                             "conversation_id": conversation_id,

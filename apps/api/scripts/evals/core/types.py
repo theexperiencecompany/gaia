@@ -237,7 +237,13 @@ class CaseTrace:
         tokens = record.get("tokens") or {}
         tokens_in = int(tokens.get("input", 0))
         tokens_out = int(tokens.get("output", 0))
-        price = prices.get(record.get("provider", ""), _NO_PRICE)
+        source = str(tokens.get("source") or "unknown")
+        # A price times a guess is not a cost: only provider-metered figures may
+        # be priced. Estimates and legacy unmetered counts keep their tokens
+        # (labelled) but carry zero cost, so no dashboard total launders them.
+        price = (
+            prices.get(record.get("provider", ""), _NO_PRICE) if source == "metered" else _NO_PRICE
+        )
         # Older journals carry the category only inside the case's expectations;
         # newer ones lift it to the top level. Both are the same declaration.
         expected = record.get("expected") or {}
@@ -253,7 +259,7 @@ class CaseTrace:
             category=str(record.get("category") or expected.get("category") or "uncategorised"),
             suite=suite,
             app_version=app_version,
-            tokens_source=str(tokens.get("source") or "unknown"),
+            tokens_source=source,
             scores=record.get("scores") or {},
             duration_s=float(record.get("duration_s") or 0.0),
             tokens_in=tokens_in,
