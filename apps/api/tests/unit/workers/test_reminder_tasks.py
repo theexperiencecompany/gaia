@@ -11,7 +11,6 @@ from app.workers.tasks.reminder_tasks import (
 )
 
 
-@pytest.mark.unit
 class TestProcessReminder:
     """Tests for process_reminder ARQ task."""
 
@@ -49,7 +48,6 @@ class TestProcessReminder:
             assert result == "Successfully processed reminder r1"
 
 
-@pytest.mark.unit
 class TestCleanupExpiredReminders:
     """Tests for cleanup_expired_reminders ARQ task."""
 

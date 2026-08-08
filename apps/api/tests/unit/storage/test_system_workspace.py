@@ -45,8 +45,6 @@ from app.services.storage.system_workspace import (
     system_subtree_available,
 )
 
-pytestmark = pytest.mark.unit
-
 USER = "u1"
 OTHER_USER = "u2"
 

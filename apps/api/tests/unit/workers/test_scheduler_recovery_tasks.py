@@ -16,7 +16,6 @@ from app.workers.tasks.scheduler_recovery_tasks import rescan_pending_scheduled_
 MODULE = "app.workers.tasks.scheduler_recovery_tasks"
 
 
-@pytest.mark.unit
 class TestRescanPendingScheduledTasks:
     async def test_reaps_and_rescans_both_schedulers(self):
         reap = AsyncMock(return_value=2)

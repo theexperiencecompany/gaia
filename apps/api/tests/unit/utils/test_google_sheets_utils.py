@@ -23,8 +23,6 @@ from app.utils.google_sheets_utils import (
     parse_a1_range,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.utils.google_sheets_utils"
 
 

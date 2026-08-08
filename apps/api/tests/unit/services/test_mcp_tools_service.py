@@ -2,15 +2,12 @@
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.models.integration_models import IntegrationTool, IntegrationToolsRecord
 from app.services.mcp import mcp_tools_service
 
 _MOD = "app.services.mcp.mcp_tools_service"
 
 
-@pytest.mark.unit
 class TestFormatTools:
     def test_strips_and_keeps_named(self):
         result = mcp_tools_service._format_tools(
@@ -33,7 +30,6 @@ class TestFormatTools:
         assert mcp_tools_service._format_tools([]) == []
 
 
-@pytest.mark.unit
 class TestStoreMcpTools:
     async def test_stores_and_busts_cache(self):
         with (
@@ -72,7 +68,6 @@ class TestStoreMcpTools:
         mock_del.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestStoreMcpToolsBatch:
     async def test_stores_every_integration_with_valid_tools(self):
         with (
@@ -124,7 +119,6 @@ class TestStoreMcpToolsBatch:
         mock_del.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestGetIntegrationTools:
     async def test_dumps_to_dicts(self):
         with patch(f"{_MOD}.integration_repository") as mock_repo:
@@ -141,7 +135,6 @@ class TestGetIntegrationTools:
             assert await mcp_tools_service.get_integration_tools("int1") == []
 
 
-@pytest.mark.unit
 class TestGetAllMcpTools:
     async def test_returns_cached(self):
         cached = {"int1": {"tools": [{"name": "t1"}], "name": "One", "icon_url": None}}

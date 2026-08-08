@@ -9,8 +9,6 @@ snapshot), and rejection of a catalog that yields no models.
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.agents.llm.model_catalog import OpenRouterModelCatalog
 from app.constants.llm import OPENROUTER_MODEL_CATALOG_TTL_SECONDS
 
@@ -53,7 +51,6 @@ def _catalog_with_snapshot() -> OpenRouterModelCatalog:
     return catalog
 
 
-@pytest.mark.unit
 class TestParse:
     def test_image_modality_is_vision_true(self) -> None:
         assert OpenRouterModelCatalog._parse(PAYLOAD_VISION)[MODEL_VISION] is True
@@ -71,7 +68,6 @@ class TestParse:
         assert set(parsed) == {MODEL_VISION, MODEL_TEXT, MODEL_NO_MODALITIES, MODEL_NO_ARCH}
 
 
-@pytest.mark.unit
 class TestAcceptsImages:
     async def test_fresh_snapshot_is_used_without_a_refresh(self) -> None:
         catalog = _catalog_with_snapshot()

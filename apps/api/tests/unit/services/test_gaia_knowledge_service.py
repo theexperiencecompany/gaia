@@ -28,7 +28,6 @@ def mock_chroma():
         yield client
 
 
-@pytest.mark.unit
 class TestKnowledgeItemValidation:
     def test_accepts_non_empty_content(self):
         item = KnowledgeItem(content="GAIA can send emails")
@@ -49,7 +48,6 @@ class TestKnowledgeItemValidation:
         assert item.content == "padded"
 
 
-@pytest.mark.unit
 class TestSearchKnowledge:
     async def test_returns_scored_results(self, mock_chroma):
         mock_chroma.asimilarity_search_with_score.return_value = [
@@ -82,7 +80,6 @@ class TestSearchKnowledge:
         assert await gaia_knowledge_service.search_knowledge("anything") == []
 
 
-@pytest.mark.unit
 class TestAddKnowledgeBatch:
     async def test_empty_batch_returns_zero_without_touching_chroma(self, mock_chroma):
         assert await gaia_knowledge_service.add_knowledge_batch([]) == 0
@@ -107,7 +104,6 @@ class TestAddKnowledgeBatch:
         assert await gaia_knowledge_service.add_knowledge_batch([KnowledgeItem(content="A")]) == 0
 
 
-@pytest.mark.unit
 class TestClearKnowledge:
     async def test_deletes_and_recreates_collection(self, mock_chroma):
         ok = await gaia_knowledge_service.clear_knowledge()

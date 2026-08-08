@@ -11,12 +11,8 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
-import pytest
-
 from app.agents.skills.discovery import get_available_skills_text
 from app.agents.workspace.skill_loader import BuiltinSkill
-
-pytestmark = pytest.mark.unit
 
 _GET_SKILLS_FOR_AGENT = "app.agents.skills.discovery.get_skills_for_agent"
 _LOAD_BUILTIN_SKILLS = "app.agents.skills.discovery.load_builtin_skills"

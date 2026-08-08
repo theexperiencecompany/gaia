@@ -18,7 +18,6 @@ def mock_upload():
         yield m
 
 
-@pytest.mark.unit
 class TestUploadFileToCloudinary:
     def test_uploads_file_data(self, mock_upload):
         url = upload_file_to_cloudinary("my-public-id", file_data=b"binary payload")

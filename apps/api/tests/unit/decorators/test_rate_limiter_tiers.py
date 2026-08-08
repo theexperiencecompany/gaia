@@ -47,7 +47,6 @@ def _pipeline_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPlanTierLimits:
     """PRO must out-bill FREE on the real constants for the same window."""
 
@@ -80,7 +79,6 @@ class TestPlanTierLimits:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestTieredLimiterRealDecision:
     def setup_method(self) -> None:

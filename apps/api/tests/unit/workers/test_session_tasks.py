@@ -16,7 +16,6 @@ from app.workers.tasks.session_tasks import prune_inactive_sessions
 MODULE = "app.workers.tasks.session_tasks"
 
 
-@pytest.mark.unit
 class TestPruneInactiveSessions:
     async def test_prunes_every_stale_session(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(settings, "SESSION_RETENTION_DAYS", 30)

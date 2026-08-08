@@ -22,9 +22,6 @@ from app.agents.tools.coding import query_json_tool
 from app.agents.tools.coding.query_json_tool import query_json
 from app.agents.workspace.offload import mark_offload, read_offload, tools_for_offload
 
-pytestmark = pytest.mark.unit
-
-
 INFO = {
     "path": "/w/x.jsonl",
     "bytes": 10,

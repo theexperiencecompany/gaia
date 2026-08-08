@@ -15,12 +15,9 @@ from unittest.mock import AsyncMock, patch
 import uuid
 
 from e2b import NotFoundException, TimeoutException
-import pytest
 
 from app.services.sandbox import lifecycle
 from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
-
-pytestmark = pytest.mark.unit
 
 
 @asynccontextmanager

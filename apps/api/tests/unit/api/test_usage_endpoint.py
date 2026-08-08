@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.payment_models import PlanType
 
@@ -35,7 +34,6 @@ def _mock_subscription(plan_type: str = "free") -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUsageSummary:
     """Tests for the get usage summary endpoint."""
 
@@ -103,7 +101,6 @@ class TestGetUsageSummary:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUsageHistory:
     """Tests for the get usage history endpoint."""
 

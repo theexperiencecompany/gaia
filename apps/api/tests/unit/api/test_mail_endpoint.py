@@ -29,7 +29,6 @@ MAIL_BASE = "/api/v1"
 
 # All tests in this module need the integration check to pass.
 pytestmark = [
-    pytest.mark.unit,
     pytest.mark.usefixtures("_bypass_integration_check"),
 ]
 

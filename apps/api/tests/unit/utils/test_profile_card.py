@@ -32,7 +32,6 @@ def _today() -> str:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAssignRandomHouse:
     def test_returns_valid_house(self) -> None:
         random.seed(42)
@@ -60,7 +59,6 @@ class TestAssignRandomHouse:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateRandomColor:
     def test_returns_tuple_of_str_and_int(self) -> None:
         random.seed(42)
@@ -136,7 +134,6 @@ class TestGenerateRandomColor:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateProfileCardDesign:
     def test_house_is_valid(self) -> None:
         random.seed(42)
@@ -166,7 +163,6 @@ class TestGenerateProfileCardDesign:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUserMetadata:
     """account_number is now derived from the ObjectId creation timestamp
     (``int(oid.generation_time.timestamp()) % 1_000_000``) rather than a

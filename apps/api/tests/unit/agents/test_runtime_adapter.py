@@ -10,7 +10,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, SystemMessage
-import pytest
 
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
@@ -28,7 +27,6 @@ def _state(**extra: Any) -> dict[str, Any]:
     return {"messages": [SYSTEM, HUMAN], **extra}
 
 
-@pytest.mark.unit
 class TestToAgentState:
     def test_copies_messages(self) -> None:
         agent_state = to_agent_state(_state())
@@ -48,7 +46,6 @@ class TestToAgentState:
         assert agent_state["structured_response"] == {"answer": 42}
 
 
-@pytest.mark.unit
 class TestCreateModelRequest:
     def test_system_message_is_extracted_from_messages(self) -> None:
         model = MagicMock()
@@ -89,7 +86,6 @@ class TestCreateModelRequest:
         assert request.state["messages"] == [SYSTEM, HUMAN]
 
 
-@pytest.mark.unit
 class TestCreateToolCallRequest:
     def test_raw_dict_is_converted_to_a_tool_call(self) -> None:
         tool = MagicMock()
@@ -111,7 +107,6 @@ class TestCreateToolCallRequest:
         assert request.tool_call["args"] == {}
 
 
-@pytest.mark.unit
 class TestRuntimeFactories:
     def test_bigtool_runtime_preserves_graph_context(self) -> None:
         config = {"configurable": {"thread_id": "t1"}}

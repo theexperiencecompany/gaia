@@ -50,7 +50,6 @@ def _state(*, cancelled: bool, saved: bool = False) -> _StreamState:
     return state
 
 
-@pytest.mark.unit
 class TestAttachExecutorToolData:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_attaches_cards_regardless_of_cancellation(self, cancelled) -> None:
@@ -144,7 +143,6 @@ class TestAttachExecutorToolData:
         assert not log.error.called
 
 
-@pytest.mark.unit
 class TestFinalizeStreamBackstop:
     async def _finalize(self, state: _StreamState):
         with (

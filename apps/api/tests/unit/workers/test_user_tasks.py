@@ -29,7 +29,6 @@ def _make_db_user(
     )
 
 
-@pytest.mark.unit
 class TestShouldSendInactiveEmail:
     """Throttle policy: first email after 7 inactive days, second after 14, then stop."""
 
@@ -118,7 +117,6 @@ class TestShouldSendInactiveEmail:
         assert _should_send_inactive_email(user) is False
 
 
-@pytest.mark.unit
 class TestCheckInactiveUsers:
     """Tests for check_inactive_users ARQ task."""
 

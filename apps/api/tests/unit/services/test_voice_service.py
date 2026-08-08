@@ -71,7 +71,6 @@ def _shared_voice(**overrides: object) -> ElevenLabsSharedVoice:
     return ElevenLabsSharedVoice(**data)
 
 
-@pytest.mark.unit
 class TestGetElevenlabsVoices:
     async def test_empty_when_no_api_key(self):
         with patch(f"{_MOD}.settings", SimpleNamespace(ELEVENLABS_API_KEY="")):
@@ -90,7 +89,6 @@ class TestGetElevenlabsVoices:
             assert await get_elevenlabs_voices() == []
 
 
-@pytest.mark.unit
 class TestGetSharedVoices:
     async def test_empty_when_no_api_key(self):
         with patch(f"{_MOD}.settings", SimpleNamespace(ELEVENLABS_API_KEY="")):
@@ -106,7 +104,6 @@ class TestGetSharedVoices:
             assert await get_shared_voices() == []
 
 
-@pytest.mark.unit
 class TestGetUserVoice:
     async def test_returns_selected_voice(self, mock_user_repo):
         mock_user_repo.get.return_value = SimpleNamespace(selected_voice_id="acct-1")
@@ -127,7 +124,6 @@ class TestGetUserVoice:
         assert await get_user_voice(USER_ID) == DEFAULT_VOICE_ID
 
 
-@pytest.mark.unit
 class TestGetStarredVoiceIds:
     async def test_defaults_for_missing_user(self, mock_user_repo):
         assert await get_starred_voice_ids(USER_ID) == list(DEFAULT_STARRED_VOICE_IDS)
@@ -143,7 +139,6 @@ class TestGetStarredVoiceIds:
         assert await get_starred_voice_ids(USER_ID) == ["a", "b"]
 
 
-@pytest.mark.unit
 class TestSetVoiceStar:
     async def test_star_prepends_and_persists(self, mock_user_repo):
         mock_user_repo.get.return_value = SimpleNamespace(starred_voice_ids=["a", "b"])
@@ -169,7 +164,6 @@ class TestSetVoiceStar:
         mock_user_repo.set_starred_voices.assert_awaited_once_with(USER_ID, ["b"])
 
 
-@pytest.mark.unit
 class TestSetUserVoice:
     async def test_accepts_account_voice(self, mock_user_repo, mock_settings):
         with patch(
@@ -214,7 +208,6 @@ class TestSetUserVoice:
         assert result == DEFAULT_VOICE_ID
 
 
-@pytest.mark.unit
 class TestListVoices:
     async def test_catalog_plus_selection(self, mock_user_repo):
         with (

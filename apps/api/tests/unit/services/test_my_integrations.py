@@ -116,7 +116,6 @@ def mock_deps():
         )
 
 
-@pytest.mark.unit
 class TestGetMyIntegrations:
     async def test_platform_integration_with_registry_tool_count(self, mock_deps, mock_redis_cache):
         """The registry tool-count fallback keys on the lowercased integration
@@ -213,7 +212,6 @@ class TestGetMyIntegrations:
         assert result.integrations[0].source == "custom"
 
 
-@pytest.mark.unit
 class TestGetIntegrationTools:
     async def test_platform_integration_always_readable(self, mock_deps):
         mock_deps.resolve.return_value = SimpleNamespace(source="platform", custom_doc=None)

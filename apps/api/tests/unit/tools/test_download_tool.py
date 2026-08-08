@@ -9,8 +9,6 @@ string for the LLM instead of raising.
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.agents.tools.download_tool import download
 from app.constants.download import DOWNLOAD_HTML_REJECTED
 from app.utils.url_download import (
@@ -33,7 +31,6 @@ def _no_session_config() -> dict[str, Any]:
     return {"configurable": {"user_id": "user-1"}}
 
 
-@pytest.mark.unit
 class TestDownload:
     async def test_happy_path_writes_the_file_into_the_workspace(self) -> None:
         with (

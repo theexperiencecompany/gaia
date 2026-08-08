@@ -65,7 +65,6 @@ def _interrupt_raising(payloads: list[dict[str, Any]]) -> MagicMock:
     return MagicMock(side_effect=_raise)
 
 
-@pytest.mark.unit
 class TestBatchPause:
     async def test_two_pending_approvals_pause_the_executor_once_with_both(self) -> None:
         records = [make_record("a1"), make_record("a2", agent="slack")]
@@ -206,7 +205,6 @@ class TestBatchPause:
         assert results["slack"] == "posted"
 
 
-@pytest.mark.unit
 class TestBackgroundParking:
     def _ctx(self) -> MagicMock:
         return MagicMock(

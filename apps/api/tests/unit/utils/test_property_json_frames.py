@@ -17,7 +17,6 @@ from datetime import datetime
 import json
 
 from hypothesis import given, settings, strategies as st
-import pytest
 
 from app.models.chat_models import tool_fields
 from app.utils.agent_utils import format_sse_data, format_sse_response
@@ -28,7 +27,6 @@ UNICODE_TEXT = st.text(
 )
 
 
-@pytest.mark.unit
 class TestSseFrameBuilders:
     @settings(max_examples=200, deadline=None)
     @given(content=UNICODE_TEXT)
@@ -64,7 +62,6 @@ JSON_VALUE = st.recursive(
 )
 
 
-@pytest.mark.unit
 class TestConvertLegacyToolData:
     @settings(max_examples=150, deadline=None)
     @given(

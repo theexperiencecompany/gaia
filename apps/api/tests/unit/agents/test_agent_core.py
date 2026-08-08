@@ -105,7 +105,6 @@ def _common_patches():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCoreAgentLogic:
     """Tests for the shared _core_agent_logic helper."""
 
@@ -208,7 +207,6 @@ class TestCoreAgentLogic:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCallAgent:
     """Tests for call_agent (streaming mode)."""
 
@@ -398,7 +396,6 @@ class TestCallAgent:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCallAgentSilent:
     """Tests for call_agent_silent (background mode)."""
 

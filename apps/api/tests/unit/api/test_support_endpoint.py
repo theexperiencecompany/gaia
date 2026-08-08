@@ -11,7 +11,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.support_models import (
     SupportRequestListResponse,
@@ -77,7 +76,6 @@ def _make_list_response(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSubmitSupportRequest:
     """Tests for the submit support request endpoint."""
 
@@ -215,7 +213,6 @@ class TestSubmitSupportRequest:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSubmitSupportRequestWithAttachments:
     """Tests for the submit support request with attachments endpoint."""
 
@@ -281,7 +278,6 @@ class TestSubmitSupportRequestWithAttachments:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetMySupportRequests:
     """Tests for the get user support requests endpoint."""
 
@@ -355,7 +351,6 @@ class TestGetMySupportRequests:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetRateLimitStatus:
     """Tests for the rate limit status endpoint."""
 

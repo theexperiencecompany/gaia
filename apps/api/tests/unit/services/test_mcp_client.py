@@ -149,7 +149,6 @@ def _fake_db_session(cred: MCPCredential | None = None):
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientInit:
     def test_init_sets_user_id(self):
         client = MCPClient(user_id=USER_ID)
@@ -168,7 +167,6 @@ class TestMCPClientInit:
         assert client._connect_results == {}
 
 
-@pytest.mark.unit
 class TestMCPClientSanitizeConfig:
     def test_sanitize_removes_secrets(self):
         client = MCPClient(user_id=USER_ID)
@@ -198,7 +196,6 @@ class TestMCPClientSanitizeConfig:
         assert sanitized["mcpServers"]["srv"]["has_auth"] is False
 
 
-@pytest.mark.unit
 class TestMCPClientProbeConnection:
     async def test_probe_delegates_to_module_function(self):
         client = MCPClient(user_id=USER_ID)
@@ -212,7 +209,6 @@ class TestMCPClientProbeConnection:
             assert result["requires_auth"] is False
 
 
-@pytest.mark.unit
 class TestMCPClientUpdateIntegrationAuthStatus:
     async def test_updates_mongodb(self):
         client = MCPClient(user_id=USER_ID)
@@ -229,7 +225,6 @@ class TestMCPClientUpdateIntegrationAuthStatus:
             await client.update_integration_auth_status(INTEGRATION_ID, False, "none")
 
 
-@pytest.mark.unit
 class TestMCPClientBuildConfig:
     async def test_build_config_no_auth(self):
         client = MCPClient(user_id=USER_ID)
@@ -296,7 +291,6 @@ class TestMCPClientBuildConfig:
         assert config["mcpServers"][INTEGRATION_ID]["auth"] == "refreshed_tok"
 
 
-@pytest.mark.unit
 class TestMCPClientConnect:
     async def test_returns_cached_tools(self):
         client = MCPClient(user_id=USER_ID)
@@ -341,7 +335,6 @@ class TestMCPClientConnect:
             )
 
 
-@pytest.mark.unit
 class TestMCPClientDoConnect:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
@@ -495,7 +488,6 @@ class TestMCPClientDoConnect:
         mock_base_client.close_all_sessions.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestParseDeviceServerUrl:
     def test_parses_device_id_and_server_key(self):
         device_id, server_key = _parse_device_server_url("device://dev-123/filesystem")
@@ -515,7 +507,6 @@ class TestParseDeviceServerUrl:
             _parse_device_server_url("device://")
 
 
-@pytest.mark.unit
 class TestMCPClientBuildDeviceClient:
     """The hard cross-user isolation gate: a device session must never build for a device the caller does not own."""
 
@@ -571,7 +562,6 @@ class TestMCPClientBuildDeviceClient:
             assert INTEGRATION_ID in result.active_sessions
 
 
-@pytest.mark.unit
 class TestMCPClientDisconnect:
     async def test_disconnect_cleans_up(self):
         client = MCPClient(user_id=USER_ID)
@@ -648,7 +638,6 @@ class TestMCPClientDisconnect:
             await client.disconnect(INTEGRATION_ID)
 
 
-@pytest.mark.unit
 class TestMCPClientGetTools:
     async def test_returns_tools_for_connected(self):
         client = MCPClient(user_id=USER_ID)
@@ -663,7 +652,6 @@ class TestMCPClientGetTools:
         assert result == []
 
 
-@pytest.mark.unit
 class TestMCPClientIsConnected:
     def test_is_connected_true(self):
         client = MCPClient(user_id=USER_ID)
@@ -675,7 +663,6 @@ class TestMCPClientIsConnected:
         assert client.is_connected("unknown") is False
 
 
-@pytest.mark.unit
 class TestMCPClientIsConnectedDb:
     async def test_connected_in_db(self):
         client = MCPClient(user_id=USER_ID)
@@ -691,7 +678,6 @@ class TestMCPClientIsConnectedDb:
             assert await client.is_connected_db(INTEGRATION_ID) is False
 
 
-@pytest.mark.unit
 class TestMCPClientEnsureConnected:
     async def test_returns_cached(self):
         client = MCPClient(user_id=USER_ID)
@@ -716,7 +702,6 @@ class TestMCPClientEnsureConnected:
                 await client.ensure_connected(INTEGRATION_ID)
 
 
-@pytest.mark.unit
 class TestMCPClientNormalizeServerUrl:
     def test_strips_trailing_slash(self):
         assert MCPClient._normalize_server_url("https://ex.com/v1/") == "https://ex.com/v1"
@@ -731,7 +716,6 @@ class TestMCPClientNormalizeServerUrl:
         assert MCPClient._normalize_server_url("  ") == ""
 
 
-@pytest.mark.unit
 class TestMCPClientCallToolOnServer:
     async def test_calls_tool_successfully(self):
         client = MCPClient(user_id=USER_ID)
@@ -761,7 +745,6 @@ class TestMCPClientCallToolOnServer:
             await client.call_tool_on_server("https://unknown.com", "tool", {})
 
 
-@pytest.mark.unit
 class TestMCPClientCloseAllSessions:
     async def test_closes_all(self):
         client = MCPClient(user_id=USER_ID)
@@ -782,7 +765,6 @@ class TestMCPClientCloseAllSessions:
         await client.close_all_client_sessions()
 
 
-@pytest.mark.unit
 class TestGetMcpClient:
     async def test_delegates_to_pool(self):
         mock_pool = AsyncMock()
@@ -797,7 +779,6 @@ class TestGetMcpClient:
             assert result is mock_client
 
 
-@pytest.mark.unit
 class TestStepUpAuthRequired:
     def test_attributes(self):
         exc = StepUpAuthRequired("my_int", ["read", "write"])
@@ -806,7 +787,6 @@ class TestStepUpAuthRequired:
         assert "my_int" in str(exc)
 
 
-@pytest.mark.unit
 class TestDCRNotSupportedException:
     def test_can_be_raised(self):
         with pytest.raises(DCRNotSupportedException):
@@ -818,7 +798,6 @@ class TestDCRNotSupportedException:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientPoolGet:
     async def test_creates_new_client(self):
         pool = MCPClientPool(max_clients=10)
@@ -861,7 +840,6 @@ class TestMCPClientPoolGet:
         assert list(pool._clients.keys())[-1] == "a"
 
 
-@pytest.mark.unit
 class TestMCPClientPoolEvict:
     async def test_evicts_and_closes(self):
         pool = MCPClientPool()
@@ -882,7 +860,6 @@ class TestMCPClientPoolEvict:
 # lifetime; eviction only fires at the max_clients cap (LRU).
 
 
-@pytest.mark.unit
 class TestMCPClientPoolShutdown:
     async def test_shutdown_cleans_all(self):
         pool = MCPClientPool()
@@ -898,7 +875,6 @@ class TestMCPClientPoolShutdown:
         mock2.close_all_client_sessions.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestMCPClientPoolSize:
     def test_size_property(self):
         pool = MCPClientPool()
@@ -912,7 +888,6 @@ class TestMCPClientPoolSize:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreCipher:
     def test_get_cipher_missing_key_raises(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -941,7 +916,6 @@ class TestMCPTokenStoreCipher:
             assert decrypted == "secret_data"
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreGetCredential:
     async def test_returns_credential(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -959,7 +933,6 @@ class TestMCPTokenStoreGetCredential:
             assert result is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreGetBearerToken:
     async def test_returns_decrypted_bearer(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -990,7 +963,6 @@ class TestMCPTokenStoreGetBearerToken:
         assert result is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreGetOAuthToken:
     async def test_returns_decrypted_token(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1023,7 +995,6 @@ class TestMCPTokenStoreGetOAuthToken:
         assert result is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreIsTokenExpiringSoon:
     async def test_true_when_expiring_soon(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1066,7 +1037,6 @@ class TestMCPTokenStoreIsTokenExpiringSoon:
         assert result is False
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreStoreOAuthTokens:
     async def test_stores_new_oauth_tokens(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1102,7 +1072,6 @@ class TestMCPTokenStoreStoreOAuthTokens:
         mock_session.commit.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreStoreBearerToken:
     async def test_stores_new_bearer(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1129,7 +1098,6 @@ class TestMCPTokenStoreStoreBearerToken:
         assert existing.status == MCPCredentialStatus.CONNECTED
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreOAuthState:
     async def test_create_and_verify_state(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1190,7 +1158,6 @@ class TestMCPTokenStoreOAuthState:
             assert code_verifier is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreDeleteCredentials:
     async def test_deletes_existing(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1209,7 +1176,6 @@ class TestMCPTokenStoreDeleteCredentials:
         mock_session.delete.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreIsConnected:
     async def test_true_when_connected(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1224,7 +1190,6 @@ class TestMCPTokenStoreIsConnected:
         assert await store.is_connected(INTEGRATION_ID) is False
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreDCRClient:
     async def test_get_dcr_client(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1285,7 +1250,6 @@ class TestMCPTokenStoreDCRClient:
         mock_session.commit.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreOAuthDiscovery:
     async def test_store_and_get_discovery(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1317,7 +1281,6 @@ class TestMCPTokenStoreOAuthDiscovery:
             assert result is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreOAuthNonce:
     async def test_store_and_get_nonce(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1345,7 +1308,6 @@ class TestMCPTokenStoreOAuthNonce:
             assert result2 is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreIntrospect:
     async def test_introspect_success(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1388,7 +1350,6 @@ class TestMCPTokenStoreIntrospect:
         assert result is None
 
 
-@pytest.mark.unit
 class TestMCPTokenStoreStoreUnauthenticated:
     async def test_creates_record_if_missing(self):
         store = MCPTokenStore(user_id=USER_ID)
@@ -1417,7 +1378,6 @@ class TestMCPTokenStoreStoreUnauthenticated:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestResolveClientCredentials:
     def test_from_config(self):
         config = _make_mcp_config(client_id="cid", client_secret="csec")
@@ -1445,7 +1405,6 @@ class TestResolveClientCredentials:
             assert cid == "from_config"
 
 
-@pytest.mark.unit
 class TestTryRefreshToken:
     async def test_successful_refresh(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1606,7 +1565,6 @@ class TestTryRefreshToken:
         token_store.store_oauth_tokens.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestRevokeTokens:
     async def test_revokes_both_tokens(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1661,7 +1619,6 @@ class TestRevokeTokens:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDiscoverOAuthConfig:
     async def test_returns_cached(self):
         token_store = AsyncMock(spec=MCPTokenStore)
@@ -1859,7 +1816,6 @@ class TestDiscoverOAuthConfig:
             assert result.initial_scope == "read"
 
 
-@pytest.mark.unit
 class TestProbeMcpConnection:
     @pytest.fixture(autouse=True)
     def _mock_ssrf_guard(self) -> Iterator[None]:
@@ -1907,7 +1863,6 @@ class TestProbeMcpConnection:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestSanitizingLangChainAdapter:
     def test_fix_schema_strips_underscores(self):
         adapter = SanitizingLangChainAdapter()
@@ -1994,7 +1949,6 @@ class TestSanitizingLangChainAdapter:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestResilientLangChainAdapter:
     async def test_create_tools_no_sessions(self):
         adapter = ResilientLangChainAdapter()
@@ -2215,7 +2169,6 @@ class TestResilientLangChainAdapter:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientRegisterClient:
     async def test_successful_registration(self):
         client = MCPClient(user_id=USER_ID)
@@ -2348,7 +2301,6 @@ class TestMCPClientRegisterClient:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientListResourcesOnServer:
     async def test_list_resources(self):
         client = MCPClient(user_id=USER_ID)
@@ -2374,7 +2326,6 @@ class TestMCPClientListResourcesOnServer:
         mock_session.list_resources.assert_awaited_once_with(cursor="next_page")
 
 
-@pytest.mark.unit
 class TestMCPClientReadResourceOnServer:
     async def test_read_resource(self):
         client = MCPClient(user_id=USER_ID)
@@ -2392,7 +2343,6 @@ class TestMCPClientReadResourceOnServer:
         assert result.contents[0].text == "hello"
 
 
-@pytest.mark.unit
 class TestMCPClientListPromptsOnServer:
     async def test_list_prompts(self):
         client = MCPClient(user_id=USER_ID)
@@ -2404,7 +2354,6 @@ class TestMCPClientListPromptsOnServer:
         assert result.prompts == []
 
 
-@pytest.mark.unit
 class TestMCPClientReadUiResource:
     async def test_read_ui_resource_success(self):
         client = MCPClient(user_id=USER_ID)
@@ -2523,7 +2472,6 @@ class TestMCPClientReadUiResource:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientFindIntegrationIdByServerUrl:
     async def test_finds_from_active_clients(self):
         client = MCPClient(user_id=USER_ID)
@@ -2623,7 +2571,6 @@ class TestMCPClientFindIntegrationIdByServerUrl:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientSafeCloseClient:
     async def test_closes_successfully(self):
         client = MCPClient(user_id=USER_ID)
@@ -2644,7 +2591,6 @@ class TestMCPClientSafeCloseClient:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientRevokeTokens:
     async def test_revokes_when_oauth_config_exists(self):
         client = MCPClient(user_id=USER_ID)
@@ -2691,7 +2637,6 @@ class TestMCPClientRevokeTokens:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientGetSessionForServer:
     async def test_returns_session(self):
         client = MCPClient(user_id=USER_ID)
@@ -2731,7 +2676,6 @@ class TestMCPClientGetSessionForServer:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientListResourceTemplatesOnServer:
     async def test_list_templates(self):
         client = MCPClient(user_id=USER_ID)
@@ -2769,7 +2713,6 @@ class TestMCPClientListResourceTemplatesOnServer:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientBuildOauthAuthUrl:
     async def test_builds_auth_url_with_preconfigured_client(self):
         client = MCPClient(user_id=USER_ID)
@@ -2960,7 +2903,6 @@ class TestMCPClientBuildOauthAuthUrl:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientHandleOauthCallback:
     async def test_raises_on_invalid_state(self):
         client = MCPClient(user_id=USER_ID)
@@ -3067,7 +3009,6 @@ class TestMCPClientHandleOauthCallback:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientHandleCustomIntegrationConnect:
     async def test_indexes_tools_and_subagent(self):
         client = MCPClient(user_id=USER_ID)
@@ -3164,7 +3105,6 @@ class TestMCPClientHandleCustomIntegrationConnect:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestMCPClientCallToolOnServerAdditional:
     async def test_call_tool_surfaces_server_error_flag(self):
         """A tool result flagged isError comes back with the flag intact."""
@@ -3188,7 +3128,6 @@ class TestMCPClientCallToolOnServerAdditional:
         assert result.content[0].text == "boom"
 
 
-@pytest.mark.unit
 class TestMCPClientDoConnectSSRF:
     """The connect path must run the real SSRF guard (no autouse mock here).
 
@@ -3235,7 +3174,6 @@ class TestMCPClientDoConnectSSRF:
         mock_base_client_cls.assert_not_called()
 
 
-@pytest.mark.unit
 class TestProbeMcpConnectionSSRF:
     """probe_mcp_connection must run the real SSRF guard before probing."""
 

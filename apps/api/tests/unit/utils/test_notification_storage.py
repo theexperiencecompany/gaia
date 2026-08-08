@@ -38,7 +38,6 @@ def storage():
     return MongoDBNotificationStorage()
 
 
-@pytest.mark.unit
 class TestNotificationStorageDelegation:
     async def test_save_delegates_to_create(self, storage, mock_repo):
         record = object()
@@ -100,7 +99,6 @@ class TestNotificationStorageDelegation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestNormalizeChannelPreferences:
     """Tests for normalize_channel_preferences."""
 
@@ -166,7 +164,6 @@ class TestNormalizeChannelPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchChannelPreferences:
     """Tests for fetch_channel_preferences (async DB call)."""
 

@@ -9,8 +9,6 @@ degradation when the workspace write fails, and the window list formatting.
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.agents.tools.desktop_tools import (
     _MISSING_CONTEXT_ERROR,
     _NOT_DESKTOP_ERROR,
@@ -45,7 +43,6 @@ def _desktop_config() -> dict[str, Any]:
     return _config("desktop")
 
 
-@pytest.mark.unit
 class TestDesktopGating:
     async def test_non_desktop_source_is_refused(self) -> None:
         with patch(f"{MODULE}.request_desktop_action", AsyncMock()) as action:
@@ -73,7 +70,6 @@ class TestDesktopGating:
         action.assert_not_called()
 
 
-@pytest.mark.unit
 class TestReadClipboard:
     async def test_happy_path_returns_the_text(self) -> None:
         with patch(
@@ -103,7 +99,6 @@ class TestReadClipboard:
         assert result == "Could not read the clipboard: app not open"
 
 
-@pytest.mark.unit
 class TestWriteClipboard:
     async def test_happy_path(self) -> None:
         with patch(
@@ -127,7 +122,6 @@ class TestWriteClipboard:
         assert result == "Could not write to the clipboard: nope"
 
 
-@pytest.mark.unit
 class TestOpenApp:
     async def test_happy_path(self) -> None:
         with patch(
@@ -148,7 +142,6 @@ class TestOpenApp:
         assert result == "Could not open 'Safari': no such app"
 
 
-@pytest.mark.unit
 class TestOpenUrl:
     async def test_happy_path(self) -> None:
         with patch(
@@ -169,7 +162,6 @@ class TestOpenUrl:
         assert result == "Could not open the URL: blocked"
 
 
-@pytest.mark.unit
 class TestListWindows:
     async def test_formats_windows_with_fallbacks(self) -> None:
         with patch(
@@ -212,7 +204,6 @@ class TestListWindows:
         assert result == "Could not list windows: bridge down"
 
 
-@pytest.mark.unit
 class TestTakeScreenshot:
     def _image(self) -> InlineImage:
         return InlineImage(data=b"png-bytes", base64="cG5n", mime_type="image/png")

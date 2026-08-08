@@ -16,7 +16,6 @@ from app.workers.tasks.sandbox_tasks import sweep_idle_sandboxes
 MODULE = "app.workers.tasks.sandbox_tasks"
 
 
-@pytest.mark.unit
 class TestSweepIdleSandboxes:
     async def test_no_idle_users_evicts_nothing(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setattr(settings, "E2B_SANDBOX_EVICT_DAYS", 1)

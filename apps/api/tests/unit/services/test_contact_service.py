@@ -5,8 +5,6 @@ The Gmail payloads it ingests are typed ``Any`` on purpose — a malformed
 upstream entry must be skipped, never crash the list.
 """
 
-import pytest
-
 from app.services.contact_service import build_contact_index
 
 
@@ -14,7 +12,6 @@ def _message(headers: list[dict[str, str]]) -> dict:
     return {"payload": {"headers": headers}}
 
 
-@pytest.mark.unit
 class TestBuildContactIndex:
     def test_extracts_unique_contacts_across_fields(self):
         messages = [

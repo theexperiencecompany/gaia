@@ -38,7 +38,6 @@ def _clean_registry():
     sess._sessions.clear()
 
 
-@pytest.mark.unit
 class TestSessionRegistry:
     def test_create_then_get_returns_same_session(self) -> None:
         created = create_session("s1", RunKind.LIVE)
@@ -82,7 +81,6 @@ class TestSessionRegistry:
         assert session.kind is RunKind.LIVE
 
 
-@pytest.mark.unit
 class TestExecutorLifecycleFlags:
     def test_spawned_flag_lifecycle(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -100,7 +98,6 @@ class TestExecutorLifecycleFlags:
         signal_executor_done("missing")  # must not raise
 
 
-@pytest.mark.unit
 class TestOwnershipRule:
     """The single source of truth that prevents duplicate/lost tool cards.
 
@@ -177,7 +174,6 @@ class TestOwnershipRule:
         assert run.executor_owns_tool_data is False
 
 
-@pytest.mark.unit
 class TestSubagentCoordination:
     def test_counter_increments_and_decrements(self) -> None:
         create_session("s1", RunKind.LIVE)
@@ -211,7 +207,6 @@ class TestSubagentCoordination:
         assert has_bg_integration("missing", "gmail") is False
 
 
-@pytest.mark.unit
 class TestToolOutputOwnership:
     """Who may stream a tool result, when both drivers see the same ToolMessage.
 

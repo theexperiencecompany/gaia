@@ -11,7 +11,6 @@ Tests cover:
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.user_models import (
     OnboardingPreferences,
@@ -75,7 +74,6 @@ def _make_user_doc(**overrides) -> UserDocument:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCompleteOnboarding:
     """Tests for the complete user onboarding endpoint."""
 
@@ -167,7 +165,6 @@ def _status(*, completed: bool, phase: str) -> OnboardingStatusResponse:
     )
 
 
-@pytest.mark.unit
 class TestGetOnboardingStatus:
     """Tests for the get onboarding status endpoint."""
 
@@ -209,7 +206,6 @@ class TestGetOnboardingStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateOnboardingPhase:
     """Tests for the update onboarding phase endpoint."""
 
@@ -258,7 +254,6 @@ class TestUpdateOnboardingPhase:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdatePreferences:
     """Tests for the update preferences endpoint."""
 
@@ -321,7 +316,6 @@ class TestUpdatePreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPersonalization:
     """Tests for the get personalization data endpoint."""
 

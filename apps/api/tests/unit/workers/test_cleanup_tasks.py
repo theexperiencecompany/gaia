@@ -24,7 +24,6 @@ def _make_stuck_user(
     )
 
 
-@pytest.mark.unit
 class TestCleanupStuckPersonalization:
     """Tests for cleanup_stuck_personalization ARQ task."""
 

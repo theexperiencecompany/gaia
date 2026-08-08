@@ -124,7 +124,6 @@ def mock_redis_pool(route_enqueue_via_pool):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateExecution:
     async def test_builds_running_execution_and_returns_it(self, mock_executions_repo):
         mock_executions_repo.create = AsyncMock(side_effect=lambda doc: doc)
@@ -193,7 +192,6 @@ class TestCreateExecution:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCompleteExecution:
     async def test_returns_true_and_forwards_completion_fields(self, mock_executions_repo):
         mock_executions_repo.complete = AsyncMock(
@@ -251,7 +249,6 @@ class TestCompleteExecution:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetWorkflowExecutions:
     async def test_wraps_repository_page_in_response(self, mock_executions_repo):
         mock_executions_repo.list_for_workflow = AsyncMock(
@@ -305,7 +302,6 @@ class TestGetWorkflowExecutions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkflowValidator:
     def test_passes_for_valid_activated_workflow(self):
         wf = _make_workflow(activated=True)
@@ -342,7 +338,6 @@ class TestWorkflowValidator:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceGeneration:
     async def test_queue_generation_returns_true_on_success(self, mock_redis_pool):
         mock_job = MagicMock()
@@ -373,7 +368,6 @@ class TestWorkflowQueueServiceGeneration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceExecution:
     async def test_queue_execution_returns_true_on_success(self, mock_redis_pool):
         mock_job = MagicMock()
@@ -449,7 +443,6 @@ class TestWorkflowQueueServiceExecution:
         assert result is False
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceTodo:
     async def test_queue_todo_generation_sets_redis_flag(self, mock_redis_pool):
         mock_job = MagicMock()
@@ -500,7 +493,6 @@ class TestWorkflowQueueServiceTodo:
         assert result is False
 
 
-@pytest.mark.unit
 class TestWorkflowQueueServiceFlags:
     async def test_is_workflow_generating_returns_true_when_flag_set(self, mock_redis_pool):
         mock_redis_pool.get = AsyncMock(return_value="1")

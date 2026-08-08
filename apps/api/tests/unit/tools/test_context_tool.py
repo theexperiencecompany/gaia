@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -29,7 +27,6 @@ def _make_config_no_user() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGatherContext:
     """Tests for the gather_context tool."""
 

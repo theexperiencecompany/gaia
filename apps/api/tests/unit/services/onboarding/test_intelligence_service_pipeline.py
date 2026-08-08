@@ -38,8 +38,6 @@ from app.services.onboarding.intelligence_service import (
     process_onboarding_workflows_phase,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.services.onboarding.intelligence_service"
 USER = "user-42"
 

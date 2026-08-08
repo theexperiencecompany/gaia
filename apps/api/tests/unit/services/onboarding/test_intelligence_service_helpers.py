@@ -41,8 +41,6 @@ from app.services.onboarding.intelligence_service import (
     _writing_style_from_doc,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.services.onboarding.intelligence_service"
 
 

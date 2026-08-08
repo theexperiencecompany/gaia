@@ -43,7 +43,6 @@ def _patch_collection(return_value: list[tuple[Document, float]]) -> tuple[Magic
     return collection, AsyncMock(return_value=collection)
 
 
-@pytest.mark.unit
 class TestGetSimilarDocuments:
     async def test_filters_by_user_and_conversation_files(self) -> None:
         collection, get_client = _patch_collection(
@@ -126,7 +125,6 @@ class TestGetSimilarDocuments:
         collection.asimilarity_search_with_score.assert_not_called()
 
 
-@pytest.mark.unit
 class TestConstructContent:
     def test_string_summary_is_used_directly(self) -> None:
         docs = [_file("f1", summary="a whole-file summary")]
@@ -177,7 +175,6 @@ class TestConstructContent:
         assert _construct_content(docs, similar) == ""
 
 
-@pytest.mark.unit
 class TestSearchUploadedFiles:
     async def test_happy_path_returns_constructed_content(self) -> None:
         docs = [_file("f1", summary="whole-file summary")]

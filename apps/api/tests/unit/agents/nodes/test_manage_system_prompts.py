@@ -18,7 +18,6 @@ from langchain_core.messages import (
     ToolMessage,
 )
 from langchain_core.runnables import RunnableConfig
-import pytest
 
 from app.agents.core.nodes.manage_system_prompts import (
     _is_dynamic_context,
@@ -43,7 +42,6 @@ def _store() -> MagicMock:
     return MagicMock()
 
 
-@pytest.mark.unit
 class TestIsDynamicContext:
     def test_dynamic_context_marker(self) -> None:
         msg = SystemMessage(content="ctx", additional_kwargs={"dynamic_context": True})
@@ -64,7 +62,6 @@ class TestIsDynamicContext:
         assert _is_dynamic_context(SystemMessage(content="plain")) is False
 
 
-@pytest.mark.unit
 class TestManageSystemPrompts:
     def test_keeps_latest_static_prompt(self) -> None:
         msgs = [

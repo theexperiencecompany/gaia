@@ -48,7 +48,6 @@ def _decode_token(token: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetVoiceToken:
     """GET /api/v1/token — LiveKit room token minting"""
 
@@ -119,7 +118,6 @@ class TestGetVoiceToken:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestListVoices:
     """GET /api/v1/voice/voices"""
 
@@ -153,7 +151,6 @@ class TestListVoices:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSelectVoice:
     """PUT /api/v1/voice/voices/selected"""
 
@@ -198,7 +195,6 @@ class TestSelectVoice:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestStarVoice:
     """PUT /api/v1/voice/voices/{voice_id}/star"""
 

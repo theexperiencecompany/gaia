@@ -341,7 +341,6 @@ def mock_payment_service_invalidation():
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestGetPlans:
     """Tests for DodoPaymentService.get_plans."""
 
@@ -483,7 +482,6 @@ class TestGetPlans:
         assert plans[0].features == []
 
 
-@pytest.mark.unit
 class TestCreateSubscription:
     """Tests for DodoPaymentService.create_subscription."""
 
@@ -700,7 +698,6 @@ class TestCreateSubscription:
         assert call_kwargs["product_cart"][0]["quantity"] == 3
 
 
-@pytest.mark.unit
 class TestVerifyPaymentCompletion:
     """Tests for DodoPaymentService.verify_payment_completion."""
 
@@ -802,7 +799,6 @@ class TestVerifyPaymentCompletion:
         mock_send_email.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestGetUserSubscriptionStatus:
     """Tests for DodoPaymentService.get_user_subscription_status."""
 
@@ -907,7 +903,6 @@ class TestGetUserSubscriptionStatus:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestDodoPaymentServiceInit:
     """Tests for DodoPaymentService.__init__."""
 
@@ -957,7 +952,6 @@ class TestDodoPaymentServiceInit:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestVerifyWebhookSignature:
     """Tests for PaymentWebhookService.verify_webhook_signature."""
 
@@ -1063,7 +1057,6 @@ class TestVerifyWebhookSignature:
         assert svc.webhook_verifier is None
 
 
-@pytest.mark.unit
 class TestProcessWebhookIdempotency:
     """Tests for idempotency / deduplication in process_webhook."""
 
@@ -1125,7 +1118,6 @@ class TestProcessWebhookIdempotency:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestHandlePaymentSucceeded:
     """Tests for _handle_payment_succeeded via process_webhook."""
 
@@ -1203,7 +1195,6 @@ class TestHandlePaymentSucceeded:
         assert "Processing error" in result.message
 
 
-@pytest.mark.unit
 class TestHandlePaymentFailed:
     """Tests for _handle_payment_failed."""
 
@@ -1236,7 +1227,6 @@ class TestHandlePaymentFailed:
         assert call_kwargs["event_type"] == "payment:failed"
 
 
-@pytest.mark.unit
 class TestHandlePaymentProcessing:
     """Tests for _handle_payment_processing."""
 
@@ -1252,7 +1242,6 @@ class TestHandlePaymentProcessing:
         assert "processing" in result.message.lower()
 
 
-@pytest.mark.unit
 class TestHandlePaymentCancelled:
     """Tests for _handle_payment_cancelled."""
 
@@ -1273,7 +1262,6 @@ class TestHandlePaymentCancelled:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionActive:
     """Tests for _handle_subscription_active."""
 
@@ -1407,7 +1395,6 @@ class TestHandleSubscriptionActive:
         assert "Processing error" in result.message
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionRenewed:
     """Tests for _handle_subscription_renewed."""
 
@@ -1493,7 +1480,6 @@ class TestHandleSubscriptionRenewed:
         assert call_kwargs["event_type"] == "subscription:renewed"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionCancelled:
     """Tests for _handle_subscription_cancelled."""
 
@@ -1563,7 +1549,6 @@ class TestHandleSubscriptionCancelled:
         assert call_kwargs["event_type"] == "subscription:cancelled"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionExpired:
     """Tests for _handle_subscription_expired."""
 
@@ -1598,7 +1583,6 @@ class TestHandleSubscriptionExpired:
         assert call_kwargs["event_type"] == "subscription:expired"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionFailed:
     """Tests for _handle_subscription_failed."""
 
@@ -1618,7 +1602,6 @@ class TestHandleSubscriptionFailed:
         assert set_data["status"] == "failed"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionOnHold:
     """Tests for _handle_subscription_on_hold."""
 
@@ -1638,7 +1621,6 @@ class TestHandleSubscriptionOnHold:
         assert set_data["status"] == "on_hold"
 
 
-@pytest.mark.unit
 class TestHandleSubscriptionPlanChanged:
     """Tests for _handle_subscription_plan_changed."""
 
@@ -1665,7 +1647,6 @@ class TestHandleSubscriptionPlanChanged:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestSendWelcomeEmail:
     """Tests for _send_welcome_email."""
 
@@ -1719,7 +1700,6 @@ class TestSendWelcomeEmail:
         await webhook_service._send_welcome_email(FAKE_USER_ID)
 
 
-@pytest.mark.unit
 class TestGetUserEmailFromMetadata:
     """Tests for _get_user_email_from_metadata."""
 
@@ -1750,7 +1730,6 @@ class TestGetUserEmailFromMetadata:
         assert email is None
 
 
-@pytest.mark.unit
 class TestIsWebhookProcessed:
     """Tests for _is_webhook_processed."""
 
@@ -1775,7 +1754,6 @@ class TestIsWebhookProcessed:
         assert result is False
 
 
-@pytest.mark.unit
 class TestMarkWebhookAsProcessed:
     """Tests for _mark_webhook_as_processed."""
 
@@ -1827,7 +1805,6 @@ class TestMarkWebhookAsProcessed:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestPaymentWebhookServiceInit:
     """Tests for PaymentWebhookService.__init__."""
 
@@ -1863,7 +1840,6 @@ class TestPaymentWebhookServiceInit:
 # ============================================================================
 
 
-@pytest.mark.unit
 class TestProcessWebhookCustomerIdExtraction:
     """Verify customer_id is correctly extracted from nested and flat payloads."""
 

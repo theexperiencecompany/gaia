@@ -63,7 +63,6 @@ def _decide(
     )
 
 
-@pytest.mark.unit
 class TestShouldCompact:
     def test_excluded_tool_never_compacts_even_when_huge(self) -> None:
         mw = WorkspaceCompactionMiddleware(max_output_chars=100, excluded_tools={"bash"})
@@ -102,7 +101,6 @@ class TestShouldCompact:
         assert ok is False and reason == ""
 
 
-@pytest.mark.unit
 class TestContextUsage:
     def test_no_state_is_zero(self) -> None:
         mw = WorkspaceCompactionMiddleware()
@@ -115,7 +113,6 @@ class TestContextUsage:
         assert usage == pytest.approx(1.0)
 
 
-@pytest.mark.unit
 class TestAwrapToolCall:
     async def test_large_output_is_offloaded_and_recoverable(self) -> None:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1000)
@@ -230,7 +227,6 @@ class TestAwrapToolCall:
         mock_write.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestSummary:
     def test_json_list_preview_reports_count(self) -> None:
         summary = _summarize_output(json.dumps([{"i": i} for i in range(42)]), "search")

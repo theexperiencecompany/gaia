@@ -70,7 +70,6 @@ def mock_http():
         yield SimpleNamespace(proxy=m_proxy, gravatar=m_gravatar, get=m_get, set=m_set)
 
 
-@pytest.mark.unit
 class TestFetchEmailProfile:
     async def test_invalid_email_returns_bare_url_response(self, mock_http):
         response = await fetch_email_profile(USER_ID, "not-an-email")
@@ -182,7 +181,6 @@ class TestFetchEmailProfile:
         assert response.title is None
 
 
-@pytest.mark.unit
 class TestFetchEmailProfiles:
     async def test_gather_keyed_by_original_input(self, mock_http):
         mock_http.proxy.return_value = {}
@@ -205,7 +203,6 @@ class TestFetchEmailProfiles:
         assert results["bob@example.com"].title is None
 
 
-@pytest.mark.unit
 class TestPersonToProfile:
     def test_matches_email_and_extracts_fields(self):
         profile = _person_to_profile(
@@ -254,7 +251,6 @@ class TestPersonToProfile:
         assert _pick_photo([{"default": True, "url": "https://x/m.jpg"}]) is None
 
 
-@pytest.mark.unit
 class TestMergeProfiles:
     def test_first_non_empty_field_wins_in_priority_order(self):
         merged = _merge_profiles(
@@ -276,7 +272,6 @@ class TestMergeProfiles:
         assert merged.favicon is None
 
 
-@pytest.mark.unit
 class TestDomainFaviconProfile:
     def test_none_for_freemail(self):
         assert _domain_favicon_profile("alice@gmail.com") is None

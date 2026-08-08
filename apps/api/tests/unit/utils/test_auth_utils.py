@@ -130,7 +130,6 @@ def _db_user_doc(
 
 
 @pytest.mark.asyncio
-@pytest.mark.unit
 class TestAuthenticateWorkosSession:
     """Tests for authenticate_workos_session."""
 

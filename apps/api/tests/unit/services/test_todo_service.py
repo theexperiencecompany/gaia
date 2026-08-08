@@ -202,7 +202,6 @@ def mock_workflow_queue():
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetWorkflowCategories:
     async def test_no_todos_with_workflow_returns_empty(self, mock_workflow_repo):
         todos = [_make_todo_doc(workflow_id=None)]
@@ -236,7 +235,6 @@ class TestGetWorkflowCategories:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateTodo:
     async def test_assigns_inbox_when_no_project(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync, mock_workflow_queue
@@ -267,7 +265,6 @@ class TestCreateTodo:
         mock_workflow_queue.queue_todo_workflow_generation.assert_called_once()
 
 
-@pytest.mark.unit
 class TestGetTodo:
     async def test_not_found_raises(self, mock_todo_repo, mock_project_repo):
         mock_todo_repo.get = AsyncMock(return_value=None)
@@ -291,7 +288,6 @@ class TestGetTodo:
         assert result.workflow_categories == ["email"]
 
 
-@pytest.mark.unit
 class TestListTodos:
     async def test_delegates_to_list_page(
         self, mock_todo_repo, mock_project_repo, mock_workflow_repo
@@ -316,7 +312,6 @@ class TestListTodos:
         mock_todo_repo.list_page.assert_not_called()
 
 
-@pytest.mark.unit
 class TestUpdateTodo:
     async def test_not_found_raises(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -354,7 +349,6 @@ class TestUpdateTodo:
             mock_tracked.complete_tracked_todo.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestDeleteTodo:
     async def test_not_found_raises(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -370,7 +364,6 @@ class TestDeleteTodo:
         mock_todo_repo.delete.assert_awaited_once_with(FAKE_TODO_ID, user_id=FAKE_USER_ID)
 
 
-@pytest.mark.unit
 class TestBulkOps:
     async def test_bulk_update_delegates(
         self, mock_todo_repo, mock_project_repo, mock_vector_utils, mock_sync
@@ -417,7 +410,6 @@ class TestBulkOps:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestProjectService:
     async def test_create_returns_response_with_count(self, mock_todo_repo, mock_project_repo):
         created = _make_project_doc(project_id=FAKE_PROJECT_ID, name="Work")
@@ -484,7 +476,6 @@ class TestProjectService:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCompatibilityWrappers:
     async def test_get_todo_wrapper(self, mock_todo_repo, mock_project_repo):
         mock_todo_repo.get = AsyncMock(return_value=_make_todo_doc(todo_id=FAKE_TODO_ID))
@@ -555,7 +546,6 @@ def mock_bulk_repos():
         yield todo_repo, project_repo
 
 
-@pytest.mark.unit
 class TestBulkServiceComplete:
     async def test_completes_plain_todos(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos
@@ -575,7 +565,6 @@ class TestBulkServiceComplete:
         assert exc.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestBulkServiceMove:
     async def test_missing_project_raises_404(self, mock_bulk_repos):
         _, project_repo = mock_bulk_repos
@@ -593,7 +582,6 @@ class TestBulkServiceMove:
         assert len(result) == 1
 
 
-@pytest.mark.unit
 class TestBulkServiceDelete:
     async def test_deletes(self, mock_bulk_repos):
         todo_repo, _ = mock_bulk_repos

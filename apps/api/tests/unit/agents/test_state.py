@@ -1,11 +1,9 @@
 from langchain_core.messages import HumanMessage
 from langgraph.graph.message import add_messages
-import pytest
 
 from app.override.langgraph_bigtool.utils import State
 
 
-@pytest.mark.unit
 class TestState:
     """Tests for the override State used by the compiled agent graph.
 

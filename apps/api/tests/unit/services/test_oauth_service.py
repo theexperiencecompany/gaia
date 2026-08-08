@@ -172,7 +172,6 @@ def _make_integration_config(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestStoreUserInfo:
     async def test_raises_400_when_email_is_empty(self, mock_user_repo):
         with pytest.raises(HTTPException) as exc_info:
@@ -376,7 +375,6 @@ class TestStoreUserInfo:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetAllIntegrationsStatus:
     """Tests for get_all_integrations_status.
 
@@ -700,7 +698,6 @@ class TestGetAllIntegrationsStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCheckIntegrationStatus:
     async def test_returns_true_for_connected_integration(self):
         with patch(
@@ -744,7 +741,6 @@ class TestCheckIntegrationStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCheckMultipleIntegrationsStatus:
     async def test_returns_status_for_requested_integrations(self):
         with patch(
@@ -792,7 +788,6 @@ class TestCheckMultipleIntegrationsStatus:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHandleOAuthConnection:
     async def test_invalidates_cache_and_updates_integration_status(
         self,

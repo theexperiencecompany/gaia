@@ -32,7 +32,6 @@ def mock_deps():
         yield m_find, m_trace, m_get_client
 
 
-@pytest.mark.unit
 class TestCreateMessageFeedback:
     async def test_positive_feedback_scores_plus_one(self, mock_deps):
         m_find, m_trace, m_get_client = mock_deps

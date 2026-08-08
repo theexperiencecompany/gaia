@@ -19,16 +19,12 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.models.chat_models import MessageModel
 from app.models.message_models import MessageRequestWithHistory
 from app.services.chat import stream as chat_stream
 from app.services.chat.chunks import process_data_chunk
 from app.services.chat.state import merge_tool_outputs
 from app.services.chat.stream import _persist_turn, _StreamState
-
-pytestmark = pytest.mark.unit
 
 USER = {"user_id": "u1", "email": "u1@test.local"}
 CONV = "conv-1"

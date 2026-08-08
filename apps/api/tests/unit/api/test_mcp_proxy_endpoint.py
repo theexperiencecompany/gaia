@@ -22,12 +22,10 @@ from mcp.types import (
     TextResourceContents,
 )
 from pydantic import AnyUrl
-import pytest
 
 API = "/api/v1/mcp"
 
 
-@pytest.mark.unit
 class TestProxyToolCall:
     """POST /api/v1/mcp/proxy/tool-call"""
 
@@ -108,7 +106,6 @@ class TestProxyToolCall:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyResourcesList:
     """POST /api/v1/mcp/proxy/resources/list"""
 
@@ -172,7 +169,6 @@ class TestProxyResourcesList:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyResourceTemplatesList:
     """POST /api/v1/mcp/proxy/resources/templates/list"""
 
@@ -239,7 +235,6 @@ class TestProxyResourceTemplatesList:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyResourceRead:
     """POST /api/v1/mcp/proxy/resources/read"""
 
@@ -296,7 +291,6 @@ class TestProxyResourceRead:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestProxyPromptsList:
     """POST /api/v1/mcp/proxy/prompts/list"""
 

@@ -7,8 +7,6 @@ model, and the dev-only overrides pin/stash/clear model fields exactly.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.agents.llm.plan_model import (
     apply_dev_executor_model,
     apply_dev_model_override,
@@ -33,7 +31,6 @@ def _configurable() -> AgentConfigurable:
     return {"provider": "unset", "model": "unset", "model_name": "unset"}
 
 
-@pytest.mark.unit
 class TestApplyPlanModel:
     async def test_no_user_id_is_a_no_op(self) -> None:
         configurable = _configurable()
@@ -89,7 +86,6 @@ class TestApplyPlanModel:
         assert configurable == {"provider": "unset", "model": "unset", "model_name": "unset"}
 
 
-@pytest.mark.unit
 class TestApplyDevModelOverride:
     def _config(self) -> AgentConfigurable:
         return {
@@ -167,7 +163,6 @@ class TestApplyDevModelOverride:
         assert "model_kwargs" not in configurable
 
 
-@pytest.mark.unit
 class TestApplyDevExecutorModel:
     async def test_applies_the_stashed_executor_model_with_executor_reasoning(self) -> None:
         option = DEV_MODEL_OPTIONS["glm-5.2"]

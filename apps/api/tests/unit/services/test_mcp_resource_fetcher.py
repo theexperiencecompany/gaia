@@ -25,7 +25,6 @@ def mock_client():
         yield mcp_client
 
 
-@pytest.mark.unit
 class TestFetchMcpUiResource:
     async def test_returns_resource_details(self, mock_client):
         result = await fetch_mcp_ui_resource(SERVER_URL, RESOURCE_URI, USER_ID)

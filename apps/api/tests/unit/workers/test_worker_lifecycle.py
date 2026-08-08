@@ -14,7 +14,6 @@ from app.workers.lifecycle.shutdown import shutdown
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkerStartup:
     """Tests for ARQ worker startup function."""
 
@@ -82,7 +81,6 @@ class TestWorkerStartup:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkerShutdown:
     """Tests for ARQ worker shutdown function."""
 
@@ -160,7 +158,6 @@ class TestWorkerShutdown:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkerSettings:
     """Tests for WorkerSettings configuration class."""
 

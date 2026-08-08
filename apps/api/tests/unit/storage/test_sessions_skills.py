@@ -33,8 +33,6 @@ from app.services.storage.sessions.skills import (
     write_skills_marker,
 )
 
-pytestmark = pytest.mark.unit
-
 INSTR_REL = ("integrations", "slack", "agent", "instructions.md")
 
 

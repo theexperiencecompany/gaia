@@ -16,8 +16,6 @@ import respx
 from app.agents.skills.installer import install_from_github
 from app.agents.skills.utils import GITHUB_API_BASE
 
-pytestmark = pytest.mark.unit
-
 _SKILL_MD_CONTENT = """\
 ---
 name: my-skill

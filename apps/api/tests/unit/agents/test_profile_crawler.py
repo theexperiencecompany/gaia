@@ -8,8 +8,6 @@ markdown, provider exceptions — comes back as a ``ProfileCrawlResult`` with
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.agents.memory.profile_crawler import crawl_profile_url
 
 MODULE = "app.agents.memory.profile_crawler"
@@ -35,7 +33,6 @@ def _patch_crawl(fake_crawler: object) -> MagicMock:
     )
 
 
-@pytest.mark.unit
 class TestCrawlProfileUrl:
     async def test_success_returns_markdown_content(self) -> None:
         crawler = MagicMock()

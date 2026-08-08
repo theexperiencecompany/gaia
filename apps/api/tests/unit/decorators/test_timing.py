@@ -17,7 +17,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAsyncTimer:
     """Tests for the async_timer decorator."""
 
@@ -179,7 +178,6 @@ class TestAsyncTimer:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSyncTimer:
     """Tests for the sync_timer decorator."""
 
@@ -337,7 +335,6 @@ class TestSyncTimer:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTimer:
     """The universal timer should dispatch to async_timer or sync_timer."""
 
@@ -423,7 +420,6 @@ class TestTimer:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTimingEdgeCases:
     """Parametrized edge-case tests."""
 

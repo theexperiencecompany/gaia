@@ -42,8 +42,6 @@ from app.workers.tasks.tracked_todo_tasks import (
     safety_net_check_orphaned_todos,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.workers.tasks.tracked_todo_tasks"
 KOLKATA = ZoneInfo("Asia/Kolkata")
 NEW_YORK = ZoneInfo("America/New_York")

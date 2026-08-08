@@ -8,13 +8,11 @@ registered as a pre-model hook inside ``create_agent``) lives in
 """
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-import pytest
 
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from tests.e2e.conftest import make_gaia_state, make_mock_store, make_node_config
 
 
-@pytest.mark.unit
 class TestManageSystemPromptsNodeUnit:
     """Unit tests for manage_system_prompts_node pure logic (node called directly).
 

@@ -47,7 +47,6 @@ def mock_usage_repo():
         yield repo
 
 
-@pytest.mark.unit
 class TestSaveUsageSnapshot:
     async def test_delegates_to_upsert_hourly(self, mock_usage_repo):
         mock_usage_repo.upsert_hourly = AsyncMock(return_value="snap-id-1")
@@ -59,7 +58,6 @@ class TestSaveUsageSnapshot:
         mock_usage_repo.upsert_hourly.assert_awaited_once_with(snapshot)
 
 
-@pytest.mark.unit
 class TestGetUsageHistory:
     async def test_returns_all_snapshots_no_filter(self, mock_usage_repo):
         mock_usage_repo.history_for_user = AsyncMock(return_value=[_snapshot()])

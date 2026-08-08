@@ -8,7 +8,6 @@ from typing import get_type_hints
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.user_models import (
     AuthenticatedUserResponse,
@@ -33,7 +32,6 @@ FAKE_USER_UPDATE = {
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetMe:
     """GET /api/v1/user/me"""
 
@@ -84,7 +82,6 @@ class TestGetMe:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateMe:
     """PATCH /api/v1/user/me"""
 
@@ -134,7 +131,6 @@ class TestUpdateMe:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateUserName:
     """PATCH /api/v1/user/name"""
 
@@ -173,7 +169,6 @@ class TestUpdateUserName:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateTimezone:
     """PATCH /api/v1/user/timezone"""
 
@@ -235,7 +230,6 @@ class TestUpdateTimezone:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPublicHoloCard:
     """GET /api/v1/user/holo-card/{card_id}"""
 
@@ -286,7 +280,6 @@ class TestGetPublicHoloCard:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateHoloCardColors:
     """PATCH /api/v1/user/holo-card/colors"""
 
@@ -337,7 +330,6 @@ class TestUpdateHoloCardColors:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestLogout:
     """POST /api/v1/user/logout"""
 

@@ -109,7 +109,6 @@ async def _text_then_nostream(text: str, complete: str) -> AsyncGenerator[str, N
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExtractToolData:
     def test_returns_empty_dict_on_invalid_json(self):
         result = extract_tool_data("not json{{")
@@ -199,7 +198,6 @@ class TestExtractToolData:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExtractResponseText:
     def test_extracts_response_from_data_chunk(self):
         chunk = f"data: {json.dumps({'response': 'Hello there'})}\n\n"
@@ -227,7 +225,6 @@ class TestExtractResponseText:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInitializeNewConversation:
     async def test_returns_sse_formatted_init_chunk(self, test_user, basic_body):
         mock_conv = _created_conversation("conv_new_xyz", "New Chat")
@@ -310,7 +307,6 @@ class TestInitializeNewConversation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSaveConversationAsync:
     async def test_saves_user_and_bot_messages(self, test_user, basic_body):
         mock_update = AsyncMock()
@@ -583,7 +579,6 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
     return m
 
 
-@pytest.mark.unit
 class TestRunChatStreamBackground:
     @pytest.fixture(autouse=True)
     def _no_pending_approval(self) -> Iterator[None]:

@@ -27,9 +27,6 @@ from e2b import (
 )
 from e2b.sandbox.filesystem.filesystem import EntryInfo, WriteInfo
 from e2b.sandbox_async.filesystem.filesystem import Filesystem
-import pytest
-
-pytestmark = pytest.mark.unit
 
 
 def test_pause_method_is_beta_pause_not_plain_pause() -> None:

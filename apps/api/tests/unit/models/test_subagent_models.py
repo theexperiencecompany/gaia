@@ -37,7 +37,6 @@ def _make_subagent(**overrides: object) -> Subagent:
     return Subagent(**fields)  # type: ignore[arg-type]
 
 
-@pytest.mark.unit
 class TestSubagentConstruction:
     def test_constructs_with_required_fields_only(self) -> None:
         config = _make_config()
@@ -69,7 +68,6 @@ class TestSubagentConstruction:
         assert subagent.mcp_config is mcp_config
 
 
-@pytest.mark.unit
 class TestSubagentImmutability:
     def test_is_frozen(self) -> None:
         subagent = _make_subagent()
@@ -84,7 +82,6 @@ class TestSubagentImmutability:
             subagent.short_name = "x"  # type: ignore[misc]
 
 
-@pytest.mark.unit
 class TestSubagentEquality:
     def test_equal_field_values_compare_equal(self) -> None:
         # Reuse the SAME config instance — SubAgentConfig is a Pydantic model
@@ -104,7 +101,6 @@ class TestSubagentEquality:
         assert a != b
 
 
-@pytest.mark.unit
 class TestSubagentHashability:
     """`Subagent` is a frozen dataclass, so it requests `__hash__`. But its
     `config` field is a Pydantic `BaseModel`, which is not hashable by default —

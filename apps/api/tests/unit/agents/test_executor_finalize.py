@@ -88,7 +88,6 @@ def boundaries():
         yield _Boundaries(stack)
 
 
-@pytest.mark.unit
 class TestCancelledRouting:
     async def test_cancelled_queued_run_persists_cards_and_skips_delivery(self, boundaries) -> None:
         boundaries.stream_manager.is_cancelled.return_value = True
@@ -150,7 +149,6 @@ class TestCancelledRouting:
         boundaries.note.assert_not_called()
 
 
-@pytest.mark.unit
 class TestCompletedRouting:
     async def test_completed_queued_run_delivers_and_closes_stream(self, boundaries) -> None:
         run = _run(RunKind.QUEUED)
@@ -191,7 +189,6 @@ class TestCompletedRouting:
         boundaries.persist_cancelled.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestDoneSignalAndOrdering:
     @pytest.mark.parametrize("cancelled", [True, False])
     async def test_done_event_is_always_signalled(self, boundaries, cancelled) -> None:
@@ -219,7 +216,6 @@ class TestDoneSignalAndOrdering:
         assert done_state_at_note_time == [False]
 
 
-@pytest.mark.unit
 class TestQueueLockBugs:
     """Adversarial tests for the lock/queue lifecycle.
 
@@ -284,7 +280,6 @@ class TestQueueLockBugs:
         spawn.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestQueueLockHandoff:
     async def test_no_next_task_releases_the_busy_lock_then_rechecks(self, boundaries) -> None:
         create_session("s1", RunKind.QUEUED)

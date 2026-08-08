@@ -43,7 +43,6 @@ def _clean_connections():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWebsocketAuthGate:
     """/ws/connect — the invalid-user branch must never accept or register."""
 
@@ -77,7 +76,6 @@ class TestWebsocketAuthGate:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWebsocketAccept:
     """/ws/connect — connection lifecycle for an authenticated user."""
 
@@ -142,7 +140,6 @@ class TestWebsocketAccept:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestConnectionBookkeeping:
     """WebSocketManager.add_connection / remove_connection"""
 
@@ -182,7 +179,6 @@ class TestConnectionBookkeeping:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBroadcastToUser:
     """WebSocketManager.broadcast_to_user — direct and RabbitMQ paths"""
 

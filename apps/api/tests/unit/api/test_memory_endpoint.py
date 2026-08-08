@@ -8,7 +8,6 @@ and error handling are verified.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.memory_models import MemoryEntry, MemoryListResponse
 
@@ -52,7 +51,6 @@ def _retained_memory(memory_id: str = "mem_new") -> MagicMock:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGetAllMemories:
     """GET /api/v1/memory"""
 
@@ -92,7 +90,6 @@ class TestGetAllMemories:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateMemory:
     """POST /api/v1/memory"""
 
@@ -152,7 +149,6 @@ class TestCreateMemory:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestDeleteMemory:
     """DELETE /api/v1/memory/{memory_id}"""
 
@@ -188,7 +184,6 @@ class TestDeleteMemory:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestClearAllMemories:
     """DELETE /api/v1/memory"""
 

@@ -41,8 +41,6 @@ from app.services.storage.bootstrap import (
     _mount_state,
 )
 
-pytestmark = pytest.mark.unit
-
 META = "postgres://gaia:secret@meta.example.com:5432/jfs"
 
 

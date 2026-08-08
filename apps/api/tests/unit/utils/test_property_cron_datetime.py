@@ -51,7 +51,6 @@ MINUTE_HOUR_CRON = st.builds(
 )
 
 
-@pytest.mark.unit
 class TestGetNextRunTime:
     @settings(max_examples=200, deadline=None)
     @given(
@@ -126,7 +125,6 @@ class TestGetNextRunTime:
             get_next_run_time("0 9 31 2 *", datetime(2026, 1, 1, tzinfo=UTC))
 
 
-@pytest.mark.unit
 class TestValidateCronExpression:
     @settings(max_examples=200, deadline=None)
     @given(s=st.text())
@@ -143,7 +141,6 @@ class TestValidateCronExpression:
                 get_next_run_time(s, base)
 
 
-@pytest.mark.unit
 class TestCalculateNextOccurrences:
     @settings(max_examples=150, deadline=None)
     @given(

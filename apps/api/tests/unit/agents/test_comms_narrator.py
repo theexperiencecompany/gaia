@@ -11,7 +11,6 @@ to the comms checkpoint.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import HumanMessage
-import pytest
 
 from app.agents.core.background.comms_narrator import (
     narrate_executor_result,
@@ -43,7 +42,6 @@ def _patch_graph(graph: MagicMock) -> MagicMock:
     return patch(f"{MODULE}.GraphManager.get_graph", AsyncMock(return_value=graph))
 
 
-@pytest.mark.unit
 class TestNarrateExecutorResult:
     async def test_result_is_revoiced_through_the_comms_graph(self) -> None:
         graph = _fake_comms_graph()
@@ -138,7 +136,6 @@ class TestNarrateExecutorResult:
             assert await narrate_executor_result(RESULT_TEXT, "result", CONVERSATION_ID, USER) == ""
 
 
-@pytest.mark.unit
 class TestRecordExecutorCancellation:
     async def test_cancellation_marker_is_appended_to_the_checkpoint(self) -> None:
         graph = _fake_comms_graph()

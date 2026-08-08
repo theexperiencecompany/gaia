@@ -37,7 +37,6 @@ def _artifact_info(**overrides: object) -> ArtifactInfo:
     return ArtifactInfo(**data)
 
 
-@pytest.mark.unit
 class TestArtifactChannel:
     def test_channel_is_prefixed_with_user_id(self):
         assert artifact_channel(USER_ID) == f"artifacts:{USER_ID}"
@@ -48,7 +47,6 @@ class TestArtifactChannel:
                 artifact_channel(bad)
 
 
-@pytest.mark.unit
 class TestUpsertEvent:
     def test_exact_shape_without_body(self):
         info = _artifact_info()
@@ -75,7 +73,6 @@ class TestUpsertEvent:
         assert "body" not in event
 
 
-@pytest.mark.unit
 class TestRemoveEvent:
     def test_exact_shape(self):
         assert remove_event(SESSION_ID, "artifacts/gone.txt") == {
@@ -85,7 +82,6 @@ class TestRemoveEvent:
         }
 
 
-@pytest.mark.unit
 class TestUploadEvent:
     def test_exact_shape_with_explicit_mtime(self):
         assert upload_event(
@@ -108,7 +104,6 @@ class TestUploadEvent:
         assert event["mtime"] > 0
 
 
-@pytest.mark.unit
 class TestPublishArtifactEvent:
     async def test_noop_when_redis_unavailable(self):
         with patch(f"{_MOD}.redis_cache", SimpleNamespace(redis=None)):

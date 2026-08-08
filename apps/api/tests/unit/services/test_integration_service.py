@@ -158,7 +158,6 @@ def _make_custom_integration(**kwargs: Any) -> Integration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestIntegrationResolverResolve:
     """Tests for IntegrationResolver.resolve()."""
 
@@ -301,7 +300,6 @@ class TestIntegrationResolverResolve:
         assert result is None
 
 
-@pytest.mark.unit
 class TestIntegrationResolverHelpers:
     """Tests for IntegrationResolver helper methods."""
 
@@ -352,7 +350,6 @@ class TestIntegrationResolverHelpers:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetUserAvailableToolNamespaces:
     """Tests for get_user_available_tool_namespaces."""
 
@@ -547,7 +544,6 @@ def _iwc(**overrides: object) -> IntegrationWithCreator:
     return IntegrationWithCreator.model_validate(data)
 
 
-@pytest.mark.unit
 class TestFormatCommunityIntegrations:
     def test_format_empty_list(self):
         assert format_community_integrations([]) == []
@@ -607,7 +603,6 @@ class TestFormatCommunityIntegrations:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestUpdateUserIntegrationStatus:
     """The service delegates to repo.set_status; the upsert/$set/connected_at
     shape is the repository's concern (covered by its contract suite)."""
@@ -667,7 +662,6 @@ def _ui_doc(integration_id: str, *, status: str = "connected", connected: bool =
     )
 
 
-@pytest.mark.unit
 class TestGetUserIntegrations:
     @patch("app.services.integrations.user_integrations.user_repository")
     @patch("app.services.integrations.user_integrations.integration_repository")
@@ -716,7 +710,6 @@ class TestGetUserIntegrations:
         assert result.integrations == []
 
 
-@pytest.mark.unit
 class TestGetUserConnectedIntegrations:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_returns_serialized_documents(self, mock_repo):
@@ -736,7 +729,6 @@ class TestGetUserConnectedIntegrations:
         assert result == []
 
 
-@pytest.mark.unit
 class TestAddUserIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     @patch(
@@ -846,7 +838,6 @@ class TestAddUserIntegration:
             await add_user_integration.__wrapped__(USER_ID, "dup")
 
 
-@pytest.mark.unit
 class TestRemoveUserIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_remove_success(self, mock_repo):
@@ -861,7 +852,6 @@ class TestRemoveUserIntegration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestCheckUserHasIntegration:
     @patch("app.services.integrations.user_integrations.user_integration_repository")
     async def test_has_integration(self, mock_repo):
@@ -876,7 +866,6 @@ class TestCheckUserHasIntegration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestGetUserIntegrationCapabilities:
     @patch(
         "app.services.integrations.user_integrations.get_integration_details",
@@ -981,7 +970,6 @@ class TestGetUserIntegrationCapabilities:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateCustomIntegration:
     @patch(
         "app.services.integrations.custom_crud.add_user_integration",
@@ -1084,7 +1072,6 @@ class TestCreateCustomIntegration:
         assert result.is_public is True
 
 
-@pytest.mark.unit
 class TestUpdateCustomIntegration:
     @patch("app.services.integrations.custom_crud.user_integration_repository")
     @patch("app.services.integrations.custom_crud.integration_repository")
@@ -1200,7 +1187,6 @@ class TestUpdateCustomIntegration:
         assert update_arg.mcp_config.requires_auth is True
 
 
-@pytest.mark.unit
 class TestDeleteCustomIntegration:
     @patch(
         "app.services.integrations.custom_crud.delete_cache_by_pattern",
@@ -1418,7 +1404,6 @@ class TestDeleteCustomIntegration:
         assert result is False
 
 
-@pytest.mark.unit
 class TestCreateAndConnectCustomIntegration:
     @patch(
         "app.services.integrations.custom_crud.create_custom_integration",
@@ -1668,7 +1653,6 @@ class TestCreateAndConnectCustomIntegration:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBuildIntegrationsConfig:
     @patch(
         "app.services.integrations.integration_connection_service.OAUTH_INTEGRATIONS",
@@ -1743,7 +1727,6 @@ class TestBuildIntegrationsConfig:
         assert result.integrations == []
 
 
-@pytest.mark.unit
 class TestConnectMcpIntegration:
     @patch(
         "app.services.integrations.integration_connection_service.invalidate_user_integration_caches",
@@ -1991,7 +1974,6 @@ class TestConnectMcpIntegration:
         assert result.tools_count == 0
 
 
-@pytest.mark.unit
 class TestConnectComposioIntegration:
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",
@@ -2023,7 +2005,6 @@ class TestConnectComposioIntegration:
         mock_update_status.assert_awaited_once_with(USER_ID, "slack", "created")
 
 
-@pytest.mark.unit
 class TestConnectSelfIntegration:
     @patch(
         "app.services.integrations.integration_connection_service.build_google_oauth_url",
@@ -2077,7 +2058,6 @@ class TestConnectSelfIntegration:
         assert "not implemented" in result.error.lower()
 
 
-@pytest.mark.unit
 class TestDisconnectIntegration:
     @patch(
         "app.services.integrations.integration_connection_service._invalidate_caches",
@@ -2381,7 +2361,6 @@ class TestDisconnectIntegration:
             await disconnect_integration(USER_ID, "x")
 
 
-@pytest.mark.unit
 class TestInvalidateCaches:
     @patch(
         "app.services.integrations.integration_connection_service.update_user_integration_status",

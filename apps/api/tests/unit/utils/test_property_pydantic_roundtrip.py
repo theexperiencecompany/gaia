@@ -67,7 +67,6 @@ def valid_envelope(draw: st.DrawFn) -> OutboundMessageEnvelope:
     )
 
 
-@pytest.mark.unit
 class TestOutboundEnvelopeRoundTrip:
     @settings(max_examples=150, deadline=None)
     @given(envelope=valid_envelope())
@@ -152,7 +151,6 @@ CAMEL_SCHEMA_FIELDS = {
 }
 
 
-@pytest.mark.unit
 class TestCamelCaseAliasRoundTrip:
     @settings(max_examples=150, deadline=None)
     @given(

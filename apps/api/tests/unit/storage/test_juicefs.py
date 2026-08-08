@@ -44,8 +44,6 @@ from app.services.storage.juicefs import (
     write_skill_file,
 )
 
-pytestmark = pytest.mark.unit
-
 USER = "user-1"
 OTHER = "user-2"
 CONV = "conv-a"

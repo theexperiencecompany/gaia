@@ -51,7 +51,6 @@ def mock_resend():
         yield m_settings, m_send, m_contact
 
 
-@pytest.mark.unit
 class TestResendProviderSend:
     async def test_sends_full_params(self, mock_resend):
         m_settings, m_send, m_contact = mock_resend
@@ -116,7 +115,6 @@ class TestResendProviderSend:
         m_contact.assert_not_called()
 
 
-@pytest.mark.unit
 class TestServiceDelegation:
     async def test_send_email_delegates_to_provider(self):
         provider = AsyncMock()
@@ -162,7 +160,6 @@ class TestServiceDelegation:
         assert "Hey" in html
 
 
-@pytest.mark.unit
 class TestSendSupportTeamNotification:
     async def test_sends_to_every_support_email(self):
         with (
@@ -230,7 +227,6 @@ class TestSendSupportTeamNotification:
         m_send.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestSendSupportToUserEmail:
     async def test_confirmation_message_contract(self):
         with (
@@ -261,7 +257,6 @@ class TestSendSupportToUserEmail:
                 await send_support_to_user_email(_support_notification())
 
 
-@pytest.mark.unit
 class TestSendProSubscriptionEmail:
     async def test_welcome_message_contract(self):
         with (

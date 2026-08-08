@@ -25,9 +25,6 @@ from app.agents.middleware.summarization import WorkspaceArchivingSummarizationM
 from app.services.storage import JuiceFSUnavailable
 from shared.py.wide_events import log
 
-pytestmark = pytest.mark.unit
-
-
 MAX_INPUT_TOKENS = 1000
 
 

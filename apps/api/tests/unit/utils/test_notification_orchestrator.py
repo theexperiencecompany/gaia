@@ -4,8 +4,6 @@ from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.notification.notification_models import (
     ActionConfig,
     ActionResult,
@@ -123,7 +121,6 @@ def _make_action(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestOrchestratorInit:
     """Tests for orchestrator initialisation and component registration."""
 
@@ -165,7 +162,6 @@ class TestOrchestratorInit:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCreateNotification:
     """Tests for NotificationOrchestrator.create_notification."""
 
@@ -206,7 +202,6 @@ class TestCreateNotification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeliverNotification:
     """Tests for the internal _deliver_notification pipeline."""
 
@@ -365,7 +360,6 @@ class TestDeliverNotification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestAutoInjectedChannels:
     """Tests for auto-injection of channels when none are explicitly requested."""
 
@@ -469,7 +463,6 @@ class TestAutoInjectedChannels:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetChannelPrefs:
     """Tests for _get_channel_prefs error handling."""
 
@@ -508,7 +501,6 @@ class TestGetChannelPrefs:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDeliverViaChannel:
     """Tests for _deliver_via_channel error handling."""
 
@@ -555,7 +547,6 @@ class TestDeliverViaChannel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteAction:
     """Tests for NotificationOrchestrator.execute_action."""
 
@@ -738,7 +729,6 @@ class TestExecuteAction:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMarkAsRead:
     """Tests for NotificationOrchestrator.mark_as_read."""
 
@@ -782,7 +772,6 @@ class TestMarkAsRead:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestArchiveNotification:
     """Tests for NotificationOrchestrator.archive_notification."""
 
@@ -820,7 +809,6 @@ class TestArchiveNotification:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetNotifications:
     """Tests for notification retrieval methods."""
 
@@ -894,7 +882,6 @@ class TestGetNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestBulkActions:
     """Tests for NotificationOrchestrator.bulk_actions."""
 
@@ -976,7 +963,6 @@ class TestBulkActions:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSerializeNotification:
     """Tests for the _serialize_notification helper."""
 

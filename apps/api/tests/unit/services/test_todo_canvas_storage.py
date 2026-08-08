@@ -54,13 +54,11 @@ def mock_sync():
         yield m
 
 
-@pytest.mark.unit
 class TestBuildVfsLabel:
     def test_label_format(self):
         assert build_vfs_label(USER_ID, TODO_ID) == f"/users/{USER_ID}/todos/{TODO_ID}"
 
 
-@pytest.mark.unit
 class TestReadCanvas:
     async def test_none_for_missing_todo(self, mock_repo):
         assert await read_canvas(TODO_ID, USER_ID) is None
@@ -76,7 +74,6 @@ class TestReadCanvas:
         assert await read_canvas(TODO_ID, USER_ID) == ""
 
 
-@pytest.mark.unit
 class TestWriteCanvas:
     async def test_writes_and_triggers_sync(self, mock_repo, mock_sync):
         mock_repo.update.return_value = _todo_doc()
@@ -95,7 +92,6 @@ class TestWriteCanvas:
         mock_sync.assert_not_called()
 
 
-@pytest.mark.unit
 class TestAppendCanvas:
     async def test_false_for_missing_todo(self, mock_repo):
         assert await append_canvas(TODO_ID, USER_ID, "entry") is False
@@ -140,7 +136,6 @@ class TestAppendCanvas:
         assert canvas == "v1\nb\nc"
 
 
-@pytest.mark.unit
 class TestReadLog:
     async def test_none_for_missing_todo(self, mock_repo):
         assert await read_log(TODO_ID, USER_ID) is None
@@ -151,7 +146,6 @@ class TestReadLog:
         assert await read_log(TODO_ID, USER_ID) == "audit"
 
 
-@pytest.mark.unit
 class TestWriteLog:
     async def test_writes_and_triggers_sync(self, mock_repo, mock_sync):
         mock_repo.update.return_value = _todo_doc()
@@ -167,7 +161,6 @@ class TestWriteLog:
         mock_sync.assert_not_called()
 
 
-@pytest.mark.unit
 class TestAppendLog:
     async def test_false_for_missing_todo(self, mock_repo):
         assert await append_log(TODO_ID, USER_ID, "entry") is False

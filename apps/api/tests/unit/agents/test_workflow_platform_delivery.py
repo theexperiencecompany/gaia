@@ -9,8 +9,6 @@ sibling platforms).
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.agents.core.background.workflow_platform_delivery import (
     _preferred_bot_platforms,
     deliver_workflow_result_to_platforms,
@@ -35,7 +33,6 @@ LINKED = {
 PREFERENCES: dict[str, bool] = {"telegram": True, "slack": True}
 
 
-@pytest.mark.unit
 class TestPreferredBotPlatforms:
     async def test_keeps_linked_enabled_bot_platforms_only(self) -> None:
         with (
@@ -85,7 +82,6 @@ class TestPreferredBotPlatforms:
             assert await _preferred_bot_platforms(USER_ID) == []
 
 
-@pytest.mark.unit
 class TestDeliverWorkflowResultToPlatforms:
     async def test_blank_text_is_a_no_op(self) -> None:
         with (

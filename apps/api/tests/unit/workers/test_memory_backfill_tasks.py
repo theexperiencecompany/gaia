@@ -31,8 +31,6 @@ from app.workers.tasks.memory_backfill_tasks import (
     backfill_user_memories,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.workers.tasks.memory_backfill_tasks"
 
 USER_ID = "507f1f77bcf86cd799439011"

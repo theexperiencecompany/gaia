@@ -52,7 +52,6 @@ def _make_workflow(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflowById:
     """Tests for execute_workflow_by_id."""
 
@@ -350,7 +349,6 @@ class TestExecuteWorkflowById:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessWorkflowGenerationTask:
     """Tests for process_workflow_generation_task."""
 
@@ -511,7 +509,6 @@ class TestProcessWorkflowGenerationTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegenerateWorkflowSteps:
     @pytest.fixture
     def ctx(self) -> dict:
@@ -557,7 +554,6 @@ class TestRegenerateWorkflowSteps:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateWorkflowSteps:
     @pytest.fixture
     def ctx(self) -> dict:
@@ -649,7 +645,6 @@ class TestGenerateWorkflowSteps:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflowAsChat:
     """Dedicated tests for execute_workflow_as_chat.
 
@@ -961,7 +956,6 @@ class TestExecuteWorkflowAsChat:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWorkflowNotificationSenders:
     """Tests for the workflow completion/failure notification senders."""
 
@@ -1021,7 +1015,6 @@ class TestWorkflowNotificationSenders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteWorkflowByIdNotifications:
     """Additional tests covering the error notification branches in execute_workflow_by_id."""
 
@@ -1375,7 +1368,6 @@ class TestExecuteWorkflowByIdNotifications:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessWorkflowGenerationTaskAdditional:
     """Additional edge-case tests for process_workflow_generation_task."""
 
@@ -1578,7 +1570,6 @@ class TestProcessWorkflowGenerationTaskAdditional:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateWorkflowStepsAdditional:
     """Additional tests for generate_workflow_steps."""
 
@@ -1672,7 +1663,6 @@ class TestGenerateWorkflowStepsAdditional:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRegenerateWorkflowStepsAdditional:
     """Additional tests for regenerate_workflow_steps."""
 

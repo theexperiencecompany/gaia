@@ -30,7 +30,6 @@ def _no_dev_bypass(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetCurrentUser:
     def test_returns_user_from_request_state(self) -> None:
         request = MagicMock()
@@ -81,7 +80,6 @@ def _build_test_app(middleware_kwargs: dict | None = None):
     return app
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareExcludedPaths:
     """Requests to excluded paths should pass through without authentication."""
 
@@ -101,7 +99,6 @@ class TestWorkOSAuthMiddlewareExcludedPaths:
         assert resp.json()["user"] is None
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareSessionAuth:
     """Session-based authentication via cookies and Authorization header."""
 
@@ -195,7 +192,6 @@ class TestWorkOSAuthMiddlewareSessionAuth:
         assert resp.json()["authenticated"] is False
 
 
-@pytest.mark.unit
 class TestWorkOSAuthMiddlewareAgentAuth:
     """Agent-only paths use JWT agent tokens when no session is present."""
 
@@ -286,7 +282,6 @@ class TestWorkOSAuthMiddlewareAgentAuth:
         assert resp.json()["authenticated"] is False
 
 
-@pytest.mark.unit
 class TestAuthenticateSession:
     """Unit tests for _authenticate_session helper."""
 

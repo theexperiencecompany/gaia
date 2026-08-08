@@ -39,8 +39,6 @@ from app.workers.tasks.maintenance_sweep_tasks import (
     maintenance_sweep_tracked_todos,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.workers.tasks.maintenance_sweep_tasks"
 
 NOW = datetime(2026, 1, 15, 12, 0, tzinfo=UTC)

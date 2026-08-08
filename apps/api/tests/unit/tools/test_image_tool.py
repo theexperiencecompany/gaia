@@ -3,8 +3,6 @@
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.models.chat_models import ImageData
 
 # ---------------------------------------------------------------------------
@@ -30,7 +28,6 @@ def _writer_mock() -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateImage:
     """Tests for the generate_image tool."""
 

@@ -51,8 +51,6 @@ from app.models.calendar_models import (
 from app.models.common_models import GatherContextInput
 from app.utils.errors import AppError
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.agents.tools.integrations.calendar_tool"
 AUTH: dict[str, Any] = {"user_id": "user-42"}
 EXECUTE_REQUEST = MagicMock()

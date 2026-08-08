@@ -44,7 +44,6 @@ def mock_repo():
         yield m
 
 
-@pytest.mark.unit
 class TestGetModelById:
     async def test_returns_model(self, mock_repo, mock_redis_cache):
         model = _model_config()
@@ -72,7 +71,6 @@ class TestGetModelById:
         assert exc_info.value.detail == "Failed to fetch model"
 
 
-@pytest.mark.unit
 class TestGetDefaultModel:
     async def test_returns_default_model(self, mock_repo, mock_redis_cache):
         model = _model_config()

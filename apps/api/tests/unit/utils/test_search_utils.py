@@ -12,8 +12,6 @@ Provider-level unit tests live in ``tests/unit/utils/search/``.
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from app.utils.search import perform_search, search_for_research
 from app.utils.search.models import SearchResponse, SearchResultItem
 
@@ -43,7 +41,6 @@ def _make_response(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPerformSearch:
     """Tests for perform_search (the waterfall entry point, cache bypassed)."""
 
@@ -134,7 +131,6 @@ class TestPerformSearch:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSearchForResearch:
     """Tests for search_for_research (deep-research entry point, cache bypassed)."""
 
@@ -193,7 +189,6 @@ class TestSearchForResearch:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestTavilyProvider:
     """Unit tests for TavilyProvider (is_configured + search mapping)."""
 
@@ -277,7 +272,6 @@ class TestTavilyProvider:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestDuckDuckGoProvider:
     """Unit tests for DuckDuckGoProvider (always available, HTML scrape)."""
 

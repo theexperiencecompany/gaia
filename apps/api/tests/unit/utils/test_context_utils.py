@@ -46,7 +46,6 @@ def _make_composio_service(result: dict[str, Any]) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteTool:
     """Tests for execute_tool (sync, calls Composio service)."""
 
@@ -151,7 +150,6 @@ class TestExecuteTool:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestFetchAllProviders:
     """Tests for fetch_all_providers (parallel execution with ThreadPoolExecutor)."""
 
@@ -290,7 +288,6 @@ class TestFetchAllProviders:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 @pytest.mark.asyncio
 class TestResolveProviders:
     """Tests for resolve_providers (async, resolves which providers to query)."""

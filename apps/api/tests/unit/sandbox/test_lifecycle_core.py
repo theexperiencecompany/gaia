@@ -39,8 +39,6 @@ from app.services.sandbox.pool import PooledSandbox, get_sandbox_pool
 from app.services.sandbox.shard_router import shard_for
 from app.services.storage import JuiceFSUnavailable
 
-pytestmark = pytest.mark.unit
-
 
 def _uid() -> str:
     return f"u-{uuid.uuid4().hex}"

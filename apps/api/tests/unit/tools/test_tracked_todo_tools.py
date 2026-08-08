@@ -45,8 +45,6 @@ from app.constants.todos import GAIA_TRACKED_LABEL
 from app.models.todo_models import Priority, TodoDocument, TodoResponse
 from shared.py.wide_events import spawn_logged_task
 
-pytestmark = pytest.mark.unit
-
 _FUTURE = (datetime.now(UTC) + timedelta(days=7)).replace(microsecond=0)
 _FUTURE_ISO = _FUTURE.isoformat()
 _PAST_ISO = (datetime.now(UTC) - timedelta(days=1)).isoformat()

@@ -16,7 +16,6 @@ import string
 from typing import Any
 
 from hypothesis import given, settings, strategies as st
-import pytest
 
 from app.utils.timezone import Timezone
 from app.utils.url_safety import _parse_http_host_port, assert_safe_url_shape
@@ -24,7 +23,6 @@ from app.utils.url_safety import _parse_http_host_port, assert_safe_url_shape
 DEFINED_EXCEPTIONS = (ValueError,)
 
 
-@pytest.mark.unit
 class TestParseHttpHostPortNeverRaisesUnexpectedly:
     @settings(max_examples=300, deadline=None)
     @given(url=st.text())
@@ -53,7 +51,6 @@ class TestParseHttpHostPortNeverRaisesUnexpectedly:
         assert port == (443 if scheme == "https" else 80)
 
 
-@pytest.mark.unit
 class TestAssertSafeUrlShapeNeverRaisesUnexpectedly:
     @settings(max_examples=300, deadline=None)
     @given(url=st.text())
@@ -65,7 +62,6 @@ class TestAssertSafeUrlShapeNeverRaisesUnexpectedly:
         assert result is None
 
 
-@pytest.mark.unit
 class TestTimezoneParseNeverRaises:
     @settings(max_examples=300, deadline=None)
     @given(name=st.text())

@@ -90,7 +90,6 @@ def mock_deps():
         )
 
 
-@pytest.mark.unit
 class TestCreateTrackedTodo:
     async def test_creates_with_template_canvas_and_indexes(self, mock_repo, mock_deps):
         mock_deps.create.return_value = _todo_response()
@@ -138,7 +137,6 @@ class TestCreateTrackedTodo:
         assert set(todo_model.labels) == {"work", "finance", GAIA_TRACKED_LABEL}
 
 
-@pytest.mark.unit
 class TestCompleteTrackedTodo:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
         assert await TrackedTodoService.complete_tracked_todo(TODO_ID, USER_ID, "done") is False
@@ -169,7 +167,6 @@ class TestCompleteTrackedTodo:
         mock_deps.sync.assert_called_once_with(USER_ID)
 
 
-@pytest.mark.unit
 class TestGetActiveTrackedSummary:
     async def test_empty_string_without_docs(self, mock_repo):
         assert await TrackedTodoService.get_active_tracked_summary(USER_ID) == ""
@@ -215,7 +212,6 @@ class TestGetActiveTrackedSummary:
         assert " OVERDUE(4d)" in summary.split("\n")[2]
 
 
-@pytest.mark.unit
 class TestAppendCanvasTimeline:
     async def test_false_when_canvas_read_fails(self, mock_repo, mock_deps):
         mock_deps.read.side_effect = RuntimeError("mongo down")
@@ -265,7 +261,6 @@ class TestAppendCanvasTimeline:
         assert await TrackedTodoService.append_canvas_timeline(TODO_ID, USER_ID, "step") is False
 
 
-@pytest.mark.unit
 class TestSystemLog:
     async def test_appends_formatted_entry(self, mock_repo, mock_deps):
         await TrackedTodoService.system_log(TODO_ID, USER_ID, "rescheduled", "Retry at 9am")
@@ -275,7 +270,6 @@ class TestSystemLog:
         assert "Retry at 9am" in entry
 
 
-@pytest.mark.unit
 class TestGetSignalMatchingContext:
     async def test_empty_string_without_docs(self, mock_repo, mock_deps):
         assert await TrackedTodoService.get_signal_matching_context(USER_ID) == ""
@@ -316,7 +310,6 @@ class TestGetSignalMatchingContext:
         assert "thread: abc123" not in context
 
 
-@pytest.mark.unit
 class TestReindexCanvas:
     async def test_false_for_missing_todo(self, mock_repo, mock_deps):
         assert await TrackedTodoService.reindex_canvas(TODO_ID, USER_ID) is False
@@ -348,7 +341,6 @@ class TestReindexCanvas:
         assert await TrackedTodoService.reindex_canvas(TODO_ID, USER_ID) is False
 
 
-@pytest.mark.unit
 class TestScheduleExecution:
     async def test_enqueues_deferred_job(self, mock_repo, mock_deps):
         pool = AsyncMock()
@@ -376,7 +368,6 @@ class TestScheduleExecution:
         pool.enqueue_job.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestArchiveTrackedTodo:
     async def test_logs_reason_and_completes(self, mock_repo, mock_deps):
         mock_repo.get.return_value = _todo_doc()
@@ -399,7 +390,6 @@ class TestArchiveTrackedTodo:
         assert await TrackedTodoService.archive_tracked_todo(TODO_ID, USER_ID, "expired") is False
 
 
-@pytest.mark.unit
 class TestSingleton:
     def test_module_singleton_is_an_instance(self):
         assert isinstance(tracked_todo_service, TrackedTodoService)

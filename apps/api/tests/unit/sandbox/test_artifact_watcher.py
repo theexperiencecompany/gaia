@@ -25,8 +25,6 @@ from app.services.sandbox.artifact_watcher import ArtifactWatcher, _strip_artifa
 from app.services.storage import JuiceFSUnavailable
 from app.services.storage.sessions.artifacts import ArtifactInfo
 
-pytestmark = pytest.mark.unit
-
 USER = "user-1"
 CONV = "conv-a"
 

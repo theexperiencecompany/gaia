@@ -81,7 +81,6 @@ def mock_deps():
         )
 
 
-@pytest.mark.unit
 class TestPublishCustomIntegration:
     async def test_publishes_and_returns_marketplace_url(self, mock_deps):
         mock_deps.repo.get.return_value = _integration()
@@ -176,7 +175,6 @@ class TestPublishCustomIntegration:
         assert exc_info.value.status_code == 404
 
 
-@pytest.mark.unit
 class TestUnpublishCustomIntegration:
     async def test_unpublishes_and_cleans_marketplace(self, mock_deps):
         mock_deps.repo.get.return_value = _integration(is_public=True)

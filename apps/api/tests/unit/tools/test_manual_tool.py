@@ -4,13 +4,10 @@ The tool is a thin read over the in-memory manual: a known topic returns that
 topic's body, an unknown topic returns the error line plus the topic index.
 """
 
-import pytest
-
 from app.agents.tools.manual_tool import read_manual
 from app.agents.workspace.operational_docs import get_manual, manual_index_text
 
 
-@pytest.mark.unit
 class TestReadManual:
     async def test_known_topic_returns_its_body(self) -> None:
         doc = get_manual("integrations")

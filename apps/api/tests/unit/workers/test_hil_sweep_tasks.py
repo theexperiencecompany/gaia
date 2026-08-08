@@ -10,13 +10,9 @@ in production only.
 
 from unittest.mock import AsyncMock, patch
 
-import pytest
-
 from app.workers.tasks.hil_sweep_tasks import sweep_hil_approvals
 
 MODULE = "app.workers.tasks.hil_sweep_tasks"
-
-pytestmark = pytest.mark.unit
 
 
 class TestTheCronRunsTheSweep:

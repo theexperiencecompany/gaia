@@ -28,7 +28,6 @@ def _handler(return_value: object) -> AsyncMock:
     return AsyncMock(return_value=return_value)
 
 
-@pytest.mark.unit
 class TestHILApprovalMiddleware:
     async def test_blocked_call_skips_the_handler(self) -> None:
         denied = ToolMessage(content="denied", tool_call_id="call_1")

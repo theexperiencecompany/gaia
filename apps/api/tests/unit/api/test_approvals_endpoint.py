@@ -8,7 +8,6 @@ shapes, payload forwarding, and the AppError status mapping are verified.
 from unittest.mock import AsyncMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.hil_models import HILMode, HILPreferences
 from app.schemas.hil_schemas import BatchDecisionOutcome
@@ -33,7 +32,6 @@ def _prefs(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPostApprovalDecision:
     """POST /api/v1/approvals/{id}/decision"""
 
@@ -110,7 +108,6 @@ class TestPostApprovalDecision:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPostBatchDecision:
     """POST /api/v1/approvals/batch-decision"""
 
@@ -195,7 +192,6 @@ class TestPostBatchDecision:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGetPreferences:
     """GET /api/v1/approvals/preferences"""
 
@@ -234,7 +230,6 @@ class TestGetPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestPutPreferences:
     """PUT /api/v1/approvals/preferences"""
 
@@ -279,7 +274,6 @@ class TestPutPreferences:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestSetToolOverride:
     """PUT /api/v1/approvals/tools/{tool_name}"""
 

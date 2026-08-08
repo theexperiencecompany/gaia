@@ -1,12 +1,10 @@
 from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-import pytest
 
 from app.agents.core.nodes.filter_messages import filter_messages_node
 
 
-@pytest.mark.unit
 class TestFilterMessages:
     def _make_state(self, messages):
         return {"messages": messages}

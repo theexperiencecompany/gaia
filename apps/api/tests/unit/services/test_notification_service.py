@@ -40,7 +40,6 @@ def service():
         yield NotificationService(), orchestrator
 
 
-@pytest.mark.unit
 class TestNotificationService:
     async def test_create_notification_delegates(self, service):
         svc, orchestrator = service
@@ -155,7 +154,6 @@ class TestNotificationService:
         orchestrator.register_action_handler.assert_called_once_with(handler)
 
 
-@pytest.mark.unit
 class TestGlobalInstance:
     def test_module_singleton_is_a_notification_service(self):
         assert isinstance(notification_service, NotificationService)

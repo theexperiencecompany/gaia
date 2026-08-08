@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException
 from httpx import AsyncClient
-import pytest
 
 from app.models.chat_models import ImageData
 from app.models.image_models import ImageToTextResponse
@@ -32,7 +31,6 @@ def _image_data(**overrides) -> ImageData:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestImageGenerate:
     """POST /api/v1/image/generate"""
 
@@ -67,7 +65,6 @@ class TestImageGenerate:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestImageToText:
     """POST /api/v1/image/text"""
 
@@ -119,7 +116,6 @@ class TestImageToText:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestImageStream:
     """POST /api/v1/image/generate/stream"""
 

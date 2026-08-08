@@ -8,7 +8,6 @@ or an empty completion — the caller degrades instead of failing the whole tool
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage
-import pytest
 
 from app.agents.llm.vision.describe import describe_image
 from app.utils.multimodal import image_content_block
@@ -21,7 +20,6 @@ PROMPT = "Describe what is in this screenshot."
 LABEL = "vision_fallback"
 
 
-@pytest.mark.unit
 class TestDescribeImage:
     @patch(f"{MODULE}.get_default_llm")
     @patch(f"{MODULE}.ainvoke_llm", new_callable=AsyncMock)

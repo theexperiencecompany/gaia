@@ -40,7 +40,6 @@ def mock_llm():
         yield SimpleNamespace(llm=m_llm, invoke=m_invoke, structured=m_structured)
 
 
-@pytest.mark.unit
 class TestToolsSummary:
     def test_joins_first_n_names(self):
         tools = [{"name": "a"}, {"name": "b"}, {"name": "c"}, {"name": "d"}]
@@ -54,7 +53,6 @@ class TestToolsSummary:
         assert _tools_summary([], 5) == "None"
 
 
-@pytest.mark.unit
 class TestServerDomain:
     def test_hostname_extracted(self):
         assert _server_domain("https://mcp.example.com/mcp") == "mcp.example.com"
@@ -69,7 +67,6 @@ class TestServerDomain:
         assert _server_domain("not a url") == "unknown"
 
 
-@pytest.mark.unit
 class TestInferIntegrationCategory:
     async def test_returns_lowercased_valid_category(self, mock_llm):
         mock_llm.invoke.return_value = SimpleNamespace(text="Productivity")
@@ -114,7 +111,6 @@ class TestInferIntegrationCategory:
         )
 
 
-@pytest.mark.unit
 class TestInferIntegrationContent:
     async def test_returns_complete_content(self, mock_llm):
         content = _complete_content()
@@ -151,7 +147,6 @@ class TestInferIntegrationContent:
         )
 
 
-@pytest.mark.unit
 class TestIsComplete:
     def test_complete_content_passes(self):
         assert _is_complete(_complete_content()) is True

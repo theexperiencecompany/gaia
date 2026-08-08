@@ -139,7 +139,6 @@ class _ReturnsNoneBeforeModel(AgentMiddleware):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHasOverride:
     def test_no_override_on_base(self) -> None:
         mw = _NoOpMiddleware()
@@ -184,7 +183,6 @@ class TestHasOverride:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestMiddlewareExecutorInit:
     def test_no_middleware(self) -> None:
         executor = MiddlewareExecutor()
@@ -205,7 +203,6 @@ class TestMiddlewareExecutorInit:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteBeforeModel:
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -293,7 +290,6 @@ class TestExecuteBeforeModel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestExecuteAfterModel:
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",
@@ -344,7 +340,6 @@ class TestExecuteAfterModel:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWrapModelInvocation:
     @patch(
         "app.agents.middleware.executor.create_model_request",
@@ -557,7 +552,6 @@ class TestWrapModelInvocation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestWrapToolInvocation:
     @patch(
         "app.agents.middleware.executor.create_tool_call_request",
@@ -699,7 +693,6 @@ class TestWrapToolInvocation:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHasWrapMethods:
     def test_has_wrap_model_call_true(self) -> None:
         executor = MiddlewareExecutor([_WrapModelMiddleware()])
@@ -736,7 +729,6 @@ class TestHasWrapMethods:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCancelledErrorPropagation:
     @patch(
         "app.agents.middleware.executor.BigtoolRuntime.from_graph_context",

@@ -5,13 +5,10 @@ and its name must match FINISH_TASK_NAME (the invariant the import-time assert
 guards).
 """
 
-import pytest
-
 from app.agents.tools.finish_task_tool import finish_task
 from app.constants.general import FINISH_TASK_NAME
 
 
-@pytest.mark.unit
 class TestFinishTask:
     async def test_name_matches_the_routing_constant(self) -> None:
         assert finish_task.name == FINISH_TASK_NAME

@@ -13,7 +13,6 @@ from app.agents.core.nodes.memory_node import (
 from app.utils.multimodal import extract_text_content
 
 
-@pytest.mark.unit
 class TestCheckWorthLearning:
     def test_too_few_messages(self):
         """Short user messages (< MIN_USER_CONTENT_CHARS) are not worth learning."""
@@ -68,7 +67,6 @@ class TestCheckWorthLearning:
         assert reason == "OK"
 
 
-@pytest.mark.unit
 class TestFormatMessagesForUserMemory:
     def test_formats_human_messages(self):
         msgs = [HumanMessage(content="hello world")]
@@ -120,7 +118,6 @@ class TestFormatMessagesForUserMemory:
         assert formatted == []
 
 
-@pytest.mark.unit
 class TestExtractTextContent:
     def test_string_content(self):
         assert extract_text_content("hello") == "hello"
@@ -139,7 +136,6 @@ class TestExtractTextContent:
         assert result == "42"
 
 
-@pytest.mark.unit
 class TestMemoryNode:
     def _make_config(self, user_id=None, thread_id="t1", subagent_id=None):
         configurable = {"thread_id": thread_id}

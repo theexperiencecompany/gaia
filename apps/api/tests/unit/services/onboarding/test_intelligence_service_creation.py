@@ -50,8 +50,6 @@ from app.services.onboarding.intelligence_service import (
     _WorkflowSpec,
 )
 
-pytestmark = pytest.mark.unit
-
 MODULE = "app.services.onboarding.intelligence_service"
 USER = "user-42"
 

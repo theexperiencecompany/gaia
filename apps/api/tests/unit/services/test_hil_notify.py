@@ -49,7 +49,6 @@ def mock_expo():
         yield client
 
 
-@pytest.mark.unit
 class TestNotifyApprovalPending:
     async def test_fires_both_channels(self, mock_channels, mock_expo):
         mock_channels.device.get_active_tokens.return_value = ["token-1"]
@@ -70,7 +69,6 @@ class TestNotifyApprovalPending:
         mock_expo.post.assert_awaited_once()
 
 
-@pytest.mark.unit
 class TestBroadcastInApp:
     async def test_broadcast_failure_is_swallowed(self, mock_channels, mock_expo):
         mock_channels.ws.broadcast_to_user.side_effect = RuntimeError("ws down")
@@ -78,7 +76,6 @@ class TestBroadcastInApp:
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
 
-@pytest.mark.unit
 class TestPushToDevices:
     async def test_no_push_without_tokens(self, mock_channels, mock_expo):
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
@@ -94,7 +91,6 @@ class TestPushToDevices:
         mock_expo.post.assert_not_awaited()
 
 
-@pytest.mark.unit
 class TestSendExpoPush:
     async def test_message_shape(self, mock_expo):
         await _send_expo_push(
@@ -158,7 +154,6 @@ class TestSendExpoPush:
         await notify_approval_pending(USER_ID, CONVERSATION_ID, APPROVAL_ID, SUMMARY)
 
 
-@pytest.mark.unit
 class TestDeadTokensFromReceipts:
     def _response(self, data: object) -> MagicMock:
         response = MagicMock()

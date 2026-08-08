@@ -19,7 +19,6 @@ from app.services.image_service import (
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGeneratePublicId:
     def test_basic_slug_generation(self):
         result = generate_public_id("A beautiful sunset")
@@ -66,7 +65,6 @@ class TestGeneratePublicId:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestApiGenerateImage:
     async def test_generates_image_with_improved_prompt(self):
         with (
@@ -192,7 +190,6 @@ class TestApiGenerateImage:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestImageToTextEndpoint:
     async def test_converts_image_to_text(self):
         mock_file = MagicMock(spec=UploadFile)
@@ -226,7 +223,6 @@ class TestImageToTextEndpoint:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestGenerateImageStream:
     async def test_yields_generating_status_and_image_data(self):
         image_result = ImageData(

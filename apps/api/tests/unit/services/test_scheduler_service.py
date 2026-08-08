@@ -124,7 +124,6 @@ def recurring_task_stop_after():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestInitializeClose:
     async def test_initialize_creates_pool(self):
         with (
@@ -164,7 +163,6 @@ class TestInitializeClose:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestScheduleTask:
     async def test_schedule_with_scheduled_at(self, service):
         future = datetime.now(UTC) + timedelta(hours=1)
@@ -205,7 +203,6 @@ class TestScheduleTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestRescheduleTask:
     async def test_reschedule(self, service):
         future = datetime.now(UTC) + timedelta(hours=2)
@@ -222,7 +219,6 @@ class TestRescheduleTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestProcessTaskExecution:
     async def test_task_not_found(self, service):
         service.mock_get_task.return_value = None
@@ -322,7 +318,6 @@ class TestProcessTaskExecution:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestCancelTask:
     async def test_cancel_success(self, service):
         service.mock_update_task_status.return_value = True
@@ -348,7 +343,6 @@ class TestCancelTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestScanAndSchedulePendingTasks:
     async def test_schedules_pending_tasks(self, service):
         tasks = [
@@ -397,7 +391,6 @@ class TestScanAndSchedulePendingTasks:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestHandleRecurringTask:
     async def test_no_repeat_returns_early(self, service, sample_task):
         sample_task.repeat = None
@@ -481,7 +474,6 @@ class TestHandleRecurringTask:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.unit
 class TestEnqueueTask:
     async def test_enqueue_success(self, service):
         future = datetime.now(UTC) + timedelta(hours=1)

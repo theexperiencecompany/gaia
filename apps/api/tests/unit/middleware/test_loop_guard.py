@@ -15,7 +15,6 @@ from langchain.agents.middleware.types import ToolCallRequest
 from langchain.tools import ToolRuntime
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
-import pytest
 
 from app.agents.middleware.loop_guard import _UNKNOWN_RUN, LoopGuardMiddleware, _RunCounters
 from app.constants.llm import (
@@ -24,8 +23,6 @@ from app.constants.llm import (
     LOOP_GUARD_WARN_IDENTICAL,
     LOOP_GUARD_WARN_SAME_TOOL,
 )
-
-pytestmark = pytest.mark.unit
 
 
 def _runtime(config: Any) -> ToolRuntime:

@@ -9,7 +9,6 @@ from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from httpx import AsyncClient
-import pytest
 
 from app.models.todo_models import TodoWorkflowStatus, TodoWorkflowStatusResponse
 from app.models.workflow_models import WorkflowWithIntegrations
@@ -99,7 +98,6 @@ def _bulk_response(success_ids: list | None = None) -> dict:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestListTodos:
     """GET /api/v1/todos"""
 
@@ -145,7 +143,6 @@ class TestListTodos:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestCreateTodo:
     """POST /api/v1/todos"""
 
@@ -198,7 +195,6 @@ class TestCreateTodo:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestGetTodo:
     """GET /api/v1/todos/{todo_id}"""
 
@@ -236,7 +232,6 @@ class TestGetTodo:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestUpdateTodo:
     """PUT /api/v1/todos/{todo_id}"""
 
@@ -274,7 +269,6 @@ class TestUpdateTodo:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestDeleteTodo:
     """DELETE /api/v1/todos/{todo_id}"""
 
@@ -314,7 +308,6 @@ class TestDeleteTodo:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestTodoCounts:
     """GET /api/v1/todos/counts"""
 
@@ -356,7 +349,6 @@ class TestTodoCounts:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestTodoLabels:
     """GET /api/v1/todos/labels"""
 
@@ -385,7 +377,6 @@ class TestTodoLabels:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestListProjects:
     """GET /api/v1/projects"""
 
@@ -414,7 +405,6 @@ class TestListProjects:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestCreateProject:
     """POST /api/v1/projects"""
 
@@ -450,7 +440,6 @@ class TestCreateProject:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestUpdateProject:
     """PUT /api/v1/projects/{project_id}"""
 
@@ -495,7 +484,6 @@ class TestUpdateProject:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestDeleteProject:
     """DELETE /api/v1/projects/{project_id}"""
 
@@ -544,7 +532,6 @@ class TestDeleteProject:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestBulkUpdateTodos:
     """PUT /api/v1/todos/bulk
 
@@ -598,7 +585,6 @@ class TestBulkUpdateTodos:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestBulkMoveTodos:
     """POST /api/v1/todos/bulk/move"""
 
@@ -641,7 +627,6 @@ class TestBulkMoveTodos:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestBulkDeleteTodos:
     """DELETE /api/v1/todos/bulk
 
@@ -696,7 +681,6 @@ class TestBulkDeleteTodos:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestBulkCompleteTodos:
     """POST /api/v1/todos/bulk/complete"""
 
@@ -756,7 +740,6 @@ def _subtask_todo(oid: str, subtasks: list[dict]):
     )
 
 
-@pytest.mark.unit
 class TestCreateSubtask:
     """POST /api/v1/todos/{todo_id}/subtasks"""
 
@@ -800,7 +783,6 @@ class TestCreateSubtask:
         assert "Failed to create subtask" in resp.json()["detail"]
 
 
-@pytest.mark.unit
 class TestUpdateSubtask:
     """PUT /api/v1/todos/{todo_id}/subtasks/{subtask_id}"""
 
@@ -858,7 +840,6 @@ class TestUpdateSubtask:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestDeleteSubtask:
     """DELETE /api/v1/todos/{todo_id}/subtasks/{subtask_id}"""
 
@@ -909,7 +890,6 @@ class TestDeleteSubtask:
         assert resp.status_code == 401
 
 
-@pytest.mark.unit
 class TestToggleSubtaskCompletion:
     """POST /api/v1/todos/{todo_id}/subtasks/{subtask_id}/toggle"""
 
@@ -991,7 +971,6 @@ def _workflow(**overrides) -> WorkflowWithIntegrations:
     return WorkflowWithIntegrations(**base)
 
 
-@pytest.mark.unit
 class TestGenerateWorkflow:
     """POST /api/v1/todos/{todo_id}/workflow"""
 
@@ -1099,7 +1078,6 @@ class TestGenerateWorkflow:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestWorkflowStatus:
     """GET /api/v1/todos/{todo_id}/workflow-status"""
 
@@ -1217,7 +1195,6 @@ class TestWorkflowStatus:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestListTodosFilters:
     """GET /api/v1/todos — additional filter and edge-case tests."""
 
@@ -1307,7 +1284,6 @@ class TestListTodosFilters:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestTodoCountsWithInbox:
     """GET /api/v1/todos/counts — resolves the inbox then delegates to the repo."""
 
@@ -1342,7 +1318,6 @@ class TestTodoCountsWithInbox:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestBulkMoveTodosValueError:
     """POST /api/v1/todos/bulk/move — ValueError returns 400."""
 
@@ -1364,7 +1339,6 @@ class TestBulkMoveTodosValueError:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestCreateTodoValueError:
     """POST /api/v1/todos — ValueError returns 400."""
 
@@ -1383,7 +1357,6 @@ class TestCreateTodoValueError:
 # ===========================================================================
 
 
-@pytest.mark.unit
 class TestGenerateWorkflowRegeneration:
     """POST /api/v1/todos/{todo_id}/workflow — regeneration of empty workflow."""
 
