@@ -183,7 +183,9 @@ def _seed_project(
     traces = [
         CaseTrace.from_record(
             run_id,
-            _with_resolved_token_source(record, meta.suite if meta else ""),
+            _with_adopted_rescore(
+                _with_resolved_token_source(record, meta.suite if meta else ""), run_id
+            ),
             prices,
             suite=meta.suite if meta else "",
             app_version=meta.app_version if meta else "",
@@ -205,6 +207,37 @@ def _seed_project(
             print(f"[seed] {project}/{trace.run_id}/{trace.case_id}: {type(e).__name__}: {e}")
     opiksink.flush(project)
     print(f"[seed] {project:<18} runs={len(run_ids):<3} {written} written · {failed} failed")
+
+
+_RESCORE_CACHE: dict[str, dict[str, dict[str, Any]]] = {}
+
+
+def _with_adopted_rescore(record: dict[str, Any], run_id: str) -> dict[str, Any]:
+    """Adopt a rescore sibling's verdict for this case, if one exists.
+
+    Re-scoring never rewrites the append-only journal; it records corrected
+    verdicts in ``rescore.json`` beside it. Without adoption those corrections
+    stayed on disk while Opik and every dashboard kept showing verdicts the
+    gate fixes had already overturned. Adoption is visible: the trace metadata
+    gains ``rescored: true`` so a reader can tell a re-graded verdict from an
+    original one.
+    """
+    if run_id not in _RESCORE_CACHE:
+        sibling = RUNS_DIR / run_id / "rescore.json"
+        by_case: dict[str, dict[str, Any]] = {}
+        if sibling.exists():
+            for entry in json.loads(sibling.read_text()).get("cases", []):
+                by_case[str(entry["case_id"])] = entry
+        _RESCORE_CACHE[run_id] = by_case
+    entry = _RESCORE_CACHE[run_id].get(str(record.get("case_id")))
+    if entry is None or entry["was"] == entry["now"]:
+        return record
+    return {
+        **record,
+        "status": entry["now"],
+        "scores": entry.get("new_scores") or record.get("scores"),
+        "rescored": True,
+    }
 
 
 def _with_resolved_token_source(record: dict[str, Any], suite: str) -> dict[str, Any]:

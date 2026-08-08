@@ -125,6 +125,10 @@ class CaseTrace:
     """What the agent actually did, straight from the journal. Rendered as one
     ``tool`` span per call so a reader inspecting a failed case in Opik sees the
     calls, not just the final text."""
+    rescored: bool = False
+    """True when this verdict was adopted from a rescore sibling rather than
+    the original run — visible so a re-graded verdict is never mistaken for an
+    original one."""
 
     @property
     def name(self) -> str:
@@ -162,6 +166,7 @@ class CaseTrace:
             # category has to travel with it, not stay behind in the journal.
             "category": self.category,
             "ticket": self.ticket,
+            "rescored": self.rescored,
             "duration_s": round(self.duration_s, 2),
             "tokens": self.tokens_in + self.tokens_out,
             "tokens_in": self.tokens_in,
@@ -280,6 +285,7 @@ class CaseTrace:
             error=record.get("error") or "",
             ended_at=_parse_ts(record.get("ts")),
             tool_calls=tuple(record.get("tool_calls") or []),
+            rescored=bool(record.get("rescored")),
         )
 
 
