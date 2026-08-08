@@ -1,104 +1,104 @@
 {
   "suite": "quality",
-  "run_id": "quality-20260808-092651-963ed0",
-  "app_version": "",
-  "baseline_accuracy": 0.86,
-  "graded": 100,
-  "errored": 2,
+  "run_id": "quality-20260808-125831-de229a",
+  "app_version": "api-v0.17.0-341-gee0412b38-dirty",
+  "baseline_accuracy": 0.725,
+  "graded": 200,
+  "errored": 1,
   "per_category": {
     "ambiguity": [
-      1,
-      1
+      5,
+      8
     ],
     "bubbles": [
-      11,
+      9,
       11
     ],
     "correction": [
-      1,
-      1
+      6,
+      8
     ],
     "delegation": [
       6,
       11
     ],
     "emotional": [
-      1,
-      1
+      5,
+      8
     ],
     "everyday": [
-      4,
-      4
+      7,
+      8
     ],
     "finance": [
-      3,
-      3
+      6,
+      8
     ],
     "fitness": [
       3,
-      3
+      8
     ],
     "followup": [
-      1,
-      2
-    ],
-    "food": [
-      3,
-      3
-    ],
-    "health": [
-      2,
-      2
-    ],
-    "language": [
-      1,
-      1
-    ],
-    "legal": [
-      2,
-      2
-    ],
-    "multiturn": [
-      6,
-      7
-    ],
-    "openui": [
-      8,
-      10
-    ],
-    "overrefusal": [
-      5,
-      5
-    ],
-    "parenting": [
-      2,
-      2
-    ],
-    "refusal": [
       8,
       8
     ],
+    "food": [
+      7,
+      8
+    ],
+    "health": [
+      6,
+      8
+    ],
+    "language": [
+      8,
+      8
+    ],
+    "legal": [
+      4,
+      8
+    ],
+    "multiturn": [
+      7,
+      8
+    ],
+    "openui": [
+      8,
+      11
+    ],
+    "overrefusal": [
+      8,
+      8
+    ],
+    "parenting": [
+      6,
+      8
+    ],
+    "refusal": [
+      13,
+      15
+    ],
     "session": [
-      1,
-      1
+      5,
+      7
     ],
     "tone": [
-      9,
+      5,
       9
     ],
     "tool": [
-      2,
-      4
+      3,
+      8
     ],
     "travel": [
-      3,
-      3
+      6,
+      8
     ],
     "voice": [
-      3,
-      6
+      4,
+      8
     ]
   },
-  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "provisional": null,
   "captured_at": "2026-08-08"
 }

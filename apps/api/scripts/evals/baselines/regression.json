@@ -1,7 +1,7 @@
 {
   "suite": "regression",
-  "run_id": "regression-20260808-001924-b0cb16",
-  "app_version": "",
+  "run_id": "regression-20260808-162115-902b92",
+  "app_version": "api-v0.17.0-345-gad824912a-dirty",
   "baseline_accuracy": 1.0,
   "graded": 5,
   "errored": 0,
@@ -23,6 +23,6 @@
       1
     ]
   },
-  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "provisional": null,
   "captured_at": "2026-08-08"
 }

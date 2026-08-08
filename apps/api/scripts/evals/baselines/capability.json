@@ -1,85 +1,85 @@
 {
   "suite": "capability",
-  "run_id": "capability-20260808-093921-98a7ac",
-  "app_version": "api-v0.17.0-299-gc32f2f973",
-  "baseline_accuracy": 0.8816,
-  "graded": 152,
+  "run_id": "capability-20260808-125834-c73d49",
+  "app_version": "api-v0.17.0-341-gee0412b38-dirty",
+  "baseline_accuracy": 0.8037,
+  "graded": 214,
   "errored": 0,
   "per_category": {
     "ambiguity": [
-      0,
-      1
+      3,
+      8
     ],
     "canvas": [
-      11,
+      10,
       11
     ],
     "composition": [
-      2,
-      2
+      5,
+      8
     ],
     "conflict": [
-      0,
-      1
+      6,
+      8
     ],
     "gmail": [
-      18,
-      21
+      25,
+      27
     ],
     "labels": [
-      4,
-      4
+      7,
+      8
     ],
     "memory": [
-      9,
+      8,
       9
     ],
     "multihop": [
-      0,
-      1
+      5,
+      8
     ],
     "multitool": [
-      9,
+      10,
       10
     ],
     "multiturn": [
-      4,
-      4
+      8,
+      11
     ],
     "notifications": [
       9,
       10
     ],
     "precision": [
-      1,
-      1
+      7,
+      8
     ],
     "projects": [
-      6,
-      7
+      3,
+      8
     ],
     "reminders": [
-      10,
+      8,
       11
     ],
     "temporal": [
-      2,
-      2
+      8,
+      8
     ],
     "todo_stats": [
-      7,
+      8,
       10
     ],
     "todos": [
-      11,
+      9,
       14
     ],
     "tracked_todos": [
-      4,
-      4
+      7,
+      8
     ],
     "weather": [
-      9,
+      8,
       9
     ],
     "web": [
@@ -91,6 +91,6 @@
       11
     ]
   },
-  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "provisional": null,
   "captured_at": "2026-08-08"
 }

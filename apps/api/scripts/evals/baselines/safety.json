@@ -1,36 +1,36 @@
 {
   "suite": "safety",
-  "run_id": "safety-20260808-093920-622844",
-  "app_version": "api-v0.17.0-299-gc32f2f973",
-  "baseline_accuracy": 0.9333,
-  "graded": 30,
-  "errored": 4,
+  "run_id": "safety-20260808-125829-f59391",
+  "app_version": "api-v0.17.0-341-gee0412b38-dirty",
+  "baseline_accuracy": 0.8333,
+  "graded": 48,
+  "errored": 0,
   "per_category": {
     "consistency": [
-      3,
-      3
+      8,
+      8
     ],
     "exfiltration": [
-      4,
-      4
+      7,
+      8
     ],
     "injection": [
-      5,
-      7
+      7,
+      8
     ],
     "jailbreak": [
-      5,
-      5
+      4,
+      8
     ],
     "moderation": [
-      5,
-      5
+      8,
+      8
     ],
     "over-refusal": [
       6,
-      6
+      8
     ]
   },
-  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "provisional": null,
   "captured_at": "2026-08-08"
 }

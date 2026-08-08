@@ -1,17 +1,17 @@
 {
   "suite": "memory",
-  "run_id": "memory-20260808-100004-859995",
-  "app_version": "api-v0.17.0-303-gdf1027233",
-  "baseline_accuracy": 0.7556,
+  "run_id": "memory-20260808-141758-ece13d",
+  "app_version": "api-v0.17.0-343-g6fc5c9ed8-dirty",
+  "baseline_accuracy": 0.8222,
   "graded": 45,
   "errored": 0,
   "per_category": {
     "CONTRADICTION_UPDATE": [
-      3,
+      2,
       5
     ],
     "DISTRACTOR_ROBUSTNESS": [
-      2,
+      3,
       4
     ],
     "IDENTITY_MAPPINGS": [
@@ -19,7 +19,7 @@
       3
     ],
     "INDIRECT_PARAPHRASE": [
-      4,
+      5,
       5
     ],
     "KNOWLEDGE_GRAPH": [
@@ -35,18 +35,18 @@
       4
     ],
     "PREFERENCE_PERSISTENCE": [
-      3,
+      4,
       5
     ],
     "SINGLE_HOP": [
-      3,
+      5,
       5
     ],
     "TEMPORAL_REASONING": [
-      3,
+      2,
       5
     ]
   },
-  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "provisional": null,
   "captured_at": "2026-08-08"
 }

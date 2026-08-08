@@ -1,32 +1,32 @@
 {
   "suite": "comms",
-  "run_id": "comms-20260808-092648-b9c7da",
-  "app_version": "",
-  "baseline_accuracy": 0.875,
-  "graded": 32,
+  "run_id": "comms-20260808-122304-74360a",
+  "app_version": "api-v0.17.0-334-g3b80608f2-dirty",
+  "baseline_accuracy": 0.9,
+  "graded": 40,
   "errored": 0,
   "per_category": {
     "clarify": [
-      4,
-      6
+      6,
+      8
     ],
     "context": [
-      5,
-      6
+      7,
+      8
     ],
     "delegation": [
-      7,
-      7
+      8,
+      8
     ],
     "honesty": [
-      6,
-      6
+      8,
+      8
     ],
     "smalltalk": [
-      6,
-      7
+      7,
+      8
     ]
   },
-  "provisional": "recorded against a native API with NO JuiceFS mount, so the agent had no file ops, sandbox or artifact streaming; from journals whose per-case token accounting predates the per-case meter; and before infrastructure faults were separated from wrong answers. Re-record from a run on a fully provisioned stack before trusting any comparison.",
+  "provisional": null,
   "captured_at": "2026-08-08"
 }
