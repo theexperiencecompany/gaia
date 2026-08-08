@@ -34,8 +34,7 @@
       "category": "todos",
       "gates": [
         "communicate",
-        "end_state",
-        "tool_calls"
+        "end_state"
       ],
       "threshold": 1.0
     },

@@ -38,6 +38,7 @@ at finalize time (1 call per case).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -240,7 +241,13 @@ class ChatStreamTransport:
         provider: ProviderConfig,
     ) -> CaseRun:
         del cfg
-        turns = [t.strip() for t in case.prompt.split(TURN_SEPARATOR) if t.strip()]
+        deadline = float(os.environ.get("EVALS_CASE_TIMEOUT_S", "300"))
+        setup_turns = case.setup.get("turns") if isinstance(case.setup, dict) else None
+        turns = (
+            [str(t) for t in setup_turns]
+            if setup_turns
+            else [t.strip() for t in case.prompt.split(TURN_SEPARATOR) if t.strip()]
+        )
         if not turns:
             raise ProviderError(provider.name, "case prompt has no turns")
         transcript: list[dict[str, str]] = []
@@ -253,28 +260,31 @@ class ChatStreamTransport:
         start = time.monotonic()
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                await self._ensure_user(client, provider)
-                for index, turn_text in enumerate(turns):
-                    turn_id = f"quality-{case.id}-{index}-{uuid.uuid4().hex[:6]}"
-                    payload: TurnPayload = {
-                        "message": turn_text,
-                        "conversation_id": conversation_id,
-                        "messages": transcript + [{"role": "user", "content": turn_text}],
-                        "turn_id": turn_id,
-                    }
-                    turn = await self._stream_turn(client, payload, provider)
-                    conversation_id = turn["conversation_id"] or conversation_id
-                    transcript.append({"role": "user", "content": turn_text})
-                    if turn["text"]:
-                        transcript.append({"role": "assistant", "content": turn["text"]})
-                    text_parts.append(turn["text"])
-                    tool_calls.extend(turn["tool_calls"])
-                    raw.extend(turn["raw"])
-                    if turn["error"]:
-                        error = error or turn["error"]
-                    if turn["follow_up_actions"] is not None:
-                        follow_up_actions = turn["follow_up_actions"]
+            async with asyncio.timeout(deadline):
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    await self._ensure_user(client, provider)
+                    for index, turn_text in enumerate(turns):
+                        turn_id = f"quality-{case.id}-{index}-{uuid.uuid4().hex[:6]}"
+                        payload: TurnPayload = {
+                            "message": turn_text,
+                            "conversation_id": conversation_id,
+                            "messages": transcript + [{"role": "user", "content": turn_text}],
+                            "turn_id": turn_id,
+                        }
+                        turn = await self._stream_turn(client, payload, provider)
+                        conversation_id = turn["conversation_id"] or conversation_id
+                        transcript.append({"role": "user", "content": turn_text})
+                        if turn["text"]:
+                            transcript.append({"role": "assistant", "content": turn["text"]})
+                        text_parts.append(turn["text"])
+                        tool_calls.extend(turn["tool_calls"])
+                        raw.extend(turn["raw"])
+                        if turn["error"]:
+                            error = error or turn["error"]
+                        if turn["follow_up_actions"] is not None:
+                            follow_up_actions = turn["follow_up_actions"]
+        except TimeoutError:
+            error = f"case timed out after {deadline:.0f}s"
         except httpx.HTTPError as e:
             raise ProviderError(provider.name, f"chat-stream transport failed: {e}") from e
 
@@ -441,6 +451,7 @@ class QualitySuite(Suite):
                         prompt=row.pop("prompt", ""),
                         expected=expected,
                         tags=row.pop("tags", []),
+                        setup=row,
                     )
                 )
         if not cases:

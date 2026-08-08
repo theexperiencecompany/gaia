@@ -41,9 +41,9 @@ class LongMemEvalSuite(Suite):
                 "Download the oracle JSONL (longmemeval_oracle.json) there and re-run."
             )
         with DEFAULT_DATASET.open() as f:
-            items = [json.loads(line) for line in f if line.strip()]
-        self._items = items
-        return items
+            data = json.load(f)
+        self._items = data if isinstance(data, list) else []
+        return self._items
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg
@@ -85,8 +85,8 @@ class LongMemEvalSuite(Suite):
     async def _run_question(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
         from scripts.memory_benchmark import longmemeval as lme
 
-        await lme.init_postgresql_engine()
-        await lme.init_chroma()
+        lme.init_postgresql_engine()
+        lme.init_chroma()
         lme.register_llm_providers()
 
         import app.memory.extraction as extraction_mod

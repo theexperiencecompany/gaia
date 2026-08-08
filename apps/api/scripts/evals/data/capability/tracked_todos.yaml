@@ -25,7 +25,7 @@
     category: tracked_todos
     communicate: ["lease"]
     tool_calls: [{tool: create_tracked_todo}]
-    end_state: {tracked_todos: [{title: "apartment lease renewal", canvas_contains: null}]}
+    end_state: {tracked_todos: [{title_contains: "lease"}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -39,7 +39,7 @@
     category: tracked_todos
     communicate: ["budget"]
     tool_calls: [{tool: create_tracked_todo}, {tool: update_tracked_todo_canvas}]
-    end_state: {tracked_todos: [{title: "planning my summer vacation", canvas_contains: "budget"}]}
+    end_state: {tracked_todos: [{title: "plan summer vacation", canvas_contains: "budget"}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:

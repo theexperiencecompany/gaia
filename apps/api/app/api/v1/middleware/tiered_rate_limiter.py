@@ -27,6 +27,7 @@ from app.config.rate_limits import (
     get_reset_time,
     get_time_window_key,
 )
+from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.db.redis import redis_cache
 from app.models.payment_models import PlanType
@@ -100,6 +101,8 @@ class TieredRateLimiter:
         Raises ``RateLimitExceededException`` when any window is exhausted or
         the user's plan has no access to the feature at all.
         """
+        if settings.DEV_UNLIMITED_RATE_LIMITS:
+            return {}
         current_limits = get_limits_for_plan(feature_key, user_plan)
         usage_info = {}
 

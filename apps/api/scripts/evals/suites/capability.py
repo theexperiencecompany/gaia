@@ -234,7 +234,10 @@ def _match_query(message: _CorpusMessage, query: str) -> bool:
     if not tokens:
         return True
     haystack = f"{message.sender} {message.subject} {message.body}".lower()
-    for token in tokens:
+    for raw in tokens:
+        token = raw.strip("\"'()[]{}")
+        if not token or token in {"or", "and", "not"}:
+            continue
         if token.startswith("is:"):
             flag = token.split(":", 1)[1]
             if flag == "unread" and not message.unread:
@@ -706,13 +709,51 @@ def _to_messages(turns: list[str], bubbles: list[str]) -> list[dict[str, str]]:
     return messages
 
 
-async def _project_todos(user_id: str) -> list[dict[str, object]]:
+def _matched_title(
+    docs: list[object], title_term: str, title_contains: object
+) -> tuple[object | None, str | None]:
+    """The doc matching an expected entry's title, plus the term it matched on."""
+    if title_term:
+        match = next(
+            (d for d in docs if str(getattr(d, "title", "")).lower().strip() == title_term), None
+        )
+        return match, title_term
+    if title_contains is not None:
+        term = str(title_contains)
+        match = next(
+            (d for d in docs if term.lower() in str(getattr(d, "title", "")).lower()), None
+        )
+        return match, term
+    return None, None
+
+
+def _doc_text(doc: object) -> str:
+    parts: list[str] = []
+    for attr in ("title", "description", "canvas_content", "body"):
+        value = getattr(doc, attr, None)
+        if value:
+            parts.append(str(value))
+    return " ".join(parts).lower()
+
+
+async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, object]]:
     from app.services.todos.todo_service import get_all_todos
 
     todos = await get_all_todos(user_id)
-    return [
-        {"title": (t.title or "").lower().strip(), "completed": bool(t.completed)} for t in todos
-    ]
+    entries: list[dict[str, object]] = []
+    for item in want:
+        if not isinstance(item, dict):
+            raise RuntimeError(f"capability todos end_state entry is not a mapping: {item!r}")
+        match, matched_on = _matched_title(todos, str(item.get("title") or ""), item.get("title_contains"))
+        entry: dict[str, object] = {}
+        if "title" in item:
+            entry["title"] = str(item["title"]) if match is not None else ""
+        if "title_contains" in item:
+            entry["title_contains"] = matched_on if match is not None else None
+        if "completed" in item:
+            entry["completed"] = bool(getattr(match, "completed", False))
+        entries.append(entry)
+    return entries
 
 
 async def _project_tracked_todos(
@@ -725,33 +766,85 @@ async def _project_tracked_todos(
     for item in want:
         if not isinstance(item, dict):
             raise RuntimeError(f"capability tracked end_state entry is not a mapping: {item!r}")
-        title = str(item.get("title") or "")
-        term = item.get("canvas_contains")
-        term = str(term).lower() if term is not None else None
-        match = next((d for d in docs if d.title.lower().strip() == title), None)
-        canvas_contains: str | None = None
-        if match is not None and term is not None:
-            canvas = (match.canvas_content or "").lower()
-            canvas_contains = term if term in canvas else None
-        entries.append({"title": title, "canvas_contains": canvas_contains})
+        match, matched_on = _matched_title(docs, str(item.get("title") or ""), item.get("title_contains"))
+        entry: dict[str, object] = {}
+        if "title" in item:
+            entry["title"] = str(item["title"]) if match is not None else ""
+        if "title_contains" in item:
+            entry["title_contains"] = matched_on if match is not None else None
+        if "canvas_contains" in item:
+            term = item.get("canvas_contains")
+            if term is not None:
+                term = str(term)
+                canvas = (
+                    str(getattr(match, "canvas_content", "") or "").lower()
+                    if match is not None
+                    else ""
+                )
+                term = term if match is not None and term.lower() in canvas else None
+            entry["canvas_contains"] = term
+        purpose_term = item.get("purpose")
+        if purpose_term is not None:
+            term = str(purpose_term)
+            entry["purpose"] = term if match is not None and term.lower() in _doc_text(match) else None
+        entries.append(entry)
     return entries
 
 
-async def _project_reminders(user_id: str) -> list[dict[str, object]]:
+def _reminder_payload_title(item: object) -> str:
+    if isinstance(item, dict):
+        payload = item.get("payload")
+        if isinstance(payload, dict):
+            return str(payload.get("title") or "")
+        return str(getattr(payload, "title", None) or "")
+    payload = getattr(item, "payload", None)
+    if isinstance(payload, dict):
+        return str(payload.get("title") or "")
+    return str(getattr(payload, "title", None) or "")
+
+
+def _reminder_scheduled_at(item: object) -> str:
+    value = item.get("scheduled_at") if isinstance(item, dict) else getattr(item, "scheduled_at", None)
+    return str(value or "")
+
+
+async def _project_reminders(user_id: str, want: list[object]) -> list[dict[str, object]]:
     from app.services.reminder_service import reminder_scheduler
 
     items = await reminder_scheduler.list_user_reminders(user_id, limit=100)
-    titles: list[str] = []
-    for item in items:
-        if isinstance(item, dict):
-            payload = item.get("payload")
-            title = payload.get("title") if isinstance(payload, dict) else None
-        else:
-            payload = getattr(item, "payload", None)
-            title = payload.get("title") if isinstance(payload, dict) else getattr(payload, "title", None)
-        if title:
-            titles.append(str(title).lower().strip())
-    return [{"count": len(items), "titles": sorted(titles)}]
+    entries: list[dict[str, object]] = []
+    for item in want:
+        if not isinstance(item, dict):
+            raise RuntimeError(f"capability reminders end_state entry is not a mapping: {item!r}")
+        if "count" in item:
+            entries.append({"count": len(items)})
+            continue
+        title_term = str(item.get("title") or "")
+        title_contains = item.get("title_contains")
+        matched: object | None = None
+        if title_term:
+            matched = next(
+                (r for r in items if _reminder_payload_title(r).lower().strip() == title_term), None
+            )
+        elif title_contains is not None:
+            term = str(title_contains)
+            matched = next(
+                (r for r in items if term.lower() in _reminder_payload_title(r).lower()), None
+            )
+        entry: dict[str, object] = {}
+        if "title" in item:
+            entry["title"] = title_term if matched is not None else ""
+        if "title_contains" in item:
+            term = str(title_contains)
+            entry["title_contains"] = term if matched is not None else None
+        datetime_term = item.get("datetime_contains")
+        if datetime_term is not None:
+            term = str(datetime_term)
+            entry["datetime_contains"] = (
+                term if matched is not None and term in _reminder_scheduled_at(matched) else None
+            )
+        entries.append(entry)
+    return entries
 
 
 async def _project_workflows(user_id: str) -> list[dict[str, object]]:
@@ -778,13 +871,17 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
     projected: dict[str, object] = {}
     for key, want in wanted.items():
         if key == "todos":
-            projected[key] = await _project_todos(user_id)
+            if not isinstance(want, list):
+                raise RuntimeError(f"capability end_state key {key!r} must be a list")
+            projected[key] = await _project_todos(user_id, want)
         elif key == "tracked_todos":
             if not isinstance(want, list):
                 raise RuntimeError(f"capability end_state key {key!r} must be a list")
             projected[key] = await _project_tracked_todos(user_id, want)
         elif key == "reminders":
-            projected[key] = await _project_reminders(user_id)
+            if not isinstance(want, list):
+                raise RuntimeError(f"capability end_state key {key!r} must be a list")
+            projected[key] = await _project_reminders(user_id, want)
         elif key == "workflows":
             projected[key] = await _project_workflows(user_id)
         elif key == "answer_contains":
