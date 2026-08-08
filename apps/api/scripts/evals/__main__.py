@@ -89,6 +89,8 @@ def main() -> None:
         help="also collapse duplicate traces (slow: a delete costs ~3.5s on this backend)",
     )
 
+    sub.add_parser("flaky", help="cases whose verdict changes between runs (free, from journals)")
+
     sub.add_parser("dashboards", help="create/refresh the Opik dashboards (idempotent)")
 
     verify_p = sub.add_parser(
@@ -150,6 +152,10 @@ def main() -> None:
         from .core.dashboards import build
 
         build()
+    elif args.command == "flaky":
+        from .core.flaky import report
+
+        print(report(runner.RUNS_DIR))
     elif args.command == "verify":
         sys.exit(_verify(cfg, args.suite))
 

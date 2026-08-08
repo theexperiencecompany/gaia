@@ -1,0 +1,110 @@
+"""Find cases whose verdict changes between runs.
+
+The agent is non-deterministic, and every case is asked exactly once per run, so
+a suite score is one sample of a random process. A case that has both passed and
+failed across history is not noise to average away — it is a finding: an agent
+that does the right thing two thirds of the time is a real product problem, and
+a case that flips is one that cannot support a regression verdict.
+
+Computed entirely from journals already on disk, so it costs nothing.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from dataclasses import dataclass, field
+import json
+from pathlib import Path
+
+
+@dataclass
+class CaseHistory:
+    suite: str
+    case_id: str
+    passed: int = 0
+    failed: int = 0
+    errored: int = 0
+    runs: list[str] = field(default_factory=list)
+
+    @property
+    def graded(self) -> int:
+        return self.passed + self.failed
+
+    @property
+    def flaky(self) -> bool:
+        """Both outcomes observed for the same case, with nothing changed."""
+        return self.passed > 0 and self.failed > 0
+
+    @property
+    def pass_rate(self) -> float:
+        return self.passed / self.graded if self.graded else 0.0
+
+
+def history(runs_dir: Path) -> dict[tuple[str, str], CaseHistory]:
+    """Per-case outcomes across every run that is not excluded."""
+    seen: dict[tuple[str, str], CaseHistory] = {}
+    for run_dir in sorted(runs_dir.iterdir()):
+        meta_path, journal_path = run_dir / "run.json", run_dir / "journal.jsonl"
+        if not (run_dir.is_dir() and meta_path.exists() and journal_path.exists()):
+            continue
+        meta = json.loads(meta_path.read_text())
+        if meta.get("excluded"):
+            continue
+        suite = str(meta.get("suite", "?"))
+        # One verdict per case per run: a retry within a run supersedes rather
+        # than counting as a second observation.
+        latest: dict[str, str] = {}
+        for line in journal_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            latest[str(record["case_id"])] = str(record.get("status", ""))
+        for case_id, status in latest.items():
+            entry = seen.setdefault((suite, case_id), CaseHistory(suite, case_id))
+            if status == "passed":
+                entry.passed += 1
+            elif status == "failed":
+                entry.failed += 1
+            elif status == "errored":
+                entry.errored += 1
+            entry.runs.append(run_dir.name)
+    return seen
+
+
+def report(runs_dir: Path) -> str:
+    entries = history(runs_dir)
+    repeated = [e for e in entries.values() if e.graded >= 2]
+    flaky = sorted(
+        (e for e in repeated if e.flaky), key=lambda e: (e.pass_rate, e.suite, e.case_id)
+    )
+    lines = [
+        "",
+        "=" * 74,
+        f"FLAKY CASES  {len(flaky)} of {len(repeated)} cases seen more than once change verdict",
+        "=" * 74,
+    ]
+    if not repeated:
+        lines.append("  no case has been graded twice yet — run a suite again to build history")
+        return "\n".join(lines + [""])
+    if not flaky:
+        lines.append("  every repeated case agreed with itself")
+        return "\n".join(lines + [""])
+
+    by_suite: dict[str, int] = defaultdict(int)
+    for entry in flaky:
+        by_suite[entry.suite] += 1
+    lines.append("  by suite: " + " · ".join(f"{s} {n}" for s, n in sorted(by_suite.items())))
+    lines.append("")
+    lines.append(f"  {'suite':<12} {'case':<46} {'pass rate':>10}  observations")
+    for entry in flaky[:40]:
+        lines.append(
+            f"  {entry.suite:<12} {entry.case_id:<46} "
+            f"{entry.passed}/{entry.graded} = {entry.pass_rate:>4.0%}  "
+            f"{'errored ' + str(entry.errored) if entry.errored else ''}"
+        )
+    lines.append("")
+    lines.append(
+        "  A flaky case cannot support a regression verdict, and an agent that "
+        "works\n  only sometimes is a product finding rather than noise."
+    )
+    return "\n".join(lines + [""])
