@@ -261,8 +261,8 @@ The `observability` lane in `.github/workflows/code-quality.yml`:
 
 That makes the score a ratchet: legacy gaps don't block you, but the files you
 touch must leave the map at least as bright as you found them. The lane is
-enforced (`.github/quality-gate/enforced/observability`) — the backend reached
-100/100 before the marker was added.
+enforced — the backend reached 100/100 before the flat-enforced lanes model
+replaced the marker ratchet.
 
 ## Scope
 

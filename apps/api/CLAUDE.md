@@ -434,7 +434,7 @@ Tier summary (full table in `tests/CLAUDE.md`):
 
 - `tests/unit/` — fast, hermetic, everything mocked. Mirrors `app/` (new service fn → `unit/services/`, new endpoint → `unit/api/`).
 - `tests/integration/` — real production code, mocked infra. Wiring between components.
-- `tests/integration/real/` — real Postgres/Redis/Mongo, `USE_REAL_SERVICES=1` + Docker (`nx run api:test:service`).
+- `tests/integration/real/` — real Postgres/Redis/Mongo, `USE_REAL_SERVICES=1` + Docker (`nx run api:test:real`).
 - `tests/contracts/` — repository contracts against real Mongo + Redis (`nx run api:test:contracts`).
 - `tests/e2e/` — real compiled graphs, fake LLM via `_harness/` (`nx run api:test:e2e`).
 - `tests/stress/` / `tests/meta/` — race/retry battles, import-fence invariants (own targets).

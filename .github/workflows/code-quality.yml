@@ -848,7 +848,7 @@ jobs:
   # Dataflow SAST that bandit cannot do: follows user-controlled input into
   # URL fetches / file paths / subprocesses. ENFORCED: the findings it was
   # ratcheting against are burned down (apps/api/app is at 0 across 815 files),
-  # so the marker in .github/quality-gate/enforced/ is now set.
+  # and it is a flat-enforced lane in the quality-gate LANES array.
   #
   # Deliberately a whole-directory scan rather than diff-scoped like ruff/mypy:
   # a security lane that only looks at files a PR happens to touch stops

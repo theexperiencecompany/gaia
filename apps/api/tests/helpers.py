@@ -194,3 +194,57 @@ def skip_items_without_real_services(
     marker = pytest.mark.skip(reason=reason)
     for item in items:
         item.add_marker(marker)
+
+
+class AssertNumDbCalls:
+    """Assert exactly N SQL statements executed inside the block (Django's
+    assertNumQueries pattern).
+
+    Listens for SQLAlchemy ``before_cursor_execute`` on the given engine
+    (sync or async — the event fires on both) and asserts the count,
+    dumping every captured statement on mismatch so the accidental query is
+    visible, not just counted. ``warmup`` excludes the first statements that
+    only establish the pool, so a warm-up connection is never mistaken for
+    a query.
+    """
+
+    def __init__(self, expected: int, engine: Any, *, warmup: int = 0) -> None:
+        self.expected = expected
+        self.engine = engine
+        self.warmup = warmup
+        self.statements: list[str] = []
+
+    def _record(
+        self,
+        _conn: Any,
+        _cursor: Any,
+        statement: str,
+        _parameters: Any,
+        _context: Any,
+        _executemany: Any,
+    ) -> None:
+        self.statements.append(statement)
+
+    def __enter__(self) -> "AssertNumDbCalls":
+        from sqlalchemy import event
+
+        event.listen(self.engine, "before_cursor_execute", self._record)
+        return self
+
+    def __exit__(self, *_exc: Any) -> bool:
+        from sqlalchemy import event
+
+        event.remove(self.engine, "before_cursor_execute", self._record)
+        actual = max(0, len(self.statements) - self.warmup)
+        assert actual == self.expected, (
+            f"expected {self.expected} DB query(ies), got {actual}:\n"
+            + "\n".join(f"  {statement}" for statement in self.statements)
+        )
+        return False
+
+
+def assert_num_db_calls(expected: int, engine: Any, *, warmup: int = 0) -> AssertNumDbCalls:
+    """Context manager: fail if the block runs anything but ``expected`` SQL
+    statements against ``engine``. Attach to a real engine at the repository
+    layer — N+1 and accidental-query regressions die here."""
+    return AssertNumDbCalls(expected, engine, warmup=warmup)
