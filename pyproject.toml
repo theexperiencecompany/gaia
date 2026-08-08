@@ -335,11 +335,6 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# E402: standalone maintenance scripts must run code before importing app.* —
-# the sys.path bootstrap (and payment_setup's Infisical secret injection, which
-# must precede the settings import) structurally forces module-level code above
-# imports. One reviewable ignore instead of a # noqa on every import line.
-"apps/api/scripts/**" = ["E402"]
 # ARG001: Composio's Modifier.apply() always calls before/after/schema hooks
 # positionally as modifier(tool, toolkit, data) — every @register_*_hook function
 # must keep that exact 3-arg shape regardless of whether a given hook branches on

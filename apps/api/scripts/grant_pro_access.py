@@ -34,11 +34,11 @@ except Exception as e:
 backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
-from motor.motor_asyncio import AsyncIOMotorClient
-import redis.asyncio as aioredis
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: E402
+import redis.asyncio as aioredis  # noqa: E402
 
-from app.config.settings import settings
-from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX
+from app.config.settings import settings  # noqa: E402
+from app.constants.cache import SUBSCRIPTION_PLAN_CACHE_PREFIX  # noqa: E402
 
 DEV_SUBSCRIPTION_PREFIX = "dev_"
 
