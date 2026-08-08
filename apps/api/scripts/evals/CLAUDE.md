@@ -21,10 +21,17 @@ Categories it reports:
 | verdict | meaning |
 |---|---|
 | BROKEN | a run producing NOTHING scored a pass. Always a defect. |
+| INERT | declares a gate its suite never scores. The case can never PASS. |
 | ungated | no gate and no judge criteria — nothing can fail it. |
 | judge-only | no runtime gate; graded only when a run finalizes. Weak. |
 | content-blind | passes an echo. Fine for a structural/absence case, not for a content one. |
 | weak | one gate is fakeable, but another still catches the run. |
+
+INERT is the mirror of BROKEN and was invisible until it bit us. `runner`
+reads a declared gate back with `scores.get(gate, 0.0)`, so a gate the suite
+never computes is a permanent 0.0 — the case is red whatever the agent did, and
+the sweep called it *proven*, because an unscored gate rejects every forgery
+too. `verify` now also asks whether each gate can go GREEN.
 
 ## Writing an assertion
 
@@ -56,9 +63,22 @@ least zero calls", which no run can fail — the loader rejects it.
 Declare them in `expected.score.gates`. A case passes only when **every** gate
 passes, so one strong gate beside a weak one still fails correctly.
 
-Available: `communicate`, `must_not_communicate`, `tool_call_correctness`,
-`no_forbidden_tools`, `delegation`, `end_state`, `bubble_boundary`,
-`emoji_discipline`, `openui`.
+**`gates: []` is an auto-PASS.** `_status_from_scores` returns `passed` the
+moment the list is empty — it never looks at a score. Judge criteria alone do
+not gate anything at runtime. Every case declares at least one real gate.
+
+Every gate lives once, in `core/gates.py`, and every suite dispatches through
+it: `communicate`, `must_not_communicate`, `tool_call_correctness`,
+`no_forbidden_tools`, `delegation`, `end_state`, `bubble_boundary`. A suite may
+add its own in `EXTRA_GATES` — quality contributes `tool_card`,
+`emoji_discipline`, `suggestion`, `openui` and the prompt-derived absolutes;
+capability contributes `no_unauthorized_send`.
+
+**A gate name nothing implements fails at load time**, by case id, before a
+single model call is spent. It used to be a silent 0.0 that read as the agent
+getting the answer wrong — capability re-implemented three gate names inline, so
+a case declaring `no_forbidden_tools` was permanently red and its whole category
+reported 0%.
 
 **Prefer a mechanical gate to the judge.** If a prompt rule is stated as an
 absolute — "never", "always", a named list — it is almost certainly checkable in

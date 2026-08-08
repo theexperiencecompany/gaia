@@ -22,6 +22,7 @@ Nothing here calls a model or a database, so it belongs in CI.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -62,6 +63,7 @@ class CaseVerdict:
     suite: str
     fooled: dict[str, list[str]]  # gate name -> forgery labels that fooled it
     gates: list[str]
+    inert: list[str] = field(default_factory=list)  # declared, but the suite scores nothing
     passed_wholesale: list[str] = field(default_factory=list)  # forgeries that passed every gate
     parroted: list[str] = field(
         default_factory=list
@@ -70,7 +72,7 @@ class CaseVerdict:
 
     @property
     def ok(self) -> bool:
-        return not self.fooled and not self.error
+        return not self.fooled and not self.error and not self.inert
 
     @property
     def unfalsifiable(self) -> bool:
@@ -126,6 +128,36 @@ def _echo_run(case: Case) -> CaseRun:
         tool_calls=[],
         end_state={},
         text=case.prompt,
+    )
+
+
+def _self_scored(suite: Scorable) -> frozenset[str]:
+    """Gates the suite computes from its transport's own end state.
+
+    A benchmark verdict — ``gaia_exact``, ``probes`` — is derived from a payload
+    only a real run of that suite produces, so a synthetic run legitimately
+    yields nothing for it and its absence here is not evidence of a defect.
+    Those names are covered instead by ``gates.validate_gates`` at load time.
+    """
+    extra = getattr(suite, "EXTRA_GATES", None)
+    if not isinstance(extra, Mapping):
+        return frozenset()
+    return frozenset(name for name, scorer in extra.items() if scorer is None)
+
+
+def _plausible_run(case: Case) -> CaseRun:
+    """A run that did plenty of everything, used only to ask whether each
+    declared gate produces a value. Its scores are never judged — only the
+    presence of the keys is."""
+    return CaseRun(
+        case_id=case.id,
+        messages=[
+            {"role": "user", "content": case.prompt},
+            {"role": "assistant", "content": "an answer with real content in it"},
+        ],
+        tool_calls=[{"name": "create_todo", "args": {"title": "something"}}],
+        end_state={"verdict": "refuse"},
+        text="an answer with real content in it",
     )
 
 
@@ -189,6 +221,19 @@ def check_case(suite: Scorable, case: Case) -> CaseVerdict:
     )
     if not verdict.gates:
         return verdict
+    # The blind spot this check closes: a gate the suite never scores rejects
+    # every forgery, so it looks PROVEN while being incapable of passing —
+    # `_status_from_scores` reads a missing gate back as 0.0. Ask the opposite
+    # question first: on a run that did plenty of everything, does each declared
+    # gate produce a value at all?
+    try:
+        scored = suite.score(case, _plausible_run(case))
+        verdict.inert = [
+            gate for gate in case.gates if gate not in scored and gate not in _self_scored(suite)
+        ]
+    except Exception as e:
+        verdict.error = f"plausible: {type(e).__name__}: {e}"
+        return verdict
     for forgery in forgeries(case):
         try:
             scores = suite.score(case, forgery.run)
@@ -215,11 +260,23 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
     ungated = [v for v in verdicts if v.ungated]
     judge_only = [v for v in verdicts if v.judge_only]
     errored = [v for v in verdicts if v.error]
+    inert = [v for v in verdicts if v.inert]
     broken = [v for v in verdicts if v.unfalsifiable and not v.ungated]
-    blind = [v for v in verdicts if v.content_blind and not v.ungated]
-    weak = [v for v in verdicts if v.fooled and not v.unfalsifiable and not v.content_blind]
+    blind = [v for v in verdicts if v.content_blind and not v.ungated and not v.inert]
+    weak = [
+        v
+        for v in verdicts
+        if v.fooled and not v.unfalsifiable and not v.content_blind and not v.inert
+    ]
     solid = (
-        total - len(ungated) - len(judge_only) - len(errored) - len(broken) - len(blind) - len(weak)
+        total
+        - len(ungated)
+        - len(judge_only)
+        - len(errored)
+        - len(inert)
+        - len(broken)
+        - len(blind)
+        - len(weak)
     )
     cannot_fail = len(broken) + len(ungated)
 
@@ -229,6 +286,8 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
         f"FALSIFIABILITY  {cannot_fail}/{total} cases CANNOT FAIL — a worthless run would pass them",
         "=" * 74,
         f"  {len(broken):>4}  BROKEN   — a run that produced NOTHING scored a pass",
+        f"  {len(inert):>4}  INERT    — declares a gate its suite never scores, so the runner",
+        "        reads it back as 0.0: the case can never PASS, whatever the agent did",
         f"  {len(ungated):>4}  ungated  — no gate and no judge criteria: nothing can fail it",
         f"  {len(judge_only):>4}  judge-only — no runtime gate; graded only when a run finalizes",
         f"  {len(blind):>4}  content-blind — passes a reply that only parrots the prompt;",
@@ -237,6 +296,12 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
         f"  {solid:>4}  proven   — every gate rejected every forgery",
         f"  {len(errored):>4}  errored  — the scorer raised on a worthless run",
     ]
+    if inert:
+        lines.append("\nINERT gates (the case cannot pass — fix the suite or the gate name):")
+        for verdict in inert[:20]:
+            lines.append(
+                f"  {verdict.suite:<12} {verdict.case_id:<46} never scored: {','.join(verdict.inert)}"
+            )
     if broken:
         lines.append("\nBROKEN cases (these are the ones that matter):")
         for verdict in broken[:40]:
@@ -272,6 +337,7 @@ def format_report(verdicts: list[CaseVerdict]) -> str:
 def summary_counts(verdicts: list[CaseVerdict]) -> dict[str, Any]:
     return {
         "total": len(verdicts),
+        "inert": len([v for v in verdicts if v.inert]),
         "broken": len([v for v in verdicts if v.unfalsifiable and not v.ungated]),
         "content_blind": len([v for v in verdicts if v.content_blind and not v.ungated]),
         "weak": len([v for v in verdicts if v.fooled and not v.unfalsifiable]),

@@ -261,7 +261,7 @@ def _verify(cfg: object, only: str | None) -> int:
 
     print(format_report(verdicts))
     counts = summary_counts(verdicts)
-    return 1 if counts["broken"] or counts["errored"] else 0
+    return 1 if counts["broken"] or counts["errored"] or counts["inert"] else 0
 
 
 if __name__ == "__main__":

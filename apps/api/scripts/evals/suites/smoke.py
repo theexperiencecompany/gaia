@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.gates import score_gates, validate_gates
 from scripts.evals.core.providers import EvalConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun, ProviderError
@@ -60,6 +61,12 @@ class SmokeSuite(Suite):
 
     def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg
+        cases = self._cases()
+        for case in cases:
+            validate_gates(self.name, case.id, case.gates)
+        return cases
+
+    def _cases(self) -> list[Case]:
         return [
             Case(
                 id="smoke-1",
@@ -80,7 +87,10 @@ class SmokeSuite(Suite):
                     "tool_calls": [{"tool": "create_todo"}],
                     "end_state": {"todos": [{"title": "Buy milk"}]},
                     "communicate": ["milk"],
-                    "score": {"gates": ["end_state", "communicate"]},
+                    # tool_call_correctness was computed but not gated, so a run
+                    # that produced the todo by some other route scored green on
+                    # a case whose whole point is the tool.
+                    "score": {"gates": ["end_state", "communicate", "tool_call_correctness"]},
                 },
             ),
             Case(
@@ -99,32 +109,7 @@ class SmokeSuite(Suite):
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        from scripts.evals.core.scorers import (
-            CommunicateGate,
-            EndStateEquality,
-            ToolCallCorrectness,
-        )
-
-        scores = {}
-        if case.expected.get("communicate"):
-            scores["communicate"] = (
-                CommunicateGate()
-                .score(output=run.text, messages=run.messages, expected=case.expected)
-                .value
-            )
-        if case.expected.get("end_state"):
-            scores["end_state"] = (
-                EndStateEquality()
-                .score(output=run.text, end_state=run.end_state, expected=case.expected)
-                .value
-            )
-        if case.expected.get("tool_calls"):
-            scores["tool_call_correctness"] = (
-                ToolCallCorrectness()
-                .score(output=run.text, tool_calls=run.tool_calls, expected=case.expected)
-                .value
-            )
-        return scores
+        return score_gates(case, run)
 
     def finalize_scorers(self, cfg: EvalConfig) -> list:
         del cfg

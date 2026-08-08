@@ -4,13 +4,15 @@
 ``scores.get(gate, 0.0)``. So a case naming a gate its own scorer never emits is
 not "ungated" — it is permanently red, whatever the agent did.
 
-That shipped. ``CapabilitySuite.score()`` implements exactly ``communicate`` /
-``end_state`` / ``tool_call_correctness`` (plus the ``no_unauthorized_send``
-flag) instead of routing through ``core/gates.py``, and
-``hard-ambiguity-which-client`` declared ``no_forbidden_tools``. A perfect run of
-it — the agent asks which client and creates nothing — scored ``{}`` and was
-journaled ``failed``. The category had one case, so the whole category read 0%
-and the number was blamed on the agent.
+That shipped. ``CapabilitySuite.score()`` used to implement exactly
+``communicate`` / ``end_state`` / ``tool_call_correctness`` inline instead of
+routing through ``core/gates.py``, and ``hard-ambiguity-which-client`` declared
+``no_forbidden_tools``. A perfect run of it — the agent asks which client and
+creates nothing — scored ``{}`` and was journaled ``failed``. The category had
+one case, so the whole category read 0% and the number was blamed on the agent.
+Every suite now dispatches through the shared registry, and
+``gates.validate_gates`` rejects an unknown name at load time; these tests are
+what keeps both true.
 
 ``verify`` cannot see this class of defect: an unscored gate rejects every
 forgery, so the case reports as *proven* while being incapable of passing. The
@@ -24,6 +26,7 @@ The suites here are the ones whose ground truth lives in ``data/<suite>/*.yaml``
 from __future__ import annotations
 
 import pytest
+from scripts.evals.core.gates import validate_gates
 from scripts.evals.core.providers import EvalConfig, load_config
 from scripts.evals.core.runner import Suite
 from scripts.evals.core.types import Case, CaseRun
@@ -96,41 +99,89 @@ def test_the_check_can_actually_fail() -> None:
     assert "a_gate_no_suite_implements" not in scores
 
 
-def test_capability_gate_names_are_the_ones_the_suite_implements() -> None:
-    """Names the live set explicitly, so widening it is a deliberate edit.
+def test_an_unimplemented_gate_dies_at_load_time() -> None:
+    """The loud failure that replaced the silent 0.0.
 
-    ``no_forbidden_tools`` and ``must_not_communicate`` are NOT in it. They read
-    as ordinary gates in YAML and are silently inert here.
+    Discovering this at score time means the failure arrives after the model
+    calls are spent and looks exactly like the agent getting the answer wrong.
+    The message has to name the case and the known gates, because the person
+    reading it is looking at a red case and deciding whether to blame the agent.
     """
-    cfg = load_config()
+    with pytest.raises(ValueError) as raised:
+        validate_gates("capability", "some-case", ["a_gate_no_suite_implements"])
+    message = str(raised.value)
+    assert "some-case" in message
+    assert "a_gate_no_suite_implements" in message
+    assert "recorded as failed" in message
+
+
+def test_load_time_validation_accepts_a_suite_local_gate() -> None:
+    """Mutation guard: it must not reject every name it does not recognise.
+
+    ``no_unauthorized_send`` is capability's own; validation has to consult the
+    suite's ``EXTRA_GATES`` rather than the shared registry alone, or every
+    suite-specific gate becomes unusable.
+    """
     from scripts.evals.suites.capability import CapabilitySuite
 
-    suite = CapabilitySuite(cfg)
-    declared = {gate for case in suite.load_cases(cfg) for gate in case.gates}
-    assert declared <= {
-        "communicate",
-        "end_state",
-        "tool_call_correctness",
-        "no_unauthorized_send",
-    }, (
-        "a capability case declares a gate CapabilitySuite.score() does not compute. "
-        "Either score it there (ideally by routing through core/gates.py) or express "
-        "the claim with a gate that is computed."
+    validate_gates("capability", "c", ["no_unauthorized_send"], CapabilitySuite.EXTRA_GATES)
+    with pytest.raises(ValueError):
+        validate_gates("comms", "c", ["no_unauthorized_send"])
+
+
+class _SuiteThatForgetsAGate:
+    """A suite shaped exactly like the defect: declares a gate, never scores it."""
+
+    name = "pretend"
+
+    def score(self, case: Case, run: CaseRun) -> dict[str, float]:
+        del case, run
+        return {"communicate": 1.0}
+
+
+def test_verify_reports_a_gate_the_suite_never_scores() -> None:
+    """``verify``'s blind spot, closed.
+
+    Before this, an unscored gate rejected every forgery and the case was
+    reported as *proven* — the strongest verdict the tool has — while being
+    incapable of passing. The sweep now asks both questions.
+    """
+    from scripts.evals.core.counterfeit import check_case, summary_counts
+
+    case = Case(
+        id="pretend-inert-case",
+        ticket="t",
+        prompt="p",
+        expected={
+            "communicate": ["x"],
+            "must_not_call_tools": ["create_todo"],
+            "score": {"gates": ["communicate", "no_forbidden_tools"]},
+        },
     )
+    verdict = check_case(_SuiteThatForgetsAGate(), case)
+    assert verdict.inert == ["no_forbidden_tools"]
+    assert not verdict.ok
+    assert summary_counts([verdict])["inert"] == 1
 
 
-#: Cases that declare ``gates: []`` and are therefore recorded as PASSED
-#: unconditionally (``runner._status_from_scores`` returns early on an empty gate
-#: list). These are pre-existing — quality's original hard tier and its advice
-#: families were written judge-only, which is why those categories reported 100%
-#: on cases that could not fail. They are the same 43 ``verify`` reports as
-#: "judge-only", so the two tools agree on the number.
-#:
-#: This is a RATCHET, not a blessing. The debt is capped where it was found; a
-#: new auto-passing case fails this test. Lower the number as they are fixed.
+def test_a_suite_that_scores_what_it_declares_is_not_reported_inert() -> None:
+    """Mutation guard: the check must not flag every case as inert."""
+    from scripts.evals.core.counterfeit import check_case
+
+    cfg = load_config()
+    suite = next(s for s in _suites(cfg) if s.name == "comms")
+    case = suite.load_cases(cfg)[0]
+    assert check_case(suite, case).inert == []
+
+
+#: Cases declaring ``gates: []``, which ``runner._status_from_scores`` records as
+#: PASSED unconditionally. Held at zero: quality's hard tier and its advice
+#: families were all written judge-only, so those categories reported 100% on
+#: cases that could not fail. ``verify`` counts the same set as "judge-only", so
+#: the two tools agree.
 AUTOPASS_DEBT: dict[str, int] = {
     "capability": 0,
-    "quality": 43,
+    "quality": 0,
     "comms": 0,
     "safety": 0,
     "hil": 0,

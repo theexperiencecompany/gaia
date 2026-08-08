@@ -57,7 +57,7 @@ from pathlib import Path
 import re
 import string
 import sys
-from typing import Any
+from typing import Any, ClassVar
 import uuid
 import warnings
 
@@ -68,6 +68,7 @@ import pandas as pd
 from app.constants.files import CSV_MIME, DOCX_MIME, PDF_MIME, PPTX_MIME, XLSX_MIME
 from app.utils.upload_validation import ALLOWED_CONTENT_TYPES, MAX_UPLOAD_BYTES
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
+from scripts.evals.core.gates import SELF_SCORED, ExtraGates, validate_gates
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun
@@ -842,6 +843,11 @@ class GaiaBenchSuite(Suite):
     project = "gaia-bench"
     label = "GAIA-Bench"
 
+    #: Scored inside this suite's own ``score()`` from the transport's end
+    #: state, not through the shared dispatcher — a benchmark verdict, not a
+    #: reusable check. Declared so load-time validation knows the name is real.
+    EXTRA_GATES: ClassVar[ExtraGates] = {"gaia_exact": SELF_SCORED}
+
     def __init__(self, cfg: EvalConfig) -> None:
         del cfg
         self._cases: list[Case] | None = None
@@ -861,6 +867,8 @@ class GaiaBenchSuite(Suite):
                 _print_load_report(cases)
                 self._cases = _interleave_by_level(cases)
                 self._dataset_available = True
+            for case in self._cases:
+                validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
         return self._cases
 
     def transport(

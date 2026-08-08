@@ -42,18 +42,20 @@ at finalize time (1 call per case).
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import json
 import os
 from pathlib import Path
 import re
 import time
-from typing import Any
+from typing import Any, ClassVar
 import uuid
 
 import httpx
 import yaml
 
 from scripts.evals.core.cost import EvalCostTracker, estimate_tokens
+from scripts.evals.core.gates import ExtraGates, known_gates, score_gates, validate_gates
 from scripts.evals.core.prompt_contracts import ClauseResolutionError, contract_criteria
 from scripts.evals.core.prompt_gates import PROMPT_GATES
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
@@ -587,11 +589,105 @@ def _apply_openui_policy_criteria(case_id: str, expected: TurnPayload) -> None:
     judge["criteria"] = list(judge.get("criteria") or []) + derived
 
 
+def _reject_unfalsifiable_openui_gate(case: Case) -> None:
+    """``openui`` as a gate on a case declaring ``openui: false`` cannot go red.
+
+    ``OpenUICheck`` returns 1.0 without reading anything in that branch, so the
+    gate carries the authority of a hard check while being incapable of failing
+    — worse than no gate at all. Neither the forgery sweep nor the inert check
+    can see it: the gate does produce a value, it just always produces 1.0.
+    """
+    expected = case.expected
+    if "openui" in case.gates and not expected.get("openui"):
+        raise ValueError(
+            f"quality case {case.id}: gates 'openui' while declaring openui="
+            f"{expected.get('openui')!r}. OpenUICheck scores 1.0 unconditionally there, so the "
+            f"gate can never fail. Record it as a metric (drop it from score.gates), or set "
+            f"openui: true if a fence really is required."
+        )
+
+
+def _tool_card_gate(case: Case, run: CaseRun) -> float:
+    from scripts.evals.core.scorers import ToolCard
+
+    del case
+    return ToolCard().score(tool_calls=run.tool_calls, messages=run.messages, output=run.text).value
+
+
+def _openui_gate(case: Case, run: CaseRun) -> float:
+    from scripts.evals.core.scorers import OpenUICheck
+
+    return OpenUICheck().score(output=run.text, expected=case.expected).value
+
+
+def _recorded(
+    name: str, check: Callable[[CaseRun], tuple[float, str]]
+) -> Callable[[Case, CaseRun], float]:
+    """Adapt a ``(run) -> (value, reason)`` check to the gate signature.
+
+    The reason is journaled on the run so the report can explain a red gate;
+    that side effect is why these are not plain lambdas.
+    """
+
+    def gate(case: Case, run: CaseRun) -> float:
+        del case
+        value, reason = check(run)
+        run.raw.append({"type": f"{name}_check", "value": value, "reason": reason})
+        return value
+
+    return gate
+
+
+#: Gates this suite adds to the shared set in ``core/gates.py``. Everything else
+#: a case may declare comes from there, so a name means the same thing in every
+#: suite instead of being re-implemented here.
+QUALITY_GATES: ExtraGates = {
+    "tool_card": _tool_card_gate,
+    "openui": _openui_gate,
+    "emoji_discipline": _recorded("emoji", _emoji_discipline_check),
+    "suggestion": _recorded("suggestion", _suggestion_check),
+    **{name: _recorded(name, check) for name, check in PROMPT_GATES.items()},
+}
+
+#: Recorded on every case, gated or not. The prompt-derived ones are here
+#: because the prompt states each as an absolute with no exceptions — "NEVER use
+#: em dashes", the banned-phrase list, ONE ENTITY, the routing markers. A case
+#: does not opt in to a rule that applies to every reply, and their inputs are
+#: read out of the live prompt, so extending it extends the gate with no eval
+#: change.
+ALWAYS_SCORED: tuple[str, ...] = (
+    "bubble_boundary",
+    "tool_card",
+    "emoji_discipline",
+    *PROMPT_GATES,
+)
+
+#: A gate also recorded as a metric when the ``expected`` field that gives it
+#: meaning is present, even on a case that does not gate it.
+METRIC_WHEN_PRESENT: dict[str, str] = {
+    "communicate": "communicate",
+    "tool_call_correctness": "tool_calls",
+    "no_forbidden_tools": "must_not_call_tools",
+    "must_not_communicate": "must_not_communicate",
+    "delegation": "delegation",
+    "suggestion": "suggestions",
+    "openui": "openui",
+}
+
+#: ``openui: false`` is a real claim ("no fence belongs here") and is recorded,
+#: so this one keys on the field EXISTING rather than being truthy. Note it can
+#: only ever score 1.0 in that branch — which is why it is a metric here and
+#: must never be a case's gate.
+_PRESENCE_ONLY = frozenset({"openui"})
+
+
 @register_suite("quality")
 class QualitySuite(Suite):
     name = "quality"
     project = "gaia-quality"
     label = "Quality"
+
+    EXTRA_GATES: ClassVar[ExtraGates] = QUALITY_GATES
 
     def __init__(self, cfg: EvalConfig) -> None:
         del cfg
@@ -616,16 +712,17 @@ class QualitySuite(Suite):
                 seen_ids.add(case_id)
                 expected = row.pop("expected")
                 _apply_openui_policy_criteria(case_id, expected)
-                cases.append(
-                    Case(
-                        id=case_id,
-                        ticket=row.pop("ticket", ""),
-                        prompt=row.pop("prompt", ""),
-                        expected=expected,
-                        tags=row.pop("tags", []),
-                        setup=row.pop("setup", {}),
-                    )
+                case = Case(
+                    id=case_id,
+                    ticket=row.pop("ticket", ""),
+                    prompt=row.pop("prompt", ""),
+                    expected=expected,
+                    tags=row.pop("tags", []),
+                    setup=row.pop("setup", {}),
                 )
+                validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
+                _reject_unfalsifiable_openui_gate(case)
+                cases.append(case)
         if not cases:
             raise ValueError(f"no quality cases found in {DATA_DIR}")
         self._cases = cases
@@ -641,76 +738,27 @@ class QualitySuite(Suite):
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        from scripts.evals.core.scorers import (
-            BubbleBoundary,
-            CommunicateGate,
-            DelegationGate,
-            MustNotCommunicate,
-            NoForbiddenToolCalls,
-            OpenUICheck,
-            ToolCallCorrectness,
-            ToolCard,
-        )
+        """Suite metrics, then the declared gates through the shared dispatcher.
 
-        expected = case.expected
-        scores: dict[str, float] = {}
-        scores["bubble_boundary"] = BubbleBoundary().score(messages=run.messages).value
-        scores["tool_card"] = (
-            ToolCard()
-            .score(tool_calls=run.tool_calls, messages=run.messages, output=run.text)
-            .value
-        )
-        emoji_value, emoji_reason = _emoji_discipline_check(run)
-        scores["emoji_discipline"] = emoji_value
-        run.raw.append({"type": "emoji_check", "value": emoji_value, "reason": emoji_reason})
-        # Unconditional, like the three above, because the prompt states each of
-        # these as an absolute with no exceptions — "NEVER use em dashes", the
-        # banned-phrase list, ONE ENTITY, the routing markers. A case does not
-        # opt in to a rule that applies to every reply. Their inputs are read
-        # out of the live prompt (``core/prompt_gates``), so extending the
-        # prompt's banned-phrase list extends the gate with no eval change.
-        for gate_name, check in PROMPT_GATES.items():
-            value, reason = check(run)
-            scores[gate_name] = value
-            run.raw.append({"type": f"{gate_name}_check", "value": value, "reason": reason})
-        if expected.get("communicate"):
-            scores["communicate"] = (
-                CommunicateGate()
-                .score(output=run.text, messages=run.messages, expected=expected)
-                .value
+        The two are separate on purpose. A METRIC is recorded because the case
+        carries the field that gives it meaning, and it shows up in the report;
+        a GATE decides pass/fail. Routing the gates through ``score_gates``
+        guarantees every declared one has an entry — a missing key is read back
+        as 0.0 by the runner, which is how capability shipped a case that could
+        never pass.
+        """
+        available = known_gates(self.EXTRA_GATES)
+        scores = {name: available[name](case, run) for name in ALWAYS_SCORED}
+        for gate, field in METRIC_WHEN_PRESENT.items():
+            present = (
+                field in case.expected if gate in _PRESENCE_ONLY else bool(case.expected.get(field))
             )
-        if expected.get("tool_calls"):
-            scores["tool_call_correctness"] = (
-                ToolCallCorrectness()
-                .score(output=run.text, tool_calls=run.tool_calls, expected=expected)
-                .value
-            )
-        if expected.get("must_not_call_tools"):
-            scores["no_forbidden_tools"] = (
-                NoForbiddenToolCalls()
-                .score(output=run.text, tool_calls=run.tool_calls, expected=expected)
-                .value
-            )
-        if expected.get("must_not_communicate"):
-            scores["must_not_communicate"] = (
-                MustNotCommunicate()
-                .score(output=run.text, messages=run.messages, expected=expected)
-                .value
-            )
-        if expected.get("delegation"):
-            scores["delegation"] = (
-                DelegationGate()
-                .score(output=run.text, tool_calls=run.tool_calls, expected=expected)
-                .value
-            )
-        if expected.get("suggestions"):
-            value, reason = _suggestion_check(run)
-            scores["suggestion"] = value
-            run.raw.append({"type": "suggestion_check", "value": value, "reason": reason})
-        if "openui" in expected:
-            scores["openui"] = OpenUICheck().score(output=run.text, expected=expected).value
-        applied = list(scores.values())
-        scores["overall"] = round(sum(applied) / len(applied), 3) if applied else 0.0
+            if present:
+                scores[gate] = available[gate](case, run)
+        gate_scores = score_gates(case, run, self.EXTRA_GATES)
+        gate_scores.pop("overall", None)
+        scores.update(gate_scores)
+        scores["overall"] = round(sum(scores.values()) / len(scores), 3) if scores else 0.0
         return scores
 
     def finalize_scorers(self, cfg: EvalConfig) -> list:

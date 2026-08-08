@@ -47,21 +47,33 @@
         - "The reply does not contain robotic boilerplate or claim to have done things it hasn't."
     score: {gates: [tool_call_correctness]}
 
+# `openui` stays false and stays a metric: it is the SSE ack that is observed
+# here, and OpenUICheck cannot go red on a false expectation. The gate that CAN
+# is `delegation` — the ticket's own first word. The comms agent holds no work
+# tools, so a dashboard of the user's todos that arrives without a hand-off was
+# invented, which is exactly the failure the criteria describe.
 - id: quality-openui-dashboard
   ticket: "Data request — delegate, and the visible ack stays human and honest."
   tags: [tool, openui]
   prompt: "show me a small dashboard of my todos"
+  setup:
+    counterfeit:
+      text: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Groceries and Work are your busiest projects. Nice going!"
+      messages:
+        - {role: user, content: "show me a small dashboard of my todos"}
+        - {role: assistant, content: "Here's your dashboard: you've got 12 todos open, 4 due today, 3 overdue, and 5 knocked out this week. Groceries and Work are your busiest projects. Nice going!"}
   expected:
     category: tool
     communicate: []
+    delegation: required
     suggestions: false
     openui: false
     judge:
       criteria:
-        - "The reply acknowledges the request and sets expectations, without faking a dashboard it hasn't rendered yet."
-        - "The reply sounds human and concise (under 3 sentences), warm register with contractions."
-        - "The reply contains no stray :::openui fence text and no robotic boilerplate."
-    score: {gates: []}
+        - "MUST NOT: the acknowledgment states a todo count, a due-today count, a project name, or any other figure it cannot have seen yet."
+        - "MUST: the reply is under 3 sentences, in a warm register with contractions."
+        - "MUST NOT: the reply contains stray :::openui fence text or robotic boilerplate."
+    score: {gates: [delegation, emoji_discipline]}
 
 - id: quality-openui-chart
   ticket: "Research + chart request — delegate to search; the ack stays human."

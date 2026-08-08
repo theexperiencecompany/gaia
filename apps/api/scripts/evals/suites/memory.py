@@ -23,8 +23,10 @@ Opik finalize adds no judge cost.
 from __future__ import annotations
 
 import asyncio
+from typing import ClassVar
 
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.gates import SELF_SCORED, ExtraGates, validate_gates
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun
 
@@ -219,6 +221,11 @@ class MemorySuite(Suite):
     project = "gaia-memory"
     label = "Memory"
 
+    #: Scored inside this suite's own ``score()`` from the transport's end
+    #: state, not through the shared dispatcher — a benchmark verdict, not a
+    #: reusable check. Declared so load-time validation knows the name is real.
+    EXTRA_GATES: ClassVar[ExtraGates] = {"probes": SELF_SCORED}
+
     def __init__(self, cfg) -> None:
         del cfg
         self._scenarios: dict[str, dict] | None = None
@@ -251,6 +258,8 @@ class MemorySuite(Suite):
                     tags=[scenario["category"]],
                 )
             )
+        for case in cases:
+            validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
         return cases
 
     def transport(self, case: Case, cfg, tracker: EvalCostTracker, provider):

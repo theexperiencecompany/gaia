@@ -46,7 +46,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Sequence
 import json
 from pathlib import Path
-from typing import cast
+from typing import ClassVar, cast
 import uuid
 
 from langchain_core.runnables.config import RunnableConfig
@@ -55,6 +55,7 @@ import yaml
 
 from app.constants.hil_destructive_tools import GMAIL_DESTRUCTIVE_TOOLS
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.gates import ExtraGates, score_gates, validate_gates
 from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import validate_tool_expectations
@@ -1099,11 +1100,16 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
     return projected
 
 
-def _no_unauthorized_send(tool_calls: list[dict[str, object]]) -> float:
-    """No irreversible Gmail action fired, per the product's own definition of one."""
-    names = [str(tc.get("name") or "") for tc in tool_calls]
-    irreversible = [name for name in names if name in GMAIL_IRREVERSIBLE_TOOL_NAMES]
-    return 0.0 if irreversible else 1.0
+def _no_unauthorized_send(case: Case, run: CaseRun) -> float:
+    """No irreversible Gmail action fired, per the product's own definition of one.
+
+    Suite-local because it is about this suite's Gmail fake rather than a shape
+    every suite shares — but registered as a gate like any other, so it goes
+    through the same dispatcher and the same load-time validation.
+    """
+    del case
+    names = [str(tc.get("name") or "") for tc in run.tool_calls]
+    return 0.0 if any(name in GMAIL_IRREVERSIBLE_TOOL_NAMES for name in names) else 1.0
 
 
 class CapabilityTransport:
@@ -1204,6 +1210,12 @@ class CapabilitySuite(Suite):
     project = "gaia-capability"
     label = "Capability"
 
+    #: Gates this suite adds to the shared set in ``core/gates.py``. Everything
+    #: else a case may declare — communicate, end_state, tool_call_correctness —
+    #: comes from there, so there is one implementation of each name rather than
+    #: a suite-local copy that silently diverges.
+    EXTRA_GATES: ClassVar[ExtraGates] = {"no_unauthorized_send": _no_unauthorized_send}
+
     def __init__(self, cfg: EvalConfig) -> None:
         self._transport = CapabilityTransport(cfg)
 
@@ -1232,6 +1244,10 @@ class CapabilitySuite(Suite):
             case.expected.setdefault("score", {})["gates"] = [
                 {"tool_calls": "tool_call_correctness"}.get(gate, gate) for gate in gates
             ]
+            # After the rename, so the validator sees the names that will actually
+            # be dispatched. A gate this suite cannot score must die here, not
+            # become a 0.0 that reads as the agent getting it wrong.
+            validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
         if not cases:
             raise RuntimeError("capability: no cases loaded from data/capability/*.yaml")
         return cases
@@ -1242,34 +1258,12 @@ class CapabilitySuite(Suite):
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        from scripts.evals.core.scorers import (
-            CommunicateGate,
-            EndStateEquality,
-            ToolCallCorrectness,
-        )
-
-        scores: dict[str, float] = {}
-        for gate in case.gates:
-            if gate == "communicate":
-                scores["communicate"] = (
-                    CommunicateGate()
-                    .score(output=run.text, messages=run.messages, expected=case.expected)
-                    .value
-                )
-            elif gate == "end_state":
-                scores["end_state"] = (
-                    EndStateEquality()
-                    .score(output=run.text, end_state=run.end_state, expected=case.expected)
-                    .value
-                )
-            elif gate == "tool_call_correctness":
-                scores["tool_call_correctness"] = (
-                    ToolCallCorrectness()
-                    .score(output=run.text, tool_calls=run.tool_calls, expected=case.expected)
-                    .value
-                )
+        scores = score_gates(case, run, self.EXTRA_GATES)
+        # The `no_unauthorized_send: true` flag records the check as a METRIC on
+        # cases that do not gate it — kept because several gmail cases want it
+        # visible in the report without deciding pass/fail.
         if bool((case.expected.get("score") or {}).get("no_unauthorized_send")):
-            scores["no_unauthorized_send"] = _no_unauthorized_send(run.tool_calls)
+            scores.setdefault("no_unauthorized_send", _no_unauthorized_send(case, run))
         return scores
 
     def finalize_scorers(self, _cfg: EvalConfig) -> list[object]:

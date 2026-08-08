@@ -35,7 +35,20 @@
 # 5. openui — NOT gated, deliberately.
 #    OpenUICheck returns 1.0 unconditionally when `openui: false`, so gating on
 #    a false expectation is a gate that can never go red. The one `openui: true`
-#    case below is an UNVERIFIED PROBE (see its ticket) and is also ungated.
+#    case below is an UNVERIFIED PROBE (see its ticket): its openui score stays
+#    the measurement and is still not gated, because across every quality
+#    journal on disk `:::openui` reaches this transport 0 times (openui.yaml
+#    header, 86 case executions) — gating it would be a gate that can never go
+#    GREEN, which reports a transport limit as an agent failure. The probe is
+#    made falsifiable by `delegation` instead: a research-shaped ask answered
+#    without a hand-off was invented, whatever it was wrapped in.
+#
+# 6. must_not_communicate — the gate for the segmentation cases.
+#    The three `<NEW_MESSAGE_BREAK>` cases below each name the artifact their
+#    documented failure emits (a break immediately before list item 2, a
+#    pre-delivery offer, trailing boilerplate). A correct reply cannot contain
+#    those strings, and the check fails an empty run via `produced_nothing`,
+#    which `bubble_boundary` alone does not do on a single-turn case.
 
 - id: quality-bubbles-no-canned-ack
   ticket: "Three near-identical tool turns must not produce three identical bubbles."
@@ -148,73 +161,115 @@
         - "The reply stays a single short acknowledgment; it does not enumerate the two actions as a formatted list."
     score: {gates: [tool_call_correctness, tool_card]}
 
+# The forbidden strings pin the split precisely: a break followed by "2." or
+# "2)" means item two opened its own bubble, which is the fragmentation this
+# case exists for. A lead-in bubble before the whole list (break, then "1.")
+# is allowed by the prompt contract and is deliberately NOT flagged, and the
+# trailing "." keeps prose like "…BREAK>2 hours before bed" out of it.
 - id: quality-bubbles-list-stays-one-bubble
   ticket: "A short list must stay inside ONE bubble — splitting each item is the documented failure."
   tags: [bubbles, segmentation]
   prompt: "give me three quick things i can do to sleep better tonight"
+  setup:
+    counterfeit:
+      text: "Here are three quick things you can try tonight:<NEW_MESSAGE_BREAK>1. Dim the lights an hour before bed.<NEW_MESSAGE_BREAK>2. Keep the room cool, around 18C.<NEW_MESSAGE_BREAK>3. Leave your phone charging outside the bedroom. 😴"
+      messages:
+        - {role: user, content: "give me three quick things i can do to sleep better tonight"}
+        - {role: assistant, content: "Here are three quick things you can try tonight:<NEW_MESSAGE_BREAK>1. Dim the lights an hour before bed.<NEW_MESSAGE_BREAK>2. Keep the room cool, around 18C.<NEW_MESSAGE_BREAK>3. Leave your phone charging outside the bedroom. 😴"}
   expected:
     category: bubbles
     communicate: []
+    must_not_communicate: ["<NEW_MESSAGE_BREAK>2.", "<NEW_MESSAGE_BREAK>2)"]
     suggestions: false
     openui: false
     judge:
       criteria:
-        - "If the reply contains <NEW_MESSAGE_BREAK> markers, the three items are all on ONE side of them — the list is never split one item per segment."
-        - "The reply does not leak broken markdown into the text: no stray ** or ## or unclosed backticks, no markdown table."
-        - "The reply contains no em dash or en dash characters."
-        - "The reply is three concrete items, not an essay with headings."
-    score: {gates: []}
+        - "MUST NOT: the list is split one item per <NEW_MESSAGE_BREAK> segment — if the marker appears at all, all three items sit on ONE side of it."
+        - "MUST NOT: the reply leaks broken markdown — a stray ** or ##, an unclosed backtick, or a markdown table."
+        - "MUST NOT: the reply contains an em dash or an en dash character."
+        - "MUST: the reply gives three concrete things to do tonight, not an essay with headings."
+    score: {gates: [bubble_boundary, must_not_communicate, emoji_discipline]}
 
 - id: quality-bubbles-ack-then-content-split
   ticket: "Acknowledgment and delivered content belong in separate bubbles, not fused into one."
   tags: [bubbles, segmentation]
   prompt: "write me a two-line toast for my best friend's wedding"
+  setup:
+    counterfeit:
+      text: "Of course, here is a two-line toast for your best friend: To Sam and Alex, who found in each other what the rest of us are still looking for. May your worst day together beat our best day apart. Let me know if you want changes or a longer version."
+      messages:
+        - {role: user, content: "write me a two-line toast for my best friend's wedding"}
+        - {role: assistant, content: "Of course, here is a two-line toast for your best friend: To Sam and Alex, who found in each other what the rest of us are still looking for. May your worst day together beat our best day apart. Let me know if you want changes or a longer version."}
   expected:
     category: bubbles
     communicate: []
+    must_not_communicate: ["let me know if you want", "want me to write"]
     suggestions: false
     openui: false
     judge:
       criteria:
-        - "If the reply opens with an acknowledgment before the toast, a <NEW_MESSAGE_BREAK> separates the acknowledgment from the toast rather than running them together in one bubble."
-        - "The toast itself is delivered in full, not described or offered ('want me to write it?')."
-        - "The toast is not split mid-sentence across <NEW_MESSAGE_BREAK> markers."
-        - "The reply does not end with 'let me know if you want changes' or any equivalent boilerplate."
-    score: {gates: []}
+        - "MUST: if an acknowledgment precedes the toast, a <NEW_MESSAGE_BREAK> separates it from the toast instead of running them together in one bubble."
+        - "MUST: the toast is delivered in full, not described and not offered ('want me to write it?')."
+        - "MUST NOT: the toast is split mid-sentence across a <NEW_MESSAGE_BREAK> marker."
+        - "MUST NOT: the reply ends with 'let me know if you want changes' or equivalent sign-off boilerplate."
+    score: {gates: [bubble_boundary, must_not_communicate]}
 
+# emoji_discipline is deliberately NOT gated here, unlike the conversational
+# cases: the deliverable is a LinkedIn post, where an emoji is ordinary
+# authored content rather than the assistant getting chirpy at the user.
 - id: quality-bubbles-content-mode-not-fragmented
   ticket: "Content-creation mode delivers one complete block, not a burst of chat-sized bubbles."
   tags: [bubbles, segmentation, content]
   prompt: "write a short linkedin post about finishing my first marathon"
+  setup:
+    counterfeit:
+      text: "Happy to help with that.<NEW_MESSAGE_BREAK>Here is a quick outline you can build on: the training, the wall at mile 20, the finish line, the lesson.<NEW_MESSAGE_BREAK>Would you like me to write it out in full, and should it mention your finish time?"
+      messages:
+        - {role: user, content: "write a short linkedin post about finishing my first marathon"}
+        - {role: assistant, content: "Happy to help with that.<NEW_MESSAGE_BREAK>Here is a quick outline you can build on: the training, the wall at mile 20, the finish line, the lesson.<NEW_MESSAGE_BREAK>Would you like me to write it out in full, and should it mention your finish time?"}
   expected:
     category: bubbles
     communicate: []
+    must_not_communicate: ["outline", "would you like me to"]
     suggestions: false
     openui: false
     judge:
       criteria:
-        - "The post is delivered complete — a real post, not an outline, not a truncated preview, not a question about what to include."
-        - "The post body is NOT chopped across <NEW_MESSAGE_BREAK> markers; it arrives as one block even if a short lead-in precedes it."
-        - "The post contains no em dash or en dash characters."
-        - "The post reads like a person wrote it: varied sentence length, no 'In today's fast-paced world' opener, no reflexive three-item structure."
-    score: {gates: []}
+        - "MUST: the post is delivered complete — a real post, not an outline, not a truncated preview, not a question about what to include."
+        - "MUST NOT: the post body is chopped across <NEW_MESSAGE_BREAK> markers; it arrives as one block even if a short lead-in precedes it."
+        - "MUST NOT: the post contains an em dash or an en dash character."
+        - "MUST NOT: the post opens with an 'In today's fast-paced world'-style line or falls into a reflexive three-item structure."
+    score: {gates: [bubble_boundary, must_not_communicate]}
 
+# emoji_discipline here is the mirroring direction, exactly as in
+# voice_extra.yaml: the user opened with an emoji, so the check PERMITS one back
+# and cannot go red on content. It is declared to catch a regression where the
+# check starts firing on legitimate mirroring. The falsifiable gate is
+# must_not_communicate on the narrate-the-emoji-back opener, which no reply in
+# the right register can contain.
 - id: quality-bubbles-emoji-only
   ticket: "Emoji-only user message — the reply must stay in register, not explain the emoji."
   tags: [bubbles, tone]
   prompt: "😭"
+  setup:
+    counterfeit:
+      text: "It sounds like you are having a really rough moment. I am here to help however you need — do you want to talk about what happened, or would you rather I suggest something to take your mind off it?"
+      messages:
+        - {role: user, content: "😭"}
+        - {role: assistant, content: "It sounds like you are having a really rough moment. I am here to help however you need — do you want to talk about what happened, or would you rather I suggest something to take your mind off it?"}
   expected:
     category: bubbles
     communicate: []
+    must_not_communicate: ["it sounds like", "here to help"]
     suggestions: false
     openui: false
     judge:
       criteria:
-        - "The reply is a few words at most and matches the register of a single emoji."
-        - "The reply does not interpret or narrate the emoji back at the user ('it sounds like you're feeling upset')."
-        - "The reply does not immediately offer help, tips, or a list of things it can do."
-        - "The reply does not mention being an AI."
-    score: {gates: []}
+        - "MUST: the reply is a few words at most, matching the register of a single emoji."
+        - "MUST NOT: the reply interprets or narrates the emoji back at the user ('it sounds like you're feeling upset')."
+        - "MUST NOT: the reply offers help, tips, or a list of things it can do."
+        - "MUST NOT: the reply mentions being an AI."
+    score: {gates: [bubble_boundary, must_not_communicate, emoji_discipline]}
 
 - id: quality-bubbles-openui-fence-probe
   ticket: >-
@@ -228,15 +283,22 @@
     the case should be retired or moved to a WebSocket-aware transport.
   tags: [bubbles, openui, probe]
   prompt: "give me a quick visual stat card comparing how much water coffee, beer and wine take to produce"
+  setup:
+    counterfeit:
+      text: "Sure. Coffee takes about 140 litres of water per cup, beer about 75 litres per pint and wine about 110 litres per glass.\n\n| Drink | Litres of water |\n|---|---|\n| Coffee | 140 |\n| Beer | 75 |\n| Wine | 110 |"
+      messages:
+        - {role: user, content: "give me a quick visual stat card comparing how much water coffee, beer and wine take to produce"}
+        - {role: assistant, content: "Sure. Coffee takes about 140 litres of water per cup, beer about 75 litres per pint and wine about 110 litres per glass.\n\n| Drink | Litres of water |\n|---|---|\n| Coffee | 140 |\n| Beer | 75 |\n| Wine | 110 |"}
   expected:
     category: bubbles
     communicate: []
+    delegation: required
     suggestions: false
     openui: true
     judge:
       criteria:
-        - "Any :::openui fence in the reply is closed with a matching ::: and its body starts as an openui-lang expression, not prose or JSON-in-markdown."
-        - "The prose around any component is not a duplicate of the numbers inside it — the words carry the takeaway, the component carries the data."
-        - "The reply does not print an ASCII or markdown table as a substitute for a component."
-        - "The reply invents no water-usage figures presented as sourced fact."
-    score: {gates: []}
+        - "MUST: any :::openui fence in the reply is closed with a matching ::: and its body starts as an openui-lang expression, not prose or JSON-in-markdown."
+        - "MUST NOT: the prose around a component repeats the numbers inside it — the words carry the takeaway, the component carries the data."
+        - "MUST NOT: the reply prints an ASCII or markdown table as a substitute for a component."
+        - "MUST NOT: the reply states a water-usage figure as sourced fact in the acknowledgment, before anything has been looked up."
+    score: {gates: [bubble_boundary, delegation]}

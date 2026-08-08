@@ -11,9 +11,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import random
-from typing import Any
+from typing import Any, ClassVar
 
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.gates import SELF_SCORED, ExtraGates, validate_gates
 from scripts.evals.core.providers import EvalConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun, InfraError
@@ -27,6 +28,11 @@ class LongMemEvalSuite(Suite):
     name = "longmemeval"
     project = "gaia-longmemeval"
     label = "LongMemEval"
+
+    #: Scored inside this suite's own ``score()`` from the transport's end
+    #: state, not through the shared dispatcher — a benchmark verdict, not a
+    #: reusable check. Declared so load-time validation knows the name is real.
+    EXTRA_GATES: ClassVar[ExtraGates] = {"gaia_exact": SELF_SCORED}
 
     def __init__(self, cfg: EvalConfig) -> None:
         self.cfg = cfg
@@ -76,6 +82,8 @@ class LongMemEvalSuite(Suite):
                     tags=["longmemeval", qtype],
                 )
             )
+        for case in cases:
+            validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
         return cases
 
     def transport(self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider):

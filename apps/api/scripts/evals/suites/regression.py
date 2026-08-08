@@ -18,6 +18,7 @@ from typing import Any
 import httpx
 
 from scripts.evals.core.cost import EvalCostTracker
+from scripts.evals.core.gates import score_gates, validate_gates
 from scripts.evals.core.providers import EvalConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun
@@ -150,6 +151,8 @@ class RegressionSuite(Suite):
                 tags=["regression"],
             ),
         ]
+        for case in cases:
+            validate_gates(self.name, case.id, case.gates)
         self._cases = cases
         return cases
 
@@ -225,21 +228,7 @@ class RegressionSuite(Suite):
         )
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
-        from scripts.evals.core.scorers import CommunicateGate, ToolCallCorrectness
-
-        scores: dict[str, float] = {}
-        if case.expected.get("communicate"):
-            scores["communicate"] = (
-                CommunicateGate()
-                .score(output=run.text, messages=run.messages, expected=case.expected)
-                .value
-            )
-        scores["tool_call_correctness"] = (
-            ToolCallCorrectness()
-            .score(output=run.text, tool_calls=run.tool_calls, expected=case.expected)
-            .value
-        )
-        return scores
+        return score_gates(case, run)
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         del cfg
