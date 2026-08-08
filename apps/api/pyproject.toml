@@ -221,8 +221,10 @@ Issues = "https://github.com/theexperiencecompany/gaia/issues"
 #   imports the whole app at collection; a full copy keeps imports resolving.
 # - The script swaps source_paths + pytest_add_cli_args_test_selection to
 #   the module + its test file per run; stats then executes only that file.
+# - mutate_only_covered_lines is deliberately OFF everywhere: its coverage
+#   pass unloads every module imported during the stats run, and numpy (and
+#   other C extensions) cannot be re-imported in the same process.
 source_paths = ["app"]
-mutate_only_covered_lines = true
 also_copy = ["app", "tests", "scripts"]
 pytest_add_cli_args_test_selection = []
 pytest_add_cli_args = ["-p", "no:xdist", "-o", 'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300']

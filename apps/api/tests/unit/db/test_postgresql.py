@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from app.constants.log_tags import LogTag
 from app.db.postgresql import (
     Base,
     _adapt_url_for_asyncpg,
@@ -77,7 +78,7 @@ class TestGetPostgresqlEngine:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            with pytest.raises(RuntimeError, match="not available"):
+            with pytest.raises(RuntimeError, match=r"^PostgreSQL engine not available$"):
                 await get_postgresql_engine()
 
     async def test_passes_correct_provider_name(self) -> None:
@@ -169,9 +170,13 @@ class TestClosePostgresqlDb:
     async def test_disposes_engine_when_initialized(self) -> None:
         """When PostgreSQL is initialized, should dispose the engine."""
         mock_engine = AsyncMock()
+        keys: list[str] = []
 
         with (
-            patch("app.db.postgresql.providers.is_initialized", return_value=True),
+            patch(
+                "app.db.postgresql.providers.is_initialized",
+                side_effect=lambda key: (keys.append(key), True)[1],
+            ),
             patch(
                 "app.db.postgresql.get_postgresql_engine",
                 new_callable=AsyncMock,
@@ -181,8 +186,9 @@ class TestClosePostgresqlDb:
         ):
             await close_postgresql_db()
 
+        assert keys == ["postgresql_engine"]
         mock_engine.dispose.assert_awaited_once()
-        mock_log.info.assert_called()
+        mock_log.info.assert_called_once_with(f"{LogTag.STARTUP} PostgreSQL connections closed")
 
     async def test_skips_disposal_when_not_initialized(self) -> None:
         """When PostgreSQL was never initialized, should do nothing."""
@@ -197,6 +203,31 @@ class TestClosePostgresqlDb:
             await close_postgresql_db()
 
         mock_get.assert_not_awaited()
+
+    async def test_disposal_failure_is_logged_not_raised(self) -> None:
+        """A dispose failure must be logged with the error details, not raised."""
+        mock_engine = AsyncMock()
+        mock_engine.dispose.side_effect = RuntimeError("pool closed")
+        error = RuntimeError("pool closed")
+
+        with (
+            patch("app.db.postgresql.providers.is_initialized", return_value=True),
+            patch(
+                "app.db.postgresql.get_postgresql_engine",
+                new_callable=AsyncMock,
+                return_value=mock_engine,
+            ),
+            patch("app.db.postgresql.log") as mock_log,
+        ):
+            # Dispose raises inside close; the except path must swallow it.
+            mock_engine.dispose.side_effect = error
+            await close_postgresql_db()
+
+        mock_log.error.assert_called_once_with(
+            f"{LogTag.STARTUP} Error closing PostgreSQL connections",
+            error=str(error),
+            error_type=type(error).__name__,
+        )
 
     async def test_logs_error_on_disposal_exception(self) -> None:
         """If engine.dispose() raises, should log the error."""
@@ -348,14 +379,14 @@ class TestAdaptUrlForAsyncpg:
     def test_sslmode_require_sets_ssl_true_and_is_stripped(self) -> None:
         url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?sslmode=require")
 
-        assert "sslmode" not in url
-        assert url.startswith("postgresql+asyncpg://")
-        assert args["ssl"] is True
+        assert url == "postgresql+asyncpg://u:p@h:5432/db"
+        assert args == {"ssl": True}
 
     def test_sslmode_disable_sets_ssl_false(self) -> None:
         url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?sslmode=disable")
 
-        assert args["ssl"] is False
+        assert url == "postgresql+asyncpg://u:p@h:5432/db"
+        assert args == {"ssl": False}
 
     def test_sslmode_prefer_sets_ssl_true(self) -> None:
         url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?sslmode=prefer")
@@ -365,11 +396,19 @@ class TestAdaptUrlForAsyncpg:
     def test_no_sslmode_leaves_ssl_unset(self) -> None:
         url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db")
 
-        assert "ssl" not in args
+        assert url == "postgresql+asyncpg://u:p@h:5432/db"
+        assert args == {}
 
     def test_other_query_params_survive(self) -> None:
-        url, _ = _adapt_url_for_asyncpg(
+        url, args = _adapt_url_for_asyncpg(
             "postgresql://u:p@h:5432/db?application_name=x&sslmode=require"
         )
 
-        assert "application_name=x" in url
+        assert url == "postgresql+asyncpg://u:p@h:5432/db?application_name=x"
+        assert args == {"ssl": True}
+
+    def test_blank_query_values_survive(self) -> None:
+        url, _ = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?flag=&sslmode=disable")
+
+        assert "flag=" in url
+        assert url.startswith("postgresql+asyncpg://")

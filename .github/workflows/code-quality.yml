@@ -903,7 +903,10 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.has_python == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # A large changed module can carry hundreds of mutants (each running its
+    # covering tests once) — a 745-mutant module takes ~13 min. The xargs
+    # parallelism overlaps modules, so this is the per-module worst case.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:

@@ -23,7 +23,7 @@ import json
 modules = json.load(open("/tmp/mutation-matrix.json"))
 with open("/tmp/mutation-modules.txt", "w") as f:
     for m in modules:
-        f.write(f"{m['module']} {m['testfile']}\n")
+        f.write(f"{m['module']} {m['testfile']} {json.dumps(m['changed_lines'], separators=(',', ':'))}")
 print(f"{len(modules)} module(s) to mutate")
 EOF
 
@@ -35,4 +35,4 @@ fi
 
 # 4. Run one mutation check per module with bounded parallelism. xargs
 #    exits 123 when any invocation fails, which fails this lane.
-xargs -P 4 -n 2 bash scripts/test/mutation.sh < /tmp/mutation-modules.txt
+xargs -P 4 -n 3 bash scripts/test/mutation.sh < /tmp/mutation-modules.txt

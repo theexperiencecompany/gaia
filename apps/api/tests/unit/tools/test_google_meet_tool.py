@@ -58,7 +58,8 @@ def _capture_tool() -> callable:
         return decorator
 
     composio.tools.custom_tool = custom_tool
-    register_google_meet_custom_tools(composio)
+    registered = register_google_meet_custom_tools(composio)
+    assert registered == ["GOOGLEMEET_CUSTOM_GATHER_CONTEXT"]
     return tools["CUSTOM_GATHER_CONTEXT"]
 
 

@@ -93,14 +93,13 @@ def _adapt_url_for_asyncpg(postgres_url: str) -> tuple[str, dict[str, Any]]:
         sslmode = sslmode_values[0].lower()
         # asyncpg's `ssl` kwarg accepts True/False/'require'/etc.
         # 'disable' → no SSL; everything else → require SSL.
-        if sslmode in {"disable", "allow", "prefer"}:
-            connect_args["ssl"] = sslmode != "disable"
-        else:
-            connect_args["ssl"] = True
+        connect_args["ssl"] = sslmode != "disable"
 
     rebuilt_query = urlencode([(k, v) for k, vs in query.items() for v in vs])
-    rebuilt = urlunsplit((parts.scheme, parts.netloc, parts.path, rebuilt_query, parts.fragment))
-    url = rebuilt.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # Replace the scheme structurally — a string replace of "postgresql://"
+    # is both fragile and (for the mutator) an equivalent-mutant generator:
+    # the count argument can never matter because the scheme appears once.
+    url = urlunsplit(parts._replace(scheme="postgresql+asyncpg", query=rebuilt_query))
     return url, connect_args
 
 

@@ -17,20 +17,26 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from pathlib import Path
+import re
+import subprocess
 import sys
 
 TESTS_DIR = Path("apps/api/tests")
 
 
 def _module_refs(path: Path) -> set[str]:
-    """Every app.* dotted name a test file mentions (imports + string literals).
+    """Every app.* dotted name a test file references.
 
-    String literals must be BARE module paths: a real patch target is
-    ``"app.x.y.z"``, while fixture content embedding a module name inside
-    quotes/parens (``'patch("app.x.y.z", ...)'``) is a test-data string, not
-    a reference — matching it would pull in test files that never exercise
-    the module.
+    Two reference forms are trusted:
+    - import statements (import X / from X import Y)
+    - bare module-path strings used as call arguments (patch targets) or
+      assignment values (module-path constants like CONV_SERVICE = "app...").
+    Bare strings in ANY other position (assert operands, docstrings, fixture
+    data) are not references — matching them pulls in test files that never
+    exercise the module (the detector's own unit test poisoned the matrix
+    this way twice).
     """
     refs: set[str] = set()
     try:
@@ -45,11 +51,29 @@ def _module_refs(path: Path) -> set[str]:
             refs.add(node.module)
             for alias in node.names:
                 refs.add(f"{node.module}.{alias.name}")
-        elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-            candidate = node.value.strip()
-            if _is_bare_module_path(candidate):
-                refs.add(candidate)
+        elif isinstance(node, ast.Call):
+            for arg in node.args:
+                _collect_module_strings(refs, arg)
+            for keyword in node.keywords:
+                _collect_module_strings(refs, keyword.value)
+        elif isinstance(node, ast.Assign):
+            _collect_module_strings(refs, node.value)
     return refs
+
+
+def _collect_module_strings(refs: set[str], node: ast.AST) -> None:
+    """Add bare module-path strings from call args / assignment values.
+
+    Recurses through list/tuple literals (parametrize argument lists hold
+    patch targets as tuples).
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        candidate = node.value.strip()
+        if _is_bare_module_path(candidate):
+            refs.add(candidate)
+    elif isinstance(node, (ast.List, ast.Tuple)):
+        for element in node.elts:
+            _collect_module_strings(refs, element)
 
 
 def _is_bare_module_path(candidate: str) -> bool:
@@ -91,7 +115,7 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
 
 def main() -> int:
     changed = [line.strip() for line in sys.stdin if line.strip()]
-    matrix: list[dict[str, str]] = []
+    matrix: list[dict[str, object]] = []
     failures: list[str] = []
     for module in changed:
         rel = module.removeprefix("apps/api/")
@@ -99,11 +123,11 @@ def main() -> int:
         rel_py = rel_py.removesuffix(".py")
         unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
         if (TESTS_DIR.parent / unit_mirror).exists():
-            matrix.append({"module": rel, "testfile": unit_mirror})
+            matrix.append(_entry(rel, unit_mirror))
             continue
         hits = _test_files_for(rel_py)
         if hits:
-            matrix.append({"module": rel, "testfile": hits[0].removeprefix("apps/api/")})
+            matrix.append(_entry(rel, hits[0].removeprefix("apps/api/")))
             continue
         failures.append(
             f"changed module {rel} has no test file anywhere (looked for {unit_mirror} "
@@ -115,6 +139,44 @@ def main() -> int:
         return 1
     print(json.dumps(matrix))
     return 0
+
+
+def _entry(module_rel: str, testfile: str) -> dict[str, object]:
+    """Module matrix entry with the PR's changed line ranges for this file.
+
+    The gate is diff-driven: a survivor only fails the lane when its mutation
+    lands on a line the PR changed. Mutants on untouched lines are noted, not
+    failures — otherwise a 1-line import fix would demand full-module test
+    coverage.
+    """
+    ranges = _changed_line_ranges(f"apps/api/{module_rel}")
+    return {"module": module_rel, "testfile": testfile, "changed_lines": ranges}
+
+
+def _changed_line_ranges(path: str) -> list[list[int]]:
+    """PR-changed line ranges for a file, from the merge-base diff (unified=0)."""
+    base = os.environ.get("GITHUB_BASE_REF", "")
+    if not base:
+        return []
+    try:
+        out = subprocess.check_output(
+            ["git", "diff", "--unified=0", f"origin/{base}...HEAD", "--", path],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return []
+    ranges: list[list[int]] = []
+    for line in out.splitlines():
+        if not line.startswith("@@"):
+            continue
+        match = re.search(r"\+(\d+)(?:,(\d+))?", line)
+        if not match:
+            continue
+        start = int(match.group(1))
+        count = int(match.group(2) or "1")
+        ranges.append([start, start + max(count, 1) - 1])
+    return ranges
 
 
 if __name__ == "__main__":
