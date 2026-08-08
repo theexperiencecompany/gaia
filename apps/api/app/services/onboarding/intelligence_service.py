@@ -26,7 +26,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.memory.email_processor import fetch_emails_for_onboarding
 from app.agents.prompts.onboarding_prompts import (
     FOCUS_TODOS_PROMPT,
@@ -103,6 +103,7 @@ from app.services.workflow.integration_requirements import (
     compute_required_integrations,
 )
 from app.services.workflow.service import WorkflowService
+from app.utils.background_tasks import guard_task, spawn_background_task
 from app.utils.profile_card import (
     generate_holo_card_content,
     generate_profile_card_design,
@@ -177,9 +178,6 @@ async def _safe_run(name: str, coro: Awaitable[T], default: T) -> T:
         )
         return default
 
-
-# Module-level set prevents GC of fire-and-forget tasks
-_background_tasks: set[asyncio.Task] = set()
 
 # Fallback cadence whenever a workflow has no usable suggested trigger.
 _DEFAULT_WORKFLOW_CRON = "0 9 * * *"
@@ -285,9 +283,7 @@ def _start_gmail_branch(
     workflow provisioning task. Returns the shared inbox context and the
     provision future."""
     inbox_ctx = InboxScanContext()
-    scan_task = asyncio.create_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
-    _background_tasks.add(scan_task)
-    scan_task.add_done_callback(_background_tasks.discard)
+    spawn_background_task(_scan_then_enqueue_memory(user_id, inbox_ctx))
     provision_future = asyncio.create_task(_run_provision_gmail(user_id))
     return inbox_ctx, provision_future
 
@@ -306,8 +302,7 @@ async def _persist_completion(
     )
 
     if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
+        guard_task(provision_future)
 
 
 async def _finalize_onboarding(
@@ -385,8 +380,7 @@ async def _finish_early_phase(
     doesn't treat a user who is merely picking integrations as stale."""
     await user_repository.mark_early_intelligence_done(user_id)
     if provision_future is not None and not provision_future.done():
-        _background_tasks.add(provision_future)
-        provision_future.add_done_callback(_background_tasks.discard)
+        guard_task(provision_future)
 
 
 async def _social_then_holo(
@@ -1446,7 +1440,10 @@ async def _create_focus_todos(
     try:
         t_llm = time.monotonic()
         parsed: _FocusTodoList = await ainvoke_structured(
-            _FocusTodoList, prompt, label="onboarding_focus_todos"
+            _FocusTodoList,
+            prompt,
+            label="onboarding_focus_todos",
+            config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
@@ -1529,7 +1526,10 @@ async def _create_todos_from_triage(
     try:
         t_llm = time.monotonic()
         parsed: _TodoListFromEmails = await ainvoke_structured(
-            _TodoListFromEmails, prompt, label="onboarding_todos_from_emails"
+            _TodoListFromEmails,
+            prompt,
+            label="onboarding_todos_from_emails",
+            config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 
@@ -1717,7 +1717,10 @@ async def _generate_workflow_specs(user_id: str, prompt: str) -> _WorkflowList:
     for attempt in range(_WORKFLOW_SPEC_MAX_ATTEMPTS):
         try:
             return await ainvoke_structured(
-                _WorkflowList, prompt, label="onboarding_workflow_suggestions"
+                _WorkflowList,
+                prompt,
+                label="onboarding_workflow_suggestions",
+                config=metered_config(user_id),
             )
         except Exception as e:
             last_error = e
@@ -1765,6 +1768,7 @@ async def _build_one_workflow(
         gen_result = await WorkflowGenerationService.generate_workflow_prompt(
             title=spec.title,
             description=spec.description,
+            user_id=user_id,
         )
         prompt_duration_s = round(time.monotonic() - t_prompt, 2)
         workflow_prompt = (gen_result.get("prompt") or spec.description).strip()

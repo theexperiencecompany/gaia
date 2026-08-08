@@ -146,7 +146,13 @@ const handleForbiddenError = (
   }
 };
 
-const handleRateLimitError = (errorData: unknown): boolean => {
+/**
+ * Renders the rate-limit upsell UI (feature-restricted / rate-limit toast)
+ * for a 429 response body. Returns false when the body is not the backend's
+ * rate_limit_exceeded shape so callers can fall back to a generic toast.
+ * Shared by the axios interceptor and the chat-stream client.
+ */
+export const handleRateLimitError = (errorData: unknown): boolean => {
   const rateLimitData =
     errorData && typeof errorData === "object" && "detail" in errorData
       ? (errorData as { detail: unknown }).detail
@@ -167,15 +173,32 @@ const handleRateLimitError = (errorData: unknown): boolean => {
     plan_required?: string;
     reset_time?: string;
     message?: string;
+    current_plan?: string;
   };
 
-  const { feature, plan_required, reset_time, message } = rateLimit;
+  const { feature, plan_required, reset_time, message, current_plan } =
+    rateLimit;
+  // A user already on the top tier has nothing to upgrade to — never pitch it.
+  const isPro = current_plan === "pro";
 
   if (plan_required) {
-    showFeatureRestrictedToast(
-      feature?.replace("_", " ") || "This feature",
-      plan_required,
-    );
+    // Prefer the backend's message (it distinguishes a usage/cost wall from a
+    // genuinely plan-gated feature); only fall back to the auto-generated
+    // "only available in Pro" copy when no message was sent.
+    if (message) {
+      showRateLimitToast({
+        message,
+        planRequired: plan_required,
+        resetTime: reset_time,
+        feature,
+        showUpgradeButton: true,
+      });
+    } else {
+      showFeatureRestrictedToast(
+        feature?.replace(/_/g, " ") || "This feature",
+        plan_required,
+      );
+    }
   } else if (feature?.includes("token")) {
     showTokenLimitToast(feature, plan_required);
   } else {
@@ -184,7 +207,7 @@ const handleRateLimitError = (errorData: unknown): boolean => {
       message: message || undefined,
       resetTime: reset_time,
       feature,
-      showUpgradeButton: true,
+      showUpgradeButton: !isPro,
     });
   }
 

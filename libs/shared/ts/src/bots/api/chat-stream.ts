@@ -112,6 +112,28 @@ const STREAM_TIMEOUT_MS = 600_000;
 /** No-data inactivity timeout (5 min). */
 const INACTIVITY_TIMEOUT_MS = 300_000;
 
+/** The subset of an SSE `data:` frame the streamer acts on. */
+interface SseFrame {
+  keepalive?: boolean;
+  error?: string;
+  session_token?: string;
+  approval?: ApprovalRequestData;
+  text?: string;
+  done?: boolean;
+  conversation_id?: string;
+}
+
+/** Maps a raw transport error message to the user-facing copy to surface. */
+function toStreamErrorMessage(message: string): string {
+  if (message.includes("ECONNRESET") || message.includes("socket hang up")) {
+    return "Connection interrupted. Please try again.";
+  }
+  if (message.includes("timeout")) {
+    return "Request timed out. The server may be busy - please try again.";
+  }
+  return message;
+}
+
 /**
  * Runs a single SSE attempt. Throws on retryable transport errors (so the
  * caller can retry) and surfaces user-facing errors via `onError`.
@@ -191,6 +213,71 @@ async function streamChatOnce(
     await new Promise<void>((resolve) => {
       resetInactivityTimer(resolve);
 
+      const finish = (): void => {
+        finished = true;
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+      };
+
+      // Applies one parsed SSE frame's side effects. Returns true once the
+      // stream is complete (done or error), signalling the caller to resolve.
+      const handleFrame = async (frame: SseFrame): Promise<boolean> => {
+        if (frame.keepalive) {
+          // Server keepalive ping to keep the connection alive
+          receivedKeepalive = true;
+          return false;
+        }
+        if (frame.error === "not_authenticated") {
+          finish();
+          await onError(new Error("not_authenticated"));
+          return true;
+        }
+        if (frame.error) {
+          finish();
+          await onError(new Error(frame.error));
+          return true;
+        }
+        if (frame.session_token) {
+          deps.storeSessionToken(ctx, frame.session_token);
+        }
+        if (frame.approval) {
+          await onApprovalUpdate?.(frame.approval);
+          return false;
+        }
+        if (frame.text) {
+          fullText += frame.text;
+          await onChunk(frame.text);
+        }
+        if (frame.done) {
+          finish();
+          conversationId = frame.conversation_id || "";
+          await onDone(fullText, conversationId);
+          return true;
+        }
+        return false;
+      };
+
+      // Processes one raw SSE line. Returns true once the stream is complete,
+      // signalling the caller to resolve and stop reading.
+      const processLine = async (line: string): Promise<boolean> => {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) return false;
+        const raw = trimmed.slice(6);
+        if (raw === "[DONE]") return false;
+
+        try {
+          return await handleFrame(JSON.parse(raw) as SseFrame);
+        } catch (parseErr) {
+          if (parseErr instanceof SyntaxError) return false;
+          finish();
+          await onError(
+            parseErr instanceof Error
+              ? parseErr
+              : new Error("Stream processing failed"),
+          );
+          return true;
+        }
+      };
+
       stream.on("data", async (rawChunk: Buffer) => {
         if (finished) return;
         try {
@@ -201,71 +288,15 @@ async function streamChatOnce(
 
           for (const line of lines) {
             if (finished) return;
-            const trimmed = line.trim();
-
-            if (!trimmed?.startsWith("data: ")) continue;
-            const raw = trimmed.slice(6);
-            if (raw === "[DONE]") continue;
-
-            try {
-              const data = JSON.parse(raw);
-              if (data.keepalive) {
-                // Server keepalive ping to keep the connection alive
-                receivedKeepalive = true;
-                continue;
-              }
-              if (data.error === "not_authenticated") {
-                finished = true;
-                if (inactivityTimer) clearTimeout(inactivityTimer);
-                await onError(new Error("not_authenticated"));
-                resolve();
-                return;
-              }
-              if (data.error) {
-                finished = true;
-                if (inactivityTimer) clearTimeout(inactivityTimer);
-                await onError(new Error(data.error));
-                resolve();
-                return;
-              }
-              if (data.session_token) {
-                deps.storeSessionToken(ctx, data.session_token);
-              }
-              if (data.approval) {
-                await onApprovalUpdate?.(data.approval as ApprovalRequestData);
-                continue;
-              }
-              if (data.text) {
-                fullText += data.text;
-                await onChunk(data.text);
-              }
-              if (data.done) {
-                finished = true;
-                if (inactivityTimer) clearTimeout(inactivityTimer);
-                conversationId = data.conversation_id || "";
-                await onDone(fullText, conversationId);
-                resolve();
-                return;
-              }
-            } catch (parseErr) {
-              if (!(parseErr instanceof SyntaxError)) {
-                finished = true;
-                if (inactivityTimer) clearTimeout(inactivityTimer);
-                await onError(
-                  parseErr instanceof Error
-                    ? parseErr
-                    : new Error("Stream processing failed"),
-                );
-                resolve();
-                return;
-              }
+            if (await processLine(line)) {
+              resolve();
+              return;
             }
           }
         } catch {
           // Prevent unhandled rejection if a callback throws
           if (!finished) {
-            finished = true;
-            if (inactivityTimer) clearTimeout(inactivityTimer);
+            finish();
             resolve();
           }
         }
@@ -316,14 +347,7 @@ async function streamChatOnce(
               streamError = err;
             } else {
               // Has partial content or non-retryable — surface to user
-              const errorMsg =
-                err.message.includes("ECONNRESET") ||
-                err.message.includes("socket hang up")
-                  ? "Connection interrupted. Please try again."
-                  : err.message.includes("timeout")
-                    ? "Request timed out. The server may be busy - please try again."
-                    : err.message;
-              await onError(new Error(errorMsg));
+              await onError(new Error(toStreamErrorMessage(err.message)));
             }
           }
         } catch {

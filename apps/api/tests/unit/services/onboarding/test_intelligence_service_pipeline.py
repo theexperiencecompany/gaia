@@ -114,7 +114,7 @@ class TestPersistCompletion:
         tasks: set[asyncio.Task] = set()
         with (
             patch(f"{MODULE}.user_repository") as repo,
-            patch(f"{MODULE}._background_tasks", tasks),
+            patch("app.utils.background_tasks._background_tasks", tasks),
         ):
             repo.set_pipeline_completion = AsyncMock()
             await _persist_completion(USER, "c", task)
@@ -134,7 +134,7 @@ class TestPersistCompletion:
         tasks: set[asyncio.Task] = set()
         with (
             patch(f"{MODULE}.user_repository") as repo,
-            patch(f"{MODULE}._background_tasks", tasks),
+            patch("app.utils.background_tasks._background_tasks", tasks),
         ):
             repo.set_pipeline_completion = AsyncMock()
             await _persist_completion(USER, "c", task)
@@ -160,7 +160,7 @@ class TestFinishEarlyPhase:
         tasks: set[asyncio.Task] = set()
         with (
             patch(f"{MODULE}.user_repository") as repo,
-            patch(f"{MODULE}._background_tasks", tasks),
+            patch("app.utils.background_tasks._background_tasks", tasks),
         ):
             repo.mark_early_intelligence_done = AsyncMock()
             await _finish_early_phase(USER, task)
@@ -208,7 +208,7 @@ class TestStartGmailBranch:
         with (
             patch(f"{MODULE}._scan_then_enqueue_memory", AsyncMock()) as scan,
             patch(f"{MODULE}._run_provision_gmail", AsyncMock()) as provision,
-            patch(f"{MODULE}._background_tasks", set()),
+            patch("app.utils.background_tasks._background_tasks", set()),
         ):
             ctx, provision_future = _start_gmail_branch(USER)
             await asyncio.gather(provision_future)
@@ -230,7 +230,7 @@ class TestStartGmailBranch:
         with (
             patch(f"{MODULE}._scan_then_enqueue_memory", AsyncMock(side_effect=scan)),
             patch(f"{MODULE}._run_provision_gmail", AsyncMock()),
-            patch(f"{MODULE}._background_tasks", tasks),
+            patch("app.utils.background_tasks._background_tasks", tasks),
         ):
             _, provision_future = _start_gmail_branch(USER)
             await started.wait()

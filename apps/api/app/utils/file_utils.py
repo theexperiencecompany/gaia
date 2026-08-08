@@ -15,7 +15,7 @@ from langchain_text_splitters import MarkdownTextSplitter
 from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
-from app.agents.llm.client import ainvoke_llm, get_default_llm, with_llm_retry
+from app.agents.llm.client import ainvoke_llm, get_default_llm, metered_config, with_llm_retry
 from app.agents.llm.vision import describe_image
 from app.agents.prompts.image_prompts import DOCUMENT_IMAGE_SUMMARY_PROMPT
 from app.config.settings import settings
@@ -59,10 +59,17 @@ def _chunk_markdown(markdown: str, max_chunk_chars: int = MAX_CHUNK_CHARS) -> li
 class DocumentProcessor:
     """Document processing and summarization: local extraction first, LlamaParse for OCR."""
 
-    def __init__(self) -> None:
+    def __init__(self, user_id: str) -> None:
         """Initialize the document processor. The LlamaParse client is built
-        lazily -- only scanned/image-based PDFs need it as an OCR fallback."""
+        lazily -- only scanned/image-based PDFs need it as an OCR fallback.
+
+        ``user_id`` is whose COGS this processor's LLM spend is attributed to.
+        Held here rather than passed through every branch: one upload fans out
+        to an image description or a summary per PDF page, and each of those is
+        a billable call that must name the same user.
+        """
         self._parser: LlamaParse | None = None
+        self.user_id = user_id
         self.llm = get_default_llm()
 
     @property
@@ -155,6 +162,7 @@ class DocumentProcessor:
             inline.mime_type,
             prompt=DOCUMENT_IMAGE_SUMMARY_PROMPT,
             label="file_image_summary",
+            user_id=self.user_id,
         )
         return description or _IMAGE_SUMMARY_UNAVAILABLE
 
@@ -325,6 +333,7 @@ class DocumentProcessor:
                     },
                 ],
                 label="file_text_summary",
+                config=metered_config(self.user_id),
             )
 
             # ainvoke_llm is typed -> Any (its return shape varies by call
@@ -342,7 +351,7 @@ class DocumentProcessor:
 
 
 async def generate_file_summary(
-    file_content: bytes, content_type: str, filename: str
+    file_content: bytes, content_type: str, filename: str, *, user_id: str
 ) -> Union[str, list[DocumentSummaryModel], DocumentSummaryModel]:
     """Generate a description for a file based on its content type.
 
@@ -350,11 +359,14 @@ async def generate_file_summary(
         file_content: Raw file bytes
         content_type: MIME type of the file
         filename: Name of the file
+        user_id: Whose COGS the summarization spend is attributed to. Required,
+            not optional: this path runs one LLM call per image and per PDF page,
+            and an omitted id records that spend against nobody.
 
     Returns:
         Description of the file content or DocumentSummaryModel instances
     """
-    processor = DocumentProcessor()
+    processor = DocumentProcessor(user_id=user_id)
     return await processor.process_file(
         file_content=file_content,
         content_type=content_type,

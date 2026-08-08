@@ -127,7 +127,9 @@ async def get_current_user_ws(websocket: WebSocket) -> AuthenticatedUser:
     # including the X-Dev-User per-request impersonation header. get_settings()
     # hard-fails if this is set in production.
     if settings.ENV == "development" and settings.DEV_AUTH_BYPASS_EMAIL:
-        target_email, user_data = await resolve_dev_bypass_user(websocket.headers)
+        target_email, user_data = await resolve_dev_bypass_user(
+            websocket.headers, websocket.cookies
+        )
         if user_data is not None:
             return build_user_context(
                 user_to_legacy_dict(user_data), auth_provider="workos", dev_bypass=True

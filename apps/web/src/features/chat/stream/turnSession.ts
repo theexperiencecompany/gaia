@@ -9,7 +9,11 @@ import {
   TOOL_CALLS_DATA_TOOL_NAME,
   type TurnAccumulator,
 } from "@shared/chat";
-import { chatApi, DuplicateTurnError } from "@/features/chat/api/chatApi";
+import {
+  chatApi,
+  DuplicateTurnError,
+  RateLimitError,
+} from "@/features/chat/api/chatApi";
 import { relayDesktopToolRequest } from "@/features/chat/utils/desktopToolBridge";
 import { readToolDataLoadingHints } from "@/features/chat/utils/loadingHints";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
@@ -790,9 +794,13 @@ export class TurnSession {
     }
 
     if (error.name !== "AbortError") {
-      toast.error(
-        error.message || "An error occurred while processing your message",
-      );
+      // A usage-wall rejection already showed the rate-limit upsell toast at
+      // the stream layer — a second generic toast would bury it.
+      if (!(error instanceof RateLimitError)) {
+        toast.error(
+          error.message || "An error occurred while processing your message",
+        );
+      }
       // Give the user their prompt back to retry.
       useComposerStore.getState().setInputText(this.inputText);
     }

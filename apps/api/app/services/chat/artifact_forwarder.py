@@ -55,14 +55,10 @@ from app.utils.artifact_utils import (
     build_artifact_full_entry,
     build_artifact_ref_entry,
 )
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
 
 _warm_semaphore = asyncio.Semaphore(ARTIFACT_WARM_MAX_CONCURRENCY)
-
-# Module-level task-reference sets: they keep fire-and-forget work that can
-# outlive a forwarder instance from being garbage-collected mid-flight.
-_warm_tasks: set[asyncio.Task[None]] = set()
-_publish_tasks: set[asyncio.Task[bool]] = set()
 
 
 async def forward_artifact_events(
@@ -313,7 +309,7 @@ class ArtifactForwarder:
             return
         self.published_files.add(path)
         self.stats.delivered += 1
-        pub_task = asyncio.create_task(
+        spawn_background_task(
             publish_outbound_file(
                 platform=self.bot_platform,
                 user_id=self.user_id,
@@ -323,17 +319,13 @@ class ArtifactForwarder:
                 content_type=payload.get("content_type"),
             )
         )
-        _publish_tasks.add(pub_task)
-        pub_task.add_done_callback(_publish_tasks.discard)
 
     def _maybe_warm_cache(self, payload: dict[str, Any], path: str, event: str | None) -> None:
         """Warm the JuiceFS cache for follow-up-fetch files (those with no inline
         body); inlined files carry their body and never hit the file endpoint."""
         if event != "upsert" or payload.get("body"):
             return
-        warm = asyncio.create_task(self._warm_cache(path))
-        _warm_tasks.add(warm)
-        warm.add_done_callback(_warm_tasks.discard)
+        spawn_background_task(self._warm_cache(path))
 
     async def _warm_cache(self, path: str) -> None:
         """Pre-read a freshly written artifact into the host JuiceFS cache so the

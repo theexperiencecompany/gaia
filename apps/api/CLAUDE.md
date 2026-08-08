@@ -415,6 +415,7 @@ A narrower type that's provably correct beats a "complete" one that required gue
 - No global mutable state — pass dependencies explicitly.
 - No monolithic service files spanning multiple domains.
 - No copying logic from `gaia-shared` into app code — import it.
+- No raw `asyncio.create_task(...)` for fire-and-forget work — call `spawn_background_task()` from `app/utils/background_tasks.py`. It strong-refs the task until it finishes so the event loop can't GC it mid-flight; a bare `create_task` can vanish before running. (Long-lived tasks you store and later `await`/`cancel` are not fire-and-forget — those keep their own reference.)
 
 ## Database
 
@@ -523,6 +524,7 @@ Related: `GAIA_SIM_MODE=1` (`mise dev --sim`) routes every LLM call to the local
 - The bypass user context carries `dev_bypass=True` for anything that needs to tell.
 - WorkOS is never called under the bypass, but `DevelopmentSettings` still requires the `WORKOS_*` keys — dummy values are fine locally.
 - On Windows with a native Redis (Memurai), use `REDIS_URL=redis://127.0.0.1:6379` — Memurai binds IPv4 only and `localhost` resolves to `::1` first, which makes the ARQ/lifespan services time out and startup fail.
+- A `dev_bypass_user` cookie overrides the configured email per request, so two browser profiles can act as different users against one API instance (test free vs pro side by side).
 
 ## Pre-commit Hooks & Security Scanners
 
@@ -562,7 +564,7 @@ nx run-many -t lint --projects=web,desktop
 - **Docs are disabled in production**: `/docs` and `/redoc` return 404 when `ENV=production`. Use `ENV=development` locally.
 - **`app/core/lazy_loader.py` `providers` is a global singleton** — unique provider names are critical. Use UUID suffixes in tests to avoid cross-test pollution (the registry is never reset between tests).
 - **LangGraph checkpointer**: Uses PostgreSQL (`langgraph-checkpoint-postgres`) in production, falls back to in-memory `InMemorySaver` if the checkpointer manager is unavailable.
-- **Background memory storage**: `store_user_message_memory()` is fire-and-forget in `_core_agent_logic()`. Use the `_background_tasks` set pattern to prevent garbage collection of running tasks.
+- **Background memory storage**: memory ingestion (`memory_node.py`) is fire-and-forget on the end-of-graph hook. Spawn it — and all fire-and-forget work — via `spawn_background_task()` (`app/utils/background_tasks.py`) so the task isn't garbage-collected mid-flight (see Anti-Patterns).
 - **`UJSONResponse`** is the default response class (faster JSON serialization). Custom error handlers in `app_factory.py` return plain `JSONResponse` to avoid double-serialization issues.
 - **`ENABLE_LAZY_LOADING=true`** (default) means startup blocks until services initialize. Setting it to `false` makes the server start immediately and warm up in the background — safe for requests because `LazyLoader` uses per-provider locks.
 - **Sandbox user has no `sudo`.** The `gaia-coder` template strips the sandbox user from the `sudo` and `wheel` groups (see `apps/api/scripts/build_e2b_template.py`). Drive root-needing operations (mount.sh, accesslog tail) through e2b's `sbx.commands.run(..., user="root")` parameter — never prefix shell commands with `sudo` in API code, the call will fail. JuiceFS itself runs under `/etc/gaia/jfs_launcher.py` which marks the daemon non-dumpable (`PR_SET_DUMPABLE=0`) so its `/proc/<pid>/{environ,cmdline}` are unreadable to the unprivileged user. `/proc` is mounted `hidepid=invisible` so even PID enumeration is denied. Verify after template rebuilds with `apps/api/scripts/verify_sandbox_hardening.sh`.

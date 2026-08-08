@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_default_llm
+from app.agents.llm.client import ainvoke_llm, ainvoke_structured, get_default_llm, metered_config
 from app.constants.integrations import (
     CATEGORY_INFERENCE_PROMPT,
     CONTENT_INFERENCE_PROMPT,
@@ -111,6 +111,8 @@ async def infer_integration_content(
     tools: list[dict[str, Any]],
     server_url: str,
     category: str,
+    *,
+    user_id: str,
 ) -> IntegrationContent | None:
     """Generate rich marketplace content for an integration, or ``None``.
 
@@ -136,7 +138,10 @@ async def infer_integration_content(
     try:
         async with asyncio.timeout(_CONTENT_GENERATION_TIMEOUT_SECONDS):
             content = await ainvoke_structured(
-                IntegrationContent, prompt, label="integration_content"
+                IntegrationContent,
+                prompt,
+                label="integration_content",
+                config=metered_config(user_id),
             )
     except Exception as e:
         log.error(

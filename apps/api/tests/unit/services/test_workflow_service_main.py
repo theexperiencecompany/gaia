@@ -1546,7 +1546,7 @@ class TestGenerateStepsWithLLM:
         )
 
         result = await WorkflowGenerationService.generate_steps_with_llm(
-            "Test prompt", "Test Title"
+            "Test prompt", "Test Title", user_id="test-user"
         )
 
         assert len(result) == 1
@@ -1578,7 +1578,7 @@ class TestGenerateStepsWithLLM:
         mock_structured.side_effect = [OutputParserException("bad output"), generated]
 
         result = await WorkflowGenerationService.generate_steps_with_llm(
-            "Test prompt", "Test Title"
+            "Test prompt", "Test Title", user_id="test-user"
         )
 
         assert len(result) == 1
@@ -1606,7 +1606,9 @@ class TestGenerateStepsWithLLM:
         mock_structured.return_value = GeneratedWorkflow(steps=[])
 
         with pytest.raises(RuntimeError, match="failed"):
-            await WorkflowGenerationService.generate_steps_with_llm("Test prompt", "Test Title")
+            await WorkflowGenerationService.generate_steps_with_llm(
+                "Test prompt", "Test Title", user_id="test-user"
+            )
 
         assert mock_structured.await_count == 2
 
@@ -1632,7 +1634,9 @@ class TestGenerateStepsWithLLM:
         mock_structured.side_effect = RuntimeError("provider down")
 
         with pytest.raises(RuntimeError, match="provider down"):
-            await WorkflowGenerationService.generate_steps_with_llm("Test prompt", "Test Title")
+            await WorkflowGenerationService.generate_steps_with_llm(
+                "Test prompt", "Test Title", user_id="test-user"
+            )
 
         # Called exactly once — the loop does not retry provider errors.
         assert mock_structured.await_count == 1
@@ -1660,7 +1664,7 @@ class TestGenerateStepsWithLLM:
         )
 
         await WorkflowGenerationService.generate_steps_with_llm(
-            "Prompt text", "Title", description="Short description"
+            "Prompt text", "Title", description="Short description", user_id="test-user"
         )
 
         # Verify description was included in the formatted prompt
@@ -1688,7 +1692,9 @@ class TestGenerateStepsWithLLM:
         mock_structured.side_effect = OutputParserException("bad output")
 
         with pytest.raises(RuntimeError, match="failed"):
-            await WorkflowGenerationService.generate_steps_with_llm("Prompt", "Title")
+            await WorkflowGenerationService.generate_steps_with_llm(
+                "Prompt", "Title", user_id="test-user"
+            )
 
         assert mock_structured.await_count == 2
 
@@ -1716,6 +1722,7 @@ class TestGenerateWorkflowPrompt:
         result = await WorkflowGenerationService.generate_workflow_prompt(
             title="Morning Briefing",
             description="Daily summary",
+            user_id="test-user",
         )
 
         assert result["prompt"] == "Step-by-step instructions here"
@@ -1736,7 +1743,9 @@ class TestGenerateWorkflowPrompt:
             trigger_type="manual",
         )
 
-        result = await WorkflowGenerationService.generate_workflow_prompt(title="Task")
+        result = await WorkflowGenerationService.generate_workflow_prompt(
+            title="Task", user_id="test-user"
+        )
 
         assert result["prompt"] == "Manual instructions"
         assert result["suggested_trigger"] is not None
@@ -1755,7 +1764,9 @@ class TestGenerateWorkflowPrompt:
             trigger_type="webhook",  # Not in the valid set
         )
 
-        result = await WorkflowGenerationService.generate_workflow_prompt(title="Task")
+        result = await WorkflowGenerationService.generate_workflow_prompt(
+            title="Task", user_id="test-user"
+        )
 
         assert result["prompt"] == "Instructions"
         assert result["suggested_trigger"] is None
@@ -1772,7 +1783,9 @@ class TestGenerateWorkflowPrompt:
         mock_structured.side_effect = OutputParserException("LLM unavailable")
 
         with pytest.raises(OutputParserException, match="LLM unavailable"):
-            await WorkflowGenerationService.generate_workflow_prompt(title="Test")
+            await WorkflowGenerationService.generate_workflow_prompt(
+                title="Test", user_id="test-user"
+            )
 
 
 # ===========================================================================

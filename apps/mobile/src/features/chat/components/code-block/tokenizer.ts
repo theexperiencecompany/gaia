@@ -476,187 +476,216 @@ function isCaseSensitive(language: string): boolean {
   return !insensitive.has(language.toLowerCase());
 }
 
+type TokenKind = Token["type"];
+
+/**
+ * Result of a single tokenizer scan attempt.
+ * `consumed` characters are appended to the current index; `stop` ends the line.
+ */
+interface ScanResult {
+  tokens: Token[];
+  consumed: number;
+  stop?: boolean;
+}
+
+const STRING_PATTERNS: Record<string, RegExp> = {
+  '"': /^"(?:[^"\\]|\\.)*"/,
+  "'": /^'(?:[^'\\]|\\.)*'/,
+  "`": /^`(?:[^`\\]|\\.)*`/,
+};
+
+const NUMBER_PATTERN =
+  /^0[xX][0-9a-fA-F_]+|^0[bB][01_]+|^0[oO][0-7_]+|^\d[\d_]*\.?[\d_]*(?:[eE][+-]?\d+)?|^\.\d[\d_]*(?:[eE][+-]?\d+)?/;
+
+const OPERATOR_PATTERN =
+  /^(?:===|!==|==|!=|<=|>=|=>|&&|\|\||<<|>>|>>>|\?\?|\?\.|\.\.\.|\*\*|[+\-*/<>!&|?^~%=])/;
+
+const IDENTIFIER_PATTERN = /^[a-zA-Z_$][\w$]*/;
+
+function scanLineComment(line: string, i: number): ScanResult | null {
+  const ch = line[i];
+  if (
+    (ch === "/" && line[i + 1] === "/") ||
+    (ch === "#" && !isShebang(line, i) && !isInsideString(line, i))
+  ) {
+    return {
+      tokens: [{ type: "comment", value: line.slice(i) }],
+      consumed: line.length - i,
+      stop: true,
+    };
+  }
+  return null;
+}
+
+function scanBlockComment(line: string, i: number): ScanResult | null {
+  if (!(line[i] === "/" && line[i + 1] === "*")) return null;
+  const end = line.indexOf("*/", i + 2);
+  if (end !== -1) {
+    return {
+      tokens: [{ type: "comment", value: line.slice(i, end + 2) }],
+      consumed: end + 2 - i,
+    };
+  }
+  return {
+    tokens: [{ type: "comment", value: line.slice(i) }],
+    consumed: line.length - i,
+    stop: true,
+  };
+}
+
+function scanDecorator(line: string, i: number): ScanResult | null {
+  const rest = line.slice(i);
+  if (!(line[i] === "@" && /^@\w+/.test(rest))) return null;
+  const m = rest.match(/^@[\w.]+/);
+  if (!m) return null;
+  return {
+    tokens: [{ type: "decorator", value: m[0] }],
+    consumed: m[0].length,
+  };
+}
+
+function scanString(line: string, i: number): ScanResult | null {
+  const pattern = STRING_PATTERNS[line[i]];
+  if (!pattern) return null;
+  const m = line.slice(i).match(pattern);
+  if (m) {
+    return { tokens: [{ type: "string", value: m[0] }], consumed: m[0].length };
+  }
+  // Unterminated string - take rest of line
+  return {
+    tokens: [{ type: "string", value: line.slice(i) }],
+    consumed: line.length - i,
+    stop: true,
+  };
+}
+
+function scanNumber(line: string, i: number): ScanResult | null {
+  const ch = line[i];
+  const isNumberStart =
+    /[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(line[i + 1] || ""));
+  if (!isNumberStart) return null;
+  const m = line.slice(i).match(NUMBER_PATTERN);
+  if (!m) return null;
+  return { tokens: [{ type: "number", value: m[0] }], consumed: m[0].length };
+}
+
+function wordTokenKind(
+  word: string,
+  wordToCheck: string,
+  lookAhead: string,
+  keywords: Set<string>,
+): TokenKind {
+  if (BOOLEANS.has(word)) return "boolean";
+  if (keywords.has(wordToCheck)) return "keyword";
+  if (lookAhead.startsWith("(")) return "function";
+  if (/^[A-Z]/.test(word) && word.length > 1) return "type";
+  return "plain";
+}
+
+function scanWord(
+  line: string,
+  i: number,
+  keywords: Set<string>,
+  caseSensitive: boolean,
+): ScanResult | null {
+  if (!/[a-zA-Z_$]/.test(line[i])) return null;
+  const m = line.slice(i).match(IDENTIFIER_PATTERN);
+  if (!m) return null;
+  const word = m[0];
+  const lookAhead = line.slice(i + word.length).trimStart();
+  const wordToCheck = caseSensitive ? word : word.toLowerCase();
+  return {
+    tokens: [
+      {
+        type: wordTokenKind(word, wordToCheck, lookAhead, keywords),
+        value: word,
+      },
+    ],
+    consumed: word.length,
+  };
+}
+
+function scanPropertyAccess(line: string, i: number): ScanResult | null {
+  if (!(line[i] === "." && /[a-zA-Z_$]/.test(line[i + 1] || ""))) return null;
+  const tokens: Token[] = [{ type: "punctuation", value: "." }];
+  let consumed = 1;
+  const m = line.slice(i + 1).match(IDENTIFIER_PATTERN);
+  if (m) {
+    const lookAhead = line.slice(i + 1 + m[0].length).trimStart();
+    tokens.push({
+      type: lookAhead.startsWith("(") ? "function" : "property",
+      value: m[0],
+    });
+    consumed += m[0].length;
+  }
+  return { tokens, consumed };
+}
+
+function scanOperator(line: string, i: number): ScanResult | null {
+  if (!/[=+\-*/<>!&|?^~%]/.test(line[i])) return null;
+  const m = line.slice(i).match(OPERATOR_PATTERN);
+  if (!m) return null;
+  return { tokens: [{ type: "operator", value: m[0] }], consumed: m[0].length };
+}
+
+function scanPunctuation(line: string, i: number): ScanResult | null {
+  if (!/[(){}[\],;:.]/.test(line[i])) return null;
+  return { tokens: [{ type: "punctuation", value: line[i] }], consumed: 1 };
+}
+
+function scanJsxTag(line: string, i: number): ScanResult | null {
+  const rest = line.slice(i);
+  if (!(line[i] === "<" && /^<\/?[A-Za-z]/.test(rest))) return null;
+  const tagMatch = rest.match(/^<\/?([A-Za-z][\w.-]*)/);
+  if (!tagMatch) return null;
+  const isClosing = rest.startsWith("</");
+  return {
+    tokens: [
+      { type: "punctuation", value: isClosing ? "</" : "<" },
+      { type: "tag", value: tagMatch[1] },
+    ],
+    consumed: (isClosing ? 2 : 1) + tagMatch[1].length,
+  };
+}
+
 export function tokenizeLine(line: string, language: string): Token[] {
   if (line.length === 0) return [{ type: "plain", value: "" }];
 
   const tokens: Token[] = [];
-  const keywords = getKeywords(language);
+  const rawKeywords = getKeywords(language);
   const caseSensitive = isCaseSensitive(language);
+  // Precompute the effective keyword set once (case-insensitive langs lower-case).
+  const keywords = caseSensitive
+    ? rawKeywords
+    : new Set([...rawKeywords].map((k) => k.toLowerCase()));
   let i = 0;
 
-  function push(type: Token["type"], value: string) {
-    tokens.push({ type, value });
-  }
-
-  function _matchAt(pattern: RegExp): RegExpMatchArray | null {
-    pattern.lastIndex = i;
-    return pattern.exec(line);
-  }
-
   while (i < line.length) {
-    const ch = line[i];
-    const rest = line.slice(i);
+    // Order matters: comments before operators, property access before
+    // punctuation, and JSX tags before operators so `<Component>` is not eaten
+    // as a `<` operator (a spaced comparison like `a < b` still falls through
+    // to scanOperator since scanJsxTag requires a letter right after `<`).
+    const result =
+      scanLineComment(line, i) ??
+      scanBlockComment(line, i) ??
+      scanDecorator(line, i) ??
+      scanString(line, i) ??
+      scanNumber(line, i) ??
+      scanWord(line, i, keywords, caseSensitive) ??
+      scanPropertyAccess(line, i) ??
+      scanJsxTag(line, i) ??
+      scanOperator(line, i) ??
+      scanPunctuation(line, i);
 
-    // Single-line comment: // or #
-    if (
-      (ch === "/" && line[i + 1] === "/") ||
-      (ch === "#" && !isShebang(line, i) && !isInsideString(line, i))
-    ) {
-      push("comment", line.slice(i));
-      break;
-    }
-
-    // Block comment start /* ... (only captures to end of line)
-    if (ch === "/" && line[i + 1] === "*") {
-      const end = line.indexOf("*/", i + 2);
-      if (end !== -1) {
-        push("comment", line.slice(i, end + 2));
-        i = end + 2;
-        continue;
-      }
-      push("comment", line.slice(i));
-      break;
-    }
-
-    // Decorator
-    if (ch === "@" && /^@\w+/.test(rest)) {
-      const m = rest.match(/^@[\w.]+/);
-      if (m) {
-        push("decorator", m[0]);
-        i += m[0].length;
-        continue;
-      }
-    }
-
-    // Strings: double-quoted
-    if (ch === '"') {
-      const m = rest.match(/^"(?:[^"\\]|\\.)*"/);
-      if (m) {
-        push("string", m[0]);
-        i += m[0].length;
-        continue;
-      }
-      // Unterminated string - take rest of line
-      push("string", line.slice(i));
-      break;
-    }
-
-    // Strings: single-quoted
-    if (ch === "'") {
-      const m = rest.match(/^'(?:[^'\\]|\\.)*'/);
-      if (m) {
-        push("string", m[0]);
-        i += m[0].length;
-        continue;
-      }
-      push("string", line.slice(i));
-      break;
-    }
-
-    // Template strings
-    if (ch === "`") {
-      const m = rest.match(/^`(?:[^`\\]|\\.)*`/);
-      if (m) {
-        push("string", m[0]);
-        i += m[0].length;
-        continue;
-      }
-      push("string", line.slice(i));
-      break;
-    }
-
-    // Numbers
-    if (/[0-9]/.test(ch) || (ch === "." && /[0-9]/.test(line[i + 1] || ""))) {
-      const m = rest.match(
-        /^0[xX][0-9a-fA-F_]+|^0[bB][01_]+|^0[oO][0-7_]+|^\d[\d_]*\.?[\d_]*(?:[eE][+-]?\d+)?/,
-      );
-      if (m) {
-        push("number", m[0]);
-        i += m[0].length;
-        continue;
-      }
-    }
-
-    // Words: keywords, booleans, types, functions
-    if (/[a-zA-Z_$]/.test(ch)) {
-      const m = rest.match(/^[a-zA-Z_$][\w$]*/);
-      if (m) {
-        const word = m[0];
-        const lookAhead = line.slice(i + word.length).trimStart();
-
-        const wordToCheck = caseSensitive ? word : word.toLowerCase();
-        const keywordSet = caseSensitive
-          ? keywords
-          : new Set([...keywords].map((k) => k.toLowerCase()));
-
-        if (BOOLEANS.has(word)) {
-          push("boolean", word);
-        } else if (keywordSet.has(wordToCheck)) {
-          push("keyword", word);
-        } else if (lookAhead.startsWith("(")) {
-          push("function", word);
-        } else if (/^[A-Z]/.test(word) && word.length > 1) {
-          push("type", word);
-        } else {
-          push("plain", word);
-        }
-        i += word.length;
-        continue;
-      }
-    }
-
-    // Property access: .identifier
-    if (ch === "." && /[a-zA-Z_$]/.test(line[i + 1] || "")) {
-      push("punctuation", ".");
+    if (result) {
+      tokens.push(...result.tokens);
+      i += result.consumed;
+      if (result.stop) break;
+    } else {
+      // Whitespace or anything else: plain
+      tokens.push({ type: "plain", value: line[i] });
       i++;
-      const m = line.slice(i).match(/^[a-zA-Z_$][\w$]*/);
-      if (m) {
-        const lookAhead = line.slice(i + m[0].length).trimStart();
-        if (lookAhead.startsWith("(")) {
-          push("function", m[0]);
-        } else {
-          push("property", m[0]);
-        }
-        i += m[0].length;
-      }
-      continue;
     }
-
-    // Operators
-    if (/[=+\-*/<>!&|?^~%]/.test(ch)) {
-      // Grab multi-char operators
-      const m = rest.match(
-        /^(?:===|!==|==|!=|<=|>=|=>|&&|\|\||<<|>>|>>>|\?\?|\?\.|\.\.\.|\*\*|[+\-*/<>!&|?^~%=])/,
-      );
-      if (m) {
-        push("operator", m[0]);
-        i += m[0].length;
-        continue;
-      }
-    }
-
-    // Punctuation
-    if (/[(){}[\],;:.]/.test(ch)) {
-      push("punctuation", ch);
-      i++;
-      continue;
-    }
-
-    // JSX/HTML tag detection: < followed by letter or /
-    if (ch === "<" && /^<\/?[A-Za-z]/.test(rest)) {
-      const tagMatch = rest.match(/^<\/?([A-Za-z][\w.-]*)/);
-      if (tagMatch) {
-        push("punctuation", rest.startsWith("</") ? "</" : "<");
-        i += rest.startsWith("</") ? 2 : 1;
-        push("tag", tagMatch[1]);
-        i += tagMatch[1].length;
-        continue;
-      }
-    }
-
-    // Whitespace or anything else: plain
-    push("plain", ch);
-    i++;
   }
 
   return tokens;

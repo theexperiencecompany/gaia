@@ -6,7 +6,7 @@ from langchain_core.exceptions import OutputParserException
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import ValidationError
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
     WORKFLOW_PROMPT_GENERATION_SYSTEM,
@@ -154,7 +154,8 @@ class WorkflowGenerationService:
         trigger_config: TriggerConfig | None = None,
         description: str | None = None,
         integration_ids: list[str] | None = None,
-        user_id: str | None = None,
+        *,
+        user_id: str,
     ) -> list[WorkflowStep]:
         """Generate workflow steps using the LLM's native structured output.
 
@@ -312,7 +313,10 @@ class WorkflowGenerationService:
 
             try:
                 result = await ainvoke_structured(
-                    GeneratedWorkflow, formatted_prompt, label="workflow_generation"
+                    GeneratedWorkflow,
+                    formatted_prompt,
+                    label="workflow_generation",
+                    config=metered_config(user_id),
                 )
             except (ValidationError, OutputParserException) as e:
                 # Schema-invalid structured output is regenerable; provider errors
@@ -362,6 +366,8 @@ class WorkflowGenerationService:
         existing_prompt: str | None = None,
         connected_integration_ids: set[str] | None = None,
         integration_ids: list[str] | None = None,
+        *,
+        user_id: str,
     ) -> GeneratedPromptResult:
         """Generate or improve workflow instructions using LLM.
 
@@ -406,7 +412,12 @@ class WorkflowGenerationService:
             HumanMessage(content=formatted),
         ]
 
-        result = await ainvoke_structured(GeneratedPromptOutput, messages, label="workflow_prompt")
+        result = await ainvoke_structured(
+            GeneratedPromptOutput,
+            messages,
+            label="workflow_prompt",
+            config=metered_config(user_id),
+        )
 
         suggested: SuggestedTrigger | None = None
         if result.trigger_type in ("manual", "schedule", "integration"):

@@ -7,6 +7,7 @@ from .documentation import with_doc
 from .rate_limiting import (
     LangChainRateLimitException,
     clear_user_context,
+    enforce_daily_cost_budget,
     enforce_rate_limit,
     get_current_rate_limit_info,
     set_user_context,
@@ -21,6 +22,7 @@ __all__ = [
     "with_rate_limiting",
     "tiered_rate_limit",
     "enforce_rate_limit",
+    "enforce_daily_cost_budget",
     "LangChainRateLimitException",
     "set_user_context",
     "clear_user_context",

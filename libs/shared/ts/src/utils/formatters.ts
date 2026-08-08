@@ -147,6 +147,32 @@ export function extractUrls(text: string): string[] {
 }
 
 /**
+ * Title-case a dynamic plan identifier (e.g. "pro" -> "Pro", "FREE" -> "Free")
+ * for display. Falls back to "Pro" when no plan is provided, since Pro is the
+ * only paid tier an upgrade ever targets. Use this for any user-facing render
+ * of a plan value that arrives as raw backend data — never hand-roll the
+ * capitalization inline.
+ */
+export function formatPlanName(plan?: string): string {
+  if (!plan) return "Pro";
+  return plan.charAt(0).toUpperCase() + plan.slice(1).toLowerCase();
+}
+
+/**
+ * Title-case a feature identifier (e.g. "deep_research" -> "Deep Research")
+ * for display. Falls back to "This Feature" when no feature is provided. Use
+ * this for any user-facing render of a raw backend feature slug — never
+ * hand-roll the split/capitalize inline.
+ */
+export function formatFeatureName(feature?: string): string {
+  if (!feature) return "This Feature";
+  return feature
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+/**
  * Format a monetary amount as a locale currency string.
  * Defaults to USD.
  */

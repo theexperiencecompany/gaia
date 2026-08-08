@@ -40,7 +40,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, silent_metered_config
 from app.constants.hil import (
     HIL_CLASSIFIER_MAX_ARG_CHARS,
     HIL_CLASSIFIER_MAX_DETAIL_CHARS,
@@ -119,7 +119,7 @@ async def _resolve_single(
     history: list[MessageDict] | None,
 ) -> DecisionAction | None:
     action_detail = build_action_detail(record.summary, record.args)
-    result = await interpret_decision_message(message, [action_detail], history)
+    result = await interpret_decision_message(message, [action_detail], history, user_id=user_id)
     if result is None:
         # The classifier errored. Leave the approval pending rather than abandon it —
         # a transient hiccup must not silently decline a legitimate pending action
@@ -150,7 +150,9 @@ async def _resolve_batch(
     join round it wakes collects the rest.
     """
     action_details = [build_action_detail(r.summary, r.args) for r in pending]
-    result = await interpret_batch_decision_message(message, action_details, history)
+    result = await interpret_batch_decision_message(
+        message, action_details, history, user_id=user_id
+    )
     if result.unrelated:
         await abandon_conversation_approvals(conversation_id, user_id, UNRELATED_FEEDBACK)
         return "unrelated"
@@ -175,7 +177,11 @@ async def _resolve_batch(
 
 
 async def interpret_batch_decision_message(
-    message: str, action_details: list[str], history: list[MessageDict] | None = None
+    message: str,
+    action_details: list[str],
+    history: list[MessageDict] | None = None,
+    *,
+    user_id: str,
 ) -> BatchDecisionResult:
     """Classify a chat reply against several pending approvals, per item.
 
@@ -188,7 +194,7 @@ async def interpret_batch_decision_message(
             _batch_prompt(message, action_details, history),
             label="hil_conversational_resolve_batch",
             timeout=HIL_LLM_TIMEOUT_SECONDS,
-            config=SILENT_LLM_CONFIG,
+            config=silent_metered_config(user_id),
         )
     except Exception as e:
         log.warning(
@@ -200,7 +206,11 @@ async def interpret_batch_decision_message(
 
 
 async def interpret_decision_message(
-    message: str, action_details: list[str], history: list[MessageDict] | None = None
+    message: str,
+    action_details: list[str],
+    history: list[MessageDict] | None = None,
+    *,
+    user_id: str,
 ) -> DecisionResult | None:
     """Classify a chat reply against pending approvals.
 
@@ -213,7 +223,7 @@ async def interpret_decision_message(
             _prompt(message, action_details, history),
             label="hil_conversational_resolve",
             timeout=HIL_LLM_TIMEOUT_SECONDS,
-            config=SILENT_LLM_CONFIG,
+            config=silent_metered_config(user_id),
         )
     except Exception as e:
         log.warning(

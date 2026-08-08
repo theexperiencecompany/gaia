@@ -637,17 +637,26 @@ async def create_processed_webhook_indexes() -> None:
 
 async def create_usage_indexes() -> None:
     """
-    Create indexes for usage_snapshots collection for optimal query performance.
-    Includes TTL index for automatic cleanup after 90 days.
+    Create indexes for the usage_snapshots and usage_daily collections.
+    Includes TTL index for automatic snapshot cleanup after 90 days.
 
     Query patterns:
     - Find latest usage by user_id (sorted by created_at desc)
     - Find usage history by user_id and date range
+    - Heatmap: per-user trailing-window reads on usage_daily (user_id + date)
+    - Percentile thresholds: cross-user aggregation on usage_daily (date range)
     - Automatic cleanup via TTL index
     """
+    usage_daily_collection = get_async_collection("usage_daily")
     usage_snapshots_collection = get_async_collection("usage_snapshots")
     try:
         await asyncio.gather(
+            # Heatmap upsert key + per-user range reads (unique per user-day)
+            usage_daily_collection.create_index(
+                [("user_id", 1), ("date", 1)], unique=True, name="user_day_unique"
+            ),
+            # Cross-user percentile threshold aggregation ($match on date range)
+            usage_daily_collection.create_index("date", name="daily_date_range"),
             # Primary query: get latest usage by user
             usage_snapshots_collection.create_index(
                 [("user_id", 1), ("created_at", -1)], name="user_latest_usage"

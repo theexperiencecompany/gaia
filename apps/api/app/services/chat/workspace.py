@@ -15,9 +15,8 @@ import asyncio
 
 from app.constants.log_tags import LogTag
 from app.services.storage import JuiceFSUnavailable, touch_session_last_active
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import log
-
-_last_active_tasks: set[asyncio.Task[None]] = set()
 
 
 def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
@@ -26,7 +25,7 @@ def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
     Non-blocking; soft-fails when JuiceFS is unmounted (dev).
     """
     try:
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
     except RuntimeError:
         return
 
@@ -40,6 +39,4 @@ def schedule_last_active_touch(user_id: str, conversation_id: str) -> None:
                 f"{LogTag.CHAT} last_active touch failed", error=str(e), error_type=type(e).__name__
             )
 
-    task = loop.create_task(_touch())
-    _last_active_tasks.add(task)
-    task.add_done_callback(_last_active_tasks.discard)
+    spawn_background_task(_touch())

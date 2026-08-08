@@ -330,6 +330,7 @@ async def _judge(
         log.info(f"{LogTag.HIL} not auto-approving : a sibling call may pause", name=call.name)
         return None
     return await judge_intent(
+        user_id=context.user_id,
         user_messages=context.user_messages,
         tool_name=call.name,
         description=tool_description(tool_of(request)),

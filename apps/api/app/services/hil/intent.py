@@ -39,7 +39,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from app.agents.llm.client import SILENT_LLM_CONFIG, ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, silent_metered_config
 from app.constants.hil import HIL_JUDGE_MIN_QUOTE_WORDS, HIL_LLM_TIMEOUT_SECONDS
 from app.constants.log_tags import LogTag
 from app.services.hil.prompts import INTENT_JUDGE_PROMPT
@@ -114,6 +114,7 @@ class _Verdict(BaseModel):
 
 async def judge_intent(
     *,
+    user_id: str,
     user_messages: list[str],
     tool_name: str,
     description: str,
@@ -138,7 +139,9 @@ async def judge_intent(
         return IntentDecision(False, _NO_REQUEST_REASON)
 
     try:
-        verdict = await _ask_judge(turns, tool_name, description, args, summary, prior_calls)
+        verdict = await _ask_judge(
+            user_id, turns, tool_name, description, args, summary, prior_calls
+        )
     except Exception as e:  # noqa: BLE001 — a judge failure must fall back to asking
         log.warning(
             f"{LogTag.HIL} intent judge failed for ; asking",
@@ -167,6 +170,7 @@ async def judge_intent(
 
 
 async def _ask_judge(
+    user_id: str,
     turns: list[str],
     tool_name: str,
     description: str,
@@ -188,7 +192,7 @@ async def _ask_judge(
         ),
         label="hil_intent_judge",
         timeout=HIL_LLM_TIMEOUT_SECONDS,
-        config=SILENT_LLM_CONFIG,
+        config=silent_metered_config(user_id),
     )
 
 

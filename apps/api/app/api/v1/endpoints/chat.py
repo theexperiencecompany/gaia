@@ -22,15 +22,13 @@ from app.constants.cache import STREAM_TURN_DEDUP_PREFIX, STREAM_TURN_DEDUP_TTL
 from app.constants.log_tags import LogTag
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
-from app.decorators import tiered_rate_limit
+from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import CancelStreamResponse, ConversationSource
 from app.models.message_models import MessageRequestWithHistory
 from app.models.user_models import AuthenticatedUser
 from app.services.chat.stream import run_chat_stream_background
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import ChatContext, get_trace_id, log, log_context
-
-# asyncio.create_task only keeps a weakref; without this set the task can be GC'd mid-flight.
-_background_tasks: set[asyncio.Task] = set()
 
 _USER_ID_REQUIRED = "user_id is required"
 _DUPLICATE_TURN = "duplicate turn_id: this send was already accepted"
@@ -136,6 +134,10 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=_USER_ID_REQUIRED,
         )
+    # Cost wall: the decorator above caps how MANY messages; this caps how
+    # EXPENSIVE they were. 429s before any stream work when the day's LLM
+    # spend (recorded per call by LLMAccountingMiddleware) is exhausted.
+    await enforce_daily_cost_budget(user_id, feature_key="chat_messages")
     # Seed the agent's home zone (DB-resolved, browser-header-healed) so its
     # "now" and schedule defaults run in the user's real zone, not stored UTC.
     user = {**user, "timezone": home_timezone}
@@ -168,7 +170,7 @@ async def chat_stream_endpoint(
         user_id=user_id,
     )
 
-    task = asyncio.create_task(
+    spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
             body=body,
@@ -177,8 +179,6 @@ async def chat_stream_endpoint(
             source=_resolve_source(request),
         )
     )
-    _background_tasks.add(task)
-    task.add_done_callback(_background_tasks.discard)
 
     # Don't set Access-Control-Allow-Origin here — CORSMiddleware echoes the
     # request Origin per-request against the allowlist; hardcoding it would

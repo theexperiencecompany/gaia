@@ -47,11 +47,10 @@ from app.services.chat.stream import run_chat_stream_background
 from app.services.integrations.marketplace import get_integration_details
 from app.services.integrations.user_integrations import get_user_integration_records
 from app.services.platform_link_service import Platform, PlatformLinkService
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import get_trace_id, log, log_context
 
 router = APIRouter()
-
-_background_tasks: set[asyncio.Task] = set()
 
 
 async def require_bot_api_key(request: Request) -> None:
@@ -284,30 +283,26 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     await stream_manager.start_stream(stream_id, conversation_id, user_id)
 
     # Launch background task
-    task = asyncio.create_task(
+    def _log_stream_failure(t: asyncio.Task) -> None:
+        if not t.cancelled() and (exc := t.exception()):
+            log.error(
+                f"{LogTag.API} Background stream task failed",
+                stream_id=stream_id,
+                conversation_id=conversation_id,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
+
+    spawn_background_task(
         run_chat_stream_background(
             stream_id=stream_id,
             body=message_request,
             user=user,
             conversation_id=conversation_id,
             source=body.platform,
-        )
+        ),
+        on_done=_log_stream_failure,
     )
-
-    def task_done_callback(t: asyncio.Task) -> None:
-        """Drop the finished background task from the registry and log failures."""
-        _background_tasks.discard(t)
-        if t.exception():
-            log.error(
-                f"{LogTag.API} Background stream task failed",
-                stream_id=stream_id,
-                conversation_id=conversation_id,
-                error_type=type(t.exception()).__name__,
-                error=str(t.exception()),
-            )
-
-    task.add_done_callback(task_done_callback)
-    _background_tasks.add(task)
 
     async def stream_from_redis() -> AsyncGenerator[str, None]:
         """Subscribe to Redis stream and translate chunks for bot clients.

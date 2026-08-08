@@ -619,7 +619,7 @@ class TestGetUserTz:
 # ---------------------------------------------------------------------------
 
 
-class TestFireAndForget:
+class TestSpawnBackgroundTask:
     async def test_schedules_the_coroutine_as_a_background_task(self):
         ran = {"done": False}
 

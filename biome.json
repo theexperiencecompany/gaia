@@ -180,6 +180,16 @@
   ],
   "overrides": [
     {
+      "includes": ["apps/web/src/features/desktop-popup/desktop-popup.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          }
+        }
+      }
+    },
+    {
       "includes": ["apps/web/**"],
       "linter": {
         "domains": {

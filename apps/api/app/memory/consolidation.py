@@ -204,6 +204,7 @@ async def consolidate(
         content = await rewrite_core_document(
             _system_prompt(doc_type, user_name),
             _format_inputs(previous_content, inputs),
+            user_id=user_id,
         )
         if content is None or not content.strip():
             outcomes[doc_type.value] = "failed"

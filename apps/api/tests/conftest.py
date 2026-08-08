@@ -25,7 +25,9 @@ import pytest
 # ---------------------------------------------------------------------------
 
 os.environ["ENV"] = "development"
-# The unit suite must be deterministic regardless of a developer's dev-bypass .env.
+# Force the dev auth bypass OFF for the suite: a machine set up for agent-driven
+# e2e has DEV_AUTH_BYPASS_EMAIL in apps/api/.env, which would short-circuit
+# WorkOSAuthMiddleware — including in the tests that exercise that middleware.
 # Force an empty (falsy) value rather than popping: an empty value keeps the
 # prod-guard off, and because the key is now present, load_dotenv(override=False)
 # — called at settings import — will not re-inject a value from the developer's .env.

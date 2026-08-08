@@ -739,6 +739,7 @@ async def generate_workflow_prompt_endpoint(
             trigger_config=request.trigger_config,
             existing_prompt=request.existing_prompt,
             integration_ids=request.integration_ids,
+            user_id=user["user_id"],
         )
         log.set(outcome="success")
         return GenerateWorkflowPromptResponse(**result)

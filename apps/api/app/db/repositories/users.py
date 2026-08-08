@@ -549,6 +549,53 @@ class UserRepository(MongoRepository[UserDocument, UserUpdate]):
             return_document=False,
         )
 
+    async def record_limit_email_sent(self, user_id: str) -> None:
+        """Stamp the usage-limit upsell email send time (the 1/week dedupe marker)."""
+        await self._apply_raw_update(
+            {"_id": self._id_value(user_id)},
+            {"$set": {"last_limit_email_sent": datetime.now(UTC)}},
+            scope=REPO_GLOBAL_SCOPE,
+            return_document=False,
+        )
+
+    async def record_activity_tier_promotion(
+        self, user_id: str, tier: str, lower_tiers: list[str]
+    ) -> UserDocument | None:
+        """Persist ``tier`` as the user's highest activity badge ever reached;
+        return the updated document only on a FIRST-TIME promotion, else None.
+
+        The guard is monotonic — a stored tier is only ever replaced by one in
+        ``lower_tiers``' complement — so downgrades are silent and re-crossing a
+        boundary can never re-fire. The filtered update is also the idempotency
+        lock: a retried job matches zero documents the second time.
+
+        A ``user_id`` that is not a valid ObjectId (synthetic/dev identities in
+        the rollups) is skipped with a warning rather than failing the sweep —
+        id-encoding concerns stay inside the repository layer.
+        """
+        if not ObjectId.is_valid(user_id):
+            log.warning(
+                "[repository] tier promotion skipped non-ObjectId user_id",
+                user={"id": user_id},
+            )
+            return None
+        return await self._apply_raw_update(
+            {
+                "_id": self._id_value(user_id),
+                "$or": [
+                    {"highest_activity_tier": {"$exists": False}},
+                    {"highest_activity_tier": {"$in": lower_tiers}},
+                ],
+            },
+            {
+                "$set": {
+                    "highest_activity_tier": tier,
+                    "highest_activity_tier_at": datetime.now(UTC),
+                }
+            },
+            scope=REPO_GLOBAL_SCOPE,
+        )
+
     async def mark_memory_backfilled(self, user_id: str) -> None:
         """Stamp the memory-backfill marker so the daily cron won't re-select the user."""
         await self._apply_raw_update(

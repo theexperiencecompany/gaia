@@ -39,6 +39,7 @@ from app.models.chat_models import (
 from app.models.message_models import ReplyToMessageData
 from app.services.conversation_service import update_messages
 from app.services.platform_message_service import deliver_message_to_platform, is_bot_platform
+from app.utils.background_tasks import spawn_background_task
 from shared.py.wide_events import get_trace_id, log, log_context
 
 
@@ -357,11 +358,6 @@ async def _build_follow_up_actions(
     )
 
 
-# Strong refs to in-flight deferred tasks — asyncio.create_task only holds a weak
-# reference, so without this the task can be GC'd before it finishes.
-_deferred_follow_up_tasks: set[asyncio.Task[None]] = set()
-
-
 def _spawn_deferred_follow_ups(
     *,
     run: ExecutorRun,
@@ -374,7 +370,7 @@ def _spawn_deferred_follow_ups(
     """Generate follow-up actions off the critical path and push them as a second
     update on the already-delivered message, so the answer isn't gated behind the
     extra LLM call."""
-    task = asyncio.create_task(
+    spawn_background_task(
         _generate_and_push_follow_ups(
             run=run,
             bot_message=bot_message,
@@ -384,8 +380,6 @@ def _spawn_deferred_follow_ups(
             user_msg_content=user_msg_content,
         )
     )
-    _deferred_follow_up_tasks.add(task)
-    task.add_done_callback(_deferred_follow_up_tasks.discard)
 
 
 async def _generate_and_push_follow_ups(

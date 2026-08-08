@@ -158,7 +158,10 @@ class FileService:
             blob_url, generated_summary = await asyncio.gather(
                 upload_to_cloudinary(upload.content, resource_type, upload.public_id),
                 generate_file_summary(
-                    file_content=upload.content, content_type=content_type, filename=upload.filename
+                    file_content=upload.content,
+                    content_type=content_type,
+                    filename=upload.filename,
+                    user_id=user_id,
                 ),
             )
             description, page_wise_summary = process_summary(generated_summary)
@@ -320,6 +323,7 @@ class FileService:
                     file_content=file_content,
                     content_type=file_data.type,
                     filename=set_fields.get("filename") or file_data.filename,
+                    user_id=user_id,
                 )
                 description, page_wise_summary = process_summary(generated_summary)
                 set_fields["description"] = description

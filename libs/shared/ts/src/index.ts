@@ -323,6 +323,10 @@ export {
   REQUIRED_DOC_COMMANDS,
   REQUIRED_INSTALL_COMMANDS,
 } from "./cli";
+export {
+  USAGE_DANGER_THRESHOLD,
+  USAGE_WARN_THRESHOLD,
+} from "./constants/usage";
 export type {
   DesktopAppIconOption,
   DesktopMediaAccessStatus,
@@ -389,6 +393,8 @@ export {
 } from "./todos";
 export { formatToolDueDate, groupEventsByDate } from "./tool-utils";
 export type {
+  ActivityDay,
+  BudgetWindow,
   BulkMoveRequest,
   ChannelPlatform,
   ChannelPreferences,
@@ -461,13 +467,13 @@ export type {
   TodoLabel,
   TodoListResponse,
   TodoUpdate,
-  TokenUsage,
-  TokenUsagePeriod,
   Tool,
   ToolCategory,
   ToolsByCategoryResponse,
   ToolsListResponse,
   TriggerConfig,
+  UsageActivity,
+  UsageBudget,
   UsagePeriod,
   UsageSummary,
   UserIntegration,
@@ -514,10 +520,13 @@ export {
   formatCompactNumber,
   formatCurrency,
   formatDate,
+  formatDateUTC,
   formatDueDate,
   formatDuration,
+  formatFeatureName,
   formatFileSize,
   formatNumber,
+  formatPlanName,
   formatRelativeDate,
   formatRelativeTime,
   formatRunCount,

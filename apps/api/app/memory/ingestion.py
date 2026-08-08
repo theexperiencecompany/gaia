@@ -16,6 +16,8 @@ from app.constants.memory import (
     CATEGORY_PATH_MAX_DEPTH,
     DEFAULT_MEMORY_IMPORTANCE,
     EPISODE_ENTRY_TIME_FORMAT,
+    FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN,
+    FREE_MEMORY_FACT_LIMIT,
     RECENT_FACTS_LIMIT,
     TRANSCRIPT_CHUNK_MAX_CHARS,
     TRANSCRIPT_CHUNK_OVERLAP_CHARS,
@@ -26,7 +28,7 @@ from app.constants.memory import (
     MemorySourceType,
     ReconcileOutcome,
 )
-from app.memory import chroma_store, pg_store
+from app.memory import cap_counter, chroma_store, pg_store
 from app.memory.chroma_store import ConversationChunkItem, EpisodeVectorItem, MemoryVectorItem
 from app.memory.consolidation import infer_doc_types, schedule_consolidation
 from app.memory.context import invalidate_user_memory_caches
@@ -37,11 +39,97 @@ from app.memory.reconciliation import ReconciledFact, reconcile
 from app.memory.schemas import ExtractedFact
 from app.models.memory_db_models import MemoryRecord
 from app.models.memory_models import MemoryEntry
+from app.models.payment_models import PlanType
 from app.services.memory_fs import schedule_memory_vfs_sync
+from app.services.payments.payment_service import payment_service
 from shared.py.wide_events import MemoryContext, UserContext, log
 
 _DEFAULT_USER_NAME = "the user"
 _FALLBACK_CATEGORY_PATH = "general"
+
+
+class MemoryLimitReachedError(Exception):
+    """An explicit memory add was blocked by the free plan's live-fact cap.
+
+    Raised only by ``retain_single`` (add_memory tool / POST endpoint) so the
+    caller can surface an upgrade prompt. Passive ingestion never raises — it
+    silently drops NEW facts at the cap (see ``retain``).
+    """
+
+    def __init__(self, limit: int) -> None:
+        self.limit = limit
+        super().__init__(
+            f"Free plan memory limit reached ({limit} saved memories). "
+            "Upgrade to Pro for unlimited memories."
+        )
+
+
+async def _free_cap_remaining(user_id: str, growth: int) -> int | None:
+    """How many more live facts a FREE user may add, or ``None`` when uncapped.
+
+    ``None`` means no cap applies — a paid plan, or an infra error during the
+    plan lookup (fail open: memory must not stop working because the plan
+    lookup hiccuped). For a free user it is ``max(0, limit - live count)``, so
+    a batch that would cross the cap can be trimmed to land exactly at it.
+
+    ``growth`` is how many facts this call would add (the NEW/EXTENDS count for
+    a batch, 1 for a single add). The live count comes from the Redis counter
+    (``cap_counter``) on the hot path, avoiding a Postgres ``COUNT`` when a free
+    user sits far below the cap. The cache is trusted only when the remaining
+    budget clears ``growth`` plus a safety margin; when the batch might cross
+    the cap, the counter is missing, or Redis is down, it falls back to the
+    authoritative ``COUNT`` (and re-seeds the counter), so the hard cap is exact.
+
+    Uses the cached plan lookup (Redis-backed) — retain() runs from many
+    callers (chat turns, subagents, email ingestion, API endpoints), so
+    resolving here keeps one canonical check instead of threading plan_type
+    through every path.
+    """
+    try:
+        plan = await payment_service.get_cached_plan_type(user_id)
+    except Exception as e:
+        log.warning(
+            "Memory cap plan lookup failed (failing open)",
+            error=str(e),
+            error_type=type(e).__name__,
+        )
+        return None
+    if plan != PlanType.FREE:
+        return None
+
+    cached = await cap_counter.get_cached_live_count(user_id)
+    if cached is not None:
+        remaining = max(0, FREE_MEMORY_FACT_LIMIT - cached)
+        if remaining >= growth + FREE_MEMORY_CAP_COUNT_SAFETY_MARGIN:
+            return remaining
+
+    # Near the cap, a cache miss, or Redis down: the COUNT is authoritative and
+    # exact. Re-seed the counter so subsequent turns stay on the hot path.
+    live = await pg_store.count_live_memories(user_id)
+    await cap_counter.set_cached_live_count(user_id, live)
+    return max(0, FREE_MEMORY_FACT_LIMIT - live)
+
+
+def _enforce_free_cap(
+    reconciled: list[ReconciledFact], remaining: int
+) -> tuple[list[ReconciledFact], int]:
+    """Trim growth facts to ``remaining`` free slots, preserving order.
+
+    Admits at most ``remaining`` NEW/EXTENDS facts (the ones that grow the
+    live set) in reconciliation order and drops the surplus; UPDATES and
+    DUPLICATEs pass through untouched since they never grow the count.
+    Returns the kept facts and how many were dropped.
+    """
+    kept: list[ReconciledFact] = []
+    admitted = dropped = 0
+    for item in reconciled:
+        if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS):
+            if admitted >= remaining:
+                dropped += 1
+                continue
+            admitted += 1
+        kept.append(item)
+    return kept, dropped
 
 
 @dataclass
@@ -158,6 +246,32 @@ async def retain(
     reconciled = await reconcile(user_id, batch.facts, embeddings)
     timings["reconcile_ms"] = _elapsed_ms(stage)
 
+    # Free-plan cap: passive ingestion admits only as many growth facts
+    # (NEW/EXTENDS) as fit under the cap and silently drops the rest, so a
+    # batch that crosses the cap lands exactly at it rather than overshooting
+    # (48 live + 10 new must not become 58). Concurrent same-user batches can
+    # transiently exceed the cap by a few facts (the check is not a reservation
+    # by design — enforcement stays fail-open), after which growth stops, so
+    # the cap is exact per batch and convergent, not globally atomic. UPDATES
+    # supersede (net count unchanged) so what GAIA knows stays current, and
+    # reads are never gated — the cap blocks growth, it does not lobotomize.
+    # Facts keep reconciliation order (input order), so earlier facts in the
+    # transcript win the remaining slots deterministically.
+    growth = sum(
+        1 for item in reconciled if item.outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
+    )
+    remaining = await _free_cap_remaining(user_id, growth)
+    if remaining is not None:
+        reconciled, dropped = _enforce_free_cap(reconciled, remaining)
+        if dropped:
+            log.info(
+                "memory_cap_reached",
+                event_name="memory_cap_reached",
+                user_id=user_id,
+                dropped=dropped,
+                limit=FREE_MEMORY_FACT_LIMIT,
+            )
+
     stage = time.perf_counter()
     applied = await _apply_reconciled(
         user_id, reconciled, source_type=source_type, source_id=source_id, mentioned_at=now
@@ -222,6 +336,12 @@ async def retain_single(
     categorize LLM call assigns folder/kind/importance/entities — the
     full extraction prompt is tuned to filter conversational noise and
     could drop an explicitly requested fact, so it is not reused here.
+
+    Raises ``MemoryLimitReachedError`` when a free user at the live-fact cap
+    tries to add a fact that would GROW the set — explicit adds fail LOUD so
+    the tool/endpoint can upsell, unlike passive ingestion which drops
+    silently. A DUPLICATE or UPDATES resolves to zero growth and stays allowed
+    at the cap, so the outcome is known only after reconciliation.
     """
     now = datetime.now(UTC)
     fact = await _build_single_fact(user_id, content, category_path, now)
@@ -231,6 +351,13 @@ async def retain_single(
     if not reconciled:
         # reconcile() drops facts the batched LLM returned no verdict for.
         raise ValueError("Memory could not be reconciled against existing memories")
+
+    is_growth = reconciled[0].outcome in (ReconcileOutcome.NEW, ReconcileOutcome.EXTENDS)
+    if is_growth:
+        remaining = await _free_cap_remaining(user_id, growth=1)
+        if remaining is not None and remaining <= 0:
+            raise MemoryLimitReachedError(FREE_MEMORY_FACT_LIMIT)
+
     applied = await _apply_reconciled(user_id, reconciled, source_type=source_type, source_id=None)
     await invalidate_user_memory_caches(user_id)
     await _schedule_post_ingest(
@@ -268,7 +395,7 @@ async def summarize_episode(user_id: str, date: date_type) -> None:
         return
 
     lines = [f"{entry.get('time', '')} {entry.get('text', '')}" for entry in episode.entries]
-    summary = await summarize_episode_entries(lines)
+    summary = await summarize_episode_entries(lines, user_id=user_id)
     if summary is None:
         return
 
@@ -300,7 +427,10 @@ async def _build_single_fact(
 
     folder_tree = await pg_store.get_folder_tree(user_id)
     categorization = await categorize_fact(
-        content, folder_tree=_format_folder_tree(folder_tree), current_date=now
+        content,
+        user_id=user_id,
+        folder_tree=_format_folder_tree(folder_tree),
+        current_date=now,
     )
     if categorization is None:
         return ExtractedFact(
@@ -413,6 +543,12 @@ async def _apply_reconciled(
     await chroma_store.upsert_memories(vector_items)
 
     entities_linked, edges_added = await _apply_graph(user_id, inserted)
+
+    # Keep the free-cap counter in sync: NEW and EXTENDS grow the live set;
+    # UPDATES supersede (net zero) and DUPLICATEs add nothing. A no-op when the
+    # counter is unseeded (paid users) or Redis is down.
+    await cap_counter.adjust_live_count(user_id, new + extended)
+
     return _ApplyResult(
         inserted=inserted,
         duplicates=duplicates,

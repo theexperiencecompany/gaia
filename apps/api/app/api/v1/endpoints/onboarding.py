@@ -182,7 +182,7 @@ async def get_clarify_questions(
     if not focus:
         raise HTTPException(status_code=400, detail="Focus is required")
 
-    questions = await generate_clarify_questions(name, profession, focus)
+    questions = await generate_clarify_questions(name, profession, focus, user_id=user["user_id"])
     return ClarifyQuestionsResponse(questions=questions)
 
 
@@ -578,6 +578,7 @@ async def regenerate_writing_style_example(
     try:
         example = await regenerate_example_for_style(
             summary=request.edited_summary.strip(),
+            user_id=user_id,
             profession=request.profession,
         )
         if example:

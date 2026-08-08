@@ -5,7 +5,7 @@ import random
 
 from bson import ObjectId
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import HOLO_CARD_PROMPT
 from app.constants.log_tags import LogTag
 from app.constants.profession_bios import get_random_bio_for_profession
@@ -187,7 +187,11 @@ async def generate_holo_card_content(
             context_summary=context_summary[:10000],
         )
         result: HoloCardLLMOutput = await ainvoke_structured(
-            HoloCardLLMOutput, prompt, label="holo_card", temperature=1.0
+            HoloCardLLMOutput,
+            prompt,
+            label="holo_card",
+            temperature=1.0,
+            config=metered_config(user_id),
         )
         phrase = result.personality_phrase.strip().strip('"').strip("'")
         bio = result.user_bio.strip()

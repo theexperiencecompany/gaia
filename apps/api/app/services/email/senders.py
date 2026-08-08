@@ -1,5 +1,8 @@
 """Domain senders for every platform email GAIA delivers."""
 
+from datetime import UTC, datetime
+
+from app.config.rate_limits import derive_pro_benefits, get_feature_info
 from app.config.settings import settings
 from app.constants.email import (
     CONTACT_EMAIL,
@@ -11,6 +14,7 @@ from app.constants.email import (
     WHATSAPP_URL,
 )
 from app.constants.log_tags import LogTag
+from app.db.repositories.users import user_repository
 from app.models.support_models import SupportEmailNotification, SupportRequestType
 from app.services.email.models import EmailMessage
 from app.services.email.providers import get_email_provider
@@ -239,3 +243,86 @@ async def send_inactive_user_email(
             error_type=type(e).__name__,
         )
         raise
+
+
+async def send_badge_earned_email(
+    user_email: str,
+    user_name: str | None,
+    tier: str,
+    top_label: str,
+) -> None:
+    """Congratulate a user the first time they reach an activity badge tier.
+
+    Send-once semantics live with the caller (``sync_activity_tiers`` promotes
+    monotonically), so this stays a dumb sender like the rest of this module.
+    """
+    html_content = render_email_template(
+        "badge_earned.html",
+        user_name=user_name,
+        tier_name=tier.capitalize(),
+        top_label=top_label,
+        usage_url=f"{settings.FRONTEND_URL}/settings/usage",
+        contact_email=CONTACT_EMAIL,
+    )
+
+    await send_email(
+        EmailMessage(
+            sender=FOUNDER_SENDER,
+            to=[user_email],
+            subject=f"You're in the top {top_label} of GAIA users",
+            html=html_content,
+            reply_to=CONTACT_EMAIL,
+        )
+    )
+    log.info(f"{LogTag.MAIL} Badge earned email sent", tier=tier)
+
+
+async def send_limit_reached_email(
+    user_id: str,
+    hit_feature: str,
+) -> bool:
+    """Upsell email when a FREE user hits a usage wall, deduped to 1/week.
+
+    The benefits list is derived live from FEATURE_LIMITS — the same config
+    that enforces the limits — so the email can never promise something the
+    plan doesn't deliver. Returns True if sent, False if skipped (dedupe or
+    missing user/email).
+    """
+    user = await user_repository.get(user_id)
+    if user is None or not user.email:
+        log.warning(
+            f"{LogTag.MAIL} Limit email skipped — user not found or no email",
+            user={"id": user_id},
+        )
+        return False
+
+    now = datetime.now(UTC)
+    last_sent = user.last_limit_email_sent
+    if last_sent and last_sent.tzinfo is None:
+        last_sent = last_sent.replace(tzinfo=UTC)
+    # One nudge per week: a daily 429 toast is expected UX; a daily email is spam.
+    if last_sent and (now - last_sent).days < 7:
+        return False
+
+    feature_title = get_feature_info(hit_feature).title
+    html_content = render_email_template(
+        "limit_reached.html",
+        user_name=user.name,
+        hit_feature_title=feature_title,
+        benefits=derive_pro_benefits(hit_feature),
+        pricing_url=f"{settings.FRONTEND_URL}/pricing",
+        contact_email=CONTACT_EMAIL,
+    )
+
+    await send_email(
+        EmailMessage(
+            sender=FOUNDER_SENDER,
+            to=[user.email],
+            subject="You hit your GAIA limit today — here's what Pro unlocks",
+            html=html_content,
+            reply_to=CONTACT_EMAIL,
+        )
+    )
+    await user_repository.record_limit_email_sent(user_id)
+    log.info(f"{LogTag.MAIL} Limit-reached upsell email sent", user={"id": user_id})
+    return True

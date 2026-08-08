@@ -1085,7 +1085,7 @@ class TestExecuteWorkflowByIdNotifications:
         mock_notif.create_notification.assert_awaited_once()
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "Resets" in notif_req.content.body
-        assert "PRO" in notif_req.content.body
+        assert "Upgrade to Pro" in notif_req.content.body
         # Should include an upgrade action
         assert notif_req.content.actions is not None
         assert len(notif_req.content.actions) == 1
@@ -1118,7 +1118,7 @@ class TestExecuteWorkflowByIdNotifications:
         assert "Error executing workflow" in result
         notif_req = mock_notif.create_notification.call_args[0][0]
         assert "not available on your current plan" in notif_req.content.body
-        assert "PRO" in notif_req.content.body
+        assert "Upgrade to Pro" in notif_req.content.body
 
     async def test_rate_limit_with_invalid_reset_time_format_falls_back(self, ctx):
         """When reset_time string in the detail dict is unparseable,

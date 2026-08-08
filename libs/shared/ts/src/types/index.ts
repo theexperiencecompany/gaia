@@ -97,9 +97,11 @@ export type {
   ToolsListResponse,
 } from "./tools";
 export type {
+  ActivityDay,
+  BudgetWindow,
   FeatureUsage,
-  TokenUsage,
-  TokenUsagePeriod,
+  UsageActivity,
+  UsageBudget,
   UsagePeriod,
   UsageSummary,
 } from "./usage";

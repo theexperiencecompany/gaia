@@ -11,11 +11,14 @@ from app.agents.prompts.workflow_prompts import (
     TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
     TODO_WORKFLOW_PROMPT_TEMPLATE,
 )
-from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
+from app.api.v1.middleware.tiered_rate_limiter import (
+    CostBudgetExceededException,
+    RateLimitExceededException,
+)
 from app.constants.log_tags import LogTag
 from app.core.websocket_manager import get_websocket_manager
 from app.db.repositories.todos import todo_repository
-from app.decorators import tiered_rate_limit
+from app.decorators import enforce_daily_cost_budget, tiered_rate_limit
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
     MessageRequestWithHistory,
@@ -32,6 +35,7 @@ from app.models.notification.notification_models import (
     NotificationType,
     RedirectConfig,
 )
+from app.models.payment_models import PlanType
 from app.models.todo_models import TodoUpdate
 from app.models.user_models import AuthenticatedUser
 from app.models.workflow_models import (
@@ -279,9 +283,10 @@ def _log_schedule_drift(workflow: Workflow, workflow_id: str, actual_fire_utc: d
         )
 
 
-async def _quota_exhausted_body(workflow: Workflow, plan_required: str, reset_time_str: str) -> str:
+async def _quota_exhausted_body(workflow: Workflow, reset_time_str: str) -> str:
     """Quota-exhausted copy, naming the reset time in the user's own timezone.
     Falls back to the undated wording if the reset stamp can't be rendered."""
+    body = f"'{workflow.title}' couldn't run — you've used all your workflow executions for today."
     try:
         reset_dt = datetime.fromisoformat(reset_time_str)
         if reset_dt.tzinfo is None:
@@ -292,54 +297,67 @@ async def _quota_exhausted_body(workflow: Workflow, plan_required: str, reset_ti
         except Exception:
             reset_tz = None
         formatted_reset = format_local_time(reset_dt, reset_tz, fmt="%b %d at %I:%M %p %Z")
-        return (
-            f"'{workflow.title}' couldn't run — "
-            f"you've used all your workflow executions for today. "
-            f"Resets {formatted_reset}. "
-            f"Upgrade to {plan_required} for higher daily limits."
-        )
+        return f"{body} Resets {formatted_reset}."
     except Exception:
-        return (
-            f"'{workflow.title}' couldn't run — "
-            f"you've used all your workflow executions for today. "
-            f"Upgrade to {plan_required} for higher daily limits."
-        )
+        return body
 
 
 async def _rate_limit_failure_content(
     error: Exception, workflow: Workflow
-) -> tuple[str, NotificationAction]:
-    """Failure copy plus the upgrade CTA for a quota- or plan-blocked run."""
+) -> tuple[str, NotificationAction | None]:
+    """Failure copy plus the upgrade CTA for a budget-, quota-, or plan-blocked run."""
     # HTTPException.detail is typed str | None upstream, but
     # RateLimitExceededException always assigns a dict at runtime — read it via
     # getattr to avoid narrowing against the (incorrect for this subclass)
     # inherited annotation.
     raw_detail = getattr(error, "detail", None)
     detail: dict[str, str] = raw_detail if isinstance(raw_detail, dict) else {}
-    plan_required = detail.get("plan_required", "pro").upper()
     reset_time_str = detail.get("reset_time", "")
+    # A user already on the top tier has nothing to upgrade to — drop the
+    # pitch and the upgrade action for them.
+    is_pro = detail.get("current_plan") == PlanType.PRO.value
+    # Only two tiers exist, so the upgrade target is always Pro even when
+    # plan_required is absent (a count wall on a feature free can still use).
+    upgrade_plan = (detail.get("plan_required") or PlanType.PRO.value).capitalize()
 
-    if reset_time_str:
-        body = await _quota_exhausted_body(workflow, plan_required, reset_time_str)
+    if isinstance(error, CostBudgetExceededException):
+        # Budget (cost) wall, not the execution-count quota — different cause,
+        # different copy. Runs resume after the daily reset; the caller's
+        # re-arm keeps the cron.
+        body = (
+            f"'{workflow.title}' couldn't run — you're out of "
+            f"AI usage for today. It will run again after your usage resets."
+        )
+        if not is_pro:
+            body += f" Upgrade to {upgrade_plan} for much higher limits."
+    elif reset_time_str:
+        body = await _quota_exhausted_body(workflow, reset_time_str)
+        if not is_pro:
+            body += f" Upgrade to {upgrade_plan} for higher daily limits."
     else:
-        # Plan-gated — feature isn't available on their plan at all
+        # Plan-gated — feature isn't available on their plan at all. Only a
+        # free user can reach here (Pro has access).
         body = (
             f"'{workflow.title}' couldn't run — "
             f"automated workflow execution is not available on your current plan. "
-            f"Upgrade to {plan_required} to unlock this feature."
+            f"Upgrade to {upgrade_plan} to unlock this feature."
         )
 
-    upgrade_action = NotificationAction(
-        type=ActionType.REDIRECT,
-        label=f"Upgrade to {plan_required}",
-        style=ActionStyle.PRIMARY,
-        config=ActionConfig(
-            redirect=RedirectConfig(
-                url="/settings?section=subscription",
-                open_in_new_tab=False,
-                close_notification=True,
-            )
-        ),
+    upgrade_action = (
+        None
+        if is_pro
+        else NotificationAction(
+            type=ActionType.REDIRECT,
+            label=f"Upgrade to {upgrade_plan}",
+            style=ActionStyle.PRIMARY,
+            config=ActionConfig(
+                redirect=RedirectConfig(
+                    url="/settings?section=subscription",
+                    open_in_new_tab=False,
+                    close_notification=True,
+                )
+            ),
+        )
     )
     return body, upgrade_action
 
@@ -354,13 +372,21 @@ async def _notify_workflow_failed(error: Exception, workflow: Workflow) -> None:
             body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
             upgrade_action = None
 
+        # A budget skip is a pause, not a failure — the run resumes after the
+        # daily reset, and the title must not read like something broke.
+        title = (
+            f"Workflow Paused: {workflow.title}"
+            if isinstance(error, CostBudgetExceededException)
+            else f"Workflow Failed: {workflow.title}"
+        )
+
         await notification_service.create_notification(
             NotificationRequest(
                 user_id=workflow.user_id,
                 source=NotificationSourceEnum.WORKFLOW_FAILED,
                 type=NotificationType.ERROR,
                 content=NotificationContent(
-                    title=f"Workflow Failed: {workflow.title}",
+                    title=title,
                     body=body,
                     actions=[upgrade_action] if upgrade_action else None,
                 ),
@@ -397,12 +423,16 @@ async def _record_execution_failure(
     if workflow is None:
         return
 
-    try:
-        await WorkflowService.increment_execution_count(
-            workflow_id, workflow.user_id, is_successful=False
-        )
-    except Exception as e2:
-        log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
+    # A spent daily cost budget is a clean skip, not a failure: no work ran and
+    # the workflow resumes after the budget resets, so it must not be counted
+    # against the workflow's stats.
+    if not isinstance(error, CostBudgetExceededException):
+        try:
+            await WorkflowService.increment_execution_count(
+                workflow_id, workflow.user_id, is_successful=False
+            )
+        except Exception as e2:
+            log.debug(f"{LogTag.WORKER} Failed to update workflow stats: %s" % e2)
 
     await _notify_workflow_failed(error, workflow)
 
@@ -454,6 +484,13 @@ async def execute_workflow_by_id(
             return f"Workflow {workflow_id} already claimed; skipped duplicate scheduled fire"
 
         _log_schedule_drift(workflow, workflow_id, actual_fire_utc)
+
+        # Cost wall BEFORE any execution record or LLM work: when the user's
+        # daily budget is spent the run is skipped cleanly (no confusing
+        # "failed" row) and the except branch below sends the budget-specific
+        # notification + re-arms the next occurrence, so a recurring workflow
+        # resumes after the budget resets.
+        await enforce_daily_cost_budget(workflow.user_id, feature_key="trigger_workflow_executions")
 
         # Create execution record at start
         execution = await create_execution(

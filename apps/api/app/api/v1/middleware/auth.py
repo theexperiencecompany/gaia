@@ -203,17 +203,20 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         Only reachable when ``DEV_AUTH_BYPASS_EMAIL`` is set in development
         (production refuses to boot with it — see ``get_settings``). The target
-        user is the ``X-Dev-User`` header when present (per-request
-        impersonation, so one server can act as many users), otherwise
-        ``DEV_AUTH_BYPASS_EMAIL``. A target email that doesn't resolve to a Mongo
-        user fails loud with a 401 that names the fix — mint it via the dev
-        router — rather than silently degrading to a generic auth error.
+        user is resolved by ``resolve_dev_bypass_user``: the ``X-Dev-User``
+        header (per-request impersonation, so one server can act as many users),
+        else the ``dev_bypass_user`` cookie (so two browser profiles can act as
+        different users against one instance — how free vs pro get tested side
+        by side), else ``DEV_AUTH_BYPASS_EMAIL``. A target email that doesn't
+        resolve to a Mongo user fails loud with a 401 that names the fix — mint
+        it via the dev router — rather than silently degrading to a generic
+        auth error.
         """
         request.state.user = None
         request.state.authenticated = False
         request.state.new_session = None
 
-        target_email, user_data = await resolve_dev_bypass_user(request.headers)
+        target_email, user_data = await resolve_dev_bypass_user(request.headers, request.cookies)
         if user_data is None:
             log.error(
                 f"{LogTag.API} Dev bypass target has no Mongo user",

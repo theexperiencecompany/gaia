@@ -25,62 +25,78 @@ export interface TodoFilterState {
   dueThisWeek?: boolean;
 }
 
+function matchesStatus(todo: Todo, status: TodoFilterState["status"]): boolean {
+  if (!status || status === "all") return true;
+  if (status === "completed") return todo.completed;
+  return !todo.completed;
+}
+
+function matchesLabels(todo: Todo, labels: string[] | undefined): boolean {
+  if (!labels || labels.length === 0) return true;
+  return labels.some((label) => todo.labels.includes(label));
+}
+
+function matchesSearch(todo: Todo, search: string | undefined): boolean {
+  if (!search) return true;
+  const query = search.toLowerCase();
+  const matchesTitle = todo.title.toLowerCase().includes(query);
+  const matchesDescription =
+    todo.description?.toLowerCase().includes(query) ?? false;
+  return matchesTitle || matchesDescription;
+}
+
+function matchesDueDate(todo: Todo, filter: TodoFilterState): boolean {
+  if (filter.overdue && todo.due_date) {
+    const isOverdue = new Date(todo.due_date) < new Date() && !todo.completed;
+    if (!isOverdue) return false;
+  }
+
+  if (filter.dueToday && todo.due_date) {
+    const today = new Date();
+    const dueDate = new Date(todo.due_date);
+    const isSameDay =
+      dueDate.getFullYear() === today.getFullYear() &&
+      dueDate.getMonth() === today.getMonth() &&
+      dueDate.getDate() === today.getDate();
+    if (!isSameDay) return false;
+  }
+
+  if (filter.dueThisWeek && todo.due_date) {
+    const today = new Date();
+    const weekFromNow = new Date(today);
+    weekFromNow.setDate(today.getDate() + 7);
+    const dueDate = new Date(todo.due_date);
+    if (dueDate < today || dueDate > weekFromNow) return false;
+  }
+
+  return true;
+}
+
 export function filterTodos(todos: Todo[], filter: TodoFilterState): Todo[] {
   return todos.filter((todo) => {
-    if (filter.status && filter.status !== "all") {
-      if (filter.status === "completed" && !todo.completed) return false;
-      if (filter.status === "active" && todo.completed) return false;
+    if (!matchesStatus(todo, filter.status)) return false;
+
+    if (
+      filter.priority &&
+      filter.priority !== "all" &&
+      todo.priority !== filter.priority
+    ) {
+      return false;
     }
 
-    if (filter.priority && filter.priority !== "all") {
-      if (todo.priority !== filter.priority) return false;
-    }
-
-    if (filter.labels && filter.labels.length > 0) {
-      const hasLabel = filter.labels.some((label) =>
-        todo.labels.includes(label),
-      );
-      if (!hasLabel) return false;
-    }
+    if (!matchesLabels(todo, filter.labels)) return false;
 
     if (filter.projectId && todo.project_id !== filter.projectId) {
       return false;
     }
 
-    if (filter.search) {
-      const query = filter.search.toLowerCase();
-      const matchesTitle = todo.title.toLowerCase().includes(query);
-      const matchesDescription =
-        todo.description?.toLowerCase().includes(query) ?? false;
-      if (!matchesTitle && !matchesDescription) return false;
-    }
+    if (!matchesSearch(todo, filter.search)) return false;
 
     if (filter.starred !== undefined && todo.starred !== filter.starred) {
       return false;
     }
 
-    if (filter.overdue && todo.due_date) {
-      const isOverdue = new Date(todo.due_date) < new Date() && !todo.completed;
-      if (!isOverdue) return false;
-    }
-
-    if (filter.dueToday && todo.due_date) {
-      const today = new Date();
-      const dueDate = new Date(todo.due_date);
-      const isSameDay =
-        dueDate.getFullYear() === today.getFullYear() &&
-        dueDate.getMonth() === today.getMonth() &&
-        dueDate.getDate() === today.getDate();
-      if (!isSameDay) return false;
-    }
-
-    if (filter.dueThisWeek && todo.due_date) {
-      const today = new Date();
-      const weekFromNow = new Date(today);
-      weekFromNow.setDate(today.getDate() + 7);
-      const dueDate = new Date(todo.due_date);
-      if (dueDate < today || dueDate > weekFromNow) return false;
-    }
+    if (!matchesDueDate(todo, filter)) return false;
 
     return true;
   });

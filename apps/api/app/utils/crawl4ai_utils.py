@@ -12,6 +12,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from app.config.settings import settings
 from app.constants.log_tags import LogTag
 from app.constants.search import CRAWL4AI_CLOSE_TIMEOUT_SECONDS, CRAWL4AI_WAIT_UNTIL
+from app.utils.background_tasks import spawn_background_task
 from app.utils.concurrency import loop_bound_semaphore
 from shared.py.wide_events import log
 
@@ -86,11 +87,6 @@ def get_browser_semaphore() -> asyncio.Semaphore:
     return loop_bound_semaphore("crawl4ai_browser", settings.CRAWL4AI_MAX_BROWSERS)
 
 
-# Keeps detached close tasks alive until they finish (standard pattern to stop
-# the event loop garbage-collecting running tasks).
-_pending_close_tasks: set[asyncio.Task[None]] = set()
-
-
 async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
     try:
         await crawler.close()
@@ -104,10 +100,7 @@ async def _close_crawler(crawler: AsyncWebCrawler, context_name: str) -> None:
 
 
 def _spawn_shielded_close(crawler: AsyncWebCrawler, context_name: str) -> asyncio.Task[None]:
-    task = asyncio.get_running_loop().create_task(_close_crawler(crawler, context_name))
-    _pending_close_tasks.add(task)
-    task.add_done_callback(_pending_close_tasks.discard)
-    return task
+    return spawn_background_task(_close_crawler(crawler, context_name))
 
 
 @asynccontextmanager

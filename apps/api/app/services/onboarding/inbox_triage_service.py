@@ -3,7 +3,7 @@
 import time
 from typing import Any
 
-from app.agents.llm.client import ainvoke_structured
+from app.agents.llm.client import ainvoke_structured, metered_config
 from app.agents.prompts.onboarding_prompts import INBOX_TRIAGE_PROMPT
 from app.constants.log_tags import LogTag
 from app.models.onboarding_models import InboxTriage, InboxTriageOutput
@@ -84,7 +84,10 @@ async def triage_inbox(
         )
         t_llm = time.monotonic()
         result: InboxTriageOutput = await ainvoke_structured(
-            InboxTriageOutput, prompt, label="onboarding_inbox_triage"
+            InboxTriageOutput,
+            prompt,
+            label="onboarding_inbox_triage",
+            config=metered_config(user_id),
         )
         llm_duration_s = round(time.monotonic() - t_llm, 2)
 

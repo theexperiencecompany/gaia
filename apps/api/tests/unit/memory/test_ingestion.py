@@ -40,6 +40,7 @@ from app.memory.schemas import (
     FactCategorization,
 )
 from app.models.memory_db_models import MemoryRecord
+from app.models.payment_models import PlanType
 
 USER = "user-1"
 
@@ -218,6 +219,13 @@ def boundaries() -> Any:
         patch.multiple(ingestion.pg_store, insert_memories=insert_mock, **patches),
         patch.multiple(ingestion.chroma_store, **chroma_patches),
         patch.multiple(ingestion, schedule_memory_vfs_sync=vfs_mock, **module_patches),
+        # Paid plan -> the free memory cap never applies, so these tests exercise
+        # ingestion itself without the cap's plan/count lookups reaching real infra.
+        patch.object(
+            ingestion.payment_service,
+            "get_cached_plan_type",
+            AsyncMock(return_value=PlanType.PRO),
+        ),
     ):
         yield Boundaries(
             get_folder_tree=patches["get_folder_tree"],

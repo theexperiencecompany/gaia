@@ -32,6 +32,119 @@ interface OgIntegration {
   iconUrl?: string;
 }
 
+async function fetchIntegration(
+  apiBaseUrl: string,
+  identifier: string,
+): Promise<OgIntegration | null> {
+  try {
+    const response = await fetch(
+      `${apiBaseUrl}/integrations/public/${identifier}`,
+      { cache: "no-store" },
+    );
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (e) {
+    console.error("[OG Image] Fetch failed:", e);
+  }
+  return null;
+}
+
+const ICON_CONTAINER_STYLE = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 120,
+  height: 120,
+  borderRadius: 16,
+} as const;
+
+interface IntegrationIconProps {
+  knownIconPath: string | null;
+  iconPathData: ReturnType<typeof getIconPaths>;
+  externalIconBase64: string | null;
+  iconConfig: ReturnType<typeof getToolIconConfig>;
+  siteBaseUrl: string;
+}
+
+function IntegrationIcon({
+  knownIconPath,
+  iconPathData,
+  externalIconBase64,
+  iconConfig,
+  siteBaseUrl,
+}: IntegrationIconProps) {
+  if (!knownIconPath && !iconPathData && !externalIconBase64) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
+        flexShrink: 0,
+      }}
+    >
+      {knownIconPath ? (
+        <div
+          style={{
+            ...ICON_CONTAINER_STYLE,
+            backgroundColor: iconConfig?.bgColorRaw || "#3f3f46",
+          }}
+        >
+          {/* biome-ignore lint/performance/noImgElement: og image */}
+          <img
+            src={`${siteBaseUrl}${knownIconPath}`}
+            alt="Integration icon"
+            width={100}
+            height={100}
+            style={{ objectFit: "contain" }}
+          />
+        </div>
+      ) : iconPathData ? (
+        <div
+          style={{
+            ...ICON_CONTAINER_STYLE,
+            backgroundColor: iconConfig?.bgColorRaw || "#3f3f46",
+          }}
+        >
+          {/** biome-ignore lint/a11y/noSvgWithoutTitle: og image */}
+          <svg
+            width="80"
+            height="80"
+            viewBox={iconPathData.viewBox}
+            fill={iconConfig?.iconColorRaw || "#a1a1aa"}
+          >
+            {iconPathData.paths.map((d, i) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: SVG paths are static and won't reorder
+              <path key={`integration-path-${i}`} d={d} />
+            ))}
+          </svg>
+        </div>
+      ) : externalIconBase64 ? (
+        <div
+          style={{
+            ...ICON_CONTAINER_STYLE,
+            backgroundColor: "#3f3f46",
+          }}
+        >
+          {/* biome-ignore lint/performance/noImgElement: og image */}
+          <img
+            src={externalIconBase64}
+            alt="Integration icon"
+            width={100}
+            height={100}
+            style={{ objectFit: "contain" }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -47,20 +160,7 @@ export async function GET(request: Request) {
     const siteBaseUrl = getBaseUrl(request.url);
     const wallpaperUrl = `${siteBaseUrl}${wallpapers.integration.png}`;
 
-    let integration: OgIntegration | null = null;
-    try {
-      const response = await fetch(
-        `${apiBaseUrl}/integrations/public/${identifier}`,
-        {
-          cache: "no-store",
-        },
-      );
-      if (response.ok) {
-        integration = await response.json();
-      }
-    } catch (e) {
-      console.error("[OG Image] Fetch failed:", e);
-    }
+    const integration = await fetchIntegration(apiBaseUrl, identifier);
 
     const name = integration?.name || identifier;
     const description = integration?.description || "MCP Integration for GAIA";
@@ -157,86 +257,13 @@ export async function GET(request: Request) {
           }}
         >
           {/* Only render icon container if we have a valid icon */}
-          {(knownIconPath || iconPathData || externalIconBase64) && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                flexShrink: 0,
-              }}
-            >
-              {knownIconPath ? (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 120,
-                    height: 120,
-                    borderRadius: 16,
-                    backgroundColor: iconConfig?.bgColorRaw || "#3f3f46",
-                  }}
-                >
-                  {/* biome-ignore lint/performance/noImgElement: og image */}
-                  <img
-                    src={`${siteBaseUrl}${knownIconPath}`}
-                    alt="Integration icon"
-                    width={100}
-                    height={100}
-                    style={{ objectFit: "contain" }}
-                  />
-                </div>
-              ) : iconPathData ? (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 120,
-                    height: 120,
-                    borderRadius: 16,
-                    backgroundColor: iconConfig?.bgColorRaw || "#3f3f46",
-                  }}
-                >
-                  {/** biome-ignore lint/a11y/noSvgWithoutTitle: og image */}
-                  <svg
-                    width="80"
-                    height="80"
-                    viewBox={iconPathData.viewBox}
-                    fill={iconConfig?.iconColorRaw || "#a1a1aa"}
-                  >
-                    {iconPathData.paths.map((d, i) => (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: SVG paths are static and won't reorder
-                      <path key={`integration-path-${i}`} d={d} />
-                    ))}
-                  </svg>
-                </div>
-              ) : externalIconBase64 ? (
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 120,
-                    height: 120,
-                    borderRadius: 16,
-                    backgroundColor: "#3f3f46",
-                  }}
-                >
-                  {/* biome-ignore lint/performance/noImgElement: og image */}
-                  <img
-                    src={externalIconBase64}
-                    alt="Integration icon"
-                    width={100}
-                    height={100}
-                    style={{ objectFit: "contain" }}
-                  />
-                </div>
-              ) : null}
-            </div>
-          )}
+          <IntegrationIcon
+            knownIconPath={knownIconPath}
+            iconPathData={iconPathData}
+            externalIconBase64={externalIconBase64}
+            iconConfig={iconConfig}
+            siteBaseUrl={siteBaseUrl}
+          />
 
           <div
             style={{

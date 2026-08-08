@@ -10,7 +10,6 @@ Subagent identity/metadata comes from agents/core/subagents/registry.py
 (unified view of OAuth-derived + builtin subagents).
 """
 
-import asyncio
 import re
 import time
 from typing import Annotated, Any
@@ -75,6 +74,7 @@ from app.utils.agent_utils import (
     format_subagent_start_event,
     parse_subagent_id,
 )
+from app.utils.background_tasks import spawn_background_task
 from app.utils.integration_checker import build_integration_connection_message
 from shared.py.wide_events import log
 
@@ -393,9 +393,6 @@ async def _resolve_subagent(
             return None, None, f"Error: {agent_name} not available", False
 
     return subagent_graph, agent_name, integration_id, False
-
-
-_background_subagent_tasks: set[asyncio.Task[None]] = set()
 
 
 async def _build_integration_metadata(
@@ -861,7 +858,7 @@ async def handoff(
                 integration_metadata, agent_name, integration_id
             )
             increment_pending_subagents(sid)
-            bg_task = asyncio.create_task(
+            spawn_background_task(
                 run_subagent_background(
                     ctx=ctx,
                     stream_id=sid,
@@ -873,8 +870,6 @@ async def handoff(
                     integration_id=integration_id,
                 )
             )
-            _background_subagent_tasks.add(bg_task)
-            bg_task.add_done_callback(_background_subagent_tasks.discard)
             log.info(
                 f"{LogTag.AGENT} Subagent dispatched to background",
                 agent_name=agent_name,

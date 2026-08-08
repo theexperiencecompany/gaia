@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.usage_models import CreditUsage, FeatureUsage, UsagePeriod, UserUsageSnapshot
+from app.models.usage_models import FeatureUsage, UsagePeriod, UserUsageSnapshot
 from app.services import usage_service as usage_service_module
 from app.services.usage_service import UsageService
 
@@ -36,7 +36,6 @@ def _snapshot(
         user_id=user_id,
         plan_type="pro",
         features=features if features is not None else [_feature("messages")],
-        credits=[CreditUsage(credits_used=1.5, period=UsagePeriod.MONTH, reset_time=NOW)],
     )
 
 

@@ -1,10 +1,12 @@
-"""Conversation initialization, persistence, and post-stream billing.
+"""Conversation initialization and persistence.
 
-Three concerns kept together because they share the user/conversation shape:
+Two concerns kept together because they share the user/conversation shape:
 :func:`initialize_new_conversation` writes the conversation row and returns the
 init SSE chunk; :func:`save_conversation_async` writes the user + bot messages
-on stream end; :func:`process_token_usage_and_cost` debits tiered credits from
-the LangChain ``usage_metadata`` once the stream is done.
+on stream end. Spend is NOT billed here — every model call is metered once, at
+the point of the call, by ``LLMAccountingMiddleware`` (see
+``app.services.llm_metering``); a second pass over the stream's aggregate
+``usage_metadata`` used to re-count the turn against ``chat_messages`` as well.
 
 :func:`absolutize_artifact_urls` rewrites relative ``./artifacts/<name>``
 references inside the bot response to absolute backend URLs so the saved
@@ -17,20 +19,14 @@ import json
 import re
 from typing import Any
 
-from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.model_pricing import calculate_token_cost
 from app.constants.chat import ARTIFACT_REF_RE, WORKSPACE_ARTIFACT_RE
-from app.constants.log_tags import LogTag
 from app.models.chat_models import MessageModel, UpdateMessagesRequest
 from app.models.message_models import MessageRequestWithHistory
-from app.models.payment_models import PlanType
 from app.models.stream_events import ConversationInitializedFrame
 from app.models.user_models import AuthenticatedUser
 from app.services.conversation_service import update_messages
-from app.services.payments.payment_service import payment_service
 from app.utils.artifact_utils import artifact_url_base
 from app.utils.chat_utils import create_conversation
-from shared.py.wide_events import log
 
 
 def user_message_content_from(body: MessageRequestWithHistory) -> str:
@@ -129,19 +125,6 @@ async def save_conversation_async(
     delegated executor finishes, so the user/comms messages must still sort ahead
     of the executor's answer (saved mid-wait).
     """
-    user_id = user.get("user_id")
-
-    if metadata and user_id:
-        try:
-            await process_token_usage_and_cost(user_id, metadata)
-        except Exception as e:  # noqa: BLE001 — billing failure must not block save
-            log.error(
-                f"{LogTag.CHAT} Failed to process token usage",
-                error=str(e),
-                error_type=type(e).__name__,
-                conversation_id=conversation_id,
-            )
-
     bot_timestamp = bot_timestamp or datetime.now(UTC)
     user_timestamp = bot_timestamp - timedelta(milliseconds=100)
 
@@ -186,57 +169,3 @@ async def save_conversation_async(
         ),
         user=user,
     )
-
-
-async def process_token_usage_and_cost(user_id: str, metadata: dict[str, Any]) -> None:
-    """Translate the LangChain ``usage_metadata`` into credit debits.
-
-    Cache reads are billed at the discounted rate (not free) — we read them
-    from ``input_token_details.cache_read`` per LangChain canonical shape, with
-    a fallback to the older ``cached_content_token_count`` for older SDKs.
-    """
-    try:
-        subscription = await payment_service.get_user_subscription_status(user_id)
-        user_plan = subscription.plan_type or PlanType.FREE
-
-        total_credits = 0.0
-
-        for model_name, usage_data in metadata.items():
-            if not isinstance(usage_data, dict):
-                continue
-            input_tokens = usage_data.get("input_tokens", 0)
-            output_tokens = usage_data.get("output_tokens", 0)
-            details = usage_data.get("input_token_details") or {}
-            cached_tokens = int(
-                details.get("cache_read") or usage_data.get("cached_content_token_count") or 0
-            )
-
-            if input_tokens > 0 or output_tokens > 0:
-                cost_info = await calculate_token_cost(
-                    model_name,
-                    input_tokens,
-                    output_tokens,
-                    cached_tokens=cached_tokens,
-                )
-                total_credits += cost_info["total_cost"]
-
-        if total_credits > 0:
-            await tiered_limiter.check_and_increment(
-                user_id=user_id,
-                feature_key="chat_messages",
-                user_plan=user_plan,
-                credits_used=total_credits,
-            )
-
-        existing_model = log.get().get("model", {})
-        log.set(
-            model={**existing_model, "cost_usd": round(total_credits, 6)},
-            user_plan=str(user_plan),
-        )
-
-    except Exception as e:  # noqa: BLE001 — billing failure must not block save
-        log.debug(
-            f"{LogTag.CHAT} Token usage processing failed",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
