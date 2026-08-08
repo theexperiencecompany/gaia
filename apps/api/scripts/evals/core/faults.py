@@ -57,6 +57,7 @@ _FAULT_SIGNATURES: tuple[tuple[str, str], ...] = (
     ("chromadb is not available", "chroma"),
     ("all connection attempts failed", "api"),
     ("server disconnected without sending a response", "api"),
+    ("broken pipe", "api"),
     ("connect call failed", "api"),
     ("dev executor endpoint failed: http 5", "api"),
 )
