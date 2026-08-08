@@ -739,13 +739,15 @@ jobs:
   #
   # Deliberately a whole-directory scan rather than diff-scoped like ruff/mypy:
   # a security lane that only looks at files a PR happens to touch stops
-  # noticing everything else. The cost is that `--config p/python` resolves the
-  # ruleset from the registry per run, so an upstream rule addition can red an
-  # unrelated PR. That is accepted here because such a red is a real finding to
-  # fix, not style churn — the scanner itself is digest-pinned, so only the
-  # rules move. Vendoring the pack (committing the resolved YAML and refreshing
-  # it via a scheduled PR) is the remaining hardening if that trade stops
-  # feeling right.
+  # noticing everything else.
+  #
+  # Rules come from the VENDORED pack, not `--config p/python`. The registry
+  # form re-resolves the ruleset on every run, so what CI enforces could change
+  # with no commit behind it and red an unrelated PR — the reason this lane sat
+  # informational. The digest pins the engine; tools/semgrep/p-python.yaml pins
+  # the rules (151, byte-identical to the registry pack it was fetched from), so
+  # both halves of the verdict are now reviewable. Refresh deliberately with
+  # tools/semgrep/refresh-p-python.sh.
   semgrep:
     name: Python security patterns (semgrep)
     needs: [changes]
@@ -765,7 +767,7 @@ jobs:
         # is still fetched from the registry per run.
         uses: docker://semgrep/semgrep@sha256:b68f9b68483955b85042dac7b4533757779625a02dcf91e470da4c2df1b430be # v1.145.0
         with:
-          args: semgrep scan --config p/python apps/api/app --error --metrics=off
+          args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
 
   # --- Quality gate (single required status check) -------------------------
   quality-gate:
