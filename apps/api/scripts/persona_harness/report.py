@@ -65,8 +65,20 @@ class Report:
         (self.passed if cond else self.failed).append(description)
         return cond
 
+    @property
+    def status(self) -> str:
+        """PASS / FAIL / INCONCLUSIVE.
+
+        A run that asserted nothing cannot have proven anything — reporting it
+        as PASS is how a silently-skipped scenario hides forever. It is called
+        out as INCONCLUSIVE and treated as a failure by the runner's exit code.
+        """
+        if self.failed:
+            return "FAIL"
+        return "PASS" if self.passed else "INCONCLUSIVE"
+
     def render_markdown(self) -> str:
-        status = "PASS" if not self.failed else "FAIL"
+        status = self.status
         lines = [
             f"# {self.persona} — persona thrash report",
             "",

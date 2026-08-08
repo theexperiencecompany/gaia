@@ -73,10 +73,10 @@ async def _run_one(
         await ctx.aclose()
 
     # A non-raising Report.observe() miss doesn't hit the except blocks above
-    # but still belongs in the FAIL column.
-    ok = ok and not report.failed
-    status = "PASS" if ok else "FAIL"
-    print(f"[{name}] {status} — {len(report.passed)} passed, {len(report.failed)} failed")
+    # but still belongs in the FAIL column. An assertion-free run is
+    # INCONCLUSIVE, never a pass — see Report.status.
+    ok = ok and report.status == "PASS"
+    print(f"[{name}] {report.status} — {len(report.passed)} passed, {len(report.failed)} failed")
     return ok
 
 

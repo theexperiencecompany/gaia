@@ -67,6 +67,28 @@ async def goal_driven_founder(ctx: HarnessContext) -> None:
     gaia_todos = [
         doc async for doc in ctx.db.todos.find({"user_id": ctx.user_id, "assignee": "gaia"})
     ]
+    ctx.log(
+        actor="harness",
+        surface="mongo:todos (gaia, post-run)",
+        content=f"{len(gaia_todos)} GAIA todo(s) proposed; serves values: "
+        f"{[t.get('serves') for t in gaia_todos]}",
+    )
+
+    # The per-todo traceability check below is vacuous when the run proposed
+    # nothing, and a persona that asserts nothing silently "passes" forever.
+    # Either outcome is legitimate product behavior — a bare account with no
+    # integrations may honestly have nothing concrete to propose (the
+    # no-padding rule) — so the assertion is on the DISJUNCTION: propose
+    # something traceable, or say plainly that nothing is queued.
+    briefing = await steps.get_latest_briefing(ctx, kind="daily")
+    payload = briefing["payload"]
+    honestly_idle = payload.get("mood") == "idle"
+    ctx.report.expect(
+        bool(gaia_todos) or honestly_idle,
+        "the goal either produced GAIA work or the brief honestly reported an empty queue",
+        expected="≥1 GAIA todo, or mood=idle",
+        found=f"{len(gaia_todos)} GAIA todos, mood={payload.get('mood')!r}",
+    )
     for todo in gaia_todos:
         ctx.report.expect(
             bool(todo.get("serves")),
@@ -74,12 +96,6 @@ async def goal_driven_founder(ctx: HarnessContext) -> None:
             expected="non-empty serves",
             found=todo.get("serves"),
         )
-    ctx.log(
-        actor="harness",
-        surface="mongo:todos (gaia, post-run)",
-        content=f"{len(gaia_todos)} GAIA todo(s) proposed; serves values: "
-        f"{[t.get('serves') for t in gaia_todos]}",
-    )
 
 
 async def ignorer_winback(ctx: HarnessContext) -> None:
