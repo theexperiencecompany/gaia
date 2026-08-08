@@ -117,7 +117,10 @@ def confirmed_down(fault: Fault) -> bool:
     """
     if fault.backend != "api":
         return True
-    base = os.environ.get("EVALS_DEV_API_BASE", "http://localhost:9460")
+    # 127.0.0.1, never localhost: uvicorn binds IPv4 only and macOS resolves
+    # localhost to ::1 first, so the probe's ConnectError read as "confirmed
+    # down" and aborted runs whose API was healthy the whole time.
+    base = os.environ.get("EVALS_DEV_API_BASE", "http://127.0.0.1:9460")
     try:
         response = httpx.get(f"{base}/health", timeout=5.0)
     except Exception:
