@@ -7,6 +7,7 @@ is set, so every route here 404s in production.
 """
 
 from fastapi import APIRouter
+from langgraph.errors import GraphRecursionError
 
 from app.models.user_models import UserDocument
 from app.schemas.dev_schemas import (
@@ -78,7 +79,22 @@ async def list_subagents() -> list[DevSubagentInfo]:
 async def run_executor(payload: RunDevAgentRequest) -> DevAgentRunResponse:
     """Run the executor agent directly with a task, skipping the comms agent."""
     log.set(dev={"operation": "run_executor", "email": payload.email})
-    result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
+    try:
+        result = await run_executor_direct(payload.email, payload.task, payload.conversation_id)
+    except GraphRecursionError as e:
+        # The agent looped without converging. That is a result about the agent,
+        # not a server fault: raising 500 made callers classify it as
+        # infrastructure and drop it from their accuracy, which flatters the
+        # agent by hiding its worst outcome.
+        log.set(dev={"converged": False, "reason": str(e)[:200]})
+        return DevAgentRunResponse(
+            user_id="",
+            conversation_id=payload.conversation_id or "",
+            thread_id="",
+            agent="executor_agent",
+            message=f"agent did not converge: {e}",
+            converged=False,
+        )
     log.set(dev={"user_id": result.user_id, "thread_id": result.thread_id})
     return result
 
