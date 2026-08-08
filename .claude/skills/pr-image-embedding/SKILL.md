@@ -1,6 +1,6 @@
 ---
 name: PR Image Embedding
-description: Embed images (benchmark charts, screenshots, diagrams) inline in a GitHub PR or issue description from an agent session, without bloating the code diff. Use when a PR needs visual evidence and you cannot drag-and-drop into the browser.
+description: Embed images (benchmark charts, screenshots, diagrams) inline in a GitHub PR or issue description from an agent session, end to end and without bloating the code diff. Use whenever a PR needs visual evidence.
 ---
 
 ## PR Image Embedding
@@ -87,22 +87,41 @@ Known blockers, in rough order of likelihood:
 |---|---|
 | A bare `curl` that is really `curlie` reporting a bogus 403/422 | Re-check with `/usr/bin/curl` before concluding anything |
 | A GitHub **UI** URL (`github.com/.../blob/...`) instead of `raw.githubusercontent.com` | Use the raw URL |
-| The URL needs auth to fetch (camo has no session) | Use GitHub's attachment upload (below) |
+| The URL needs auth to fetch (camo has no session) | Host it somewhere camo can reach; last resort only if nothing can |
 | Missing `Content-Length` header on the host | Not fixable from our side — change hosts |
 | Host blocks or challenges camo's UA (Cloudflare bot protection) | Change hosts |
 | Camo cached an earlier failure for that exact URL | Re-upload under a new URL |
 
-### The fallback, if the raw URL genuinely cannot be proxied
+### Fix it yourself — the moves before you consider involving the user
 
-GitHub's own attachment upload always renders, because GitHub serves it to the
-authenticated viewer. It produces a
-`https://github.com/user-attachments/assets/<uuid>` URL.
+Every row in that table except one is an agent fix. Work them:
 
-**There is no API for it** — it only exists in the browser, so an agent cannot
-do it. Hand the files to the user (`SendUserFile`) and have them drag the images
-into the PR description box. Ten seconds of their time — but only reach for this
-after the checks above actually fail. Asking for manual work the raw URL would
-have handled is wasted effort.
+1. **Re-check with `/usr/bin/curl`.** Most "it's broken" readings are the alias.
+2. **Correct the URL shape** — `raw.githubusercontent.com/<owner>/<repo>/<branch>/<path>`,
+   never a `blob` UI link.
+3. **Re-upload under a new path** (`<pr>-<topic>-v2/<file>.png`) and point the
+   markdown at it. Camo caches per-URL, including cached failures, so a fresh
+   path is a genuine fix, not a superstition.
+4. **Confirm the asset is really on the branch** — `gh api
+   repos/<owner>/<repo>/contents/<path>?ref=pr-assets` — before blaming camo.
+5. **Try a different host** the user already trusts (below), and verify the
+   returned URL the same way.
+
+Only when all of those have actually been tried and failed is this a human's
+problem. Handing the user files to drag in is not a fallback plan, it is
+admitting defeat — it costs them time on something automatable and it usually
+means a check above was skipped. Do not offer it as a first-class option, and
+never present it as "the guaranteed way".
+
+### Genuine last resort
+
+If — and only if — the moves above are exhausted: GitHub's own attachment
+upload always renders, because GitHub serves it to the authenticated viewer
+(`https://github.com/user-attachments/assets/<uuid>`). There is no API for it;
+it exists only in the browser. Hand the files over (`SendUserFile`), say
+precisely which checks you ran and what each returned, and ask for the drag-in.
+The explanation is mandatory — otherwise you are asking the user to do your job
+without evidence that it needed doing.
 
 ### Third-party image hosts
 
@@ -116,8 +135,8 @@ Workable, but treat with care and never as the default:
 - Verify what came back: fetch the returned URL and **look at the image**.
   Hosts recompress (a changed byte count/checksum is normal and not evidence of
   tampering — check the pixels, not the hash).
-- Many such hosts still won't render inline for the reasons in the table above,
-  so you can do everything right here and still end up back at the fallback.
+- Many such hosts still won't render inline for the reasons in the table above —
+  verify with the camo check rather than assuming either way.
 
 ### Rules of thumb
 
