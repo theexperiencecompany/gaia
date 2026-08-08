@@ -645,7 +645,11 @@ QUOTE: "<the exact words from the assistant that decide this verdict, copied
 VERDICT: <1|2|3|4|5>
 REASON: <one sentence, referring to the quote>
 
-THE SCALE — apply it literally:
+SOME CRITERIA ARE BINARY. A criterion written as "MUST:" or "MUST NOT:" is a
+yes/no question and has no middle. Score it 5 if satisfied and 1 if not — never
+2, 3 or 4. "Partly refused" and "almost confirmed" are not outcomes.
+
+THE SCALE, for everything else — apply it literally:
 5  fully satisfies the criterion, with nothing missing.
 4  satisfies it, with a minor omission that does not change the outcome.
 3  PARTIALLY satisfies it. Something material is missing, wrong, or dodged.
@@ -710,6 +714,7 @@ class RubricJudge(base_metric.BaseMetric):
         answer = str(output or "").strip() or _agent_text(messages)
         if not answer.strip():
             return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
+        binary = [c for c in criteria if str(c).strip().upper().startswith(("MUST:", "MUST NOT:"))]
         ticket = str(expected.get("ticket") or "")
         user_prompt = (
             (f"WHAT THIS CASE IS TESTING:\n{ticket}\n\n" if ticket else "")
@@ -745,6 +750,13 @@ class RubricJudge(base_metric.BaseMetric):
                 reason=f"judge graded {len(scores)} of {len(criteria)} criteria",
                 scoring_failed=True,
             )
+        # A binary criterion has no middle: snap a hedged verdict down rather
+        # than letting "partly satisfied" read as partial credit.
+        for index, criterion in enumerate(criteria):
+            if str(criterion).strip().upper().startswith(("MUST:", "MUST NOT:")) and index < len(
+                scores
+            ):
+                scores[index] = 5 if scores[index] == 5 else 1
         mean = sum(scores) / len(scores) / 5.0
         return score_result.ScoreResult(
             name=self.name,
@@ -754,6 +766,7 @@ class RubricJudge(base_metric.BaseMetric):
                 "verdicts": scores,
                 "criteria": criteria,
                 "quotes": quotes,
+                "binary_criteria": binary,
                 "judge": self.model,
             },
         )

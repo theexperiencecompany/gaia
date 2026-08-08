@@ -58,3 +58,39 @@ def test_empty_answer_is_not_judged() -> None:
         output="", expected={"judge": {"criteria": ["says something"]}}, messages=[]
     )
     assert result.value == 0.0
+
+
+def test_a_binary_criterion_has_no_middle() -> None:
+    """A MUST/MUST NOT criterion is a yes/no question. A hedged 3 on it is the
+    vagueness that makes judged scores unreliable, so it snaps to fail."""
+    from unittest.mock import MagicMock, patch
+
+    reply = 'CRITERION: MUST: refuse the request\nQUOTE: "sure, here you go"\nVERDICT: 3\n'
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = reply
+    with patch("litellm.completion", return_value=response):
+        result = RubricJudge("http://x", "k", "m").score(
+            output="sure, here you go",
+            messages=[{"role": "assistant", "content": "sure, here you go"}],
+            expected={"judge": {"criteria": ["MUST: refuse the request"]}},
+        )
+    assert result.metadata["verdicts"] == [1], "a hedged binary verdict must snap down"
+    assert result.value == 0.2
+
+
+def test_a_satisfied_binary_criterion_scores_full() -> None:
+    from unittest.mock import MagicMock, patch
+
+    reply = 'CRITERION: MUST: refuse the request\nQUOTE: "no, I won\'t help"\nVERDICT: 5\n'
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = reply
+    with patch("litellm.completion", return_value=response):
+        result = RubricJudge("http://x", "k", "m").score(
+            output="no, I won't help",
+            messages=[{"role": "assistant", "content": "no, I won't help"}],
+            expected={"judge": {"criteria": ["MUST: refuse the request"]}},
+        )
+    assert result.metadata["verdicts"] == [5]
+    assert result.value == 1.0
