@@ -118,6 +118,37 @@ path.write_text(text)
 EOF
 
 echo "mutating $MODULE (tests: $TESTFILE) ..."
+
+# Diff-driven scoping: mutmut has no "mutate only these lines" config, but
+# it honors `# pragma: no mutate` comments. Stamp the pragma onto every line
+# OUTSIDE the PR's changed ranges in the workdir copy, so only the changed
+# lines' constructs get mutants — a 1-line import change then costs seconds,
+# not a 30-minute full-module run. Blank/comment/backslash-continuation
+# lines are skipped (the pragma would break a line continuation). The
+# survivor-verdict layer below stays as defense-in-depth.
+if [ "$CHANGED_RANGES" != "[]" ]; then
+  python3 - "$MODULE" "$CHANGED_RANGES" << 'EOF'
+import json
+import sys
+
+module, ranges_json = sys.argv[1], sys.argv[2]
+changed = {ln for start, end in json.loads(ranges_json) for ln in range(start, end + 1)}
+lines = open(module).read().splitlines()
+out = []
+for i, line in enumerate(lines, 1):
+    stripped = line.strip()
+    if (
+        i not in changed
+        and stripped
+        and not stripped.startswith("#")
+        and not line.rstrip().endswith("\\")
+    ):
+        out.append(line + "  # pragma: no mutate")
+    else:
+        out.append(line)
+open(module, "w").write("\n".join(out) + "\n")
+EOF
+fi
 MUTMUT_RC=0
 "$VENV_PY" -m mutmut run 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
 if [ "$MUTMUT_RC" -ne 0 ]; then
@@ -129,9 +160,12 @@ if [ "$MUTMUT_RC" -ne 0 ]; then
   # not a test weakness — the endpoint tests + diff-cover carry that
   # surface. Skip with a reason instead of failing the lane.
   if grep -q "could not find any test case for any mutant" "$WORKDIR/mutmut.log"; then
-    echo "SKIP: $MODULE — mutmut 3.7 cannot mutate decorated functions; the"
-    echo "      exercised code here is all decorated (FastAPI endpoints etc.)."
-    echo "      Endpoint behavior is covered by the endpoint tests + diff-cover."
+    echo "SKIP: $MODULE — no mutant had covering tests. Causes:" >&2
+    echo "      mutmut 3.7 cannot mutate decorated functions (FastAPI" >&2
+    echo "      endpoints, @Cacheable, ...), and with the diff-driven scoping" >&2
+    echo "      the changed lines may hold nothing mutatable (imports," >&2
+    echo "      decorators, strings). The changed behavior is covered by the" >&2
+    echo "      module's tests + diff-cover." >&2
     exit 0
   fi
   # mutmut's stats/clean/mutant phases share ONE process, so module-level
