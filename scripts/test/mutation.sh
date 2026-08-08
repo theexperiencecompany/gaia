@@ -65,6 +65,9 @@ rm -rf mutants
 
 # mutmut 3.x scopes mutation and test selection only via config — point both
 # at the module + its test file for this run; restored on exit.
+# mutate_only_covered_lines: never waste mutants on lines the tests do not
+# run — and if the module's lines are uncovered, zero mutants are created
+# and the run fails loudly instead of silently "passing".
 python3 - "$MODULE" "$TESTFILE" << 'EOF'
 import pathlib
 import re
@@ -77,6 +80,7 @@ replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
+    f'mutate_only_covered_lines = true\n'
     f'pytest_add_cli_args_test_selection = ["{testfile}"]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
@@ -86,7 +90,13 @@ path.write_text(text)
 EOF
 
 echo "mutating $MODULE (tests: $TESTFILE) ..."
-uv run --group backend --group dev mutmut run
+if ! uv run --group backend --group dev mutmut run; then
+  echo "MUTATION RUN FAILED — see mutmut's output above. Likely causes:" >&2
+  echo "  - zero mutants created: the tests do not cover $MODULE's lines" >&2
+  echo "    (mutate_only_covered_lines) — the tests may exist but never run this code." >&2
+  echo "  - a mutant killed the test run itself (a real bug the tests surface)." >&2
+  exit 1
+fi
 
 # mutmut results prints nothing when every mutant is killed; any output is a
 # survivor (or suspicious/timeout) table — a test the suite would not catch.

@@ -883,6 +883,50 @@ jobs:
           args: semgrep scan --config tools/semgrep/p-python.yaml apps/api/app --error --metrics=off
 
   # --- Quality gate (single required status check) -------------------------
+  # --- Mutation testing (per changed module, parallel) -------------------
+  # The "tests must have teeth" gate: every changed app module is mutated
+  # (one injected bug at a time, mutmut) and the module's own tests must
+  # catch every mutant. Fails on: changed app code with no test file
+  # anywhere, zero mutants (tests do not cover the changed lines), any
+  # surviving mutant, or the per-module budget being exceeded. Diff-scoped
+  # and matrix-parallel so wall time is the slowest module, not the sum.
+  mutation-matrix:
+    needs: [changes]
+    if: needs.changes.outputs.has_python == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Emit changed-module mutation matrix
+        id: matrix
+        run: |
+          MATRIX=$(bash scripts/ci/mutation-matrix.sh)
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "Mutation matrix: $MATRIX"
+
+  test-mutation:
+    name: Mutation check (${{ matrix.module }})
+    needs: [changes, mutation-matrix]
+    if: needs.changes.outputs.has_python == 'true' && needs.mutation-matrix.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.mutation-matrix.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          version: "0.8.17"
+          enable-cache: true
+      - name: Sync Python dependencies
+        run: uv sync --frozen --package gaia --group backend --group dev
+      - name: Mutation check (zero survivors required)
+        run: bash scripts/test/mutation.sh ${{ matrix.module }} ${{ matrix.testfile }}
+
   quality-gate:
     name: Quality gate (required)
     if: always()
@@ -909,6 +953,7 @@ jobs:
       - suppression-ratchet
       - gitleaks
       - semgrep
+      - test-mutation
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -938,6 +983,7 @@ jobs:
           SUPPRESSION_RATCHET: ${{ needs.suppression-ratchet.result }}
           GITLEAKS: ${{ needs.gitleaks.result }}
           SEMGREP: ${{ needs.semgrep.result }}
+          MUTATION: ${{ needs.test-mutation.result }}
         run: |
           # Lane skips are only trustworthy if change detection succeeded.
           if [[ "$CHANGES" != "success" ]]; then
@@ -967,12 +1013,13 @@ jobs:
             [suppression-ratchet]="$SUPPRESSION_RATCHET"
             [gitleaks]="$GITLEAKS"
             [semgrep]="$SEMGREP"
+            [test-mutation]="$MUTATION"
           )
           LANES=(biome deps circular file-size types-location components-per-file \
                  duplicates package-hygiene type-check \
                  python-ruff python-mypy python-interrogate python-xenon python-security \
                  observability wide-event-conformance \
-                 dead-code alert-rules suppression-ratchet gitleaks semgrep)
+                 dead-code alert-rules suppression-ratchet gitleaks semgrep test-mutation)
 
           echo "::group::Per-lane results"
           for lane in "${LANES[@]}"; do
