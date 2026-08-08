@@ -178,4 +178,3 @@ evlog.map.json
 
 # Redis snapshot — created if a local redis-server is started from the repo root.
 dump.rdb
->>>>>>> /tmp/mergework/mine.txt
