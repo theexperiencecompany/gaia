@@ -14,6 +14,7 @@ import pytest
 
 from app.db.postgresql import (
     Base,
+    _adapt_url_for_asyncpg,
     close_postgresql_db,
     get_db_session,
     get_postgresql_engine,
@@ -334,3 +335,41 @@ class TestBaseDeclarativeModel:
         """Base should be a declarative base for defining ORM models."""
         assert Base is not None
         assert hasattr(Base, "metadata")
+
+
+class TestAdaptUrlForAsyncpg:
+    """Direct tests for the sslmode -> ssl connect_arg translation.
+
+    init_postgresql_engine tests exercise the URL rewrite, but none carried
+    an sslmode query param — the ssl branches were unobserved (the mutation
+    lane flagged a surviving mutant there).
+    """
+
+    def test_sslmode_require_sets_ssl_true_and_is_stripped(self) -> None:
+        url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?sslmode=require")
+
+        assert "sslmode" not in url
+        assert url.startswith("postgresql+asyncpg://")
+        assert args["ssl"] is True
+
+    def test_sslmode_disable_sets_ssl_false(self) -> None:
+        url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?sslmode=disable")
+
+        assert args["ssl"] is False
+
+    def test_sslmode_prefer_sets_ssl_true(self) -> None:
+        url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db?sslmode=prefer")
+
+        assert args["ssl"] is True
+
+    def test_no_sslmode_leaves_ssl_unset(self) -> None:
+        url, args = _adapt_url_for_asyncpg("postgresql://u:p@h:5432/db")
+
+        assert "ssl" not in args
+
+    def test_other_query_params_survive(self) -> None:
+        url, _ = _adapt_url_for_asyncpg(
+            "postgresql://u:p@h:5432/db?application_name=x&sslmode=require"
+        )
+
+        assert "application_name=x" in url

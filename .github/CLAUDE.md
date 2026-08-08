@@ -10,15 +10,38 @@ same PR (its header says so too).
 
 - **`workflows/main.yml` ("Quality Checks") — correctness.** Build + tests
   only. Its `quality-gate` job is a branch-protection target.
-- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Eighteen lanes
-  (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity, security,
-  evlog-map observability score, wide-event cross-runtime conformance, …)
-  behind the ratcheted `Quality gate (required)` check.
+- **`workflows/code-quality.yml` ("Code Quality") — hygiene.** Twenty-two
+  lanes (Biome, tsc, ruff + custom AST lints, mypy, dead code, complexity,
+  security, evlog-map observability score, wide-event cross-runtime
+  conformance, semgrep, per-module mutation testing, …) behind the
+  ratcheted `Quality gate (required)` check.
 
 
 **Never add a check to both.** Every static check lives in code-quality.yml
 only. We previously ran ruff/mypy/Biome/tsc/dead-code in BOTH workflows on
 every PR — pure duplicate spend with zero added enforcement.
+
+## Workflow files are thin orchestration — nothing else
+
+A workflow step is one command line. Any logic beyond that — computing file
+lists, parsing output, loops, multi-line shell — lives in a script under
+`scripts/ci/` (or `scripts/test/` for tooling), and the step calls it:
+
+```yaml
+- name: Mutation check
+  run: bash scripts/ci/mutation-check.sh
+```
+
+Not heredocs, not inline `for` loops, not python embedded in YAML. Scripts
+are reviewable, testable, and don't re-indent badly under YAML parsing.
+Every new lane ships its logic in a script from day one.
+
+**A conflicting PR gets no workflow runs.** Empirically verified three
+times on this repo: when the PR's `mergeable` state is `CONFLICTING`,
+`pull_request`-triggered runs are not created — silently, with no error,
+no queued entry, nothing. If CI "stopped" with no new runs, the first thing
+to check is `gh pr view --json mergeable`. Keep the branch merged with
+`develop`; re-merge and resolve before pushing further.
 
 ## Skipping work that isn't needed
 

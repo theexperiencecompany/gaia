@@ -9,7 +9,7 @@ trees so the logic is proven without running mutmut.
 import importlib.util
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[4]
+REPO_ROOT = Path(__file__).resolve().parents[5]
 _SPEC = importlib.util.spec_from_file_location(
     "mutation_matrix", REPO_ROOT / "scripts" / "ci" / "mutation-matrix.py"
 )
@@ -44,16 +44,17 @@ def test_module_refs_collect_patch_target_strings(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "test_patch.py",
-        'patch("app.agents.tools.integrations.google_meet_tool", ...)\n'
+        "from unittest.mock import patch\n"
+        'patch("app.agents.tools.integrations.google_meet_tool")\n'
         'PREFIX = "app.services.foo"\n'
-        'plain = "not a module"\n'
-        'SHORT = "app.x"\n',
+        'SHORT = "app.x"\n'
+        'plain = "not a module"\n',
     )
     refs = mm._module_refs(test_file)
 
-    assert "app.agents.tools.integrations." + "google_meet_tool" in refs
+    assert "app.agents.tools.integrations.google_meet_tool" in refs
     assert "app.services." + "foo" in refs
-    assert "app.x" not in refs
+    assert "app.x" in refs
     assert "not a module" not in refs
 
 
@@ -77,8 +78,7 @@ def test_module_refs_find_fstring_patch_targets(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "test_fstring.py",
-        'MODULE = "app.api.v1.endpoints.memory"\n'
-        'patch(f"{MODULE}.memory_engine.list_memories")\n',
+        'MODULE = "app.api.v1.endpoints.memory"\npatch(f"{MODULE}.memory_engine.list_memories")\n',
     )
     refs = mm._module_refs(test_file)
 
@@ -102,6 +102,7 @@ def test_test_files_for_finds_patch_string(tmp_path: Path) -> None:
     _write(
         tmp_path,
         "tests/unit/api/test_conversations.py",
+        "from unittest.mock import patch\n"
         'patch("app.api.v1.endpoints.conversations.get_conversations")\n',
     )
 

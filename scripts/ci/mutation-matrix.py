@@ -78,7 +78,12 @@ def _test_files_for(module_rel: str, tests_dir: Path = TESTS_DIR) -> list[str]:
     hits: list[str] = []
     for path in sorted(tests_dir.rglob("*.py")):
         refs = _module_refs(path)
+        # Match the module exactly or as a prefix — patch targets routinely
+        # carry a function suffix (app.x.y.module.get_conversations).
         if module in refs or module_py in refs:
+            hits.append(str(path))
+            continue
+        if any(ref.startswith(f"{module}.") for ref in refs):
             hits.append(str(path))
     hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
     return hits

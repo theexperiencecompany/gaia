@@ -333,6 +333,13 @@ def _create_test_app() -> FastAPI:
             allow_headers=["*"],
         )
 
+    # Import app_factory explicitly BEFORE patching it: mock.patch resolves
+    # "app.core.app_factory" via getattr on the app.core package, which only
+    # has the attribute once the submodule has been imported. In the normal
+    # suite something imports it first; under mutmut's mutants/ isolation the
+    # import order differs and the patch target AttributeErrors.
+    __import__("app.core.app_factory", fromlist=["lifespan"])
+
     with (
         patch("app.core.app_factory.lifespan", _noop_lifespan),
         patch("app.core.app_factory.configure_middleware", _test_configure_middleware),

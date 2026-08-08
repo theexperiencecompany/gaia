@@ -70,15 +70,18 @@ if [ -z "$VENV_PY" ]; then
 fi
 
 # Per-invocation workdir: parallel-safe isolation for the config swap, the
-# mutants/ dir, and the pytest run. Symlinks keep the copies cheap. Absolute
-# path: the trap runs after `cd "$WORKDIR"`, so a relative path would delete
-# the wrong directory (or nothing).
+# mutants/ dir, and the pytest run. Absolute path: the trap runs after
+# `cd "$WORKDIR"`, so a relative path would delete the wrong directory.
+# Real copies, not symlinks: a symlinked workdir/app resolves to the SAME
+# inode as apps/api/app — if both ever land on sys.path, CPython raises
+# "cannot load module more than once per process" when the same file is
+# imported under two paths (observed in CI for app.db.chroma).
 WORKDIR="$(pwd)/.mutation-$$"
 trap 'rm -rf "$WORKDIR"' EXIT
 mkdir -p "$WORKDIR"
-ln -s ../app "$WORKDIR/app"
-ln -s ../tests "$WORKDIR/tests"
-ln -s ../scripts "$WORKDIR/scripts"
+cp -r app "$WORKDIR/app"
+cp -r tests "$WORKDIR/tests"
+cp -r scripts "$WORKDIR/scripts"
 cp -f pyproject.toml "$WORKDIR/pyproject.toml"
 cd "$WORKDIR"
 
