@@ -150,6 +150,27 @@ def _worked_for(case_id: str, tokens_in: int, seconds: float) -> dict[str, Any]:
     return record
 
 
+def test_an_expensive_case_is_not_a_corrupt_one() -> None:
+    """No upper bound, deliberately. The app's own per-call accounting puts a
+    real capability case at a 131k median and the largest measured at 9.6M —
+    context grows step over step and compaction is skipped without JuiceFS. A
+    cap below that fails every honest native run, which is how a gate gets
+    switched off."""
+    huge = [_worked_for(f"c{i}", n, 120.0) for i, n in enumerate((1_722_668, 2_981_848, 723_820))]
+    assert check_records(huge).ok, [v.detail for v in check_records(huge).violations]
+
+
+def test_contamination_is_caught_by_reconciliation_not_by_size() -> None:
+    """What the old cap was really catching: a per-case delta on a shared meter
+    credits every case with its neighbours' spend, so the journal sums to
+    roughly the concurrency times the truth. That fails against the tracker
+    whatever the magnitude."""
+    inflated = [_worked_for(f"c{i}", 390_716, 60.0) for i in range(12)]
+    report = check_records(inflated, metered_total=(12 * 131_393, 12 * 4_000))
+    assert not report.ok
+    assert any("disagree with the tracker" in v.check for v in report.violations)
+
+
 def test_an_estimate_of_the_question_is_not_a_measurement() -> None:
     """gaia_bench recorded a median of 56 input tokens and hil 16, for cases that
     spent a real minute in the agent. Both estimate from the question's character

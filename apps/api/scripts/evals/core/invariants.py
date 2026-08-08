@@ -13,11 +13,26 @@ from typing import Any
 
 from . import faults
 
-# A per-case token count above this is not a measurement, it is a running total.
-# The largest single legitimate case observed is ~40k (a LongMemEval haystack).
-IMPLAUSIBLE_CASE_TOKENS = 400_000
+# There is deliberately no upper bound on per-case tokens.
+#
+# There used to be one, at 400k, on the theory that a number that large had to
+# be a running total. The app's own per-LLM-call accounting says otherwise: a
+# real capability case has a median of 131k input tokens and the largest
+# legitimate one measured is 9.6M, because context grows step over step inside a
+# case (18k -> 97k over 14 calls in one observed thread) and compaction is
+# silently skipped whenever JuiceFS is absent. A cap set below that flags a true
+# measurement of a genuinely expensive run, on every native run, forever — and a
+# gate that cries wolf is a gate someone switches off.
+#
+# Size is a product finding, not a data defect. What actually distinguishes a
+# corrupt figure from an expensive one is provenance and reconciliation, both of
+# which are checked below: `tokens.source` must say the provider measured it,
+# and the journal's per-case sum must agree with the cost tracker's independent
+# total. The contamination that motivated the cap — a per-case delta on a shared
+# meter, inflating every figure by the concurrency — fails that reconciliation
+# by construction, whatever the magnitude.
 
-# ...and below this it is not a measurement either. Every case sends a system
+# Below this a count is not a measurement. Every case sends a system
 # prompt before it sends anything else, and GAIA's is thousands of tokens on its
 # own, so a case that produced a real transcript cannot have consumed a few
 # dozen. Two suites recorded a median of 56 and 16 input tokens for months:
@@ -83,21 +98,6 @@ def check_records(
                 f"{len(scored_but_silent)} case(s) carry a score with no output and no tokens "
                 f"— e.g. {scored_but_silent[:3]}. A case that produced nothing cannot have "
                 f"earned a score; this is how an outage became a 0%.",
-            )
-        )
-
-    runaway = [
-        (str(r.get("case_id")), int((r.get("tokens") or {}).get("input", 0)))
-        for r in records
-        if int((r.get("tokens") or {}).get("input", 0)) > IMPLAUSIBLE_CASE_TOKENS
-    ]
-    if runaway:
-        report.violations.append(
-            Violation(
-                "implausible per-case token count",
-                f"{len(runaway)} case(s) above {IMPLAUSIBLE_CASE_TOKENS:,} input tokens — "
-                f"e.g. {runaway[:3]}. A per-case counter this large is a cumulative total, "
-                f"not a measurement.",
             )
         )
 
