@@ -16,11 +16,17 @@ from langgraph.types import Command
 import pytest
 
 from app.agents.middleware.compaction import (
+    COMPACTION_TRUNCATED_MARKER,
     WorkspaceCompactionMiddleware,
     _summarize_output,
     should_compact_output,
 )
-from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.constants.offload import OFFLOAD_KEY
+from app.constants.summarization import (
+    COMPACTION_FALLBACK_HEAD_CHARS,
+    COMPACTION_FALLBACK_TAIL_CHARS,
+    MIN_COMPACTION_SIZE,
+)
 from app.services.storage import JuiceFSUnavailable
 
 WROTE = (
@@ -142,6 +148,7 @@ class TestAwrapToolCall:
         assert "stored at:" in message.content
         assert WROTE[1] in message.content
         assert message.additional_kwargs["compacted"] is True
+        assert message.additional_kwargs["compaction_strategy"] == "workspace_spill"
         assert message.additional_kwargs["workspace_path"] == WROTE[1]
         rel_path = mock_write.await_args.kwargs["relative_path"]
         assert rel_path.startswith("tool_outputs/") and rel_path.endswith(".json")
@@ -166,11 +173,15 @@ class TestAwrapToolCall:
         assert result is original
         mock_write.assert_not_awaited()
 
-    async def test_missing_mount_returns_original_not_crash(self) -> None:
-        """JuiceFS down (native dev / outage) must degrade to the full inline
-        output, never raise into the agent loop."""
+    async def test_missing_mount_compacts_in_context_instead_of_skipping(self) -> None:
+        """JuiceFS down (native dev / outage) must still compact.
+
+        The workspace spill is the lossless tier; when it is unavailable the
+        output is truncated in context instead. Returning the full output
+        unchanged (the old behavior) let context grow without bound.
+        """
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
-        big = "x" * 5000
+        big = "HEAD" + ("x" * 200_000) + "TAIL"
 
         async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
             _req,
@@ -184,8 +195,117 @@ class TestAwrapToolCall:
         ):
             result = await mw.awrap_tool_call(_request(), handler)
 
-        assert result.content == big
-        assert "compacted" not in result.additional_kwargs
+        assert isinstance(result, ToolMessage)
+        assert len(result.content) < len(big) / 10
+        assert result.content.startswith(COMPACTION_TRUNCATED_MARKER)
+        assert "HEAD" in result.content and "TAIL" in result.content
+        assert result.additional_kwargs["compacted"] is True
+        assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
+        assert result.additional_kwargs["original_length"] == len(big)
+        # no file was written, so nothing to mine — the offload marker must be absent
+        assert OFFLOAD_KEY not in result.additional_kwargs
+
+    async def test_fallback_keeps_output_under_the_char_budget(self) -> None:
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        big = "x" * 500_000
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return _tool_msg(big)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=JuiceFSUnavailable("no mount"),
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        budget = COMPACTION_FALLBACK_HEAD_CHARS + COMPACTION_FALLBACK_TAIL_CHARS
+        # marker + elision note add a bounded, content-independent overhead
+        assert len(result.content) < budget + 500
+
+    async def test_fallback_leaves_output_already_under_budget_alone(self) -> None:
+        """Nothing to reclaim below the budget — the original must pass through."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        small = "x" * (MIN_COMPACTION_SIZE + 10)
+        original = _tool_msg(small)
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return original
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=JuiceFSUnavailable("no mount"),
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        assert result is original
+
+    async def test_fallback_preserves_error_status(self) -> None:
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        failed = ToolMessage(
+            content="boom " * 100_000, tool_call_id="call_1", name="search", status="error"
+        )
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return failed
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=JuiceFSUnavailable("no mount"),
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        assert result.status == "error"
+        assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
+
+    async def test_fallback_fires_when_the_spill_fails_for_any_reason(self) -> None:
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        big = "x" * 200_000
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return _tool_msg(big)
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=OSError("disk exploded"),
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
+
+    async def test_media_blocks_still_skip_compaction_without_a_workspace(self) -> None:
+        """Inline media is the payload; it must not be truncated by the fallback."""
+        mw = WorkspaceCompactionMiddleware(max_output_chars=10)
+        blocks = [
+            {"type": "text", "text": "here is the screenshot"},
+            {"type": "image", "source": {"type": "base64", "data": "A" * 100_000}},
+        ]
+        original = ToolMessage(content=blocks, tool_call_id="call_1", name="search")
+
+        async def handler(  # NOSONAR python:S7503 awaited by awrap_tool_call; must be a coroutine
+            _req,
+        ):
+            return original
+
+        with patch(
+            "app.agents.middleware.compaction.write_session_file",
+            new_callable=AsyncMock,
+            side_effect=JuiceFSUnavailable("no mount"),
+        ):
+            result = await mw.awrap_tool_call(_request(), handler)
+
+        assert result is original
 
     async def test_non_tool_message_result_passes_through(self) -> None:
         mw = WorkspaceCompactionMiddleware(max_output_chars=1)
@@ -204,11 +324,11 @@ class TestAwrapToolCall:
         assert result is sentinel
         mock_write.assert_not_awaited()
 
-    async def test_missing_user_id_degrades_to_original(self) -> None:
-        """_persist raises ValueError without a user_id; the broad guard must
-        swallow it and return the full output rather than crash the agent."""
+    async def test_missing_user_id_compacts_in_context(self) -> None:
+        """No workspace identity means no spill target — compact in context,
+        never hand the agent the full output back."""
         mw = WorkspaceCompactionMiddleware(max_output_chars=10)
-        big = "x" * 5000
+        big = "x" * 200_000
         request = SimpleNamespace(
             tool_call={"name": "search", "id": "call_1", "args": {}},
             runtime=SimpleNamespace(config={"configurable": {}}),  # no user_id
@@ -225,8 +345,9 @@ class TestAwrapToolCall:
         ) as mock_write:
             result = await mw.awrap_tool_call(request, handler)
 
-        assert result.content == big
-        assert "compacted" not in result.additional_kwargs
+        assert result.content.startswith(COMPACTION_TRUNCATED_MARKER)
+        assert len(result.content) < len(big) / 10
+        assert result.additional_kwargs["compaction_strategy"] == "in_context_truncation"
         mock_write.assert_not_awaited()
 
 

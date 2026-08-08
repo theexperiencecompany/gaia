@@ -1,8 +1,29 @@
-"""Workspace compaction middleware.
+"""Tool-output compaction middleware.
 
-Replaces large tool outputs with a `/workspace/sessions/{conv}/tool_outputs/`
-reference that the agent reads on demand with the `read` tool. Keeps message
-history small while making the full output recoverable.
+Bounds how much a single tool observation can contribute to the context. Two
+tiers, tried in order — the first tier that can run, runs, and once the decision
+to compact is made SOME tier always runs:
+
+1. Workspace spill (lossless). The output is written to
+   `/workspace/sessions/{conv}/tool_outputs/` and the model is left a pointer it
+   can mine with `query_json`/`grep`. Preferred whenever the workspace exists.
+2. In-context truncation (lossy). No workspace (every native, non-Docker run —
+   see the JuiceFS trade-off in `apps/api/CLAUDE.md`), so there is nowhere to
+   spill; the output is cut to a head + tail with a marker saying plainly that
+   the middle is gone and cannot be recovered.
+
+Tier 2 exists because returning the output unchanged is not a safe degradation:
+it silently removes the only bound on context growth, which is how a native run
+reached 131k median input tokens per case and hit the step limit.
+
+Deliberately NOT an LLM summarization tier: summarizing here costs a model call
+per oversized observation and makes the compacted text nondeterministic (bad for
+evals), and the SWE-bench comparison in "The Complexity Trap" (arXiv 2508.21433)
+found simple observation masking matches LLM summarization's solve rate at half
+the cost. Whole-history summarization is a separate concern and already lives in
+`summarization.py`. This mirrors what Anthropic's `clear_tool_uses_20250919`,
+LangChain's own `ClearToolUsesEdit`, and Hermes' pruning pre-pass all do: replace
+stale/oversized tool results deterministically, no model call.
 
 Two independent triggers (unchanged from the prior VFS-backed version):
 - Per-tool: a single output exceeds `max_output_chars` → compact immediately
@@ -37,7 +58,11 @@ from app.agents.workspace.offload import (
 )
 from app.constants.llm import DEFAULT_MAX_TOKENS
 from app.constants.log_tags import LogTag
-from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.constants.summarization import (
+    COMPACTION_FALLBACK_HEAD_CHARS,
+    COMPACTION_FALLBACK_TAIL_CHARS,
+    MIN_COMPACTION_SIZE,
+)
 from app.models.agent_models import runtime_configurable
 from app.services.storage import JuiceFSUnavailable, write_session_file
 from app.utils.multimodal import (
@@ -47,6 +72,8 @@ from app.utils.multimodal import (
     has_media_blocks,
 )
 from shared.py.wide_events import log
+
+COMPACTION_TRUNCATED_MARKER = "[Compacted in context]"
 
 
 def estimate_context_usage(messages: Sequence[AnyMessage], context_window: int) -> float:
@@ -184,9 +211,66 @@ async def _spill_to_workspace(
                 "original_length": len(content_str),
                 "compacted": True,
                 "compaction_reason": reason,
+                "compaction_strategy": "workspace_spill",
             },
             offload,
         ),
+    )
+
+
+def _truncate_in_context(
+    *,
+    content_str: str,
+    tool_name: str,
+    tool_call_id: str,
+    reason: str,
+    status: str,
+    existing_additional_kwargs: dict[str, Any],
+) -> ToolMessage | None:
+    """Compact ``content_str`` in place, keeping its head and tail plus a loud marker.
+
+    The fallback tier, used when no workspace file can be written. Unlike the
+    spill this is LOSSY and unrecoverable, so the marker says so explicitly —
+    the model must never mistake a truncated output for the whole thing.
+
+    Returns ``None`` when the output already fits the budget: there is nothing
+    to reclaim, and re-wrapping it would only add noise.
+    """
+    kept = COMPACTION_FALLBACK_HEAD_CHARS + COMPACTION_FALLBACK_TAIL_CHARS
+    dropped = len(content_str) - kept
+    if dropped <= 0:
+        return None
+
+    body = (
+        f"{COMPACTION_TRUNCATED_MARKER} {tool_name} returned {len(content_str)} chars "
+        f"({reason}). The workspace is unavailable, so the full output could NOT be "
+        f"saved for later and the middle {dropped} chars are gone for good. The first "
+        f"{COMPACTION_FALLBACK_HEAD_CHARS} and last {COMPACTION_FALLBACK_TAIL_CHARS} "
+        f"chars are below — if you need what was dropped, call the tool again with a "
+        f"narrower query rather than assuming this is the complete result.\n\n"
+        f"{content_str[:COMPACTION_FALLBACK_HEAD_CHARS]}\n\n"
+        f"[... {dropped} chars dropped ...]\n\n"
+        f"{content_str[-COMPACTION_FALLBACK_TAIL_CHARS:]}"
+    )
+
+    log.warning(
+        f"{LogTag.AGENT} Compacted {tool_name} output in context "
+        f"({len(content_str)} -> {len(body)} chars, {dropped} dropped, lossy) "
+        f"because the workspace was unavailable ({reason})"
+    )
+    return ToolMessage(
+        content=body,
+        tool_call_id=tool_call_id,
+        name=tool_name,
+        status=status,
+        additional_kwargs={
+            **existing_additional_kwargs,
+            "original_length": len(content_str),
+            "compacted": True,
+            "compaction_reason": reason,
+            "compaction_strategy": "in_context_truncation",
+            "compaction_lossy": True,
+        },
     )
 
 
@@ -233,11 +317,26 @@ async def compact_tool_output(
     if not should:
         return None
 
+    def fallback() -> ToolMessage | None:
+        return _truncate_in_context(
+            content_str=content_str,
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            reason=reason,
+            status=status,
+            existing_additional_kwargs=existing_additional_kwargs or {},
+        )
+
+    if not user_id or not conversation_id:
+        log.warning(
+            f"{LogTag.AGENT} Compaction has no workspace identity for {tool_name} "
+            f"(user_id={'set' if user_id else 'missing'}, "
+            f"conversation_id={'set' if conversation_id else 'missing'}); "
+            f"truncating in context instead"
+        )
+        return fallback()
+
     try:
-        if not user_id:
-            raise ValueError("compaction requires 'user_id' in configurable")
-        if not conversation_id:
-            raise ValueError("compaction requires 'vfs_session_id' or 'thread_id' in configurable")
         return await _spill_to_workspace(
             content_str=content_str,
             tool_name=tool_name,
@@ -249,11 +348,13 @@ async def compact_tool_output(
             existing_additional_kwargs=existing_additional_kwargs or {},
         )
     except JuiceFSUnavailable as e:
-        log.warning(f"{LogTag.AGENT} Compaction skipped (workspace unavailable): {e}")
-        return None
+        log.warning(f"{LogTag.AGENT} Workspace unavailable, compacting {tool_name} in context: {e}")
     except Exception as e:
-        log.error(f"{LogTag.AGENT} Compaction failed for {tool_name}: {e}")
-        return None
+        log.error(
+            f"{LogTag.AGENT} Workspace spill failed for {tool_name}, "
+            f"compacting in context instead: {e}"
+        )
+    return fallback()
 
 
 class WorkspaceCompactionMiddleware(AgentMiddleware):
