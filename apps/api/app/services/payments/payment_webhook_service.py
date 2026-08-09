@@ -456,14 +456,16 @@ class PaymentWebhookService:
 
         # A cancel scheduled for the end of the billing period
         # (cancel_at_next_billing_date=True) keeps the subscription active —
-        # and the user on Pro — until the period ends; only the flag records
-        # the cancellation. An immediate cancellation flips status to cancelled.
+        # and the user on Pro — until the period ends. Status is deliberately
+        # left untouched in that case: Dodo's documented payload for a
+        # scheduled cancel reports status "active", but trusting the payload's
+        # status would downgrade the user early if a future Dodo change ever
+        # reported "cancelled" there. Only the `subscription.expired` event
+        # flips status. An immediate cancellation (flag false) sets it now.
         update = SubscriptionUpdate(
             cancel_at_next_billing_date=sub_data.cancel_at_next_billing_date
         )
-        if sub_data.cancel_at_next_billing_date:
-            update.status = sub_data.status
-        else:
+        if not sub_data.cancel_at_next_billing_date:
             update.status = "cancelled"
         # cancelled_at is only set when Dodo supplied one — leaving it unset keeps
         # it out of the $set rather than writing null over a stored value.

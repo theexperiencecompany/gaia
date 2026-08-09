@@ -355,18 +355,22 @@ const TermsOfService = () => {
             You retain all ownership rights in any content, data, or information
             you submit to the Service ("User Content"). By submitting User
             Content, you grant Company a worldwide, non-exclusive, royalty-free
-            license to host, store, reproduce, process, transmit, and display
-            the User Content solely to the extent necessary to operate and
-            provide the Service to you, including passing it to the third-party
-            providers described in our Privacy Policy. This license terminates
-            when you delete the User Content or your account, except for
-            reasonable backup copies retained for the period described in the
-            Privacy Policy. Company will not sublicense or transfer this license
-            to any third party except a service provider acting on Company's
-            behalf, or an acquirer in connection with a merger or sale of
-            assets. You represent and warrant that you have all necessary rights
-            to grant this license and that your User Content does not infringe
-            upon any third-party rights.
+            license to host, store, reproduce, process, transmit, display, and
+            use the User Content to the extent necessary to operate, provide,
+            and improve the Service, including passing it to the third-party
+            providers described in our Privacy Policy. Company does not use
+            content from your connected third-party integrations — including
+            emails, calendar events, contacts, and other data retrieved from
+            accounts you connect — to improve the Service, as described in the
+            Privacy Policy. This license terminates when you delete the User
+            Content or your account, except for reasonable backup copies
+            retained for the period described in the Privacy Policy. Company
+            will not sublicense or transfer this license to any third party
+            except a service provider acting on Company's behalf, or an acquirer
+            in connection with a merger or sale of assets. You represent and
+            warrant that you have all necessary rights to grant this license and
+            that your User Content does not infringe upon any third-party
+            rights.
           </p>
 
           <h2 className="mt-6 mb-2 text-xl font-semibold">

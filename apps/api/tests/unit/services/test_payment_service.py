@@ -1694,7 +1694,32 @@ class TestHandleSubscriptionCancelled:
 
         update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
         set_data = update_call.args[1].model_dump(exclude_unset=True)
-        assert set_data["status"] == "active"
+        # Status is deliberately NOT in the update — only the flag records the
+        # scheduled cancellation. A later `subscription.expired` flips status.
+        assert "status" not in set_data
+        assert set_data["cancel_at_next_billing_date"] is True
+
+    async def test_scheduled_cancel_ignores_payload_status(
+        self,
+        webhook_service,
+        mock_processed_webhook_repository,
+        mock_webhook_subscription_repository,
+        mock_track_subscription,
+    ):
+        """Even if Dodo ever reported status "cancelled" in a scheduled-cancel
+        payload, the user is not downgraded early — status stays untouched."""
+        payload = {
+            **SUBSCRIPTION_DATA_PAYLOAD,
+            "status": "cancelled",
+            "cancel_at_next_billing_date": True,
+        }
+        event_data = _make_webhook_event("subscription.cancelled", payload)
+
+        await webhook_service.process_webhook(event_data, "wh_cancel_sub_006")
+
+        update_call = mock_webhook_subscription_repository.apply_update_by_dodo_id.call_args
+        set_data = update_call.args[1].model_dump(exclude_unset=True)
+        assert "status" not in set_data
         assert set_data["cancel_at_next_billing_date"] is True
 
 
