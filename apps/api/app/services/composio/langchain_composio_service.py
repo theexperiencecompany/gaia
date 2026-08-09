@@ -122,7 +122,10 @@ class LangchainProvider(
 
             kwargs["__runnable_config__"] = {"metadata": metadata}
 
-            result = execute_tool(tool, kwargs)
+            try:
+                result = execute_tool(tool, kwargs)
+            except Exception as e:  # noqa: BLE001 - Composio raises on disconnected accounts; return gracefully
+                result = {"successful": False, "error": str(e)}
 
             # Surface tool invocation outcome for observability.
             try:
