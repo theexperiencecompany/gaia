@@ -52,14 +52,54 @@ spec.loader.exec_module(mm)
 
 entries = []
 no_test = []
+# Parse every test file ONCE (the per-module scan is O(n^2) otherwise:
+# 764 modules x ~465 test files each).
+tests_dir = Path("tests")
+test_files = sorted(tests_dir.rglob("*.py"))
+refs_by_test: dict[str, set[str]] = {
+    str(p): mm._module_refs(p) for p in test_files if p.name.startswith("test_")
+}
+module_py_cache: dict[str, str] = {}
+
+
+def _module_py(rel_py: str) -> str:
+    if rel_py not in module_py_cache:
+        module_py_cache[rel_py] = f"app.{rel_py.replace('/', '.')}.py"
+    return module_py_cache[rel_py]
+
+
+def _direct_hits(rel_py: str) -> list[str]:
+    module = f"app.{rel_py.replace('/', '.')}"
+    module_py = _module_py(rel_py)
+    hits = []
+    for path, refs in refs_by_test.items():
+        if mm._matches(module, module_py, refs):
+            hits.append(path)
+    hits.sort(key=lambda p: (not p.startswith(str(tests_dir / "unit")), p))
+    return hits
+
+
+def _tests_for(rel_py: str) -> list[str]:
+    hits = _direct_hits(rel_py)
+    if hits:
+        return hits
+    module = f"app.{rel_py.replace('/', '.')}"
+    for consumer in mm._importers_of(module):
+        consumer_rel = consumer.removeprefix("app.")
+        hits = _direct_hits(consumer_rel)
+        if hits:
+            return hits
+    return []
+
+
 for module in Path(modules_file).read_text().splitlines():
     rel = module.removeprefix("apps/api/")
     rel_py = rel.removeprefix("app/").removesuffix(".py")
     unit_mirror = f"tests/unit/{Path(rel_py).parent}/test_{Path(rel_py).stem}.py"
-    if (Path("tests") / unit_mirror).exists():
+    if (tests_dir / unit_mirror).exists():
         entries.append((rel, unit_mirror))
         continue
-    hits = mm._test_files_for(rel_py, tests_dir=Path("tests"))
+    hits = _tests_for(rel_py)
     if hits:
         entries.append((rel, hits[0].removeprefix("apps/api/")))
         continue
@@ -90,7 +130,7 @@ COUNT=0
 while read -r module testfile; do
   COUNT=$((COUNT + 1))
   SLUG="$(echo "$module" | tr '/' '_')"
-  bash scripts/test/mutation.sh "$module" "$testfile" > "$OUT_DIR/$SLUG.log" 2>&1 &
+  bash "$REPO_ROOT/scripts/test/mutation.sh" "$module" "$testfile" > "$OUT_DIR/$SLUG.log" 2>&1 &
   if [ "$(jobs -r -p | wc -l)" -ge "$PARALLEL" ]; then
     wait -n || true
   fi

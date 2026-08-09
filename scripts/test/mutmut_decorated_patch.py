@@ -81,12 +81,19 @@ def _skip_node_and_children(self: MutationVisitor, node: cst.CSTNode) -> bool:
 
     if isinstance(node, cst.FunctionDef) and node.decorators:
         first = node.decorators[0].decorator
-        if isinstance(first, cst.Name):
+        first_name = (
+            first.value
+            if isinstance(first, cst.Name)
+            else first.func.value
+            if isinstance(first, cst.Call) and isinstance(first.func, cst.Name)
+            else None
+        )
+        if first_name is not None:
             # @property breaks the trampoline's signature assignment.
-            if first.value == "property":
+            if first_name == "property":
                 return True
             # @staticmethod/@classmethod: original already allowed these.
-            if len(node.decorators) == 1 and first.value in ("staticmethod", "classmethod"):
+            if len(node.decorators) == 1 and first_name in ("staticmethod", "classmethod"):
                 return False
         return False
 
@@ -97,3 +104,29 @@ def _skip_node_and_children(self: MutationVisitor, node: cst.CSTNode) -> bool:
 
 
 MutationVisitor._skip_node_and_children = _skip_node_and_children
+
+
+# Decorated functions: mutmut copies the function's decorators onto the
+# mangled ORIGINAL and every MUTANT too (function_trampoline_arrangement
+# reuses the full FunctionDef node). Re-executing decorators there is
+# harmful — @lazy_provider REBINDS the mangled name to its register_provider
+# closure (so the trampoline's dict picks up the wrong orig), and
+# @lru_cache creates a second cache layer the tests cannot clear. The
+# trampoline is the only entry point that should wear the decorators.
+import libcst as _cst
+from mutmut.mutation import file_mutation as _file_mutation
+
+_orig_arrange = _file_mutation.function_trampoline_arrangement
+
+
+def _patched_arrange(function, mutants, class_name):
+    decls, method_nodes, assignments, names = _orig_arrange(function, mutants, class_name)
+    fixed = [method_nodes[0]]
+    for node in method_nodes[1:]:
+        if isinstance(node, _cst.FunctionDef):
+            node = node.with_changes(decorators=[])
+        fixed.append(node)
+    return decls, fixed, assignments, names
+
+
+_file_mutation.function_trampoline_arrangement = _patched_arrange

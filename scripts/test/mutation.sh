@@ -81,7 +81,7 @@ fi
 # "cannot load module more than once per process" when the same file is
 # imported under two paths (observed in CI for app.db.chroma).
 WORKDIR="$(pwd)/.mutation-$$"
-trap 'rm -rf "$WORKDIR"' EXIT
+trap '[ -z "${MUTMUT_KEEP_WORKDIR:-}" ] && rm -rf "$WORKDIR"' EXIT
 mkdir -p "$WORKDIR"
 cp -r app "$WORKDIR/app"
 cp -r tests "$WORKDIR/tests"
@@ -91,12 +91,6 @@ cd "$WORKDIR"
 
 # mutmut 3.x scopes mutation and test selection only via config — point both
 # at the module + its test file for this run (the workdir copy is disposable).
-# NOTE: mutate_only_covered_lines is deliberately OFF. It runs a coverage
-# pass that unloads every module imported during the stats run; numpy (and
-# other C extensions) cannot be re-imported in the same process ("cannot
-# load module more than once per process"), which broke every run that
-# imported the app. The trampoline stats still scope each mutant to its
-# covering tests, so mutant runs stay cheap without the coverage pass.
 python3 - "$MODULE" "$TESTFILE" << 'EOF'
 import pathlib
 import re
@@ -170,6 +164,23 @@ import sys
 env = dict(os.environ)
 patch_dir = sys.argv[1]
 env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
+# TEMP DEBUG: dump the stack when the mangled-name assertion would fire
+import mutmut.__main__ as _mm
+_orig_mangle = _mm.mangled_name_from_mutant_name
+def _spy_mangle(name):
+    if '__mutmut_' not in str(name):
+        import traceback
+        traceback.print_stack()
+    return _orig_mangle(name)
+_mm.mangled_name_from_mutant_name = _spy_mangle
+import mutmut.mutation.trampoline as _tramp_mod
+_orig_tramp_mangle = _tramp_mod.mangled_name_from_mutant_name
+def _spy_tramp_mangle(name):
+    if '__mutmut_' not in str(name):
+        import traceback
+        traceback.print_stack()
+    return _orig_tramp_mangle(name)
+_tramp_mod.mangled_name_from_mutant_name = _spy_tramp_mangle
 proc = subprocess.Popen(
     [sys.executable, '-c', 'import mutmut_decorated_patch; from mutmut.__main__ import cli; cli()', 'run'],
     env=env,
