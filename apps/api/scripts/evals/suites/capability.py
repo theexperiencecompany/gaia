@@ -43,13 +43,15 @@ A case's ``expected`` block carries:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 import json
 from pathlib import Path
 from typing import ClassVar, cast
 import uuid
 
+from langchain_core.messages import AIMessageChunk, HumanMessage
 from langchain_core.runnables.config import RunnableConfig
+from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict, Field
 import yaml
 
@@ -60,6 +62,13 @@ from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import validate_tool_expectations
 from scripts.evals.core.types import Case, CaseRun, ProviderError
+
+# Every OTHER ``app.*`` import in this file is deliberately deferred into the
+# function that needs it: `_bootstrap_app` must run first, and importing an app
+# module before it caches settings, lazy providers and DB clients built from the
+# environment as it was at suite-registration time rather than the one the run
+# pinned. `GMAIL_DESTRUCTIVE_TOOLS` above is a frozen constant list with no such
+# side effects, so it is imported normally.
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "capability"
 MAIL_CORPUS_PATH = DATA_DIR / "mail" / "corpus.json"
@@ -145,7 +154,15 @@ class _CorpusMessage(BaseModel):
     unread: bool = False
     date: str = ""
 
-    def to_mail_dict(self, include_body: bool) -> dict[str, object]:
+    def to_mail_dict(self, include_body: bool, labels: Iterable[str]) -> dict[str, object]:
+        """Project this message for the agent, with the mailbox's LIVE labels.
+
+        ``labels`` is required rather than defaulting to ``self.labels``: the
+        corpus message is immutable, so a projection built from it showed the
+        original labels for the rest of the run. After GMAIL_ADD_LABEL_TO_EMAIL
+        the tool result handed back to the agent still said the label was not
+        there, and the agent could not confirm its own write.
+        """
         out: dict[str, object] = {
             "id": self.id,
             "threadId": self.thread_id,
@@ -153,7 +170,7 @@ class _CorpusMessage(BaseModel):
             "to": self.to,
             "subject": self.subject,
             "snippet": self.body[:120],
-            "labels": list(self.labels),
+            "labels": sorted(labels),
             "unread": self.unread,
             "urgency": self.urgency,
             "date": self.date,
@@ -209,6 +226,16 @@ class _MailboxState:
     def messages_in_thread(self, thread_id: str) -> list[_CorpusMessage]:
         return [m for m in self._corpus if m.thread_id == thread_id]
 
+    def live_labels(self, message_id: str) -> set[str]:
+        return self.labels.get(message_id, set())
+
+    def project(self, message: _CorpusMessage, include_body: bool) -> dict[str, object]:
+        """The one way a message reaches the agent — always with live labels."""
+        return message.to_mail_dict(include_body, self.live_labels(message.id))
+
+    def matching(self, query: str) -> list[_CorpusMessage]:
+        return [m for m in self._corpus if _match_query(m, query, self.live_labels(m.id))]
+
 
 _MAILBOXES: dict[str, _MailboxState] = {}
 _CORPUS: list[_CorpusMessage] | None = None
@@ -246,7 +273,7 @@ def _json_dump(value: object) -> str:
     return json.dumps(value)
 
 
-def _match_query(message: _CorpusMessage, query: str) -> bool:
+def _match_query(message: _CorpusMessage, query: str, labels: Iterable[str]) -> bool:
     tokens = [t for t in query.strip().lower().split() if t]
     if not tokens:
         return True
@@ -271,7 +298,7 @@ def _match_query(message: _CorpusMessage, query: str) -> bool:
                 return False
             continue
         if token.startswith("in:"):
-            if token.split(":", 1)[1] == "inbox" and "INBOX" not in message.labels:
+            if token.split(":", 1)[1] == "inbox" and "INBOX" not in labels:
                 return False
             continue
         if token not in haystack and token not in message.urgency:
@@ -293,20 +320,20 @@ def _op_fetch_messages(state: _MailboxState, params: dict[str, object]) -> str:
     include_body = bool(params.get("include_payload", True))
     fields = params.get("fields")
     want_body = include_body or (isinstance(fields, list) and "body" in [str(f) for f in fields])
-    matches = [m for m in state.messages() if _match_query(m, query)][:limit]
-    return _json_dump([m.to_mail_dict(want_body) for m in matches])
+    matches = state.matching(query)[:limit]
+    return _json_dump([state.project(m, want_body) for m in matches])
 
 
 def _op_fetch_thread(state: _MailboxState, params: dict[str, object]) -> str:
     thread_id = str(params.get("thread_id") or "")
-    return _json_dump([m.to_mail_dict(True) for m in state.messages_in_thread(thread_id)])
+    return _json_dump([state.project(m, True) for m in state.messages_in_thread(thread_id)])
 
 
 def _op_fetch_message(state: _MailboxState, params: dict[str, object]) -> str:
     message = state.message(str(params.get("message_id") or ""))
     if message is None:
         return _json_dump({"error": f"message not found: {params.get('message_id')}"})
-    return _json_dump(message.to_mail_dict(True))
+    return _json_dump(state.project(message, True))
 
 
 def _op_create_draft(state: _MailboxState, params: dict[str, object]) -> str:
@@ -379,7 +406,7 @@ def _apply_labels(
                 state.labels[message_id].discard(label)
         message = state.message(message_id)
         if message is not None:
-            updated.append(message.to_mail_dict(True))
+            updated.append(state.project(message, True))
     return updated
 
 
@@ -445,7 +472,6 @@ _GMAIL_TOOL_NAMES: tuple[str, ...] = tuple(_AGENT_TOOL_HANDLERS)
 
 def _make_gmail_tool(name: str) -> object:
     """A langchain StructuredTool executing the corpus-backed fake for ``name``."""
-    from langchain_core.tools import StructuredTool
 
     async def _run(config: RunnableConfig, **kwargs: object) -> str:
         handler = _AGENT_TOOL_HANDLERS[name]
@@ -466,23 +492,23 @@ def _rest_result(
     if tool_name == "GMAIL_FETCH_EMAILS":
         query = str(params.get("query") or "")
         limit = int(params.get("max_results") or 20)
-        matches = [m for m in state.messages() if _match_query(m, query)][:limit]
+        matches = state.matching(query)[:limit]
         return {
-            "data": {"messages": [m.to_mail_dict(True) for m in matches], "next_page_token": None}
+            "data": {"messages": [state.project(m, True) for m in matches], "next_page_token": None}
         }
     if tool_name == "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID":
         message = state.message(str(params.get("message_id") or ""))
         if message is None:
             return {"successful": False, "error": f"message not found: {params.get('message_id')}"}
-        return {"message": message.to_mail_dict(True)}
+        return {"message": state.project(message, True)}
     if tool_name == "GMAIL_FETCH_MESSAGE_BY_THREAD_ID":
         thread_id = str(params.get("thread_id") or "")
-        return {"messages": [m.to_mail_dict(True) for m in state.messages_in_thread(thread_id)]}
+        return {"messages": [state.project(m, True) for m in state.messages_in_thread(thread_id)]}
     if tool_name in ("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL_REMOVE_LABEL"):
         add = tool_name == "GMAIL_ADD_LABEL_TO_EMAIL"
         return {"messages": _apply_labels(state, params, add=add)}
     if tool_name in ("GMAIL_SEND_EMAIL", "GMAIL_REPLY_TO_THREAD", "GMAIL_SEND_DRAFT"):
-        return _op_send_email(state, params) if False else _rest_send(state, tool_name, params)
+        return _rest_send(state, tool_name, params)
     if tool_name == "GMAIL_CREATE_EMAIL_DRAFT":
         draft_id = f"draft_{uuid.uuid4().hex[:8]}"
         state.drafts.append(
@@ -677,8 +703,6 @@ async def _drive_stream(
     graph: object, input_state: dict[str, object], config: RunnableConfig
 ) -> tuple[list[dict[str, object]], str]:
     """One executor turn: collect tool calls (own + subagent) and assistant text."""
-    from langchain_core.messages import AIMessageChunk
-
     tool_calls: list[dict[str, object]] = []
     seen_ids: set[str] = set()
     text_parts: list[str] = []
@@ -733,8 +757,6 @@ async def _drive_stream(
 
 
 def _continuation_input(turn: str) -> dict[str, object]:
-    from langchain_core.messages import HumanMessage
-
     return {
         "messages": [
             HumanMessage(content=turn, additional_kwargs={"visible_to": {"executor_agent"}})
@@ -793,7 +815,14 @@ async def _user_projects(user_id: str) -> list[object]:
 
 def _term_if(condition: bool, term: str) -> str | None:
     """The convention every projection here follows: echo the expected term back
-    when it holds, ``None`` when it does not, and let EndStateEquality compare."""
+    when it holds, ``None`` when it does not, and let EndStateEquality compare.
+
+    ``term`` must be the RAW value from the YAML, never a lowercased copy.
+    EndStateEquality compares the projection against the expectation verbatim,
+    so echoing a normalized value makes any expectation carrying a capital
+    letter impossible to satisfy — a broken gate that reads as an agent error.
+    Lowercase inside the predicate instead; ``_matched_title`` already does.
+    """
     return term if condition else None
 
 
@@ -836,17 +865,17 @@ async def _project_todos(user_id: str, want: list[object]) -> list[dict[str, obj
         if "completed" in item:
             entry["completed"] = bool(getattr(match, "completed", False))
         if "priority" in item:
-            term = str(item["priority"]).lower()
+            term = str(item["priority"])
             actual = str(getattr(getattr(match, "priority", ""), "value", "") or "").lower()
-            entry["priority"] = _term_if(match is not None and actual == term, term)
+            entry["priority"] = _term_if(match is not None and actual == term.lower(), term)
         if "labels_contains" in item:
-            term = str(item["labels_contains"]).lower()
+            term = str(item["labels_contains"])
             labels = [str(label).lower() for label in (getattr(match, "labels", None) or [])]
-            entry["labels_contains"] = _term_if(match is not None and term in labels, term)
+            entry["labels_contains"] = _term_if(match is not None and term.lower() in labels, term)
         if "project" in item:
-            term = str(item["project"]).lower()
+            term = str(item["project"])
             name = project_names.get(str(getattr(match, "project_id", "") or ""), "")
-            entry["project"] = _term_if(match is not None and term in name, term)
+            entry["project"] = _term_if(match is not None and term.lower() in name, term)
         subtasks = list(getattr(match, "subtasks", None) or []) if match is not None else []
         if "subtask_count" in item:
             entry["subtask_count"] = len(subtasks)
@@ -871,14 +900,15 @@ async def _project_projects(user_id: str, want: list[object]) -> list[dict[str, 
         if "count" in item:
             entry["count"] = len(named)
         if "name" in item:
-            term = str(item["name"]).lower()
+            term = str(item["name"])
             entry["name"] = _term_if(
-                any(str(getattr(p, "name", "")).lower().strip() == term for p in named), term
+                any(str(getattr(p, "name", "")).lower().strip() == term.lower() for p in named),
+                term,
             )
         if "name_contains" in item:
-            term = str(item["name_contains"]).lower()
+            term = str(item["name_contains"])
             entry["name_contains"] = _term_if(
-                any(term in str(getattr(p, "name", "")).lower() for p in named), term
+                any(term.lower() in str(getattr(p, "name", "")).lower() for p in named), term
             )
         entries.append(entry)
     return entries
@@ -899,8 +929,8 @@ async def _project_labels(user_id: str, want: list[object]) -> list[dict[str, ob
         if "count" in item:
             entry["count"] = len(names)
         if "name" in item:
-            term = str(item["name"]).lower()
-            entry["name"] = _term_if(term in names, term)
+            term = str(item["name"])
+            entry["name"] = _term_if(term.lower() in names, term)
         entries.append(entry)
     return entries
 
@@ -922,19 +952,20 @@ async def _project_notifications(user_id: str, want: list[object]) -> list[dict[
         if "count" in item:
             entry["count"] = len(items)
         if "title_contains" in item:
-            term = str(item["title_contains"]).lower()
+            term = str(item["title_contains"])
             entry["title_contains"] = _term_if(
-                any(term in n.content.title.lower() for n in items), term
+                any(term.lower() in n.content.title.lower() for n in items), term
             )
         if "body_contains" in item:
-            term = str(item["body_contains"]).lower()
+            term = str(item["body_contains"])
             entry["body_contains"] = _term_if(
-                any(term in n.content.body.lower() for n in items), term
+                any(term.lower() in n.content.body.lower() for n in items), term
             )
         if "channel" in item:
-            term = str(item["channel"]).lower()
+            term = str(item["channel"])
             entry["channel"] = _term_if(
-                any(ch.channel_type.lower() == term for n in items for ch in n.channels), term
+                any(ch.channel_type.lower() == term.lower() for n in items for ch in n.channels),
+                term,
             )
         entries.append(entry)
     return entries
@@ -1257,7 +1288,7 @@ class CapabilitySuite(Suite):
 
     def transport(
         self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider: ProviderConfig
-    ):
+    ) -> Awaitable[CaseRun]:
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:
