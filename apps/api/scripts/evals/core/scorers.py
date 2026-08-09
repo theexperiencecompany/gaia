@@ -591,24 +591,58 @@ class ToolCard(Gate):
         return score_result.ScoreResult(name=self.name, value=1.0, reason="all tool calls carded")
 
 
+#: The fence opener, matched on its own for the absence claim: a truncated or
+#: unterminated ``:::openui`` is still a fence the agent should not have emitted,
+#: and the full-fence pattern below would not see it.
+OPENUI_FENCE_OPENER = ":::openui"
+
+
 class OpenUICheck(Gate):
-    """OpenUI fences present (when expected) and structurally balanced."""
+    """OpenUI fences present when expected, absent when not, and well-formed.
+
+    ``openui: false`` is a real claim — "no component belongs in this reply" —
+    and this branch used to return 1.0 without reading the output at all: a
+    check that could not fail, carrying the authority of one that could. Neither
+    the forgery sweep nor the inert check could see it, because it did produce a
+    value; it just always produced the same one. Both directions are asserted
+    now, so the gate can go red either way.
+    """
 
     def __init__(self) -> None:
         super().__init__("openui")
 
     def score(
-        self, output: str, expected: object = None, **_ignored: object
+        self,
+        output: str,
+        expected: object = None,
+        messages: object = None,
+        tool_calls: object = None,
+        **_ignored: object,
     ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
         want = bool(expected.get("openui"))
         fences = re.findall(r":::openui(.*?):::", output, flags=re.DOTALL)
-        if want and not fences:
+        if not want:
+            if produced_nothing(messages, tool_calls, output):
+                return score_result.ScoreResult(
+                    name=self.name, value=0.0, reason=NOTHING_TO_INSPECT
+                )
+            # Read the assistant's whole turn, not just its final text: a fence
+            # emitted in an earlier bubble is still a fence in the reply.
+            said = "\n".join(part for part in (str(output or ""), _agent_text(messages)) if part)
+            if OPENUI_FENCE_OPENER in said:
+                return score_result.ScoreResult(
+                    name=self.name,
+                    value=0.0,
+                    reason="emitted an OpenUI fence where the case forbids one",
+                )
+            return score_result.ScoreResult(
+                name=self.name, value=1.0, reason="no OpenUI fence, as required"
+            )
+        if not fences:
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason="expected OpenUI, none emitted"
             )
-        if not want:
-            return score_result.ScoreResult(name=self.name, value=1.0, reason="not expected")
         bad = [f for f in fences if not f.strip().startswith("{")]
         if bad:
             return score_result.ScoreResult(
