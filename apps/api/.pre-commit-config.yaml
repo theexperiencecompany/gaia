@@ -15,7 +15,7 @@ repos:
       - id: bandit
         name: Bandit Security Check
         language: system
-        entry: uvx bandit -r app --exclude app/agents/prompts
+        entry: uvx bandit -c pyproject.toml -r app --exclude app/agents/prompts
         types: [python]
         pass_filenames: false
         priority: 0
