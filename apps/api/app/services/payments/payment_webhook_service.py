@@ -454,13 +454,41 @@ class PaymentWebhookService:
         if not sub_data:
             raise ValueError("Invalid subscription data")
 
+        # A cancel scheduled for the end of the billing period
+        # (cancel_at_next_billing_date=True) keeps the subscription active —
+        # and the user on Pro — until the period ends. Status is deliberately
+        # left untouched in that case: Dodo's documented payload for a
+        # scheduled cancel reports status "active", but trusting the payload's
+        # status would downgrade the user early if a future Dodo change ever
+        # reported "cancelled" there. Only the `subscription.expired` event
+        # flips status. An immediate cancellation (flag false) sets it now.
+        update = SubscriptionUpdate(
+            cancel_at_next_billing_date=sub_data.cancel_at_next_billing_date
+        )
+        if not sub_data.cancel_at_next_billing_date:
+            update.status = "cancelled"
         # cancelled_at is only set when Dodo supplied one — leaving it unset keeps
         # it out of the $set rather than writing null over a stored value.
-        update = SubscriptionUpdate(status="cancelled")
         if sub_data.cancelled_at:
             update.cancelled_at = sub_data.cancelled_at
 
-        await subscription_repository.apply_update_by_dodo_id(sub_data.subscription_id, update)
+        matched = await subscription_repository.apply_update_by_dodo_id(
+            sub_data.subscription_id, update
+        )
+        if not matched:
+            # No local row matched the Dodo id — returning failed (not
+            # processed) keeps the webhook unacknowledged so Dodo retries and
+            # the state can still be reconciled instead of being lost forever.
+            log.error(
+                f"{LogTag.PAYMENT} Subscription not found for cancellation",
+                subscription_id=sub_data.subscription_id,
+            )
+            return DodoWebhookProcessingResult(
+                event_type=event.type.value,
+                status="failed",
+                message="Subscription not found",
+                subscription_id=sub_data.subscription_id,
+            )
 
         # Track subscription cancellation in PostHog
         user_email = sub_data.customer.email if sub_data.customer else None

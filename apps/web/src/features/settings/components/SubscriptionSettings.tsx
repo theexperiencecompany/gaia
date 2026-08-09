@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { Tooltip } from "@heroui/tooltip";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
@@ -13,6 +12,7 @@ import { SettingsPage } from "@/features/settings/components/ui/SettingsPage";
 import { SettingsRow } from "@/features/settings/components/ui/SettingsRow";
 import { SettingsSection } from "@/features/settings/components/ui/SettingsSection";
 import { usePricingModalStore } from "@/stores/pricingModalStore";
+import { CancelSubscriptionAction } from "./CancelSubscriptionAction";
 
 const formatDate = (dateString?: string): string => {
   if (!dateString) return "N/A";
@@ -72,7 +72,11 @@ function getStatusText(status: string): string {
 }
 
 export function SubscriptionSettings() {
-  const { data: status, isLoading } = useUserSubscriptionStatus();
+  const {
+    data: status,
+    isLoading,
+    refetch: refetchStatus,
+  } = useUserSubscriptionStatus();
   const handleUpgrade = usePricingModalStore((s) => s.openModal);
 
   if (isLoading) {
@@ -152,9 +156,16 @@ export function SubscriptionSettings() {
   const planName =
     plan?.name || (status.plan_type === "pro" ? "GAIA Pro" : "GAIA Free");
 
+  const cancellationScheduled =
+    subscription?.cancel_at_next_billing_date === true;
+
   const daysUntilNextBilling = getDaysUntil(subscription?.next_billing_date);
-  const statusColor = getStatusColor(subscription?.status || "unknown");
-  const statusText = getStatusText(subscription?.status || "unknown");
+  const statusColor = cancellationScheduled
+    ? "warning"
+    : getStatusColor(subscription?.status || "unknown");
+  const statusText = cancellationScheduled
+    ? "Cancelling"
+    : getStatusText(subscription?.status || "unknown");
 
   const nextBillingLabel = (() => {
     if (daysUntilNextBilling === null) return null;
@@ -188,10 +199,19 @@ export function SubscriptionSettings() {
         <p className="mt-3 text-sm text-zinc-400">
           {priceFormatted}{" "}
           <span className="text-zinc-600">/ {billingCycle}</span>
-          {nextBillingLabel && (
-            <span className="ml-3 text-xs text-zinc-600">
-              Next billing {nextBillingLabel}
+          {cancellationScheduled ? (
+            <span className="ml-3 text-xs text-amber-500">
+              Cancellation scheduled · access until{" "}
+              {subscription?.next_billing_date
+                ? formatDate(subscription.next_billing_date)
+                : "period end"}
             </span>
+          ) : (
+            nextBillingLabel && (
+              <span className="ml-3 text-xs text-zinc-600">
+                Next billing {nextBillingLabel}
+              </span>
+            )
           )}
         </p>
       </div>
@@ -286,18 +306,11 @@ export function SubscriptionSettings() {
             View plans
           </Button>
 
-          {subscription?.status === "active" && (
-            <Tooltip content="Please contact support to cancel your subscription for now">
-              <Button
-                color="danger"
-                variant="light"
-                isDisabled
-                size="sm"
-                className="w-full"
-              >
-                Cancel subscription
-              </Button>
-            </Tooltip>
+          {subscription && (
+            <CancelSubscriptionAction
+              subscription={subscription}
+              refetchStatus={refetchStatus}
+            />
           )}
         </div>
       </SettingsSection>

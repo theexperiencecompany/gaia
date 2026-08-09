@@ -385,6 +385,7 @@ class ProductionSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str
+    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics
@@ -444,6 +445,20 @@ class ProductionSettings(CommonSettings):
     # ----------------------------------------------
     BOT_SESSION_TOKEN_SECRET: str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
     BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
+
+    @field_validator("DODO_PAYMENTS_BASE_URL", mode="after")
+    @classmethod
+    def _dodo_base_url_must_be_https(cls, v: str | None) -> str | None:
+        """Production must not send the Dodo API key over plain HTTP.
+
+        The override exists for pointing the Dodo client at a local stub or
+        sandbox mirror — a dev/test concern. Production traffic must use TLS,
+        so reject an explicit http:// override rather than silently leaking
+        the bearer token in cleartext. Unset (None) stays allowed.
+        """
+        if v is not None and v and not v.startswith("https://"):
+            raise ValueError("DODO_PAYMENTS_BASE_URL must use https:// in production")
+        return v
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -570,6 +585,7 @@ class DevelopmentSettings(CommonSettings):
     # Payment Processing
     # ----------------------------------------------
     DODO_PAYMENTS_API_KEY: str | None = None
+    DODO_PAYMENTS_BASE_URL: str | None = None
 
     # ----------------------------------------------
     # Monitoring & Analytics

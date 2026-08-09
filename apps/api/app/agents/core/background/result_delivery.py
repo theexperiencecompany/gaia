@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
+from fastapi import HTTPException
 from langsmith import traceable
 
 from app.agents.core.background.comms_narrator import narrate_executor_result
@@ -123,6 +124,15 @@ async def persist_cancelled_run(run: ExecutorRun) -> None:
             ),
             user=run.user,
         )
+    except HTTPException as e:
+        if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping cancelled card save",
+                conversation_id=run.conversation_id,
+            )
+            return
+        log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
+        return
     except Exception as e:  # best-effort save of a stopped run
         log.error(f"{LogTag.AGENT} Failed to save cancelled executor cards", error=str(e))
         return
@@ -219,6 +229,15 @@ async def _narrate_and_deliver(
             ),
             user=run.user,
         )
+    except HTTPException as e:
+        if e.status_code == 404:  # conversation deleted mid-run — expected, not an error
+            log.info(
+                f"{LogTag.AGENT} conversation deleted, skipping message save",
+                conversation_id=run.conversation_id,
+            )
+            return None, None
+        log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
+        return None, None
     except Exception as e:
         log.error(f"{LogTag.AGENT} deliver_result: failed to save message", error=str(e))
         return None, None

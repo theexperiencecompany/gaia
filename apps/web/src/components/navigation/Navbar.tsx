@@ -69,6 +69,13 @@ export default function Navbar() {
   }, [repoData?.stargazers_count]);
 
   const user = useUser();
+  // Gate auth-dependent rendering to client-only to prevent SSR/client hydration
+  // mismatch. useUser() reads a persisted (localStorage) store that rehydrates
+  // synchronously on the client, so a returning logged-in user would otherwise
+  // render a different CTA on the first client render than the server sent.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isAuthenticated = mounted ? !!user.email : false;
 
   // Handle scroll to change navbar appearance
   useEffect(() => {
@@ -256,20 +263,20 @@ export default function Navbar() {
                   </div>
                 </Button>
               </a>
-              <Link href={user.email ? "/c" : "/signup"}>
+              <Link href={isAuthenticated ? "/c" : "/signup"}>
                 <RaisedButton
                   size={"sm"}
                   className="rounded-xl text-black!"
                   color="#00bbff"
                   onClick={() => {
                     trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
-                      is_logged_in: !!user.email,
-                      destination: user.email ? "/c" : "/signup",
+                      is_logged_in: isAuthenticated,
+                      destination: isAuthenticated ? "/c" : "/signup",
                     });
                   }}
                 >
-                  {user.email ? "Chat" : "Get Started"}
-                  {user.email ? (
+                  {isAuthenticated ? "Chat" : "Get Started"}
+                  {isAuthenticated ? (
                     <MessageMultiple02Icon width={17} height={17} />
                   ) : (
                     <Login02Icon width={19} height={19} />

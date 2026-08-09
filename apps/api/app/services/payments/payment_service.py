@@ -3,6 +3,7 @@ Streamlined Dodo Payments integration service.
 Clean, simple, and maintainable.
 """
 
+import asyncio
 from typing import Any, Literal
 
 from dodopayments import DodoPayments
@@ -24,6 +25,7 @@ from app.models.payment_models import (
     PlanResponse,
     PlanType,
     SubscriptionStatus,
+    SubscriptionUpdate,
     UserSubscriptionStatus,
 )
 from app.services.email import send_pro_subscription_email
@@ -39,10 +41,21 @@ class DodoPaymentService:
                 "live_mode" if settings.ENV == "production" else "test_mode"
             )
 
-            self.client = DodoPayments(
-                bearer_token=settings.DODO_PAYMENTS_API_KEY,
-                environment=environment,
-            )
+            # DODO_PAYMENTS_BASE_URL lets the SDK point at a non-default
+            # endpoint (a stub or sandbox mirror) instead of the real API —
+            # the same override pattern the LLM client uses. When set it wins
+            # over the environment-derived URL; the SDK requires the
+            # `environment` arg be omitted in that case.
+            if settings.DODO_PAYMENTS_BASE_URL:
+                self.client = DodoPayments(
+                    bearer_token=settings.DODO_PAYMENTS_API_KEY,
+                    base_url=settings.DODO_PAYMENTS_BASE_URL,
+                )
+            else:
+                self.client = DodoPayments(
+                    bearer_token=settings.DODO_PAYMENTS_API_KEY,
+                    environment=environment,
+                )
         except Exception as e:
             log.error(
                 f"{LogTag.PAYMENT} Failed to instantiate dodo payments",
@@ -178,6 +191,65 @@ class DodoPaymentService:
             payment_link=checkout_session.checkout_url,
             status="payment_link_created",
         )
+
+    async def cancel_subscription(self, user_id: str) -> UserSubscriptionStatus:
+        """Cancel the user's subscription in Dodo and mirror it locally.
+
+        Cancels at the end of the current billing period (``cancel_at_next_billing_date``)
+        so the user keeps Pro access until the period ends — matching the Terms'
+        auto-renewal promise. Dodo returns the updated subscription; the local
+        row is synced with it.
+        """
+        subscription = await subscription_repository.get_active_for_user(user_id)
+        if not subscription:
+            raise HTTPException(404, "No active subscription to cancel")
+
+        if not subscription.dodo_subscription_id:
+            raise HTTPException(400, "Subscription has no Dodo id to cancel")
+
+        try:
+            # The Dodo SDK's client is synchronous — run it off the event loop
+            # so a slow HTTP round-trip doesn't stall other requests.
+            updated = await asyncio.to_thread(
+                self.client.subscriptions.update,
+                subscription.dodo_subscription_id,
+                cancel_at_next_billing_date=True,
+            )
+        except Exception as e:
+            log.error(
+                f"{LogTag.PAYMENT} Error cancelling subscription in Dodo",
+                error_type=type(e).__name__,
+                error=str(e),
+            )
+            raise HTTPException(502, f"Payment service error: {e!s}")
+
+        # Mirror Dodo's authoritative state locally. cancelled_at is only set
+        # when Dodo supplied one — leaving it unset keeps it out of the $set.
+        update = SubscriptionUpdate(status=updated.status, cancel_at_next_billing_date=True)
+        if updated.cancelled_at:
+            update.cancelled_at = updated.cancelled_at.isoformat()
+        if updated.next_billing_date:
+            update.next_billing_date = updated.next_billing_date.isoformat()
+
+        updated_local = await subscription_repository.apply_update_by_dodo_id(
+            subscription.dodo_subscription_id, update
+        )
+        if not updated_local:
+            # Dodo accepted the cancellation but no local row matched — surfacing
+            # success here would leave the user's status stale and silently drop
+            # the change. Fail loud so it gets attention instead of looking done.
+            log.error(
+                f"{LogTag.PAYMENT} Cancellation not mirrored locally; no subscription row matched",
+                dodo_subscription_id=subscription.dodo_subscription_id,
+                user_id=user_id,
+            )
+            raise HTTPException(
+                502,
+                "Cancellation processed by Dodo but could not be recorded locally",
+            )
+        await self.invalidate_plan_cache_by_dodo_id(subscription.dodo_subscription_id)
+
+        return await self.get_user_subscription_status(user_id)
 
     async def verify_payment_completion(self, user_id: str) -> PaymentVerificationResponse:
         """Check payment completion status from webhook data."""
