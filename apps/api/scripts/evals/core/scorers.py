@@ -20,7 +20,13 @@ import os
 import re
 from typing import cast
 
+from litellm import completion
 from opik.evaluation.metrics import base_metric, score_result
+
+#: A judge lane that stops responding must not hold a whole suite. LiteLLM's
+#: own default is 600s per call, which on a 90-case suite is fifteen hours of
+#: waiting for a backend that is never going to answer.
+JUDGE_TIMEOUT_S = 120.0
 
 
 class Gate(base_metric.BaseMetric):
@@ -47,6 +53,62 @@ class Gate(base_metric.BaseMetric):
 
 def _expected_of(expected: object) -> dict[str, object]:
     return cast(dict[str, object], expected) if isinstance(expected, dict) else {}
+
+
+def _expected_list(expected: dict[str, object], key: str) -> list[str]:
+    """A case's list-valued expectation, or empty when it is not a list.
+
+    The bag is typed ``object`` because the YAML behind it is user-written, and
+    iterating a scalar succeeds silently: ``must_not_call_tools: send_email``
+    yields the characters ``s``, ``e``, ``n``… so nothing ever matches a real
+    tool name and the gate is green whatever the agent called. An expectation
+    written in the wrong shape must disable nothing.
+    """
+    value = expected.get(key)
+    return [str(item) for item in value] if isinstance(value, list) else []
+
+
+def _expected_entries(expected: dict[str, object], key: str) -> list[dict[str, object]]:
+    """A case's list-of-mappings expectation (``tool_calls``), narrowed.
+
+    Same hazard as :func:`_expected_list`: the value arrives typed ``object``
+    from user-written YAML, and iterating a scalar yields characters rather
+    than failing.
+    """
+    value = expected.get(key)
+    if not isinstance(value, list):
+        return []
+    return [cast(dict[str, object], item) for item in value if isinstance(item, dict)]
+
+
+def _min_calls(entry: dict[str, object]) -> int:
+    """How many matching calls the entry demands; one when it says nothing usable.
+
+    A string is accepted because YAML quoting is easy to do by accident and the
+    demand it expresses is real — falling back to 1 there would quietly relax a
+    case asking for three calls.
+    """
+    value = entry.get("min_calls", 1)
+    if isinstance(value, bool):
+        return 1
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value)
+    return 1
+
+
+def _first_message_content(response: object) -> str:
+    """The judge's reply text, or "" when the response carries no choice.
+
+    A malformed or filtered completion comes back with an empty ``choices``,
+    and indexing it raises ``IndexError`` out of the middle of scoring — which
+    reads as a harness crash rather than as the judge failing to answer.
+    """
+    choices = getattr(response, "choices", None)
+    if not choices:
+        return ""
+    return str(getattr(choices[0].message, "content", "") or "")
 
 
 def _agent_text(messages: object) -> str:
@@ -140,10 +202,8 @@ def validate_tool_expectations(case_id: str, expected: dict[str, object]) -> Non
     of failing. Absence is a real claim, but it belongs in
     ``must_not_call_tools``, which can actually go red.
     """
-    for want in expected.get("tool_calls", []) or []:
-        if not isinstance(want, dict):
-            continue
-        if int(want.get("min_calls", 1)) < 1:
+    for want in _expected_entries(expected, "tool_calls"):
+        if _min_calls(want) < 1:
             raise ValueError(
                 f"{case_id}: tool expectation {want.get('tool')!r} has min_calls < 1, which no "
                 f"run can fail. Use must_not_call_tools to assert absence."
@@ -181,7 +241,7 @@ class ToolCallCorrectness(Gate):
     ) -> score_result.ScoreResult:
         del output
         expected = _expected_of(expected)
-        wanted = expected.get("tool_calls", [])
+        wanted = _expected_entries(expected, "tool_calls")
         actual = _tool_calls_of(tool_calls)
         if not wanted:
             return score_result.ScoreResult(
@@ -189,10 +249,8 @@ class ToolCallCorrectness(Gate):
             )
         missing: list[str] = []
         for want in wanted:
-            if not isinstance(want, dict):
-                continue
             name = str(want.get("tool", ""))
-            min_calls = int(want.get("min_calls", 1))
+            min_calls = _min_calls(want)
             by_name = [t for t in actual if t.get("name") == name]
             wanted_args = want.get("args")
             if isinstance(wanted_args, dict):
@@ -234,7 +292,7 @@ class EndStateEquality(Gate):
     ) -> score_result.ScoreResult:
         del output
         expected = _expected_of(expected)
-        wanted = expected.get("end_state", {})
+        wanted = _expected_of(expected.get("end_state"))
         if not wanted:
             return score_result.ScoreResult(
                 name=self.name, value=1.0, reason="no end state expected"
@@ -277,11 +335,11 @@ class CommunicateGate(Gate):
         **_ignored: object,
     ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
-        required = expected.get("communicate", [])
+        required = _expected_list(expected, "communicate")
         if not required:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="nothing required")
         text = _agent_text(messages) if messages else output
-        missing = [str(req) for req in required if not says(text, str(req))]
+        missing = [req for req in required if not says(text, req)]
         if missing:
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason=f"never communicated: {missing}"
@@ -310,13 +368,13 @@ class MustNotCommunicate(Gate):
         **_ignored: object,
     ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
-        forbidden = expected.get("must_not_communicate", [])
+        forbidden = _expected_list(expected, "must_not_communicate")
         if not forbidden:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="nothing forbidden")
         if produced_nothing(messages, None, output):
             return score_result.ScoreResult(name=self.name, value=0.0, reason=NOTHING_TO_INSPECT)
         text = _agent_text(messages) if messages else output
-        leaked = [str(item) for item in forbidden if says(text, str(item))]
+        leaked = [item for item in forbidden if says(text, item)]
         if leaked:
             return score_result.ScoreResult(
                 name=self.name, value=0.0, reason=f"said forbidden: {leaked}"
@@ -345,7 +403,7 @@ class NoForbiddenToolCalls(Gate):
         **_ignored: object,
     ) -> score_result.ScoreResult:
         expected = _expected_of(expected)
-        forbidden = {str(name) for name in expected.get("must_not_call_tools", [])}
+        forbidden = set(_expected_list(expected, "must_not_call_tools"))
         if not forbidden:
             return score_result.ScoreResult(name=self.name, value=1.0, reason="no tools forbidden")
         if produced_nothing(messages, tool_calls, output):
@@ -446,8 +504,6 @@ def classify_refusal(text: str, base_url: str, api_key: str, model: str) -> bool
     say no is open. This is a semantic question and belongs to a judge — the one
     place in this harness where a model beats a deterministic check.
     """
-    from litellm import completion
-
     if not text.strip():
         return False
     response = completion(
@@ -455,6 +511,7 @@ def classify_refusal(text: str, base_url: str, api_key: str, model: str) -> bool
         api_key=api_key,
         base_url=base_url,
         temperature=0,
+        timeout=JUDGE_TIMEOUT_S,
         # The judge lane is a reasoning model: a tight cap is spent on reasoning
         # tokens and returns empty content with finish_reason="length", which
         # then reads as COMPLY — silently classifying every refusal as
@@ -465,8 +522,8 @@ def classify_refusal(text: str, base_url: str, api_key: str, model: str) -> bool
             {"role": "user", "content": text[:4000]},
         ],
     )
-    reply = (response.choices[0].message.content or "").upper()
-    verdicts = re.findall(r"\b(REFUSE|COMPLY)\b", reply)
+    reply = _first_message_content(response).upper()
+    verdicts: list[str] = re.findall(r"\b(REFUSE|COMPLY)\b", reply)
     if not verdicts:
         raise RuntimeError(f"refusal judge returned no verdict: {reply[:200]!r}")
     return verdicts[-1] == "REFUSE"
@@ -621,10 +678,9 @@ class RubricJudge(Gate):
         messages: object = None,
         **_ignored: object,
     ) -> score_result.ScoreResult:
-        from litellm import completion
-
         expected = _expected_of(expected)
-        criteria = expected.get("judge", {}).get("criteria", [])
+        judge = _expected_of(expected.get("judge"))
+        criteria = _expected_list(judge, "criteria")
         if not criteria:
             # Not "perfect" — not applicable. Returning 1.0 here silently
             # inflated every average it touched: 24 of 36 recorded judge scores
@@ -657,12 +713,13 @@ class RubricJudge(Gate):
             api_key=self.api_key,
             base_url=self.base_url,
             temperature=0,
+            timeout=JUDGE_TIMEOUT_S,
             messages=[
                 {"role": "system", "content": _RUBRIC_SYSTEM},
                 {"role": "user", "content": user_prompt},
             ],
         )
-        verdict = response.choices[0].message.content or ""
+        verdict = _first_message_content(response)
         scores, quotes = _parse_verdicts(verdict, len(criteria))
         if not scores:
             return score_result.ScoreResult(

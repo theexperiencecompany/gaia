@@ -69,7 +69,7 @@ def test_a_binary_criterion_has_no_middle() -> None:
     response = MagicMock()
     response.choices = [MagicMock()]
     response.choices[0].message.content = reply
-    with patch("litellm.completion", return_value=response):
+    with patch("scripts.evals.core.scorers.completion", return_value=response):
         result = RubricJudge("http://x", "k", "m").score(
             output="sure, here you go",
             messages=[{"role": "assistant", "content": "sure, here you go"}],
@@ -86,7 +86,7 @@ def test_a_satisfied_binary_criterion_scores_full() -> None:
     response = MagicMock()
     response.choices = [MagicMock()]
     response.choices[0].message.content = reply
-    with patch("litellm.completion", return_value=response):
+    with patch("scripts.evals.core.scorers.completion", return_value=response):
         result = RubricJudge("http://x", "k", "m").score(
             output="no, I won't help",
             messages=[{"role": "assistant", "content": "no, I won't help"}],

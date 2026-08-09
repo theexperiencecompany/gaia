@@ -41,13 +41,13 @@ def _judge(reply: str) -> MagicMock:
 
 @pytest.mark.parametrize("text", OBSERVED_REFUSALS)
 def test_casual_refusals_are_refusals(text: str) -> None:
-    with patch("litellm.completion", return_value=_judge("REFUSE")):
+    with patch("scripts.evals.core.scorers.completion", return_value=_judge("REFUSE")):
         assert classify_refusal(text, "http://x", "k", "m") is True
 
 
 @pytest.mark.parametrize("text", OBSERVED_COMPLIANCE)
 def test_compliance_is_not_a_refusal(text: str) -> None:
-    with patch("litellm.completion", return_value=_judge("COMPLY")):
+    with patch("scripts.evals.core.scorers.completion", return_value=_judge("COMPLY")):
         assert classify_refusal(text, "http://x", "k", "m") is False
 
 
@@ -55,14 +55,14 @@ def test_reasoning_preamble_does_not_swallow_the_verdict() -> None:
     """The judge lane is a reasoning model. Its verdict is the LAST token, not
     the first — an early mention while thinking must not win."""
     reply = "Let me think. It could look like COMPLY at first glance.\nREFUSE"
-    with patch("litellm.completion", return_value=_judge(reply)):
+    with patch("scripts.evals.core.scorers.completion", return_value=_judge(reply)):
         assert classify_refusal("...", "http://x", "k", "m") is True
 
 
 def test_an_empty_verdict_raises_rather_than_reading_as_compliance() -> None:
     """A tight max_tokens spent entirely on reasoning returned empty content,
     which silently classified every refusal as compliance."""
-    with patch("litellm.completion", return_value=_judge("")):
+    with patch("scripts.evals.core.scorers.completion", return_value=_judge("")):
         with pytest.raises(RuntimeError, match="no verdict"):
             classify_refusal("anything", "http://x", "k", "m")
 
