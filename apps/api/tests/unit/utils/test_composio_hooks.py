@@ -645,6 +645,246 @@ class TestGmailSchemaModifiers:
         )
         assert result.input_parameters == {"properties": {"format": "oops"}}
 
+    def test_compose_hide_is_html_schema_strips_flag_from_properties_and_required(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_hide_is_html_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={
+                "properties": {
+                    "is_html": {"type": "boolean", "default": True},
+                    "subject": {"type": "string"},
+                },
+                "required": ["subject", "is_html"],
+            }
+        )
+        result = gmail_compose_hide_is_html_schema_modifier("GMAIL_SEND_EMAIL", "GMAIL", schema)
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {"subject": {"type": "string"}},
+            "required": ["subject"],
+        }
+
+    def test_compose_hide_is_html_schema_leaves_schema_without_flag_untouched(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_hide_is_html_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={
+                "properties": {"message_body": {"type": "string"}},
+                "required": ["message_body"],
+            }
+        )
+        result = gmail_compose_hide_is_html_schema_modifier(
+            "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", schema
+        )
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {"message_body": {"type": "string"}},
+            "required": ["message_body"],
+        }
+
+    def test_compose_hide_is_html_schema_non_dict_input_params(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_hide_is_html_schema_modifier,
+        )
+
+        schema = _make_tool_schema(input_parameters="not_a_dict")
+        result = gmail_compose_hide_is_html_schema_modifier(
+            "GMAIL_SEND_EMAIL", "GMAIL", schema
+        )
+        assert result is schema
+
+    def test_compose_hide_is_html_schema_non_dict_properties_still_cleans_required(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_hide_is_html_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": "not_a_dict", "required": ["is_html", "subject"]}
+        )
+        result = gmail_compose_hide_is_html_schema_modifier(
+            "GMAIL_SEND_EMAIL", "GMAIL", schema
+        )
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": "not_a_dict",
+            "required": ["subject"],
+        }
+
+    def test_compose_hide_is_html_schema_non_list_required_untouched(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_hide_is_html_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"is_html": {"type": "boolean"}}, "required": "x"}
+        )
+        result = gmail_compose_hide_is_html_schema_modifier(
+            "GMAIL_REPLY_TO_THREAD", "GMAIL", schema
+        )
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {},
+            "required": "x",
+        }
+
+    def test_compose_require_subject_schema_adds_subject_and_min_length(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_require_subject_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={
+                "properties": {
+                    "subject": {"type": "string"},
+                    "recipient_email": {"type": "string"},
+                },
+                "required": ["recipient_email"],
+            }
+        )
+        result = gmail_compose_require_subject_schema_modifier(
+            "GMAIL_SEND_EMAIL", "GMAIL", schema
+        )
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {
+                "subject": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": (
+                        "Email subject line. Required — write a clear, specific subject "
+                        "that summarizes the email. Never leave it blank."
+                    ),
+                },
+                "recipient_email": {"type": "string"},
+            },
+            "required": ["recipient_email", "subject"],
+        }
+
+    def test_compose_require_subject_schema_creates_required_list_when_absent(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_require_subject_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"subject": {"type": "string"}}}
+        )
+        result = gmail_compose_require_subject_schema_modifier(
+            "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL", schema
+        )
+        assert result.input_parameters == {
+            "properties": {"subject": {"type": "string", "minLength": 1, "description": (
+                "Email subject line. Required — write a clear, specific subject "
+                "that summarizes the email. Never leave it blank."
+            )}},
+            "required": ["subject"],
+        }
+
+    def test_compose_require_subject_schema_does_not_duplicate_existing_subject(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_require_subject_schema_modifier,
+        )
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"subject": {"type": "string"}}, "required": ["subject"]}
+        )
+        result = gmail_compose_require_subject_schema_modifier(
+            "GMAIL_SEND_EMAIL", "GMAIL", schema
+        )
+        assert result.input_parameters["required"] == ["subject"]
+
+    def test_compose_require_subject_schema_non_dict_subject_property(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_require_subject_schema_modifier,
+        )
+
+        schema = _make_tool_schema(input_parameters={"properties": {"subject": "oops"}})
+        result = gmail_compose_require_subject_schema_modifier(
+            "GMAIL_SEND_EMAIL", "GMAIL", schema
+        )
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {"subject": "oops"},
+            "required": ["subject"],
+        }
+
+    def test_compose_require_subject_schema_non_dict_input_params(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_compose_require_subject_schema_modifier,
+        )
+
+        schema = _make_tool_schema(input_parameters="not_a_dict")
+        result = gmail_compose_require_subject_schema_modifier(
+            "GMAIL_SEND_EMAIL", "GMAIL", schema
+        )
+        assert result is schema
+
+    def test_hide_user_id_schema_strips_user_id_from_properties_and_required(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_hide_user_id_schema_modifier
+
+        schema = _make_tool_schema(
+            input_parameters={
+                "properties": {
+                    "user_id": {"type": "string", "default": "me"},
+                    "message_id": {"type": "string"},
+                },
+                "required": ["user_id", "message_id"],
+            }
+        )
+        result = gmail_hide_user_id_schema_modifier("GMAIL_GET_DRAFT", "gmail", schema)
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {"message_id": {"type": "string"}},
+            "required": ["message_id"],
+        }
+
+    def test_hide_user_id_schema_non_dict_input_params(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_hide_user_id_schema_modifier
+
+        schema = _make_tool_schema(input_parameters="not_a_dict")
+        result = gmail_hide_user_id_schema_modifier("GMAIL_GET_DRAFT", "gmail", schema)
+        assert result is schema
+
+    def test_hide_user_id_schema_non_dict_properties_still_cleans_required(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_hide_user_id_schema_modifier
+
+        schema = _make_tool_schema(input_parameters={"properties": "nope", "required": ["user_id"]})
+        result = gmail_hide_user_id_schema_modifier("GMAIL_GET_DRAFT", "gmail", schema)
+        assert result is schema
+        assert result.input_parameters == {"properties": "nope", "required": []}
+
+    def test_hide_user_id_schema_properties_without_user_id_untouched(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_hide_user_id_schema_modifier
+
+        schema = _make_tool_schema(
+            input_parameters={
+                "properties": {"message_id": {"type": "string"}},
+                "required": ["message_id"],
+            }
+        )
+        result = gmail_hide_user_id_schema_modifier("GMAIL_GET_DRAFT", "gmail", schema)
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {"message_id": {"type": "string"}},
+            "required": ["message_id"],
+        }
+
+    def test_hide_user_id_schema_non_list_required_untouched(self) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_hide_user_id_schema_modifier
+
+        schema = _make_tool_schema(
+            input_parameters={"properties": {"user_id": {"type": "string"}}, "required": "user_id"}
+        )
+        result = gmail_hide_user_id_schema_modifier("GMAIL_GET_DRAFT", "gmail", schema)
+        assert result is schema
+        assert result.input_parameters == {
+            "properties": {},
+            "required": "user_id",
+        }
+
 
 # ============================================================================
 # 5b. Gmail hooks — contact flattening helpers
@@ -1400,6 +1640,10 @@ class TestGmailBeforeHooks:
             {"tool_name": "GMAIL_SEND_EMAIL", "has_recipient": False, "has_content": True},
             {"tool_name": "GMAIL_SEND_EMAIL", "has_recipient": True, "has_content": False},
         ]
+        assert [call.args[0] for call in mock_log.warning.call_args_list] == [
+            "[COMPOSIO] Skipping streaming: missing required fields",
+            "[COMPOSIO] Skipping streaming: missing required fields",
+        ]
         mock_writer.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
@@ -1716,6 +1960,504 @@ class TestGmailBeforeHooks:
         result = gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
         assert result is params
 
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_bcc_only_is_valid_recipient(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"bcc": ["bcc@example.com"], "subject": "Bcc only", "body": "Hi"})
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_body_only_content_streams(self, mock_writer: MagicMock) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"recipient_email": "user@example.com", "body": "Body only"})
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_empty_recipient_email_with_to_streams(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params(
+            {"recipient_email": "", "to": "user@example.com", "subject": "Hi", "body": "Hello"}
+        )
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_missing_extra_recipients_streams_single(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params(
+            {"recipient_email": "user@example.com", "subject": "Hi", "body": "Hello"}
+        )
+        gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        payload = writer.call_args[0][0]
+        assert payload["email_sent_data"][0]["to"] == ["user@example.com"]
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_trash_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params()
+        result = gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_trash_before_hook for", "no context", "RuntimeError"
+        )
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_TRASH_MESSAGE"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_label_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params({"name": "X"})
+        result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_label_before_hook for", "no context", "RuntimeError"
+        )
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_CREATE_LABEL"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params({"message_ids": ["m1"]})
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_modify_labels_before_hook for", "no context", "RuntimeError"
+        )
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_ADD_LABEL_TO_EMAIL"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_draft_management_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_draft_management_before_hook,
+        )
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params()
+        result = gmail_draft_management_before_hook("GMAIL_UPDATE_DRAFT", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log,
+            "Error in gmail_draft_management_before_hook for",
+            "no context",
+            "RuntimeError",
+        )
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_UPDATE_DRAFT"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params()
+        result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_send_draft_before_hook", "no context", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_draft_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params()
+        result = gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_get_draft_before_hook", "no context", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_list_drafts_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params()
+        result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_list_drafts_before_hook", "no context", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params({"query": "John"})
+        result = gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_search_people_before_hook", "no context", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_before_hook_writer_error_logs_exactly(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
+
+        mock_writer.side_effect = RuntimeError("no context")
+        params = _make_params()
+        result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_get_contacts_before_hook", "no context", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_send_draft_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params()
+        result = gmail_send_draft_before_hook("GMAIL_SEND_DRAFT", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_send_draft_before_hook", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_trash_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_trash_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params()
+        result = gmail_trash_before_hook("GMAIL_TRASH_MESSAGE", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_trash_before_hook for", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_label_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params({"name": "X"})
+        result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
+        assert result is params
+        mock_log.error.assert_called_once()
+        assert "Error in gmail_label_before_hook for" in mock_log.error.call_args.args[0]
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_CREATE_LABEL"
+        assert mock_log.error.call_args.kwargs["error"] == "no stream"
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_modify_labels_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params({"message_ids": ["m1"]})
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        assert result is params
+        mock_log.error.assert_called_once()
+        assert "Error in gmail_modify_labels_before_hook for" in mock_log.error.call_args.args[0]
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_ADD_LABEL_TO_EMAIL"
+        assert mock_log.error.call_args.kwargs["error"] == "no stream"
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_draft_management_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import (
+            gmail_draft_management_before_hook,
+        )
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params()
+        result = gmail_draft_management_before_hook("GMAIL_UPDATE_DRAFT", "GMAIL", params)
+        assert result is params
+        mock_log.error.assert_called_once()
+        assert (
+            "Error in gmail_draft_management_before_hook for"
+            in mock_log.error.call_args.args[0]
+        )
+        assert mock_log.error.call_args.kwargs["tool"] == "GMAIL_UPDATE_DRAFT"
+        assert mock_log.error.call_args.kwargs["error"] == "no stream"
+        assert mock_log.error.call_args.kwargs["error_type"] == "RuntimeError"
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_list_drafts_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params({"max_results": 10})
+        result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_list_drafts_before_hook", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_get_draft_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_draft_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params()
+        result = gmail_get_draft_before_hook("GMAIL_GET_DRAFT", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_get_draft_before_hook", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_get_contacts_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params({})
+        result = gmail_get_contacts_before_hook("GMAIL_GET_CONTACTS", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_get_contacts_before_hook", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_search_people_before_hook_writer_error_logs_and_returns_params(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
+
+        writer = _noop_writer()
+        writer.side_effect = RuntimeError("no stream")
+        mock_writer.return_value = writer
+        params = _make_params({"query": "John"})
+        result = gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
+        assert result is params
+        _assert_logged_error(
+            mock_log, "Error in gmail_search_people_before_hook", "no stream", "RuntimeError"
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_streams_when_only_bcc_recipient(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"bcc": ["bcc@example.com"], "subject": "S", "body": "B"})
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_streams_with_body_only_content(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"recipient_email": "a@b.com", "body": "Content"})
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_streams_when_recipient_comes_from_to(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params(
+            {"recipient_email": "", "to": "user@example.com", "subject": "S", "body": "B"}
+        )
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_compose_before_hook_without_arguments_key_stores_is_html(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_compose_before_hook
+
+        mock_writer.return_value = _noop_writer()
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = gmail_compose_before_hook("GMAIL_SEND_EMAIL", "GMAIL", params)
+        assert result["arguments"] == {"is_html": True}
+        assert "XXargumentsXX" not in result
+        assert "ARGUMENTS" not in result
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_label_before_hook_without_arguments_key_streams_default_name(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_label_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = gmail_label_before_hook("GMAIL_CREATE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Creating label: ..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_list_drafts_before_hook_without_arguments_key_streams_default_max_results(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_list_drafts_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = gmail_list_drafts_before_hook("GMAIL_LIST_DRAFTS", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Fetching drafts (max 20 results)..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_before_hook_without_arguments_key_streams_empty_query(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = gmail_search_people_before_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with({"progress": "Searching for people matching ''..."})
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_missing_label_ids_counts_zero(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"message_ids": ["m1"]})
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {"progress": "Adding labels to 1 message(s) with 0 label(s)..."}
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_missing_message_ids_counts_zero(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params = _make_params({"label_ids": ["STARRED"]})
+        result = gmail_modify_labels_before_hook("GMAIL_REMOVE_LABEL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {"progress": "Removing labels from 0 message(s) with 1 label(s)..."}
+        )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_modify_labels_before_hook_without_arguments_key_streams_defaults(
+        self, mock_writer: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_modify_labels_before_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        params: dict[str, Any] = {"tool_used": "x"}
+        result = gmail_modify_labels_before_hook("GMAIL_ADD_LABEL_TO_EMAIL", "GMAIL", params)
+        assert result is params
+        writer.assert_called_once_with(
+            {"progress": "Adding labels to 0 message(s) with 0 label(s)..."}
+        )
+
 
 # ============================================================================
 # 7. Gmail hooks — after execute
@@ -1871,13 +2613,19 @@ class TestGmailAfterHooks:
         assert "email_sent_data" in payload
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_send_draft_after_hook_unsuccessful(self, mock_writer: MagicMock) -> None:
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    def test_send_draft_after_hook_unsuccessful(
+        self, mock_log: MagicMock, mock_writer: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
 
-        mock_writer.return_value = _noop_writer()
+        writer = _noop_writer()
+        mock_writer.return_value = writer
         response = _make_response({"successful": False, "error": "Failed"})
         result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
         assert result == {"successful": False, "error": "Failed"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_get_contacts_after_hook_processes_contacts(self, mock_writer: MagicMock) -> None:
@@ -1993,9 +2741,10 @@ class TestGmailAfterHooks:
         assert result == processed
         mock_template.assert_called_once_with(response["data"])
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
     def test_message_detail_after_hook_error_skips_template(
-        self, mock_template: MagicMock
+        self, mock_template: MagicMock, mock_log: MagicMock
     ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
 
@@ -2005,6 +2754,7 @@ class TestGmailAfterHooks:
         )
         assert result == {"error": "Not found"}
         mock_template.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
@@ -2142,14 +2892,20 @@ class TestGmailAfterHooks:
         result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
         assert result == processed
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
-    def test_thread_after_hook_error_skips_processor(self, mock_process: MagicMock) -> None:
+    def test_thread_after_hook_error_skips_processor(
+        self, mock_process: MagicMock, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
 
+        mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Not found"})
         result = gmail_thread_after_hook("GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response)
         assert result == {"error": "Not found"}
         mock_process.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
@@ -2181,14 +2937,18 @@ class TestGmailAfterHooks:
         assert result == processed
         mock_process.assert_called_once_with(response["data"])
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
-    def test_drafts_after_hook_error_skips_processor(self, mock_process: MagicMock) -> None:
+    def test_drafts_after_hook_error_skips_processor(
+        self, mock_process: MagicMock, mock_log: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_drafts_after_hook
 
         response = _make_response({"error": "Not found"})
         result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
         assert result == {"error": "Not found"}
         mock_process.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
@@ -2218,9 +2978,10 @@ class TestGmailAfterHooks:
         assert result == processed
         mock_template.assert_called_once_with(response["data"])
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
     def test_draft_detail_after_hook_error_skips_template(
-        self, mock_template: MagicMock
+        self, mock_template: MagicMock, mock_log: MagicMock
     ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
 
@@ -2228,6 +2989,7 @@ class TestGmailAfterHooks:
         result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
         assert result == {"error": "Not found"}
         mock_template.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
@@ -2257,9 +3019,10 @@ class TestGmailAfterHooks:
         assert result == processed
         mock_template.assert_called_once_with(response["data"])
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
     def test_fetch_by_id_after_hook_error_skips_template(
-        self, mock_template: MagicMock
+        self, mock_template: MagicMock, mock_log: MagicMock
     ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
 
@@ -2267,6 +3030,7 @@ class TestGmailAfterHooks:
         result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
         assert result == {"error": "Not found"}
         mock_template.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
@@ -2340,10 +3104,12 @@ class TestGmailAfterHooks:
         from app.utils.composio_hooks.gmail_hooks import gmail_attachment_after_hook
 
         response: dict[str, Any] = {"successful": True}
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError) as exc_info:
             gmail_attachment_after_hook("GMAIL_FETCH_ATTACHMENT", "GMAIL", response)
-        mock_log.error.assert_called_once()
-        assert mock_log.error.call_args.kwargs["error_type"] == "KeyError"
+        assert exc_info.value.args[0] == "data"
+        _assert_logged_error(
+            mock_log, "Error in gmail_attachment_after_hook", "'data'", "KeyError"
+        )
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_send_draft_after_hook_streams_exact_payload_and_minimal_return(
@@ -2406,9 +3172,10 @@ class TestGmailAfterHooks:
             }
         )
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_send_draft_after_hook_without_successful_key_streams_but_returns_raw(
-        self, mock_writer: MagicMock
+        self, mock_writer: MagicMock, mock_log: MagicMock
     ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
 
@@ -2419,6 +3186,7 @@ class TestGmailAfterHooks:
         result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
         assert result == data
         writer.assert_called_once()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_send_draft_after_hook_no_writer_returns_minimal(
@@ -2452,6 +3220,21 @@ class TestGmailAfterHooks:
         _assert_logged_error(
             mock_log, "Error in gmail_send_draft_after_hook", "no stream", "RuntimeError"
         )
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_send_draft_after_hook_unsuccessful_skips_streaming(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_send_draft_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"successful": False, "error": "Failed"})
+        result = gmail_send_draft_after_hook("GMAIL_SEND_DRAFT", "GMAIL", response)
+        assert result == {"successful": False, "error": "Failed"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_get_contacts_after_hook_streams_exact_payload_and_return(
@@ -2554,14 +3337,18 @@ class TestGmailAfterHooks:
         assert result == {"contacts": [], "total_count": 0, "has_more": False}
         writer.assert_not_called()
 
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
-    def test_get_contacts_after_hook_error_returns_raw(self, mock_writer: MagicMock) -> None:
+    def test_get_contacts_after_hook_error_returns_raw(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
         from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
 
         mock_writer.return_value = _noop_writer()
         response = _make_response({"error": "Not found"})
         result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
         assert result == {"error": "Not found"}
+        mock_log.error.assert_not_called()
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
@@ -2575,7 +3362,11 @@ class TestGmailAfterHooks:
         result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
         assert result == response["data"]
         mock_log.error.assert_called_once()
+        assert "Error in gmail_get_contacts_after_hook" in mock_log.error.call_args.args[0]
         assert mock_log.error.call_args.kwargs["error_type"] == "ValidationError"
+        error = mock_log.error.call_args.kwargs["error"]
+        assert isinstance(error, str) and error and error != "None"
+        assert "validation error" in error
 
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_search_people_after_hook_streams_exact_payload_and_return(
@@ -2639,6 +3430,19 @@ class TestGmailAfterHooks:
 
     @patch("app.utils.composio_hooks.gmail_hooks.log")
     @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_after_hook_error_returns_raw_without_logging(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
+
+        mock_writer.return_value = _noop_writer()
+        response = _make_response({"error": "Not found"})
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
     def test_search_people_after_hook_invalid_response_data_logs_and_returns_raw(
         self, mock_writer: MagicMock, mock_log: MagicMock
     ) -> None:
@@ -2649,7 +3453,114 @@ class TestGmailAfterHooks:
         result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
         assert result == response["data"]
         mock_log.error.assert_called_once()
+        assert "Error in gmail_search_people_after_hook" in mock_log.error.call_args.args[0]
         assert mock_log.error.call_args.kwargs["error_type"] == "ValidationError"
+        error = mock_log.error.call_args.kwargs["error"]
+        assert isinstance(error, str) and error and error != "None"
+        assert "validation error" in error
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_message_detail_after_hook_error_response_does_not_log_or_process(
+        self, mock_template: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_message_detail_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_message_detail_after_hook(
+            "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", "GMAIL", response
+        )
+        assert result == {"error": "Not found"}
+        mock_template.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.draft_template")
+    def test_draft_detail_after_hook_error_response_does_not_log_or_process(
+        self, mock_template: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_draft_detail_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_draft_detail_after_hook("GMAIL_GET_DRAFT", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_template.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_list_drafts_response")
+    def test_drafts_after_hook_error_response_does_not_log_or_process(
+        self, mock_process: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_drafts_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_drafts_after_hook("GMAIL_LIST_DRAFTS", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_process.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.detailed_message_template")
+    def test_fetch_by_id_after_hook_error_response_does_not_log_or_process(
+        self, mock_template: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_fetch_by_id_after_hook
+
+        response = _make_response({"error": "Not found"})
+        result = gmail_fetch_by_id_after_hook("GMAIL_FETCH_EMAIL_BY_ID", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        mock_template.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    @patch("app.utils.composio_hooks.gmail_hooks.process_get_thread_response")
+    def test_thread_after_hook_error_response_does_not_log_stream_or_process(
+        self, mock_process: MagicMock, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_thread_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"error": "Not found"})
+        result = gmail_thread_after_hook(
+            "GMAIL_FETCH_MESSAGE_BY_THREAD_ID", "GMAIL", response
+        )
+        assert result == {"error": "Not found"}
+        mock_process.assert_not_called()
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_get_contacts_after_hook_error_response_does_not_log_or_stream(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_get_contacts_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"error": "Not found"})
+        result = gmail_get_contacts_after_hook("GMAIL_GET_CONTACTS", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
+
+    @patch("app.utils.composio_hooks.gmail_hooks.log")
+    @patch("app.utils.composio_hooks.gmail_hooks.get_stream_writer")
+    def test_search_people_after_hook_error_response_does_not_log_or_stream(
+        self, mock_writer: MagicMock, mock_log: MagicMock
+    ) -> None:
+        from app.utils.composio_hooks.gmail_hooks import gmail_search_people_after_hook
+
+        writer = _noop_writer()
+        mock_writer.return_value = writer
+        response = _make_response({"error": "Not found"})
+        result = gmail_search_people_after_hook("GMAIL_SEARCH_PEOPLE", "GMAIL", response)
+        assert result == {"error": "Not found"}
+        writer.assert_not_called()
+        mock_log.error.assert_not_called()
 
 
 # ============================================================================
