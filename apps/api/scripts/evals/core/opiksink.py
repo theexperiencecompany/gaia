@@ -22,6 +22,7 @@ import uuid
 from dotenv import load_dotenv
 import opik
 from opik import id_helpers
+from opik.evaluation import evaluate
 from opik.rest_api.core.api_error import ApiError
 
 from .journal import RunJournal
@@ -158,8 +159,6 @@ def finalize(
     ``replay(item)`` returns the stored run output for a case (never calls the
     agent again); metrics see dataset-item keys merged with those outputs.
     """
-    from opik.evaluation import evaluate
-
     opik_client = client(project)
     dataset = _dataset_for(opik_client, f"{project}-cases", project)
     dataset.insert(

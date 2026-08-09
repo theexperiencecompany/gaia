@@ -9,14 +9,29 @@ from importlib import import_module
 import os
 import sys
 
+from pydantic import ValidationError
+
+from .core import baseline, runner
+from .core.counterfeit import check_suite, format_report, summary_counts
+from .core.dashboards import build as build_dashboards
+from .core.flaky import report as flaky_report
+from .core.ingest import rebuild, verify as verify_ingest
+from .core.ingest_check import api_base
+from .core.opiksink import load_opik_env
+from .core.project import project
+from .core.providers import load_config, price_book
+from .core.report import write_report
+from .core.rescore import rescore, write_sibling
+from .core.runner import SUITE_REGISTRY
+from .core.seed import seed
+from .core.sweep import plan, render
+
 sys.stdout.reconfigure(line_buffering=True)
 
 
 def _load_suites() -> None:
     """Import every suite module so @register_suite fires (missing ones are
     simply not available — e.g. when a suite's optional deps are absent)."""
-    from .core.opiksink import load_opik_env
-
     load_opik_env()
     for _suite_module in (
         "smoke",
@@ -145,9 +160,6 @@ def main() -> int | None:
     )
     verify_p.add_argument("--suite", help="only this suite (default: every registered suite)")
 
-    from .core import runner
-    from .core.providers import load_config, price_book
-
     args = parser.parse_args()
 
     if args.command == "run" and args.sim:
@@ -178,24 +190,16 @@ def main() -> int | None:
         )
         asyncio.run(runner.run_suite(cfg, opts))
     elif args.command == "report":
-        from .core.report import write_report
-
         journal = runner.RunJournal(runner.RUNS_DIR, args.run_id)
         prices = price_book(cfg)
         label = (journal.load_meta() or runner.RunMeta(args.run_id, "?", "?")).suite
         path = write_report(journal, label, prices)
         print(path)
     elif args.command == "cost":
-        from .core.project import project
-
         project(runner.RUNS_DIR, price_book(cfg))
     elif args.command == "seed":
-        from .core.seed import seed
-
         seed(cfg, reset=args.reset)
     elif args.command == "ingest":
-        from .core.ingest import rebuild
-
         return rebuild(
             cfg,
             dry_run=args.dry_run,
@@ -203,25 +207,16 @@ def main() -> int | None:
             skip_teardown=args.skip_teardown,
         )
     elif args.command == "ingest-check":
-        from .core.ingest import verify
-        from .core.ingest_check import api_base
-
-        ok, report = verify(api_base(os.environ["OPIK_URL_OVERRIDE"]))
+        ok, report = verify_ingest(api_base(os.environ["OPIK_URL_OVERRIDE"]))
         print(report)
         return 0 if ok else 1
     elif args.command == "dashboards":
-        from .core.dashboards import build
-
-        build()
+        build_dashboards()
     elif args.command == "rescore":
-        from .core.rescore import rescore, write_sibling
-
         result = rescore(runner.RUNS_DIR, args.run_id, cfg)
         print(result.render())
         print(f"[rescore] {write_sibling(runner.RUNS_DIR, result)}")
     elif args.command == "compare":
-        from .core import baseline
-
         comparison = baseline.for_run(
             runner.RunJournal(runner.RUNS_DIR, args.run_id),
             rebaseline=args.rebaseline,
@@ -232,12 +227,8 @@ def main() -> int | None:
         # then the exit code carries it to whatever called this.
         sys.exit(0 if comparison.ok else 1)
     elif args.command == "flaky":
-        from .core.flaky import report
-
-        print(report(runner.RUNS_DIR))
+        print(flaky_report(runner.RUNS_DIR))
     elif args.command == "sweep":
-        from .core.sweep import plan, render
-
         sweeps = plan(runner.RUNS_DIR)
         print(render(sweeps))
         sys.exit(1 if sweeps else 0)
@@ -252,9 +243,6 @@ def _verify(cfg: object, only: str | None) -> int:
     Exits non-zero when any case's gate accepted a worthless run, so this can
     gate a report or a merge without anyone remembering to look.
     """
-    from .core.counterfeit import check_suite, format_report, summary_counts
-    from .core.runner import SUITE_REGISTRY
-
     names = [only] if only else sorted(SUITE_REGISTRY)
     verdicts = []
     unloadable: list[str] = []
@@ -294,8 +282,6 @@ def _load_failure(error: Exception) -> str:
     hunting through YAML for an hour. Pydantic raises ``ValidationError`` for a
     bad env var, and it may arrive wrapped, so the whole cause chain is checked.
     """
-    from pydantic import ValidationError
-
     chain: list[BaseException] = []
     current: BaseException | None = error
     while current is not None and current not in chain:

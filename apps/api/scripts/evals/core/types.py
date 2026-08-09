@@ -6,6 +6,14 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+#: The score at or above which a gate counts as satisfied.
+#:
+#: It lives here because two modules have to agree on it: the run loop grades a
+#: case against it, and the falsifiability sweep asks whether a forgery cleared
+#: it. Two literals drift, and a drift makes the sweep report a gate as proven
+#: while the run loop passes it.
+GATE_PASS_THRESHOLD = 0.5
+
 
 @dataclass
 class Case:

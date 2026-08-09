@@ -124,17 +124,22 @@ class RunJournal:
         lines over its lifetime. The cache is keyed on the file's size and mtime
         so an external append (a concurrent writer, a resumed run) still
         invalidates it rather than serving a stale list.
+
+        Read under the same lock ``append`` writes under: the class promises
+        thread safety, and without it a reader can parse the file mid-write and
+        see a torn final line.
         """
-        if not self.path.exists():
-            return []
-        stat = self.path.stat()
-        stamp = (stat.st_size, stat.st_mtime_ns)
-        if self._records_stamp != stamp:
-            self._records_cache = [
-                json.loads(line) for line in self.path.read_text().splitlines() if line.strip()
-            ]
-            self._records_stamp = stamp
-        return self._records_cache
+        with self._lock:
+            if not self.path.exists():
+                return []
+            stat = self.path.stat()
+            stamp = (stat.st_size, stat.st_mtime_ns)
+            if self._records_stamp != stamp:
+                self._records_cache = [
+                    json.loads(line) for line in self.path.read_text().splitlines() if line.strip()
+                ]
+                self._records_stamp = stamp
+            return self._records_cache
 
     def latest_per_case(self) -> dict[str, dict[str, Any]]:
         """One record per case — the most recent attempt.

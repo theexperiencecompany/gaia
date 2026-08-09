@@ -51,6 +51,14 @@ services:
     image: clickhouse/clickhouse-server:26.3.16.16-alpine
     pull_policy: always
     hostname: clickhouse
+    # clickhouse-init copies macros/zookeeper/remote_servers into the config
+    # volume this server mounts. Started in parallel, ClickHouse can come up
+    # before the copy lands and Opik's ReplicatedMergeTree migrations then fail
+    # — only ever on a fresh machine or after `mise eval:opik:reset`, because
+    # the named volume already holds the files on every later start.
+    depends_on:
+      clickhouse-init:
+        condition: service_completed_successfully
     environment:
       CLICKHOUSE_DB: opik
       CLICKHOUSE_USER: opik
@@ -88,8 +96,13 @@ services:
       exit 0;
       "
 
+  # Pinned like every other image here. On `latest` + `pull_policy: always`,
+  # each `mise eval:opik:up` could pull a different backend, python-backend and
+  # frontend, so two runs of the same suite stopped being comparable and a
+  # breaking Opik release changed the harness with no diff in this repo. Bump
+  # deliberately (all three move together): OPIK_VERSION=<tag> mise eval:opik:up.
   backend:
-    image: ghcr.io/comet-ml/opik/opik-backend:${OPIK_VERSION:-latest}
+    image: ghcr.io/comet-ml/opik/opik-backend:${OPIK_VERSION:-2.2.23}
     pull_policy: always
     hostname: backend
     command: ["bash", "-c", "./run_db_migrations.sh && ./entrypoint.sh"]
@@ -118,8 +131,10 @@ services:
       TOGGLE_OPIK_AI_ENABLED: "false"
       CORS: "true"
       JAVA_OPTS: "-Dliquibase.propertySubstitutionEnabled=true -XX:+UseG1GC -XX:MaxRAMPercentage=80.0"
+    # Loopback only: this stack has no authentication and holds full eval
+    # transcripts, prompts and agent outputs, on static credentials.
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080"
     depends_on:
       mysql:
         condition: service_healthy
@@ -136,7 +151,7 @@ services:
       retries: 60
 
   python-backend:
-    image: ghcr.io/comet-ml/opik/opik-python-backend:${OPIK_VERSION:-latest}
+    image: ghcr.io/comet-ml/opik/opik-python-backend:${OPIK_VERSION:-2.2.23}
     pull_policy: always
     hostname: python-backend
     environment:
@@ -150,10 +165,10 @@ services:
       - backend
 
   frontend:
-    image: ghcr.io/comet-ml/opik/opik-frontend:${OPIK_VERSION:-latest}
+    image: ghcr.io/comet-ml/opik/opik-frontend:${OPIK_VERSION:-2.2.23}
     pull_policy: always
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./nginx_default_local.conf:/etc/nginx/templates/default.conf.template:ro
     environment:

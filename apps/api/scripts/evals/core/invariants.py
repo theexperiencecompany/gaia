@@ -211,7 +211,6 @@ def check_records(
                     )
                 )
 
-    ids = [str(r.get("case_id")) for r in records]
     statuses = {r.get("status") for r in records}
     unknown = statuses - {"passed", "failed", "errored", "skipped"}
     if unknown:

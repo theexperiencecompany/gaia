@@ -26,10 +26,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .types import Case, CaseRun
-
-# A gate is "satisfied" at the same threshold the run loop uses for pass/fail.
-GATE_PASS_THRESHOLD = 0.5
+from .types import GATE_PASS_THRESHOLD, Case, CaseRun
 
 
 class Scorable(Protocol):
