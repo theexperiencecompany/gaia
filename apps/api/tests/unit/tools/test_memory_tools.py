@@ -35,6 +35,7 @@ from app.agents.tools.memory_tools import (
     update_memory_document,
 )
 from app.constants.memory import (
+    FREE_MEMORY_FACT_LIMIT,
     MEMORY_DOC_FILENAMES,
     MEMORY_TOOL_CONTENT_MAX_CHARS,
     MEMORY_TOOL_DOCUMENT_MAX_CHARS,
@@ -42,6 +43,7 @@ from app.constants.memory import (
     MemorySourceType,
     ReconcileOutcome,
 )
+from app.memory.ingestion import MemoryLimitReachedError
 from app.memory.retrieval import EpisodeHit
 from app.models.memory_models import (
     MemoryDocument,
@@ -51,6 +53,8 @@ from app.models.memory_models import (
     MemoryEpisodesResponse,
     MemorySearchResult,
 )
+from app.models.payment_models import PlanType
+from shared.py.wide_events import MemoryContext, UserContext
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,8 +109,39 @@ def stream() -> Iterator[MagicMock]:
         yield writer
 
 
+@pytest.fixture
+def log() -> Iterator[MagicMock]:
+    """Capture the wide-event log lines the tools emit (success, failure, warning)."""
+    logger = MagicMock()
+    with patch(f"{MODULE}.log", logger):
+        yield logger
+
+
 def _payloads(stream: MagicMock) -> list[dict[str, Any]]:
     return [call.args[0]["memory_data"] for call in stream.call_args_list]
+
+
+def _serialized_entry(entry: MemoryEntry) -> dict[str, Any]:
+    """The exact ``model_dump(mode="json")`` a payload carries for a short entry."""
+    return entry.model_dump(mode="json")
+
+
+def _assert_success_log(log: MagicMock, memory: MemoryContext) -> None:
+    """Assert the canonical success wide-event for a tool run."""
+    log.set.assert_called_once_with(user=UserContext(id=FAKE_USER_ID), memory=memory)
+
+
+def _assert_failure_logged(
+    log: MagicMock, operation: str, error_type: str, error: str
+) -> None:
+    """Assert the canonical failure wide-event pair (error + failed set)."""
+    log.error.assert_called_once_with(
+        "memory_tool_failed",
+        operation=operation,
+        error_type=error_type,
+        error=error,
+    )
+    log.set.assert_called_once_with(memory=MemoryContext(operation=operation, success=False))
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +215,26 @@ class TestEntryPayload:
         entry = MemoryEntry(id="m", content="x" * (MEMORY_TOOL_CONTENT_MAX_CHARS + 50))
         _entry_payload(entry)
         assert len(entry.content) == MEMORY_TOOL_CONTENT_MAX_CHARS + 50
+
+    def test_json_mode_serializes_datetimes_and_enums_as_json_natives(self) -> None:
+        # mode="json" is the contract: datetimes become ISO strings and enums
+        # their values — a python-mode dump would leak datetime objects into
+        # the frontend payload and break the tool card.
+        entry = MemoryEntry(
+            id="mem-1",
+            content="c",
+            mentioned_at=datetime(2026, 3, 12, 9, 30, tzinfo=UTC),
+            created_at=datetime(2025, 1, 2, tzinfo=UTC),
+            occurred_start=datetime(2026, 3, 12, 9, 0, tzinfo=UTC),
+            occurred_end=datetime(2026, 3, 12, 11, 0, tzinfo=UTC),
+        )
+        payload = _entry_payload(entry)
+        assert payload["mentioned_at"] == "2026-03-12T09:30:00Z"
+        assert payload["created_at"] == "2025-01-02T00:00:00Z"
+        assert payload["occurred_start"] == "2026-03-12T09:00:00Z"
+        assert payload["occurred_end"] == "2026-03-12T11:00:00Z"
+        assert payload["kind"] == "fact"
+        assert payload["is_latest"] is True
 
 
 class TestEpisodePayload:
@@ -289,6 +344,22 @@ class TestHitsToEpisodePayloads:
             [EpisodeHit(date=date_type(2026, 3, 12), text=long, time="09:00")]
         )
         assert len(payloads[0]["entries"][0]["text"]) == MEMORY_TOOL_CONTENT_MAX_CHARS
+
+    def test_a_day_of_only_timed_hits_still_carries_the_null_summary_key(self) -> None:
+        day = date_type(2026, 3, 12)
+        payloads = _hits_to_episode_payloads(
+            [EpisodeHit(date=day, text="morning", time="09:30")]
+        )
+        assert payloads[0]["summary"] is None
+
+    def test_timed_hits_keep_their_time_and_a_null_source(self) -> None:
+        day = date_type(2026, 3, 12)
+        payloads = _hits_to_episode_payloads(
+            [EpisodeHit(date=day, text="morning", time="09:30")]
+        )
+        entry = payloads[0]["entries"][0]
+        assert entry["time"] == "09:30"
+        assert entry["source"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -412,6 +483,8 @@ class TestAddMemory:
     async def test_happy_path(
         self,
         mock_engine: MagicMock,
+        stream: MagicMock,
+        log: MagicMock,
     ) -> None:
         """Successful memory storage returns the ID and folder."""
         stored = MemoryEntry(
@@ -428,14 +501,29 @@ class TestAddMemory:
             content="User likes coffee",
         )
 
-        assert "mem-1" in result
-        assert "food-preferences" in result
+        assert result == "Memory stored under 'food-preferences' (ID: mem-1)"
         mock_engine.retain_single.assert_awaited_once_with(
             FAKE_USER_ID,
             "User likes coffee",
             category_path=None,
             source_type=MemorySourceType.TOOL,
         )
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="create",
+                success=True,
+                memory_id="mem-1",
+                content_length=17,
+            ),
+        )
+        assert _payloads(stream)[0] == {
+            "action": "add",
+            "memories": [_serialized_entry(stored)],
+            "folder": "food-preferences",
+            "outcome": "new",
+            "message": "Memory stored under 'food-preferences'",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_explicit_folder_is_forwarded_to_the_engine(self, mock_engine: MagicMock) -> None:
@@ -449,12 +537,20 @@ class TestAddMemory:
         assert mock_engine.retain_single.await_args.kwargs["category_path"] == "work/gaia"
 
     @pytest.mark.parametrize(
-        ("outcome", "expected_label", "expected_phrase"),
+        ("outcome", "expected_label", "expected_message"),
         [
-            (ReconcileOutcome.NEW, "new", "Memory stored under"),
-            (ReconcileOutcome.UPDATES, "updated", "Updated an existing memory"),
-            (ReconcileOutcome.EXTENDS, "extended", "extending a related memory"),
-            (ReconcileOutcome.DUPLICATE, "duplicate", "Already known"),
+            (ReconcileOutcome.NEW, "new", "Memory stored under 'work'"),
+            (ReconcileOutcome.UPDATES, "updated", "Updated an existing memory under 'work'"),
+            (
+                ReconcileOutcome.EXTENDS,
+                "extended",
+                "Stored under 'work', extending a related memory",
+            ),
+            (
+                ReconcileOutcome.DUPLICATE,
+                "duplicate",
+                "Already known — matched an existing memory under 'work'",
+            ),
         ],
     )
     @patch(f"{MODULE}.memory_engine")
@@ -463,18 +559,29 @@ class TestAddMemory:
         mock_engine: MagicMock,
         outcome: ReconcileOutcome,
         expected_label: str,
-        expected_phrase: str,
+        expected_message: str,
         stream: MagicMock,
+        log: MagicMock,
     ) -> None:
         stored = MemoryEntry(id="mem-1", content="c", category_path="work")
         mock_engine.retain_single = AsyncMock(return_value=self._retained(stored, outcome))
 
         result = await add_memory.coroutine(config=_make_config(), content="c")
 
-        assert expected_phrase in result
-        payload = _payloads(stream)[0]
-        assert payload["outcome"] == expected_label
-        assert payload["message"] in result
+        assert result == f"{expected_message} (ID: mem-1)"
+        assert _payloads(stream)[0] == {
+            "action": "add",
+            "memories": [_serialized_entry(stored)],
+            "folder": "work",
+            "outcome": expected_label,
+            "message": expected_message,
+        }
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="create", success=True, memory_id="mem-1", content_length=1
+            ),
+        )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_add_payload_contract(
@@ -519,9 +626,56 @@ class TestAddMemory:
         mock_engine.retain_single.assert_not_awaited()
 
     @patch(f"{MODULE}.memory_engine")
+    async def test_cap_reached_fails_loud_with_the_upgrade_card(
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
+    ) -> None:
+        mock_engine.retain_single = AsyncMock(
+            side_effect=MemoryLimitReachedError(limit=12)
+        )
+
+        result = await add_memory.coroutine(config=_make_config(), content="data")
+
+        assert result == (
+            "Memory limit reached: the free plan stores up to 12 memories, "
+            "and this user's memory is full. The new fact was NOT saved. Tell the "
+            "user their saved memories are full and that upgrading to Pro unlocks "
+            "unlimited memories (existing memories still work)."
+        )
+        log.info.assert_called_once_with(
+            "memory_cap_reached",
+            event_name="memory_cap_reached",
+            user_id=FAKE_USER_ID,
+            source="add_memory_tool",
+            limit=12,
+        )
+        log.set.assert_called_once_with(
+            memory=MemoryContext(operation="create", success=False)
+        )
+        card = stream.call_args.args[0]["tool_data"]
+        assert card["tool_name"] == "rate_limit_data"
+        assert card["tool_category"] == "system"
+        assert card["data"] == {
+            "feature": "memory",
+            "plan_required": PlanType.PRO.value,
+            "reset_time": None,
+            "current_plan": PlanType.FREE.value,
+            "message": (
+                f"Your free plan stores up to {FREE_MEMORY_FACT_LIMIT} "
+                "memories and they are all used. Everything already "
+                "saved keeps working. Upgrade to Pro for unlimited "
+                "memories."
+            ),
+        }
+        assert isinstance(card["timestamp"], str)
+        # The card timestamp must be tz-aware UTC — a naive local-time stamp
+        # (datetime.now() without tz) is the exact bug this assertion pins.
+        assert datetime.fromisoformat(card["timestamp"]).tzinfo == UTC
+
+    @patch(f"{MODULE}.memory_engine")
     async def test_store_failure_returns_error_message(
         self,
         mock_engine: MagicMock,
+        log: MagicMock,
     ) -> None:
         """When the engine raises an exception, tool returns a failure message."""
         mock_engine.retain_single = AsyncMock(side_effect=Exception("storage failed"))
@@ -531,8 +685,8 @@ class TestAddMemory:
             content="data",
         )
 
-        assert "Error storing memory" in result
-        assert "storage failed" in result
+        assert result == "Error storing memory: storage failed"
+        _assert_failure_logged(log, "create", "Exception", "storage failed")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_store_failure_streams_nothing_to_the_frontend(
@@ -557,11 +711,23 @@ class TestSearchMemory:
     async def test_happy_path(
         self,
         mock_engine: MagicMock,
+        stream: MagicMock,
+        log: MagicMock,
     ) -> None:
         """Successful search returns formatted results."""
         memories = [
-            _make_memory_entry("mem-1", "Likes coffee", 0.95),
-            _make_memory_entry("mem-2", "Works at ACME", 0.80),
+            MemoryEntry(
+                id="mem-1",
+                content="Likes coffee",
+                category_path="food",
+                relevance_score=0.95,
+            ),
+            MemoryEntry(
+                id="mem-2",
+                content="Works at ACME",
+                category_path="work",
+                relevance_score=0.80,
+            ),
         ]
         mock_engine.recall = AsyncMock(
             return_value=MemorySearchResult(memories=memories, total_count=2)
@@ -572,12 +738,27 @@ class TestSearchMemory:
             query="coffee",
         )
 
-        assert "Likes coffee" in result
-        assert "Works at ACME" in result
-        assert "0.95" in result
+        assert result == (
+            "Found 2 memories:\n\n"
+            "1. Likes coffee\n   (id: mem-1, folder: food, score: 0.95)\n"
+            "2. Works at ACME\n   (id: mem-2, folder: work, score: 0.80)"
+        )
         mock_engine.recall.assert_awaited_once_with(
             FAKE_USER_ID, "coffee", limit=5, category_prefix=None
         )
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="recall", success=True, query="coffee", result_count=2
+            ),
+        )
+        assert _payloads(stream)[0] == {
+            "action": "search",
+            "query": "coffee",
+            "folder": None,
+            "memories": [_serialized_entry(m) for m in memories],
+            "message": "Found 2 memories",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_custom_limit(
@@ -612,6 +793,8 @@ class TestSearchMemory:
     async def test_no_results(
         self,
         mock_engine: MagicMock,
+        stream: MagicMock,
+        log: MagicMock,
     ) -> None:
         """Empty search results returns appropriate message."""
         mock_engine.recall = AsyncMock(return_value=MemorySearchResult(memories=[], total_count=0))
@@ -621,7 +804,20 @@ class TestSearchMemory:
             query="nonexistent",
         )
 
-        assert "No matching memories found" in result
+        assert result == "No matching memories found."
+        assert _payloads(stream)[0] == {
+            "action": "search",
+            "query": "nonexistent",
+            "folder": None,
+            "memories": [],
+            "message": "No matching memories",
+        }
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="recall", success=True, query="nonexistent", result_count=0
+            ),
+        )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_folder_scope_appears_in_the_message_and_the_query(
@@ -633,9 +829,15 @@ class TestSearchMemory:
             config=_make_config(), query="q", folder="relationships"
         )
 
-        assert "in 'relationships'" in result
+        assert result == "No matching memories found in 'relationships'."
         assert mock_engine.recall.await_args.kwargs["category_prefix"] == "relationships"
-        assert _payloads(stream)[0]["folder"] == "relationships"
+        assert _payloads(stream)[0] == {
+            "action": "search",
+            "query": "q",
+            "folder": "relationships",
+            "memories": [],
+            "message": "No matching memories in 'relationships'",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_search_payload_contract(
@@ -683,7 +885,7 @@ class TestSearchMemory:
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         # Unlike add_memory, a failed recall must NOT be reported to the model
         # as a plain string — a swallowed failure reads as "you have no
         # memories about that", which is a wrong answer, not a degraded one.
@@ -691,6 +893,8 @@ class TestSearchMemory:
 
         with pytest.raises(RuntimeError, match="chroma down"):
             await search_memory.coroutine(config=_make_config(), query="q")
+
+        _assert_failure_logged(log, "recall", "RuntimeError", "chroma down")
 
     @patch(f"{MODULE}.memory_engine")
     async def test_memory_without_score_omits_score(
@@ -748,7 +952,7 @@ class TestSearchMemory:
 class TestUpdateMemory:
     @patch(f"{MODULE}.memory_engine")
     async def test_returns_the_new_version_and_id(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         updated = MemoryEntry(id="mem-2", content="new", category_path="home", version=2)
         mock_engine.update_memory = AsyncMock(return_value=updated)
@@ -757,10 +961,17 @@ class TestUpdateMemory:
             config=_make_config(), memory_id="mem-1", new_content="new"
         )
 
-        assert "v2" in result
-        assert "home" in result
-        assert "New ID: mem-2" in result
+        assert result == "Memory corrected (now v2 under 'home'). New ID: mem-2"
         mock_engine.update_memory.assert_awaited_once_with(FAKE_USER_ID, "mem-1", "new")
+        _assert_success_log(
+            log,
+            memory=MemoryContext(operation="update", success=True, memory_id="mem-2"),
+        )
+        assert _payloads(stream)[0] == {
+            "action": "update",
+            "memories": [_serialized_entry(updated)],
+            "message": "Memory corrected (now v2 under 'home')",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_update_payload_contract(
@@ -777,7 +988,7 @@ class TestUpdateMemory:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_unknown_id_returns_a_corrective_error_without_streaming(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.update_memory = AsyncMock(return_value=None)
 
@@ -785,9 +996,14 @@ class TestUpdateMemory:
             config=_make_config(), memory_id="gone", new_content="new"
         )
 
-        assert "not found or already superseded" in result
-        assert "search_memory" in result
+        assert result == (
+            "Error: memory gone not found or already superseded — "
+            "search_memory for the current version and use its ID."
+        )
         stream.assert_not_called()
+        log.warning.assert_called_once_with(
+            "memory_tool_memory_not_found", operation="update", memory_id="gone"
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await update_memory.coroutine(
@@ -796,11 +1012,13 @@ class TestUpdateMemory:
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.update_memory = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
             await update_memory.coroutine(config=_make_config(), memory_id="m", new_content="c")
+
+        _assert_failure_logged(log, "update", "RuntimeError", "pg down")
 
 
 # ---------------------------------------------------------------------------
@@ -811,7 +1029,7 @@ class TestUpdateMemory:
 class TestForgetMemory:
     @patch(f"{MODULE}.memory_engine")
     async def test_confirms_the_id_and_reason(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.forget_memory = AsyncMock(return_value=True)
 
@@ -819,9 +1037,12 @@ class TestForgetMemory:
             config=_make_config(), memory_id="mem-1", reason="user moved"
         )
 
-        assert "mem-1" in result
-        assert "user moved" in result
+        assert result == "Memory forgotten: mem-1 (user moved)"
         mock_engine.forget_memory.assert_awaited_once_with(FAKE_USER_ID, "mem-1", "user moved")
+        _assert_success_log(
+            log,
+            memory=MemoryContext(operation="delete", success=True, memory_id="mem-1"),
+        )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_forget_payload_contract(
@@ -840,7 +1061,7 @@ class TestForgetMemory:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_unknown_id_reports_not_found_without_streaming(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.forget_memory = AsyncMock(return_value=False)
 
@@ -848,6 +1069,9 @@ class TestForgetMemory:
 
         assert result == "Error: memory gone not found."
         stream.assert_not_called()
+        log.warning.assert_called_once_with(
+            "memory_tool_memory_not_found", operation="delete", memory_id="gone"
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await forget_memory.coroutine(
@@ -856,11 +1080,13 @@ class TestForgetMemory:
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.forget_memory = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
             await forget_memory.coroutine(config=_make_config(), memory_id="m", reason="r")
+
+        _assert_failure_logged(log, "delete", "RuntimeError", "pg down")
 
 
 # ---------------------------------------------------------------------------
@@ -871,18 +1097,44 @@ class TestForgetMemory:
 class TestSearchJournal:
     @patch(f"{MODULE}.memory_engine")
     async def test_renders_entry_hits_with_their_time(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.recall_episodes = AsyncMock(
             return_value=[
-                EpisodeHit(date=date_type(2026, 3, 12), text="shipped the API", time="09:30")
+                EpisodeHit(date=date_type(2026, 3, 12), text="shipped the API", time="09:30"),
+                EpisodeHit(date=date_type(2026, 3, 12), text="reviewed PRs", time="18:00"),
             ]
         )
 
         result = await search_journal.coroutine(config=_make_config(), query="shipped")
 
-        assert "- 2026-03-12 09:30: shipped the API" in result
+        assert result == (
+            "Found journal activity on 1 days:\n"
+            "- 2026-03-12 09:30: shipped the API\n"
+            "- 2026-03-12 18:00: reviewed PRs"
+        )
         mock_engine.recall_episodes.assert_awaited_once_with(FAKE_USER_ID, "shipped")
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="recall_episodes", success=True, query="shipped", result_count=1
+            ),
+        )
+        assert _payloads(stream)[0] == {
+            "action": "journal",
+            "query": "shipped",
+            "episodes": [
+                {
+                    "date": "2026-03-12",
+                    "entries": [
+                        {"time": "09:30", "text": "shipped the API", "source": None},
+                        {"time": "18:00", "text": "reviewed PRs", "source": None},
+                    ],
+                    "summary": None,
+                }
+            ],
+            "message": "Found journal activity on 1 days",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_timeless_hit_is_labelled_a_day_summary(
@@ -929,25 +1181,38 @@ class TestSearchJournal:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_no_hits_reports_the_query_back(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.recall_episodes = AsyncMock(return_value=[])
 
         result = await search_journal.coroutine(config=_make_config(), query="nothing")
 
         assert result == "No journal entries matching 'nothing'."
-        assert _payloads(stream)[0]["episodes"] == []
+        assert _payloads(stream)[0] == {
+            "action": "journal",
+            "query": "nothing",
+            "episodes": [],
+            "message": "No journal matches",
+        }
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="recall_episodes", success=True, query="nothing", result_count=0
+            ),
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await search_journal.coroutine(config=_make_config_no_user(), query="q")
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.recall_episodes = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
             await search_journal.coroutine(config=_make_config(), query="q")
+
+        _assert_failure_logged(log, "recall_episodes", "RuntimeError", "pg down")
 
 
 # ---------------------------------------------------------------------------
@@ -957,16 +1222,30 @@ class TestSearchJournal:
 
 class TestSearchConversations:
     @patch(f"{MODULE}.memory_engine")
-    async def test_renders_each_passage_with_date_and_score(self, mock_engine: MagicMock) -> None:
+    async def test_renders_each_passage_with_date_and_score(
+        self, mock_engine: MagicMock, log: MagicMock
+    ) -> None:
         mock_engine.recall_transcripts = AsyncMock(
-            return_value=[("2026-03-12", "the exact passage", 0.9123)]
+            return_value=[
+                ("2026-03-12", "the exact passage", 0.9123),
+                ("2025-01-01", "the other passage", 0.5),
+            ]
         )
 
         result = await search_conversations.coroutine(config=_make_config(), query="passage")
 
-        assert "[2026-03-12] (match 0.91)" in result
-        assert "the exact passage" in result
+        assert result == (
+            "Matching conversation passages:\n\n"
+            "[2026-03-12] (match 0.91)\nthe exact passage\n\n"
+            "[2025-01-01] (match 0.50)\nthe other passage"
+        )
         mock_engine.recall_transcripts.assert_awaited_once_with(FAKE_USER_ID, "passage")
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="recall_transcripts", success=True, query="passage", result_count=2
+            ),
+        )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_long_passages_are_capped_at_the_document_limit(
@@ -1016,11 +1295,13 @@ class TestSearchConversations:
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.recall_transcripts = AsyncMock(side_effect=RuntimeError("chroma down"))
 
         with pytest.raises(RuntimeError, match="chroma down"):
             await search_conversations.coroutine(config=_make_config(), query="q")
+
+        _assert_failure_logged(log, "recall_transcripts", "RuntimeError", "chroma down")
 
 
 # ---------------------------------------------------------------------------
@@ -1035,7 +1316,7 @@ class TestGetJournal:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_renders_summary_and_entries_for_the_day(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         episode = MemoryEpisode(
             date="2026-03-12",
@@ -1049,13 +1330,40 @@ class TestGetJournal:
 
         result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
 
-        assert "Journal for 2026-03-12 (2 entries)" in result
-        assert "Summary: a productive day" in result
-        assert "- 09:30 shipped" in result
-        assert "- 18:00 gym" in result
+        assert result == (
+            "Journal for 2026-03-12 (2 entries):\n"
+            "Summary: a productive day\n"
+            "- 09:30 shipped\n"
+            "- 18:00 gym"
+        )
         mock_engine.get_episodes.assert_awaited_once_with(
             FAKE_USER_ID, date_type(2026, 3, 12), date_type(2026, 3, 12)
         )
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="episodes",
+                success=True,
+                result_count=2,
+                start="2026-03-12",
+                end="2026-03-12",
+            ),
+        )
+        assert _payloads(stream)[0] == {
+            "action": "journal",
+            "query": None,
+            "episodes": [
+                {
+                    "date": "2026-03-12",
+                    "entries": [
+                        {"time": "09:30", "text": "shipped", "source": "conversation"},
+                        {"time": "18:00", "text": "gym", "source": "conversation"},
+                    ],
+                    "summary": "a productive day",
+                }
+            ],
+            "message": "Journal for 2026-03-12 (2 entries)",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_summary_only_day_is_rendered_without_entry_lines(
@@ -1066,8 +1374,7 @@ class TestGetJournal:
 
         result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
 
-        assert "Summary: a quiet day" in result
-        assert "(0 entries)" in result
+        assert result == "Journal for 2026-03-12 (0 entries):\nSummary: a quiet day"
 
     @patch(f"{MODULE}.memory_engine")
     async def test_entries_without_a_summary_omit_the_summary_line(
@@ -1082,8 +1389,25 @@ class TestGetJournal:
 
         result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
 
-        assert "Summary:" not in result
-        assert "- 09:30 shipped" in result
+        assert result == "Journal for 2026-03-12 (1 entries):\n- 09:30 shipped"
+
+    @patch(f"{MODULE}.memory_engine")
+    async def test_trailing_whitespace_in_entry_text_is_stripped(
+        self, mock_engine: MagicMock
+    ) -> None:
+        # .rstrip() (not .lstrip()): the line keeps its leading "- " while
+        # trailing padding from a padded text field is trimmed.
+        episode = MemoryEpisode(
+            date="2026-03-12",
+            entries=[MemoryEpisodeEntry(time="09:30", text="shipped   ", source="conversation")],
+            summary=None,
+        )
+        mock_engine.get_episodes = AsyncMock(return_value=self._response(episode))
+
+        result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+
+        assert result == "Journal for 2026-03-12 (1 entries):\n- 09:30 shipped"
+        assert "shipped   " not in result
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_journal_payload_for_a_populated_day(
@@ -1105,14 +1429,29 @@ class TestGetJournal:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_empty_day_streams_an_empty_episode_list(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.get_episodes = AsyncMock(return_value=self._response(None))
 
         result = await get_journal.coroutine(config=_make_config(), date="2026-03-12")
 
         assert result == "No journal entries for 2026-03-12."
-        assert _payloads(stream)[0]["episodes"] == []
+        assert _payloads(stream)[0] == {
+            "action": "journal",
+            "query": None,
+            "episodes": [],
+            "message": "No journal entries for 2026-03-12",
+        }
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="episodes",
+                success=True,
+                result_count=0,
+                start="2026-03-12",
+                end="2026-03-12",
+            ),
+        )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_day_row_with_neither_entries_nor_summary_counts_as_empty(
@@ -1130,7 +1469,7 @@ class TestGetJournal:
     )
     @patch(f"{MODULE}.memory_engine")
     async def test_unparseable_date_is_rejected_before_any_query(
-        self, mock_engine: MagicMock, bad_date: str
+        self, mock_engine: MagicMock, bad_date: str, log: MagicMock
     ) -> None:
         mock_engine.get_episodes = AsyncMock()
 
@@ -1139,17 +1478,22 @@ class TestGetJournal:
         assert f"Error: invalid date '{bad_date}'" in result
         assert "YYYY-MM-DD" in result
         mock_engine.get_episodes.assert_not_awaited()
+        log.warning.assert_called_once_with(
+            "memory_tool_invalid_date", operation="episodes", start=bad_date
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await get_journal.coroutine(config=_make_config_no_user(), date="2026-03-12")
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.get_episodes = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
             await get_journal.coroutine(config=_make_config(), date="2026-03-12")
+
+        _assert_failure_logged(log, "episodes", "RuntimeError", "pg down")
 
 
 # ---------------------------------------------------------------------------
@@ -1186,17 +1530,27 @@ class TestReadMemoryDocument:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_document_payload_marked_not_updated(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.get_document = AsyncMock(return_value=_make_document())
 
         await read_memory_document.coroutine(config=_make_config(), doc_type="user")
 
-        payload = _payloads(stream)[0]
-        assert payload["action"] == "document"
-        assert payload["updated"] is False
-        assert payload["document"]["doc_type"] == "user_md"
-        assert "v3" in payload["message"]
+        assert _payloads(stream)[0] == {
+            "action": "document",
+            "document": {
+                "doc_type": "user_md",
+                "content": "# About the user\nLikes coffee.",
+                "version": 3,
+                "updated_at": "2026-03-12T09:30:00+00:00",
+            },
+            "updated": False,
+            "message": "Read the 'user' memory document (v3)",
+        }
+        _assert_success_log(
+            log,
+            memory=MemoryContext(operation="read_document", success=True, doc_type="user_md"),
+        )
 
     @patch(f"{MODULE}.memory_engine")
     async def test_missing_document_explains_it_fills_in_automatically(
@@ -1206,7 +1560,10 @@ class TestReadMemoryDocument:
 
         result = await read_memory_document.coroutine(config=_make_config(), doc_type="agenda")
 
-        assert "The 'agenda' document is empty" in result
+        assert result == (
+            "The 'agenda' document is empty — nothing has been written to it yet. "
+            "It fills in automatically as memory accumulates."
+        )
         stream.assert_not_called()
 
     @pytest.mark.parametrize("blank", ["", "   ", "\n\t "])
@@ -1222,7 +1579,9 @@ class TestReadMemoryDocument:
         stream.assert_not_called()
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_unknown_doc_type_lists_the_valid_choices(self, mock_engine: MagicMock) -> None:
+    async def test_unknown_doc_type_lists_the_valid_choices(
+        self, mock_engine: MagicMock, log: MagicMock
+    ) -> None:
         mock_engine.get_document = AsyncMock()
 
         result = await read_memory_document.coroutine(config=_make_config(), doc_type="diary")
@@ -1231,6 +1590,9 @@ class TestReadMemoryDocument:
         for filename in MEMORY_DOC_FILENAMES.values():
             assert filename.removesuffix(".md") in result
         mock_engine.get_document.assert_not_awaited()
+        log.warning.assert_called_once_with(
+            "memory_tool_unknown_doc", operation="read_document", doc_type="diary"
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await read_memory_document.coroutine(
@@ -1239,11 +1601,13 @@ class TestReadMemoryDocument:
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.get_document = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
             await read_memory_document.coroutine(config=_make_config(), doc_type="user")
+
+        _assert_failure_logged(log, "read_document", "RuntimeError", "pg down")
 
 
 # ---------------------------------------------------------------------------
@@ -1254,7 +1618,7 @@ class TestReadMemoryDocument:
 class TestUpdateMemoryDocument:
     @patch(f"{MODULE}.memory_engine")
     async def test_reports_the_new_version_and_the_replace_semantics(
-        self, mock_engine: MagicMock, stream: MagicMock
+        self, mock_engine: MagicMock, stream: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.update_document = AsyncMock(return_value=_make_document(version=4))
 
@@ -1262,11 +1626,30 @@ class TestUpdateMemoryDocument:
             config=_make_config(), doc_type="user", content="# New"
         )
 
-        assert "Rewrote the 'user' memory document (now v4)" in result
-        assert "full content was replaced" in result
+        assert result == (
+            "Rewrote the 'user' memory document (now v4). "
+            "The full content was replaced; prior versions are kept as history."
+        )
         mock_engine.update_document.assert_awaited_once_with(
             FAKE_USER_ID, MemoryDocType.USER_MD, "# New"
         )
+        _assert_success_log(
+            log,
+            memory=MemoryContext(
+                operation="update_document", success=True, doc_type="user_md"
+            ),
+        )
+        assert _payloads(stream)[0] == {
+            "action": "document",
+            "document": {
+                "doc_type": "user_md",
+                "content": "# About the user\nLikes coffee.",
+                "version": 4,
+                "updated_at": "2026-03-12T09:30:00+00:00",
+            },
+            "updated": True,
+            "message": "Rewrote the 'user' memory document (now v4)",
+        }
 
     @patch(f"{MODULE}.memory_engine")
     async def test_streams_the_document_payload_marked_updated(
@@ -1285,6 +1668,7 @@ class TestUpdateMemoryDocument:
         assert payload["updated"] is True
         assert payload["document"]["doc_type"] == "insights_md"
         assert payload["document"]["version"] == 2
+        assert payload["message"] == "Rewrote the 'insights' memory document (now v2)"
 
     @patch(f"{MODULE}.memory_engine")
     async def test_empty_content_is_a_legitimate_full_replace(
@@ -1301,7 +1685,7 @@ class TestUpdateMemoryDocument:
 
     @patch(f"{MODULE}.memory_engine")
     async def test_unknown_doc_type_is_rejected_before_any_write(
-        self, mock_engine: MagicMock
+        self, mock_engine: MagicMock, log: MagicMock
     ) -> None:
         mock_engine.update_document = AsyncMock()
 
@@ -1311,6 +1695,9 @@ class TestUpdateMemoryDocument:
 
         assert "unknown document 'scratchpad'" in result
         mock_engine.update_document.assert_not_awaited()
+        log.warning.assert_called_once_with(
+            "memory_tool_unknown_doc", operation="update_document", doc_type="scratchpad"
+        )
 
     async def test_missing_user_id_returns_error(self) -> None:
         result = await update_memory_document.coroutine(
@@ -1319,10 +1706,12 @@ class TestUpdateMemoryDocument:
         assert "user_id not found in config" in result
 
     @patch(f"{MODULE}.memory_engine")
-    async def test_engine_failure_propagates(self, mock_engine: MagicMock) -> None:
+    async def test_engine_failure_propagates(self, mock_engine: MagicMock, log: MagicMock) -> None:
         mock_engine.update_document = AsyncMock(side_effect=RuntimeError("pg down"))
 
         with pytest.raises(RuntimeError, match="pg down"):
             await update_memory_document.coroutine(
                 config=_make_config(), doc_type="user", content="c"
             )
+
+        _assert_failure_logged(log, "update_document", "RuntimeError", "pg down")
