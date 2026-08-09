@@ -256,6 +256,13 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                 break
             attempt = 0
             last_error: str | None = None
+            # Rotation is per case. It used to persist across cases, so once an
+            # earlier case had rotated past the last provider, every remaining
+            # case skipped the loop entirely — no attempt, no error, no journal
+            # record. The cases did not fail; they silently ceased to exist.
+            # Providers whose budget is exhausted are still skipped below, so
+            # resetting costs nothing.
+            provider_index = 0
             while provider_index < len(healthy):
                 provider_name = healthy[provider_index]
                 provider = cfg.providers[provider_name]
@@ -313,7 +320,15 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                     break
             if aborted:
                 break
-            if last_error and journal.record_for(case.id) is None:
+            # Every case leaves a record. Without the `or` clause a case that
+            # never entered the loop at all — every provider over budget —
+            # produced no error and so no record, and vanished from the run
+            # without ever being counted as unrun.
+            if journal.record_for(case.id) is None:
+                reason = last_error or (
+                    f"no provider available: every lane in {healthy} was over budget "
+                    f"or exhausted before this case was attempted"
+                )
                 record_case(
                     case,
                     _failed_run(
@@ -321,11 +336,11 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
                         healthy[provider_index - 1] if provider_index else "?",
                         "?",
                         0,
-                        last_error,
+                        reason,
                     ),
                     {},
                     "errored",
-                    last_error,
+                    reason,
                 )
         if aborted:
             print(

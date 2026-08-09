@@ -162,7 +162,11 @@ def compare(suite: str, records: list[dict[str, Any]]) -> Comparison:
             f"different set, so this comparison measures the harness, not the agent"
         )
 
-    if comparison.accuracy < comparison.baseline_accuracy - REGRESSION_MARGIN:
+    # Rounded: accuracies are ratios of small integers, and 0.9 - 0.05 is
+    # 0.8500000000000001 in binary floating point — so a drop of exactly the
+    # margin, which this check is written to allow, was reported as a
+    # regression. The tolerance is the only thing float noise may not decide.
+    if round(comparison.accuracy, 9) < round(comparison.baseline_accuracy - REGRESSION_MARGIN, 9):
         comparison.regressions.append(
             f"suite accuracy {comparison.accuracy:.1%} is more than "
             f"{REGRESSION_MARGIN:.0%} below the baseline {comparison.baseline_accuracy:.1%}"

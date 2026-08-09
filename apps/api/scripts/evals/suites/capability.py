@@ -539,9 +539,12 @@ async def _fake_invoke_gmail_tool(
 ) -> object:
     from app.models.mail_models import GmailToolResult
 
-    return GmailToolResult(
-        successful=True, **_rest_result(_mailbox_state(user_id), tool_name, parameters)
-    )
+    # `successful` comes from the result itself — the not-found path returns
+    # {"successful": False, ...}, and hardcoding True here made that a
+    # TypeError (duplicate keyword) instead of the tool result the agent
+    # should have seen.
+    result = _rest_result(_mailbox_state(user_id), tool_name, parameters)
+    return GmailToolResult(**{"successful": True, **result})
 
 
 async def _fake_get_tools(
