@@ -130,3 +130,34 @@ def _patched_arrange(function, mutants, class_name):
 
 
 _file_mutation.function_trampoline_arrangement = _patched_arrange
+
+
+# The covered-lines coverage pass unloads EVERY module imported during the
+# stats run (mutmut.code_coverage._unload_modules_not_in), so the mutant
+# runs re-import them. C extensions (numpy, PyO3) cannot be re-imported in
+# one process, and pydantic/mcp_use class registries break on re-definition
+# (KeyError: 'pydantic.root_model'). The unload only needs to drop the
+# modules the mutants file REPLACES — those live in the mutants tree.
+# Site-packages modules never change between phases, so skipping them is
+# safe and fixes the whole class.
+import importlib as _importlib
+import sys as _sys
+
+from mutmut import code_coverage as _code_coverage
+
+_orig_unload = _code_coverage._unload_modules_not_in
+
+
+def _patched_unload(modules: dict) -> None:
+    for name in list(_sys.modules):
+        if name == "mutmut.code_coverage":
+            continue
+        if name not in modules:
+            module = _sys.modules[name]
+            module_file = getattr(module, "__file__", "")
+            if module_file and "/mutants/" in module_file:
+                _sys.modules.pop(name, None)
+    _importlib.invalidate_caches()
+
+
+_code_coverage._unload_modules_not_in = _patched_unload

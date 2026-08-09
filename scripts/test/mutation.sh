@@ -103,6 +103,7 @@ replacement = (
     f'[tool.mutmut]\n'
     f'source_paths = ["{module}"]\n'
     f'also_copy = ["app", "tests", "scripts"]\n'
+    f'max_stack_depth = 8\n'
     f'pytest_add_cli_args_test_selection = ["{testfile}"]\n'
     f'pytest_add_cli_args = ["-p", "no:xdist", "-o", '
     f'\'addopts=-m "not composio and not model_onboarding and not schemathesis" --strict-markers --timeout=300\']\n'
@@ -181,8 +182,13 @@ def _spy_tramp_mangle(name):
         traceback.print_stack()
     return _orig_tramp_mangle(name)
 _tramp_mod.mangled_name_from_mutant_name = _spy_tramp_mangle
-max_children = os.environ.get("MUTMUT_MAX_CHILDREN", "")
+max_children = os.environ.get('MUTMUT_MAX_CHILDREN', '')
 run_args = ['run'] + (['--max-children', max_children] if max_children else [])
+# Pre-import the C-extension-heavy modules in the MUTMUT process BEFORE it
+# starts: the covered-lines coverage pass unloads every module imported
+# during the stats run, and numpy/PyO3 extensions cannot be re-imported in
+# one process. Anything imported here is in the baseline snapshot and never
+# unloaded.
 child_code = (
     'import mutmut_decorated_patch; '
     'import sys as _sys; '
