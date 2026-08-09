@@ -34,9 +34,10 @@ async def insert_note(
         await index_note(note_id, user_id, created.plaintext or "")
     except Exception as e:
         log.error(
-            f"{LogTag.API} Note {note_id} persisted but vector indexing failed; "
-            f"flagged for reindex: {e!s}",
+            f"{LogTag.API} Note persisted but vector indexing failed; flagged for reindex",
             exc_info=True,
+            error_type=type(e).__name__,
+            error=str(e),
             note_id=note_id,
             user_id=user_id,
         )

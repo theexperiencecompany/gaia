@@ -259,9 +259,13 @@ def _truncate_in_context(
     )
 
     log.warning(
-        f"{LogTag.AGENT} Compacted {tool_name} output in context "
-        f"({len(content_str)} -> {len(body)} chars, {dropped} dropped, lossy) "
-        f"because the workspace was unavailable ({reason})"
+        f"{LogTag.AGENT} Compacted tool output in context because the workspace was unavailable",
+        tool_name=tool_name,
+        chars_before=len(content_str),
+        chars_after=len(body),
+        dropped=dropped,
+        lossy=True,
+        reason=reason,
     )
     return ToolMessage(
         content=body,
@@ -334,10 +338,10 @@ async def compact_tool_output(
 
     if not user_id or not conversation_id:
         log.warning(
-            f"{LogTag.AGENT} Compaction has no workspace identity for {tool_name} "
-            f"(user_id={'set' if user_id else 'missing'}, "
-            f"conversation_id={'set' if conversation_id else 'missing'}); "
-            f"truncating in context instead"
+            f"{LogTag.AGENT} Compaction has no workspace identity; truncating in context instead",
+            tool_name=tool_name,
+            user_id=("set" if user_id else "missing"),
+            conversation_id=("set" if conversation_id else "missing"),
         )
         return fallback()
 
