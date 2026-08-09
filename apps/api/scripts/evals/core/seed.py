@@ -128,7 +128,7 @@ def seed(
     try:
         for project in sorted(grouped):
             try:
-                _seed_project(project, grouped[project], prices, reset=reset)
+                _seed_project(project, grouped[project], prices, runs_dir, reset=reset)
             except Exception as e:
                 print(f"[seed] {project} aborted: {type(e).__name__}: {e}")
     finally:
@@ -163,6 +163,7 @@ def _seed_project(
     project: str,
     run_ids: list[str],
     prices: PriceBook,
+    runs_dir: Path,
     *,
     reset: bool = False,
 ) -> None:
@@ -184,15 +185,16 @@ def _seed_project(
         CaseTrace.from_record(
             run_id,
             _with_adopted_rescore(
-                _with_resolved_token_source(record, meta.suite if meta else ""), run_id
+                _with_resolved_token_source(record, meta.suite if meta else ""), runs_dir, run_id
             ),
             prices,
             suite=meta.suite if meta else "",
             app_version=meta.app_version if meta else "",
         )
         for run_id in run_ids
-        for meta in [RunJournal(RUNS_DIR, run_id).load_meta()]
-        for record in RunJournal(RUNS_DIR, run_id).records()
+        for journal in [RunJournal(runs_dir, run_id)]
+        for meta in [journal.load_meta()]
+        for record in journal.records()
         if record.get("status") in SEEDABLE_STATUSES
     ]
     _refuse_to_double(project, traces)
@@ -209,10 +211,10 @@ def _seed_project(
     print(f"[seed] {project:<18} runs={len(run_ids):<3} {written} written · {failed} failed")
 
 
-_RESCORE_CACHE: dict[str, dict[str, dict[str, Any]]] = {}
+_RESCORE_CACHE: dict[Path, dict[str, dict[str, Any]]] = {}
 
 
-def _with_adopted_rescore(record: dict[str, Any], run_id: str) -> dict[str, Any]:
+def _with_adopted_rescore(record: dict[str, Any], runs_dir: Path, run_id: str) -> dict[str, Any]:
     """Adopt a rescore sibling's verdict for this case, if one exists.
 
     Re-scoring never rewrites the append-only journal; it records corrected
@@ -222,14 +224,14 @@ def _with_adopted_rescore(record: dict[str, Any], run_id: str) -> dict[str, Any]
     gains ``rescored: true`` so a reader can tell a re-graded verdict from an
     original one.
     """
-    if run_id not in _RESCORE_CACHE:
-        sibling = RUNS_DIR / run_id / "rescore.json"
+    sibling = runs_dir / run_id / "rescore.json"
+    if sibling not in _RESCORE_CACHE:
         by_case: dict[str, dict[str, Any]] = {}
         if sibling.exists():
             for entry in json.loads(sibling.read_text()).get("cases", []):
                 by_case[str(entry["case_id"])] = entry
-        _RESCORE_CACHE[run_id] = by_case
-    entry = _RESCORE_CACHE[run_id].get(str(record.get("case_id")))
+        _RESCORE_CACHE[sibling] = by_case
+    entry = _RESCORE_CACHE[sibling].get(str(record.get("case_id")))
     if entry is None or entry["was"] == entry["now"]:
         return record
     return {
