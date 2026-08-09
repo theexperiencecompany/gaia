@@ -610,7 +610,7 @@ run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite
 
 [tasks."eval:week"]
 description = "Weekly set: GAIA subset + full memory + LongMemEval"
-run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite gaia --limit 20 && uv run --group backend python -m scripts.evals run --suite memory && uv run --group backend python -m scripts.evals run --suite longmemeval --num 500 --max-usd 25"
+run = "cd apps/api && uv run --group backend python -m scripts.evals run --suite gaia --limit 20 && uv run --group backend python -m scripts.evals run --suite memory && uv run --group backend python -m scripts.evals run --suite longmemeval --limit 500 --max-usd 25"
 
 [tasks."eval:cost"]
 description = "Project eval cost from journal history"
