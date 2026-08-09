@@ -28,7 +28,10 @@
       - {tool: create_todo, min_calls: 3}
       - {tool: update_todo, min_calls: 1}
     end_state:
-      answer_contains: "2"
+      # A bare "2" is not a claim about the count — a wrong answer contains it as
+      # easily as the right one ("3 todos, 2 of them urgent"). Any of these
+      # phrasings can only come from actually answering two.
+      answer_contains: ["2 todos", "2 left", "2 remaining", "two todos", "two left", "two remaining"]
       todos:
         - {title_contains: "passport", completed: false}
         - {title_contains: "flights", completed: false}
@@ -135,7 +138,10 @@
       - {tool: create_todo, min_calls: 2}
       - {tool: list_todos}
     end_state:
-      answer_contains: "1"
+      # `end_state` is this case's only gate, so a bare "1" was the whole
+      # deterministic check — and "1" appears in almost any sentence with a date
+      # or a list in it.
+      answer_contains: ["1 overdue", "one overdue", "1 todo is overdue", "one todo is overdue"]
       todos:
         - {title_contains: "parking fine", completed: false}
         - {title_contains: "birthday card", completed: false}

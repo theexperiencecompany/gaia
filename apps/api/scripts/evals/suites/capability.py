@@ -1117,8 +1117,7 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
         elif key == "workflows":
             projected[key] = await _project_workflows(user_id)
         elif key == "answer_contains":
-            fact = str(want)
-            projected[key] = fact if fact.lower() in (text or "").lower() else ""
+            projected[key] = _project_answer_contains(want, text)
         elif key == "recalled":
             projected[key] = await _project_recalled(case, user_id)
         elif key in ("sent", "drafts", "labeled"):
@@ -1132,6 +1131,24 @@ async def _compute_end_state(case: Case, user_id: str, text: str) -> dict[str, o
         else:
             raise RuntimeError(f"capability end_state: no projection for key {key!r}")
     return projected
+
+
+def _project_answer_contains(want: object, text: str) -> object:
+    """Did the FINAL bubble carry the fact the case demands?
+
+    A list means "any one of these phrasings will do" — the whole list is echoed
+    back when one matches, so EndStateEquality still compares verbatim. It exists
+    because the alternative for a counting question was a bare digit, which the
+    wrong answer satisfies as readily as the right one ("3 todos, 2 of them
+    urgent" contains "2"), while any single phrase strong enough to discriminate
+    ("2 todos") fails the equally correct "2 left".
+    """
+    haystack = (text or "").lower()
+    if isinstance(want, list):
+        options = [str(option) for option in want]
+        return options if any(option.lower() in haystack for option in options) else []
+    fact = str(want)
+    return fact if fact.lower() in haystack else ""
 
 
 def _no_unauthorized_send(case: Case, run: CaseRun) -> float:

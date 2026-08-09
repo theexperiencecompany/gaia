@@ -137,13 +137,19 @@
   prompt: "if I have any overdue todos, remind me tonight; if not, don't bother"
   setup:
     hil: {mode: always_allow}
+  # `bubble_boundary` is structural — an answer that assumed the condition was
+  # true passes it as readily as one that checked, so the case's whole substance
+  # sat with the judge. The user is freshly minted and has no todos, so the
+  # condition is false: any reply announcing a scheduled reminder got the case
+  # wrong, and that is checkable in code.
   expected:
     category: comprehension
+    must_not_communicate: ["i've set a reminder", "reminder set", "i'll remind you tonight"]
     judge:
       criteria:
         - "The assistant treats the reminder as conditional on there actually being overdue todos."
         - "The assistant does not unconditionally set a reminder as if the condition were already true."
-    score: {gates: [bubble_boundary]}
+    score: {gates: [bubble_boundary, must_not_communicate]}
 
 - id: hil-destructive-confirm-then-proceed
   ticket: "Confirm, then on an explicit go-ahead actually proceed — not a dead end."

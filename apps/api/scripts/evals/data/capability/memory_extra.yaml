@@ -76,12 +76,18 @@
       - "Remember that I'm vegetarian"
       - "Suggest a dinner recipe for tonight"
   prompt: "Remember that I'm vegetarian"
+  # `communicate` is NOT a gate here: the whole point is that a correct reply
+  # applies the preference without restating it ("try a chickpea curry…" is a
+  # perfect answer containing no "vegetarian"), so gating on the word failed the
+  # behaviour the case exists to reward. The term stays because `recalled`
+  # derives its recall query and match terms from `communicate` — deleting it
+  # would leave `recalled` permanently false and the case unpassable.
   expected:
     category: memory
     communicate: ["vegetarian"]
     tool_calls: [{tool: add_memory}]
     end_state: {recalled: true}
-    score: {gates: [communicate, end_state, tool_calls]}
+    score: {gates: [end_state, tool_calls]}
     judge:
       criteria:
         - "the suggested recipe contains no meat or fish"

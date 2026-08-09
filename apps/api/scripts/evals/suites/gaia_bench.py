@@ -328,7 +328,20 @@ def _as_str(value: object) -> str:
 
 
 def _as_int(value: object) -> int:
-    return int(value)
+    """A row's integer field, defended exactly like ``_as_str``.
+
+    ``int()`` on a bare ``object`` is not something mypy accepts, and at runtime
+    a row that omits the column gives ``None`` (TypeError) while parquet gives
+    ``NaN`` for a missing numeric (ValueError). Either one aborted ``load_cases``
+    for the whole suite over a single malformed row. 0 is outside GAIA's level
+    range (1-3), so a defaulted value is visible as ``L0`` rather than silently
+    passing for a real level.
+    """
+    text = _as_str(value)
+    try:
+        return int(float(text))
+    except ValueError:
+        return 0
 
 
 def _read_parquet(path: Path) -> list[dict[str, object]]:

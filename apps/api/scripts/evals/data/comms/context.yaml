@@ -60,6 +60,11 @@
   expected:
     category: context
     delegation: forbidden
+    # Unlike the allergy case below, the meat names ARE the right forbidden
+    # strings here. There is no "peanut-free" analogue a correct reply needs to
+    # say: three dinner ideas for a vegetarian have no reason to contain the
+    # word "chicken" at all, so naming one is the failure itself and this is the
+    # only check on the case that can discriminate (`delegation` alone cannot).
     must_not_communicate: ["chicken", "beef", "pork", "bacon", "salmon"]
     judge:
       criteria:

@@ -71,9 +71,19 @@
 - id: hard-temporal-recall-sequence
   ticket: "Chronology question: which happened first — agent must reason across two seeded facts."
   tags: [hard, temporal, memory]
-  prompt: >-
-    Which came first — my meeting with the Acme team or my doctor's appointment?
-    I mentioned the doctor's appointment last week and the Acme meeting today.
+  # The ticket says "two seeded facts", and nothing seeded them: every case gets
+  # a fresh user, so the agent was asked to order two events it had never been
+  # told about. An empty memory search then scored the same as a real recall.
+  # The facts are stored in turns 1-2 and the question asked in turn 3, so
+  # search_memory has something to find and getting the order wrong is possible.
+  setup:
+    turns:
+      - "Remember that my doctor's appointment was on 12 March 2027"
+      - "Remember that my meeting with the Acme team was on 26 March 2027"
+      - >-
+        Which came first — my meeting with the Acme team or my doctor's
+        appointment?
+  prompt: "Remember that my doctor's appointment was on 12 March 2027"
   expected:
     category: temporal
     communicate: ["doctor"]
@@ -87,20 +97,30 @@
 - id: hard-conflict-cancel-then-reschedule
   ticket: "Cancel, then immediately reschedule — final world state must be exactly one future event."
   tags: [hard, conflict]
-  prompt: >-
-    Cancel my dentist appointment for next Tuesday. Actually no — don't cancel it,
-    reschedule it to the following Tuesday at 10am instead.
+  # There was nothing to cancel: the case asked the agent to reschedule an
+  # appointment that had never been created, so an agent correctly answering
+  # "you have no dentist appointment" was failed, and an agent that invented one
+  # was rewarded. Turn 1 creates it. `count: 1` is what makes the FINAL state the
+  # claim — an agent that adds the new reminder without removing the old one
+  # leaves two and fails, which is precisely the conflict being tested.
+  setup:
+    turns:
+      - "Set a reminder for next Tuesday at 2pm titled 'dentist appointment'"
+      - >-
+        Cancel my dentist appointment for next Tuesday. Actually no — don't
+        cancel it, reschedule it to the following Tuesday at 10am instead.
+  prompt: "Set a reminder for next Tuesday at 2pm titled 'dentist appointment'"
   expected:
     category: conflict
     communicate: ["Tuesday"]
     tool_calls: [{tool: create_reminder_tool, min_calls: 1}]
     end_state:
-      reminders: [{title_contains: "dentist"}]
+      reminders: [{count: 1}, {title_contains: "dentist"}]
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
         - "the agent follows the FINAL instruction (reschedule), not the earlier cancel"
-        - "the reply confirms exactly one dentist reminder exists"
+        - "exactly one dentist reminder exists afterwards, at the later Tuesday 10am"
 
 # ── 4. Ambiguity ─────────────────────────────────────────────────────────────
 - id: hard-ambiguity-which-client
@@ -244,8 +264,8 @@
       - {tool: update_todo, min_calls: 1}
     end_state:
       todos:
-        - {title: "renew passport", completed: true}
-        - {title: "book the London flight", completed: false}
+        - {title_contains: "passport", completed: true}
+        - {title_contains: "London", completed: false}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:

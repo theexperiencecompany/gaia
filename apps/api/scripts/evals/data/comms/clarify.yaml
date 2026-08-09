@@ -69,7 +69,12 @@
 - id: comms-clarify-contradictory-date
   ticket: "Self-contradictory scheduling — surface the contradiction, don't resolve it silently."
   tags: [clarify, comprehension]
-  prompt: "book it for next Tuesday, which is the 30th — actually keep it on the 1st"
+  # The prompt used to end "— actually keep it on the 1st", which is a
+  # CORRECTION, not a conflict: the latest instruction supersedes the earlier
+  # one, so following it is right and the case punished correct behaviour. Both
+  # dates are now asserted as simultaneously required, which the turn cannot
+  # resolve on its own.
+  prompt: "book it for the 1st, and make sure it lands on the 30th like we agreed — both have to be right"
   expected:
     category: clarify
     communicate: ["?"]

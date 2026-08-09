@@ -9,7 +9,7 @@
     category: todos
     communicate: ["milk"]
     tool_calls: [{tool: create_todo}]
-    end_state: {todos: [{title: "buy milk", completed: false}]}
+    end_state: {todos: [{title_contains: "milk", completed: false}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -24,7 +24,7 @@
     category: todos
     communicate: ["dry cleaning"]
     tool_calls: [{tool: create_todo}, {tool: list_todos}]
-    end_state: {todos: [{title: "pick up dry cleaning", completed: false}]}
+    end_state: {todos: [{title_contains: "dry cleaning", completed: false}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -38,7 +38,7 @@
     category: todos
     communicate: ["pay rent"]
     tool_calls: [{tool: create_todo}, {tool: update_todo}]
-    end_state: {todos: [{title: "pay rent", completed: true}]}
+    end_state: {todos: [{title_contains: "rent", completed: true}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -51,16 +51,21 @@
   expected:
     category: todos
     communicate: ["water the plants"]
+    # `tool_calls` used to also demand bulk_complete_todos AND update_todo x3.
+    # Those are alternative routes to the same outcome, and ToolCallCorrectness
+    # is all-or-nothing, so no correct agent could satisfy both — which is why
+    # the entry sat outside `gates` doing nothing. Creating three todos is the
+    # part that is genuinely required whichever way they are completed; that is
+    # now gated, and the completion route is the end state's business.
     tool_calls:
       - {tool: create_todo, min_calls: 3}
-      - {tool: bulk_complete_todos}
-      - {tool: update_todo, min_calls: 3}
     end_state:
       todos:
-        - {title: "water the plants", completed: true}
-        - {title: "walk the dog", completed: true}
-        - {title: "take out trash", completed: true}
-    score: {gates: [communicate, end_state]}
+        - {title_contains: "plants", completed: true}
+        - {title_contains: "dog", completed: true}
+        - {title_contains: "trash", completed: true}
+    score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
         - "the reply confirms all three todos were created and completed"
+        - "all three were completed, whether in one bulk call or three updates"

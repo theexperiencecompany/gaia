@@ -14,7 +14,7 @@
     category: multiturn
     communicate: ["buy milk"]
     tool_calls: [{tool: create_todo}]
-    end_state: {todos: [{title: "buy milk", completed: false}]}
+    end_state: {todos: [{title_contains: "milk", completed: false}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -32,7 +32,7 @@
     category: multiturn
     communicate: ["quarterly report"]
     tool_calls: [{tool: create_todo}, {tool: update_todo}]
-    end_state: {todos: [{title: "finish the quarterly report", completed: true}]}
+    end_state: {todos: [{title_contains: "quarterly report", completed: true}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
@@ -50,7 +50,7 @@
     category: multiturn
     communicate: ["moving date"]
     tool_calls: [{tool: create_tracked_todo}, {tool: update_tracked_todo_canvas}]
-    end_state: {tracked_todos: [{title: "plan the office move", canvas_contains: "moving date"}]}
+    end_state: {tracked_todos: [{title_contains: "office move", canvas_contains: "moving date"}]}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:

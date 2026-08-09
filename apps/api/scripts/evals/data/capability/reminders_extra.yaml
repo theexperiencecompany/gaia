@@ -157,13 +157,19 @@
   ticket: "No time given: ask when, and schedule nothing until told."
   tags: [reminders, ambiguity, negative]
   prompt: "Remind me to call the plumber."
+  # `communicate: ["when"]` was the gate and it failed correct behaviour: "What
+  # time should I remind you?" is exactly the right reply and contains no "when".
+  # No single required substring covers every way of asking for a time, and
+  # CommunicateGate requires all of them, so the positive check is left to the
+  # judge. `count: 0` on its own is satisfied by a run that did nothing at all,
+  # so it is paired with the completion claim a guessing failure actually emits.
   expected:
     category: reminders
-    communicate: ["when"]
+    must_not_communicate: ["i've set", "i've scheduled", "reminder set", "i'll remind you at"]
     end_state:
       reminders: [{count: 0}]
-    score: {gates: [communicate, end_state]}
+    score: {gates: [end_state, must_not_communicate]}
     judge:
       criteria:
-        - "the agent asks when the reminder should fire"
-        - "no reminder was scheduled at a guessed time"
+        - "MUST: the agent asks what time the reminder should fire."
+        - "MUST NOT: the reply claims a reminder was scheduled."
