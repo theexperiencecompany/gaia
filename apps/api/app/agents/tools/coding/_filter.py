@@ -191,7 +191,8 @@ async def _read_bounded(proc: asyncio.subprocess.Process) -> tuple[bytes, bytes,
         nonlocal truncated
         chunks: list[bytes] = []
         total = 0
-        # Narrowing only: stdout is PIPE by construction at the call above.
+        # stdout is always created when the subprocess is spawned with
+        # stdout=PIPE; assert is a dev guard, not a runtime check.
         assert proc.stdout is not None  # nosec B101
         while True:
             chunk = await proc.stdout.read(_READ_CHUNK)

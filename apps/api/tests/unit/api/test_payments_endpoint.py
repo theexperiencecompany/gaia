@@ -20,6 +20,7 @@ from app.models.payment_models import (
 
 PLANS_URL = "/api/v1/payments/plans"
 SUBSCRIPTIONS_URL = "/api/v1/payments/subscriptions"
+SUBSCRIPTIONS_CANCEL_URL = "/api/v1/payments/subscriptions/cancel"
 VERIFY_PAYMENT_URL = "/api/v1/payments/verify-payment"
 SUBSCRIPTION_STATUS_URL = "/api/v1/payments/subscription-status"
 WEBHOOK_URL = "/api/v1/payments/webhooks/dodo"
@@ -180,6 +181,62 @@ class TestCreateSubscription:
             )
 
         assert response.status_code == 500
+
+
+# ---------------------------------------------------------------------------
+# POST /subscriptions/cancel
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCancelSubscription:
+    """Tests for the cancel subscription endpoint."""
+
+    async def test_cancel_subscription_returns_updated_status(self, client: AsyncClient):
+        mock_status = MagicMock(
+            **{
+                **_make_subscription_status(),
+                "is_subscribed": True,
+                "subscription": {
+                    "dodo_subscription_id": "sub_xyz789",
+                    "status": "active",
+                    "cancel_at_next_billing_date": True,
+                },
+            }
+        )
+        with patch(
+            "app.services.payments.payment_service.payment_service.cancel_subscription",
+            new_callable=AsyncMock,
+            return_value=mock_status,
+        ) as mock_cancel:
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+
+        assert response.status_code == 200
+        mock_cancel.assert_awaited_once_with("507f1f77bcf86cd799439011")
+
+    async def test_cancel_subscription_service_error_returns_500(self, client: AsyncClient):
+        with patch(
+            "app.services.payments.payment_service.payment_service.cancel_subscription",
+            new_callable=AsyncMock,
+            side_effect=Exception("Payment gateway error"),
+        ):
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+
+        assert response.status_code == 500
+
+    async def test_cancel_subscription_propagates_http_errors(self, client: AsyncClient):
+        """Service HTTPExceptions (404 no subscription) pass through unchanged."""
+        from fastapi import HTTPException
+
+        with patch(
+            "app.services.payments.payment_service.payment_service.cancel_subscription",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(status_code=404, detail="No active subscription to cancel"),
+        ):
+            response = await client.post(SUBSCRIPTIONS_CANCEL_URL)
+
+        assert response.status_code == 404
+        assert "No active subscription" in response.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

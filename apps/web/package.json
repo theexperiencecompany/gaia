@@ -57,6 +57,7 @@
     "@heroui/dropdown": "2.3.30",
     "@heroui/input": "2.4.31",
     "@heroui/kbd": "2.2.24",
+    "@heroui/link": "2.2.25",
     "@heroui/modal": "2.2.27",
     "@heroui/popover": "2.3.30",
     "@heroui/progress": "2.2.24",
