@@ -158,14 +158,21 @@ MUTMUT_RC=0
 # the verdict below to judge (not-checked mutants fail it loudly). The
 # wrapper is a portable `timeout`: GNU coreutils' binary is missing on
 # macOS, and the process-group kill takes mutmut's mutant children with it.
+# The decorated-function patch (mutmut_decorated_patch.py) is imported
+# first so endpoints and other decorated functions become mutation targets.
+MUTMUT_PATCH_DIR="$REPO_ROOT/scripts/test"
 "$VENV_PY" -c "
 import os
 import signal
 import subprocess
 import sys
 
+env = dict(os.environ)
+patch_dir = sys.argv[1]
+env['PYTHONPATH'] = patch_dir + os.pathsep + env.get('PYTHONPATH', '')
 proc = subprocess.Popen(
-    [sys.executable, '-m', 'mutmut', 'run'],
+    [sys.executable, '-c', 'import mutmut_decorated_patch; from mutmut.__main__ import cli; cli()', 'run'],
+    env=env,
     start_new_session=True,
 )
 try:
@@ -175,7 +182,7 @@ except subprocess.TimeoutExpired:
     proc.wait()
     sys.exit(124)
 sys.exit(proc.returncode)
-" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
+" "$MUTMUT_PATCH_DIR" 2>&1 | tee "$WORKDIR/mutmut.log" >&2 || MUTMUT_RC=$?
 if [ "$MUTMUT_RC" -ne 0 ]; then
   # mutmut 3.7 cannot mutate decorated functions (verified in its source:
   # file_mutation.py skips every FunctionDef with decorators — FastAPI
