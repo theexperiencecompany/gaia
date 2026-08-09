@@ -8,19 +8,41 @@ journal/report/Opik treatment. Needs an external dataset file
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable
 import json
+import os
 from pathlib import Path
 import random
 from typing import Any, ClassVar
 
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import SELF_SCORED, ExtraGates, validate_gates
-from scripts.evals.core.providers import EvalConfig
+from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
+from scripts.evals.core.scorers import ProviderQuality
 from scripts.evals.core.types import Case, CaseRun, InfraError
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "longmemeval"
 DEFAULT_DATASET = DATA_DIR / "longmemeval_oracle.json"
+DEFAULT_CASE_TIMEOUT_S = 420.0
+
+
+def _case_timeout_s() -> float:
+    """Per-question wall clock, overridable via ``EVALS_CASE_TIMEOUT_S``.
+
+    A non-numeric value fails here, by name, rather than as a bare ``ValueError``
+    from ``float()`` half a run into a suite.
+    """
+    raw = os.environ.get("EVALS_CASE_TIMEOUT_S")
+    if raw is None:
+        return DEFAULT_CASE_TIMEOUT_S
+    try:
+        return float(raw)
+    except ValueError:
+        raise SystemExit(
+            f"EVALS_CASE_TIMEOUT_S must be a number of seconds, got {raw!r}."
+        ) from None
 
 
 @register_suite("longmemeval")
@@ -52,16 +74,24 @@ class LongMemEvalSuite(Suite):
         if not DEFAULT_DATASET.exists():
             raise SystemExit(
                 f"LongMemEval dataset not found at {DEFAULT_DATASET}. "
-                "Download the oracle JSONL (longmemeval_oracle.json) there and re-run."
+                "Download the oracle dataset (longmemeval_oracle.json — a single "
+                "JSON array, not JSONL) there and re-run."
             )
         sidecar = self._jsonl_path()
         if sidecar.exists() and sidecar.stat().st_mtime >= DEFAULT_DATASET.stat().st_mtime:
             return sidecar
         with DEFAULT_DATASET.open() as f:
             data = json.load(f)
-        items = data if isinstance(data, list) else []
+        # A non-list here used to become `[]`, and the suite then reported zero
+        # cases as a successful run — the exact silent-empty outcome the module
+        # docstring promises never to produce.
+        if not isinstance(data, list):
+            raise SystemExit(
+                f"LongMemEval dataset at {DEFAULT_DATASET} is a {type(data).__name__}, "
+                "not the JSON array the oracle format defines."
+            )
         with sidecar.open("w") as out:
-            for item in items:
+            for item in data:
                 out.write(json.dumps(item, separators=(",", ":")) + "\n")
         return sidecar
 
@@ -110,11 +140,24 @@ class LongMemEvalSuite(Suite):
             rng.shuffle(bucket)
             sampled.extend(bucket)
         cases: list[Case] = []
+        seen_ids: set[str] = set()
         for item in sampled:
             qtype = item.get("question_type", "?")
+            question_id = str(item.get("question_id", qtype))
+            # The id is trimmed for readability in the journal and the report;
+            # the transport looks the item up by the FULL question_id carried in
+            # setup, so a long id can no longer miss the dataset entirely.
+            case_id = f"lme-{question_id[:44]}"
+            if case_id in seen_ids:
+                raise SystemExit(
+                    f"LongMemEval case id {case_id!r} is not unique — two question_ids "
+                    f"share its first 44 characters, so their runs would overwrite "
+                    f"each other in the journal."
+                )
+            seen_ids.add(case_id)
             cases.append(
                 Case(
-                    id=f"lme-{str(item.get('question_id', qtype))[:44]}",
+                    id=case_id,
                     ticket=item.get("question", "")[:160],
                     prompt=item.get("question", ""),
                     expected={
@@ -122,6 +165,7 @@ class LongMemEvalSuite(Suite):
                         "gaia": {"ground_truth": item.get("answer")},
                         "score": {"gates": ["gaia_exact"]},
                     },
+                    setup={"question_id": question_id},
                     tags=["longmemeval", qtype],
                 )
             )
@@ -129,17 +173,22 @@ class LongMemEvalSuite(Suite):
             validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
         return cases
 
-    def transport(self, case: Case, cfg: EvalConfig, tracker: EvalCostTracker, provider):
+    def transport(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> Awaitable[CaseRun]:
         del cfg
         return self._run_question(case, tracker, provider)
 
-    async def _run_question(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
-        import asyncio as _asyncio
-        import os as _os
-
-        deadline = float(_os.environ.get("EVALS_CASE_TIMEOUT_S", "420"))
+    async def _run_question(
+        self, case: Case, tracker: EvalCostTracker, provider: ProviderConfig
+    ) -> CaseRun:
+        deadline = _case_timeout_s()
         try:
-            return await _asyncio.wait_for(
+            return await asyncio.wait_for(
                 self._run_question_inner(case, tracker, provider), timeout=deadline
             )
         except TimeoutError:
@@ -181,13 +230,14 @@ class LongMemEvalSuite(Suite):
         except RuntimeError as e:
             raise InfraError("postgres", str(e)) from e
 
-    async def _run_question_inner(self, case: Case, tracker: EvalCostTracker, provider) -> CaseRun:
+    async def _run_question_inner(
+        self, case: Case, tracker: EvalCostTracker, provider: ProviderConfig
+    ) -> CaseRun:
         from scripts.memory_benchmark import longmemeval as lme
 
         await self._ensure_backend(tracker)
 
-        question_id = case.id.removeprefix("lme-")
-        item = self._read_item(question_id)
+        item = self._read_item(str(case.setup.get("question_id", "")))
         if item is None:
             return CaseRun(
                 case_id=case.id,
@@ -222,7 +272,5 @@ class LongMemEvalSuite(Suite):
         return {"gaia_exact": float(exact.get("gaia_exact", 0.0))}
 
     def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
-        from scripts.evals.core.scorers import ProviderQuality
-
         del cfg
         return [ProviderQuality()]

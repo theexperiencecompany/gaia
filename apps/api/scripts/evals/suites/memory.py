@@ -23,15 +23,96 @@ Opik finalize adds no judge cost.
 from __future__ import annotations
 
 import asyncio
-from typing import ClassVar
+from collections.abc import Awaitable
+from typing import ClassVar, TypedDict, TypeVar, cast
+from urllib.parse import urlsplit
+
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableConfig
+from pydantic import BaseModel
 
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import SELF_SCORED, ExtraGates, validate_gates
+from scripts.evals.core.providers import EvalConfig, ProviderConfig
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.types import Case, CaseRun
 
+#: The memory module's structured-output seam is generic over the schema it is
+#: handed and returns an instance of exactly that model.
+SchemaT = TypeVar("SchemaT", bound=BaseModel)
+
+
+class Turn(TypedDict):
+    role: str
+    content: str
+    day_offset: int
+
+
+class Probe(TypedDict):
+    query: str
+    must_contain: list[str]
+    must_not_contain: list[str]
+    description: str
+    is_negative: bool
+
+
+class Scenario(TypedDict):
+    """One ``memory_benchmark.dataset`` entry, as this suite consumes it.
+
+    The benchmark declares ``SCENARIOS: list[dict]``, which checks nothing. This
+    names the keys the suite actually reads so a dataset change that drops one
+    is a type error here rather than a ``KeyError`` mid-run.
+    """
+
+    id: str
+    category: str
+    turns: list[Turn]
+    probes: list[Probe]
+
+
+class ProbeResult(TypedDict):
+    """One probe's outcome, as ``memory_benchmark.runner.run_scenario`` returns it."""
+
+    probe: str
+    description: str
+    passed: bool
+    recalled_text: str
+    must_contain: list[str]
+    must_not_contain: list[str]
+    is_negative: bool
+
+
 _BOOTSTRAPPED = False
 _LLM_PATCHED = False
+
+
+#: Hosts a memory-suite run is allowed to create schema in and write 45
+#: scenarios' worth of rows to. Anything else is someone's real data.
+_LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1", "host.docker.internal")
+
+
+def _is_local(target: str) -> bool:
+    host = urlsplit(target if "//" in target else f"//{target}").hostname or target
+    return host in _LOCAL_HOSTS
+
+
+def _refuse_non_development_target(env: str, postgres_url: str, chroma_host: str) -> None:
+    """Refuse to bootstrap against anything but a local development stack.
+
+    ``_bootstrap_dbs`` runs ``Base.metadata.create_all`` and creates Chroma
+    collections, and the suite then writes memory rows for 45 scenarios. Pointed
+    at a staging or production environment by a stale shell, it would do all of
+    that to real user data — silently, because none of those calls fail on a
+    healthy database.
+    """
+    if env == "development" and _is_local(postgres_url) and _is_local(chroma_host):
+        return
+    raise RuntimeError(
+        "memory suite refuses to bootstrap a non-development target — it creates "
+        f"schema and writes scenario data. ENV={env!r}, postgres host="
+        f"{urlsplit(postgres_url).hostname!r}, chroma host={chroma_host!r}. "
+        "Point POSTGRES_URL and CHROMADB_HOST at a local stack and set ENV=development."
+    )
 
 
 async def _bootstrap_dbs() -> None:
@@ -48,7 +129,8 @@ async def _bootstrap_dbs() -> None:
     """
 
     import chromadb
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from chromadb.api import AsyncClientAPI
+    from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
     from sqlalchemy.pool import NullPool
 
     from app.config.settings import settings
@@ -61,14 +143,16 @@ async def _bootstrap_dbs() -> None:
     from app.db.redis import redis_cache
     from app.memory import chroma_store
 
-    assert settings.POSTGRES_URL, "POSTGRES_URL must be set"
+    if not settings.POSTGRES_URL:
+        raise RuntimeError("POSTGRES_URL must be set to run the memory suite")
+    _refuse_non_development_target(settings.ENV, settings.POSTGRES_URL, settings.CHROMADB_HOST)
     url, connect_args = postgresql_module._adapt_url_for_asyncpg(settings.POSTGRES_URL)
     engine = create_async_engine(url, poolclass=NullPool, connect_args=connect_args)
 
     async with engine.begin() as conn:
         await conn.run_sync(postgresql_module.Base.metadata.create_all)
 
-    async def _get_engine():
+    async def _get_engine() -> AsyncEngine:
         await asyncio.sleep(0)
         return engine
 
@@ -81,7 +165,7 @@ async def _bootstrap_dbs() -> None:
     for name in (CHROMA_MEMORIES_COLLECTION, CHROMA_MEMORY_EPISODES_COLLECTION):
         await chroma_client.get_or_create_collection(name=name, metadata={"hnsw:space": "cosine"})
 
-    async def _get_client(*_args: object, **_kwargs: object):
+    async def _get_client(*_args: object, **_kwargs: object) -> AsyncClientAPI:
         await asyncio.sleep(0)
         return chroma_client
 
@@ -160,14 +244,14 @@ def _patch_structured_output_for_pinned_lane() -> None:
     import app.memory.extraction as extraction_mod
 
     async def json_object_ainvoke_structured(
-        schema,
-        prompt,
+        schema: type[SchemaT],
+        prompt: BaseMessage | list[BaseMessage],
         *,
         label: str,
         temperature: float = DEFAULT_LLM_TEMPERATURE,
-        config=None,
+        config: RunnableConfig | None = None,
         timeout: float | None = LLM_INVOKE_TIMEOUT_SECONDS,
-    ):
+    ) -> SchemaT:
         schema_hint = SystemMessage(
             content=(
                 "Reply with a single JSON object that conforms exactly to this JSON "
@@ -175,13 +259,16 @@ def _patch_structured_output_for_pinned_lane() -> None:
             )
         )
         messages = [*prompt, schema_hint] if isinstance(prompt, list) else [schema_hint, prompt]
-        invoke_config = {
-            **(config or {}),
-            "configurable": {
-                **(config or {}).get("configurable", {}),
-                "model_kwargs": {"response_format": {"type": "json_object"}},
+        invoke_config = cast(
+            RunnableConfig,
+            {
+                **(config or {}),
+                "configurable": {
+                    **(config or {}).get("configurable", {}),
+                    "model_kwargs": {"response_format": {"type": "json_object"}},
+                },
             },
-        }
+        )
         message = await ainvoke_llm(
             get_default_llm(temperature=temperature),
             messages,
@@ -226,18 +313,20 @@ class MemorySuite(Suite):
     #: reusable check. Declared so load-time validation knows the name is real.
     EXTRA_GATES: ClassVar[ExtraGates] = {"probes": SELF_SCORED}
 
-    def __init__(self, cfg) -> None:
+    def __init__(self, cfg: EvalConfig) -> None:
         del cfg
-        self._scenarios: dict[str, dict] | None = None
+        self._scenarios: dict[str, Scenario] | None = None
 
-    def _scenario(self, case_id: str) -> dict:
+    def _scenario(self, case_id: str) -> Scenario:
         if self._scenarios is None:
             from scripts.memory_benchmark.dataset import SCENARIOS
 
-            self._scenarios = {scenario["id"]: scenario for scenario in SCENARIOS}
+            self._scenarios = {
+                str(scenario["id"]): cast(Scenario, scenario) for scenario in SCENARIOS
+            }
         return self._scenarios[case_id]
 
-    def load_cases(self, cfg) -> list[Case]:
+    def load_cases(self, cfg: EvalConfig) -> list[Case]:
         del cfg
         from scripts.memory_benchmark.dataset import SCENARIOS
 
@@ -262,10 +351,22 @@ class MemorySuite(Suite):
             validate_gates(self.name, case.id, case.gates, self.EXTRA_GATES)
         return cases
 
-    def transport(self, case: Case, cfg, tracker: EvalCostTracker, provider):
+    def transport(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> Awaitable[CaseRun]:
         return self._run(case, cfg, tracker, provider)
 
-    async def _run(self, case: Case, cfg, tracker: EvalCostTracker, provider) -> CaseRun:
+    async def _run(
+        self,
+        case: Case,
+        cfg: EvalConfig,
+        tracker: EvalCostTracker,
+        provider: ProviderConfig,
+    ) -> CaseRun:
         del cfg
         await _ensure_ready(tracker)
         scenario = self._scenario(case.id)
@@ -273,11 +374,15 @@ class MemorySuite(Suite):
 
         tokens_in_before = tracker.total_input
         tokens_out_before = tracker.total_output
-        results = await run_scenario(scenario)
+        # run_scenario is declared over bare dicts in the benchmark, which is not
+        # ours to retype; the cast names the shape it really returns so the rest
+        # of this method is checked.
+        raw_results = await run_scenario(cast("dict[str, object]", scenario))
+        results = [cast(ProbeResult, result) for result in raw_results]
         tokens_in = tracker.total_input - tokens_in_before
         tokens_out = tracker.total_output - tokens_out_before
 
-        probes: list[dict] = []
+        probes: list[dict[str, object]] = []
         for result in results:
             probes.append(
                 {
@@ -295,8 +400,8 @@ class MemorySuite(Suite):
             {"role": turn["role"], "content": turn["content"]} for turn in scenario["turns"]
         ]
         for probe in probes:
-            messages.append({"role": "user", "content": probe["query"]})
-            messages.append({"role": "assistant", "content": probe["recalled_text"]})
+            messages.append({"role": "user", "content": str(probe["query"])})
+            messages.append({"role": "assistant", "content": str(probe["recalled_text"])})
 
         passed = sum(1 for probe in probes if probe["passed"])
         return CaseRun(
@@ -323,7 +428,7 @@ class MemorySuite(Suite):
             scores["probes"] = sum(scores.values()) / len(scores)
         return scores
 
-    def finalize_scorers(self, cfg) -> list:
+    def finalize_scorers(self, cfg: EvalConfig) -> list[object]:
         del cfg
         # Memory verdicts are the benchmark's deterministic substring checks,
         # already applied at runtime and journaled per probe. An LLM judge
