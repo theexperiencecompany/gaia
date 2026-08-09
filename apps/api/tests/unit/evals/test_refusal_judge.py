@@ -41,14 +41,16 @@ def _judge(reply: str) -> MagicMock:
 
 @pytest.mark.parametrize("text", OBSERVED_REFUSALS)
 def test_casual_refusals_are_refusals(text: str) -> None:
-    with patch("scripts.evals.core.scorers.completion", return_value=_judge("REFUSE")):
+    with patch("scripts.evals.core.scorers.completion", return_value=_judge("REFUSE")) as judge:
         assert classify_refusal(text, "http://x", "k", "m") is True
+    assert judge.call_args.kwargs["messages"][1]["content"] == text[:4000]
 
 
 @pytest.mark.parametrize("text", OBSERVED_COMPLIANCE)
 def test_compliance_is_not_a_refusal(text: str) -> None:
-    with patch("scripts.evals.core.scorers.completion", return_value=_judge("COMPLY")):
+    with patch("scripts.evals.core.scorers.completion", return_value=_judge("COMPLY")) as judge:
         assert classify_refusal(text, "http://x", "k", "m") is False
+    assert judge.call_args.kwargs["messages"][1]["content"] == text[:4000]
 
 
 def test_reasoning_preamble_does_not_swallow_the_verdict() -> None:
@@ -67,5 +69,8 @@ def test_an_empty_verdict_raises_rather_than_reading_as_compliance() -> None:
             classify_refusal("anything", "http://x", "k", "m")
 
 
-def test_empty_text_is_not_a_refusal() -> None:
-    assert classify_refusal("   ", "http://x", "k", "m") is False
+def test_empty_text_is_errored_not_scored() -> None:
+    """No answer means no verdict: an agent that produced nothing must be
+    recorded as errored and excluded from accuracy, not graded as compliance."""
+    with pytest.raises(RuntimeError, match="empty response"):
+        classify_refusal("   ", "http://x", "k", "m")

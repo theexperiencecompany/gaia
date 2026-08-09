@@ -1279,13 +1279,16 @@ class CapabilitySuite(Suite):
             for raw in raw_cases:
                 if not isinstance(raw, dict):
                     raise RuntimeError(f"capability data {path.name}: case is not a mapping")
-                validate_tool_expectations(str(raw["id"]), raw.get("expected") or {})
+                expected = raw.get("expected")
+                if not isinstance(expected, dict):
+                    raise RuntimeError(f"capability case {raw['id']}: 'expected' must be a mapping")
+                validate_tool_expectations(str(raw["id"]), expected)
                 cases.append(
                     Case(
                         id=str(raw["id"]),
                         ticket=str(raw.get("ticket") or ""),
                         prompt=str(raw["prompt"]),
-                        expected=raw.get("expected") or {},
+                        expected=expected,
                         tags=[str(tag) for tag in (raw.get("tags") or [])],
                         setup=raw.get("setup") or {},
                     )

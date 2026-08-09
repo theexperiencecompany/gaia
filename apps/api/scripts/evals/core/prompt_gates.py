@@ -50,13 +50,17 @@ def _collapse(text: str) -> str:
 
 def _assistant_text(run: CaseRun) -> str:
     """Everything the assistant said, joined. Falls back to ``run.text`` for
-    transports that record no per-message transcript."""
+    transports that record no per-message transcript.
+
+    A join of empty messages is ``"\\n"`` — truthy but empty — so the fallback
+    must test for real content, not truthiness: grading nothing must never pass
+    a gate vacuously."""
     said = "\n".join(
         str(message.get("content") or "")
         for message in run.messages
         if message.get("role") == "assistant"
     )
-    return said or run.text
+    return said if said.strip() else run.text
 
 
 def _require(found: list[str], ref: str, shape: str) -> list[str]:

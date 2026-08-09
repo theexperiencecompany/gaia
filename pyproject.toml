@@ -70,6 +70,10 @@ ignore_names = [
   "__getattr__",    # module-level dunder called by Python's import machinery
   "wrap_tools",     # AgenticProvider abstract-method override (called by Composio SDK)
   "on_llm_end",     # LangChain BaseCallbackHandler override (called by the framework)
+  "reindex_note",   # notes repair API consumed only by unit tests (vulture excludes tests)
+  "reclassify_all", # rescore CLI surface consumed only by unit tests (vulture excludes tests)
+  "render_by_suite",  # rescore report helper consumed only by unit tests (vulture excludes tests)
+  "contract_failures",  # prompt-contract API consumed only by test_prompt_contracts.py (vulture excludes tests)
 ]
 
 # ---------------------------------------------------------------------------

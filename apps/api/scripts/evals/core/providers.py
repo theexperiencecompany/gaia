@@ -76,8 +76,14 @@ def load_config(path: Path = CONFIG_PATH) -> EvalConfig:
         # very backend it exists to be an alternative to.
         base = _env_or_empty(p.get("base_url_env", ""))
         key = _env_or_empty(p.get("api_key_env", ""))
-        model = _env_or_empty(p.get("model_env", ""))
-        if not model:
+        model_env = p.get("model_env", "")
+        model = _env_or_empty(model_env)
+        if not model_env:
+            # Only a lane that declares NO model env gets the default model. A
+            # declared-but-unresolved model_env must not be silently replaced —
+            # the substitution once pointed the gemini lane at a model id it
+            # does not serve, and rotation retried the wrong backend with the
+            # wrong model instead of saying so.
             model = "deepseek-v4-flash"
         providers[name] = ProviderConfig(
             name=name,
@@ -122,6 +128,10 @@ def health_check(p: ProviderConfig) -> ProviderHealth:
     """
     if not p.configured():
         return ProviderHealth(False, f"no API key for provider '{p.name}' (env missing)")
+    if not p.model:
+        return ProviderHealth(
+            False, f"provider '{p.name}' declares a model_env that is not set in the environment"
+        )
     if p.lane != _DEFAULT_LANE:
         # Only the custom lane exposes an OpenAI-compatible base URL we can
         # probe. A native lane is served through the app's own client, so the

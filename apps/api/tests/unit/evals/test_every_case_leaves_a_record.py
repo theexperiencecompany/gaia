@@ -14,7 +14,7 @@ an absence is a lie by omission that also shrinks the denominator.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from scripts.evals.core import runner as runner_mod
@@ -123,11 +123,11 @@ async def test_a_case_that_never_ran_is_recorded_as_errored(
 
     class _AllOverBudget:
         total_exceeded = False
-        exceeded_budget = {"alpha", "beta"}
+        exceeded_budget: ClassVar[set[str]] = {"alpha", "beta"}
         total_input = 0
         total_output = 0
-        case_input: dict[str, int] = {}
-        case_output: dict[str, int] = {}
+        case_input: ClassVar[dict[str, int]] = {}
+        case_output: ClassVar[dict[str, int]] = {}
 
         def set_provider(self, name: str) -> None:
             del name

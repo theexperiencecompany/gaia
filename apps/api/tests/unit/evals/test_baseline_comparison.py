@@ -57,12 +57,14 @@ def test_a_thin_suite_reports_but_does_not_fail() -> None:
 
 
 def test_a_per_category_drop_is_caught_even_when_the_suite_holds() -> None:
-    records = _records(10, 0, "todos") + _records(10, 0, "gmail")
+    records = _records(2, 8, "todos") + _records(10, 0, "gmail")
     baseline.write("demo", records, "run-a", "v1")
-    # gmail collapses, todos improves; the suite total barely moves.
+    # gmail collapses, todos improves; the suite total stays put, so only the
+    # per-category check can fail the run.
     regressed = _records(10, 0, "todos") + _records(2, 8, "gmail")
     result = baseline.compare("demo", regressed)
     assert not result.ok
+    assert all("suite accuracy" not in r for r in result.regressions)
     assert any("gmail" in r for r in result.regressions)
 
 

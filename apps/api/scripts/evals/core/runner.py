@@ -213,6 +213,13 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
     def _sink_deferred() -> bool:
         return os.environ.get("EVALS_DEFER_OPIK_SINK", "") == "1"
 
+    # Records appended during THIS invocation, kept apart from the journal's
+    # full history: a resumed or --only-failed run appends a second attempt for
+    # cases the journal already holds, and the publish invariants must validate
+    # exactly what this run measured against what this run metered — the same
+    # scope on both sides.
+    run_records: list[dict[str, Any]] = []
+
     def record_case(
         case: Case, run: CaseRun, scores: dict[str, float], status: str, error: str | None
     ) -> None:
@@ -221,6 +228,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
         source = _attribute_tokens(run, tracker, case.id)
         record = _record(case, run, scores, status, error, source)
         journal.append(record)
+        run_records.append(record)
         # The live sink serialises and compresses every transcript on SDK
         # background threads DURING the run — on long-context suites that burned
         # more CPU than the cases themselves. `evals seed` rebuilds the same
@@ -279,7 +287,7 @@ async def run_suite(cfg: EvalConfig, opts: RunOptions) -> Path:
             status=run_status, finished_at=datetime.now(UTC).isoformat(timespec="seconds")
         )
 
-    return _publish_run(journal, suite, cfg, opts, cases, prices, tracker)
+    return _publish_run(journal, suite, cfg, opts, cases, prices, tracker, run_records)
 
 
 async def _run_cases_sequentially(
@@ -300,7 +308,11 @@ async def _run_cases_sequentially(
     aborted: str | None = None
     for case in cases:
         if tracker.total_exceeded:
+            # A budget stop is a deliberate halt, not a finished run: the cases
+            # after the cap were never attempted, so publishing this as
+            # "finished" would finalize a partial run as a complete experiment.
             print(f"[budget] total cap exceeded — stopping before {case.id}")
+            aborted = "total budget cap exceeded — remaining cases were not attempted"
             break
         last_error: str | None = None
         # Rotation is per case. It used to persist across cases, so once an
@@ -389,22 +401,25 @@ async def _run_cases_sequentially(
                 reason,
             )
     if aborted:
-        print(
-            f"\n[abort] {aborted}\n"
-            f"[abort] {len(cases) - len(journal.records())} case(s) did not run. "
-            "Fix the backend and resume — no scores were recorded for them."
-        )
+        print(f"\n[abort] {aborted}")
+        if not tracker.total_exceeded:
+            print(
+                f"[abort] {len(cases) - len(journal.records())} case(s) did not run. "
+                "Fix the backend and resume — no scores were recorded for them."
+            )
     return aborted
 
 
 def _app_version() -> str:
     """The app build under test: nearest tag plus short sha, or the sha alone."""
 
-    root = Path(__file__).resolve().parents[4]
+    # parents[4] resolves to apps/ — a git invocation there still finds the
+    # repository root by walking up, which is all the describe needs.
+    apps_dir = Path(__file__).resolve().parents[4]
     try:
         described = subprocess.run(
             ["git", "describe", "--tags", "--always", "--dirty"],
-            cwd=root,
+            cwd=apps_dir,
             capture_output=True,
             text=True,
             timeout=5,
@@ -437,20 +452,18 @@ def _publish_run(
     cases: list[Case],
     prices: PriceBook,
     tracker: EvalCostTracker,
+    run_records: list[dict[str, Any]],
 ) -> Path:
-    """Finalize, check the run's numbers against themselves, then report."""
+    """Validate the run's numbers against themselves, then finalize and report."""
     meta = _require_meta(journal)
-    if meta.status == "finished" and not opts.no_finalize:
-        try:
-            _finalize_experiment(suite, cfg, journal, opts, cases)
-        except Exception as e:
-            print(f"[finalize] failed (run still complete in journal): {e}")
 
     # A loud stop beats a plausible figure: both defects this catches
     # (cumulative tokens, an outage scored as zeros) reached a PR because no
     # quantity was ever checked against a second, independently-derived one.
+    # The check runs before finalization so a run whose numbers do not
+    # reconcile is never published as an experiment at all.
     invariants = check_records(
-        journal.records(),
+        run_records,
         metered_by_case={
             cid: tracker.case_totals(cid)
             for cid in set(tracker.case_input) | set(tracker.case_output)
@@ -460,6 +473,12 @@ def _publish_run(
     if not invariants.ok:
         print(invariants.render())
         raise SystemExit(2)
+
+    if meta.status == "finished" and not opts.no_finalize:
+        try:
+            _finalize_experiment(suite, cfg, journal, opts, cases)
+        except Exception as e:
+            print(f"[finalize] failed (run still complete in journal): {e}")
 
     comparison = baseline.for_run(journal, rebaseline=opts.rebaseline)
     print(comparison.render())
@@ -498,7 +517,13 @@ async def _run_cases_concurrently(
     async def run_one(case: Case) -> None:
         nonlocal aborted, done
         async with semaphore:
-            if aborted or tracker.total_exceeded:
+            if aborted:
+                return
+            if tracker.total_exceeded:
+                # Same contract as the sequential loop: a budget stop halts
+                # the run without finishing it, so it is never finalized as
+                # a complete experiment.
+                aborted = "total budget cap exceeded — remaining cases were not attempted"
                 return
             start = time.monotonic()
             try:

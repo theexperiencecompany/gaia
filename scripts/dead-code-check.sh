@@ -200,13 +200,23 @@ run_knip() {
   # Findings go to stdout; warnings (node's DEP0205, for one) go to stderr.
   # Folding stderr into the findings buffer made a clean run look dirty, because
   # the emptiness check below is the clean signal — so stderr stays out of it.
-  local raw_output stderr_file
+  local raw_output stderr_file exit_code
   stderr_file=$(mktemp)
-  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>"$stderr_file") || true
+  raw_output=$(pnpm exec knip --config config/knip.config.ts --no-progress --no-config-hints 2>"$stderr_file") || exit_code=$?
   if [[ -s "$stderr_file" ]]; then
     echo -e "  ${DIM}$(cat "$stderr_file")${RESET}"
   fi
   rm -f "$stderr_file"
+
+  # A knip that exits non-zero with nothing on stdout has not scanned anything
+  # (crash, config error, toolchain failure) — an empty report must not read
+  # as clean, or the gate goes green exactly when the scan stopped running.
+  if [[ -z "$raw_output" && ${exit_code:-0} -ne 0 ]]; then
+    echo -e "  ${YELLOW}knip exited ${exit_code} with no output — the scan did not run, so an${RESET}"
+    echo -e "  ${YELLOW}empty report cannot mean clean. Failing the gate instead.${RESET}"
+    FOUND_ISSUES=true
+    return
+  fi
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"

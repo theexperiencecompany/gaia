@@ -19,6 +19,8 @@ under that module's CI gate for the first time.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from scripts.evals.suites.quality import (
     _apply_openui_policy_criteria,
@@ -59,20 +61,20 @@ def test_case_criteria_are_appended_not_replaced() -> None:
     """Case-specific criteria say what THIS request is; imported ones say what
     the product promises. Losing the first would make every openui case
     identical."""
-    expected: dict[str, object] = {
+    expected: dict[str, Any] = {
         "openui_policy": "forbidden",
         "judge": {"criteria": ["case-specific thing"]},
     }
     _apply_openui_policy_criteria("case-x", expected)
 
-    criteria = expected["judge"]["criteria"]  # type: ignore[index]
+    criteria = expected["judge"]["criteria"]
     assert criteria[0] == "case-specific thing"
     assert len(criteria) > 1
 
 
 def test_case_without_the_key_is_untouched() -> None:
     """Mutation guard: the 90 non-openui cases must not gain openui criteria."""
-    expected: dict[str, object] = {"judge": {"criteria": ["only this"]}}
+    expected: dict[str, Any] = {"judge": {"criteria": ["only this"]}}
     _apply_openui_policy_criteria("case-y", expected)
 
-    assert expected["judge"]["criteria"] == ["only this"]  # type: ignore[index]
+    assert expected["judge"]["criteria"] == ["only this"]

@@ -44,6 +44,7 @@ behaviour of a resume is pinned by ``tests/e2e/test_hil_streaming.py``.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable
 import json
 import os
 from pathlib import Path
@@ -503,7 +504,7 @@ class HilSuite(Suite):
         cfg: EvalConfig,
         tracker: EvalCostTracker,
         provider: ProviderConfig,
-    ):
+    ) -> Awaitable[CaseRun]:
         return self._transport.run(case, cfg, tracker, provider)
 
     def score(self, case: Case, run: CaseRun) -> dict[str, float]:

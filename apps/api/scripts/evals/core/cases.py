@@ -42,16 +42,16 @@ def load_case_files(
             if not isinstance(row, dict):
                 raise ValueError(f"{suite} data {path.name}: case is not a mapping")
             case_id = str(row["id"])
-            validate_tool_expectations(case_id, row.get("expected") or {})
+            expected = row.get("expected")
+            if not isinstance(expected, dict):
+                raise ValueError(f"{suite} case {case_id}: 'expected' must be a mapping")
+            validate_tool_expectations(case_id, expected)
             if case_id in seen:
                 raise ValueError(
                     f"{suite}: duplicate case id {case_id!r} in {path.name} "
                     f"(already defined in {seen[case_id]})"
                 )
             seen[case_id] = path.name
-            expected = row.get("expected")
-            if not isinstance(expected, dict):
-                raise ValueError(f"{suite} case {case_id}: 'expected' must be a mapping")
             setup = row.get("setup") or {}
             if not isinstance(setup, dict):
                 raise ValueError(f"{suite} case {case_id}: 'setup' must be a mapping")

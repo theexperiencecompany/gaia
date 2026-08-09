@@ -141,11 +141,13 @@
       - {tool: create_todo, args: {labels: "urgent"}}
     end_state:
       labels: [{name: "finance"}, {name: "urgent"}]
-      todos: [{title_contains: "taxes", completed: false, labels_contains: "finance"}]
+      todos:
+        - {title_contains: "taxes", completed: false, labels_contains: "finance"}
+        - {title_contains: "taxes", completed: false, labels_contains: "urgent"}
     score: {gates: [communicate, end_state, tool_calls]}
     judge:
       criteria:
-        - "BOTH labels (finance and urgent) were attached to the todo"
+        - "BOTH labels (finance and urgent) were attached to the SAME todo"
         - "the labels were not merged into the title text instead"
 
 - id: labels-filter-by-label

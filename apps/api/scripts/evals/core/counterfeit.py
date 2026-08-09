@@ -337,7 +337,13 @@ def summary_counts(verdicts: list[CaseVerdict]) -> dict[str, Any]:
         "inert": len([v for v in verdicts if v.inert]),
         "broken": len([v for v in verdicts if v.unfalsifiable and not v.ungated]),
         "content_blind": len([v for v in verdicts if v.content_blind and not v.ungated]),
-        "weak": len([v for v in verdicts if v.fooled and not v.unfalsifiable]),
+        "weak": len(
+            [
+                v
+                for v in verdicts
+                if v.fooled and not v.unfalsifiable and not v.content_blind and not v.inert
+            ]
+        ),
         "ungated": len([v for v in verdicts if v.ungated]),
         "errored": len([v for v in verdicts if v.error]),
     }

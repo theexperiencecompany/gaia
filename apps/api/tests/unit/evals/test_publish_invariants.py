@@ -41,39 +41,44 @@ def test_a_case_that_produced_nothing_cannot_carry_a_score() -> None:
     assert any("produced nothing" in v.check for v in report.violations)
 
 
+#: Real per-case deltas from the run that overstated usage 74x. The pair of
+#: tests below is only worth anything while both use the SAME series, so it is
+#: written once — accumulated for one test, raw for the other.
+_REAL_DELTAS = [
+    14316,
+    13315,
+    13818,
+    7328,
+    13890,
+    14956,
+    13932,
+    8260,
+    14834,
+    13854,
+    18060,
+    19564,
+    12233,
+    9481,
+    14402,
+    13117,
+    7935,
+    14690,
+    13508,
+    12944,
+    15221,
+    8873,
+    13366,
+    14075,
+    13990,
+]
+
+
 def test_cumulative_token_counts_are_rejected() -> None:
     """Built from the real per-case deltas of the run that overstated usage 74x,
     accumulated the way that run recorded them."""
-    deltas = [
-        14316,
-        13315,
-        13818,
-        7328,
-        13890,
-        14956,
-        13932,
-        8260,
-        14834,
-        13854,
-        18060,
-        19564,
-        12233,
-        9481,
-        14402,
-        13117,
-        7935,
-        14690,
-        13508,
-        12944,
-        15221,
-        8873,
-        13366,
-        14075,
-        13990,
-    ]
     running = 0
     cumulative = []
-    for delta in deltas:
+    for delta in _REAL_DELTAS:
         running += delta
         cumulative.append(running)
     report = check_records([_ran(f"c{i}", n) for i, n in enumerate(cumulative)])
@@ -84,34 +89,7 @@ def test_cumulative_token_counts_are_rejected() -> None:
 def test_a_long_genuine_series_still_publishes() -> None:
     """The same deltas as themselves — a real per-case series of the same length
     must not trip the cumulative check."""
-    deltas = [
-        14316,
-        13315,
-        13818,
-        7328,
-        13890,
-        14956,
-        13932,
-        8260,
-        14834,
-        13854,
-        18060,
-        19564,
-        12233,
-        9481,
-        14402,
-        13117,
-        7935,
-        14690,
-        13508,
-        12944,
-        15221,
-        8873,
-        13366,
-        14075,
-        13990,
-    ]
-    report = check_records([_ran(f"c{i}", n) for i, n in enumerate(deltas)])
+    report = check_records([_ran(f"c{i}", n) for i, n in enumerate(_REAL_DELTAS)])
     assert report.ok, [v.detail for v in report.violations]
 
 

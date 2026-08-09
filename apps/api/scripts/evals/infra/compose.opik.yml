@@ -64,6 +64,12 @@ services:
       CLICKHOUSE_USER: opik
       CLICKHOUSE_PASSWORD: opik
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--user", "opik", "--password", "opik", "--query", "SELECT 1"]
+      interval: 2s
+      timeout: 4s
+      retries: 60
+      start_period: 10s
     volumes:
       - opik-clickhouse:/var/lib/clickhouse
       - opik-clickhouse-server:/var/log/clickhouse-server
@@ -141,7 +147,9 @@ services:
       redis:
         condition: service_healthy
       clickhouse:
-        condition: service_started
+        # Migrations run on backend startup, so "started" is not enough —
+        # ClickHouse must accept connections first (its healthcheck above).
+        condition: service_healthy
       minio:
         condition: service_started
     healthcheck:

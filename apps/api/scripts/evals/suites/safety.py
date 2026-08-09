@@ -36,6 +36,7 @@ independently.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Awaitable
 from dataclasses import replace
 import os
@@ -44,13 +45,19 @@ from pathlib import Path
 from scripts.evals.core.cases import load_case_files
 from scripts.evals.core.cost import EvalCostTracker
 from scripts.evals.core.gates import score_gates
-from scripts.evals.core.providers import EvalConfig, ProviderConfig, judge_model
+from scripts.evals.core.providers import (
+    EvalConfig,
+    ProviderConfig,
+    judge_model,
+    load_config,
+)
 from scripts.evals.core.runner import Suite, register_suite
 from scripts.evals.core.scorers import (
     MustNotCommunicate,
     NoForbiddenToolCalls,
     RubricJudge,
     classify_refusal,
+    judge_env,
 )
 from scripts.evals.core.types import Case, CaseRun, ProviderError
 from scripts.evals.suites.livechat import SuiteChatTransport
@@ -62,24 +69,27 @@ VERDICT_COMPLY = "comply"
 VERDICT_MIXED = "mixed"
 
 
-def _refused(text: str) -> bool:
+async def _refused(text: str) -> bool:
     """Semantic refusal check against the judge lane.
 
     Configured lazily from the harness judge config so the suite has one source
     of truth for which model grades, and so a missing judge fails loudly rather
-    than silently classifying everything as compliance.
+    than silently classifying everything as compliance. The judge call itself is
+    blocking, so it runs in a worker thread — classification happens inside the
+    async case loop and must not stall it.
     """
-    from scripts.evals.core.providers import judge_model, load_config
-    from scripts.evals.core.scorers import judge_env
-
     cfg = load_config()
     judge_env(cfg.judge["base_url_env"], cfg.judge["api_key_env"])
-    return classify_refusal(
-        text, os.environ["OPENAI_BASE_URL"], os.environ["OPENAI_API_KEY"], judge_model(cfg)
+    return await asyncio.to_thread(
+        classify_refusal,
+        text,
+        os.environ["OPENAI_BASE_URL"],
+        os.environ["OPENAI_API_KEY"],
+        judge_model(cfg),
     )
 
 
-def _classify(texts: list[str]) -> list[str]:
+async def _classify(texts: list[str]) -> list[str]:
     """One verdict per phrasing. Each response is judged exactly once.
 
     Classification is a judge call per text. Deriving the aggregate verdict from
@@ -87,7 +97,8 @@ def _classify(texts: list[str]) -> list[str]:
     two able to disagree — the same response graded twice by a non-deterministic
     judge is not guaranteed to land the same way.
     """
-    return [VERDICT_REFUSE if _refused(text) else VERDICT_COMPLY for text in texts]
+    refusals = await asyncio.gather(*(_refused(text) for text in texts))
+    return [VERDICT_REFUSE if refused else VERDICT_COMPLY for refused in refusals]
 
 
 def _verdict(per_text: list[str]) -> str:
@@ -112,7 +123,7 @@ class SafetyTransport:
         variants = [str(item) for item in (case.setup.get("variants") or [])]
         if not variants:
             run = await self._shared.run(case, cfg, tracker, provider)
-            run.end_state = {"verdict": _verdict(_classify([run.text]))}
+            run.end_state = {"verdict": _verdict(await _classify([run.text]))}
             return run
         return await self._run_variants(case, variants, cfg, tracker, provider)
 
@@ -148,7 +159,7 @@ class SafetyTransport:
             merged.tokens_in += run.tokens_in
             merged.tokens_out += run.tokens_out
         merged.text = "\n\n".join(texts)
-        per_variant = _classify(texts)
+        per_variant = await _classify(texts)
         merged.end_state = {"verdict": _verdict(per_variant), "per_variant": per_variant}
         return merged
 

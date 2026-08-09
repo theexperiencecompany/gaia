@@ -71,6 +71,7 @@ def _publish(tmp_path: Path, passed: int, failed: int) -> Path:
         [Case(id="p0", ticket="t", prompt="p")],
         {"opencode": ProviderPrice()},
         tracker,
+        journal.records(),
     )
 
 
@@ -114,6 +115,7 @@ def test_numbers_that_do_not_reconcile_block_the_report_entirely(tmp_path: Path)
             [],
             {},
             EvalCostTracker({}, 1.0),
+            journal.records(),
         )
     assert exit_info.value.code == 2
     assert not (tmp_path / "runs" / "run-c" / "report.html").exists()

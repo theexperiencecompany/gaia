@@ -93,14 +93,13 @@ class Comparison:
         return "\n".join(lines + [""])
 
 
+#: What counts in the denominator.
+#:
+#: ``skipped`` is in it. A skip means the benchmark asked something we have no way
+#: to answer, which is a wrong answer worth zero — dropping it from the denominator
+#: is how a 36/165 became a published 40.4%. ``errored`` stays out: an outage
+#: measured nothing, so there is no answer to be wrong.
 GRADED_STATUSES = ("passed", "failed", "skipped")
-"""What counts in the denominator.
-
-``skipped`` is in it. A skip means the benchmark asked something we have no way
-to answer, which is a wrong answer worth zero — dropping it from the denominator
-is how a 36/165 became a published 40.4%. ``errored`` stays out: an outage
-measured nothing, so there is no answer to be wrong.
-"""
 
 
 def _accuracy(records: list[dict[str, Any]]) -> tuple[float, int, int]:
@@ -179,7 +178,10 @@ def compare(suite: str, records: list[dict[str, Any]]) -> Comparison:
             continue
         was = float(previous[0]) / float(previous[1]) if previous[1] else 0.0
         now = passed / total
-        if now < was - REGRESSION_MARGIN:
+        # Rounded like the suite check above: an exact-margin drop must not be
+        # reported as a regression because binary floating point rounds the
+        # subtraction differently.
+        if round(now, 9) < round(was - REGRESSION_MARGIN, 9):
             comparison.regressions.append(
                 f"{category}: {passed}/{total} ({now:.0%}) vs baseline {was:.0%}"
             )
