@@ -362,7 +362,11 @@ async def send_email_route(
         raise HTTPException(status_code=500, detail=f"Failed to send email: {e!s}") from e
 
 
-@router.post("/gmail/send-json", summary="Send an email using JSON payload")
+@router.post(
+    "/gmail/send-json",
+    summary="Send an email using JSON payload",
+    responses={500: {"description": "Gmail rejected the send, or the send failed upstream"}},
+)
 @tiered_rate_limit("mail_actions")
 async def send_email_json(
     request: SendEmailRequest,
