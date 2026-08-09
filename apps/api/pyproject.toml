@@ -121,6 +121,7 @@ dev = [
   "schemathesis>=4.24.3",
   "hypothesis>=6.165.2",
   "mutmut>=3.7.0",
+  "openpyxl>=3.1.5",
 ]
 
 backend = [
